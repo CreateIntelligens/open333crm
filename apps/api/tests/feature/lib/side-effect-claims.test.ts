@@ -11,7 +11,6 @@ import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { claimSideEffect, type SideEffectKey } from '@open333crm/core';
 import { inTenant } from '#src/lib/tenant-ctx.js';
-import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { backendPid, waitUntilBlockedBy } from '../../support/wait-for-lock-wait.js';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
@@ -26,7 +25,6 @@ const tenantDb = new PrismaClient({ datasources: { db: { url: TENANT_URL } } });
 const adminDb = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });
 // kind 的型別只收四種名稱；測試用獨特的值標記自己寫入的資料，方便清除
 const MARK = `claims-${randomUUID()}` as SideEffectKey['kind'];
-const deps = { prisma: tenantDb, events: createOutboxPublisher(tenantDb) };
 
 afterAll(async () => {
   await adminDb.sideEffectClaim.deleteMany({ where: { kind: MARK } });
@@ -40,9 +38,9 @@ function keyOf(sourceId: string): SideEffectKey {
 
 test('已經認領過：回報失敗，同一個交易之後的查詢成功', async () => {
   const key = keyOf(randomUUID());
-  await inTenant(deps, TENANT_A, (ctx) => claimSideEffect(ctx.tx, key));
+  await inTenant(tenantDb, TENANT_A, (ctx) => claimSideEffect(ctx.tx, key));
 
-  const { claimed, countAfter } = await inTenant(deps, TENANT_A, async (ctx) => {
+  const { claimed, countAfter } = await inTenant(tenantDb, TENANT_A, async (ctx) => {
     const claimed = await claimSideEffect(ctx.tx, key);
     // 交易若因衝突進入 aborted 狀態，這個查詢會失敗
     const countAfter = await ctx.tx.sideEffectClaim.count({ where: { kind: MARK, sourceId: key.sourceId } });
@@ -60,7 +58,7 @@ test('兩個交易同時認領同一個鍵：只有一個成功', async () => {
   let firstClaimed!: (pid: number) => void;
   const firstPid = new Promise<number>((resolve) => (firstClaimed = resolve));
 
-  const first = inTenant(deps, TENANT_A, async (ctx) => {
+  const first = inTenant(tenantDb, TENANT_A, async (ctx) => {
     const claimed = await claimSideEffect(ctx.tx, key);
     firstClaimed(await backendPid(ctx.tx));
     await firstMayCommit;
@@ -69,7 +67,7 @@ test('兩個交易同時認領同一個鍵：只有一個成功', async () => {
 
   try {
     const pid = await firstPid;
-    const second = inTenant(deps, TENANT_A, (ctx) => claimSideEffect(ctx.tx, key));
+    const second = inTenant(tenantDb, TENANT_A, (ctx) => claimSideEffect(ctx.tx, key));
     // 第二個交易要卡在唯一索引上，等第一個交易 commit；否則測到的只是先後執行
     await waitUntilBlockedBy(adminDb, pid);
     releaseFirst();
@@ -83,13 +81,13 @@ test('兩個交易同時認領同一個鍵：只有一個成功', async () => {
 test('先認領的交易 rollback：之後的認領成功', async () => {
   const key = keyOf(randomUUID());
   await assert.rejects(
-    inTenant(deps, TENANT_A, async (ctx) => {
+    inTenant(tenantDb, TENANT_A, async (ctx) => {
       assert.equal(await claimSideEffect(ctx.tx, key), true);
       throw new Error('rollback');
     }),
     /rollback/,
   );
 
-  const claimed = await inTenant(deps, TENANT_A, (ctx) => claimSideEffect(ctx.tx, key));
+  const claimed = await inTenant(tenantDb, TENANT_A, (ctx) => claimSideEffect(ctx.tx, key));
   assert.equal(claimed, true);
 });

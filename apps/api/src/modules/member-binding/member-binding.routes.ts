@@ -5,15 +5,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { tenantHandler } from '../../lib/tenant-ctx.js';
-import {
-  getBindingConfig,
-  saveBindingConfig,
-  unbindMember,
-} from './member-binding.service.js';
-import { bindMember } from './member-binding.flow.js';
+import { bindMember, getBindingConfigFlow, saveBindingConfigFlow, unbindMemberFlow } from './member-binding.flow.js';
 import { testConnection } from './member-lookup.service.js';
-import { FAILURE_MESSAGES, FAILURE_STATUS, lookupInputSchema, contactParams, runInTenant } from './member-binding-http.js';
+import { FAILURE_MESSAGES, FAILURE_STATUS, lookupInputSchema, contactParams } from './member-binding-http.js';
 import type { MemberBindingConfig } from './member-binding.types.js';
 
 /** 設定含認證憑證，回傳給前端時遮蔽——避免後台頁面外洩客戶的 API 金鑰。 */
@@ -52,32 +46,22 @@ const configSchema = z.object({
 export default async function memberBindingRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/', { preHandler: [requirePermission('settings.manage')] }, tenantHandler(app, async (_request, _reply, ctx) => {
-    const config = await getBindingConfig(ctx);
+  app.get('/', { preHandler: [requirePermission('settings.manage')] }, async (request) => {
+    const config = await getBindingConfigFlow(app, request.agent.tenantId);
     return { success: true, data: maskConfig(config) };
-  }));
+  });
 
-  app.put('/', { preHandler: [requirePermission('settings.manage')] }, tenantHandler(app, async (request, reply, ctx) => {
+  app.put('/', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
     const body: MemberBindingConfig = configSchema.parse(request.body);
     if (body.enabled && !body.endpoint) {
-      reply.code(400);
-      return { success: false, error: { code: 'VALIDATION_ERROR', message: '啟用會員綁定須填寫查詢端點' } };
+      return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: '啟用會員綁定須填寫查詢端點' } });
     }
     if (body.enabled && !body.fieldMapping?.memberId) {
-      reply.code(400);
-      return { success: false, error: { code: 'VALIDATION_ERROR', message: '欄位對應須包含 memberId' } };
+      return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: '欄位對應須包含 memberId' } });
     }
-
-    // 未重填憑證時沿用既有值——前端拿到的是遮蔽後的字串，直接存會把金鑰覆蓋成 ••••
-    const existing = await getBindingConfig(ctx);
-    const credential =
-      body.auth?.credential && !body.auth.credential.startsWith('••')
-        ? body.auth.credential
-        : existing?.auth?.credential;
-
-    await saveBindingConfig(ctx, { ...body, auth: { ...body.auth, credential } });
+    await saveBindingConfigFlow(app, request.agent.tenantId, body);
     return { success: true };
-  }));
+  });
 
   /**
    * 連線測試。存檔後可立刻驗證設定是否正確，而不是等顧客去踩雷。
@@ -88,7 +72,7 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
   app.post('/test', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
     const body = z.object({ input: lookupInputSchema.optional() }).parse(request.body ?? {});
     // 讀設定在交易內，連線測試（外部呼叫）在交易外
-    const config = await runInTenant(app, request.agent.tenantId, (ctx) => getBindingConfig(ctx));
+    const config = await getBindingConfigFlow(app, request.agent.tenantId);
     if (!config) {
       return reply.status(400).send({
         success: false,
@@ -135,8 +119,8 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
     return { success: true, data: { memberId: result.memberId } };
   });
 
-  app.delete('/contacts/:contactId', { preHandler: [requirePermission('contact.update')] }, tenantHandler(app, async (request, _reply, ctx) => {
+  app.delete('/contacts/:contactId', { preHandler: [requirePermission('contact.update')] }, async (request) => {
     const { contactId } = contactParams.parse(request.params);
-    return { success: true, data: await unbindMember(ctx, contactId) };
-  }));
+    return { success: true, data: await unbindMemberFlow(app, request.agent.tenantId, contactId) };
+  });
 }

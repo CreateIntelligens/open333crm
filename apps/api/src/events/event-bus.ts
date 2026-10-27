@@ -1,8 +1,8 @@
 /**
- * 還沒搬到 ctx.publish 的程式發出業務事件的地方（change outbox-event-delivery，design 決策 7）。
+ * 還沒搬到 publishEvent()（events/outbox-publisher.ts）的程式發出業務事件的地方（change outbox-event-delivery，design 決策 7）。
  *
  * publish() 產生一個事件 id，直接送進訂閱了這個事件的訂閱者佇列，不寫 outbox。
- * 所以保證仍是最多一次：行程在送出之前結束時，事件遺失。搬到 ctx.publish 之後才是至少一次。
+ * 所以保證仍是最多一次：行程在送出之前結束時，事件遺失。搬到 publishEvent() 之後才是至少一次。
  *
  * 訂閱者（通知、自動化、對外 webhook）從佇列取得事件，不訂閱這裡。publish() 仍在行程內 emit，
  * 只讓測試以 subscribe() 觀察發出的事件；正式程式不要以 subscribe() 處理事件。

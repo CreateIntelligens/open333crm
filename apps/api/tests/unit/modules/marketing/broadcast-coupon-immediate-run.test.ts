@@ -6,36 +6,59 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
-import { queueCouponBroadcast } from '#src/modules/marketing/broadcast-coupon.service.js';
+import type { OutboxInput } from '@open333crm/core';
+import { queueCouponBroadcastFlow } from '#src/modules/marketing/broadcast-coupon.flow.js';
 import { createCouponBroadcastProcessor } from '#src/modules/marketing/broadcast-coupon.worker.js';
 
 const B = 'b0000000-0000-0000-0000-000000000001';
+const T = 'a0000000-0000-0000-0000-000000000001';
 
-function txFor(status: string) {
-  return {
+/** 交易與 outbox 都以 mock 模擬：寫進 outbox 的 job 記在 written，commit 之後才記 dispatched */
+function setup(status: string, updated = 1) {
+  const written: OutboxInput[] = [];
+  const log: string[] = [];
+  const tx = {
+    $executeRaw: async () => 1,
     broadcast: {
       findFirst: async () => ({ id: B, status, couponId: 'c1' }),
-      updateMany: async () => ({ count: 1 }),
+      updateMany: async () => ({ count: updated }),
     },
   };
+  const prisma = {
+    async $transaction(cb: (t: typeof tx) => Promise<unknown>) {
+      const result = await cb(tx);
+      log.push('commit');
+      return result;
+    },
+  } as never;
+  const events = {
+    async write(_tx: unknown, input: OutboxInput) {
+      written.push(input);
+      return { id: 'o1', ...input, queueName: 'coupon-broadcast', jobOptions: null, createdAt: new Date() } as never;
+    },
+    async dispatch() {
+      log.push('dispatch');
+    },
+  };
+  return { deps: { prisma, events }, written, log };
 }
 
 test('立即發送後馬上開始執行', async () => {
-  const { ctx, enqueued } = createMockTenantCtx(txFor('draft'));
-  const queued = await queueCouponBroadcast(ctx, B, Date.parse('2026-10-27T02:00:00Z'));
+  const { deps, written, log } = setup('draft');
+  const queued = await queueCouponBroadcastFlow(deps, T, B, Date.parse('2026-10-27T02:00:00Z'));
   assert.equal(queued.status, 'scheduled');
-  assert.equal(enqueued.length, 1, '排入發送時一併排 job，不等每分鐘的排程');
-  assert.equal(enqueued[0].queueName, 'coupon-broadcast');
-  assert.deepEqual(enqueued[0].data, { tenantId: ctx.tenantId, broadcastId: B });
+  assert.equal(written.length, 1, '排入發送時一併排 job，不等每分鐘的排程');
+  assert.equal(written[0].kind, 'job');
+  assert.equal(written[0].kind === 'job' && written[0].queueName, 'coupon-broadcast');
+  assert.deepEqual(written[0].payload, { tenantId: T, broadcastId: B });
+  assert.deepEqual(log, ['commit', 'dispatch'], 'commit 之後才送進佇列');
+  assert.equal('job' in queued, false, '回應不帶 job 的內容');
 });
 
 test('狀態不能發送時不排 job', async () => {
-  const tx = txFor('completed');
-  tx.broadcast.updateMany = async () => ({ count: 0 });
-  const { ctx, enqueued } = createMockTenantCtx(tx);
-  await assert.rejects(queueCouponBroadcast(ctx, B));
-  assert.equal(enqueued.length, 0);
+  const { deps, written } = setup('completed', 0);
+  await assert.rejects(queueCouponBroadcastFlow(deps, T, B));
+  assert.equal(written.length, 0);
 });
 
 test('job 交給附券廣播的執行，帶 job 上的租戶與廣播', async () => {

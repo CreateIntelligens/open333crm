@@ -56,7 +56,7 @@ export interface CouponBroadcastJobData {
  * 搶占前的錯誤（例如資料庫斷線）重試；搶占後的錯誤 runCouponBroadcast 已把廣播標成失敗，
  * 重試時搶不到（not_claimed），不會重複發送
  */
-const COUPON_BROADCAST_JOB_OPTIONS = {
+export const COUPON_BROADCAST_JOB_OPTIONS = {
   attempts: 3,
   backoff: { type: 'exponential', delay: 5_000 },
   removeOnComplete: { age: 86_400 },
@@ -88,7 +88,7 @@ const nowDate = (now?: number) => new Date(now ?? Date.now());
 
 /**
  * 附券廣播的「立即發送」：在背景馬上開始執行，不在 HTTP 請求內同步發送（design D29）。
- * 同一個交易寫進 outbox 一個立即執行的 job（commit 後送進 coupon-broadcast 佇列），不等每分鐘的排程；
+ * 回傳立即執行的 job，flow 在同一個交易寫進 outbox（commit 後送進 coupon-broadcast 佇列），不等每分鐘的排程；
  * 排程時間設為現在，job 沒有執行時由排程補發（change fix-coupon-broadcast-immediate-run）。
  * 草稿、已排程、失敗可以排入；發送中但超過 5 分鐘沒有進度的（程式中途結束）也可以重新排入，
  * 已有收件紀錄的人不會再拿到券。job 與排程誰先搶占（claimCouponBroadcast）誰發送，另一個不做事。
@@ -117,9 +117,9 @@ export async function queueCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
     if (broadcast.status === 'sending') throw alreadySendingError();
     throw new AppError('此群發目前的狀態無法發送', 'INVALID_STATUS', 400);
   }
+  // 立即執行的 job 由 flow 以 enqueueJob 寫進同一個交易的 outbox（broadcast-coupon.flow.ts）
   const job: CouponBroadcastJobData = { tenantId, broadcastId };
-  await ctx.enqueue(COUPON_BROADCAST_QUEUE, 'run', job, COUPON_BROADCAST_JOB_OPTIONS);
-  return { id: broadcastId, status: 'scheduled' as const, scheduledAt };
+  return { id: broadcastId, status: 'scheduled' as const, scheduledAt, job };
 }
 
 // ── 發送：開始 ────────────────────────────────────────────────────────────
@@ -397,14 +397,17 @@ export async function reserveRecipient(
   return { kind: 'reserved', instanceId: instance.id, vars };
 }
 
-/** 第 3 步（帶連結的訊息送達）：確認這張券、貼領券標籤、收件紀錄標為已送出 */
+/**
+ * 第 3 步（帶連結的訊息送達）：確認這張券、貼領券標籤、收件紀錄標為已送出。
+ * 回傳是否確認，以及這次貼上的標籤；contact.tagged 由 flow 發出。
+ */
 export async function confirmRecipient(
   ctx: TenantCtx,
   plan: CouponBroadcastPlan,
   recipient: PendingRecipient,
   instanceId: string,
   now: number = Date.now(),
-): Promise<boolean> {
+): Promise<{ confirmed: boolean; tag: { tagId: string; tagName: string } | null }> {
   const { tx, tenantId } = ctx;
   const confirmed = await confirmPendingInstance(tx, {
     tenantId,
@@ -415,21 +418,13 @@ export async function confirmRecipient(
   });
   if (!confirmed.confirmed) {
     await markRecipient(ctx, plan.broadcast.id, recipient.contactId, 'failed', 'CONFIRM_TOO_LATE', true);
-    return false;
-  }
-  if (confirmed.tag) {
-    await ctx.publish('contact.tagged', {
-      contactId: recipient.contactId,
-      tagId: confirmed.tag.tagId,
-      tagName: confirmed.tag.tagName,
-      source: 'system',
-    });
+    return { confirmed: false, tag: null };
   }
   await tx.broadcastRecipient.updateMany({
     where: { broadcastId: plan.broadcast.id, contactId: recipient.contactId },
     data: { deliveryStatus: 'sent', skipReason: null, sentAt: nowDate(now) },
   });
-  return true;
+  return { confirmed: true, tag: confirmed.tag };
 }
 
 /** 第 3 步（送不出）：作廢這張券、歸還名額，收件紀錄標為失敗並記原因 */
@@ -670,7 +665,7 @@ export async function createBatchIssue(
     couponIssuedByName: agent?.name ?? undefined,
   });
   const queued = await queueCouponBroadcast(ctx, broadcast.id, now);
-  return { broadcastId: broadcast.id, name: broadcast.name, status: queued.status };
+  return { broadcastId: broadcast.id, name: broadcast.name, status: queued.status, job: queued.job };
 }
 
 /** 券詳情頁：這張券的附券廣播與批次發放（新到舊，最多 20 則），附結果統計 */

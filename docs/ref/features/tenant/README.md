@@ -102,7 +102,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 | 機制 | 範圍 | 用途 | 例子 |
 | --- | --- | --- | --- |
-| 業務事件 | API 或 workers 的交易 → 訂閱者佇列 → API 行程 | 交易內的 `ctx.publish()` 與 workers 寫入 outbox，至少送出一次；舊寫法 `eventBus.publish()` 直接送進佇列，最多一次 | `message.received`、`case.created`、`contact.tagged` |
+| 業務事件 | API 或 workers 的交易 → 訂閱者佇列 → API 行程 | 交易內的 `publishEvent()` 與 workers 寫入 outbox，至少送出一次；舊寫法 `eventBus.publish()` 直接送進佇列，最多一次 | `message.received`、`case.created`、`contact.tagged` |
 | `crm:events` | Redis 廣播 | Canvas 流程引擎的事件，與 eventBus 不相通 | `canvas.send_message` |
 | BullMQ queue | API 行程 → workers | 需要查資料或會拖慢回應的工作 | `automation`、`notification`、`rich-menu-bind`、`data-export`、`data-erasure` |
 | Redis `socket:emit` | workers → API 行程 → 前端 | workers 沒有 socket 連線，由 API 行程代為推送 | 自動化執行結果、通知 |

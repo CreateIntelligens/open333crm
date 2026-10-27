@@ -11,7 +11,9 @@ import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { closeOutboxQueues, EVENT_WEBHOOK_QUEUE, getOutboxQueue, writeOutbox } from '@open333crm/core';
-import { inTenant, type EventPublisher } from '#src/lib/tenant-ctx.js';
+import { inTenant } from '#src/lib/tenant-ctx.js';
+import { enqueueJob, publishEvent, type EventPublisher } from '#src/events/outbox-publisher.js';
+import { notifyTenant } from '#src/events/socket-push.js';
 import { runOutboxRelay } from '#src/modules/outbox/outbox.scheduler.js';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
@@ -38,7 +40,6 @@ const noFastPath: EventPublisher = {
   },
   dispatch: async () => {},
 };
-const deps = { prisma: tenantDb, events: noFastPath };
 
 afterAll(async () => {
   await adminDb.outbox.deleteMany({ where: { OR: [{ queueName: QUEUE }, { payload: { path: ['mark'], equals: MARK } }] } });
@@ -51,9 +52,9 @@ afterAll(async () => {
 });
 
 test('commit 之後 outbox 有這個事件，而且尚未標記已送出', async () => {
-  const contactId = await inTenant(deps, TENANT_A, async (ctx) => {
+  const contactId = await inTenant(tenantDb, TENANT_A, async (ctx) => {
     const contact = await ctx.tx.contact.create({ data: { tenantId: ctx.tenantId, displayName: `${MARK}-commit` } });
-    await ctx.publish('contact.created', { contactId: contact.id, mark: MARK });
+    await publishEvent(ctx, noFastPath, 'contact.created', { contactId: contact.id, mark: MARK });
     return contact.id;
   });
   const rows = await adminDb.outbox.findMany({ where: { payload: { path: ['contactId'], equals: contactId } } });
@@ -66,8 +67,8 @@ test('commit 之後 outbox 有這個事件，而且尚未標記已送出', async
 test('rollback 時 outbox 沒有這個事件', async () => {
   const marker = randomUUID();
   await assert.rejects(
-    inTenant(deps, TENANT_A, async (ctx) => {
-      await ctx.publish('contact.created', { marker, mark: MARK });
+    inTenant(tenantDb, TENANT_A, async (ctx) => {
+      await publishEvent(ctx, noFastPath, 'contact.created', { marker, mark: MARK });
       throw new Error('rollback');
     }),
     /rollback/,
@@ -76,7 +77,7 @@ test('rollback 時 outbox 沒有這個事件', async () => {
 });
 
 test('行程在送出 job 之前結束：補送排程把 job 送進佇列，job id 等於 outbox id', async () => {
-  await inTenant(deps, TENANT_A, (ctx) => ctx.enqueue(QUEUE, 'job-j', { mark: MARK }, { attempts: 2 }));
+  await inTenant(tenantDb, TENANT_A, (ctx) => enqueueJob(ctx, noFastPath, QUEUE, 'job-j', { mark: MARK }, { attempts: 2 }));
   const [row] = await adminDb.outbox.findMany({ where: { queueName: QUEUE } });
   assert.equal(row.dispatchedAt, null);
   // 超過寬限時間，補送排程才會處理
@@ -96,8 +97,8 @@ test('行程在送出 job 之前結束：補送排程把 job 送進佇列，job 
 test('行程在推播之前結束：推播不寫進 outbox，所以不會補送', async () => {
   const before = writes;
   const io = { to: () => ({ emit: () => {} }) };
-  await inTenant({ ...deps, io: io as never }, TENANT_A, async (ctx) => {
-    ctx.notify('case.updated', { mark: MARK });
+  await inTenant(tenantDb, TENANT_A, async (ctx) => {
+    notifyTenant(ctx, io as never, 'case.updated', { mark: MARK });
   });
   assert.equal(writes, before);
 });
@@ -107,8 +108,8 @@ test('快路徑以綁定租戶的交易標記已送出（不需要 admin 連線�
   const marker = randomUUID();
   const fastPath = createOutboxPublisher(tenantDb);
   // 事件送到 webhook 佇列；這裡不檢查佇列，只看標記
-  await inTenant({ prisma: tenantDb, events: fastPath }, TENANT_A, (ctx) =>
-    ctx.publish('case.resolved', { marker, mark: MARK }),
+  await inTenant(tenantDb, TENANT_A, (ctx) =>
+    publishEvent(ctx, fastPath, 'case.resolved', { marker, mark: MARK }),
   );
   let row = null;
   for (let i = 0; i < 50 && !row?.dispatchedAt; i++) {

@@ -5,19 +5,23 @@
  * 2. 交易外：送出發券訊息（渠道 API，最多送一次，不重試）
  * 3. 交易：成功就確認並寫入對話訊息（confirmIssue），失敗就作廢這張券（voidPendingInstance）
  *
- * 交易由這裡以 inTenant() 開；service 只收 TenantCtx（AGENTS.md 結構規則 2）。
+ * 交易由這裡以 inTenant() 開；service 只收 TenantCtx，推播與事件由這裡登記（AGENTS.md 結構規則 2）。
  */
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { logger } from '@open333crm/core';
-import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { tenantScopedClient } from '../../lib/tenant-db.js';
+import { flowOf, inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
+import { getAgentById } from '../auth/auth.service.js';
 import { createOutboxPublisher } from '../../events/outbox-publisher.js';
+import { notifyCouponMessage, notifyInstanceUpdated, publishCouponTag } from './coupon-effects.js';
+import { tenantScopedClient } from '../../lib/tenant-db.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import {
   IssueAbort,
   REQUEST_KEEP_MS,
   confirmIssue,
+  getIssueContext,
+  listIssuedCoupons,
   readStored,
   requestKeyOf,
   reserveIssue,
@@ -42,8 +46,8 @@ export interface InboxFlowDeps extends InboxIssueDeps {
   deliver?: (params: DeliverParams) => Promise<{ sent: boolean; reason?: string }>;
 }
 
-function inTenantOf<T>(deps: InboxFlowDeps, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, fn);
+function inTenantOf<T>(deps: InboxFlowDeps, tenantId: string, fn: (scope: TenantScope) => Promise<T>): Promise<T> {
+  return inTenant(deps.prisma, tenantId, fn);
 }
 
 /** 預設送出：走既有 deliverToChannel；座席主動發券時 replyToken 多半已失效，固定 push（design D7） */
@@ -110,11 +114,19 @@ async function runIssue(deps: InboxFlowDeps, input: InboxIssueInput): Promise<In
   }
 
   // 訊息已送到顧客：確認失敗不能丟出例外（會清掉發送鍵，座席重送就發第二張），重試兩次後回報
-  let message: Awaited<ReturnType<typeof confirmIssue>> = null;
+  let message: NonNullable<Awaited<ReturnType<typeof confirmIssue>>>['message'] | null = null;
   let confirmError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      message = await inTenantOf(deps, tenantId, (ctx) => confirmIssue(ctx, deps, input, reserved));
+      message = await inTenantOf(deps, tenantId, async (scope) => {
+        const confirmed = await confirmIssue(scope, deps, input, reserved);
+        if (!confirmed) return null;
+        if (confirmed.tag) await publishCouponTag(scope, createOutboxPublisher(deps.prisma), reserved.contactId, confirmed.tag);
+        // commit 之後才推播：對話新訊息與右側「已發優惠券」重新載入（design D23）
+        notifyCouponMessage(scope, deps.io, confirmed.message);
+        notifyInstanceUpdated(scope, deps.io, { instanceId: reserved.instanceId, contactId: reserved.contactId, change: 'issued' });
+        return confirmed.message;
+      });
       confirmError = null;
       break;
     } catch (err) {
@@ -141,4 +153,15 @@ async function runIssue(deps: InboxFlowDeps, input: InboxIssueInput): Promise<In
     couponName: reserved.coupon.name,
     messageId: message.id,
   };
+}
+
+/** 發券面板資料（補償紀錄、可發的券、無法發券的原因） */
+export const getIssueContextFlow = flowOf(getIssueContext);
+
+/** 對話聯絡人收到的券（右側「已發優惠券」） */
+export const listIssuedCouponsFlow = flowOf(listIssuedCoupons);
+
+/** 發券座席當下的名稱：座席之後改名或刪除，序號明細與券訊息仍顯示原名 */
+export function getIssuerNameFlow(deps: { prisma: PrismaClient }, tenantId: string, agentId: string) {
+  return inTenant(deps.prisma, tenantId, async (scope) => (await getAgentById(scope.tx, agentId, tenantId))?.name ?? undefined);
 }

@@ -403,7 +403,8 @@ export function voidPendingInstance(ctx: TenantCtx, instanceId: string): Promise
 }
 
 /**
- * 第 3 步（訊息送出成功後）：清除發送中標記、貼標、寫入對話訊息並推播。
+ * 第 3 步（訊息送出成功後）：清除發送中標記、貼標、寫入對話訊息。
+ * 回傳寫入的訊息與這次貼上的標籤，推播與 contact.tagged 由 flow 決定。
  * 回傳 null 表示券在確認前已被排程作廢（發送超過 5 分鐘）。
  */
 export async function confirmIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: InboxIssueInput, reserved: Reserved) {
@@ -415,15 +416,6 @@ export async function confirmIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
     coupon: reserved.coupon,
   });
   if (!confirmed.confirmed) return null;
-  if (confirmed.tag) {
-    // 與資料一起寫進 outbox，commit 之後才送出（貼標的自動化規則由這個事件觸發）
-    await ctx.publish('contact.tagged', {
-      contactId: reserved.contactId,
-      tagId: confirmed.tag.tagId,
-      tagName: confirmed.tag.tagName,
-      source: 'system',
-    });
-  }
   const message = await createCouponMessage(tx, {
     tenantId,
     conversationId: reserved.conversationId,
@@ -444,10 +436,7 @@ export async function confirmIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
     },
     now: new Date(nowOf(deps)),
   });
-  // commit 之後才推播：對話新訊息與右側「已發優惠券」重新載入（design D23）
-  ctx.notify('message.new', { conversationId: input.conversationId, message: socketMessage(message) });
-  ctx.notify('coupon.instance.updated', { instanceId: reserved.instanceId, contactId: reserved.contactId, change: 'issued' });
-  return message;
+  return { message, tag: confirmed.tag };
 }
 
 /** 發送中超過這個時間視為卡住（程式在送出途中結束） */
@@ -478,24 +467,6 @@ async function createCouponMessage(
     data: { lastMessageAt: params.now },
   });
   return message;
-}
-
-function socketMessage(m: Prisma.MessageGetPayload<object> & { sender?: unknown }) {
-  return {
-    id: m.id,
-    conversationId: m.conversationId,
-    direction: m.direction,
-    senderType: m.senderType,
-    senderId: m.senderId,
-    contentType: m.contentType,
-    content: m.content,
-    type: m.contentType,
-    payload: m.content,
-    metadata: m.metadata,
-    createdAt: m.createdAt.toISOString(),
-    sequence: m.sequence,
-    sender: m.sender,
-  };
 }
 
 // ── 發送鍵查詢 ─────────────────────────────────────────────────────────────

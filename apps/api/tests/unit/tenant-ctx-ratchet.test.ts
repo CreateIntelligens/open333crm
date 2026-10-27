@@ -3,6 +3,7 @@
  *
  * scripts/check-tenant-ctx.mjs 計算 TenantDb、request.tenantPrisma，以及 service 檔內的
  * withTenant(、$transaction(、inTenant( 次數，以檔案為單位與基準檔比較。
+ * service 檔直接 import Redis client 或 LLM 入口的次數也一起比較（change migrate-role-agent-tenant-ctx）。
  * 目前沒有 CI，這個測試讓 `pnpm test` 執行它。
  */
 import assert from 'node:assert/strict';
@@ -122,9 +123,74 @@ test('route 檔內的 inTenant( 不算：入口本來就該開交易', { timeout
   assert.equal(code, 0, output);
 });
 
+test('service 檔直接 import Redis client：算增加', { timeout: 30_000 }, async () => {
+  await put('modules/r1/r1.service.ts', ["import { logger, redis } from '@open333crm/core';"]);
+  await put('modules/r2/r2.service.ts', ["import IORedis from 'ioredis';"]);
+  await put('modules/r3/r3.service.ts', ["import { Redis } from 'ioredis';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /Redis client/);
+  for (const f of ['r1', 'r2', 'r3']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('service 檔直接 import LLM 入口：算增加', { timeout: 30_000 }, async () => {
+  await put('modules/l1/l1.service.ts', ["import { generateReply } from '../ai/llm.service.js';"]);
+  await put('modules/l2/l2.service.ts', ["import { getChatProvider } from '../ai/providers/index.js';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /LLM/);
+  assert.match(output, /modules\/l1\/l1\.service\.ts/);
+  assert.match(output, /modules\/l2\/l2\.service\.ts/);
+});
+
+test('namespace import 與直接 import provider 檔：也算增加', { timeout: 30_000 }, async () => {
+  await put('modules/n1/n1.service.ts', ["import * as IORedis from 'ioredis';"]);
+  await put('modules/n2/n2.service.ts', ["import * as core from '@open333crm/core';"]);
+  await put('modules/n3/n3.service.ts', ["import * as llm from '../ai/llm.service.js';"]);
+  await put('modules/n4/n4.service.ts', ["import { openaiProvider } from '../ai/providers/openai.js';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  for (const f of ['n1', 'n2', 'n3', 'n4']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('其他合法寫法也算增加：註解、前置空白、多行、re-export、動態 import()、require', { timeout: 30_000 }, async () => {
+  await put('modules/w1/w1.service.ts', ["import { /* cache */ redis } from '@open333crm/core';"]);
+  await put('modules/w2/w2.service.ts', ["  import IORedis from 'ioredis';"]);
+  await put('modules/w3/w3.service.ts', ['import {', '  logger,', '  redis,', "} from '@open333crm/core';"]);
+  await put('modules/w4/w4.service.ts', ["export { redis } from '@open333crm/core';"]);
+  await put('modules/w5/w5.service.ts', ["const { default: IORedis } = await import('ioredis');"]);
+  await put('modules/w6/w6.service.ts', ["const llm = require('../ai/llm.service.js');"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  for (const f of ['w1', 'w2', 'w3', 'w4', 'w5', 'w6']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('註解或字串裡的 import 不算', { timeout: 30_000 }, async () => {
+  await put('modules/c1/c1.service.ts', [
+    "// import { redis } from '@open333crm/core';",
+    "/* import IORedis from 'ioredis'; */",
+    "const doc = \"import { generateReply } from '../ai/llm.service.js'\";",
+  ]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+});
+
+test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout: 30_000 }, async () => {
+  await put('modules/t1/t1.service.ts', [
+    "import type { Redis } from 'ioredis';",
+    "import type { HistoryMessage } from '../ai/llm.service.js';",
+    "import { type Redis as R } from 'ioredis';",
+    "import type { ChatProvider } from '../ai/providers/types.js';",
+  ]);
+  await put('modules/t2/t2.flow.ts', ["import { redis } from '@open333crm/core';", "import { generateReply } from '../ai/llm.service.js';"]);
+  await put('modules/t3/t3.routes.ts', ["import IORedis from 'ioredis';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+});
+
 test('repo 本身：舊寫法沒有比基準檔多', { timeout: 30_000 }, async () => {
   const { code, output } = await check(['--strict']);
-  assert.equal(code, 0, `舊寫法增加。新程式請用 inTenant() / tenantHandler()；確實要減少時執行 --update-baseline：\n${output}`);
+  assert.equal(code, 0, `舊寫法增加。新程式由 flow 以 inTenant() 開交易；確實要減少時執行 --update-baseline：\n${output}`);
 });
 
 test('--scan-dir 或 --baseline 沒有值：exit 2 並說明缺值的參數，不丟出 TypeError', async () => {

@@ -179,8 +179,7 @@ export async function redeemCoupon(
   });
   if (claimed.count === 0) return { ok: false as const, reason: 'CONFLICT' as const };
 
-  // 收件匣「已發優惠券」重新載入（design D23）：每種核銷方式都經過這裡，commit 之後才推播
-  ctx.notify('coupon.instance.updated', { instanceId: instance.id, contactId: instance.contactId, change: 'redeemed' });
+  // 收件匣「已發優惠券」重新載入（design D23）由每個入口依回傳的 instanceId、contactId 推播（coupon-effects.ts）
   return {
     ok: true as const,
     instanceId: instance.id,

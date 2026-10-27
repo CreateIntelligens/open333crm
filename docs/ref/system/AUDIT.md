@@ -110,7 +110,7 @@
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 渠道刪除是硬刪除；有對話的渠道刪除改回 409 並可從畫面停用，沒有對話的渠道刪除時仍連帶刪除聯絡人身分 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
-| [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
+| [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email 兩種模式都保留 | 靜態確認 |
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體 | 靜態確認 |
 | [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 部分修正 | 對外 Webhook 轉送所有內部事件：已有對外事件清單，但第一版等於所有事件；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
@@ -202,7 +202,7 @@ service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`�
 - 聯集接近 TypeScript 的推導上限（`tenant-db.ts` 的註解）。
 - 在交易內呼叫 `io.emit`、`eventBus.publish` 的 service，會在 commit 之前送出推播與事件。
 
-**方向（#337，2026-10-20 定案）。** 全面改成「入口開一個綁定租戶的交易，service 只收 `TenantCtx`」。change `tenant-transaction-context` 建立了新寫法：`apps/api/src/lib/tenant-ctx.ts` 的 `inTenant()`、`tenantHandler()`，以及 `AGENTS.md` 結構規則 2。之後依 #337 的階段逐模組搬遷：
+**方向（#337，2026-10-20 定案）。** 全面改成「入口開一個綁定租戶的交易，service 只收 `TenantCtx`」。change `tenant-transaction-context` 建立了新寫法：`apps/api/src/lib/tenant-ctx.ts` 的 `inTenant()`、`tenantHandler()`，以及 `AGENTS.md` 結構規則 2（change `migrate-role-agent-tenant-ctx` 起，route 一律呼叫 flow，`tenantHandler()` 已刪除）。之後依 #337 的階段逐模組搬遷：
 
 1. 試做 tag、role。
 2. 事件改走 outbox（動手前先評估客人收到重複訊息的機率）。
@@ -211,7 +211,7 @@ service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`�
 5. Canvas 引擎（RLS-01）。
 6. 刪除 `TenantDb`、`tenantScopedClient`、`request.tenantPrisma`。
 
-第 2 步已在 change `outbox-event-delivery` 完成（`9c2aff5c` 起）：`ctx.publish`、`ctx.enqueue` 在交易內寫 outbox，至少送出一次；三個訂閱者改從 BullMQ 佇列取得事件，對客人發訊息等副作用以 `side_effect_claims` 認領。自動化訂閱者的認領與寫入改用 `inTenant()`，LLM 階段仍用 `prismaAdmin`。還沒搬遷的程式仍呼叫 `eventBus.publish`，保證是最多一次。
+第 2 步已在 change `outbox-event-delivery` 完成（`9c2aff5c` 起）：`ctx.publish`、`ctx.enqueue`（change `migrate-role-agent-tenant-ctx` 起改成 `publishEvent()`、`enqueueJob()`）在交易內寫 outbox，至少送出一次；三個訂閱者改從 BullMQ 佇列取得事件，對客人發訊息等副作用以 `side_effect_claims` 認領。自動化訂閱者的認領與寫入改用 `inTenant()`，LLM 階段仍用 `prismaAdmin`。還沒搬遷的程式仍呼叫 `eventBus.publish`，保證是最多一次。
 
 搬遷進度看 `scripts/check-tenant-ctx.baseline.json`。`node scripts/check-tenant-ctx.mjs --strict` 在舊寫法增加時失敗。
 
@@ -222,7 +222,7 @@ Socket.IO 房間只有 `tenant:<tenantId>` 帶租戶 ID。`conversation:<id>`、
 
 前端訂閱房間時，`apps/api/src/modules/socket/socket-room-authorization.ts` 會檢查該資料屬於連線的租戶，所以別的租戶的連線進不了這些房間。推播端沒有對應的檢查：`io.to(room)` 只收一個字串。service 用了請求帶進來、沒有經過租戶查詢的 ID 時，推播會送到別的租戶的房間。用 `ctx.tx` 查出來的 ID 受 RLS 約束，不會有這個問題。目前沒有逐一檢查既有的推播呼叫，還沒有發現實際發生的路徑。
 
-新寫法 `ctx.notify()`（`apps/api/src/lib/tenant-ctx.ts`）不讓 service 指定房間：`tenant:` 房間由交易綁定的租戶 ID 組成（`apps/api/src/events/socket-push.ts`），所以不會推到別的租戶的 `tenant:` 房間。`ctx.notifyAgent()` 推到 `tenant:<tenantId>:agent:<agentId>`，房間也由交易綁定的租戶 ID 組成；成員連線時，伺服器依 token 加入自己的這個房間（`socket-room-handlers.ts`）。所以新寫法的推播都不會送到別的租戶。既有程式直接呼叫 `io.to('agent:…')`，仍然無法檢查。新寫法不提供推到 `conversation:` 房間的方法。
+新寫法 `notifyTenant()`（`apps/api/src/events/socket-push.ts`）不讓呼叫端指定房間：`tenant:` 房間由交易綁定的租戶 ID 組成（`apps/api/src/events/socket-push.ts`），所以不會推到別的租戶的 `tenant:` 房間。`notifyAgent()` 推到 `tenant:<tenantId>:agent:<agentId>`，房間也由交易綁定的租戶 ID 組成；成員連線時，伺服器依 token 加入自己的這個房間（`socket-room-handlers.ts`）。所以新寫法的推播都不會送到別的租戶。既有程式直接呼叫 `io.to('agent:…')`，仍然無法檢查。新寫法不提供推到 `conversation:` 房間的方法。
 
 **方向（#342，2026-10-20 定案）。** 定義統一的房間名稱格式，所有房間都以 `tenant:<tenantId>` 開頭，由 `events/socket-push.ts` 組成。新寫法已經做到（`tenant:` 與 `tenant:<tenantId>:agent:` 房間）；剩下的是既有程式的搬遷，以及 `subscribe` 的房間名稱。
 
@@ -1504,14 +1504,13 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作
 
-`writeTenantAudit()` 的呼叫點涵蓋成員、角色權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。下列操作沒有寫稽核：
+租戶稽核涵蓋成員、角色的建立改名刪除與權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。`role`、`agent` 以 `recordTenantAudit()` 在交易內寫稽核（change `migrate-role-agent-tenant-ctx`），其他模組仍呼叫 `writeTenantAudit()`。下列操作沒有寫稽核：
 
 | 範圍 | 沒有稽核的操作 |
 | --- | --- |
 | 認證 | 登入成功與失敗、Passkey 的註冊與刪除 |
 | 長效憑證 | API 金鑰的建立與撤銷、CLI token 的建立（`/settings/cli-sessions`、`/auth/cli/login`）與撤銷 |
 | 渠道 | 修改渠道，包括更換憑證（`PATCH /channels/:id`） |
-| 角色 | 建立、改名、刪除 |
 | 業務 | 送出群發、自動化規則的增刪改、刪除知識庫文章、刪除標籤 |
 
 長效憑證與渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候建立了一把能長期存取租戶資料的金鑰。

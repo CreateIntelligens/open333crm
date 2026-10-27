@@ -15,30 +15,80 @@ import {
   logger,
   type WalletTokenStore,
 } from '@open333crm/core';
-import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
+import { flowOf, inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
+import { createOutboxPublisher, enqueueJob, type EventPublisher } from '../../events/outbox-publisher.js';
+import { publishCouponTag } from '../coupon/coupon-effects.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { UNEXPECTED_FAILURE_REASON, convertBodyUrlsToShortLinks } from './marketing.service.js';
 import { buildVariableMap, renderTemplateBody } from './template-renderer.js';
 import {
+  COUPON_BROADCAST_JOB_OPTIONS,
+  COUPON_BROADCAST_QUEUE,
   COUPON_URL_VARIABLE,
   PROGRESS_EVERY,
   claimCouponBroadcast,
+  createBatchIssue,
+  queueCouponBroadcast,
   confirmRecipient,
   failCouponBroadcast,
   finalizeCouponBroadcast,
+  getCouponBroadcastSummary,
+  listBroadcastRecipients,
   markRecipient,
   prepareRecipients,
   recordProgress,
   reserveRecipient,
   voidRecipient,
+  type BatchIssueInput,
+  type CouponBroadcastJobData,
   type CouponBroadcastPlan,
   type CouponBroadcastSummary,
   type PendingRecipient,
   type RecipientFailReason,
 } from './broadcast-coupon.service.js';
+
+/** 附券廣播的結果：發券張數、依原因分列的跳過與失敗人數（design D29） */
+export const getCouponBroadcastSummaryFlow = flowOf(getCouponBroadcastSummary);
+
+/** 結果頁的收件人與跳過、失敗的原因 */
+export const listBroadcastRecipientsFlow = flowOf(listBroadcastRecipients);
+
+/** 排入發送的入口：events 預設寫 outbox（測試可替換） */
+export interface QueueBroadcastDeps {
+  prisma: PrismaClient;
+  events?: EventPublisher;
+}
+
+/** 立即執行的 job 與排入發送在同一個交易寫進 outbox，commit 後送進 coupon-broadcast 佇列 */
+function enqueueBroadcastRun(scope: TenantScope, deps: QueueBroadcastDeps, job: CouponBroadcastJobData) {
+  return enqueueJob(scope, deps.events ?? createOutboxPublisher(deps.prisma), COUPON_BROADCAST_QUEUE, 'run', job, COUPON_BROADCAST_JOB_OPTIONS);
+}
+
+/** 附券廣播「立即發送」：排入發送並馬上排一個執行的 job（change fix-coupon-broadcast-immediate-run） */
+export function queueCouponBroadcastFlow(deps: QueueBroadcastDeps, tenantId: string, broadcastId: string, now?: number) {
+  return inTenant(deps.prisma, tenantId, async (scope) => {
+    const { job, ...queued } = await queueCouponBroadcast(scope, broadcastId, now);
+    await enqueueBroadcastRun(scope, deps, job);
+    return queued;
+  });
+}
+
+/** 券詳情頁的批次發券：建立廣播、排入發送並馬上排一個執行的 job */
+export function createBatchIssueFlow(
+  deps: QueueBroadcastDeps,
+  tenantId: string,
+  agentId: string,
+  couponId: string,
+  input: BatchIssueInput,
+) {
+  return inTenant(deps.prisma, tenantId, async (scope) => {
+    const { job, ...created } = await createBatchIssue(scope, agentId, couponId, input);
+    await enqueueBroadcastRun(scope, deps, job);
+    return created;
+  });
+}
 
 export interface CouponBroadcastDeps {
   /** app_tenant 的基底連線（inTenant 用） */
@@ -63,8 +113,8 @@ interface OutboundMessage {
   content: Record<string, unknown>;
 }
 
-function step<T>(deps: CouponBroadcastDeps, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, fn);
+function step<T>(deps: CouponBroadcastDeps, tenantId: string, fn: (scope: TenantScope) => Promise<T>): Promise<T> {
+  return inTenant(deps.prisma, tenantId, fn);
 }
 
 /** 名單為空時依對象類型說明原因（與一般廣播相同的文字） */
@@ -285,7 +335,10 @@ async function processRecipient(
   let confirmError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      await step(deps, tenantId, (ctx) => confirmRecipient(ctx, plan, recipient, instanceId, now()));
+      await step(deps, tenantId, async (scope) => {
+        const confirmed = await confirmRecipient(scope, plan, recipient, instanceId, now());
+        if (confirmed.tag) await publishCouponTag(scope, createOutboxPublisher(deps.prisma), recipient.contactId, confirmed.tag);
+      });
       confirmError = null;
       break;
     } catch (err) {

@@ -44,9 +44,9 @@ export interface BackgroundExportDeps {
   beforeGenerate?: () => Promise<void>;
 }
 
-/** 寫入站內通知，commit 後推播給匯出者（入口以 inTenant 開交易後呼叫） */
-export async function recordExportNotice(ctx: TenantCtx, notice: ExportNotice): Promise<void> {
-  const notification = await ctx.tx.notification.create({
+/** 寫入站內通知，回傳寫入的通知；推播給匯出者由 flow 登記（coupon-export.flow.ts） */
+export function recordExportNotice(ctx: TenantCtx, notice: ExportNotice) {
+  return ctx.tx.notification.create({
     data: {
       tenantId: ctx.tenantId,
       agentId: notice.agentId,
@@ -56,7 +56,6 @@ export async function recordExportNotice(ctx: TenantCtx, notice: ExportNotice): 
       clickUrl: notice.clickUrl,
     },
   });
-  ctx.notifyAgent(notice.agentId, 'notification.new', notification);
 }
 
 export function countInstances(ctx: TenantCtx, couponId: string): Promise<number> {

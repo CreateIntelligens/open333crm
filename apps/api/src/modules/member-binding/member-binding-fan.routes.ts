@@ -5,9 +5,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
-import { getBindingConfig, getBinding } from './member-binding.service.js';
-import { bindMember } from './member-binding.flow.js';
-import { FAILURE_MESSAGES, FAILURE_STATUS, lookupInputSchema, runInTenant } from './member-binding-http.js';
+import { bindMember, getBindingConfigFlow, getBindingFlow } from './member-binding.flow.js';
+import { FAILURE_MESSAGES, FAILURE_STATUS, lookupInputSchema } from './member-binding-http.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -33,7 +32,7 @@ export default async function memberBindingFanRoutes(app: FastifyInstance) {
   /** 綁定頁需知道要讓顧客填什麼——由設定的佔位符推導。 */
   app.get('/fields', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fanBinding!;
-    const config = await runInTenant(app, fan.tenantId, (ctx) => getBindingConfig(ctx));
+    const config = await getBindingConfigFlow(app, fan.tenantId);
     if (!config?.enabled) {
       return { success: true, data: { enabled: false, fields: [] } };
     }
@@ -45,7 +44,7 @@ export default async function memberBindingFanRoutes(app: FastifyInstance) {
 
   app.get('/', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fanBinding!;
-    const result = await runInTenant(app, fan.tenantId, (ctx) => getBinding(ctx, fan.contactId));
+    const result = await getBindingFlow(app, fan.tenantId, fan.contactId);
     return { success: true, data: result };
   });
 

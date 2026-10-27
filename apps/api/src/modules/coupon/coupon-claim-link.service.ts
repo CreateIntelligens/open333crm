@@ -422,7 +422,8 @@ export async function reserveClaim(
 }
 
 /**
- * 第 3 步（訊息送出成功後）：清除發送中、貼標、累計領取數、寫入券卡訊息並推播。
+ * 第 3 步（訊息送出成功後）：清除發送中、貼標、累計領取數、寫入券卡訊息。
+ * 回傳寫入的訊息與這次貼上的標籤，推播與 contact.tagged 由 flow 決定。
  * 券在確認前已被排程作廢時回 null。
  */
 export async function confirmClaim(
@@ -443,14 +444,6 @@ export async function confirmClaim(
     now: now.getTime(),
   });
   if (!confirmed.confirmed) return null;
-  if (confirmed.tag) {
-    await ctx.publish('contact.tagged', {
-      contactId: actor.contactId,
-      tagId: confirmed.tag.tagId,
-      tagName: confirmed.tag.tagName,
-      source: 'system',
-    });
-  }
   await tx.couponClaimLink.updateMany({ where: { id: link.id, tenantId }, data: { claimCount: { increment: 1 } } });
   const message = await writeClaimMessage(ctx, actor.conversationId, {
     text,
@@ -469,12 +462,12 @@ export async function confirmClaim(
       issuedByName: `領券連結「${link.name}」`,
     },
   }, { source: 'coupon_claim_link', claimLinkId: link.id, claimLinkName: link.name }, now);
-  ctx.notify('coupon.instance.updated', { instanceId: reserved.instanceId, contactId: actor.contactId, change: 'issued' });
-  return message;
+  return { message, tag: confirmed.tag };
 }
 
 /**
  * 沒有發出券時的紀錄：回覆顧客的文字（送不出時標紅色）與原因，讓客服在對話看得到。
+ * 回傳寫入的訊息，推播由 flow 決定。
  */
 export async function recordClaimReply(
   ctx: TenantCtx,
@@ -515,21 +508,5 @@ async function writeClaimMessage(
     },
   });
   await tx.conversation.updateMany({ where: { id: conversationId, tenantId }, data: { lastMessageAt: now } });
-  ctx.notify('message.new', {
-    conversationId,
-    message: {
-      id: message.id,
-      conversationId,
-      direction: message.direction,
-      senderType: message.senderType,
-      contentType: message.contentType,
-      content: message.content,
-      type: message.contentType,
-      payload: message.content,
-      metadata: message.metadata,
-      createdAt: message.createdAt.toISOString(),
-      sequence: message.sequence,
-    },
-  });
   return message;
 }
