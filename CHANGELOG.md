@@ -25,6 +25,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **AI agent 回覆講到一半就斷掉**（創造智能 webchat，2026-10-20）— agent 路徑呼叫 Gemini 時沒有關閉 `gemini-2.5-flash` 的 thinking，推理吃掉大部分 token（實測 thoughts 479／上限 500），可見回覆只剩 17 token、停在「…公司，包含」；而且沒有檢查 `finishReason: MAX_TOKENS`，半句話被當成完成送給顧客。現在 agent 與 KB 自動回覆共用同一套設定：非 pro 模型關閉 thinking，pro 模型 `maxOutputTokens` 至少 2048；回覆被截斷時 agent 標為失敗，改由 KB 自動回覆接手，不再送出半句話。
 - **站內通知的即時推播失敗時，通知工作跟著失敗**（change `queue-monitoring`）— workers 寫入通知之後，推播到 Redis 失敗會讓 `notification:dispatch` 工作失敗；加上重試之後會重複寫入通知。現在推播失敗只記 log，工作照常完成：通知已經寫入，成員重新整理就看得到。
 - **FB 素材沿用編輯器的示範圖時，廣播整批失敗**（change `fix-fb-material-site-path-urls`，2026-10-27 UAT）— FB「商品輪播」等素材沿用示範圖 `/material-samples/...`，Facebook 回「image_url should represent a valid URL」：原本只有 LINE 素材存檔時把示範圖換成公開網址，FB 素材原樣存站內路徑。現在 FB 素材存檔時，網址欄位裡的站內路徑（`/` 開頭、不是 `//`）都換成 `{WEB_BASE_URL}{路徑}`；已經存成站內路徑的舊素材，由 FB plugin 在發送時轉換（API 的廣播、附券廣播與 workers 的自動化都涵蓋）。有站內路徑但沒有設定 `WEB_BASE_URL` 時，這則訊息不送出，失敗原因寫出是哪個網址。LINE 的行為不變。
   - 部署：確認 `.env.api` 與 `.env.workers` 都有設定 `WEB_BASE_URL`（網站的公開網址）。
