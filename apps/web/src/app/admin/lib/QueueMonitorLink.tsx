@@ -17,12 +17,17 @@ export function QueueMonitorLink() {
   const openDashboard = async () => {
     setError(null);
     const tab = window.open('', '_blank');
-    if (tab) tab.opener = null;
+    // 瀏覽器擋下新分頁時不換發 cookie：沒有分頁可以開啟監控畫面
+    if (!tab) {
+      setError('瀏覽器擋下了新分頁，請允許此網站開啟新分頁後再試一次');
+      return;
+    }
+    tab.opener = null;
     try {
       await platformApi.post('/queues/session', {}, { withCredentials: true });
-      if (tab) tab.location.href = `${API_BASE_URL}/platform/queues`;
+      tab.location.href = `${API_BASE_URL}/platform/queues`;
     } catch (err) {
-      tab?.close();
+      tab.close();
       const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
       setError(message ?? '無法開啟佇列監控，請稍後再試');
     }

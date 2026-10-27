@@ -23,7 +23,13 @@ function maskObject(data: Record<string, unknown>, topLevel: boolean): Record<st
   const masked: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     const identifier = isIdentifierKey(key) || (topLevel && TOP_LEVEL_IDENTIFIERS.has(key));
-    masked[key] = identifier && (typeof value === 'string' || typeof value === 'number') ? value : maskValue(value);
+    // 以 defineProperty 寫入：名稱為 __proto__ 的欄位以指派寫入時，會改掉 masked 的原型，不會成為欄位
+    Object.defineProperty(masked, key, {
+      value: identifier && (typeof value === 'string' || typeof value === 'number') ? value : maskValue(value),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return masked;
 }

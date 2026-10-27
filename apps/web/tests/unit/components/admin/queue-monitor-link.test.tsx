@@ -50,3 +50,13 @@ test('換發失敗時關閉分頁並顯示訊息', async () => {
   assert.equal(tab.location.href, '');
   assert.ok(await screen.findByText('此來源 IP 不能使用佇列監控'));
 });
+
+test('瀏覽器擋下新分頁時顯示訊息，不換發 cookie', async () => {
+  open.mockReturnValue(null);
+  render(<QueueMonitorLink />);
+
+  fireEvent.click(screen.getByRole('button', { name: '佇列監控' }));
+
+  assert.ok(await screen.findByText('瀏覽器擋下了新分頁，請允許此網站開啟新分頁後再試一次'));
+  assert.equal(api.post.mock.calls.length, 0);
+});

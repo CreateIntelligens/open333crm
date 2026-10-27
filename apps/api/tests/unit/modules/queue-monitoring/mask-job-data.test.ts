@@ -68,3 +68,11 @@ test('job 資料本身不是物件時遮蔽', () => {
   assert.equal(maskJobData('0912-345-678'), MASKED);
   assert.equal(maskJobData(undefined), undefined);
 });
+
+test('名稱為 __proto__ 的欄位照常遮蔽，不改變結果的原型', () => {
+  // JSON.parse 會把 __proto__ 建成一般欄位；以指派寫入時會改掉結果的原型，這個欄位就從畫面上消失
+  const masked = maskJobData(JSON.parse('{"tenantId":"t1","__proto__":{"phone":"0912"}}')) as Record<string, unknown>;
+
+  assert.equal(Object.getPrototypeOf(masked), Object.prototype);
+  assert.equal(JSON.stringify(masked), JSON.stringify(JSON.parse(`{"tenantId":"t1","__proto__":{"phone":"${MASKED}"}}`)));
+});
