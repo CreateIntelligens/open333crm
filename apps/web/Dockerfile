@@ -5,6 +5,8 @@ WORKDIR /app
 RUN npm install -g corepack@latest && corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm install reads the patches listed in package.json pnpm.patchedDependencies
+COPY patches ./patches
 COPY .env.web .env.web
 COPY apps/web/package.json apps/web/package.json
 COPY apps/widget/package.json apps/widget/package.json
