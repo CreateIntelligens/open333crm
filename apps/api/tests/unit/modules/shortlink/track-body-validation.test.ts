@@ -3,7 +3,8 @@
  * 格式錯誤回 400，不碰資料庫；正常的前端呼叫端（cid 為 null 或省略）照常回目標網址。
  *
  * prismaAdmin 以 mock 替換：記下每一次查詢，用來確認格式錯誤時沒有查詢。
- * 點擊在背景寫入，寫入失敗只記 log，不影響回應。
+ * 點擊在背景以 app.prisma 開交易寫入；這裡的 $transaction mock 立即失敗，只記 log，不影響回應，
+ * 也不碰 prismaAdmin，所以不會污染下一項測試的查詢紀錄。
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
@@ -29,18 +30,6 @@ app.decorate('prismaAdmin', {
     findUnique: async (args: unknown) => {
       queries.push(`shortLink.findUnique ${JSON.stringify(args)}`);
       return link;
-    },
-  },
-  channelIdentity: {
-    findUnique: async (args: unknown) => {
-      queries.push(`channelIdentity.findUnique ${JSON.stringify(args)}`);
-      return null;
-    },
-  },
-  contact: {
-    findFirst: async (args: unknown) => {
-      queries.push(`contact.findFirst ${JSON.stringify(args)}`);
-      return null;
     },
   },
 } as never);
