@@ -109,7 +109,7 @@ export interface AvailableClaimLinkView extends ClaimLinkView {
 const AVAILABLE_LINKS_LIMIT = 200;
 
 /**
- * 租戶內現在可以放進訊息的領券連結：連結啟用、券進行中、連結沒有結束（尚未開始的可以先放）。
+ * 租戶內現在可以放進訊息的領券連結：連結啟用、券進行中且沒有過了固定效期、連結沒有結束（尚未開始的可以先放）。
  * 素材編輯器的「插入領券連結」用（change improve-coupon-url-insert-ux design D6）。
  */
 export async function listAvailableClaimLinks(
@@ -124,7 +124,17 @@ export async function listAvailableClaimLinks(
     where: {
       tenantId,
       status: 'ACTIVE',
-      coupon: { status: 'ACTIVE' },
+      // 固定效期的券到期後仍是 ACTIVE（沒有排程自動結束），發出去一拿到就過期，不列出。
+      // 用 OR 明列可用的情況，不用 NOT：validityMode、endAt 可為 NULL，SQL 的 NOT 遇到 NULL 會把券也排除
+      coupon: {
+        status: 'ACTIVE',
+        OR: [
+          { validityMode: null },
+          { validityMode: { in: ['AFTER_CLAIM', 'AFTER_OPEN'] } },
+          { endAt: null },
+          { endAt: { gt: now } },
+        ],
+      },
       ...(filter.channelType ? { channel: { channelType: filter.channelType as never } } : {}),
       OR: [{ endAt: null }, { endAt: { gt: now } }],
     },

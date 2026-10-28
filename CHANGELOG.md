@@ -6,7 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
-- **素材編輯器「插入領券連結」**（change `improve-coupon-url-insert-ux`）— LINE、FB 純文字素材在「插入顧客專屬券連結」旁新增「插入領券連結」：只列出與素材同渠道（LINE 素材列 LINE、FB 素材列 Facebook 粉專）、啟用、券進行中、沒有結束的領券連結（名稱、券名、渠道），選一條就把公開網址插在游標位置，超過字數上限時擋下並提示；沒有連結時引導到優惠券頁建立；清單一次最多 200 條（最新建立的優先），達到上限時說明並引導到優惠券頁複製。後端新增 `GET /api/v1/coupons/claim-links`（可選 `channelType`；需 `coupon.view` 或 `marketing.manage` 任一）。
+- **素材編輯器「插入領券連結」**（change `improve-coupon-url-insert-ux`）— LINE、FB 純文字素材在「插入顧客專屬券連結」旁新增「插入領券連結」：只列出與素材同渠道（LINE 素材列 LINE、FB 素材列 Facebook 粉專）、啟用、券進行中（固定效期已到期的券不列）、沒有結束的領券連結（名稱、券名、渠道），選一條就把公開網址插在游標位置，超過字數上限時擋下並提示；沒有連結時引導到優惠券頁建立；清單一次最多 200 條（最新建立的優先），達到上限時說明並引導到優惠券頁複製。後端新增 `GET /api/v1/coupons/claim-links`（可選 `channelType`；需 `coupon.view` 或 `marketing.manage` 任一）。
 
 ### Changed
 
