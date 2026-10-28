@@ -17,7 +17,7 @@ import {
 } from './case.flow.js';
 import { actorOf } from '../../lib/request-actor.js';
 import { recordCsatScore } from '../csat/csat.service.js';
-import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
+import { addTagToTargetFlow, removeTagFromTargetFlow } from '../tag/tag.flow.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible, assertChannelVisible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
@@ -235,12 +235,12 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/tags', { preHandler: [perm.update] }, async (request, reply) => {
     const body = addTagSchema.parse(request.body);
     await assertCaseChannelVisible(request, request.params.id); // CM-173：貼標為 reply_only
-    const caseTag = await addTagToTarget(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
+    const actor = actorOf(request);
+    const caseTag = await addTagToTargetFlow(fastify, actor.tenantId, {
       targetType: 'CASE',
       targetId: request.params.id,
       tagId: body.tagId,
-      agentId: request.agent.id,
+      agentId: actor.agentId,
     });
 
     return reply.status(201).send(success(caseTag));
@@ -251,8 +251,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     '/:id/tags/:tagId', { preHandler: [perm.update] },
     async (request, reply) => {
       await assertCaseChannelVisible(request, request.params.id); // CM-173：移除標籤為 reply_only
-      const removed = await removeTagFromTarget(request.tenantPrisma, {
-        tenantId: request.agent.tenantId,
+      const removed = await removeTagFromTargetFlow(fastify, actorOf(request).tenantId, {
         targetType: 'CASE',
         targetId: request.params.id,
         tagId: request.params.tagId,

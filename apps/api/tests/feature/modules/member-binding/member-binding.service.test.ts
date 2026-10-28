@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { afterAll, beforeAll, it } from 'vitest';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
 import {
   saveBindingConfig,
@@ -20,6 +20,7 @@ import {
 import type { MemberBindingConfig } from '#src/modules/member-binding/member-binding.types.js';
 import { bindMember } from '#src/modules/member-binding/member-binding.flow.js';
 import { runInTenant, testIo } from '#tests/support/tenant-run.js';
+import { createOutboxPublisher, type EventPublisher } from '#src/events/outbox-publisher.js';
 
 // 模擬 API 跑在 127.0.0.1，需允許本機位址
 const originalAllowLocal = process.env.MEMBER_BINDING_ALLOW_LOCAL;
@@ -87,6 +88,12 @@ beforeAll(async () => {
 afterAll(async () => {
   const contacts = { tenantId, displayName: { startsWith: MARK } };
   await owner.contactAttribute.deleteMany({ where: { contact: contacts } });
+  // 綁定時貼標寫進 outbox 的 contact.tagged：斷言失敗時測試內的刪除不會執行，這裡一併清掉
+  for (const { id } of await owner.contact.findMany({ where: contacts, select: { id: true } })) {
+    await owner.outbox.deleteMany({ where: { payload: { path: ['contactId'], equals: id } } });
+  }
+  await owner.contactTag.deleteMany({ where: { contact: contacts } });
+  await owner.tag.deleteMany({ where: { tenantId, name: { startsWith: MARK } } });
   await owner.contact.deleteMany({ where: contacts });
   if (originalSettings) {
     await owner.tenantSettings.update({
@@ -162,4 +169,42 @@ it('兩位聯絡人同時綁同一個會員編號，只有一位成功', async (
     const results = await Promise.all(contacts.map((c) => bindMember({ prisma: tenantDb, io: testIo }, tenantId, c, { memberId: `RACE${round}` })));
     assert.equal(results.filter((r) => r.ok).length, 1, `第 ${round + 1} 輪：${JSON.stringify(results)}`);
   }
+});
+
+describe('綁定時貼標', () => {
+  /** 寫進真實的 outbox；快路徑不送進 Redis */
+  const events: EventPublisher = { write: createOutboxPublisher(tenantDb).write, dispatch: async () => {} };
+  const taggedRows = (contactId: string) =>
+    owner.outbox.findMany({ where: { name: 'contact.tagged', payload: { path: ['contactId'], equals: contactId } } });
+
+  afterAll(async () => {
+    await runInTenant(tenantDb, tenantId, (ctx) => saveBindingConfig(ctx, config()));
+  });
+
+  it('貼標成功：標籤與 contact.tagged 隨綁定一起 commit', async () => {
+    const tag = await owner.tag.create({ data: { tenantId, name: `${MARK}-會員`, scope: 'CONTACT' } });
+    await runInTenant(tenantDb, tenantId, (ctx) => saveBindingConfig(ctx, { ...config(), bindTagId: tag.id }));
+    const c = await mkContact('貼標成功');
+
+    const r = await bindMember({ prisma: tenantDb, io: testIo, events }, tenantId, c, { memberId: 'TAG1' });
+
+    const rows = await taggedRows(c);
+    await owner.outbox.deleteMany({ where: { id: { in: rows.map((x) => x.id) } } });
+    assert.ok(r.ok, `綁定失敗：${JSON.stringify(r)}`);
+    assert.ok(await owner.contactTag.findUnique({ where: { contactId_tagId: { contactId: c, tagId: tag.id } } }));
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].payload, { contactId: c, tagId: tag.id, tagName: tag.name, source: 'system' });
+  });
+
+  it('貼標失敗（標籤範圍不符）：綁定照樣成功，不發 contact.tagged', async () => {
+    const tag = await owner.tag.create({ data: { tenantId, name: `${MARK}-工單`, scope: 'CASE' } });
+    await runInTenant(tenantDb, tenantId, (ctx) => saveBindingConfig(ctx, { ...config(), bindTagId: tag.id }));
+    const c = await mkContact('貼標失敗');
+
+    const r = await bindMember({ prisma: tenantDb, io: testIo, events }, tenantId, c, { memberId: 'TAG2' });
+
+    assert.ok(r.ok, `綁定失敗：${JSON.stringify(r)}`);
+    assert.equal(await owner.contactTag.count({ where: { contactId: c } }), 0);
+    assert.equal((await taggedRows(c)).length, 0);
+  });
 });

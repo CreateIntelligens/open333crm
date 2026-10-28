@@ -1,8 +1,12 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
-import { eventBus } from '../../events/event-bus.js';
+import type { Prisma } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
-import type { TenantScopedClient, TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { notFound } from '../../shared/messages/resource.js';
+
+/**
+ * 標籤與貼標（#337 階段 3）：每個函式收 TenantCtx，租戶取自 ctx.tenantId。
+ * 本檔不發事件：聯絡人貼標的 contact.tagged 由呼叫端的 flow 以 publishContactTagged() 送出（tag-effects.ts）。
+ */
 
 /**
  * 可以「貼標」的目標——這三種有各自的關聯表（ContactTag / CaseTag / ConversationTag）。
@@ -18,10 +22,7 @@ export type TagTargetType = 'CONTACT' | 'CASE' | 'CONVERSATION';
 export type TagScopeType = TagTargetType | 'MATERIAL';
 type TagKind = 'MANUAL' | 'AUTO' | 'SYSTEM' | 'CHANNEL';
 
-type PrismaExecutor = PrismaClient | Prisma.TransactionClient | TenantScopedClient;
-
-interface TargetInput {
-  tenantId: string;
+export interface TargetInput {
   targetType: TagTargetType;
   targetId: string;
 }
@@ -29,7 +30,16 @@ interface TargetInput {
 /** 貼標來源：人工 / 短連結點擊 / 自動化規則。影響 addedBy 與 contact.tagged 的 source（迴圈防護用）。 */
 export type TagSource = 'agent' | 'system' | 'automation';
 
-interface AddTagInput extends TargetInput {
+/** 這次貼上的聯絡人標籤。service 回傳它，flow 用它送出 contact.tagged（tag-effects.ts） */
+export interface ContactTagged {
+  contactId: string;
+  tagId: string;
+  tagName: string;
+  /** 自動化以 source 防止迴圈：automation 規則貼的標籤不再觸發規則 */
+  source: TagSource;
+}
+
+export interface AddTagInput extends TargetInput {
   tagId: string;
   /** 人工路徑帶操作者；非人工路徑（system/automation）可省略。 */
   agentId?: string;
@@ -42,12 +52,11 @@ interface AddTagInput extends TargetInput {
   expiresAt?: Date | null;
 }
 
-interface RemoveTagInput extends TargetInput {
+export interface RemoveTagInput extends TargetInput {
   tagId: string;
 }
 
-interface CreateTagInput {
-  tenantId: string;
+export interface CreateTagInput {
   name: string;
   color: string;
   type: TagKind;
@@ -55,9 +64,7 @@ interface CreateTagInput {
   description?: string;
 }
 
-interface UpdateTagInput {
-  tenantId: string;
-  tagId: string;
+export interface UpdateTagInput {
   name?: string;
   color?: string;
   description?: string;
@@ -73,8 +80,8 @@ const TAG_SELECT = {
 } satisfies Prisma.TagSelect;
 
 async function assertTargetExists(
-  prisma: PrismaExecutor,
-  { tenantId, targetType, targetId }: TargetInput,
+  { tx: prisma, tenantId }: TenantCtx,
+  { targetType, targetId }: TargetInput,
 ) {
   switch (targetType) {
     case 'CONTACT': {
@@ -104,11 +111,7 @@ async function assertTargetExists(
   }
 }
 
-async function getTenantTag(
-  prisma: PrismaExecutor,
-  tenantId: string,
-  tagId: string,
-) {
+async function getTenantTag({ tx: prisma, tenantId }: TenantCtx, tagId: string) {
   const tag = await prisma.tag.findFirst({
     where: { id: tagId, tenantId },
     select: TAG_SELECT,
@@ -127,12 +130,14 @@ function assertTagScope(targetType: TagTargetType, tag: { scope: string }) {
   }
 }
 
-export async function addTagToTarget(
-  prisma: PrismaExecutor,
-  input: AddTagInput,
-) {
-  await assertTargetExists(prisma, input);
-  const tag = await getTenantTag(prisma, input.tenantId, input.tagId);
+/**
+ * 貼標（重複貼標不新增資料列）。回傳的 assignment.tag 帶標籤名稱，
+ * 呼叫端貼聯絡人標籤時用它送出 contact.tagged。
+ */
+export async function addTagToTarget(ctx: TenantCtx, input: AddTagInput) {
+  const prisma = ctx.tx;
+  await assertTargetExists(ctx, input);
+  const tag = await getTenantTag(ctx, input.tagId);
   assertTagScope(input.targetType, tag);
 
   switch (input.targetType) {
@@ -156,19 +161,6 @@ export async function addTagToTarget(
         },
         include: { tag: { select: TAG_SELECT } },
       });
-
-      eventBus.publish({
-        name: 'contact.tagged',
-        tenantId: input.tenantId,
-        timestamp: new Date(),
-        payload: {
-          contactId: input.targetId,
-          tagId: input.tagId,
-          tagName: tag.name,
-          source,
-        },
-      });
-
       return assignment;
     }
     case 'CASE':
@@ -208,13 +200,18 @@ export async function addTagToTarget(
   }
 }
 
-export async function createTenantTag(
-  prisma: PrismaExecutor,
-  input: CreateTagInput,
-) {
+/** 標籤管理頁：依範圍、名稱排序 */
+export async function listTenantTags({ tx, tenantId }: TenantCtx) {
+  return tx.tag.findMany({
+    where: { tenantId },
+    orderBy: [{ scope: 'asc' }, { name: 'asc' }],
+  });
+}
+
+export async function createTenantTag({ tx: prisma, tenantId }: TenantCtx, input: CreateTagInput) {
   const duplicate = await prisma.tag.findFirst({
     where: {
-      tenantId: input.tenantId,
+      tenantId,
       name: input.name,
       scope: input.scope,
     },
@@ -226,7 +223,7 @@ export async function createTenantTag(
 
   return prisma.tag.create({
     data: {
-      tenantId: input.tenantId,
+      tenantId,
       name: input.name,
       color: input.color,
       type: input.type,
@@ -236,12 +233,10 @@ export async function createTenantTag(
   });
 }
 
-export async function updateTenantTag(
-  prisma: PrismaExecutor,
-  input: UpdateTagInput,
-) {
+export async function updateTenantTag(ctx: TenantCtx, tagId: string, input: UpdateTagInput) {
+  const { tx: prisma, tenantId } = ctx;
   const tag = await prisma.tag.findFirst({
-    where: { id: input.tagId, tenantId: input.tenantId },
+    where: { id: tagId, tenantId },
   });
 
   if (!tag) {
@@ -251,7 +246,7 @@ export async function updateTenantTag(
   if (input.name && input.name !== tag.name) {
     const duplicate = await prisma.tag.findFirst({
       where: {
-        tenantId: input.tenantId,
+        tenantId,
         name: input.name,
         scope: tag.scope,
         id: { not: tag.id },
@@ -266,11 +261,11 @@ export async function updateTenantTag(
   // 素材標籤存字串，改名要同步替換，否則 Tag 列變新名、素材仍是舊名，
   // 建議清單會同時出現兩個（新的來自 Tag 表、舊的來自 Material.tags）。
   if (tag.scope === 'MATERIAL' && input.name && input.name !== tag.name) {
-    await renameMaterialTagString(prisma, input.tenantId, tag.name, input.name);
+    await renameMaterialTagString(ctx, tag.name, input.name);
   }
 
   return prisma.tag.update({
-    where: { id: input.tagId },
+    where: { id: tagId },
     data: {
       name: input.name,
       color: input.color,
@@ -279,19 +274,13 @@ export async function updateTenantTag(
   });
 }
 
-// 收 TenantDb：呼叫端以 withTenant(prisma, tid, tx => deleteTenantTag(tx, ...)) 包在
-// 綁定租戶的交易內，故此處依序刪除即為原子（不自開 $transaction，避免與外層巢狀）。
 /**
  * 從所有素材的 tags 陣列移除某個標籤名稱。
  *
  * 素材標籤存在 Material.tags（String[]）而非關聯表，所以刪 Tag 列不會自動清掉——
  * 需要手動掃過帶有該字串的素材。租戶內素材量不大（數百筆級），逐筆更新可接受。
  */
-async function removeMaterialTagString(
-  prisma: PrismaExecutor,
-  tenantId: string,
-  name: string,
-): Promise<void> {
+async function removeMaterialTagString({ tx: prisma, tenantId }: TenantCtx, name: string): Promise<void> {
   const affected = await prisma.material.findMany({
     where: { tenantId, tags: { has: name } },
     select: { id: true, tags: true },
@@ -306,8 +295,7 @@ async function removeMaterialTagString(
 
 /** 把所有素材 tags 內的舊名稱換成新名稱（改名時保持兩邊一致）。 */
 async function renameMaterialTagString(
-  prisma: PrismaExecutor,
-  tenantId: string,
+  { tx: prisma, tenantId }: TenantCtx,
   oldName: string,
   newName: string,
 ): Promise<void> {
@@ -322,11 +310,9 @@ async function renameMaterialTagString(
   }
 }
 
-export async function deleteTenantTag(
-  prisma: TenantDb,
-  tenantId: string,
-  tagId: string,
-) {
+/** 刪除標籤與它的所有貼標。在同一個交易內依序刪除，所以是原子的 */
+export async function deleteTenantTag(ctx: TenantCtx, tagId: string) {
+  const { tx: prisma, tenantId } = ctx;
   const tag = await prisma.tag.findFirst({
     where: { id: tagId, tenantId },
     select: { id: true, name: true, scope: true },
@@ -344,7 +330,7 @@ export async function deleteTenantTag(
   // 不處理的話：管理員刪了標籤，素材仍帶著那個字串，
   // 而 listMaterialTags 會併入舊字串 → 刪掉的標籤立刻又出現在建議清單。
   if (tag.scope === 'MATERIAL') {
-    await removeMaterialTagString(prisma, tenantId, tag.name);
+    await removeMaterialTagString(ctx, tag.name);
   }
 
   await prisma.tag.delete({ where: { id: tagId } });
@@ -352,12 +338,10 @@ export async function deleteTenantTag(
   return { deleted: true };
 }
 
-export async function removeTagFromTarget(
-  prisma: PrismaExecutor,
-  input: RemoveTagInput,
-) {
-  await assertTargetExists(prisma, input);
-  const tag = await getTenantTag(prisma, input.tenantId, input.tagId);
+export async function removeTagFromTarget(ctx: TenantCtx, input: RemoveTagInput) {
+  const prisma = ctx.tx;
+  await assertTargetExists(ctx, input);
+  const tag = await getTenantTag(ctx, input.tagId);
   assertTagScope(input.targetType, tag);
 
   switch (input.targetType) {
@@ -424,11 +408,9 @@ export async function removeTagFromTarget(
   }
 }
 
-export async function listTargetTags(
-  prisma: PrismaExecutor,
-  input: TargetInput,
-) {
-  await assertTargetExists(prisma, input);
+export async function listTargetTags(ctx: TenantCtx, input: TargetInput) {
+  const prisma = ctx.tx;
+  await assertTargetExists(ctx, input);
 
   switch (input.targetType) {
     case 'CONTACT':

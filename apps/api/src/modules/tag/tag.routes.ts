@@ -1,10 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
-import { AppError } from '../../shared/utils/response.js';
-import { createTenantTag, deleteTenantTag, updateTenantTag } from './tagging.service.js';
-import { withTenant } from '../../lib/tenant-db.js';
-import { notFound } from '../../shared/messages/resource.js';
+import { actorOf } from '../../lib/request-actor.js';
+import { createTagFlow, deleteTagFlow, listTagsFlow, updateTagFlow } from './tag.flow.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 
 const createTagSchema = z.object({
@@ -34,65 +32,27 @@ export default async function tagRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/tags
   fastify.get('/', { preHandler: [perm.view] }, async (request, reply) => {
-    const tags = await request.tenantPrisma.tag.findMany({
-      where: { tenantId: request.agent.tenantId },
-      orderBy: [
-        { scope: 'asc' },
-        { name: 'asc' },
-      ],
-    });
-
+    const tags = await listTagsFlow(fastify, actorOf(request).tenantId);
     return reply.send(success(tags));
   });
 
   // POST /api/v1/tags
   fastify.post('/', { preHandler: [perm.manage] }, async (request, reply) => {
     const data = createTagSchema.parse(request.body);
-
-    const tag = await createTenantTag(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      ...data,
-    });
-
+    const tag = await createTagFlow(fastify, actorOf(request).tenantId, data);
     return reply.status(201).send(success(tag));
   });
 
-  // PATCH /api/v1/tags/:id
+  // PATCH /api/v1/tags/:id（找不到標籤時 service 回 404）
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const data = updateTagSchema.parse(request.body);
-
-    const tag = await request.tenantPrisma.tag.findFirst({
-      where: { id: request.params.id, tenantId: request.agent.tenantId },
-    });
-
-    if (!tag) {
-      throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
-    }
-
-    const updated = await updateTenantTag(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      tagId: request.params.id,
-      ...data,
-    });
-
+    const updated = await updateTagFlow(fastify, actorOf(request).tenantId, request.params.id, data);
     return reply.send(success(updated));
   });
 
-  // DELETE /api/v1/tags/:id
+  // DELETE /api/v1/tags/:id（找不到標籤時 service 回 404）
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
-    const tag = await request.tenantPrisma.tag.findFirst({
-      where: { id: request.params.id, tenantId: request.agent.tenantId },
-    });
-
-    if (!tag) {
-      throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
-    }
-
-    // 連鎖刪除包在綁定租戶的交易內（RLS + 原子性）
-    await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
-      deleteTenantTag(tx, request.agent.tenantId, request.params.id),
-    );
-
-    return reply.send(success({ deleted: true }));
+    const result = await deleteTagFlow(fastify, actorOf(request).tenantId, request.params.id);
+    return reply.send(success(result));
   });
 }

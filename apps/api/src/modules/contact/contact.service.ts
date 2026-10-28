@@ -3,7 +3,6 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
-import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { mergeContacts as runMergeEngine } from './contact-merge.service.js';
 import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
@@ -433,36 +432,6 @@ export async function getContactCases(
   ]);
 
   return { cases, total };
-}
-
-export async function addContactTag(
-  prisma: TenantDb,
-  contactId: string,
-  tenantId: string,
-  tagId: string,
-  agentId: string,
-) {
-  return addTagToTarget(prisma, {
-    tenantId,
-    targetType: 'CONTACT',
-    targetId: contactId,
-    tagId,
-    agentId,
-  });
-}
-
-export async function removeContactTag(
-  prisma: TenantDb,
-  contactId: string,
-  tenantId: string,
-  tagId: string,
-) {
-  return removeTagFromTarget(prisma, {
-    tenantId,
-    targetType: 'CONTACT',
-    targetId: contactId,
-    tagId,
-  });
 }
 
 export interface TimelineEntry {

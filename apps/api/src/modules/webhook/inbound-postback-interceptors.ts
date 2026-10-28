@@ -4,7 +4,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { recordCsatScore } from '../csat/csat.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
-import { addTagToTarget } from '../tag/tagging.service.js';
+import { addTagToTargetFlow } from '../tag/tag.flow.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig } from './inbound-message.types.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
@@ -27,8 +27,8 @@ export async function runInboundPostbackInterceptors(ctx: InboundMessageContext)
 /**
  * 素材 action 點擊後貼標：postback data（或 fallback textContent）為 `tag:<tagId>` 時，
  * 對點擊者（contact）貼上該 CONTACT-scope 標籤。fire-and-forget——標籤不存在/scope 不符/
- * 缺 contactId 都靜默略過，絕不中斷後續 postback 處理。貼標會發 contact.tagged（迴圈防護內建），
- * 既有訂閱該事件的自動化自動被觸發。
+ * 缺 contactId 都靜默略過，絕不中斷後續 postback 處理。貼標與 contact.tagged 在同一個交易內寫入
+ * （迴圈防護內建），既有訂閱該事件的自動化自動被觸發；貼標失敗時整個交易 rollback，事件也不送出。
  */
 async function handleTagOnClick(ctx: InboundMessageContext): Promise<void> {
   const source = ctx.postbackData || ctx.textContent || '';
@@ -37,8 +37,7 @@ async function handleTagOnClick(ctx: InboundMessageContext): Promise<void> {
   if (!ctx.contactId) return;
 
   try {
-    await addTagToTarget(ctx.prisma, {
-      tenantId: ctx.tenantId,
+    await addTagToTargetFlow({ prisma: ctx.prisma }, ctx.tenantId, {
       targetType: 'CONTACT',
       targetId: ctx.contactId,
       tagId: match[1],
