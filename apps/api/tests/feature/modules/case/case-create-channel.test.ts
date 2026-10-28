@@ -62,7 +62,7 @@ const onReadOnly = await createContact('on-read-only', readOnly);
 
 const app = Fastify();
 await app.register(errorHandlerPlugin);
-app.decorate('prisma', owner);
+app.decorate('prisma', tenantDb);
 app.decorate('prismaAdmin', owner);
 app.decorate('io', io as never);
 app.decorate('authenticate', async (request: FastifyRequest) => {

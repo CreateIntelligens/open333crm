@@ -85,7 +85,7 @@ const bind = (channelId: string, agentId: string, accessLevel: 'read_only' | 're
 async function buildApp(agentId: string, roleId: string) {
   const app = Fastify();
   await app.register(errorHandlerPlugin);
-  app.decorate('prisma', owner);
+  app.decorate('prisma', tenantDb);
   app.decorate('prismaAdmin', owner);
   app.decorate('io', io as never);
   app.decorate('authenticate', async (request: FastifyRequest) => {
