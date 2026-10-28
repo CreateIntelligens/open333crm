@@ -4,19 +4,13 @@
  * spec case-management「Case Status Transition Validation」「Escalation Notifies The Selected Targets」。
  */
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, test } from 'vitest';
-import { updateCase } from '#src/modules/case/case.service.js';
-import { eventBus, type AppEvent } from '#src/events/event-bus.js';
+import { test } from 'vitest';
+import { updateCaseFlow } from '#src/modules/case/case.flow.js';
+import type { RequestActor } from '#src/lib/request-actor.js';
+import { createFlowLog, mockTransactionPrisma, recordingIo, recordingPublisher } from '#tests/support/flow-harness.js';
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
-
-let published: AppEvent[];
-const listener = (e: AppEvent) => published.push(e);
-beforeEach(() => {
-  published = [];
-  eventBus.subscribe('*', listener);
-});
-afterEach(() => eventBus.unsubscribe('*', listener));
+const actor: RequestActor = { tenantId: TENANT_ID, agentId: 'agent-1', roleId: null, ip: '127.0.0.1' };
 
 function setup(status: string) {
   let row: Record<string, unknown> = {
@@ -32,8 +26,7 @@ function setup(status: string) {
     conversations: [{ id: 'conv-1' }],
   };
   const caseEvents: Array<{ eventType: string; actorId?: string; payload: Record<string, unknown> }> = [];
-  const emitted: string[] = [];
-  const prisma = {
+  const tx = {
     case: {
       async findFirst() {
         return { ...row };
@@ -50,38 +43,46 @@ function setup(status: string) {
       },
     },
   };
-  const io = { to: () => ({ emit: (event: string) => emitted.push(event) }) };
-  return { prisma, io, caseEvents, emitted, get row() { return row; } };
+  const log = createFlowLog();
+  const deps = { prisma: mockTransactionPrisma(log, tx), io: recordingIo(log), events: recordingPublisher(log) };
+  const update = (data: Parameters<typeof updateCaseFlow>[3]) => updateCaseFlow(deps, actor, 'case-1', data);
+  return {
+    update,
+    caseEvents,
+    get published() { return log.events; },
+    get emitted() { return log.pushes.map((p) => p.event); },
+    get row() { return row; },
+  };
 }
 
 test('下拉改成已解決：寫 status_changed 事件並發布 case.resolved', async () => {
   const s = setup('IN_PROGRESS');
-  const result = await updateCase(s.prisma as never, s.io as never, 'case-1', TENANT_ID, { status: 'RESOLVED' }, { actorId: 'agent-1' });
+  const result = await s.update({ status: 'RESOLVED' });
 
   assert.equal(result.status, 'RESOLVED');
   assert.deepEqual(
     s.caseEvents.map((e) => [e.eventType, e.actorId, e.payload.from, e.payload.to]),
     [['status_changed', 'agent-1', 'IN_PROGRESS', 'RESOLVED']],
   );
-  const resolved = published.find((e) => e.name === 'case.resolved');
+  const resolved = s.published.find((e) => e.name === 'case.resolved');
   assert.ok(resolved, '應發布 case.resolved（CSAT 與自動化依此觸發）');
   assert.equal(resolved.payload.conversationId, 'conv-1');
 });
 
 test('下拉改成已關閉：寫 status_changed 事件並發布 case.closed', async () => {
   const s = setup('RESOLVED');
-  await updateCase(s.prisma as never, s.io as never, 'case-1', TENANT_ID, { status: 'CLOSED' }, { actorId: 'agent-1' });
+  await s.update({ status: 'CLOSED' });
 
   assert.deepEqual(s.caseEvents.map((e) => e.eventType), ['status_changed']);
-  assert.ok(published.some((e) => e.name === 'case.closed'));
+  assert.ok(s.published.some((e) => e.name === 'case.closed'));
 });
 
 test('下拉改成已升級：寫 escalated 事件並發布 case.escalated（通知主管）', async () => {
   const s = setup('IN_PROGRESS');
-  await updateCase(s.prisma as never, s.io as never, 'case-1', TENANT_ID, { status: 'ESCALATED' }, { actorId: 'agent-1' });
+  await s.update({ status: 'ESCALATED' });
 
   assert.deepEqual(s.caseEvents.map((e) => e.eventType), ['escalated']);
-  const escalated = published.find((e) => e.name === 'case.escalated');
+  const escalated = s.published.find((e) => e.name === 'case.escalated');
   assert.ok(escalated, '應發布 case.escalated');
   assert.equal(escalated.payload.actorId, 'agent-1');
   assert.equal(escalated.payload.previousAssigneeId, 'agent-2');
@@ -89,7 +90,7 @@ test('下拉改成已升級：寫 escalated 事件並發布 case.escalated（通
 
 test('同時改標題與狀態：標題照存，狀態走轉換路徑', async () => {
   const s = setup('IN_PROGRESS');
-  await updateCase(s.prisma as never, s.io as never, 'case-1', TENANT_ID, { title: '新標題', status: 'PENDING' }, { actorId: 'agent-1' });
+  await s.update({ title: '新標題', status: 'PENDING' });
 
   assert.equal(s.row.title, '新標題');
   assert.equal(s.row.status, 'PENDING');
@@ -98,17 +99,17 @@ test('同時改標題與狀態：標題照存，狀態走轉換路徑', async ()
 
 test('只改標題：不寫狀態事件、不發布狀態事件', async () => {
   const s = setup('IN_PROGRESS');
-  await updateCase(s.prisma as never, s.io as never, 'case-1', TENANT_ID, { title: '新標題' }, { actorId: 'agent-1' });
+  await s.update({ title: '新標題' });
 
   assert.equal(s.caseEvents.length, 0);
-  assert.ok(!published.some((e) => e.name.startsWith('case.')));
+  assert.ok(!s.published.some((e) => e.name.startsWith('case.')));
   assert.deepEqual(s.emitted, ['case.updated']);
 });
 
 test('同時改標題與不合法的狀態：回 422，標題不會先被存起來', async () => {
   const s = setup('OPEN');
   await assert.rejects(
-    () => updateCase(s.prisma as never, s.io as never, 'case-1', TENANT_ID, { title: '新標題', status: 'RESOLVED' }, { actorId: 'agent-1' }),
+    () => s.update({ title: '新標題', status: 'RESOLVED' }),
     (err: { code?: string; statusCode?: number }) => err.code === 'INVALID_TRANSITION' && err.statusCode === 422,
   );
 

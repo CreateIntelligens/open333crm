@@ -1,26 +1,25 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import {
-  listCases,
-  getCase,
-  createCase,
-  assignCase,
-  transitionCase,
-  escalateCase,
-  addNote,
-  getCaseEvents,
-  createCaseFromConversation,
-  deleteCase,
-  linkConversationToCase,
-  updateCase,
-  getCaseStats,
-} from './case.service.js';
+  addNoteFlow,
+  assignCaseFlow,
+  createCaseFlow,
+  createCaseFromConversationFlow,
+  deleteCaseFlow,
+  escalateCaseFlow,
+  getCaseEventsFlow,
+  getCaseFlow,
+  getCaseStatsFlow,
+  linkConversationToCaseFlow,
+  listCasesFlow,
+  transitionCaseFlow,
+  updateCaseFlow,
+} from './case.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { recordCsatScore } from '../csat/csat.service.js';
-import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible, assertChannelVisible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
-import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { CASE_CATEGORIES, LEGACY_CASE_CATEGORIES } from '@open333crm/shared';
 import { requirePermission, requirePermissionWhen } from '../../guards/rbac.guard.js';
@@ -166,7 +165,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/cases/stats
   fastify.get('/stats', { preHandler: [perm.view] }, async (request, reply) => {
-    const stats = await getCaseStats(request.tenantPrisma, request.agent.tenantId);
+    const stats = await getCaseStatsFlow(fastify, actorOf(request).tenantId);
     return reply.send(success(stats));
   });
 
@@ -178,13 +177,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     // CM-173 渠道級可見性：只回可見渠道的案件（總店 view_all 不過濾）
     const accessible = await resolveChannelVisibility(request);
 
-    const { cases, total } = await listCases(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      filters,
-      { page, limit },
-      accessible,
-    );
+    const { cases, total } = await listCasesFlow(fastify, actorOf(request).tenantId, filters, { page, limit }, accessible);
 
     return reply.send(paginated(cases, total, page, limit));
   });
@@ -195,13 +188,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     // S10：工單渠道必須是操作者看得到的渠道；建立工單為管理操作（同從對話建立）
     await assertChannelVisible(request, data.channelId, 'full');
 
-    const caseRecord = await createCase(
-      request.tenantPrisma,
-      fastify.io,
-      request.agent.tenantId,
-      request.agent.id,
-      data,
-    );
+    const caseRecord = await createCaseFlow(fastify, actorOf(request), data);
 
     return reply.status(201).send(success(caseRecord));
   });
@@ -210,11 +197,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [perm.view] }, async (request, reply) => {
     // 先取案件（單次查詢），再做渠道可見性檢查，避免先前「findFirst 取 channelId + getCase」
     // 的重複查詢；比照 conversation.routes.ts GET /:id 的寫法。
-    const caseRecord = await getCase(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+    const caseRecord = await getCaseFlow(fastify, actorOf(request).tenantId, request.params.id);
     if (!caseRecord) {
       throw new AppError(notFound('case'), 'NOT_FOUND', 404);
     }
@@ -234,14 +217,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = updateCaseSchema.parse(request.body);
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：改工單為管理操作
 
-    const caseRecord = await updateCase(
-      request.tenantPrisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      data,
-      { actorId: request.agent.id },
-    );
+    const caseRecord = await updateCaseFlow(fastify, actorOf(request), request.params.id, data);
 
     return reply.send(success(caseRecord));
   });
@@ -249,19 +225,8 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // DELETE /api/v1/cases/:id
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [perm.delete] }, async (request, reply) => {
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：刪工單為管理操作
-    const deleted = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
-      deleteCase(tx, fastify.io, request.params.id, request.agent.tenantId),
-    );
-
-    // 稽核：刪除案件
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'case.delete',
-      targetType: 'case',
-      targetId: request.params.id,
-      ip: request.ip,
-    });
+    // 稽核與刪除一起 commit（deleteCaseFlow）
+    const deleted = await deleteCaseFlow(fastify, actorOf(request), request.params.id);
 
     return reply.send(success(deleted));
   });
@@ -300,7 +265,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // GET /api/v1/cases/:id/events
   fastify.get<{ Params: { id: string } }>('/:id/events', { preHandler: [perm.view] }, async (request, reply) => {
     await assertCaseChannelVisible(request, request.params.id, 'read_only'); // CM-173：讀工單時間軸需渠道可見
-    const events = await getCaseEvents(request.tenantPrisma, request.params.id);
+    const events = await getCaseEventsFlow(fastify, actorOf(request).tenantId, request.params.id);
     return reply.send(success(events));
   });
 
@@ -309,13 +274,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = addNoteSchema.parse(request.body);
     await assertCaseChannelVisible(request, request.params.id); // CM-173：加註為 reply_only
 
-    const note = await addNote(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.id,
-      data.content,
-      data.isInternal,
-    );
+    const note = await addNoteFlow(fastify, actorOf(request), request.params.id, data);
 
     return reply.status(201).send(success(note));
   });
@@ -325,14 +284,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = assignSchema.parse(request.body);
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：指派為管理操作
 
-    const caseRecord = await assignCase(
-      request.tenantPrisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      request.agent.id,
-      data.assigneeId,
-    );
+    const caseRecord = await assignCaseFlow(fastify, actorOf(request), request.params.id, data.assigneeId);
 
     return reply.send(success(caseRecord));
   });
@@ -340,14 +292,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/resolve
   fastify.post<{ Params: { id: string } }>('/:id/resolve', { preHandler: [perm.update] }, async (request, reply) => {
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：結案轉換為管理操作
-    const caseRecord = await transitionCase(
-      request.tenantPrisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      request.agent.id,
-      'RESOLVED',
-    );
+    const caseRecord = await transitionCaseFlow(fastify, actorOf(request), request.params.id, 'RESOLVED');
 
     return reply.send(success(caseRecord));
   });
@@ -355,14 +300,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/close
   fastify.post<{ Params: { id: string } }>('/:id/close', { preHandler: [perm.update] }, async (request, reply) => {
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：關閉轉換為管理操作
-    const caseRecord = await transitionCase(
-      request.tenantPrisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      request.agent.id,
-      'CLOSED',
-    );
+    const caseRecord = await transitionCaseFlow(fastify, actorOf(request), request.params.id, 'CLOSED');
 
     return reply.send(success(caseRecord));
   });
@@ -370,14 +308,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/reopen
   fastify.post<{ Params: { id: string } }>('/:id/reopen', { preHandler: [perm.update] }, async (request, reply) => {
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：重啟轉換為管理操作
-    const caseRecord = await transitionCase(
-      request.tenantPrisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      request.agent.id,
-      'OPEN',
-    );
+    const caseRecord = await transitionCaseFlow(fastify, actorOf(request), request.params.id, 'OPEN');
 
     return reply.send(success(caseRecord));
   });
@@ -387,14 +318,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const body = escalateSchema.parse(request.body);
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：升級為管理操作
 
-    const caseRecord = await escalateCase(
-      request.tenantPrisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      request.agent.id,
-      body,
-    );
+    const caseRecord = await escalateCaseFlow(fastify, actorOf(request), request.params.id, body);
 
     return reply.send(success(caseRecord));
   });
@@ -404,15 +328,11 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     '/:id/conversations/:conversationId/link', { preHandler: [perm.update] },
     async (request, reply) => {
       await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：連結對話到工單為管理操作
-      const linked = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
-        linkConversationToCase(
-          tx,
-          fastify.io,
-          request.params.id,
-          request.params.conversationId,
-          request.agent.tenantId,
-          request.agent.id,
-        ),
+      const linked = await linkConversationToCaseFlow(
+        fastify,
+        actorOf(request),
+        request.params.id,
+        request.params.conversationId,
       );
 
       return reply.send(success(linked));
@@ -451,13 +371,10 @@ export default async function caseRoutes(fastify: FastifyInstance) {
       // CM-173：與 POST /conversations/:id/case 一致，看不到對話所屬渠道不得替它建工單
       await assertConversationChannelVisible(request, request.params.conversationId, 'full');
 
-      // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
-      const caseRecord = await createCaseFromConversation(
-        fastify.prisma,
-        fastify.io,
+      const caseRecord = await createCaseFromConversationFlow(
+        fastify,
+        actorOf(request),
         request.params.conversationId,
-        request.agent.tenantId,
-        request.agent.id,
         data,
       );
 

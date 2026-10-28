@@ -139,7 +139,12 @@ async function createApp(options?: {
   const app = Fastify();
   process.env.JWT_SECRET = process.env.JWT_SECRET || "test-mcp-confirmation-secret";
   process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || "test-credential-encryption-key-32-bytes!!";
-  app.decorate("prisma", createPrismaMock());
+  // 已搬到 flow 的工具（case）以 fastify.prisma 開租戶交易；交易內拿到同一份 mock
+  const basePrisma = createPrismaMock();
+  app.decorate("prisma", {
+    ...basePrisma,
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb({ $executeRaw: async () => 1, ...basePrisma }),
+  });
   app.decorate("io", { to: () => ({ emit() {} }) });
   registerChannelPlugin({
     channelType: "LINE",

@@ -12,7 +12,8 @@ import {
   handoffConversation,
   returnConversationToBot,
 } from './conversation.service.js';
-import { createCaseFromConversation } from '../case/case.service.js';
+import { createCaseFromConversationFlow } from '../case/case.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
@@ -396,15 +397,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const data = createCaseFromConvSchema.parse(request.body);
     await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：建工單為管理操作
 
-    // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
-    const caseRecord = await createCaseFromConversation(
-      fastify.prisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      request.agent.id,
-      data,
-    );
+    const caseRecord = await createCaseFromConversationFlow(fastify, actorOf(request), request.params.id, data);
 
     return reply.status(201).send(success(caseRecord));
   });

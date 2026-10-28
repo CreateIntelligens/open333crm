@@ -1,20 +1,18 @@
-import type { PrismaClient } from '@prisma/client';
+/**
+ * 工單的業務規則與查詢（#337 階段 3）。
+ *
+ * 收 TenantCtx，不推播、不發事件：回傳 flow 需要的結果，推播與事件由 case.flow.ts 經 case-effects.ts 送出。
+ * 例外：markCaseFirstResponse 仍收 TenantDb，因為呼叫端 conversation.service.ts 還沒搬（階段 4）。
+ */
 import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
-import { withTenant, tenantScopedClient } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
-import type { Server as SocketIOServer } from 'socket.io';
 import type { CaseStatus, Priority } from '@open333crm/shared';
 import { addMinutes } from 'date-fns';
 import { validateTransition } from './case-state-machine.js';
 import { AppError } from '../../shared/utils/response.js';
-import { eventBus } from '../../events/event-bus.js';
-import { trackBroadcastCase } from '../marketing/broadcast.tracking.js';
-import { autoAssignCase } from './assignment.service.js';
-import { logger } from '@open333crm/core';
 import { notFound } from '../../shared/messages/resource.js';
-
-type PrismaExecutor = TenantDb;
 
 export interface CaseFilters {
   status?: string;
@@ -32,14 +30,14 @@ export interface PaginationParams {
 }
 
 export async function listCases(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   filters: CaseFilters,
   pagination: PaginationParams,
   /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空＝fail-closed）。 */
   /** 必填：呼叫端明確決定可見範圍，不受限時傳 ALL_CHANNELS（漏傳會編譯失敗，而不是悄悄不過濾） */
   accessibleChannels: AccessibleChannels,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const now = new Date();
   const where: Prisma.CaseWhereInput = {
     tenantId,
@@ -137,11 +135,8 @@ export async function listCases(
   return { cases, total };
 }
 
-export async function getCase(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
+export async function getCase(ctx: TenantCtx, id: string) {
+  const { tx: prisma, tenantId } = ctx;
   const caseRecord = await prisma.case.findFirst({
     where: { id, tenantId },
     include: {
@@ -252,8 +247,7 @@ export async function getCase(
 }
 
 async function createCaseRecord(
-  prisma: PrismaExecutor,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
   data: {
     contactId: string;
@@ -267,6 +261,7 @@ async function createCaseRecord(
     slaPolicyId?: string;
   },
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const priority = data.priority ?? 'MEDIUM';
 
   const slaPolicy = data.slaPolicyId
@@ -343,53 +338,9 @@ async function createCaseRecord(
   return caseRecord;
 }
 
-function emitCaseCreated(
-  io: SocketIOServer,
-  tenantId: string,
-  caseRecord: {
-    id: string;
-    contactId: string;
-    channelId: string;
-    title: string;
-    status: string;
-    priority: string;
-    assigneeId: string | null;
-    teamId: string | null;
-  },
-  conversationId?: string | null,
-) {
-  // Emit WebSocket event
-  const wsPayload = {
-    id: caseRecord.id,
-    status: caseRecord.status,
-    priority: caseRecord.priority,
-    assigneeId: caseRecord.assigneeId,
-    title: caseRecord.title,
-  };
-
-  io.to(`tenant:${tenantId}`).emit('case.created', wsPayload);
-
-  // Publish to EventBus for automation
-  eventBus.publish({
-    name: 'case.created',
-    tenantId,
-    timestamp: new Date(),
-    payload: {
-      caseId: caseRecord.id,
-      contactId: caseRecord.contactId,
-      channelId: caseRecord.channelId,
-      title: caseRecord.title,
-      priority: caseRecord.priority,
-      status: caseRecord.status,
-      ...(conversationId ? { conversationId } : {}),
-    },
-  });
-}
-
+/** 建立工單。自動派案與廣播歸因由 flow 在 commit 之後另開交易執行 */
 export async function createCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
   data: {
     contactId: string;
@@ -405,8 +356,8 @@ export async function createCase(
 ) {
   // S10：工單渠道必須是聯絡人所在的渠道。原本前端取第一個渠道，工單被歸到任意渠道，
   // 影響渠道可見範圍、報表歸因與 CSAT 從哪個渠道送出
-  const identity = await prisma.channelIdentity.findFirst({
-    where: { contactId: data.contactId, channelId: data.channelId, contact: { tenantId } },
+  const identity = await ctx.tx.channelIdentity.findFirst({
+    where: { contactId: data.contactId, channelId: data.channelId, contact: { tenantId: ctx.tenantId } },
     select: { id: true },
   });
   if (!identity) {
@@ -417,30 +368,16 @@ export async function createCase(
     );
   }
 
-  const caseRecord = await createCaseRecord(prisma, tenantId, agentId, data);
-  emitCaseCreated(io, tenantId, caseRecord, null);
-
-  // Track broadcast → case attribution (non-blocking)
-  trackBroadcastCase(prisma, data.contactId, caseRecord.id).catch(() => {});
-
-  // Auto-assign if no assignee specified and teamId is set
-  if (!data.assigneeId && caseRecord.teamId) {
-    autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId, caseRecord.channelId).catch((err) => {
-      logger.error(`[createCase] Auto-assign failed for case ${caseRecord.id}:`, err);
-    });
-  }
-
-  return caseRecord;
+  return createCaseRecord(ctx, agentId, data);
 }
 
 export async function assignCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
+  ctx: TenantCtx,
   caseId: string,
-  tenantId: string,
   agentId: string,
   assigneeId: string,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const caseRecord = await prisma.case.findFirst({
     where: { id: caseId, tenantId },
     include: {
@@ -514,35 +451,17 @@ export async function assignCase(
     });
   }
 
-  // Emit WebSocket event
-  const wsPayload = {
-    id: updated.id,
-    status: updated.status,
-    priority: updated.priority,
-    assigneeId: updated.assigneeId,
-  };
-
-  io.to(`tenant:${tenantId}`).emit('case.updated', wsPayload);
-
-  // Publish case.assigned event for notifications
-  eventBus.publish({
-    name: 'case.assigned',
-    tenantId,
-    timestamp: new Date(),
-    payload: { caseId, assigneeId, title: updated.title },
-  });
-
   return updated;
 }
 
+/** 轉換狀態。回傳轉換後的工單與轉換前的資料，flow 依此發 case.resolved、case.closed */
 export async function transitionCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
+  ctx: TenantCtx,
   caseId: string,
-  tenantId: string,
   agentId: string,
   toStatus: CaseStatus,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const caseRecord = await prisma.case.findFirst({
     where: { id: caseId, tenantId },
     include: {
@@ -605,59 +524,13 @@ export async function transitionCase(
     },
   });
 
-  // Emit WebSocket event
-  const wsPayload = {
-    id: updated.id,
-    status: updated.status,
-    priority: updated.priority,
-    assigneeId: updated.assigneeId,
-  };
-
-  io.to(`tenant:${tenantId}`).emit('case.updated', wsPayload);
-
-  // Publish case.resolved / case.closed events for CSAT and automation
-  if (toStatus === 'RESOLVED') {
-    const conversationId = caseRecord.conversations[0]?.id ?? null;
-    eventBus.publish({
-      name: 'case.resolved',
-      tenantId,
-      timestamp: now,
-      payload: {
-        caseId: updated.id,
-        contactId: caseRecord.contactId,
-        channelId: caseRecord.channelId,
-        assigneeId: caseRecord.assigneeId,
-        title: caseRecord.title,
-        ...(conversationId ? { conversationId } : {}),
-      },
-    });
-  }
-
-  if (toStatus === 'CLOSED') {
-    const conversationId = caseRecord.conversations[0]?.id ?? null;
-    eventBus.publish({
-      name: 'case.closed',
-      tenantId,
-      timestamp: now,
-      payload: {
-        caseId: updated.id,
-        contactId: caseRecord.contactId,
-        channelId: caseRecord.channelId,
-        assigneeId: caseRecord.assigneeId,
-        title: caseRecord.title,
-        ...(conversationId ? { conversationId } : {}),
-      },
-    });
-  }
-
-  return updated;
+  return { updated, before: caseRecord, toStatus };
 }
 
+/** 升級工單。回傳升級後的工單、升級前的資料與輸入，flow 依此發 case.escalated */
 export async function escalateCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
+  ctx: TenantCtx,
   caseId: string,
-  tenantId: string,
   agentId: string,
   body?: {
     reason: string;
@@ -667,6 +540,7 @@ export async function escalateCase(
     notifyTargets?: string[];
   },
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const caseRecord = await prisma.case.findFirst({
     where: { id: caseId, tenantId },
   });
@@ -744,46 +618,17 @@ export async function escalateCase(
     },
   });
 
-  // Emit WebSocket event
-  const wsPayload = {
-    id: updated.id,
-    status: updated.status,
-    priority: updated.priority,
-    assigneeId: updated.assigneeId,
-  };
-
-  io.to(`tenant:${tenantId}`).emit('case.updated', wsPayload);
-
-  // Publish to EventBus for automation
-  eventBus.publish({
-    name: 'case.escalated',
-    tenantId,
-    timestamp: new Date(),
-    payload: {
-      caseId: updated.id,
-      contactId: caseRecord.contactId,
-      previousPriority: caseRecord.priority,
-      newPriority: updated.priority,
-      status: updated.status,
-      reason: body?.reason ?? null,
-      // 通知 worker 依這三個欄位決定通知誰（resolveEscalationRecipients）
-      notifyTargets: body?.notifyTargets,
-      previousAssigneeId: caseRecord.assigneeId ?? null,
-      actorId: agentId,
-    },
-  });
-
-  return updated;
+  return { updated, before: caseRecord, agentId, body };
 }
 
 export async function addNote(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   caseId: string,
   agentId: string,
   content: string,
   isInternal: boolean = true,
 ) {
-  const note = await prisma.caseNote.create({
+  const note = await ctx.tx.caseNote.create({
     data: {
       caseId,
       agentId,
@@ -795,11 +640,8 @@ export async function addNote(
   return note;
 }
 
-export async function getCaseEvents(
-  prisma: TenantDb,
-  caseId: string,
-) {
-  const events = await prisma.caseEvent.findMany({
+export async function getCaseEvents(ctx: TenantCtx, caseId: string) {
+  const events = await ctx.tx.caseEvent.findMany({
     where: { caseId },
     include: {
       actor: {
@@ -815,14 +657,10 @@ export async function getCaseEvents(
   return events;
 }
 
-// 收 base PrismaClient：DB 寫入包在 withTenant 交易內（RLS + 原子），
-// fire-and-forget 副作用（trackBroadcastCase/autoAssignCase）在交易「之後」用 base client
-// 執行——它們未 await，若用交易內的 tx 會在 commit 後才跑而 tx 連線已關（"Transaction closed"）。
+/** 從對話建立工單，並把對話掛到這張工單。自動派案與廣播歸因由 flow 在 commit 之後執行 */
 export async function createCaseFromConversation(
-  prisma: PrismaClient,
-  io: SocketIOServer,
+  ctx: TenantCtx,
   conversationId: string,
-  tenantId: string,
   agentId: string,
   caseData: {
     title: string;
@@ -834,52 +672,36 @@ export async function createCaseFromConversation(
     slaPolicyId?: string;
   },
 ) {
-  const caseRecord = await withTenant(prisma, tenantId, async (tx) => {
-    const conversation = await tx.conversation.findFirst({
-      where: { id: conversationId, tenantId },
-      include: { contact: true, channel: true },
-    });
-    if (!conversation) {
-      throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
-    }
-    if (conversation.caseId) {
-      throw new AppError('這則對話已建立過案件', 'CONFLICT', 409);
-    }
-    const created = await createCaseRecord(tx, tenantId, agentId, {
-      contactId: conversation.contactId,
-      channelId: conversation.channelId,
-      ...caseData,
-    });
-    await tx.conversation.update({
-      where: { id: conversationId },
-      data: { caseId: created.id },
-    });
-    return created;
+  const { tx } = ctx;
+  const conversation = await tx.conversation.findFirst({
+    where: { id: conversationId, tenantId: ctx.tenantId },
+    include: { contact: true, channel: true },
   });
-
-  emitCaseCreated(io, tenantId, caseRecord, conversationId);
-
-  // 交易外執行副作用（用 base prisma，長連線）——各自綁定租戶（tenantScopedClient 自動）
-  const bg = tenantScopedClient(prisma, tenantId);
-  trackBroadcastCase(bg, caseRecord.contactId, caseRecord.id).catch(() => {});
-  if (!caseData.assigneeId && caseRecord.teamId) {
-    autoAssignCase(bg, io, caseRecord.id, tenantId, caseRecord.teamId, caseRecord.channelId).catch((err) => {
-      logger.error(`[createCaseFromConversation] Auto-assign failed for case ${caseRecord.id}:`, err);
-    });
+  if (!conversation) {
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
-
-  return caseRecord;
+  if (conversation.caseId) {
+    throw new AppError('這則對話已建立過案件', 'CONFLICT', 409);
+  }
+  const created = await createCaseRecord(ctx, agentId, {
+    contactId: conversation.contactId,
+    channelId: conversation.channelId,
+    ...caseData,
+  });
+  await tx.conversation.update({
+    where: { id: conversationId },
+    data: { caseId: created.id },
+  });
+  return created;
 }
 
 export async function linkConversationToCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
+  ctx: TenantCtx,
   caseId: string,
   conversationId: string,
-  tenantId: string,
   agentId: string,
 ) {
-  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
+  const { tx: prisma, tenantId } = ctx;
   const [caseRecord, conversation] = await Promise.all([
     prisma.case.findFirst({ where: { id: caseId, tenantId } }),
     prisma.conversation.findFirst({ where: { id: conversationId, tenantId } }),
@@ -916,23 +738,14 @@ export async function linkConversationToCase(
   });
 
   // 客服可能在掛上工單前就已回覆：補上首次回應，否則 SLA 會判定逾時
-  await syncFirstResponseFromConversation(prisma, tenantId, caseId, conversationId, caseRecord.createdAt);
-
-  io.to(`tenant:${tenantId}`).emit('case.updated', {
-    id: caseId,
-    conversationId,
-  });
+  await syncFirstResponseFromConversation(ctx, caseId, conversationId, caseRecord.createdAt);
 
   return updatedConversation;
 }
 
-// 收 TenantDb：呼叫端以 withTenant 包在綁定租戶交易內；內部依序解除關聯+刪除即為原子。
-export async function deleteCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
-  caseId: string,
-  tenantId: string,
-) {
+/** 刪除工單並解除對話的關聯。回傳刪除前的摘要，flow 依此推播 case.deleted */
+export async function deleteCase(ctx: TenantCtx, caseId: string) {
+  const { tx: prisma, tenantId } = ctx;
   const caseRecord = await prisma.case.findFirst({
     where: { id: caseId, tenantId },
     select: {
@@ -948,28 +761,17 @@ export async function deleteCase(
     throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
-  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
   await prisma.conversation.updateMany({
     where: { tenantId, caseId },
     data: { caseId: null },
   });
   await prisma.case.delete({ where: { id: caseId } });
 
-  io.to(`tenant:${tenantId}`).emit('case.deleted', {
-    id: caseRecord.id,
-    status: caseRecord.status,
-    priority: caseRecord.priority,
-    assigneeId: caseRecord.assigneeId,
-    title: caseRecord.title,
-  });
-
-  return { id: caseRecord.id };
+  return caseRecord;
 }
 
-export async function getCaseStats(
-  prisma: TenantDb,
-  tenantId: string,
-) {
+export async function getCaseStats(ctx: TenantCtx) {
+  const { tx: prisma, tenantId } = ctx;
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const warningThreshold = addMinutes(now, 30);
@@ -1001,13 +803,11 @@ export async function getCaseStats(
         resolvedAt: { gte: todayStart },
       },
     }),
-    // groupBy 在 TenantDb 聯集型別下 TS 無法解析多載（union of overloads 限制），
-    // 這裡對 delegate 做局部 cast；執行語意不變、仍走 RLS 注入的 tenantPrisma。
-    (prisma.case as any).groupBy({
+    prisma.case.groupBy({
       by: ['status'],
       where: { tenantId },
       _count: true,
-    }) as Promise<Array<{ status: string; _count: number }>>,
+    }),
   ]);
 
   const statusCounts: Record<string, number> = {};
@@ -1021,14 +821,14 @@ export async function getCaseStats(
 /**
  * @description 就地編輯工單欄位（詳情頁的下拉與標題）。
  * 狀態改變時和頂部按鈕走同一條路徑（S06）：改成已升級交給 escalateCase，其餘交給 transitionCase，
- * 才會寫時間軸事件、發布 case.resolved／case.closed／case.escalated（CSAT、自動化、升級通知依此觸發）。
+ * 才會寫時間軸事件；flow 依回傳的 change 發布 case.resolved／case.closed／case.escalated
+ * （CSAT、自動化、升級通知依此觸發）。
  * @param options.actorId 操作的客服；改狀態時必填，寫進時間軸事件
+ * @returns result 是更新後的工單；change 說明 flow 要送出哪些推播與事件
  */
 export async function updateCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
+  ctx: TenantCtx,
   id: string,
-  tenantId: string,
   data: {
     title?: string;
     description?: string;
@@ -1040,6 +840,7 @@ export async function updateCase(
   },
   options: { actorId?: string } = {},
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const caseRecord = await prisma.case.findFirst({
     where: { id, tenantId },
   });
@@ -1098,23 +899,15 @@ export async function updateCase(
     });
 
     if (status === undefined) {
-      // Emit WebSocket event
-      io.to(`tenant:${tenantId}`).emit('case.updated', {
-        id: updated.id,
-        status: updated.status,
-        priority: updated.priority,
-        assigneeId: updated.assigneeId,
-      });
-      return updated;
+      return { result: updated, change: { kind: 'fields' as const, updated } };
     }
   }
 
-  // 狀態改變：與頂部按鈕同一條路徑（各自會發 case.updated socket 事件）
-  if (status === 'ESCALATED') {
-    await escalateCase(prisma, io, id, tenantId, options.actorId!);
-  } else {
-    await transitionCase(prisma, io, id, tenantId, options.actorId!, status as CaseStatus);
-  }
+  // 狀態改變：與頂部按鈕同一條路徑（flow 依 change 送出和頂部按鈕相同的推播與事件）
+  const change =
+    status === 'ESCALATED'
+      ? { kind: 'escalated' as const, ...(await escalateCase(ctx, id, options.actorId!)) }
+      : { kind: 'transitioned' as const, ...(await transitionCase(ctx, id, options.actorId!, status as CaseStatus)) };
 
   const result = await prisma.case.findFirst({
     where: { id, tenantId },
@@ -1123,7 +916,7 @@ export async function updateCase(
   if (!result) {
     throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
-  return result;
+  return { result, change };
 }
 
 /**
@@ -1145,8 +938,9 @@ export async function markCaseFirstResponse(prisma: TenantDb, tenantId: string, 
 }
 
 /** 對話掛到既有工單時：該對話中工單建立後最早的客服回覆，也算這張工單的首次回應 */
-async function syncFirstResponseFromConversation(prisma: TenantDb, tenantId: string, caseId: string, conversationId: string, caseCreatedAt: Date) {
-  const firstReply = await prisma.message.findFirst({
+async function syncFirstResponseFromConversation(ctx: TenantCtx, caseId: string, conversationId: string, caseCreatedAt: Date) {
+  const { tx, tenantId } = ctx;
+  const firstReply = await tx.message.findFirst({
     where: {
       conversationId,
       conversation: { tenantId },
@@ -1157,5 +951,5 @@ async function syncFirstResponseFromConversation(prisma: TenantDb, tenantId: str
     orderBy: { createdAt: 'asc' },
     select: { createdAt: true },
   });
-  if (firstReply) await markCaseFirstResponse(prisma, tenantId, caseId, firstReply.createdAt);
+  if (firstReply) await markCaseFirstResponse(tx, tenantId, caseId, firstReply.createdAt);
 }

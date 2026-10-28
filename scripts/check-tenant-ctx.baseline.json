@@ -20,8 +20,7 @@
     "modules/auth/partner-api-key.service.ts": 5,
     "modules/automation/automation.service.ts": 9,
     "modules/canvas/canvas.service.ts": 10,
-    "modules/case/assignment.service.ts": 3,
-    "modules/case/case.service.ts": 18,
+    "modules/case/case.service.ts": 3,
     "modules/channel/channel.routes.ts": 3,
     "modules/channel/channel.service.ts": 12,
     "modules/channel/fb-token-monitor.service.ts": 2,
@@ -81,7 +80,7 @@
     "modules/analytics/analytics.routes.ts": 9,
     "modules/automation/automation.routes.ts": 7,
     "modules/canvas/canvas.routes.ts": 8,
-    "modules/case/case.routes.ts": 16,
+    "modules/case/case.routes.ts": 3,
     "modules/channel/channel.routes.ts": 31,
     "modules/contact/contact.routes.ts": 20,
     "modules/conversation/conversation.routes.ts": 13,
@@ -109,7 +108,6 @@
     "services/channel-visibility.ts": 6
   },
   "service 內的 withTenant(": {
-    "modules/case/case.service.ts": 1,
     "modules/portal/portal.service.ts": 1,
     "modules/sla/sla.service.ts": 3,
     "modules/tag/tagging.service.ts": 1

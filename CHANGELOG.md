@@ -4,6 +4,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-28]
 
+### Changed
+
+- **工單模組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `case` 的 service 改收 `TenantCtx`，route 改呼叫新的 `case.flow.ts`；從對話建立工單（`POST /conversations/:id/case`）與 MCP 的工單查詢工具也改走 flow。可觀察的差異：
+  - 同一個請求內的寫入一律原子。例如刪除工單與 `case.delete` 稽核在同一個交易寫入，稽核寫入失敗時工單不會被刪除、請求回錯誤；原本是工單照常刪除、稽核遺失。
+  - `case.created`、`case.updated`、`case.deleted` 推播在 commit 之後才送出，rollback 時不送出。
+  - `case.created`、`case.assigned`、`case.escalated`、`case.resolved`、`case.closed` 事件與資料在同一個交易寫進 outbox，保證至少送出一次；原本行程在送出之前結束時，事件遺失。
+  - 建立工單之後的自動指派與廣播歸因，在 commit 之後各自另開交易執行，並在回應送出之前完成；原本與回應並行、不等待。失敗時仍只寫 log，工單照樣建立。
+  - 工單標籤與 CSAT 的路由不變，隨 `tag`、`csat` 模組搬遷。
+
 ### Fixed
 
 - **修補依賴安全告警** — 升級 Zod、undici、body-parser、decode-uri-component、fast-uri、ip-address 與 qs 至修補版本；為 MinIO 替換停更的 `stream-json` 1.x JSONL parser，使用 `stream-chain` 的 Node parser，並由 pnpm patch 固定修補。
