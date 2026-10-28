@@ -18,6 +18,7 @@ import {
 import { flowOf, inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
 import { createOutboxPublisher, enqueueJob, type EventPublisher } from '../../events/outbox-publisher.js';
 import { publishCouponTag } from '../coupon/coupon-effects.js';
+import { snapshotOgInBackground, writeOgInTenant } from '../shortlink/og-snapshot.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { decryptCredentials } from '../channel/channel.service.js';
@@ -223,9 +224,12 @@ export async function runCouponBroadcast(
     let body = plan.material?.body ?? null;
     if (plan.material && body) {
       const original = body;
+      const created: Array<{ id: string; targetUrl: string }> = [];
       try {
         body = await step(deps, tenantId, (ctx) =>
-          convertBodyUrlsToShortLinks(ctx.tx as unknown as PrismaClient, tenantId, plan.broadcast.createdById, plan.material!.id, null, original));
+          convertBodyUrlsToShortLinks(ctx.tx as unknown as PrismaClient, tenantId, plan.broadcast.createdById, plan.material!.id, null, original, created));
+        // 交易已經 commit：在背景為新建的短連結抓 OG 快照，另開交易寫回（最多一次）
+        for (const link of created) snapshotOgInBackground(link, writeOgInTenant(deps.prisma, tenantId, link.id));
       } catch (err) {
         logger.error('[CouponBroadcast] 素材連結換短連結失敗，改送原素材', { tenantId, broadcastId, error: (err as Error).message });
         body = original;

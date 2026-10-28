@@ -14,10 +14,12 @@
 
 | 程式 | 負責什麼 |
 | --- | --- |
+| `shortlink.flow.ts` | 開交易（#337），在 commit 之後推播、抓 OG 快照；點擊的事件與資料一起寫進 outbox |
 | `shortlink.service.ts` | 短連結的 CRUD、組出帶 UTM 的目標網址、記錄點擊、統計 |
 | `source-detector.ts` | 依 User-Agent 判斷點擊來源：爬蟲、LINE 內建瀏覽器、Facebook 內建瀏覽器、一般瀏覽器 |
 | `strategies/` | 依來源決定回應什麼頁面 |
-| `og-scraper.ts` | 建立短連結時抓目標網頁的 OG 標題、描述與圖片。會擋下指向內網位址的網址 |
+| `og-scraper.ts` | 抓目標網頁的 OG 標題、描述與圖片。會擋下指向內網位址的網址 |
+| `og-snapshot.ts` | 建立短連結的交易 commit 之後，在背景呼叫 `og-scraper.ts`，再另開交易寫回短連結 |
 | `qrcode.service.ts` | 產生短連結的 QR code |
 
 ## 建立短連結
@@ -33,6 +35,8 @@
 | `materialId` | 這個短連結屬於哪個素材。群發時自動建立的短連結會填 |
 
 **代碼的唯一性跨租戶。** 自訂代碼時，系統只在自己租戶內檢查是否重複（查詢受 RLS 限制）。代碼已被其他租戶使用時，檢查看不到，寫入時才撞到資料庫的唯一限制，回應是一般的伺服器錯誤，而不是「代碼已被使用」。
+
+**OG 快照。** 建立短連結、或修改目標網址時，沒有手動填任何 OG 欄位，系統就在交易 commit 之後，於背景抓目標網頁的 OG 寫回短連結。回應不等待抓取。抓取或寫回失敗只記 warning，不重試；爬蟲的預覽頁改用短連結的標題。群發時自動建立的素材短連結也一樣。
 
 **素材的短連結會重複使用。** 群發時，`findOrCreateMaterialShortLink()` 對同一個素材、同一個目標網址重複使用同一個短連結，所有收件人拿到的是同一條。
 
@@ -51,14 +55,15 @@
 
 GA 與 Meta Pixel 的 ID 在「設定 → 追蹤設定」填寫，見[其他設定](./SETTINGS.md)。小頁面不等追蹤事件送出就轉址，目標網站回應得快時，GA 與 Meta 可能收不到事件。`/s/track` 用 sendBeacon 送出，轉址後仍會送達。
 
-`trackClick()` 記錄點擊時：
+`/s/track` 以 slug 找到連結之後，立即回傳目標網址。點擊在背景以一個交易寫入，交易綁定連結所屬的租戶（`trackClickFlow()`）。寫入失敗時只記 log，這次點擊不計入。寫入的步驟：
 
 1. 找出點擊者：有 LINE uid 而且連結綁了渠道時，以該渠道身分的聯絡人為準；否則用網址帶的 `cid`。
 2. 寫入一筆 `ClickLog`，記下聯絡人、LINE uid、IP、User-Agent 與來源網址。
-3. 總點擊數加一。不重複點擊數在有 LINE uid 時依 uid 去重；沒有 LINE uid 時，每次點擊都算一次不重複點擊。
-4. 推送 `link.stats.updated` 讓後台即時更新數字。
-5. 辨識出聯絡人、而且連結設了 `tagOnClick` 時，替他貼標。貼標失敗只記 warning。
-6. 發布 `link.clicked`，自動化規則可以訂閱。
+3. 總點擊數加一。不重複點擊數在有 LINE uid 時依 uid 去重；沒有 LINE uid 時，每次點擊都算一次不重複點擊。同一個 LINE uid 的點擊以 advisory lock 排隊：後到的點擊等前一筆 commit 之後才寫入與計數，並行點擊不會重複算成不重複點擊。
+4. 辨識出聯絡人、而且連結設了 `tagOnClick` 時，替該聯絡人貼標，並發布 `contact.tagged`。貼標失敗只記 warning，點擊照樣記錄。
+5. 發布 `link.clicked`，自動化規則可以訂閱。
+
+兩個事件與點擊一起寫進 outbox，commit 之後送出，至少一次。commit 之後推播 `link.stats.updated`，讓後台即時更新數字。
 
 **`/s/track` 採信呼叫端提供的身分。** 這個端點不需要登入，也不驗證 LINE 的登入憑證；`cid` 與 LINE uid 都直接取自請求內容，而且沒有速率限制。知道某個聯絡人的 ID 或 LINE uid，就能替他記一筆點擊，觸發貼標與自動化；統計數字也能被任意灌高。貼標前會檢查聯絡人屬於連結的租戶，因此影響限於同一個租戶。見 `../../system/AUDIT.md` 的 SHORT-01。
 

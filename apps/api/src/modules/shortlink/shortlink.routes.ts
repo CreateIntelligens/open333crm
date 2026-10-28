@@ -6,14 +6,16 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import {
-  listShortLinks,
-  getShortLink,
-  createShortLink,
-  updateShortLink,
-  deleteShortLink,
-  getClickStats,
-  getClickLogs,
-} from './shortlink.service.js';
+  createShortLinkFlow,
+  deleteShortLinkFlow,
+  getClickLogsFlow,
+  getClickStatsFlow,
+  getShortLinkFlow,
+  listShortLinksFlow,
+  updateShortLinkFlow,
+} from './shortlink.flow.js';
+import type { CreateShortLinkInput } from './shortlink.service.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { generateQrCode } from './qrcode.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 
@@ -102,7 +104,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
 
   app.get('/', { preHandler: [perm.view] }, async (request) => {
     const { isActive, q, page, limit } = listQuerySchema.parse(request.query);
-    const result = await listShortLinks(request.tenantPrisma, request.agent.tenantId, {
+    const result = await listShortLinksFlow(app, actorOf(request).tenantId, {
       isActive,
       q,
       page,
@@ -114,7 +116,8 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
   app.post('/', { preHandler: [perm.manage] }, async (request, reply) => {
     const body = createShortlinkSchema.parse(request.body);
     try {
-      const link = await createShortLink(request.tenantPrisma, request.agent.tenantId, request.agent.id, body as Parameters<typeof createShortLink>[3]);
+      const actor = actorOf(request);
+      const link = await createShortLinkFlow(app, actor.tenantId, actor.agentId, body as CreateShortLinkInput);
       return { success: true, data: link };
     } catch (err: unknown) {
       return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: (err as Error).message } });
@@ -123,7 +126,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
 
   app.get('/:id', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
+    const link = await getShortLinkFlow(app, actorOf(request).tenantId, id);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: link };
   });
@@ -131,21 +134,21 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
   app.patch('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = updateShortlinkSchema.parse(request.body);
-    const link = await updateShortLink(request.tenantPrisma, id, request.agent.tenantId, body as Parameters<typeof updateShortLink>[3]);
+    const link = await updateShortLinkFlow(app, actorOf(request).tenantId, id, body as Parameters<typeof updateShortLinkFlow>[3]);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: link };
   });
 
   app.delete('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const result = await deleteShortLink(request.tenantPrisma, id, request.agent.tenantId);
+    const result = await deleteShortLinkFlow(app, actorOf(request).tenantId, id);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true };
   });
 
   app.get('/:id/stats', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const stats = await getClickStats(request.tenantPrisma, id, request.agent.tenantId);
+    const stats = await getClickStatsFlow(app, actorOf(request).tenantId, id);
     if (!stats) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: stats };
   });
@@ -157,7 +160,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
     const { page: safePage, limit: safeLimit } = listQuerySchema
       .pick({ page: true, limit: true })
       .parse({ page: page ?? undefined, limit: limit ?? undefined });
-    const result = await getClickLogs(request.tenantPrisma, id, request.agent.tenantId, safePage, safeLimit);
+    const result = await getClickLogsFlow(app, actorOf(request).tenantId, id, safePage, safeLimit);
     // 先前漏了 reply.status，NOT_FOUND 實際以 HTTP 200 送出，前端判斷不到失敗
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
@@ -165,7 +168,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
 
   app.get('/:id/qrcode', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
+    const link = await getShortLinkFlow(app, actorOf(request).tenantId, id);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
 
     const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;

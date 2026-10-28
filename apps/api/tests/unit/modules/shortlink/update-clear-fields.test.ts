@@ -39,13 +39,13 @@ function fakeDb() {
 test('空字串代表清除：選填欄位存成 null', async () => {
   const { db, updates } = fakeDb();
   const body = Object.fromEntries(CLEARABLE.map((k) => [k, '']));
-  await updateShortLink(db, 'l-1', 't-1', body);
+  await updateShortLink({ tx: db, tenantId: 't-1' }, 'l-1', body);
   for (const k of CLEARABLE) assert.equal(updates[0][k], null, `${k} 應清成 null`);
 });
 
 test('沒帶的欄位維持不動', async () => {
   const { db, updates } = fakeDb();
-  await updateShortLink(db, 'l-1', 't-1', { title: '新標題' });
+  await updateShortLink({ tx: db, tenantId: 't-1' }, 'l-1', { title: '新標題' });
   assert.equal(updates[0].title, '新標題');
   assert.equal(updates[0].utmSource, undefined);
 });

@@ -27,9 +27,15 @@ All notable changes to **open333CRM** will be documented in this file.
   - 客服手動合併時，`contact.merged` 推播在 commit 之後才送出。原本在交易內送出：commit 之前就送出，rollback 時也照樣送出。
   - 手動合併與解除合併的稽核（`contact.merge`、`contact.merge_revert`）與資料在同一個交易寫入。稽核寫入失敗時，合併或解除合併不生效、請求回錯誤；原本是資料照常寫入、稽核遺失。
   - 綁定代碼、email／手機登記、合併建議、收訊時記錄合併帶進來的身分，這些入口的行為不變，隨各自的模組搬遷。傳送綁定連結、email 登記連結、手機登記連結的路由也不變，隨 `identity-binding` 模組在階段 4 搬遷。
+- **短連結模組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `shortlink.service.ts` 改收 `TenantCtx`，後台的短連結路由與公開的 `POST /s/track` 改呼叫新的 `shortlink.flow.ts`。可觀察的差異：
+  - 點擊的 `link.clicked`、點擊貼標的 `contact.tagged` 事件改成與點擊在同一個交易寫進 outbox，commit 之後送出，保證至少送出一次。原本直接送出，行程在送出之前結束時事件遺失。
+  - 點擊紀錄、點擊次數與點擊貼標在同一個交易寫入，交易綁定短連結所屬的租戶。原本以 BYPASSRLS 的連線寫入，每個查詢各自 commit。點擊貼標失敗時點擊照樣記錄，與原本相同。`link.stats.updated` 推播在 commit 之後送出。同一個 LINE uid 的並行點擊改為排隊計數，不重複點擊數不會因為並行而多算或少算。
+  - `POST /s/track` 以 slug 找到連結後立即回傳目標網址，點擊在背景寫入。原本要先查完點擊者才回應。
+  - OG 快照改成在建立短連結的交易 commit 之後才在背景抓取，再另開交易寫回。
 
 ### Fixed
 
+- **附券廣播的素材短連結沒有 OG 快照** — 附券廣播把素材的外部連結換成短連結時，背景抓到 OG 後要寫回短連結，但寫入用的是已經結束的交易，每次都失敗、只記一筆 warning，爬蟲的預覽頁因此只有短連結的標題。現在改成交易 commit 之後才抓取，再另開交易寫回。
 - **UAT 部署在建置 image 時失敗** — 修補依賴安全告警時新增的 pnpm patch（`patches/minio@8.0.7.patch`）沒有複製進 api、web、workers 的 Docker image，`pnpm install` 讀不到 patch 檔而中止（`ENOENT`）。三個 Dockerfile 在安裝相依套件之前先複製 `patches/`。
 - **修補依賴安全告警** — 升級 Zod、undici、body-parser、decode-uri-component、fast-uri、ip-address 與 qs 至修補版本；為 MinIO 替換停更的 `stream-json` 1.x JSONL parser，使用 `stream-chain` 的 Node parser，並由 pnpm patch 固定修補。
 
