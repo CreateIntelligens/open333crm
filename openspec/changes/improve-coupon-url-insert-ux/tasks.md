@@ -34,6 +34,7 @@
 - [x] 4b.2 core `isCouponPastFixedEnd`、`couponNotPastFixedEnd`，`issueInstances` 略過並回報 `COUPON_EXPIRED`。突變驗證：拿掉略過時核心測試失敗；`<=` 改 `<` 時「到期當下」失敗
 - [x] 4b.3 測試：api `coupon-expired-gates.test.ts`（公開領券、發券服務）、`issue-coupon-reference.test.ts`（存檔擋下）、`keyword-yield-channel.test.ts`（不擋 AI）、feature `broadcast-coupon.test.ts`（建立擋下、發送時擋下）、`coupon-inbox.test.ts`（清單不列、發送擋下），workers `automation-issue-coupon-failure.test.ts`，web `issuable.test.ts`、`coupon-select-field.test.tsx`、`broadcast-coupon-field.test.tsx`、`coupon-detail.test.tsx`，在現有程式上斷言失敗
 - [x] 4b.4 各入口的檢查與訊息。突變驗證（各自拿掉該處檢查時測試失敗）：`issueCoupons`、`isClaimable`、規則存檔、keyword-yield、建立廣播、廣播發送、發券面板清單、選券欄、廣播選券、券詳情頁「發送給…」。對話發券的檢查單獨拿掉時測試仍過（`issueCoupons` 拋錯一樣回 `COUPON_NOT_ISSUABLE`），與 `issueCoupons` 一起拿掉時失敗；workers 兩處檢查與核心略過一起拿掉時失敗，原因文字改回時失敗
+- [x] 4b.6 PR #385 審查：發送途中券到期時原本當成暫停（`COUPON_NOT_ACTIVE`、提示恢復發放）。測試 feature「發送途中券過了到期日：保留時回報已到期」、unit `broadcast-coupon-stop.test.ts`，在現有程式上斷言失敗；`CouponExpiredError`、`couponUnavailableStop`。突變驗證：拿掉保留時對 `CouponExpiredError` 的判斷時 feature 測試失敗
 - [x] 4b.5 `coupon-detail.test.tsx` 既有「顯示發送給…」改用遠期到期日，避免預設資料的到期日過去後誤判
 
 ## 5. 文件
