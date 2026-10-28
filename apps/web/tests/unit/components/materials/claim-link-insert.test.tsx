@@ -92,6 +92,22 @@ test('沒有可用的領券連結', async () => {
   assert.equal(link.getAttribute('href'), '/dashboard/marketing/coupons');
 });
 
+test('清單達到上限時說明只列出最新的 200 條', async () => {
+  const many = Array.from({ length: 200 }, (_, i) => ({ ...links[0], id: `m${i}`, name: `連結${i}`, code: `CODE${i}` }));
+  api.get.mockResolvedValue({ data: { success: true, data: many } });
+  renderStateful(LineTextEditor, '');
+  openPicker();
+  await screen.findByRole('button', { name: /連結0/ });
+  assert.ok(screen.queryByText(/只列出最新建立的 200 條/) !== null, '應說明清單有上限');
+});
+
+test('清單未達上限時不顯示上限說明', async () => {
+  renderStateful(LineTextEditor, '');
+  openPicker();
+  await screen.findByRole('button', { name: /門市海報/ });
+  assert.ok(screen.queryByText(/只列出最新建立的 200 條/) === null);
+});
+
 test('插入領券連結超過字數上限', async () => {
   const textarea = renderStateful(FbTextEditor, 'a'.repeat(1990));
   openPicker();

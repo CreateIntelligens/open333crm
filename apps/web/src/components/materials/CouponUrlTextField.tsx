@@ -144,6 +144,9 @@ export function CouponUrlTextField({ value, onChange, maxLength, placeholder, ro
   );
 }
 
+/** 後端一次最多回傳的筆數（coupon-claim-link.service.ts AVAILABLE_LINKS_LIMIT），達到時告知清單不完整 */
+const CLAIM_LINKS_LIMIT = 200;
+
 /** 「插入領券連結」的清單：打開時才載入租戶內可用的領券連結 */
 function ClaimLinkPicker({ id, channelType, onPick, onClose }: {
   id: string;
@@ -195,6 +198,10 @@ function ClaimLinkPicker({ id, channelType, onPick, onClose }: {
           {`頁打開一張券，在「領券連結」分頁建立，渠道選 ${channelLabel}。`}
         </p>
       ) : (
+        <>
+        {links.length >= CLAIM_LINKS_LIMIT && (
+          <p className="text-[11px] text-warning">{`只列出最新建立的 ${CLAIM_LINKS_LIMIT} 條。找不到要的連結時，請到優惠券頁打開該券，在「領券連結」分頁複製網址。`}</p>
+        )}
         <ul className="max-h-56 space-y-1 overflow-y-auto">
           {links.map((link) => (
             <li key={link.id}>
@@ -214,6 +221,7 @@ function ClaimLinkPicker({ id, channelType, onPick, onClose }: {
             </li>
           ))}
         </ul>
+        </>
       )}
     </div>
   );
