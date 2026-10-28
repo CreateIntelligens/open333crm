@@ -511,7 +511,7 @@ export async function executeBroadcast(
           );
           // 本函式尚未搬遷（#337 階段 4）：prisma 不是交易，短連結已經寫入，可以直接在背景抓 OG 快照
           const ctx = { tx: prisma, tenantId: broadcast.tenantId };
-          for (const link of created) snapshotOgInBackground(link, (og) => saveShortLinkOg(ctx, link.id, og));
+          for (const link of created) snapshotOgInBackground(link, (og) => saveShortLinkOg(ctx, link, og));
         } catch (err) {
           logger.error('[Broadcast] URL→shortlink conversion failed, sending original body:', err);
         }

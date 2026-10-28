@@ -33,11 +33,18 @@ export function needsOgSnapshot(provided: { ogTitle?: string; ogDescription?: st
   return !provided.ogTitle && !provided.ogDescription && !provided.ogImage;
 }
 
-/** 把抓到的 OG 快照寫回短連結；三個欄位都沒抓到時不寫 */
-export async function saveShortLinkOg(ctx: TenantCtx, linkId: string, og: OgSnapshot): Promise<void> {
+/**
+ * 把抓到的 OG 快照寫回短連結；三個欄位都沒抓到時不寫。
+ * 只在目標網址仍是抓取時的網址才寫回：連續修改目標網址時，晚到的舊網址 OG 不蓋掉新的
+ */
+export async function saveShortLinkOg(
+  ctx: TenantCtx,
+  link: { id: string; targetUrl: string },
+  og: OgSnapshot,
+): Promise<void> {
   if (!og.ogTitle && !og.ogDescription && !og.ogImage) return;
   await ctx.tx.shortLink.updateMany({
-    where: { id: linkId, tenantId: ctx.tenantId },
+    where: { id: link.id, tenantId: ctx.tenantId, targetUrl: link.targetUrl },
     data: { ogTitle: og.ogTitle, ogDescription: og.ogDescription, ogImage: og.ogImage },
   });
 }

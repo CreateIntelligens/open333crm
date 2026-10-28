@@ -19,7 +19,7 @@
 | `source-detector.ts` | 依 User-Agent 判斷點擊來源：爬蟲、LINE 內建瀏覽器、Facebook 內建瀏覽器、一般瀏覽器 |
 | `strategies/` | 依來源決定回應什麼頁面 |
 | `og-scraper.ts` | 抓目標網頁的 OG 標題、描述與圖片。會擋下指向內網位址的網址 |
-| `og-snapshot.ts` | 建立短連結的交易 commit 之後，在背景呼叫 `og-scraper.ts`，再另開交易寫回短連結 |
+| `og-snapshot.ts` | 建立短連結的交易 commit 之後，在背景呼叫 `og-scraper.ts`，再另開交易寫回短連結。寫回時，目標網址已經改成別的網址就不寫 |
 | `qrcode.service.ts` | 產生短連結的 QR code |
 
 ## 建立短連結

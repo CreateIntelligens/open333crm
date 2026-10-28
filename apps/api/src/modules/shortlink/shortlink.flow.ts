@@ -53,7 +53,7 @@ export function createShortLinkFlow(
   return inTenant(deps.prisma, tenantId, async (scope) => {
     const link = await createShortLink(scope, createdById, data);
     if (needsOgSnapshot(data)) {
-      scope.afterCommit('og snapshot', () => snapshotOgInBackground(link, writeOgInTenant(deps.prisma, tenantId, link.id)));
+      scope.afterCommit('og snapshot', () => snapshotOgInBackground(link, writeOgInTenant(deps.prisma, tenantId, link)));
     }
     return link;
   });
@@ -68,7 +68,7 @@ export function updateShortLinkFlow(
   return inTenant(deps.prisma, tenantId, async (scope) => {
     const updated = await updateShortLink(scope, id, data);
     if (updated && data.targetUrl && needsOgSnapshot(data)) {
-      scope.afterCommit('og snapshot', () => snapshotOgInBackground(updated, writeOgInTenant(deps.prisma, tenantId, updated.id)));
+      scope.afterCommit('og snapshot', () => snapshotOgInBackground(updated, writeOgInTenant(deps.prisma, tenantId, updated)));
     }
     return updated;
   });

@@ -38,6 +38,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **附券廣播的素材短連結沒有 OG 快照** — 附券廣播把素材的外部連結換成短連結時，背景抓到 OG 後要寫回短連結，但寫入用的是已經結束的交易，每次都失敗、只記一筆 warning，爬蟲的預覽頁因此只有短連結的標題。現在改成交易 commit 之後才抓取，再另開交易寫回。
 - **UAT 部署在建置 image 時失敗** — 修補依賴安全告警時新增的 pnpm patch（`patches/minio@8.0.7.patch`）沒有複製進 api、web、workers 的 Docker image，`pnpm install` 讀不到 patch 檔而中止（`ENOENT`）。三個 Dockerfile 在安裝相依套件之前先複製 `patches/`。
 - **修補依賴安全告警** — 升級 Zod、undici、body-parser、decode-uri-component、fast-uri、ip-address 與 qs 至修補版本；為 MinIO 替換停更的 `stream-json` 1.x JSONL parser，使用 `stream-chain` 的 Node parser，並由 pnpm patch 固定修補。
+- **連續修改短連結的目標網址時，舊網址的 OG 快照可能蓋掉新的** — 修改目標網址、又沒有手動填 OG 時，系統會在背景抓 OG。第一次抓得比第二次慢時，舊網址的標題、描述與圖片會寫回短連結，爬蟲的預覽頁顯示舊內容。現在只在目標網址仍是抓取時的網址才寫回。
 - **`POST /s/track` 沒有驗證 request body**（#387）— 這個公開端點原本只做型別斷言。格式錯誤的輸入會到資料庫層才失敗：`slug` 或 `lineUid` 不是字串時，回 500，或回 200 但點擊沒有記錄；超長的 `cid`、`lineUid` 也照常寫入。現在以 Zod schema 驗證，`slug`、`cid`、`lineUid` 都必須是字串，長度上限 64，`cid`、`lineUid` 允許 `null` 或省略。格式錯誤時回 400 `BAD_REQUEST`，不查詢資料庫、不記錄點擊。前端頁面送出的 body 不受影響。
 
 ## [2026-10-27]
