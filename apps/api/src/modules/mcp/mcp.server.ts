@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { PrismaClient } from "@prisma/client";
 import type { Server as SocketIOServer } from "socket.io";
 import type { TenantDb } from "../../lib/tenant-db.js";
 import { z } from "zod/v3";
@@ -18,7 +19,7 @@ import {
   getCaseStats,
   getOverviewStats,
 } from "../analytics/analytics.service.js";
-import { listCases, getCase } from "../case/case.service.js";
+import { listCasesFlow, getCaseFlow } from "../case/case.flow.js";
 import { createBroadcast, executeBroadcast, getBroadcast } from "../marketing/marketing.service.js";
 import { decryptCredentials } from "../channel/channel.service.js";
 import { getChannelPlugin } from "@open333crm/channel-plugins";
@@ -102,7 +103,9 @@ export function createMcpServer(
   prisma: TenantDb,
   agent: McpAgentContext,
   channelAccess: McpChannelAccess,
-  _io?: SocketIOServer,
+  _io: SocketIOServer | undefined,
+  /** 已搬到 flow 的工具（#337）以這個 client 開租戶交易 */
+  flowDeps: { prisma: PrismaClient },
 ): McpServer {
   const server = new McpServer({
     name: "open333crm",
@@ -218,8 +221,8 @@ export function createMcpServer(
       limit,
     }) =>
       textResult(
-        await listCases(
-          prisma,
+        await listCasesFlow(
+          flowDeps,
           agent.tenantId,
           { status, priority, assigneeId, category, slaStatus },
           { page, limit },
@@ -239,7 +242,7 @@ export function createMcpServer(
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => visibleOrNotFound(await getCase(prisma, id, agent.tenantId), "case"),
+    async ({ id }) => visibleOrNotFound(await getCaseFlow(flowDeps, agent.tenantId, id), "case"),
   );
 
   server.registerTool(

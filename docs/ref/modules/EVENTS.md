@@ -82,12 +82,12 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `conversation.assigned` | **無** | 通知。見 CONV-02 |
 | `conversation.closed` | `conversation.service.ts` | 無 |
 | `conversation.handoff` | `automation.worker.ts`（outbox）、`webhook/inbound-postback-interceptors.ts` | 無 |
-| `case.created` | `case.service.ts`；workers 的 `create_case`（outbox） | 自動化 |
+| `case.created` | `case.flow.ts`（outbox）；workers 的 `create_case`（outbox） | 自動化 |
 | `case.updated` | **無** | 無 |
-| `case.assigned` | `case.service.ts`、`assignment.service.ts` | 通知 |
-| `case.escalated` | `case.service.ts` | 通知、自動化 |
-| `case.resolved` | `case.service.ts` | 無 |
-| `case.closed` | `case.service.ts`、`csat.service.ts`、`csat.scheduler.ts` | 無 |
+| `case.assigned` | `case.flow.ts`（outbox，手動指派與自動派案） | 通知 |
+| `case.escalated` | `case.flow.ts`（outbox） | 通知、自動化 |
+| `case.resolved` | `case.flow.ts`（outbox） | 無 |
+| `case.closed` | `case.flow.ts`（outbox）、`csat.service.ts`、`csat.scheduler.ts` | 無 |
 | `contact.created` | `webhook/inbound-contact-resolver.ts` | 自動化 |
 | `contact.updated` | **無** | 無 |
 | `contact.tagged` | `tagging.service.ts`；workers 的 `add_tag`（outbox） | 自動化 |

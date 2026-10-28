@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createCase } from '#src/modules/case/case.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const TENANT = 'a0000000-0000-0000-0000-000000000001';
 
@@ -41,14 +42,12 @@ function mockPrisma(policies: Policy[]) {
       },
     },
     caseEvent: { create: async () => ({}) },
-    broadcastRecipient: { findFirst: async () => null },
     // createCase 會檢查聯絡人在該渠道有帳號（S10，commit 7c53d9be）
     channelIdentity: { findFirst: async () => ({ id: 'identity-1' }) },
   };
   return { prisma, created };
 }
 
-const io = { to: () => ({ emit: () => {} }) };
 const input = { contactId: 'c1', channelId: 'ch1', title: '測試', priority: 'HIGH' as const };
 const policy = (id: string, isDefault: boolean, createdAt: string, resolutionMinutes: number): Policy => ({
   id, tenantId: TENANT, name: id, priority: 'HIGH', isDefault, createdAt: new Date(createdAt), resolutionMinutes,
@@ -60,7 +59,7 @@ test('同優先級有多條政策時套用預設', async () => {
     policy('B', true, '2026-02-01', 240),
   ]);
   const before = Date.now();
-  await createCase(prisma as never, io as never, TENANT, 'agent-1', input);
+  await createCase(createMockTenantCtx(prisma, TENANT).ctx, 'agent-1', input);
   assert.equal(created[0].slaPolicy, 'B');
   const due = (created[0].slaDueAt as Date).getTime();
   assert.ok(due >= before + 240 * 60_000 && due <= Date.now() + 240 * 60_000, '到期時間依 B 的解決時限');
@@ -71,6 +70,6 @@ test('沒有預設政策時套用最早建立的', async () => {
     policy('C', false, '2026-03-01', 30),
     policy('A', false, '2026-01-01', 60),
   ]);
-  await createCase(prisma as never, io as never, TENANT, 'agent-1', input);
+  await createCase(createMockTenantCtx(prisma, TENANT).ctx, 'agent-1', input);
   assert.equal(created[0].slaPolicy, 'A');
 });

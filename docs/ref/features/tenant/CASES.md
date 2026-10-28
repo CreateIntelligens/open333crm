@@ -62,13 +62,19 @@
 | `POST /cases/:id/escalate` | 升級對話框 | 有 | `case.escalated` |
 | `PATCH /cases/:id` 帶 `status` | 工單詳情頁的狀態下拉選單 | 有 | 與上面兩列相同 |
 
-各路徑允許的轉換相同，副作用也相同。`PATCH /cases/:id` 帶 `status` 時，`updateCase()` 把改成 `ESCALATED` 的請求交給 `escalateCase()`，其他狀態交給 `transitionCase()`。因此從下拉選單改狀態，一樣會寫時間軸、發布事件，也會觸發通知、自動化與對外 Webhook。詳情頁的下拉選單選「已關閉」時先要求確認，選「已升級」時開啟升級對話框。
+各路徑允許的轉換相同，副作用也相同。`PATCH /cases/:id` 帶 `status` 時，`updateCase()` 把改成 `ESCALATED` 的請求交給 `escalateCase()`，其他狀態交給 `transitionCase()`，`updateCaseFlow()` 再依結果送出與頂部按鈕相同的推播與事件。因此從下拉選單改狀態，一樣會寫時間軸、發布事件，也會觸發通知、自動化與對外 Webhook。詳情頁的下拉選單選「已關閉」時先要求確認，選「已升級」時開啟升級對話框。
+
+推播（`case.updated` 等）在交易 commit 之後送出。事件與工單的變更在同一個交易寫進 outbox，保證至少送出一次，見[事件與背景工作](../../modules/EVENTS.md)。推播與事件的內容寫在 `case-effects.ts`。
 
 ## 指派
 
 **手動指派**走 `POST /cases/:id/assign`，會寫 `assigned` 事件並發布 `case.assigned`，被指派的人收到通知。被指派的成員必須屬於同一個租戶，但不檢查是否已停用。
 
-**自動指派**由 `assignment.service.ts` 的 `autoAssignCase()` 執行。觸發條件是：建立工單時沒有指定負責人，但有指定團隊。規則如下：
+**自動指派**由 `assignment.service.ts` 的 `autoAssignCase()` 執行。觸發條件是：建立工單時沒有指定負責人，但有指定團隊。
+
+自動指派在建立工單的交易 commit 之後另開一個交易執行，在回應送出之前完成。指派失敗時只寫 log，工單照樣建立。建立工單的回應是指派之前的工單，所以負責人是空的，狀態是 `OPEN`；畫面由指派之後的 `case.updated` 推播更新。
+
+候選人的規則如下：
 
 1. 候選人是該團隊內、`role` 為 `AGENT`、而且啟用中的成員，並且直綁或所屬團隊被授權工單的渠道，層級為 `reply_only` 或 `full`。看不到渠道的成員不會被指派，否則工單會從他的收件匣消失、打開回 404。沒有符合的人時不指派。
 2. 挑未結工單最少的人。未結是指狀態為 `OPEN`、`IN_PROGRESS`、`PENDING` 或 `ESCALATED`。
@@ -148,6 +154,8 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 ## 刪除
 
 `DELETE /cases/:id` 是硬刪除。工單的事件、備註與標籤一併刪除，連結的對話解除關聯但保留。刪除會寫一筆 `case.delete` 租戶稽核紀錄，這是事後唯一的痕跡。任何狀態的工單都能刪除，只要渠道層級為 `full`。
+
+刪除與稽核在同一個交易寫入。稽核寫入失敗時，工單不會被刪除，請求回錯誤。
 
 ## 權限
 
