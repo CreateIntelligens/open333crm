@@ -18,7 +18,7 @@ import { findOrCreateMaterialShortLink } from '../shortlink/shortlink.service.js
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
-import { countsTowardContactLimit } from '@open333crm/core';
+import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
 
 // --- Broadcast audience ---
 
@@ -180,15 +180,22 @@ async function assertBroadcastCoupon(
 ) {
   const coupon = await prisma.coupon.findFirst({
     where: { id: couponId, tenantId },
-    select: { id: true, status: true, purpose: true, totalLimit: true, perContactLimit: true, codeMode: true },
+    select: {
+      id: true, status: true, purpose: true, totalLimit: true, perContactLimit: true, codeMode: true,
+      validityMode: true, endAt: true,
+    },
   });
   const purposeOk = couponIssuedVia === COUPON_ISSUED_VIA.BATCH || coupon?.purpose === 'MARKETING';
-  if (!coupon || coupon.status !== 'ACTIVE' || !purposeOk) {
+  // 固定效期到期後狀態仍是進行中（沒有排程自動結束），附上去發出的券一拿到就過期
+  const expired = coupon ? isCouponPastFixedEnd(coupon) : false;
+  if (!coupon || coupon.status !== 'ACTIVE' || expired || !purposeOk) {
     const message = !coupon
       ? '找不到這張優惠券'
       : coupon.status !== 'ACTIVE'
         ? '只能附上進行中的優惠券'
-        : '廣播只能附上行銷券，客服補償券請在對話中發送';
+        : expired
+          ? '這張優惠券已過到期日，不能附上'
+          : '廣播只能附上行銷券，客服補償券請在對話中發送';
     throw new AppError(message, 'INVALID_COUPON', 400, { issues: [{ path: 'couponId', message }] });
   }
   return coupon;

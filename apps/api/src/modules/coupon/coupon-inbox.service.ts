@@ -12,6 +12,8 @@ import {
   countsTowardContactLimit,
   couponLiffConfig,
   couponLinkUrl,
+  couponNotPastFixedEnd,
+  isCouponPastFixedEnd,
   issueWalletToken,
   voidPendingInstance as voidPendingInstanceInTx,
 } from '@open333crm/core';
@@ -183,7 +185,8 @@ export async function getIssueContext(
   }
 
   const coupons = await tx.coupon.findMany({
-    where: { tenantId, purpose: 'SERVICE', status: 'ACTIVE' },
+    // 固定效期已過到期日的券狀態仍是進行中，發出去一拿到就過期，不列出
+    where: { tenantId, purpose: 'SERVICE', status: 'ACTIVE', ...couponNotPastFixedEnd(new Date(now)) },
     orderBy: { createdAt: 'desc' },
     select: COUPON_FIELDS,
   });
@@ -329,7 +332,7 @@ export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
   }
   const window = await expiredWindow(tx, conv.id, (deps.windowHoursFor ?? defaultWindowHours)(conv.channelType), now);
   if (window) throw new IssueAbort({ ok: false, reason: 'REPLY_WINDOW_EXPIRED' });
-  if (coupon.purpose !== 'SERVICE' || coupon.status !== 'ACTIVE') {
+  if (coupon.purpose !== 'SERVICE' || coupon.status !== 'ACTIVE' || isCouponPastFixedEnd(coupon, new Date(now))) {
     throw new IssueAbort({ ok: false, reason: 'COUPON_NOT_ISSUABLE' });
   }
 

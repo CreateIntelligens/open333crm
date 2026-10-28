@@ -25,6 +25,7 @@ import { CouponSettingsPanel } from './CouponSettingsPanel';
 import { CouponClaimLinksPanel } from './CouponClaimLinksPanel';
 import { CouponBatchIssueDialog } from './CouponBatchIssueDialog';
 import { CouponBatchHistory } from './CouponBatchHistory';
+import { isCouponPastFixedEnd } from '@/lib/coupon/issuable';
 
 type TabKey = 'codes' | 'settings' | 'claim-links';
 const TABS: Array<{ key: TabKey; label: string }> = [
@@ -246,11 +247,15 @@ export function CouponDetailView({ id }: { id: string }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-          {canIssue && coupon.status === 'ACTIVE' && (
+          {canIssue && coupon.status === 'ACTIVE' && !isCouponPastFixedEnd(coupon) && (
             <Button variant="outline" onClick={() => setBatchOpen(true)}>
               <Send className="h-4 w-4" />
               發送給…
             </Button>
+          )}
+          {canIssue && coupon.status === 'ACTIVE' && isCouponPastFixedEnd(coupon) && (
+            // 到期後狀態仍是進行中（沒有排程自動結束），發出去的券一拿到就過期，說明為什麼沒有「發送給…」
+            <span className="text-sm text-muted-foreground">已過到期日，不能再發送</span>
           )}
           {editDisabledReason ? (
             <span className="group relative inline-flex">

@@ -40,6 +40,7 @@ const REASON_LABELS: Record<string, string> = {
   SHARED_CODE_MISSING: '共用碼未設定',
   CODE_GENERATION_FAILED: '券號產生失敗',
   CODE_ALLOCATION_CONFLICT: '序號配發衝突',
+  COUPON_EXPIRED: '券已過到期日',
   CONTACT_NOT_FOUND: '聯絡人不存在',
   NO_CHANNEL_IDENTITY: '沒有這個渠道的身分',
   OUTSIDE_MESSAGING_WINDOW: '超過 24 小時沒有傳訊息',
@@ -78,6 +79,7 @@ export function couponResultLines(summary: CouponBroadcastSummary): CouponResult
 export const COUPON_BROADCAST_FAILURE_HINTS: Record<string, string> = {
   LINE_QUOTA_INSUFFICIENT: '可到 LINE Official Account Manager 提高本月訊息額度，或縮小對象後重新發送。',
   COUPON_NOT_ACTIVE: '請先恢復發放這張券，再重新發送；已處理的人不會重複收到。',
+  COUPON_EXPIRED: '到期日已過的券不能再發，請改附其他券建立新的廣播。',
 };
 
 /** 券詳情頁批次發放的人數上限（與後端 BATCH_ISSUE_MAX_RECIPIENTS 相同） */

@@ -78,6 +78,19 @@ test('券已暫停：不建立新券，原因代碼為 COUPON_INACTIVE', async (
   assert.equal(failureNotices(env)[0].metadata.couponIssueFailed.reason, 'COUPON_INACTIVE');
 });
 
+test('券的固定效期已過到期日：不建立新券，原因代碼為 COUPON_INACTIVE', async () => {
+  // 到期後狀態仍是進行中（沒有排程自動結束），發出去的券一拿到就過期
+  const env = setup({ coupon: { validityMode: 'FIXED', endAt: new Date(Date.now() - 60_000) } });
+
+  await run(env);
+
+  assert.equal(env.state.instances.length, 0);
+  assert.equal(env.sends.length, 0, '沒有呼叫渠道');
+  const [notice] = failureNotices(env);
+  assert.equal(notice.metadata.couponIssueFailed.reason, 'COUPON_INACTIVE');
+  assert.match(notice.content.text, /已過到期日/);
+});
+
 test('發行總量已發完：不建立新券，原因代碼為 TOTAL_LIMIT_REACHED', async () => {
   const env = setup({ coupon: { totalLimit: 1, perContactLimit: 5 } });
   env.state.instances.push({ id: crypto.randomUUID(), tenantId: TENANT, couponId: COUPON_ID, contactId: 'someone-else', code: 'X', status: 'CLAIMED', deliveryPendingAt: null });

@@ -11,11 +11,14 @@ import { fetchAllPages } from '@/lib/fetch-all-pages';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Select } from '@/components/ui/select';
 import { couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
+import { isCouponPastFixedEnd } from '@/lib/coupon/issuable';
 
 interface CouponOption {
   id: string;
   name: string;
   displayCode?: string;
+  validityMode?: string | null;
+  endAt?: string | null;
 }
 
 export interface BroadcastCouponFieldProps {
@@ -37,7 +40,8 @@ export function BroadcastCouponField({ value, onChange, preview, acknowledged, o
     fetchAllPages<CouponOption>((url, config) => api.get(url, config), '/coupons?status=ACTIVE&purpose=MARKETING')
       .then((rows) => {
         if (!cancelled) {
-          setCoupons(rows);
+          // 清單已只取進行中的券；固定效期已過到期日的券狀態仍是進行中，附上去也發不出去
+          setCoupons(rows.filter((c) => !isCouponPastFixedEnd(c)));
           setLoadError(null);
         }
       })

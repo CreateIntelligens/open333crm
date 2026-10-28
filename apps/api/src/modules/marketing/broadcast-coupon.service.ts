@@ -18,7 +18,7 @@
  */
 import type { Prisma } from '@prisma/client';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
-import { confirmPendingInstance, taipeiDateString, voidPendingInstance, type IssueSkipReason } from '@open333crm/core';
+import { confirmPendingInstance, isCouponPastFixedEnd, taipeiDateString, voidPendingInstance, type IssueSkipReason } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
@@ -177,10 +177,14 @@ export async function claimCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
 
   const coupon = await tx.coupon.findFirst({
     where: { id: b.couponId, tenantId },
-    select: { id: true, name: true, status: true, claimTagId: true, claimTagTtlDays: true },
+    select: { id: true, name: true, status: true, claimTagId: true, claimTagTtlDays: true, validityMode: true, endAt: true },
   });
   if (!coupon || coupon.status !== 'ACTIVE') {
     return invalid('COUPON_NOT_ACTIVE', '附上的優惠券已暫停或結束，沒有發送。恢復發放後可以重新發送');
+  }
+  // 建立後才過到期日：狀態仍是進行中，但發出去的券一拿到就過期
+  if (isCouponPastFixedEnd(coupon, new Date(now))) {
+    return invalid('COUPON_EXPIRED', '附上的優惠券已過到期日，沒有發送。請改附其他券建立新的廣播');
   }
   const channel = await tx.channel.findFirst({
     where: { id: b.channelId, tenantId, isActive: true },

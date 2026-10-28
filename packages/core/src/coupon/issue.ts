@@ -62,7 +62,9 @@ export type IssueSkipReason =
   | 'CODE_GENERATION_FAILED'
   | 'CODE_ALLOCATION_CONFLICT'
   /** 聯絡人不存在或不屬於本租戶（外鍵檢查不受 RLS 限制，不先擋會建出跨租戶的券或整批失敗） */
-  | 'CONTACT_NOT_FOUND';
+  | 'CONTACT_NOT_FOUND'
+  /** 固定效期的券到期日已過：發出去一拿到就過期 */
+  | 'COUPON_EXPIRED';
 
 export interface IssuedInstance {
   id: string;
@@ -131,6 +133,33 @@ async function allocateCode(
   return { ok: false, reason: 'CODE_GENERATION_FAILED' };
 }
 
+/**
+ * 固定效期的券是否已過到期日（到期當下起算）。到期後狀態仍是進行中——系統沒有排程自動結束，
+ * 也不能自動改成已結束（顧客券夾會顯示「活動已提前結束」而非「已過期」）——
+ * 所以每個發券入口除了看狀態，還要用這個判斷擋下，否則發出的券一拿到就過期。
+ */
+export function isCouponPastFixedEnd(
+  coupon: { validityMode: string | null; endAt: Date | null },
+  now: Date = new Date(),
+): boolean {
+  return coupon.validityMode === 'FIXED' && coupon.endAt != null && coupon.endAt.getTime() <= now.getTime();
+}
+
+/**
+ * 固定效期沒有過期的 Prisma 條件（給 coupon 的 where 用）。用 OR 明列可用情況、不用 NOT：
+ * validityMode、endAt 可為 NULL，SQL 的 NOT 遇到 NULL 會把可用的券也排除。
+ */
+export function couponNotPastFixedEnd(now: Date) {
+  return {
+    OR: [
+      { validityMode: null },
+      { validityMode: { in: ['AFTER_CLAIM' as const, 'AFTER_OPEN' as const] } },
+      { endAt: null },
+      { endAt: { gt: now } },
+    ],
+  };
+}
+
 function computeExpiresAt(coupon: CouponForIssue): Date | null {
   if (coupon.validityMode === 'FIXED') return coupon.endAt;
   if (coupon.validityMode === 'AFTER_CLAIM' && coupon.afterClaimDays) {
@@ -167,6 +196,11 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
   const known = new Set(
     (await tx.contact.findMany({ where: { id: { in: params.contactIds }, tenantId }, select: { id: true } })).map((c) => c.id),
   );
+
+  // 最後防線：各入口應先擋下並給清楚訊息，這裡確保任何路徑都不會發出一拿到就過期的券
+  if (isCouponPastFixedEnd(coupon, new Date())) {
+    return { issued, skipped: params.contactIds.map((contactId) => ({ contactId, reason: 'COUPON_EXPIRED' as const })) };
+  }
 
   for (const contactId of params.contactIds) {
     if (!known.has(contactId)) {
