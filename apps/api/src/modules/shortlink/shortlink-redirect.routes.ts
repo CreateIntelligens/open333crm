@@ -9,6 +9,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { z } from "zod/v3";
 import { logger } from "@open333crm/core";
 import { detectSource, parseSourceOverride } from "./source-detector.js";
 import { getLinkForRedirect, getChannelLiffId } from "./shortlink.service.js";
@@ -25,28 +26,40 @@ function uaSimulatorEnabled(): boolean {
   );
 }
 
-interface TrackBody {
-  slug?: string;
-  cid?: string;
-  lineUid?: string;
-}
+// 公開端點，任何人都能送任意 body（#387）。外部瀏覽器頁送 cid: null，LIFF 頁省略 cid，所以允許 null。
+// slug 上限與後台自訂代碼相同；LINE uid 是 33 字元，cid 是 UUID，上限 64 已足夠。
+const trackBodySchema = z.object({
+  slug: z.string().max(64).optional(),
+  cid: z.string().max(64).nullish().transform((v) => v ?? undefined),
+  lineUid: z.string().max(64).nullish().transform((v) => v ?? undefined),
+});
 
-function parseTrackBody(body: unknown): TrackBody {
+/** sendBeacon 送 text/plain，fetch 送 JSON；不是 JSON 的字串當成空 body */
+function parseTrackBody(body: unknown) {
+  let raw: unknown = body;
   if (typeof body === "string") {
     try {
-      return JSON.parse(body) as TrackBody;
+      raw = JSON.parse(body);
     } catch {
-      return {};
+      raw = {};
     }
   }
-  if (body && typeof body === "object") return body as TrackBody;
-  return {};
+  return trackBodySchema.safeParse(raw && typeof raw === "object" ? raw : {});
 }
 
 export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
   // ─── POST /s/track ── the only place a click is recorded ──────────────────
   app.post("/track", async (request, reply) => {
-    const { slug, cid, lineUid } = parseTrackBody(request.body);
+    const parsed = parseTrackBody(request.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send({
+          success: false,
+          error: { code: "BAD_REQUEST", message: "invalid track body" },
+        });
+    }
+    const { slug, cid, lineUid } = parsed.data;
     if (!slug) {
       return reply
         .status(400)

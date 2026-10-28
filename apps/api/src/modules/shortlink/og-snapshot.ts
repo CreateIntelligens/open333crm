@@ -24,6 +24,6 @@ export function snapshotOgInBackground(
 }
 
 /** 以新的交易寫回 OG 快照：flow 與附券廣播在 commit 之後使用 */
-export function writeOgInTenant(prisma: PrismaClient, tenantId: string, linkId: string) {
-  return (og: OgSnapshot) => inTenant(prisma, tenantId, (scope) => saveShortLinkOg(scope, linkId, og));
+export function writeOgInTenant(prisma: PrismaClient, tenantId: string, link: { id: string; targetUrl: string }) {
+  return (og: OgSnapshot) => inTenant(prisma, tenantId, (scope) => saveShortLinkOg(scope, link, og));
 }

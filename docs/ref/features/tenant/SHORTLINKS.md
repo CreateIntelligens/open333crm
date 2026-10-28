@@ -19,7 +19,7 @@
 | `source-detector.ts` | 依 User-Agent 判斷點擊來源：爬蟲、LINE 內建瀏覽器、Facebook 內建瀏覽器、一般瀏覽器 |
 | `strategies/` | 依來源決定回應什麼頁面 |
 | `og-scraper.ts` | 抓目標網頁的 OG 標題、描述與圖片。會擋下指向內網位址的網址 |
-| `og-snapshot.ts` | 建立短連結的交易 commit 之後，在背景呼叫 `og-scraper.ts`，再另開交易寫回短連結 |
+| `og-snapshot.ts` | 建立短連結的交易 commit 之後，在背景呼叫 `og-scraper.ts`，再另開交易寫回短連結。寫回時，目標網址已經改成別的網址就不寫 |
 | `qrcode.service.ts` | 產生短連結的 QR code |
 
 ## 建立短連結
@@ -42,7 +42,7 @@
 
 ## 點擊時發生什麼
 
-轉址分成兩步：`GET /s/:slug` 只回應頁面，不記錄點擊；頁面上的程式再呼叫 `POST /s/track` 記錄點擊。`POST /s/track` 是唯一記錄點擊的地方。
+轉址分成兩步：`GET /s/:slug` 只回應頁面，不記錄點擊；頁面上的程式再呼叫 `POST /s/track` 記錄點擊。`POST /s/track` 是唯一記錄點擊的地方。`POST /s/track` 的 body 是 `{ slug, cid?, lineUid? }`：`slug` 必須是字串；`cid` 與 `lineUid` 是字串、`null` 或省略；字串的長度上限都是 64。其他欄位忽略。格式錯誤時回 400，不記錄點擊。
 
 `GET /s/:slug` 依點擊來源回應：
 
