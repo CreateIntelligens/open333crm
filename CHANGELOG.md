@@ -22,7 +22,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 綁定代碼、email／手機登記、合併建議、收訊時記錄合併帶進來的身分，這些入口的行為不變，隨各自的模組搬遷。傳送綁定連結、email 登記連結、手機登記連結的路由也不變，隨 `identity-binding` 模組在階段 4 搬遷。
 - **短連結模組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `shortlink.service.ts` 改收 `TenantCtx`，後台的短連結路由與公開的 `POST /s/track` 改呼叫新的 `shortlink.flow.ts`。可觀察的差異：
   - 點擊的 `link.clicked`、點擊貼標的 `contact.tagged` 事件改成與點擊在同一個交易寫進 outbox，commit 之後送出，保證至少送出一次。原本直接送出，行程在送出之前結束時事件遺失。
-  - 點擊紀錄、點擊次數與點擊貼標在同一個交易寫入，交易綁定短連結所屬的租戶。原本以 BYPASSRLS 的連線寫入，每個查詢各自 commit。點擊貼標失敗時點擊照樣記錄，與原本相同。`link.stats.updated` 推播在 commit 之後送出。
+  - 點擊紀錄、點擊次數與點擊貼標在同一個交易寫入，交易綁定短連結所屬的租戶。原本以 BYPASSRLS 的連線寫入，每個查詢各自 commit。點擊貼標失敗時點擊照樣記錄，與原本相同。`link.stats.updated` 推播在 commit 之後送出。同一個 LINE uid 的並行點擊改為排隊計數，不重複點擊數不會因為並行而多算或少算。
   - `POST /s/track` 以 slug 找到連結後立即回傳目標網址，點擊在背景寫入。原本要先查完點擊者才回應。
   - OG 快照改成在建立短連結的交易 commit 之後才在背景抓取，再另開交易寫回。
 

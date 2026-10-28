@@ -3,6 +3,7 @@
  * - 建立、修改目標網址時，背景抓取 OG 快照並寫回短連結（沒有手動填 OG 時）。
  * - POST /s/track 回傳目標網址；點擊紀錄、次數、點擊貼標在背景寫入。
  * - 點擊貼標失敗時，點擊照樣記錄。
+ * - 同一個 lineUid 並行點擊時，只算一次不重複點擊（advisory lock 排隊）。
  * - link.clicked、contact.tagged 與點擊一起寫進 outbox（主規格 event-delivery）。
  * 屬於 feature 組：走真實路由與 app_tenant 連線（RLS）。OG 抓取以 vi.mock 替換，不連外部網站。
  * 本檔建立的資料以 MARK 標記，於 afterAll 刪除。
@@ -175,6 +176,48 @@ test('A failed click tag does not drop the click：標籤不適用於聯絡人�
   );
   assert.equal(after?.totalClicks, 1);
   assert.equal(await owner.contactTag.count({ where: { contactId: contact.id, tagId: caseTag.id } }), 0);
+});
+
+test('同一個 lineUid 並行點擊：只算一次唯一點擊', async () => {
+  const link = await createLink({ targetUrl: 'https://example.com/f', title: `${MARK}-f` });
+  const { getLinkForRedirect } = await import('#src/modules/shortlink/shortlink.service.js');
+  const { trackClickFlow } = await import('#src/modules/shortlink/shortlink.flow.js');
+  const resolved = await getLinkForRedirect(owner, link.slug);
+  assert.ok(resolved);
+
+  // 兩個交易都在 count 前停下，等另一個也到達（最多 500 ms）：重現「互相看不到未 commit 的點擊」
+  let arrived = 0;
+  let release: () => void = () => {};
+  const bothArrived = new Promise<void>((r) => (release = r));
+  const barrierPrisma = new Proxy(tenantDb, {
+    get(target, prop, receiver) {
+      if (prop !== '$transaction') return Reflect.get(target, prop, receiver);
+      return (fn: (tx: unknown) => Promise<unknown>, options?: unknown) =>
+        target.$transaction((tx) => {
+          const clickLog = new Proxy(tx.clickLog, {
+            get(cl, p, r) {
+              if (p !== 'count') return Reflect.get(cl, p, r);
+              return async (args: Parameters<typeof tx.clickLog.count>[0]) => {
+                if (++arrived === 2) release();
+                await Promise.race([bothArrived, new Promise((r) => setTimeout(r, 500))]);
+                return cl.count(args);
+              };
+            },
+          });
+          return fn(new Proxy(tx, { get: (t, p, r) => (p === 'clickLog' ? clickLog : Reflect.get(t, p, r)) }));
+        }, options as never);
+    },
+  });
+
+  const deps = { prisma: barrierPrisma as PrismaClient, io: recordingIo(createFlowLog()) };
+  await Promise.all([
+    trackClickFlow(deps, resolved.link, { lineUid: `${MARK}-uid` }),
+    trackClickFlow(deps, resolved.link, { lineUid: `${MARK}-uid` }),
+  ]);
+
+  const after = await owner.shortLink.findUnique({ where: { id: link.id } });
+  assert.equal(after?.totalClicks, 2);
+  assert.equal(after?.uniqueClicks, 1);
 });
 
 test('點擊不存在的短連結：回 410', async () => {

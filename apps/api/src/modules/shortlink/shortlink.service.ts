@@ -362,6 +362,12 @@ export async function recordClick(
     if (resolved) contactId = resolved;
   }
 
+  // 同一個 lineUid 並行點擊時，兩個交易都看不到對方未 commit 的 ClickLog，各自判成唯一點擊。
+  // 以 (短連結, lineUid) 的交易級 advisory lock 排隊，後到的交易等前一個 commit 後才寫入與計數
+  if (meta.lineUid) {
+    await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`shortlink-click:${link.id}:${meta.lineUid}`}, 0))`;
+  }
+
   await prisma.clickLog.create({
     data: {
       shortLinkId: link.id,

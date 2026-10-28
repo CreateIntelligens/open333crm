@@ -59,8 +59,8 @@ GA 與 Meta Pixel 的 ID 在「設定 → 追蹤設定」填寫，見[其他設�
 
 1. 找出點擊者：有 LINE uid 而且連結綁了渠道時，以該渠道身分的聯絡人為準；否則用網址帶的 `cid`。
 2. 寫入一筆 `ClickLog`，記下聯絡人、LINE uid、IP、User-Agent 與來源網址。
-3. 總點擊數加一。不重複點擊數在有 LINE uid 時依 uid 去重；沒有 LINE uid 時，每次點擊都算一次不重複點擊。
-4. 辨識出聯絡人、而且連結設了 `tagOnClick` 時，替他貼標，並發布 `contact.tagged`。貼標失敗只記 warning，點擊照樣記錄。
+3. 總點擊數加一。不重複點擊數在有 LINE uid 時依 uid 去重；沒有 LINE uid 時，每次點擊都算一次不重複點擊。同一個 LINE uid 的點擊以 advisory lock 排隊：後到的點擊等前一筆 commit 之後才寫入與計數，並行點擊不會重複算成不重複點擊。
+4. 辨識出聯絡人、而且連結設了 `tagOnClick` 時，替該聯絡人貼標，並發布 `contact.tagged`。貼標失敗只記 warning，點擊照樣記錄。
 5. 發布 `link.clicked`，自動化規則可以訂閱。
 
 兩個事件與點擊一起寫進 outbox，commit 之後送出，至少一次。commit 之後推播 `link.stats.updated`，讓後台即時更新數字。
