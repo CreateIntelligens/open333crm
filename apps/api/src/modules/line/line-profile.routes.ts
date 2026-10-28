@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { LINE_CHANNEL_NOT_FOUND, syncLineContactProfile } from './line-profile.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';

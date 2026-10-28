@@ -8,7 +8,7 @@
  * POST /sessions/:connectId/connect    連結選定的粉專
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { getConfig } from '../../config/env.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { success } from '../../shared/utils/response.js';

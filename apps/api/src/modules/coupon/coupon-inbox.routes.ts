@@ -7,7 +7,7 @@
  * - GET  /conversations/:conversationId/issued  對話聯絡人收到的券（右側「已發優惠券」）
  */
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { assertConversationChannelVisible } from '../../services/channel-visibility.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';

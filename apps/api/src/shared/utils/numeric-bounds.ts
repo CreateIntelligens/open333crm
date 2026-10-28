@@ -13,7 +13,7 @@
  *
  * 正確行為是回 400 並告知上限，而不是 500。
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** PostgreSQL int4 上下限（Prisma 的 Int） */
 export const INT4_MAX = 2_147_483_647;

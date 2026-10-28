@@ -3,7 +3,7 @@
  * 顧客端綁定在 member-binding-fan.routes.ts。
  */
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { bindMember, getBindingConfigFlow, saveBindingConfigFlow, unbindMemberFlow } from './member-binding.flow.js';
 import { testConnection } from './member-lookup.service.js';

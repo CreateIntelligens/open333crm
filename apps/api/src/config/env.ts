@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),

@@ -9,7 +9,7 @@
  */
 
 import { lookup } from 'node:dns/promises';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { logger } from '@open333crm/core';
 import { isBlockedIp } from '../../shared/utils/ip-guard.js';
 

@@ -9,7 +9,7 @@
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { AppError } from '../../shared/utils/response.js';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';

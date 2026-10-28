@@ -6,7 +6,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { getBindingStore } from '../identity-binding/binding-code.js';
 import { storeLoginLookups } from '../auth/store-account-login.js';
 import {

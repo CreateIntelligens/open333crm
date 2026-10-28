@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
 import { completePresignedUpload, uploadFile, deleteFile, presignUpload, uploadImagemapBase, getApiPublicUrl, UPLOAD_PURPOSES, type UploadPurpose } from './storage.service.js';

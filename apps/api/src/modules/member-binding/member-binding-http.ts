@@ -1,5 +1,5 @@
 /** 會員綁定後台與顧客端路由共用的錯誤對照與輸入格式。 */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { BindingFailureReason } from './member-binding.types.js';
 
 /** 對顧客的說明。技術細節留在 detail 欄位供後台排查，不外露。 */

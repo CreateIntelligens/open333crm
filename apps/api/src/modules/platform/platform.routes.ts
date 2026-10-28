@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { ChannelType } from '@prisma/client';
 import { buildPlatformRegistry, PERMISSION_CODES } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';

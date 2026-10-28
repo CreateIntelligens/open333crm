@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Server as SocketIOServer } from "socket.io";
 import type { TenantDb } from "../../lib/tenant-db.js";
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { getAgentById } from "../auth/auth.service.js";
 import { getContact, listContacts } from "../contact/contact.service.js";

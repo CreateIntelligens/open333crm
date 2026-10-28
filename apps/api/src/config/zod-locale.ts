@@ -10,7 +10,7 @@
  *
  * 專案使用 zod ^3.22（zod v4 的 API 是 z.config({ customError })，寫法不同）。
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const TYPE_LABELS: Record<string, string> = {
   string: '文字',

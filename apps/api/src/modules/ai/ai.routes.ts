@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { suggestReply, summarizeConversation } from './ai.service.js';
 import { analyzeSentiment } from './sentiment.service.js';
 import { classifyIssue } from './classify.service.js';

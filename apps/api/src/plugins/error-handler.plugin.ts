@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyError } from 'fastify';
-import { ZodError } from 'zod';
+import { ZodError } from 'zod/v3';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../shared/utils/response.js';
 

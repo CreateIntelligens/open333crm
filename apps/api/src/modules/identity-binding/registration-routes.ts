@@ -7,7 +7,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { AppError, success } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import { tenantScopedClient, withTenant } from '../../lib/tenant-db.js';

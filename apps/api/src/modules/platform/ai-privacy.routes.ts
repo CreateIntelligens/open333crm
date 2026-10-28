@@ -1,5 +1,5 @@
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { getTenantAiPrivacy, setTenantAiPrivacy } from './ai-privacy.service.js';
 

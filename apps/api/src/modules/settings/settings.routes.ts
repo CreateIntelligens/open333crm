@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { AppError, success } from "../../shared/utils/response.js";
 import { getOfficeHours, updateOfficeHours } from "./office-hours.service.js";
 import {

@@ -3,7 +3,7 @@
  * 平台側審核路由在 platform.routes.ts（平台 superuser 認證）。
  */
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import {

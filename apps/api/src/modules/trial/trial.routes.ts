@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
 import { requestTrial, resendTrial, verifyAndProvision } from './trial.service.js';

@@ -5,7 +5,7 @@
  * service 只收 TenantCtx（AGENTS.md 結構規則 2）。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { parseDateOnly } from '@open333crm/core';
 import { COUPON_ISSUED_VIA, isReservedCouponIssuedVia } from '@open333crm/shared';
 import { requirePermission } from '../../guards/rbac.guard.js';

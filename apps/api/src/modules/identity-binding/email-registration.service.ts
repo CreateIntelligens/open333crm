@@ -4,7 +4,7 @@
  * 流程在 identifier-registration.ts，與手機登記共用；這裡只描述 email 的格式、比對與訊息。
  * 比對不分大小寫（客服手動輸入的 email 可能有大寫）。
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { BindingStore } from './binding-code.js';
 import type { BindingActor, BindingDeps } from './binding-common.js';

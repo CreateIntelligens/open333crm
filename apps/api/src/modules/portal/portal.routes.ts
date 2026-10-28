@@ -25,7 +25,7 @@ import {
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { int4Schema } from '../../shared/utils/numeric-bounds.js';
 
 // 積分調整：允許負數（扣點），但必須是能存進 Int 欄位的整數。

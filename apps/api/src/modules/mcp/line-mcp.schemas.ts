@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 export const lineMcpPreviewRequestSchema = z.object({
   operation: z.enum(["direct_send", "broadcast"]),

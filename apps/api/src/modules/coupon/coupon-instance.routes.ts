@@ -4,7 +4,7 @@
  * 與 coupon.routes.ts 同前綴，但只處理「已發出的券」這個子資源，避免單一路由檔超過結構規則 3 的上限。
  */
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { EXPORT_SYNC_LIMIT, readExportFile } from './coupon-export.service.js';
 import { getBindingStore, type BindingStore } from '../identity-binding/binding-code.js';

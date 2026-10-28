@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { ChatboxMessageInput } from '@open333crm/shared';
 import { AppError, success } from '../../shared/utils/response.js';
 import {
