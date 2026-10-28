@@ -68,7 +68,7 @@ export function BroadcastCouponField({ value, onChange, preview, acknowledged, o
         <div className="mt-1 space-y-1 text-xs text-muted-foreground">
           <p>每位收件人各得一張券與自己的票券連結，會一則一則送出（不使用一次群發）。</p>
           <p>
-            素材中放 <code className="rounded bg-muted px-1">{'{{coupon.url}}'}</code> 會代入票券連結；沒放時，素材之後會再送一則發券文字。素材可以不選，只送發券文字。
+            素材有顧客專屬券連結（<code className="rounded bg-muted px-1">{'{{coupon.url}}'}</code>）時，會換成每位收件人自己的券連結；沒有時，素材之後會再送一則發券文字。素材可以不選，只送發券文字。
           </p>
           {preview?.coupon && (
             <p className="text-foreground">

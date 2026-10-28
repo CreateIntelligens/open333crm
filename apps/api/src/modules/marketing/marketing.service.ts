@@ -10,6 +10,7 @@ import {
   renderTemplateBody,
   extractVariables,
   buildVariableMap,
+  bodyHasCouponUrl,
   type TemplateVariable,
 } from './template-renderer.js';
 import { resolveContext } from './template-context.js';
@@ -254,6 +255,11 @@ export async function createBroadcast(
       throw new AppError(notFound('material'), 'NOT_FOUND', 404);
     }
     materialChannelType = material.channelType;
+    // 一般廣播不會發券：{{coupon.url}} 會原字送出，顧客拿不到券（design D2；只在建立時檢查，發送不擋）
+    if (!data.couponId && bodyHasCouponUrl(material.body)) {
+      const message = '這個素材有顧客專屬券連結，請在「附上優惠券」選一張券，否則顧客會看到 {{coupon.url}}';
+      throw new AppError(message, 'MATERIAL_NEEDS_COUPON', 400, { issues: [{ path: 'materialId', message }] });
+    }
   } else if (data.templateId) {
     const template = await prisma.messageTemplate.findFirst({
       where: {

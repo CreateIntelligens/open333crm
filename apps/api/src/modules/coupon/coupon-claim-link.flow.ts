@@ -9,12 +9,14 @@ import {
   findClaimLinkTenant,
   openPublicClaimPage,
   getClaimLink,
+  listAvailableClaimLinks,
   listClaimLinks,
   setClaimLinkStatus,
   updateClaimLink,
 } from './coupon-claim-link.service.js';
 
 export const listClaimLinksFlow = flowOf(listClaimLinks);
+export const listAvailableClaimLinksFlow = flowOf(listAvailableClaimLinks);
 export const createClaimLinkFlow = flowOf(createClaimLink);
 export const updateClaimLinkFlow = flowOf(updateClaimLink);
 export const setClaimLinkStatusFlow = flowOf(setClaimLinkStatus);
