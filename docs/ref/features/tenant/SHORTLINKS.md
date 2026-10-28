@@ -42,7 +42,7 @@
 
 ## 點擊時發生什麼
 
-轉址分成兩步：`GET /s/:slug` 只回應頁面，不記錄點擊；頁面上的程式再呼叫 `POST /s/track` 記錄點擊。`POST /s/track` 是唯一記錄點擊的地方。
+轉址分成兩步：`GET /s/:slug` 只回應頁面，不記錄點擊；頁面上的程式再呼叫 `POST /s/track` 記錄點擊。`POST /s/track` 是唯一記錄點擊的地方。`POST /s/track` 只接受 `{ slug, cid?, lineUid? }`：三個欄位都必須是字串，長度上限 64，`cid` 與 `lineUid` 可以是 `null`。格式錯誤時回 400，不記錄點擊。
 
 `GET /s/:slug` 依點擊來源回應：
 
