@@ -12,8 +12,9 @@ import useSWR from 'swr';
 import api from '@/lib/api';
 import { fetchAllPages } from '@/lib/fetch-all-pages';
 import type { Coupon } from '@/hooks/useCoupons';
+import { isCouponIssuable } from '@/lib/coupon/issuable';
 
-export type CouponOption = Pick<Coupon, 'id' | 'name' | 'displayCode' | 'purpose' | 'status'>;
+export type CouponOption = Pick<Coupon, 'id' | 'name' | 'displayCode' | 'purpose' | 'status' | 'validityMode' | 'endAt'>;
 
 const PURPOSE_LABEL: Record<string, string> = { MARKETING: '行銷', SERVICE: '客服補償' };
 
@@ -43,7 +44,8 @@ interface Props {
 
 export function CouponSelectField({ id = 'coupon-select', label, value, onChange, emptyLabel = '— 不發送優惠券 —' }: Props) {
   const { coupons, error, isLoading } = useCouponOptions();
-  const active = coupons.filter((c) => c.status === 'ACTIVE');
+  // 固定效期已過到期日的券狀態仍是進行中，但規則觸發時不會發券，不列出
+  const active = coupons.filter((c) => isCouponIssuable(c));
   const missing = Boolean(value) && !active.some((c) => c.id === value);
   // 清單載入完成後才判斷「找不到」，載入中或載入失敗不要把已存的券標成找不到
   const unavailable = missing && !isLoading && !error;
@@ -72,7 +74,7 @@ export function CouponSelectField({ id = 'coupon-select', label, value, onChange
         <p className="mt-1 text-xs text-destructive">無法載入優惠券清單（可能沒有檢視優惠券的權限），請重新整理或洽管理員。</p>
       )}
       {unavailable && (
-        <p className="mt-1 text-xs text-warning">這張券已暫停、已結束或被刪除，規則觸發時不會發券；請換一張進行中的券。</p>
+        <p className="mt-1 text-xs text-warning">這張券已暫停、已結束、已過到期日或被刪除，規則觸發時不會發券；請換一張進行中的券。</p>
       )}
     </div>
   );

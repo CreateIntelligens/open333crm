@@ -8,7 +8,7 @@
  * ⚠️ 全程在交易內：配額檢查與建立之間若被插隊，總量會超發。
  */
 
-import { couponSourceName, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
+import { couponSourceName, isCouponPastFixedEnd, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { ContactTagged } from '../tag/tagging.service.js';
 import { applyClaimTag } from './coupon-tagging.js';
@@ -67,6 +67,10 @@ export async function issueCoupons(
   if (!coupon) throw new CouponValidationError('查無此券');
   if (coupon.status !== 'ACTIVE') {
     throw new CouponValidationError('僅能發放進行中的券');
+  }
+  // 固定效期到期後狀態仍是進行中（沒有排程自動結束），發出去一拿到就過期
+  if (isCouponPastFixedEnd(coupon)) {
+    throw new CouponValidationError('券已過到期日，無法發放');
   }
 
   const outcome = await issueInstances(tx, {

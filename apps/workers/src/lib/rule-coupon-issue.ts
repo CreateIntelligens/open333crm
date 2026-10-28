@@ -26,6 +26,7 @@ import {
   couponSourceName,
   dispatchOutboxRows,
   issueInstances,
+  isCouponPastFixedEnd,
   issueWalletToken,
   logger,
   voidPendingInstance,
@@ -51,7 +52,7 @@ export type RuleCouponFailureReason =
 
 export const RULE_COUPON_FAILURE_TEXT: Record<RuleCouponFailureReason, string> = {
   COUPON_NOT_FOUND: '券已刪除或不屬於這個租戶',
-  COUPON_INACTIVE: '券不是進行中（已暫停或已結束）',
+  COUPON_INACTIVE: '券不是進行中（已暫停、已結束或已過到期日）',
   PER_CONTACT_LIMIT_REACHED: '顧客已達每人領取上限',
   TOTAL_LIMIT_REACHED: '發行總量已發完',
   CODES_EXHAUSTED: '序號包的序號已用完',
@@ -79,6 +80,8 @@ const SKIP_REASON: Record<IssueSkipReason, RuleCouponFailureReason> = {
   CODE_ALLOCATION_CONFLICT: 'CODES_EXHAUSTED',
   // 聯絡人在發券途中被刪除或合併
   CONTACT_NOT_FOUND: 'NO_CHANNEL_IDENTITY',
+  // 入口已先擋下（見下方狀態檢查）；對商家與顧客而言都是「券不能發了」
+  COUPON_EXPIRED: 'COUPON_INACTIVE',
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -171,7 +174,8 @@ export async function issueCouponForRule(
   if (!coupon) return fail('COUPON_NOT_FOUND');
   // workers 沒有網站客服等渠道的外掛，發券訊息一定送不出（design D26）
   if (!AUTOMATION_DELIVERY_CHANNEL_TYPES.includes(conv.channel.channelType)) return fail('CHANNEL_NOT_SUPPORTED');
-  if (coupon.status !== 'ACTIVE') return fail('COUPON_INACTIVE');
+  // 固定效期到期後狀態仍是進行中，要另外擋，否則發出的券一拿到就過期
+  if (coupon.status !== 'ACTIVE' || isCouponPastFixedEnd(coupon)) return fail('COUPON_INACTIVE');
   const identity = contactId
     ? await prisma.channelIdentity.findFirst({
       where: { contactId, channelId: conv.channelId, contact: { tenantId } },
@@ -186,7 +190,7 @@ export async function issueCouponForRule(
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${coupon.id}, 0))`;
     const locked = await tx.coupon.findFirst({ where: { id: coupon.id, tenantId } });
     if (!locked) return { ok: false as const, reason: 'COUPON_NOT_FOUND' as const };
-    if (locked.status !== 'ACTIVE') return { ok: false as const, reason: 'COUPON_INACTIVE' as const };
+    if (locked.status !== 'ACTIVE' || isCouponPastFixedEnd(locked)) return { ok: false as const, reason: 'COUPON_INACTIVE' as const };
     const outcome = await issueInstances(tx, {
       tenantId,
       coupon: locked,
