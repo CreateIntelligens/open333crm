@@ -65,7 +65,7 @@ function scenario(name: string, opts: { fbVerified?: boolean }, fn: (f: Fixture)
 afterAll(() => prisma.$disconnect());
 
 const merge = (f: Fixture) =>
-  mergeContacts(f.tx, { tenantId: T, survivorId: f.lineContact, mergedId: f.fbContact, source: 'PHONE' });
+  mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: f.lineContact, mergedId: f.fbContact, source: 'PHONE' });
 
 scenario('合併後券在保留方的券夾', {}, async (f) => {
   await merge(f);
@@ -82,7 +82,7 @@ scenario('合併時帶入歸戶驗證', { fbVerified: true }, async (f) => {
 
 scenario('解除合併時券回到原聯絡人', { fbVerified: true }, async (f) => {
   const { mergeLogId } = await merge(f);
-  await revertMerge(f.tx, { tenantId: T, mergeLogId, revertedBy: 'customer' });
+  await revertMerge({ tx: f.tx, tenantId: T }, { mergeLogId, revertedBy: 'customer' });
   const instance = await f.tx.couponInstance.findFirst({ where: { id: f.instanceId } });
   assert.equal(instance?.contactId, f.fbContact);
   const survivor = await f.tx.contact.findFirst({ where: { id: f.lineContact } });

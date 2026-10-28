@@ -356,7 +356,7 @@ scenario('一邊已經用 email 歸戶過', async (f) => {
   const fbA = await f.person('A-FB', { channel: f.fbCh, email: 'a@example.com', createdAt: new Date(Date.now() - DAY) });
   const a = await f.person('A');
   const { mergeContacts } = await import('#src/modules/contact/contact-merge.service.js');
-  await mergeContacts(f.tx, { tenantId: T, survivorId: fbA.contactId, mergedId: a.contactId, source: 'EMAIL' });
+  await mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: fbA.contactId, mergedId: a.contactId, source: 'EMAIL' });
   const ig = await f.tx.channel.create({ data: { tenantId: T, channelType: 'THREADS', displayName: '測試 IG', credentialsEncrypted: 'x', isActive: true } });
   const b = await f.person('B', { channel: { id: ig.id, channelType: 'THREADS' }, phone: '0912345678', email: 'b@example.com' });
   const result = await submit(f, await linkFor(f, { ...a, contactId: fbA.contactId }), '0912345678');

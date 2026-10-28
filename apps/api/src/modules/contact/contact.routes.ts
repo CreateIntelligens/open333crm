@@ -1,17 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import {
-  listContacts,
-  getContact,
-  updateContact,
-  getContactConversations,
-  getContactMessages,
-  getContactCases,
-  getContactTimeline,
-  getMergePreview,
-  mergeContacts,
-} from './contact.service.js';
-import { listMergeLogs, revertMerge } from './contact-merge.service.js';
+  getContactCasesFlow,
+  getContactConversationsFlow,
+  getContactFlow,
+  getContactMessagesFlow,
+  getContactTimelineFlow,
+  getMergePreviewFlow,
+  listContactsFlow,
+  listMergeLogsFlow,
+  mergeContactsFlow,
+  revertMergeFlow,
+  updateContactFlow,
+} from './contact.flow.js';
 import { addTagToTargetFlow, removeTagFromTargetFlow } from '../tag/tag.flow.js';
 import { actorOf } from '../../lib/request-actor.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
@@ -22,7 +23,6 @@ import {
 } from '../identity-binding/identity-binding.service.js';
 import { issueEmailRegistrationLink } from '../identity-binding/email-registration.service.js';
 import { issuePhoneRegistrationLink } from '../identity-binding/phone-registration.service.js';
-import { withTenant } from '../../lib/tenant-db.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
@@ -112,9 +112,9 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
-    const { contacts, total } = await listContacts(
-      request.tenantPrisma,
-      request.agent.tenantId,
+    const { contacts, total } = await listContactsFlow(
+      fastify,
+      actorOf(request).tenantId,
       filters,
       { page, limit },
       await resolveChannelVisibility(request),
@@ -128,9 +128,9 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.get('/merge-preview', { preHandler: [perm.merge] }, async (request, reply) => {
     const query = mergePreviewQuerySchema.parse(request.query);
 
-    const preview = await getMergePreview(
-      request.tenantPrisma,
-      request.agent.tenantId,
+    const preview = await getMergePreviewFlow(
+      fastify,
+      actorOf(request).tenantId,
       query.primaryId,
       query.secondaryId,
     );
@@ -142,28 +142,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.post('/merge', { preHandler: [perm.merge] }, async (request, reply) => {
     const body = mergeBodySchema.parse(request.body);
 
-    const result = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
-      mergeContacts(
-        tx,
-        fastify.io,
-        request.agent.tenantId,
-        body.primaryContactId,
-        body.secondaryContactId,
-        request.agent.id,
-      ),
-    );
-
-    // 稽核：合併聯絡人（只放兩造 id，不放姓名/電話等 PII 明文）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'contact.merge',
-      targetType: 'contact',
-      targetId: body.primaryContactId,
-      payload: { primaryContactId: body.primaryContactId, secondaryContactId: body.secondaryContactId },
-      ip: request.ip,
-    });
-
+    const result = await mergeContactsFlow(fastify, actorOf(request), body);
     return reply.send(success(result));
   });
 
@@ -173,28 +152,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     { preHandler: [perm.merge] },
     async (request, reply) => {
       const { logId } = mergeLogParamsSchema.parse(request.params);
-      const tenantId = request.agent.tenantId;
-
-      const result = await withTenant(fastify.prisma, tenantId, (tx) =>
-        revertMerge(tx, { tenantId, mergeLogId: logId, revertedBy: request.agent.id }),
-      );
-
-      fastify.io.to(`tenant:${tenantId}`).emit('contact.merge_reverted', {
-        mergeLogId: logId,
-        survivorId: result.holderId,
-        restoredContactId: result.restoredContactId,
-      });
-
-      await writeTenantAudit(request.tenantPrisma, {
-        tenantId,
-        actorId: request.agent.id,
-        action: 'contact.merge_revert',
-        targetType: 'contact',
-        targetId: result.restoredContactId,
-        payload: { mergeLogId: logId, survivorId: result.survivorId, source: result.source },
-        ip: request.ip,
-      });
-
+      const result = await revertMergeFlow(fastify, actorOf(request), logId);
       return reply.send(success(result));
     },
   );
@@ -340,16 +298,16 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // GET /api/v1/contacts/:id/merge-logs — 此聯絡人相關的合併紀錄（新到舊）
   fastify.get<{ Params: { id: string } }>('/:id/merge-logs', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = contactIdParamsSchema.parse(request.params);
-    const logs = await listMergeLogs(request.tenantPrisma, request.agent.tenantId, id);
+    const logs = await listMergeLogsFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(logs));
   });
 
   // GET /api/v1/contacts/:id
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [perm.view] }, async (request, reply) => {
-    const contact = await getContact(
-      request.tenantPrisma,
+    const contact = await getContactFlow(
+      fastify,
+      actorOf(request).tenantId,
       request.params.id,
-      request.agent.tenantId,
       await resolveChannelVisibility(request),
     );
 
@@ -360,10 +318,10 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [perm.update] }, async (request, reply) => {
     const data = updateContactSchema.parse(request.body);
 
-    const contact = await updateContact(
-      request.tenantPrisma,
+    const contact = await updateContactFlow(
+      fastify,
+      actorOf(request).tenantId,
       request.params.id,
-      request.agent.tenantId,
       data,
       await resolveChannelVisibility(request),
     );
@@ -375,10 +333,10 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id/conversations', { preHandler: [perm.view, perm.inboxView] }, async (request, reply) => {
     const query = paginationQuerySchema.parse(request.query);
 
-    const { conversations, total, hiddenCount } = await getContactConversations(
-      request.tenantPrisma,
+    const { conversations, total, hiddenCount } = await getContactConversationsFlow(
+      fastify,
+      actorOf(request).tenantId,
       request.params.id,
-      request.agent.tenantId,
       query.page,
       query.limit,
       // CM-173：與收件匣一致，分店帳號只看得到可見渠道的對話
@@ -400,10 +358,10 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id/messages', { preHandler: [perm.view, perm.inboxView] }, async (request, reply) => {
     const { id } = contactIdParamsSchema.parse(request.params);
     const query = contactMessagesQuerySchema.parse(request.query);
-    const result = await getContactMessages(
-      request.tenantPrisma,
+    const result = await getContactMessagesFlow(
+      fastify,
+      actorOf(request).tenantId,
       id,
-      request.agent.tenantId,
       await resolveChannelVisibility(request),
       query,
     );
@@ -414,10 +372,10 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id/cases', { preHandler: [perm.view, perm.caseView] }, async (request, reply) => {
     const query = paginationQuerySchema.parse(request.query);
 
-    const { cases, total } = await getContactCases(
-      request.tenantPrisma,
+    const { cases, total } = await getContactCasesFlow(
+      fastify,
+      actorOf(request).tenantId,
       request.params.id,
-      request.agent.tenantId,
       query.page,
       query.limit,
       // CM-173：與案件列表一致，分店帳號只看得到可見渠道的案件
@@ -459,10 +417,10 @@ export default async function contactRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/contacts/:id/timeline
   fastify.get<{ Params: { id: string } }>('/:id/timeline', { preHandler: [perm.view] }, async (request, reply) => {
-    const timeline = await getContactTimeline(
-      request.tenantPrisma,
+    const timeline = await getContactTimelineFlow(
+      fastify,
+      actorOf(request).tenantId,
       request.params.id,
-      request.agent.tenantId,
       // CM-173：時間軸的對話與案件只列可見渠道
       await resolveChannelVisibility(request),
     );

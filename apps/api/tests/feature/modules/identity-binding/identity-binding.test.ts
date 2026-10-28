@@ -312,7 +312,7 @@ scenario('確認：待確認期間對方已和別人合併到同一渠道 → �
   assert.equal((await redeemBindingCode(f.tx, f.deps, f.line, code)).status, 'pending_confirm');
   // 確認前，A 已經透過別的方式綁了另一個 LINE 帳號
   const other = await f.newActor(f.lineChannel, 'E-line');
-  await mergeContacts(f.tx, { tenantId: T, survivorId: f.fb.contactId, mergedId: other.contactId, source: 'MANUAL' });
+  await mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: f.fb.contactId, mergedId: other.contactId, source: 'MANUAL' });
   assert.equal((await confirmBinding(f.tx, f.deps, f.line)).status, 'channel_conflict');
 });
 
@@ -416,7 +416,7 @@ scenario('兌換：A 租戶的代碼送到 B 租戶 → 無效，不透露代碼
 scenario('兌換：發碼方中途已被併入他人 → 沿 mergedIntoId 併到現存聯絡人', async (f) => {
   const code = await issueAndGetCode(f, f.fb);
   const d = await f.tx.contact.create({ data: { tenantId: T, displayName: 'D' } });
-  await mergeContacts(f.tx, { tenantId: T, survivorId: d.id, mergedId: f.fb.contactId, source: 'MANUAL' });
+  await mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: d.id, mergedId: f.fb.contactId, source: 'MANUAL' });
   const r = await bind(f, f.line, code);
   assert.equal(r.status, 'bound');
   assert.equal(r.status === 'bound' && r.survivorId, d.id);
@@ -623,7 +623,7 @@ scenario('解除：依 IdentityMap 掛上的身分記這個平台的個人資料
 
 scenario('解除：同 uid 的身分若接到不是該合併持有者的聯絡人，不記進那筆合併紀錄', async (f) => {
   // B 被手動併入 A；之後 IdentityMap 把同一個 uid 指向另一位聯絡人 C（例如手機比對）
-  const log = await mergeContacts(f.tx, { tenantId: T, survivorId: f.fb.contactId, mergedId: f.line.contactId, source: 'MANUAL' });
+  const log = await mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: f.fb.contactId, mergedId: f.line.contactId, source: 'MANUAL' });
   const c = await f.tx.contact.create({ data: { tenantId: T, displayName: 'C' } });
   await f.tx.identityMap.upsert({
     where: { tenantId_channelType_uid: { tenantId: T, channelType: 'LINE', uid: f.line.uid } },
@@ -653,18 +653,18 @@ scenario('解除：同 uid 的身分若接到不是該合併持有者的聯絡�
 
 scenario('解除：解除較早的合併，不會拿走較晚另一筆合併帶進來的同 uid 身分', async (f) => {
   // B 被客服手動併入 A（第 1 筆）；B 沒有 IdentityMap，之後從第二個 LINE 進站成了新聯絡人 Z
-  const log1 = await mergeContacts(f.tx, { tenantId: T, survivorId: f.fb.contactId, mergedId: f.line.contactId, source: 'MANUAL' });
+  const log1 = await mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: f.fb.contactId, mergedId: f.line.contactId, source: 'MANUAL' });
   const line2 = await f.tx.channel.create({
     data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
   });
   const z = await f.newActor(line2, 'Z');
   await f.tx.channelIdentity.update({ where: { id: z.channelIdentityId }, data: { uid: f.line.uid } });
-  const log2 = await mergeContacts(f.tx, { tenantId: T, survivorId: f.fb.contactId, mergedId: z.contactId, source: 'MANUAL' });
+  const log2 = await mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: f.fb.contactId, mergedId: z.contactId, source: 'MANUAL' });
 
-  await revertMerge(f.tx, { tenantId: T, mergeLogId: log1.mergeLogId, revertedBy: 'agent' });
+  await revertMerge({ tx: f.tx, tenantId: T }, { mergeLogId: log1.mergeLogId, revertedBy: 'agent' });
   assert.equal(await contactOf(f.tx, z.channelIdentityId), f.fb.contactId, 'Z 的身分仍由第 2 筆合併持有');
 
-  await revertMerge(f.tx, { tenantId: T, mergeLogId: log2.mergeLogId, revertedBy: 'agent' });
+  await revertMerge({ tx: f.tx, tenantId: T }, { mergeLogId: log2.mergeLogId, revertedBy: 'agent' });
   assert.equal(await contactOf(f.tx, z.channelIdentityId), z.contactId, '解除第 2 筆後回到 Z');
   const conv = await f.tx.conversation.findFirst({ where: { id: z.conversationId, tenantId: T } });
   assert.equal(conv?.contactId, z.contactId, 'Z 的對話回到 Z');
@@ -674,7 +674,7 @@ scenario('解除：發碼方之後又被併入別人 → 另一邊（目前持�
   await bind(f, f.line, await issueAndGetCode(f, f.fb));
   // A（含 FB、LINE）之後被手動併入 Z
   const z = await f.tx.contact.create({ data: { tenantId: T, displayName: 'Z' } });
-  await mergeContacts(f.tx, { tenantId: T, survivorId: z.id, mergedId: f.fb.contactId, source: 'MANUAL' });
+  await mergeContacts({ tx: f.tx, tenantId: T }, { survivorId: z.id, mergedId: f.fb.contactId, source: 'MANUAL' });
 
   const r = await unbindByCustomer(f.tx, f.deps, { ...f.line, contactId: z.id });
   assert.equal(r.status, 'unbound');

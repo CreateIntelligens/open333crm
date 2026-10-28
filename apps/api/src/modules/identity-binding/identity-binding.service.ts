@@ -350,8 +350,7 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
   };
 
   const merge = await inTransaction(db, async (tx) => {
-    const result = await mergeContacts(tx, {
-      tenantId,
+    const result = await mergeContacts({ tx, tenantId }, {
       survivorId,
       mergedId: redeemerId,
       source: 'BINDING_CODE',
@@ -459,7 +458,7 @@ async function findBindingForIdentity(db: TenantDb, tenantId: string, contactId:
   for (const log of logs) {
     if (checked.has(log.survivorId)) continue;
     checked.add(log.survivorId);
-    const chain = await resolveMergeChain(db, tenantId, log.survivorId);
+    const chain = await resolveMergeChain({ tx: db, tenantId }, log.survivorId);
     if (chain[chain.length - 1] === contactId) return log;
   }
   return null;
@@ -489,7 +488,7 @@ export async function unbindByCustomer(
   }
 
   const result = await inTransaction(db, (tx) =>
-    revertMerge(tx, { tenantId, mergeLogId: log.id, revertedBy: 'customer' }),
+    revertMerge({ tx, tenantId }, { mergeLogId: log.id, revertedBy: 'customer' }),
   );
 
   deps.io?.to(`tenant:${tenantId}`).emit('contact.merge_reverted', {

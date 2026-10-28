@@ -73,7 +73,7 @@
 - 每次合併寫一筆 `ContactMergeLog`，記錄搬了哪些資料。客服可以從 `GET /contacts/:id/merge-logs` 查看，以 `POST /contacts/merge-logs/:logId/revert` 解除合併，資料會搬回去。
 - 合併之後，被合併方從同一平台的另一個渠道進站時，收訊依 `IdentityMap` 把新的渠道身分直接掛到合併後的聯絡人，並把這筆身分記進把這個 uid 帶進來、且資料目前由這位聯絡人持有的每一筆未解除合併紀錄（`recordStitchedIdentity()`；連環合併時可能不只一筆）。解除合併時它跟著搬回，連同它在合併後開的對話與工單；顧客在這個渠道回覆「解除綁定」也找得到綁定。這筆身分的名稱與頭像向該平台讀取，讀不到就留空，不沿用聯絡人的資料。
 
-手動合併另外寫一筆 `contact.merge` 租戶稽核紀錄。
+客服手動合併與解除合併各寫一筆租戶稽核紀錄（`contact.merge`、`contact.merge_revert`），與資料在同一個交易寫入；稽核寫入失敗時，合併或解除合併不生效。commit 之後，系統推播 `contact.merged` 或 `contact.merge_reverted` 給租戶的所有客服。
 
 `LINE_LOGIN`、`FB_LOGIN` 是舊的 LINE／Facebook 登入補 email 流程留下的來源值。該流程已在 change `add-email-identity-merge` 移除，不再產生新紀錄；合併紀錄頁仍能顯示舊值。
 
