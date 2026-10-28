@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy manifests for all workspace packages that api depends on
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm install reads the patches listed in package.json pnpm.patchedDependencies
+COPY patches ./patches
 COPY apps/api/package.json apps/api/package.json
 COPY packages/automation/package.json packages/automation/package.json
 COPY packages/channel-plugins/package.json packages/channel-plugins/package.json
