@@ -429,8 +429,7 @@ async function register(
   // 上面的檢查與合併之間，另一個合併可能剛把同渠道的身分併進既有方：引擎鎖定後再檢查一次並拒絕，
   // 比照上面的檢查回覆顧客（引擎已還原被合併方，交易可照常提交）
   const merge = await inTransaction(db, async (tx) => {
-    const result = await mergeContacts(tx, {
-      tenantId,
+    const result = await mergeContacts({ tx, tenantId }, {
       survivorId: existing.id,
       mergedId: registrantId,
       source: kind.mergeSource,

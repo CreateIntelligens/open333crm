@@ -60,7 +60,7 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
               include: { contact: true },
             });
             // 這個 uid 若是合併帶進來的，把新身分記進那筆合併紀錄，解除時才會一起搬回
-            await recordStitchedIdentity(tx, ctx.tenantId, stitchedContact.id, created);
+            await recordStitchedIdentity({ tx, tenantId: ctx.tenantId }, stitchedContact.id, created);
             return created;
           });
           // 此 uid 在本渠道確實是第一次出現（聯絡人雖已存在於其他渠道）。

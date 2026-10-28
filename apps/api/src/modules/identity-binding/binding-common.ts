@@ -90,7 +90,7 @@ export async function sendBindingMessage(
 
 /** 沿 mergedIntoId 找到目前仍在使用的聯絡人（發碼方可能在兌換前已被併入別人）；找不到或已封存回 null */
 export async function resolveLiveContactId(db: TenantDb, tenantId: string, contactId: string): Promise<string | null> {
-  const chain = await resolveMergeChain(db, tenantId, contactId);
+  const chain = await resolveMergeChain({ tx: db, tenantId }, contactId);
   const holder = chain[chain.length - 1];
   const c = await db.contact.findFirst({ where: { id: holder, tenantId }, select: { isArchived: true } });
   return c && !c.isArchived ? holder : null;

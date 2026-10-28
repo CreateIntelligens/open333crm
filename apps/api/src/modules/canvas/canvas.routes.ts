@@ -203,8 +203,7 @@ export async function identityRoutes(fastify: FastifyInstance) {
         id,
         request.agent.id,
       ).catch(toSuggestionAppError);
-      return mergeContacts(tx, {
-        tenantId,
+      return mergeContacts({ tx, tenantId }, {
         survivorId: primaryContactId,
         mergedId: secondaryContactId,
         source: 'SUGGESTION',

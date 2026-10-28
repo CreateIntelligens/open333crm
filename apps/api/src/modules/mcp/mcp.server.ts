@@ -5,7 +5,7 @@ import type { TenantDb } from "../../lib/tenant-db.js";
 import { z } from "zod/v3";
 
 import { getAgentById } from "../auth/auth.service.js";
-import { getContact, listContacts } from "../contact/contact.service.js";
+import { getContactFlow, listContactsFlow } from "../contact/contact.flow.js";
 import {
   isChannelAccessible,
   type AccessibleChannels,
@@ -190,7 +190,7 @@ export function createMcpServer(
     },
     async ({ q, page, limit }) =>
       textResult(
-        await listContacts(prisma, agent.tenantId, { q }, { page, limit }, await accessible()),
+        await listContactsFlow(flowDeps, agent.tenantId, { q }, { page, limit }, await accessible()),
       ),
   );
 
@@ -256,7 +256,7 @@ export function createMcpServer(
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => textResult(await getContact(prisma, id, agent.tenantId, await accessible())),
+    async ({ id }) => textResult(await getContactFlow(flowDeps, agent.tenantId, id, await accessible())),
   );
 
   server.registerTool(
@@ -369,8 +369,8 @@ export function createMcpServer(
     },
     async ({ q, page, limit }) => {
       if (!hasScope(agent, MCP_LINE_READ_SCOPE)) return scopeError(MCP_LINE_READ_SCOPE);
-      return textResult(await listContacts(
-        prisma,
+      return textResult(await listContactsFlow(
+        flowDeps,
         agent.tenantId,
         { q, channelType: "LINE" },
         { page, limit },

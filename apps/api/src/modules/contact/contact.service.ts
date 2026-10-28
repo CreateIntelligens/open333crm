@@ -1,10 +1,7 @@
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
-import type { Server as SocketIOServer } from 'socket.io';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { mergeContacts as runMergeEngine } from './contact-merge.service.js';
 import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 export interface ContactFilters {
@@ -43,13 +40,13 @@ function combineIdentityInclude(
 }
 
 export async function listContacts(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   filters: ContactFilters,
   pagination: PaginationParams,
   /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
   accessibleChannels: AccessibleChannels,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const where: Prisma.ContactWhereInput = {
     tenantId,
     isArchived: false,
@@ -145,12 +142,12 @@ export async function listContacts(
 }
 
 export async function getContact(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   id: string,
-  tenantId: string,
   /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
   accessibleChannels: AccessibleChannels,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
@@ -185,16 +182,15 @@ export async function getContact(
 }
 
 /** 聯絡人在可見渠道有身分、或沒有任何渠道身分（客服手動建立）時視為看得到 */
-async function isContactVisible(prisma: TenantDb, contactId: string, accessibleChannels: AccessibleChannels): Promise<boolean> {
+async function isContactVisible(ctx: TenantCtx, contactId: string, accessibleChannels: AccessibleChannels): Promise<boolean> {
   if (accessibleChannels === ALL_CHANNELS) return true;
-  const identities = await prisma.channelIdentity.findMany({ where: { contactId }, select: { channelId: true } });
+  const identities = await ctx.tx.channelIdentity.findMany({ where: { contactId }, select: { channelId: true } });
   return identities.length === 0 || identities.some((i) => accessibleChannels.has(i.channelId));
 }
 
 export async function updateContact(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   id: string,
-  tenantId: string,
   data: {
     displayName?: string;
     phone?: string | null;
@@ -207,6 +203,7 @@ export async function updateContact(
   /** CM-173：email 撞到的聯絡人只在看不到的渠道有身分時，409 不帶對方的 id 與名稱 */
   accessibleChannels: AccessibleChannels = ALL_CHANNELS,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const { allowDuplicateEmail, ...fields } = data;
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
@@ -226,7 +223,7 @@ export async function updateContact(
       select: { id: true, displayName: true },
     });
     if (other) {
-      const visible = await isContactVisible(prisma, other.id, accessibleChannels);
+      const visible = await isContactVisible(ctx, other.id, accessibleChannels);
       throw new AppError(
         '此 email 已由其他聯絡人使用',
         'EMAIL_IN_USE',
@@ -276,12 +273,12 @@ function decodeMessageCursor(cursor: string): { createdAt: Date; id: string } | 
  * 看不到的渠道只回傳對話數量，不回傳內容或渠道名稱。
  */
 export async function getContactMessages(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   contactId: string,
-  tenantId: string,
   accessibleChannels: AccessibleChannels,
   opts: { before?: string; limit: number },
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const contact = await prisma.contact.findFirst({ where: { id: contactId, tenantId }, select: { id: true } });
   if (!contact) throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
 
@@ -330,14 +327,14 @@ export async function getContactMessages(
 }
 
 export async function getContactConversations(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   contactId: string,
-  tenantId: string,
   page: number,
   limit: number,
   /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
   accessibleChannels: AccessibleChannels,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const channelId = channelIdWhereFilter(accessibleChannels);
   const where: Prisma.ConversationWhereInput = {
     contactId,
@@ -398,14 +395,14 @@ export async function getContactConversations(
 }
 
 export async function getContactCases(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   contactId: string,
-  tenantId: string,
   page: number,
   limit: number,
   /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
   accessibleChannels: AccessibleChannels,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const channelId = channelIdWhereFilter(accessibleChannels);
   const where: Prisma.CaseWhereInput = {
     contactId,
@@ -441,12 +438,12 @@ export interface TimelineEntry {
 }
 
 export async function getContactTimeline(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   contactId: string,
-  tenantId: string,
   /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
   accessibleChannels: AccessibleChannels,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const channelId = channelIdWhereFilter(accessibleChannels);
   const channelFilter = channelId ? { channelId } : {};
   // Verify contact exists
@@ -570,12 +567,8 @@ export async function getContactTimeline(
   return timeline;
 }
 
-export async function getMergePreview(
-  prisma: TenantDb,
-  tenantId: string,
-  primaryId: string,
-  secondaryId: string,
-) {
+export async function getMergePreview(ctx: TenantCtx, primaryId: string, secondaryId: string) {
+  const { tx: prisma, tenantId } = ctx;
   const [primary, secondary] = await Promise.all([
     prisma.contact.findFirst({
       where: { id: primaryId, tenantId },
@@ -651,39 +644,5 @@ export async function getMergePreview(
       totalConversations: primary._count.conversations + secondary._count.conversations,
       totalCases: primary._count.cases + secondary._count.cases,
     },
-  };
-}
-
-export async function mergeContacts(
-  prisma: TenantDb,
-  io: SocketIOServer,
-  tenantId: string,
-  primaryContactId: string,
-  secondaryContactId: string,
-  actorAgentId?: string,
-) {
-  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）；
-  // 實際搬移由統一合併引擎負責（見 contact-merge.service.ts）
-  const result = await runMergeEngine(prisma, {
-    tenantId,
-    survivorId: primaryContactId,
-    mergedId: secondaryContactId,
-    source: 'MANUAL',
-    actorAgentId,
-  });
-
-  io.to(`tenant:${tenantId}`).emit('contact.merged', {
-    primaryContactId,
-    secondaryContactId,
-    primaryName: result.survivor.displayName,
-    secondaryName: result.merged.displayName,
-  });
-
-  return {
-    primaryContactId,
-    secondaryContactId,
-    primaryName: result.survivor.displayName,
-    secondaryName: result.merged.displayName,
-    mergeLogId: result.mergeLogId,
   };
 }

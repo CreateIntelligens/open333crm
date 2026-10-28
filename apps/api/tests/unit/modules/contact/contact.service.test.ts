@@ -43,8 +43,7 @@ async function testListContactsIncludesSafeChannelMetadata() {
   };
 
   const result = await listContacts(
-    prisma as never,
-    'tenant-1',
+    { tx: prisma as never, tenantId: 'tenant-1' },
     {},
     { page: 1, limit: 20 },
     ALL_CHANNELS,
@@ -127,8 +126,7 @@ async function testListContactsCanExcludeChannelIdentitiesFromPayload() {
   };
 
   const result = await listContacts(
-    prisma as never,
-    'tenant-1',
+    { tx: prisma as never, tenantId: 'tenant-1' },
     { excludeChannelType: 'WEBCHAT' },
     { page: 1, limit: 20 },
     ALL_CHANNELS,

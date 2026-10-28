@@ -169,7 +169,7 @@ test('合併時才發現同一渠道：登記方 channel_conflict、email 不變
   let firstDone!: (pid: number) => void;
   const firstMerged = new Promise<number>((r) => (firstDone = r));
   const tx1 = db(async (tx) => {
-    await mergeContacts(tx, { tenantId: T, survivorId: b.contactId, mergedId: a1.contactId, source: 'MANUAL' });
+    await mergeContacts({ tx: tx, tenantId: T }, { survivorId: b.contactId, mergedId: a1.contactId, source: 'MANUAL' });
     firstDone(await backendPid(tx));
     await gate;
   });

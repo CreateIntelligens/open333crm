@@ -16,6 +16,10 @@ All notable changes to **open333CRM** will be documented in this file.
   - `contact.tagged` 事件改成與貼標在同一個交易寫進 outbox，commit 之後才送出，保證至少送出一次。原本在交易內直接送出：commit 之前就送出，rollback 時也照樣送出。適用的入口：客服手動貼聯絡人標籤、素材點擊貼標（webhook）、會員綁定時貼標、批次發券時貼領券標籤。
   - 修改素材標籤的名稱時，標籤改名與素材上的標籤字串在同一個交易寫入。原本各自 commit，中途失敗時兩邊的名稱不一致。
   - 短連結點擊貼標的行為不變，隨 `shortlink` 模組搬遷。
+- **聯絡人模組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `contact.service.ts` 與合併引擎 `contact-merge.service.ts` 改收 `TenantCtx`，聯絡人的查詢、修改、合併與解除合併改呼叫新的 `contact.flow.ts`；MCP 的聯絡人查詢工具也改走 flow。可觀察的差異：
+  - 客服手動合併時，`contact.merged` 推播在 commit 之後才送出。原本在交易內送出：commit 之前就送出，rollback 時也照樣送出。
+  - 手動合併與解除合併的稽核（`contact.merge`、`contact.merge_revert`）與資料在同一個交易寫入。稽核寫入失敗時，合併或解除合併不生效、請求回錯誤；原本是資料照常寫入、稽核遺失。
+  - 綁定代碼、email／手機登記、合併建議、收訊時記錄合併帶進來的身分，這些入口的行為不變，隨各自的模組搬遷。傳送綁定連結、email 登記連結、手機登記連結的路由也不變，隨 `identity-binding` 模組在階段 4 搬遷。
 
 ### Fixed
 

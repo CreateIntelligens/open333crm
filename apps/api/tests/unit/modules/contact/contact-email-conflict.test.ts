@@ -50,7 +50,7 @@ const people = () => [
 test('改成他人的 email', async () => {
   const { db, updates } = mockDb(people());
   await assert.rejects(
-    () => updateContact(db, 'a', TENANT, { email: 'amy@example.com' }),
+    () => updateContact({ tx: db, tenantId: TENANT }, 'a', { email: 'amy@example.com' }),
     (err: unknown) => {
       assert.ok(err instanceof AppError);
       assert.equal(err.statusCode, 409);
@@ -64,7 +64,7 @@ test('改成他人的 email', async () => {
 
 test('確認後仍要儲存', async () => {
   const { db, updates } = mockDb(people());
-  await updateContact(db, 'a', TENANT, { email: 'amy@example.com', allowDuplicateEmail: true });
+  await updateContact({ tx: db, tenantId: TENANT }, 'a', { email: 'amy@example.com', allowDuplicateEmail: true });
   assert.equal(updates.length, 1);
   assert.equal(updates[0].data.email, 'amy@example.com');
   assert.ok(!('allowDuplicateEmail' in updates[0].data), '確認旗標不寫進資料庫');
@@ -72,10 +72,10 @@ test('確認後仍要儲存', async () => {
 
 test('沒有他人使用、清除 email、或只改其他欄位時不檢查', async () => {
   const { db, updates } = mockDb([...people(), { id: 'c', displayName: '封存', email: 'old@example.com', isArchived: true }]);
-  await updateContact(db, 'a', TENANT, { email: 'new@example.com' });
-  await updateContact(db, 'a', TENANT, { email: 'old@example.com' });
-  await updateContact(db, 'a', TENANT, { email: null });
-  await updateContact(db, 'a', TENANT, { displayName: '小明二號' });
+  await updateContact({ tx: db, tenantId: TENANT }, 'a', { email: 'new@example.com' });
+  await updateContact({ tx: db, tenantId: TENANT }, 'a', { email: 'old@example.com' });
+  await updateContact({ tx: db, tenantId: TENANT }, 'a', { email: null });
+  await updateContact({ tx: db, tenantId: TENANT }, 'a', { displayName: '小明二號' });
   assert.equal(updates.length, 4);
 });
 
@@ -84,14 +84,14 @@ test('重存已確認共用的 email 不再回 409', async () => {
     { id: 'a', displayName: '小明', email: 'Amy@example.com' },
     { id: 'b', displayName: '王小美', email: 'amy@example.com' },
   ]);
-  await updateContact(db, 'a', TENANT, { email: 'amy@example.com', displayName: '小明' });
+  await updateContact({ tx: db, tenantId: TENANT }, 'a', { email: 'amy@example.com', displayName: '小明' });
   assert.equal(updates.length, 1);
 });
 
 test('對方只在看不到的渠道有身分時，409 不帶對方的資料', async () => {
   const { db } = mockDb(people(), [{ contactId: 'b', channelId: 'ch-hidden' }]);
   await assert.rejects(
-    () => updateContact(db, 'a', TENANT, { email: 'amy@example.com' }, new Set(['ch-visible'])),
+    () => updateContact({ tx: db, tenantId: TENANT }, 'a', { email: 'amy@example.com' }, new Set(['ch-visible'])),
     (err: unknown) => {
       assert.ok(err instanceof AppError);
       assert.equal(err.code, 'EMAIL_IN_USE');
@@ -102,12 +102,12 @@ test('對方只在看不到的渠道有身分時，409 不帶對方的資料', a
   // 看得到的渠道、或沒有渠道身分的聯絡人，照常帶資料
   const visible = mockDb(people(), [{ contactId: 'b', channelId: 'ch-visible' }]);
   await assert.rejects(
-    () => updateContact(visible.db, 'a', TENANT, { email: 'amy@example.com' }, new Set(['ch-visible'])),
+    () => updateContact({ tx: visible.db, tenantId: TENANT }, 'a', { email: 'amy@example.com' }, new Set(['ch-visible'])),
     (err: unknown) => (err as AppError).details?.contactId === 'b',
   );
   const all = mockDb(people(), [{ contactId: 'b', channelId: 'ch-hidden' }]);
   await assert.rejects(
-    () => updateContact(all.db, 'a', TENANT, { email: 'amy@example.com' }, ALL_CHANNELS),
+    () => updateContact({ tx: all.db, tenantId: TENANT }, 'a', { email: 'amy@example.com' }, ALL_CHANNELS),
     (err: unknown) => (err as AppError).details?.contactId === 'b',
   );
 });

@@ -158,7 +158,7 @@ test('Two merges into the same survivor at the same time：只有一個成功，
 
   const results = await Promise.allSettled(
     [a1, a2].map((a) =>
-      db((tx) => mergeContacts(tx, { tenantId: T, survivorId: b.id, mergedId: a.id, source: 'MANUAL' })),
+      db((tx) => mergeContacts({ tx: tx, tenantId: T }, { survivorId: b.id, mergedId: a.id, source: 'MANUAL' })),
     ),
   );
 

@@ -214,7 +214,7 @@ const owner = (db: FakeDb, t: keyof FakeDb, id: string) =>
 
 test('合併：各表關聯資料全數搬到 survivor，merged 封存不刪除', async () => {
   const db = makeDb();
-  const result = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const result = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
 
   for (const [t, id] of [
     ['channelIdentity', 'ci-m-fb'],
@@ -252,7 +252,7 @@ const balanceOf = (db: FakeDb, contactId: string) =>
 
 test('合併：點數以轉出／轉入兩筆交易合計，不直接搬交易（帳本 append-only）', async () => {
   const db = makeDb();
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
   assert.equal(balanceOf(db, 'S'), 150, 'survivor 餘額＝雙方合計');
   assert.equal(balanceOf(db, 'M'), 0, '被合併方轉出後為 0');
   assert.equal(owner(db, 'pointTransaction', 'pt-m'), 'M', '原交易留在原主人的帳本上');
@@ -262,23 +262,23 @@ test('合併：點數以轉出／轉入兩筆交易合計，不直接搬交易�
 
 test('解除：點數轉回；合併後已用掉部分時只轉回剩餘的', async () => {
   const db = makeDb();
-  const full = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId: full.mergeLogId, revertedBy: 'agent-1' });
+  const full = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId: full.mergeLogId, revertedBy: 'agent-1' });
   assert.equal(balanceOf(db, 'M'), 50);
   assert.equal(balanceOf(db, 'S'), 100);
 
   const db2 = makeDb();
-  const r = await mergeContacts(asDb(db2), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const r = await mergeContacts({ tx: asDb(db2), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
   // 合併後 survivor 用掉 120 點，只剩 30
   db2.pointTransaction.rows.push({ id: 'pt-spend', tenantId: T, contactId: 'S', amount: -120, balance: 30, createdAt: new Date(Date.now() + 5000) });
-  await revertMerge(asDb(db2), { tenantId: T, mergeLogId: r.mergeLogId, revertedBy: 'agent-1' });
+  await revertMerge({ tx: asDb(db2), tenantId: T }, { mergeLogId: r.mergeLogId, revertedBy: 'agent-1' });
   assert.equal(balanceOf(db2, 'M'), 30, '只轉回剩餘的 30 點');
   assert.equal(balanceOf(db2, 'S'), 0, 'survivor 不會變負數');
 });
 
 test('合併：標籤去重且保留到期日，重複的不留在封存聯絡人上', async () => {
   const db = makeDb();
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
 
   const sTags = db.contactTag.rows.filter((r) => r.contactId === 'S').map((r) => r.tagId).sort();
   assert.deepEqual(sTags, ['promo', 'vip']);
@@ -289,7 +289,7 @@ test('合併：標籤去重且保留到期日，重複的不留在封存聯絡�
 
 test('合併：屬性衝突時 survivor 優先，其餘搬過去', async () => {
   const db = makeDb();
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
 
   const sAttrs = Object.fromEntries(
     db.contactAttribute.rows.filter((r) => r.contactId === 'S').map((r) => [r.key, r.value]),
@@ -299,7 +299,7 @@ test('合併：屬性衝突時 survivor 優先，其餘搬過去', async () => {
 
 test('合併：廣播收件紀錄衝突的保留原處，不衝突的搬過去', async () => {
   const db = makeDb();
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
 
   assert.equal(owner(db, 'broadcastRecipient', 'br-m-2'), 'S');
   assert.equal(owner(db, 'broadcastRecipient', 'br-m-1'), 'M', '雙方都收過的廣播不刪、不搬');
@@ -308,7 +308,7 @@ test('合併：廣播收件紀錄衝突的保留原處，不衝突的搬過去',
 
 test('合併：聯絡人關係改指 survivor，自我關聯與重複的刪除', async () => {
   const db = makeDb();
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
 
   const rels = db.contactRelation.rows.map((r) => `${r.fromContactId}->${r.toContactId}:${r.relationType}`).sort();
   assert.deepEqual(rels, ['S->X:family', 'X->S:colleague']);
@@ -316,7 +316,7 @@ test('合併：聯絡人關係改指 survivor，自我關聯與重複的刪除',
 
 test('合併：survivor 空欄由 merged 補，已有值不覆蓋', async () => {
   const db = makeDb();
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
 
   const s = db.contact.rows.find((c) => c.id === 'S')!;
   assert.equal(s.phone, '0912345678');
@@ -326,7 +326,7 @@ test('合併：survivor 空欄由 merged 補，已有值不覆蓋', async () => 
 
 test('合併：待審建議改為 SUPERSEDED，先前併入 merged 的聯絡人改指 survivor', async () => {
   const db = makeDb();
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
 
   assert.equal(db.mergeSuggestion.rows.find((r) => r.id === 'sug-pending')!.status, 'SUPERSEDED');
   assert.equal(db.mergeSuggestion.rows.find((r) => r.id === 'sug-other')!.status, 'PENDING');
@@ -338,15 +338,15 @@ test('合併：跨租戶、自己合併自己、已封存都拒絕且不動任�
   const before = JSON.stringify(db);
 
   await assert.rejects(
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'B-1', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'B-1', source: 'MANUAL' }),
     (e: { statusCode?: number }) => e.statusCode === 404,
   );
   await assert.rejects(
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'S', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'S', source: 'MANUAL' }),
     (e: { statusCode?: number }) => e.statusCode === 400,
   );
   await assert.rejects(
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'OLD', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'OLD', source: 'MANUAL' }),
     (e: { statusCode?: number }) => e.statusCode === 400,
   );
   assert.equal(JSON.stringify(db), before);
@@ -354,14 +354,13 @@ test('合併：跨租戶、自己合併自己、已封存都拒絕且不動任�
 
 test('解除：恢復被合併方與當次搬走的渠道身分／對話／點數，標籤屬性不回收', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), {
-    tenantId: T,
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, {
     survivorId: 'S',
     mergedId: 'M',
     source: 'BINDING_CODE',
   });
 
-  const result = await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'customer' });
+  const result = await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'customer' });
   assert.equal(result.restoredContactId, 'M');
 
   const m = db.contact.rows.find((c) => c.id === 'M')!;
@@ -390,12 +389,12 @@ test('解除：恢復被合併方與當次搬走的渠道身分／對話／點�
 
 test('解除：AI 長期記憶與合併後才新開的該渠道對話／案件也搬回', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
   // 合併後顧客從 FB 再進線，對話與案件開在 survivor 身上
   db.conversation.rows.push({ id: 'conv-after', tenantId: T, contactId: 'S', channelId: 'ch-fb', createdAt: new Date(Date.now() + 1000) });
   db.case.rows.push({ id: 'case-after', tenantId: T, contactId: 'S', channelId: 'ch-fb', createdAt: new Date(Date.now() + 1000) });
 
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'customer' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'customer' });
   assert.equal(owner(db, 'longTermMemory', 'ltm-m'), 'M', 'AI 記憶不可留在對方身上');
   assert.equal(owner(db, 'clickLog', 'cl-m'), 'M');
   assert.equal(owner(db, 'conversation', 'conv-after'), 'M', '合併後新開的 FB 對話跟著 FB 身分回去');
@@ -405,7 +404,7 @@ test('解除：AI 長期記憶與合併後才新開的該渠道對話／案件�
 
 test('解除：雙方在同一渠道都有身分（本 change 之前的合併）時，不搬 survivor 自己的新對話', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
   // 引擎現在拒絕同渠道合併（change enforce-merge-same-channel-guard），這裡直接寫資料，
   // 代表之前就存在的合併：M 也有一個 LINE（同渠道 ch-line）身分，當時被搬到 S
   db.channelIdentity.rows.push({ id: 'ci-m-line', contactId: 'S', channelId: 'ch-line' });
@@ -414,24 +413,24 @@ test('解除：雙方在同一渠道都有身分（本 change 之前的合併）
   // 合併後 S 自己的 LINE 帳號開了新對話
   db.conversation.rows.push({ id: 'conv-s-after', tenantId: T, contactId: 'S', channelId: 'ch-line', createdAt: new Date(Date.now() + 1000) });
 
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' });
   assert.equal(owner(db, 'conversation', 'conv-s-after'), 'S', '無法分辨屬於誰時寧可不搬');
 });
 
 test('解除：合併時被壓平改指 survivor 的聯絡人，解除後改回指向被恢復方', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
   assert.equal(db.contact.rows.find((c) => c.id === 'OLD')!.mergedIntoId, 'S');
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' });
   assert.equal(db.contact.rows.find((c) => c.id === 'OLD')!.mergedIntoId, 'M', '合併鏈還原，之後從 OLD 出發才找得到正確持有者');
 });
 
 test('解除：顧客與客服同時解除，只有一個成功，點數不會轉回兩次', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
   const results = await Promise.allSettled([
-    revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'customer' }),
-    revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' }),
+    revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'customer' }),
+    revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' }),
   ]);
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
   const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
@@ -443,8 +442,8 @@ test('解除：顧客與客服同時解除，只有一個成功，點數不會�
 test('合併：同一聯絡人同時被併入兩個對象，只有一個成功', async () => {
   const db = makeDb();
   const results = await Promise.allSettled([
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'M', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'X', mergedId: 'M', source: 'MANUAL' }),
   ]);
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
   const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
@@ -455,11 +454,11 @@ test('合併：同一聯絡人同時被併入兩個對象，只有一個成功',
 test('解除：survivor 之後又被併入別人，從對方補來的電話也要從後續持有者身上清掉', async () => {
   const db = makeDb();
   // M(有電話) 併入 S(沒電話) → S 補上電話；S 再併入 X(沒電話) → X 也補上
-  const first = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
+  const first = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
   assert.equal(db.contact.rows.find((c) => c.id === 'X')!.phone, '0912345678');
 
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId: first.mergeLogId, revertedBy: 'customer' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId: first.mergeLogId, revertedBy: 'customer' });
   assert.equal(db.contact.rows.find((c) => c.id === 'X')!.phone, null, '個資不可留在後續持有者身上');
   assert.equal(db.contact.rows.find((c) => c.id === 'M')!.phone, '0912345678', '被恢復方保有自己的電話');
 });
@@ -469,15 +468,15 @@ test('解除：連環合併不照順序解除，點數不會重複轉回', async
   // X 自己有 30 點
   db.pointTransaction.rows.push({ id: 'pt-x', tenantId: T, contactId: 'X', amount: 30, balance: 30, createdAt: new Date('2026-01-15') });
   // A：M(50) 併入 S(100) → S=150；B：S 再併入 X(30) → X=180
-  const a = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
-  const b = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
+  const a = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const b = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
   assert.equal(balanceOf(db, 'X'), 180);
 
   // 先解除較早的 A：M 從目前持有者 X 拿回 50
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId: a.mergeLogId, revertedBy: 'agent-1' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId: a.mergeLogId, revertedBy: 'agent-1' });
   assert.equal(balanceOf(db, 'M'), 50);
   // 再解除 B：S 只應拿回自己原本的 100，不可把 M 那 50 再算一次（那會吃掉 X 自己的點數）
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId: b.mergeLogId, revertedBy: 'agent-1' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId: b.mergeLogId, revertedBy: 'agent-1' });
   assert.equal(balanceOf(db, 'S'), 100);
   assert.equal(balanceOf(db, 'X'), 30, 'X 自己的 30 點不受影響');
 });
@@ -485,8 +484,8 @@ test('解除：連環合併不照順序解除，點數不會重複轉回', async
 test('合併：「M 併入 S」與「S 併入 X」同時進行，後鎖到 S 的那個被擋下', async () => {
   const db = makeDb();
   const results = await Promise.allSettled([
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'S', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'X', mergedId: 'S', source: 'MANUAL' }),
   ]);
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1, '不可兩個都成功（資料會落在已封存的 S）');
   const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
@@ -495,38 +494,38 @@ test('合併：「M 併入 S」與「S 併入 X」同時進行，後鎖到 S 的
 
 test('解除：聯絡人關係還原（搬移的改回、因重複刪除的重建）', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' });
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' });
   const rels = db.contactRelation.rows.map((r) => `${r.fromContactId}->${r.toContactId}:${r.relationType}`).sort();
   assert.deepEqual(rels, ['M->S:friend', 'M->X:family', 'X->M:colleague', 'X->S:colleague']);
 });
 
 test('解除：重複解除回 409', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
-  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' });
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' });
   await assert.rejects(
-    revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' }),
+    revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' }),
     (e: { statusCode?: number }) => e.statusCode === 409,
   );
 });
 
 test('解除：他租戶的合併紀錄回 404', async () => {
   const db = makeDb();
-  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
   await assert.rejects(
-    revertMerge(asDb(db), { tenantId: OTHER_T, mergeLogId, revertedBy: 'agent-1' }),
+    revertMerge({ tx: asDb(db), tenantId: OTHER_T }, { mergeLogId, revertedBy: 'agent-1' }),
     (e: { statusCode?: number }) => e.statusCode === 404,
   );
 });
 
 test('解除：survivor 之後又被併入別人，資料從最終持有者身上搬回', async () => {
   const db = makeDb();
-  const first = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
-  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
+  const first = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
+  await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
   assert.equal(owner(db, 'conversation', 'conv-m'), 'X');
 
-  const result = await revertMerge(asDb(db), { tenantId: T, mergeLogId: first.mergeLogId, revertedBy: 'agent-1' });
+  const result = await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId: first.mergeLogId, revertedBy: 'agent-1' });
   assert.equal(result.holderId, 'X');
   assert.equal(owner(db, 'conversation', 'conv-m'), 'M');
   assert.equal(owner(db, 'channelIdentity', 'ci-m-ig'), 'M');
@@ -535,7 +534,7 @@ test('解除：survivor 之後又被併入別人，資料從最終持有者身�
 
 test('Contacts on different channels：雙方渠道不重疊時合併成功', async () => {
   const db = makeDb();
-  const result = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const result = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
   assert.ok(result.mergeLogId);
   assert.equal(db.contact.rows.find((c) => c.id === 'M')!.isArchived, true);
 });
@@ -546,7 +545,7 @@ test('合併：雙方在同一渠道都有身分時回 409 SAME_CHANNEL_CONFLICT
   const before = JSON.stringify(db);
 
   await assert.rejects(
-    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
+    mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
     (e: { statusCode?: number; code?: string; details?: { channels?: Array<{ id: string; displayName: string }> } }) => {
       assert.equal(e.statusCode, 409);
       assert.equal(e.code, 'SAME_CHANNEL_CONFLICT');
