@@ -90,7 +90,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `case.closed` | `case.flow.ts`（outbox）、`csat.service.ts`、`csat.scheduler.ts` | 無 |
 | `contact.created` | `webhook/inbound-contact-resolver.ts` | 自動化 |
 | `contact.updated` | **無** | 無 |
-| `contact.tagged` | `tag/tag-effects.ts` 的 `publishContactTagged()`（outbox，由 tag、member-binding、coupon 的 flow 呼叫）；`shortlink.service.ts` 的點擊貼標（舊寫法，隨 shortlink 搬遷）；workers 的 `add_tag`（outbox） | 自動化 |
+| `contact.tagged` | `tag/tag-effects.ts` 的 `publishContactTagged()`（outbox，由 tag、member-binding、coupon 的 flow 與 marketing 的 `broadcast-coupon.flow.ts` 呼叫）；`shortlink.service.ts` 的點擊貼標（舊寫法，隨 shortlink 搬遷）；workers 的 `add_tag`（outbox） | 自動化 |
 | `keyword.matched` | workers 的 `automation.handler.ts`（outbox） | 無。關鍵字規則由 workers 處理 `message.received` 時直接比對 |
 | `sentiment.negative` | `automation.worker.ts`（outbox） | 無 |
 | `sla.warning`、`sla.breached` | **無** | 通知。見 APP-05 |
