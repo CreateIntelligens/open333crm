@@ -22,7 +22,7 @@ import { confirmPendingInstance, isCouponPastFixedEnd, taipeiDateString, voidPen
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { issueCoupons } from '../coupon/coupon-issue.service.js';
+import { CouponExpiredError, issueCoupons } from '../coupon/coupon-issue.service.js';
 import { CouponValidationError } from '../coupon/coupon.service.js';
 import { resolveContext } from './template-context.js';
 import { extractVariables, type TemplateVariable } from './template-renderer.js';
@@ -347,8 +347,8 @@ export type Reservation =
   | { kind: 'skipped'; reason: IssueSkipReason }
   /** 已有收件紀錄（並行或重送）：不處理 */
   | { kind: 'already' }
-  /** 券在發送途中被暫停或結束：停止整則廣播 */
-  | { kind: 'coupon_unavailable' }
+  /** 券在發送途中被暫停、結束或過了到期日：停止整則廣播；expired 區分到期（要改附其他券）與暫停（恢復後可重送） */
+  | { kind: 'coupon_unavailable'; expired?: boolean }
   /** 這次執行已被重新排入的新執行取代（或廣播已不在發送中）：停止，不寫入任何結果 */
   | { kind: 'superseded' };
 
@@ -382,6 +382,7 @@ export async function reserveRecipient(
       skipClaimTag: true,
     });
   } catch (err) {
+    if (err instanceof CouponExpiredError) return { kind: 'coupon_unavailable', expired: true };
     if (err instanceof CouponValidationError) return { kind: 'coupon_unavailable' };
     throw err;
   }

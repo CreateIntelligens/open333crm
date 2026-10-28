@@ -68,6 +68,19 @@ function enqueueBroadcastRun(scope: TenantScope, deps: QueueBroadcastDeps, job: 
 }
 
 /** 附券廣播「立即發送」：排入發送並馬上排一個執行的 job（change fix-coupon-broadcast-immediate-run） */
+/** 發送途中券不能再發時的停止原因：暫停可以恢復後重新發送，到期要改附其他券（PR #385 審查） */
+export function couponUnavailableStop(cause: 'inactive' | 'expired', left: number): { code: string; reason: string } {
+  return cause === 'expired'
+    ? {
+      code: 'COUPON_EXPIRED',
+      reason: `優惠券在發送途中過了到期日，已停止發送；其餘 ${left} 位沒有發送。請改附其他券建立新的廣播，已處理的人不會重複收到`,
+    }
+    : {
+      code: 'COUPON_NOT_ACTIVE',
+      reason: `優惠券在發送途中被暫停或結束，已停止發送；其餘 ${left} 位沒有發送。恢復發放後可以重新發送，已處理的人不會重複收到`,
+    };
+}
+
 export function queueCouponBroadcastFlow(deps: QueueBroadcastDeps, tenantId: string, broadcastId: string, now?: number) {
   return inTenant(deps.prisma, tenantId, async (scope) => {
     const { job, ...queued } = await queueCouponBroadcast(scope, broadcastId, now);
@@ -269,10 +282,7 @@ export async function runCouponBroadcast(
       if (outcome.error && !firstError) firstError = outcome.error;
       if (outcome.couponUnavailable) {
         const left = prepared.pending.length - i;
-        stopped = {
-          code: 'COUPON_NOT_ACTIVE',
-          reason: `優惠券在發送途中被暫停、結束或過了到期日，已停止發送；其餘 ${left} 位沒有發送。恢復發放後可以重新發送，已處理的人不會重複收到`,
-        };
+        stopped = couponUnavailableStop(outcome.couponUnavailable, left);
         break;
       }
       if ((i + 1) % PROGRESS_EVERY === 0) await step(deps, tenantId, (ctx) => recordProgress(ctx, broadcastId, runStartedAt));
@@ -300,11 +310,11 @@ async function processRecipient(
   credentials: Record<string, unknown>,
   body: Record<string, unknown> | null,
   recipient: PendingRecipient,
-): Promise<{ error?: string | null; couponUnavailable?: boolean; superseded?: boolean }> {
+): Promise<{ error?: string | null; couponUnavailable?: 'inactive' | 'expired'; superseded?: boolean }> {
   const now = () => (deps.now ?? Date.now)();
   const broadcastId = plan.broadcast.id;
   const reservation = await step(deps, tenantId, (ctx) => reserveRecipient(ctx, plan, recipient, now()));
-  if (reservation.kind === 'coupon_unavailable') return { couponUnavailable: true };
+  if (reservation.kind === 'coupon_unavailable') return { couponUnavailable: reservation.expired ? 'expired' : 'inactive' };
   if (reservation.kind === 'superseded') return { superseded: true };
   if (reservation.kind !== 'reserved') return {};
   const { instanceId } = reservation;
