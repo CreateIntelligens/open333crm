@@ -1,11 +1,14 @@
 /**
  * 會員綁定的 flow：後台與顧客端讀寫租戶資料的 route 都經過這裡（AGENTS.md 結構規則 2）。
  * 綁定：讀設定（交易）→ 查詢外部會員系統（交易外，最多一次）→ 寫入綁定（交易）。
+ * 綁定時貼上的標籤，contact.tagged 與綁定一起寫進 outbox。
  * 交易由這裡以 inTenant() 開；service 只收 TenantCtx。
  */
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { inTenant } from '../../lib/tenant-ctx.js';
+import { createOutboxPublisher, type EventPublisher } from '../../events/outbox-publisher.js';
+import { publishContactTagged } from '../tag/tag-effects.js';
 import { getBinding, getBindingConfig, saveBindingConfig, unbindMember, writeBinding } from './member-binding.service.js';
 import { lookupMember } from './member-lookup.service.js';
 import type { BindingResult, MemberBindingConfig, MemberLookupInput } from './member-binding.types.js';
@@ -13,6 +16,8 @@ import type { BindingResult, MemberBindingConfig, MemberLookupInput } from './me
 export interface MemberBindingFlowDeps {
   prisma: PrismaClient;
   io?: Server;
+  /** 單元測試注入假的實作；沒有給時用 outbox */
+  events?: EventPublisher;
 }
 
 /** 綁定會員：外部查詢不放在交易內，避免佔住連線與超過 5 秒的交易時限 */
@@ -28,7 +33,11 @@ export async function bindMember(
   const lookup = await lookupMember(config, input);
   if (!lookup.ok) return lookup;
 
-  return inTenant(deps.prisma, tenantId, (ctx) => writeBinding(ctx, config, contactId, lookup));
+  return inTenant(deps.prisma, tenantId, async (scope) => {
+    const { result, tagged } = await writeBinding(scope, config, contactId, lookup);
+    if (tagged) await publishContactTagged(scope, deps.events ?? createOutboxPublisher(deps.prisma), tagged);
+    return result;
+  });
 }
 
 export function getBindingConfigFlow(deps: MemberBindingFlowDeps, tenantId: string) {

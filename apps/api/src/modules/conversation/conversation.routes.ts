@@ -14,7 +14,7 @@ import {
 } from './conversation.service.js';
 import { createCaseFromConversationFlow } from '../case/case.flow.js';
 import { actorOf } from '../../lib/request-actor.js';
-import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
+import { addTagToTargetFlow, removeTagFromTargetFlow } from '../tag/tag.flow.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
 import { withTenant } from '../../lib/tenant-db.js';
@@ -258,12 +258,12 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/tags', { preHandler: [perm.manage] }, async (request, reply) => {
     const body = addTagSchema.parse(request.body);
     await assertConversationChannelVisible(request, request.params.id); // CM-173
-    const conversationTag = await addTagToTarget(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
+    const actor = actorOf(request);
+    const conversationTag = await addTagToTargetFlow(fastify, actor.tenantId, {
       targetType: 'CONVERSATION',
       targetId: request.params.id,
       tagId: body.tagId,
-      agentId: request.agent.id,
+      agentId: actor.agentId,
     });
 
     return reply.status(201).send(success(conversationTag));
@@ -274,8 +274,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     '/:id/tags/:tagId', { preHandler: [perm.manage] },
     async (request, reply) => {
       await assertConversationChannelVisible(request, request.params.id); // CM-173
-      const removed = await removeTagFromTarget(request.tenantPrisma, {
-        tenantId: request.agent.tenantId,
+      const removed = await removeTagFromTargetFlow(fastify, actorOf(request).tenantId, {
         targetType: 'CONVERSATION',
         targetId: request.params.id,
         tagId: request.params.tagId,

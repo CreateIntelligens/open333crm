@@ -10,6 +10,7 @@
 
 import { couponSourceName, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import type { ContactTagged } from '../tag/tagging.service.js';
 import { applyClaimTag } from './coupon-tagging.js';
 import { CouponValidationError } from './coupon.service.js';
 
@@ -42,6 +43,11 @@ export interface IssueResult {
   skipped: Array<{ contactId: string; reason: IssueSkipReason }>;
 }
 
+/** issueCoupons 的結果：另外帶回這次貼上的領券標籤，flow 用它送出 contact.tagged */
+export interface IssueCouponsResult extends IssueResult {
+  tagged: ContactTagged[];
+}
+
 /**
  * 在入口開的交易內發券（對話發券先在短交易內保留，見 design D16）。
  * 交易時限 5 秒：大批發券由入口分批，每批一個交易（券的鎖讓每人上限與總量在批次間仍正確）。
@@ -50,7 +56,7 @@ export async function issueCoupons(
   ctx: TenantCtx,
   couponId: string,
   opts: IssueOptions,
-): Promise<IssueResult> {
+): Promise<IssueCouponsResult> {
   const { tx, tenantId } = ctx;
   if (opts.contactIds.length === 0) {
     throw new CouponValidationError('請選擇發放對象');
@@ -74,13 +80,15 @@ export async function issueCoupons(
   });
 
   // 發券即歸戶，貼標在這裡做；對話發券等「送出後才確認」的入口傳 skipClaimTag，確認時才貼
+  const tagged: ContactTagged[] = [];
   if (coupon.claimTagId && !opts.skipClaimTag) {
     for (const instance of outcome.issued) {
       if (instance.contactId) {
-        await applyClaimTag(tx, tenantId, instance.contactId, coupon);
+        const t = await applyClaimTag(ctx, instance.contactId, coupon);
+        if (t) tagged.push(t);
       }
     }
   }
 
-  return outcome;
+  return { ...outcome, tagged };
 }

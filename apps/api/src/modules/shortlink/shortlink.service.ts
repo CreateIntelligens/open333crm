@@ -403,16 +403,26 @@ export async function trackClick(
         });
       }
 
-      // 點擊自動貼標：收斂到共用 tagging.service（冪等 + 發 contact.tagged，
-      // 讓「以貼標為觸發」的自動化也能被點擊路徑喚起）。source='system'。
+      // 點擊自動貼標：收斂到共用 tagging.service（冪等），並發 contact.tagged，
+      // 讓「以貼標為觸發」的自動化也能被點擊路徑喚起。source='system'。
+      // 暫用舊寫法，#337 搬 shortlink 時改由 flow 開交易、經 outbox 發事件：
+      // 這裡的 prisma 是 prismaAdmin，不是交易，每個查詢各自 commit（與搬 tag 之前相同）；
+      // 事件也與搬遷前一樣直接送出，不經 outbox。
       if (contactId && link.tagOnClick) {
-        await addTagToTarget(prisma, {
-          tenantId: link.tenantId,
+        const tagId = link.tagOnClick;
+        await addTagToTarget({ tx: prisma, tenantId: link.tenantId }, {
           targetType: 'CONTACT',
           targetId: contactId,
-          tagId: link.tagOnClick,
+          tagId,
           addedBy: 'system',
-        }).catch((err) => logger.warn('[ShortLink] auto-tag failed:', err));
+        })
+          .then((assignment) => eventBus.publish({
+            name: 'contact.tagged',
+            tenantId: link.tenantId,
+            timestamp: new Date(),
+            payload: { contactId, tagId, tagName: assignment.tag.name, source: 'system' },
+          }))
+          .catch((err) => logger.warn('[ShortLink] auto-tag failed:', err));
       }
 
       eventBus.publish({

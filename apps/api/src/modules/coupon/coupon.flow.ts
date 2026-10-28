@@ -4,6 +4,8 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import { flowOf, inTenant } from '../../lib/tenant-ctx.js';
+import { createOutboxPublisher, type EventPublisher } from '../../events/outbox-publisher.js';
+import { publishContactTagged } from '../tag/tag-effects.js';
 import {
   checkSharedCode,
   createCoupon,
@@ -45,9 +47,10 @@ export function previewBatchAudienceFlow(
 /**
  * 批次發券。每 ISSUE_BATCH_SIZE 人一個交易（交易時限 5 秒）；已提交的批次不會因後面的批次失敗而回滾。
  * 第一批就失敗時丟出錯誤；之後的批次失敗時回傳已發出的結果，並以 stopped 帶回錯誤與沒有處理的對象。
+ * 領券標籤的 contact.tagged 與該批一起寫進 outbox。
  */
 export async function issueCouponsInBatchesFlow(
-  deps: { prisma: PrismaClient },
+  deps: { prisma: PrismaClient; events?: EventPublisher },
   tenantId: string,
   couponId: string,
   input: { contactIds: string[]; issuedVia: string; issuedRefId: string },
@@ -56,8 +59,16 @@ export async function issueCouponsInBatchesFlow(
   for (let start = 0; start < input.contactIds.length; start += ISSUE_BATCH_SIZE) {
     const batch = input.contactIds.slice(start, start + ISSUE_BATCH_SIZE);
     try {
-      const result = await inTenant(deps.prisma, tenantId, (scope) =>
-        issueCoupons(scope, couponId, { contactIds: batch, issuedVia: input.issuedVia, issuedRefId: input.issuedRefId }));
+      const result = await inTenant(deps.prisma, tenantId, async (scope) => {
+        const outcome = await issueCoupons(scope, couponId, {
+          contactIds: batch,
+          issuedVia: input.issuedVia,
+          issuedRefId: input.issuedRefId,
+        });
+        const events = deps.events ?? createOutboxPublisher(deps.prisma);
+        for (const tagged of outcome.tagged) await publishContactTagged(scope, events, tagged);
+        return outcome;
+      });
       merged.issued.push(...result.issued);
       merged.skipped.push(...result.skipped);
     } catch (error) {

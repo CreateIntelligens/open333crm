@@ -7,13 +7,13 @@ import {
   getContactConversations,
   getContactMessages,
   getContactCases,
-  addContactTag,
-  removeContactTag,
   getContactTimeline,
   getMergePreview,
   mergeContacts,
 } from './contact.service.js';
 import { listMergeLogs, revertMerge } from './contact-merge.service.js';
+import { addTagToTargetFlow, removeTagFromTargetFlow } from '../tag/tag.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
 import {
   findBindingActorForConversation,
@@ -431,13 +431,13 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/tags', { preHandler: [perm.update] }, async (request, reply) => {
     const body = addTagSchema.parse(request.body);
 
-    const contactTag = await addContactTag(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-      body.tagId,
-      request.agent.id,
-    );
+    const actor = actorOf(request);
+    const contactTag = await addTagToTargetFlow(fastify, actor.tenantId, {
+      targetType: 'CONTACT',
+      targetId: request.params.id,
+      tagId: body.tagId,
+      agentId: actor.agentId,
+    });
 
     return reply.status(201).send(success(contactTag));
   });
@@ -447,12 +447,11 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     '/:id/tags/:tagId',
     { preHandler: [perm.update] },
     async (request, reply) => {
-      await removeContactTag(
-        request.tenantPrisma,
-        request.params.id,
-        request.agent.tenantId,
-        request.params.tagId,
-      );
+      await removeTagFromTargetFlow(fastify, actorOf(request).tenantId, {
+        targetType: 'CONTACT',
+        targetId: request.params.id,
+        tagId: request.params.tagId,
+      });
 
       return reply.send(success({ deleted: true }));
     },

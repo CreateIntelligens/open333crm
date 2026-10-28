@@ -4,13 +4,13 @@
  * ContactTag.expiresAt 原本是「有欄位但無人寫、無人清」的休眠欄位。
  * 本測試同時驗證寫入（addTagToTarget）與清理（handleTagExpiryCleanup）。
  * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
- * 貼標以 app_tenant 連線在 withTenant 內執行（RLS 生效）；本檔建立的聯絡人與標籤
+ * 貼標以 app_tenant 連線在 inTenant() 內執行（RLS 生效）；本檔建立的聯絡人與標籤
  * 都帶唯一標記，於 afterAll 刪除。
  */
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { withTenant } from '#src/lib/tenant-db.js';
+import { inTenant } from '#src/lib/tenant-ctx.js';
 import { addTagToTarget } from '#src/modules/tag/tagging.service.js';
 
 const owner = new PrismaClient();
@@ -48,8 +48,8 @@ afterAll(async () => {
 });
 
 it('可貼上永久標籤（expiresAt 為 null）', async () => {
-  await withTenant(tenantDb, tenantId, (tx) =>
-    addTagToTarget(tx, { tenantId, targetType: 'CONTACT', targetId: contactId, tagId: permanentTag, addedBy: 'system' }));
+  await inTenant(tenantDb, tenantId, (ctx) =>
+    addTagToTarget(ctx, { targetType: 'CONTACT', targetId: contactId, tagId: permanentTag, addedBy: 'system' }));
   const row = await owner.contactTag.findFirst({ where: { contactId, tagId: permanentTag } });
   assert.ok(row, '未貼上標籤');
   assert.equal(row!.expiresAt, null, '永久標籤不應有到期時間');
@@ -57,16 +57,16 @@ it('可貼上永久標籤（expiresAt 為 null）', async () => {
 
 it('可貼上時效標籤並寫入 expiresAt', async () => {
   const expiresAt = new Date(Date.now() + 60_000);
-  await withTenant(tenantDb, tenantId, (tx) =>
-    addTagToTarget(tx, { tenantId, targetType: 'CONTACT', targetId: contactId, tagId: timedTag, addedBy: 'system', expiresAt }));
+  await inTenant(tenantDb, tenantId, (ctx) =>
+    addTagToTarget(ctx, { targetType: 'CONTACT', targetId: contactId, tagId: timedTag, addedBy: 'system', expiresAt }));
   const row = await owner.contactTag.findFirst({ where: { contactId, tagId: timedTag } });
   assert.ok(row?.expiresAt, '未寫入到期時間');
 });
 
 it('重複貼標會刷新效期（續期）', async () => {
   const later = new Date(Date.now() + 600_000);
-  await withTenant(tenantDb, tenantId, (tx) =>
-    addTagToTarget(tx, { tenantId, targetType: 'CONTACT', targetId: contactId, tagId: timedTag, addedBy: 'system', expiresAt: later }));
+  await inTenant(tenantDb, tenantId, (ctx) =>
+    addTagToTarget(ctx, { targetType: 'CONTACT', targetId: contactId, tagId: timedTag, addedBy: 'system', expiresAt: later }));
   const row = await owner.contactTag.findFirst({ where: { contactId, tagId: timedTag } });
   assert.ok(row!.expiresAt!.getTime() > Date.now() + 300_000, '效期未被刷新');
 });

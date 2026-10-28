@@ -8,7 +8,8 @@ import type { Prisma } from '@prisma/client';
 import type { Server } from 'socket.io';
 import type { TenantScope } from '../../lib/tenant-ctx.js';
 import { notifyTenant } from '../../events/socket-push.js';
-import { publishEvent, type EventPublisher } from '../../events/outbox-publisher.js';
+import type { EventPublisher } from '../../events/outbox-publisher.js';
+import { publishContactTagged } from '../tag/tag-effects.js';
 
 export type InstanceChange = 'issued' | 'viewed' | 'redeemed';
 
@@ -54,10 +55,5 @@ export function publishCouponTag(
   contactId: string,
   tag: { tagId: string; tagName: string },
 ): Promise<void> {
-  return publishEvent(scope, events, 'contact.tagged', {
-    contactId,
-    tagId: tag.tagId,
-    tagName: tag.tagName,
-    source: 'system',
-  });
+  return publishContactTagged(scope, events, { contactId, tagId: tag.tagId, tagName: tag.tagName, source: 'system' });
 }

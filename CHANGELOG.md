@@ -12,6 +12,10 @@ All notable changes to **open333CRM** will be documented in this file.
   - `case.created`、`case.assigned`、`case.escalated`、`case.resolved`、`case.closed` 事件與資料在同一個交易寫進 outbox，保證至少送出一次；原本行程在送出之前結束時，事件遺失。
   - 建立工單之後的自動指派與廣播歸因，在 commit 之後各自另開交易執行，並在回應送出之前完成；原本與回應並行、不等待。失敗時仍只寫 log，工單照樣建立。
   - 工單標籤與 CSAT 的路由不變，隨 `tag`、`csat` 模組搬遷。
+- **標籤模組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `tagging.service.ts` 改收 `TenantCtx`，標籤管理頁與聯絡人、工單、對話的貼標路由改呼叫新的 `tag.flow.ts`。可觀察的差異：
+  - `contact.tagged` 事件改成與貼標在同一個交易寫進 outbox，commit 之後才送出，保證至少送出一次。原本在交易內直接送出：commit 之前就送出，rollback 時也照樣送出。適用的入口：客服手動貼聯絡人標籤、素材點擊貼標（webhook）、會員綁定時貼標、批次發券時貼領券標籤。
+  - 修改素材標籤的名稱時，標籤改名與素材上的標籤字串在同一個交易寫入。原本各自 commit，中途失敗時兩邊的名稱不一致。
+  - 短連結點擊貼標的行為不變，隨 `shortlink` 模組搬遷。
 
 ### Fixed
 

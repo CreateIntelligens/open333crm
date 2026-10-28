@@ -25,6 +25,8 @@ import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { redeemCoupon } from '#src/modules/coupon/coupon-redeem.service.js';
 import { getWalletQrCode } from '#src/modules/coupon/coupon-wallet.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
+import { issueCouponsInBatchesFlow } from '#src/modules/coupon/coupon.flow.js';
+import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { listInstances, getCouponStats } from '#src/modules/coupon/coupon-stats.service.js';
 import { importCodes } from '#src/modules/coupon/coupon-import.service.js';
 import { ctxOf, runInTenant } from '#tests/support/tenant-run.js';
@@ -588,6 +590,22 @@ describe('領券時自動貼標', () => {
     await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contact], issuedVia: 'inbox' }));
     const ct = await owner.contactTag.findUnique({ where: { contactId_tagId: { contactId: contact, tagId: tag.id } } });
     assert.equal(ct?.expiresAt, null, '永久標籤被改成 7 天後到期，排程會把它刪掉');
+  });
+
+  it('批次發券：contact.tagged 與領券標籤一起寫進 outbox', async () => {
+    const tag = await owner.tag.create({ data: { tenantId, name: `${MARK}-批次貼標` } });
+    const c = await published('批次貼標', { claimTagId: tag.id });
+    const contact = await newContact('批次貼標');
+    // 寫進真實的 outbox；快路徑不送進 Redis
+    const events = { write: createOutboxPublisher(prisma).write, dispatch: async () => {} };
+
+    await issueCouponsInBatchesFlow({ prisma, events }, tenantId, c.id, { contactIds: [contact], issuedVia: 'broadcast', issuedRefId: 'ref-1' });
+
+    const rows = await owner.outbox.findMany({ where: { name: 'contact.tagged', payload: { path: ['contactId'], equals: contact } } });
+    await owner.outbox.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].tenantId, tenantId);
+    assert.deepEqual(rows[0].payload, { contactId: contact, tagId: tag.id, tagName: tag.name, source: 'system' });
   });
 
   it('原本較晚到期的標籤不會被提早', async () => {

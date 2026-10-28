@@ -10,7 +10,7 @@ import type { Prisma } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { encryptCredentials, decryptCredentials } from '../channel/channel.service.js';
-import { addTagToTarget } from '../tag/tagging.service.js';
+import { addTagToTarget, type ContactTagged } from '../tag/tagging.service.js';
 import type {
   MemberBindingConfig,
   BindingResult,
@@ -88,7 +88,7 @@ export async function writeBinding(
   config: MemberBindingConfig,
   contactId: string,
   lookup: BindingSuccess,
-): Promise<BindingResult> {
+): Promise<{ result: BindingResult; tagged: ContactTagged | null }> {
   const { tx, tenantId } = ctx;
   const attributeKey = config.attributeKey || DEFAULT_ATTRIBUTE_KEY;
 
@@ -110,7 +110,7 @@ export async function writeBinding(
       tenantId,
       memberId: lookup.memberId,
     });
-    return { ok: false as const, reason: 'ALREADY_BOUND_TO_OTHER' as const };
+    return { result: { ok: false as const, reason: 'ALREADY_BOUND_TO_OTHER' as const }, tagged: null };
   }
 
   // 會員編號與其他對應欄位一併寫入
@@ -123,19 +123,20 @@ export async function writeBinding(
     });
   }
 
+  let tagged: ContactTagged | null = null;
   if (config.bindTagId) {
     // 貼標失敗不影響綁定——綁定本身已成功，標籤是行銷輔助。交易內的 SQL 錯誤會讓整個交易失效，
     // catch 擋不住，所以在 savepoint 內執行，失敗時只回滾貼標
     await tx.$executeRawUnsafe('SAVEPOINT member_binding_tag');
     try {
-      await addTagToTarget(tx, {
-        tenantId,
+      const assignment = await addTagToTarget(ctx, {
         targetType: 'CONTACT',
         targetId: contactId,
         tagId: config.bindTagId,
         addedBy: 'system',
       });
       await tx.$executeRawUnsafe('RELEASE SAVEPOINT member_binding_tag');
+      tagged = { contactId, tagId: config.bindTagId, tagName: assignment.tag.name, source: 'system' };
     } catch (err) {
       await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT member_binding_tag');
       logger.warn('[MemberBinding] 綁定貼標失敗（不影響綁定）', {
@@ -146,7 +147,7 @@ export async function writeBinding(
   }
 
   logger.info('[MemberBinding] 綁定成功', { tenantId, contactId });
-  return lookup;
+  return { result: lookup, tagged };
 }
 
 /** 查詢此聯絡人的綁定狀態。 */
