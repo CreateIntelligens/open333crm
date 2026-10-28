@@ -129,9 +129,10 @@
 | --- | --- | --- |
 | 客服手動 | `addTagToTarget()` | `agent` |
 | 點擊短連結或素材按鈕 | 短連結轉址與進站攔截器 | `system` |
+| 會員綁定、發券時貼的標籤 | member-binding 與 coupon 的 flow | `system` |
 | 自動化規則 | workers 的 `executeWorkerAutomationActions()` | `automation` |
 
-對聯絡人貼標會發布 `contact.tagged`，事件帶著 `addedBy` 作為來源。自動化規則據此避免「自動化貼標 → 觸發自動化 → 再貼標」的迴圈。workers 貼標時，在同一個交易把事件寫進 outbox，再送進訂閱者佇列，見[事件與背景工作](../../modules/EVENTS.md#從-workers-回到-api)。
+對聯絡人貼標會發布 `contact.tagged`，事件帶著 `addedBy` 作為來源。自動化規則據此避免「自動化貼標 → 觸發自動化 → 再貼標」的迴圈。API 的 flow 與 workers 貼標時，都在貼標的同一個交易把事件寫進 outbox，commit 之後才送進訂閱者佇列；rollback 時不送出。例外是點擊短連結的貼標，仍在貼標之後直接送出，`shortlink` 模組搬遷時改掉。見[事件與背景工作](../../modules/EVENTS.md#從-workers-回到-api)。
 
 **自動化以名稱找標籤。** 規則的「貼標」動作存的是標籤名稱。workers 依名稱找標籤時不限 scope，找不到就用這個名稱建立一個新標籤。因此標籤被刪除或改名後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。
 
