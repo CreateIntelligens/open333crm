@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { registerChannelPlugin, type ChannelPlugin, type OutboundPayload } from '@open333crm/channel-plugins';
@@ -38,6 +38,11 @@ import { runCouponBroadcast, type CouponBroadcastDeps } from '#src/modules/marke
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+
+// 素材短連結的 OG 快照：不連外部網站
+vi.mock('#src/modules/shortlink/og-scraper.js', () => ({
+  scrapeOg: async (url: string) => ({ ogTitle: `OG ${url}`, ogDescription: undefined, ogImage: undefined }),
+}));
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -285,6 +290,28 @@ describe('廣播可以附上優惠券', () => {
     assert.ok(isCouponText(messages[1]), '再送帶連結的發券文字');
     const [token] = tokensIn(messages);
     assert.equal((await readWalletToken(store, token))?.contactId, a.contactId);
+  });
+
+  it('Material short link created inside a transaction gets its snapshot：素材的外部連結換成短連結，commit 之後抓取 OG 快照並寫回', async () => {
+    const couponId = await coupon(`${MARK}秋OG`);
+    const a = await person('og-a');
+    const target = `https://example.com/${MARK}-og`;
+    const m = await owner.material.create({
+      data: {
+        tenantId: T, name: `${MARK}-素材`, channelType: 'line', contentType: 'text', createdById: creatorId,
+        body: { text: '秋季優惠開跑', quickReply: { items: [{ type: 'action', action: { type: 'uri', label: '看活動', uri: target } }] } },
+      },
+    });
+    const id = await broadcast({ couponId, materialId: m.id, contacts: [a] });
+    await run(id);
+
+    let link = await owner.shortLink.findFirst({ where: { tenantId: T, materialId: m.id, targetUrl: target } });
+    assert.ok(link, '已建立素材短連結');
+    for (let i = 0; i < 60 && !link?.ogTitle; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      link = await owner.shortLink.findFirst({ where: { id: link!.id } });
+    }
+    assert.equal(link?.ogTitle, `OG ${target}`);
   });
 
   it('沒有選素材', async () => {

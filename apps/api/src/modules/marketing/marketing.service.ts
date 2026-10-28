@@ -13,7 +13,8 @@ import {
   type TemplateVariable,
 } from './template-renderer.js';
 import { resolveContext } from './template-context.js';
-import { findOrCreateMaterialShortLink } from '../shortlink/shortlink.service.js';
+import { findOrCreateMaterialShortLink, saveShortLinkOg } from '../shortlink/shortlink.service.js';
+import { snapshotOgInBackground } from '../shortlink/og-snapshot.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
@@ -360,8 +361,16 @@ export async function convertBodyUrlsToShortLinks(
   materialId: string,
   lineChannelId: string | null,
   body: Record<string, unknown>,
+  /** 收集這次新建的短連結：呼叫端在 commit 之後為它們抓 OG 快照（shortlink/og-snapshot.ts） */
+  created: Array<{ id: string; targetUrl: string }> = [],
 ): Promise<Record<string, unknown>> {
   const clone: unknown = JSON.parse(JSON.stringify(body));
+  const ctx = { tx: prisma, tenantId };
+  const shorten = async (targetUrl: string, tagOnClick: string | undefined) => {
+    const result = await findOrCreateMaterialShortLink(ctx, createdById, { materialId, targetUrl, lineChannelId, tagOnClick });
+    if (result.created) created.push(result.created);
+    return result.url;
+  };
 
   async function walk(node: unknown): Promise<void> {
     if (Array.isArray(node)) {
@@ -378,24 +387,14 @@ export async function convertBodyUrlsToShortLinks(
       const tagOnClick = typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined;
       if (obj.type === 'uri' && typeof obj.uri === 'string' && obj.uri) {
         if (!hasPlaceholder(obj.uri)) {
-          obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-            materialId,
-            targetUrl: obj.uri,
-            lineChannelId,
-            tagOnClick,
-          });
+          obj.uri = await shorten(obj.uri, tagOnClick);
         }
         delete obj.tagOnClick;
       }
       // imagemap 轉出的 linkUri（builders 用 linkUri），也一併處理
       if (typeof obj.linkUri === 'string' && obj.linkUri) {
         if (!hasPlaceholder(obj.linkUri)) {
-          obj.linkUri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-            materialId,
-            targetUrl: obj.linkUri,
-            lineChannelId,
-            tagOnClick,
-          });
+          obj.linkUri = await shorten(obj.linkUri, tagOnClick);
         }
         delete obj.tagOnClick;
       }
@@ -494,6 +493,7 @@ export async function executeBroadcast(
         try {
           // lineChannelId 傳 null：它只影響短連結的 UA 轉址策略，與素材點擊歸因無關；
           // 且此處未載入 channel 型別，傳 channelId 可能觸發 assertLineChannel 對 FB channel 報錯。
+          const created: Array<{ id: string; targetUrl: string }> = [];
           body = await convertBodyUrlsToShortLinks(
             prisma as PrismaClient,
             broadcast.tenantId,
@@ -501,7 +501,11 @@ export async function executeBroadcast(
             material.id,
             null,
             body,
+            created,
           );
+          // 本函式尚未搬遷（#337 階段 4）：prisma 不是交易，短連結已經寫入，可以直接在背景抓 OG 快照
+          const ctx = { tx: prisma, tenantId: broadcast.tenantId };
+          for (const link of created) snapshotOgInBackground(link, (og) => saveShortLinkOg(ctx, link.id, og));
         } catch (err) {
           logger.error('[Broadcast] URL→shortlink conversion failed, sending original body:', err);
         }

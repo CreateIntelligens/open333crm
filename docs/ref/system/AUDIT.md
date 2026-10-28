@@ -1432,7 +1432,7 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 <a id="short-01"></a>
 ### SHORT-01：記錄點擊的公開端點採信呼叫端提供的身分
 
-`shortlink-redirect.routes.ts` 的 `POST /s/track` 不需要登入，也沒有速率限制。它把 body 的 `cid`（聯絡人 ID）與 `lineUid` 交給 `shortlink.service.ts` 的 `trackClick()`，兩者都不驗證：`lineUid` 對到渠道身分時以它的聯絡人為準，否則直接使用 `cid`。
+`shortlink-redirect.routes.ts` 的 `POST /s/track` 不需要登入，也沒有速率限制。它把 body 的 `cid`（聯絡人 ID）與 `lineUid` 交給 `shortlink.service.ts` 的 `recordClick()`（2026-10-28 之前是 `trackClick()`），兩者都不驗證：`lineUid` 對到渠道身分時以它的聯絡人為準，否則直接使用 `cid`。
 
 - 知道同租戶某個聯絡人的 ID 或 LINE uid，就能替他記一筆點擊，觸發 `tagOnClick` 貼標，以及訂閱 `contact.tagged`、`link.clicked` 的自動化規則，例如自動傳訊息給他。
 - 沒有 `lineUid` 的點擊，每次都算一次不重複點擊。點擊數與不重複點擊數都能被任意灌高。

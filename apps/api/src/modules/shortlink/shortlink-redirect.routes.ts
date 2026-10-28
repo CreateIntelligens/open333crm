@@ -9,12 +9,10 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { logger } from "@open333crm/core";
 import { detectSource, parseSourceOverride } from "./source-detector.js";
-import {
-  getLinkForRedirect,
-  getChannelLiffId,
-  trackClick,
-} from "./shortlink.service.js";
+import { getLinkForRedirect, getChannelLiffId } from "./shortlink.service.js";
+import { trackClickFlow } from "./shortlink.flow.js";
 import { getStrategy, renderExpiredPage } from "./strategies/index.js";
 
 const TRACK_PATH = "/s/track";
@@ -58,22 +56,11 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
         });
     }
 
-    const targetUrl = await trackClick(
-      // 公開端點無登入身分、無 tenant context，RLS 會 fail-closed 擋掉查詢，
-      // 故走 prismaAdmin（BYPASSRLS）。租戶邊界由 slug 全域唯一保證。
-      app.prismaAdmin,
-      slug,
-      {
-        contactId: cid,
-        lineUid,
-        ip: request.ip,
-        userAgent: request.headers["user-agent"],
-        referer: request.headers.referer,
-      },
-      app.io,
-    );
+    // 公開端點無登入身分、無 tenant context，RLS 會 fail-closed 擋掉查詢，
+    // 故以 prismaAdmin（BYPASSRLS）用 slug 找短連結。租戶邊界由 slug 全域唯一保證。
+    const resolved = await getLinkForRedirect(app.prismaAdmin, slug);
 
-    if (!targetUrl) {
+    if (!resolved) {
       return reply
         .status(410)
         .send({
@@ -82,7 +69,17 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
         });
     }
 
-    return reply.send({ success: true, data: { targetUrl } });
+    // 點擊在背景寫入（交易綁定短連結的租戶），不等待：轉址不因記錄點擊而變慢。
+    // 最多一次：寫入失敗只記 log，這次點擊不計入（與搬遷前相同）
+    void trackClickFlow(app, resolved.link, {
+      contactId: cid,
+      lineUid,
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+      referer: request.headers.referer,
+    }).catch((err) => logger.error("[ShortLink] Click tracking error:", err));
+
+    return reply.send({ success: true, data: { targetUrl: resolved.targetUrl } });
   });
 
   // ─── GET /s/:slug ── UA strategy dispatch, no tracking ────────────────────
