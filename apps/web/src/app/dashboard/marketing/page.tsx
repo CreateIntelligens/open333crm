@@ -42,6 +42,7 @@ import {
 } from '@/lib/marketing/broadcast-form';
 import { couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
 import { BroadcastCouponField } from '@/components/marketing/BroadcastCouponField';
+import { COUPON_URL_NEEDS_COUPON_MESSAGE } from '@/lib/marketing/coupon-url';
 import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
 
 // ─── Status badge helpers ──────────────────────────────────────────────────
@@ -328,7 +329,9 @@ function BroadcastTab() {
 
   const couponWarning = formData.couponId ? couponCapacityWarning(audiencePreview) : null;
   // 附券廣播素材可以不選（只送預設發券文字）；沒有素材也沒有附券時說明原因（Instagram 只能附券）
-  const sourceError = broadcastSourceError(selectedChannel?.channelType, formData);
+  const selectedMaterial = materials.find((m: Material) => m.id === formData.materialId);
+  // 素材有顧客專屬券連結時要附券，否則顧客會看到 {{coupon.url}}（change improve-coupon-url-insert-ux）
+  const sourceError = broadcastSourceError(selectedChannel?.channelType, formData, selectedMaterial?.body);
   const isInstagram = (selectedChannel?.channelType ?? '').toUpperCase() === 'THREADS';
   // 名額不足要先勾選確認
   const createBlocked =
@@ -640,7 +643,7 @@ function BroadcastTab() {
               />
               )}
               {formData.materialId && (() => {
-                const selected = materials.find((m: Material) => m.id === formData.materialId);
+                const selected = selectedMaterial;
                 if (!selected) return null;
                 return (
                   <div className="mt-2 rounded-md border bg-muted p-3">
@@ -657,6 +660,11 @@ function BroadcastTab() {
                   </div>
                 );
               })()}
+              {sourceError === COUPON_URL_NEEDS_COUPON_MESSAGE && (
+                <p role="alert" className="mt-2 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+                  {COUPON_URL_NEEDS_COUPON_MESSAGE}
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">關聯活動</label>

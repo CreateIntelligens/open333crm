@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /**
- * 文字素材的「插入券連結」按鈕（add-material-coupon-url-insert）。
+ * 文字素材的「插入顧客專屬券連結」按鈕（add-material-coupon-url-insert；按鈕名稱與說明見
+ * change improve-coupon-url-insert-ux）。
  * 商家不必記 {{coupon.url}}：按鈕插在游標位置，沒點過輸入框時加在結尾；
  * 超過字數上限要擋下並顯示看得到的提示。
  */
@@ -29,8 +30,8 @@ function renderStateful(Editor: TextEditor, initial: string) {
 }
 
 function insertButton() {
-  const button = screen.queryByRole('button', { name: '插入券連結' });
-  assert.ok(button !== null, '畫面上應有「插入券連結」按鈕');
+  const button = screen.queryByRole('button', { name: '插入顧客專屬券連結' });
+  assert.ok(button !== null, '畫面上應有「插入顧客專屬券連結」按鈕');
   return button;
 }
 
@@ -68,23 +69,38 @@ test('沒有游標時加在結尾', () => {
 
 test('其他版型沒有插入按鈕', () => {
   render(<FbButtonEditor body={{ text: '選一個', buttons: [] }} onChange={vi.fn()} />);
-  assert.ok(screen.queryByRole('button', { name: '插入券連結' }) === null);
+  assert.ok(screen.queryByRole('button', { name: '插入顧客專屬券連結' }) === null);
+  assert.ok(screen.queryByRole('button', { name: '插入領券連結' }) === null);
 });
 
-test('顯示說明文字（LINE 純文字）', () => {
+function howToButton() {
+  const button = screen.queryByRole('button', { name: '怎麼用？' });
+  assert.ok(button !== null, '應有「怎麼用？」按鈕');
+  return button;
+}
+
+for (const [label, Editor] of [['LINE 純文字', LineTextEditor], ['FB 純文字', FbTextEditor]] as const) {
+  test(`顯示說明文字（${label}）`, () => {
+    renderStateful(Editor, '');
+    assert.ok(screen.queryByText('只能用在附券廣播。') !== null, '應顯示一行說明');
+    assert.equal(howToButton().getAttribute('aria-expanded'), 'false');
+    assert.ok(screen.queryByText(/建立廣播時選/) === null, '詳細說明預設收合');
+  });
+}
+
+test('展開與收合詳細說明', () => {
   renderStateful(LineTextEditor, '');
-  const hint = screen.queryByText(/附券廣播/);
-  assert.ok(hint !== null, '應顯示附券廣播的說明');
-  assert.match(hint.textContent ?? '', /建立廣播時選擇/);
-  assert.match(hint.textContent ?? '', /不會替換/);
-});
+  fireEvent.click(howToButton());
+  assert.equal(howToButton().getAttribute('aria-expanded'), 'true');
+  const details = document.getElementById(howToButton().getAttribute('aria-controls') ?? '');
+  assert.ok(details !== null, 'aria-controls 要指向詳細說明');
+  assert.match(details.textContent ?? '', /建立廣播時選/);
+  assert.match(details.textContent ?? '', /不會發券/);
+  assert.match(details.textContent ?? '', /插入領券連結/);
 
-test('顯示說明文字（FB 純文字）', () => {
-  renderStateful(FbTextEditor, '');
-  const hint = screen.queryByText(/附券廣播/);
-  assert.ok(hint !== null, '應顯示附券廣播的說明');
-  assert.match(hint.textContent ?? '', /建立廣播時選擇/);
-  assert.match(hint.textContent ?? '', /不會替換/);
+  fireEvent.click(howToButton());
+  assert.equal(howToButton().getAttribute('aria-expanded'), 'false');
+  assert.ok(screen.queryByText(/建立廣播時選/) === null);
 });
 
 test('超過上限時擋下並提示', () => {

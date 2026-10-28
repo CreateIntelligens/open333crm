@@ -101,6 +101,33 @@ export async function listClaimLinks(ctx: TenantCtx, couponId: string, webBaseUr
   return rows.map((r) => toView(r, webBaseUrl));
 }
 
+export interface AvailableClaimLinkView extends ClaimLinkView {
+  couponName: string;
+}
+
+/** 素材編輯器「插入領券連結」一次最多列出的筆數 */
+const AVAILABLE_LINKS_LIMIT = 200;
+
+/**
+ * 租戶內現在可以放進訊息的領券連結：連結啟用、券進行中、連結沒有結束（尚未開始的可以先放）。
+ * 素材編輯器的「插入領券連結」用（change improve-coupon-url-insert-ux design D6）。
+ */
+export async function listAvailableClaimLinks(ctx: TenantCtx, webBaseUrl: string, now: Date = new Date()): Promise<AvailableClaimLinkView[]> {
+  const { tx, tenantId } = ctx;
+  const rows = await tx.couponClaimLink.findMany({
+    where: {
+      tenantId,
+      status: 'ACTIVE',
+      coupon: { status: 'ACTIVE' },
+      OR: [{ endAt: null }, { endAt: { gt: now } }],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: AVAILABLE_LINKS_LIMIT,
+    select: { ...LINK_SELECT, coupon: { select: { name: true } } },
+  });
+  return rows.map((r) => ({ ...toView(r, webBaseUrl), couponName: r.coupon.name }));
+}
+
 export async function getClaimLink(ctx: TenantCtx, couponId: string, linkId: string, webBaseUrl: string): Promise<ClaimLinkView | null> {
   const row = await ctx.tx.couponClaimLink.findFirst({
     where: { id: linkId, couponId, tenantId: ctx.tenantId },

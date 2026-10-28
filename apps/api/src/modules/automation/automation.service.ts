@@ -12,6 +12,7 @@ import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine
 import { AppError } from '../../shared/utils/response.js';
 import { validateAutomationRuleContract } from '@open333crm/automation';
 import { notFound } from '../../shared/messages/resource.js';
+import { bodyHasCouponUrl } from '../marketing/template-renderer.js';
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -109,12 +110,19 @@ async function assertSendMaterialReferences(
   const unique = [...new Set(ids as string[])];
   const found = await prisma.material.findMany({
     where: { tenantId, isActive: true, id: { in: unique } },
-    select: { id: true },
+    select: { id: true, body: true },
   });
   if (found.length !== unique.length) {
     throw new AppError('找不到要傳送的素材，或素材已停用', 'VALIDATION_ERROR', 400, {
       issues: [{ path: 'actions', message: '找不到要傳送的素材，或素材已停用' }],
     });
+  }
+  // 自動化規則不會發券：workers 會把沒代入的 {{coupon.url}} 拿掉，顧客拿不到券
+  // （change improve-coupon-url-insert-ux design D2）
+  if (found.some((m) => bodyHasCouponUrl(m.body))) {
+    const message = '素材有顧客專屬券連結（{{coupon.url}}），但自動化規則與關鍵字回覆不會發券，顧客拿不到券連結。'
+      + '請改用沒有顧客專屬券連結的素材；要發券請用「同時發送優惠券」，或在素材放領券連結';
+    throw new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'actions', message }] });
   }
 }
 

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useMaterials } from '@/hooks/useMaterials';
 import { CouponSelectField } from '@/components/coupons/CouponSelectField';
+import { bodyHasCouponUrl, COUPON_URL_IN_RULE_MESSAGE } from '@/lib/marketing/coupon-url';
 import {
   CHANNEL_ISSUE_MESSAGE,
   KEYWORD_REPLY_CHANNELS,
@@ -82,6 +83,8 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
     // 原本的素材不能在所選渠道使用（或已刪除、停用）且沒有改選：存檔會加上渠道條件讓規則不再送出，擋下
     const blocked = keywordReplySaveBlock(reply, { channel, materialId: materialId || null });
     if (blocked) { setError(blocked); return; }
+    // 關鍵字回覆不會發券：素材的顧客專屬券連結會被拿掉，顧客拿不到券（後端也會擋）
+    if (bodyHasCouponUrl(materials.find((m) => m.id === materialId)?.body)) { setError(COUPON_URL_IN_RULE_MESSAGE); return; }
     setSaving(true);
     setError(null);
     try {
@@ -104,6 +107,7 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
   };
 
   const selectedMaterial = materials.find((m) => m.id === materialId);
+  const selectedMaterialHasCouponUrl = bodyHasCouponUrl(selectedMaterial?.body);
   // 原本的素材在所選渠道能不能用：改選渠道後重新判斷
   const originalMaterialIssue = reply?.materialId && materialId === reply.materialId
     ? materialIssueOf(reply.materialLookup, channel) ?? null
@@ -297,6 +301,11 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
                 </option>
               ))}
             </select>
+            {selectedMaterialHasCouponUrl && (
+              <p role="alert" className="mt-2 rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+                {COUPON_URL_IN_RULE_MESSAGE}
+              </p>
+            )}
             {selectedMaterial && (
               <div className="mt-2 rounded border border-border bg-muted px-3 py-2 text-xs">
                 <div className="font-medium">{selectedMaterial.name}</div>

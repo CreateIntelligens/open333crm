@@ -3,6 +3,8 @@
  * 後端也會擋（fail-closed），前端先擋是為了讓使用者在送出前就知道缺什麼。
  */
 
+import { bodyHasCouponUrl, COUPON_URL_NEEDS_COUPON_MESSAGE } from './coupon-url';
+
 /** 渠道列舉（LINE / FB）對應素材的 channelType（line / fb）；其他渠道沒有素材可廣播 */
 export function materialChannelKey(channelType: string | undefined | null): 'line' | 'fb' | '' {
   switch ((channelType ?? '').toUpperCase()) {
@@ -44,7 +46,10 @@ export const INSTAGRAM_BROADCAST_NOTICE =
 export function broadcastSourceError(
   channelType: string | undefined | null,
   form: { materialId: string; couponId: string },
+  /** 所選素材的 body；含 {{coupon.url}} 時要附券（change improve-coupon-url-insert-ux，與後端 MATERIAL_NEEDS_COUPON 一致） */
+  materialBody?: unknown,
 ): string | null {
+  if (form.materialId && !form.couponId && bodyHasCouponUrl(materialBody)) return COUPON_URL_NEEDS_COUPON_MESSAGE;
   if (form.materialId || form.couponId) return null;
   if ((channelType ?? '').toUpperCase() === 'THREADS') return 'Instagram 廣播要附上優惠券才能建立';
   return '請選擇素材或附上優惠券';

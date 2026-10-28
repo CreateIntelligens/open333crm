@@ -59,3 +59,19 @@ export async function setClaimLinkStatus(couponId: string, linkId: string, statu
 export async function downloadClaimLinkQr(couponId: string, linkId: string): Promise<Blob> {
   return (await api.get(`/coupons/${couponId}/claim-links/${linkId}/qrcode`, { responseType: 'blob' })).data as Blob;
 }
+
+/** 租戶內可放進訊息的領券連結（啟用、券進行中、沒有結束），附券名 */
+export interface AvailableClaimLink extends CouponClaimLink {
+  couponName: string;
+}
+
+const availableFetcher = async (url: string) => (await api.get(url)).data.data as AvailableClaimLink[];
+
+/**
+ * 素材編輯器「插入領券連結」用的清單（change improve-coupon-url-insert-ux design D6）。
+ * enabled 為 false 時不發請求：只有打開清單時才載入。
+ */
+export function useAvailableClaimLinks(enabled: boolean) {
+  const { data, error, isLoading } = useSWR(enabled ? '/coupons/claim-links' : null, availableFetcher);
+  return { links: data, error, isLoading };
+}

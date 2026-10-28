@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select';
 import useSWR from 'swr';
 import api from '@/lib/api';
 import { agentOptions, emptyOptionLabel, materialOptions, selectOptionsForParam } from '@/lib/automation/rule-actions';
+import { bodyHasCouponUrl, COUPON_URL_IN_AUTOMATION_MESSAGE } from '@/lib/marketing/coupon-url';
 
 const ACTION_TYPES = [
   { value: 'send_message', label: '傳送訊息' },
@@ -300,8 +301,8 @@ function AgentSelectField({
 }
 
 /** 素材庫 API 每頁最多 50 筆；逐頁取完所有啟用中的素材（最多 20 頁，避免異常資料讓請求無限進行） */
-async function fetchAllActiveMaterials(): Promise<Array<{ id: string; name?: string; channelType?: string }>> {
-  const all: Array<{ id: string; name?: string; channelType?: string }> = [];
+async function fetchAllActiveMaterials(): Promise<Array<{ id: string; name?: string; channelType?: string; body?: unknown }>> {
+  const all: Array<{ id: string; name?: string; channelType?: string; body?: unknown }> = [];
   for (let page = 1; page <= 20; page++) {
     const res = await api.get(`/marketing/materials?isActive=true&page=${page}&limit=50`);
     all.push(...((res.data?.data ?? []) as typeof all));
@@ -343,6 +344,11 @@ function MaterialSelectField({
         className="h-8 py-1 text-sm"
       />
       <p className="mt-1 text-xs text-muted-foreground">素材的渠道和對話不同時不會送出。</p>
+      {bodyHasCouponUrl(data?.find((m) => m.id === value)?.body) && (
+        <p role="alert" className="mt-1 rounded border border-warning/30 bg-warning-subtle px-2 py-1 text-xs text-warning">
+          {COUPON_URL_IN_AUTOMATION_MESSAGE}
+        </p>
+      )}
     </div>
   );
 }

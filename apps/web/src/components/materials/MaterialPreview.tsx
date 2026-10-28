@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { imagemapPreviewSrc } from '@/lib/imagemap-url';
+import { COUPON_URL_LABEL, splitCouponUrl } from '@/lib/marketing/coupon-url';
 import { Image as ImageIcon, Video as VideoIcon, MapPin, Clock, Phone } from 'lucide-react';
 import {
   FlexMessagePreview,
@@ -120,10 +121,34 @@ function PreviewBody({ contentType, body }: { contentType: string; body: Record<
 
 // ─── 共用小元件 ─────────────────────────────────────────────────────────
 
+/**
+ * 把 {{coupon.url}} 畫成看起來像連結的標籤「顧客專屬券連結」（change improve-coupon-url-insert-ux design D4）。
+ * 只改預覽，編輯框與儲存的值仍是原字。標籤自帶背景，在固定白底的泡泡內深淺色模式都可讀。
+ */
+function TextWithCouponUrl({ text }: { text: string }) {
+  return (
+    <>
+      {splitCouponUrl(text).map((part, i) =>
+        part.kind === 'coupon-url' ? (
+          <span
+            key={i}
+            title="附券廣播發送時，會換成每位顧客自己的券連結"
+            className="mx-0.5 inline-flex items-center rounded border border-primary-border bg-primary-subtle px-1.5 text-primary underline underline-offset-2"
+          >
+            {COUPON_URL_LABEL}
+          </span>
+        ) : (
+          <React.Fragment key={i}>{part.value}</React.Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
 function BubbleText({ text }: { text: string }) {
   return (
     <div className="max-w-xs whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-white px-4 py-3 text-sm text-slate-800 shadow-sm">
-      {text || <span className="text-slate-400">（空訊息）</span>}
+      {text ? <TextWithCouponUrl text={text} /> : <span className="text-slate-400">（空訊息）</span>}
     </div>
   );
 }
@@ -198,7 +223,7 @@ function CarouselPreview({ cards }: { cards: any[] }) {
 function ButtonsPreview({ text, buttons }: { text?: string; buttons: any[] }) {
   return (
     <div className="mx-auto max-w-xs overflow-hidden rounded-2xl bg-white shadow-sm">
-      <div className="px-4 py-3 text-sm text-slate-800">{text}</div>
+      <div className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-slate-800">{text ? <TextWithCouponUrl text={text} /> : text}</div>
       <div className="divide-y divide-slate-200 border-t border-slate-200">
         {buttons.map((btn: any, idx: number) => (
           <div key={idx} className="px-4 py-2 text-center text-sm font-medium text-blue-600">

@@ -1,7 +1,7 @@
 /**
  * 公開領券連結的後台 API（add-coupon-system A15 15.29；design D30）。Prefix: /api/v1/coupons
  *
- * 看清單需 coupon.view，建立、修改、停用需 coupon.manage。讀寫都經過 coupon-claim-link.flow；QR Code 在交易外產生。
+ * 看清單需 coupon.view（含素材編輯器用的「全部可用連結」），建立、修改、停用需 coupon.manage。讀寫都經過 coupon-claim-link.flow；QR Code 在交易外產生。
  * 路徑寫成字串字面值：部署前的 OpenAPI 產生器（openapi-inventory.mjs）只認得字面值路徑。
  */
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -14,6 +14,7 @@ import { CouponValidationError } from './coupon.service.js';
 import {
   createClaimLinkFlow,
   getClaimLinkFlow,
+  listAvailableClaimLinksFlow,
   listClaimLinksFlow,
   setClaimLinkStatusFlow,
   updateClaimLinkFlow,
@@ -55,6 +56,13 @@ function notFound(reply: FastifyReply, message: string) {
 
 export default async function couponClaimLinkRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+
+  // 租戶內可用的領券連結（素材編輯器「插入領券連結」，change improve-coupon-url-insert-ux design D6）。
+  // 靜態路徑優先於 /:id，不會被當成券 id
+  app.get('/claim-links', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
+    const links = await listAvailableClaimLinksFlow(app, request.agent.tenantId, webBaseUrl());
+    return { success: true, data: links };
+  });
 
   app.get('/:id/claim-links', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
     const { id } = couponParams.parse(request.params);

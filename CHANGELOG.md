@@ -4,7 +4,14 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-28]
 
+### Added
+
+- **素材編輯器「插入領券連結」**（change `improve-coupon-url-insert-ux`）— LINE、FB 純文字素材在「插入顧客專屬券連結」旁新增「插入領券連結」：列出租戶內啟用、券進行中、沒有結束的領券連結（名稱、券名、渠道），選一條就把公開網址插在游標位置，超過字數上限時擋下並提示；沒有連結時引導到優惠券頁建立。後端新增 `GET /api/v1/coupons/claim-links`（需 `coupon.view`）。
+
 ### Changed
+
+- **券連結按鈕與說明改白話**（change `improve-coupon-url-insert-ux`）— 「插入券連結」改名「插入顧客專屬券連結」，說明預設只顯示「只能用在附券廣播。」，按「怎麼用？」展開詳細說明；素材預覽把 `{{coupon.url}}` 顯示成「顧客專屬券連結」標籤（儲存的值不變）。
+- **含顧客專屬券連結的素材用錯地方時擋下**（change `improve-coupon-url-insert-ux`）— 建立沒附券的廣播而素材含 `{{coupon.url}}` 時回 400（`MATERIAL_NEEDS_COUPON`），建立對話框提醒並停用建立按鈕；自動化規則（含關鍵字回覆、加好友禮）建立或修改動作時，「傳送素材」的素材含 `{{coupon.url}}` 回 400，關鍵字回覆對話框提醒並擋下存檔、規則編輯器提醒。只改名稱或啟用狀態不檢查，已建立的廣播發送時不擋。手冊第 10、18 章修正：關鍵字回覆會把沒代入的 `{{coupon.url}}` 拿掉，不是顯示原字。
 
 - **工單模組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `case` 的 service 改收 `TenantCtx`，route 改呼叫新的 `case.flow.ts`；從對話建立工單（`POST /conversations/:id/case`）與 MCP 的工單查詢工具也改走 flow。可觀察的差異：
   - 同一個請求內的寫入一律原子。例如刪除工單與 `case.delete` 稽核在同一個交易寫入，稽核寫入失敗時工單不會被刪除、請求回錯誤；原本是工單照常刪除、稽核遺失。
