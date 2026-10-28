@@ -1,5 +1,6 @@
 /**
- * 領券自動貼標。發券（LINE 直接歸戶）與領取（FB／IG 憑證換券）兩條路徑共用。
+ * 領券自動貼標，只有批次發券（coupon.flow.ts 經 issueCoupons）呼叫。
+ * 對話發券、傳訊領券、附券廣播傳 skipClaimTag，送出確認時才由 @open333crm/core 的 confirmPendingInstance 貼標。
  */
 import { logger, mergeClaimTagExpiry } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
