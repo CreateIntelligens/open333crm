@@ -20,12 +20,22 @@ const links = [
     id: 'l1', name: '門市海報', code: 'AB12CD34', url: URL, couponId: 'c1', couponName: '秋季九折',
     channel: { id: 'ch1', channelType: 'LINE', displayName: '本店 LINE', ready: true },
   },
+  {
+    id: 'l2', name: '粉專置頂', code: 'FB12CD34', url: 'https://crm.example.com/coupon/claim/FB12CD34', couponId: 'c1', couponName: '秋季九折',
+    channel: { id: 'ch2', channelType: 'FB', displayName: '本店粉專', ready: true },
+  },
 ];
+const requested: string[] = [];
 
 beforeEach(() => {
+  requested.length = 0;
+  // 模擬後端依 channelType 篩選
   api.get.mockReset().mockImplementation(async (url: string) => {
-    if (url === '/coupons/claim-links') return { data: { success: true, data: links } };
-    throw new Error(`unexpected ${url}`);
+    requested.push(url);
+    const [path, query] = url.split('?');
+    if (path !== '/coupons/claim-links') throw new Error(`unexpected ${url}`);
+    const channelType = new URLSearchParams(query ?? '').get('channelType');
+    return { data: { success: true, data: links.filter((l) => !channelType || l.channel.channelType === channelType) } };
   });
 });
 afterEach(cleanup);
@@ -61,13 +71,22 @@ test('選一條領券連結插入', async () => {
   assert.equal(textarea.value, `快來${URL}領券`);
   assert.equal(textarea.selectionStart, 2 + URL.length);
   assert.ok(screen.queryByRole('button', { name: /門市海報/ }) === null, '選完後清單關閉');
+  assert.deepEqual(requested, ['/coupons/claim-links?channelType=LINE'], 'LINE 素材只查 LINE 的領券連結');
+});
+
+test('只列出與素材同渠道的領券連結（FB 素材）', async () => {
+  renderStateful(FbTextEditor, '');
+  openPicker();
+  await screen.findByRole('button', { name: /粉專置頂/ });
+  assert.ok(screen.queryByRole('button', { name: /門市海報/ }) === null, '不列 LINE 的連結');
+  assert.deepEqual(requested, ['/coupons/claim-links?channelType=FB']);
 });
 
 test('沒有可用的領券連結', async () => {
   api.get.mockResolvedValue({ data: { success: true, data: [] } });
   renderStateful(LineTextEditor, '');
   openPicker();
-  const empty = await screen.findByText(/還沒有可用的領券連結/);
+  const empty = await screen.findByText(/還沒有可用的 LINE 領券連結/);
   assert.ok(empty !== null);
   const link = screen.getByRole('link', { name: /優惠券/ });
   assert.equal(link.getAttribute('href'), '/dashboard/marketing/coupons');
@@ -76,7 +95,7 @@ test('沒有可用的領券連結', async () => {
 test('插入領券連結超過字數上限', async () => {
   const textarea = renderStateful(FbTextEditor, 'a'.repeat(1990));
   openPicker();
-  fireEvent.click(await screen.findByRole('button', { name: /門市海報/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /粉專置頂/ }));
   assert.equal(textarea.value.length, 1990);
   const alert = screen.queryByRole('alert');
   assert.ok(alert !== null, '應顯示超過上限的提示');
@@ -89,5 +108,7 @@ test('清單載入失敗：403 時說明沒有權限', async () => {
   openPicker();
   const alert = await screen.findByRole('alert');
   assert.match(alert.textContent ?? '', /權限/);
+  assert.match(alert.textContent ?? '', /檢視優惠券/);
+  assert.match(alert.textContent ?? '', /管理行銷/);
   assert.equal(textarea.value, '快來領券');
 });

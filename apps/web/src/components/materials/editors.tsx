@@ -42,6 +42,7 @@ export function LineTextEditor({ body, onChange }: EditorProps<LineTextBody>) {
         onChange={(text) => onChange({ ...body, text })}
         placeholder="輸入要發送的文字訊息"
         maxLength={5000}
+        claimLinkChannelType="LINE"
       />
     </div>
   );
@@ -78,6 +79,7 @@ export function FbTextEditor({ body, onChange }: EditorProps<{ text?: string }>)
         onChange={(text) => onChange({ ...body, text })}
         placeholder="輸入要發送的文字訊息"
         maxLength={2000}
+        claimLinkChannelType="FB"
       />
     </div>
   );

@@ -51,15 +51,17 @@
 
 ### D6 列出全部可用領券連結的 API
 
-`GET /api/v1/coupons/claim-links`（`coupon-claim-link.routes.ts`，同一檔、同一前綴，路徑為字串字面值），需 `coupon.view`（與依券查詢一致）。service `listAvailableClaimLinks(ctx, webBaseUrl, now)`：
+`GET /api/v1/coupons/claim-links`（`coupon-claim-link.routes.ts`，同一檔、同一前綴，路徑為字串字面值），需 `coupon.view` 或 `marketing.manage` 任一（`requireAnyPermission`）：素材編輯者通常只有 `marketing.manage`（使用者 2026-10-28 決定）。service `listAvailableClaimLinks(ctx, webBaseUrl, filter, now)`：
 
-- 條件：`tenantId`、連結 `ACTIVE`、券 `ACTIVE`、連結沒有結束（`endAt` 為空或晚於現在）。
+- 條件：`tenantId`、連結 `ACTIVE`、券 `ACTIVE`、連結沒有結束（`endAt` 為空或晚於現在）；帶 `channelType` 時再加上連結渠道的類型。
+- 只列同渠道（使用者 2026-10-28 決定）：LINE 素材帶 `LINE`，FB 素材帶 `FB`。FB 渠道的領券連結開的是 Messenger（m.me），Instagram（`THREADS`）開的是 ig.me，Messenger 素材不列 Instagram 的連結。
 - 回傳既有 `ClaimLinkView` 加上 `couponName`，網址用既有 `claimPageUrl(WEB_BASE_URL, code)`；最多 200 筆，新的在前。
 - Fastify 靜態路徑優先於 `/:id`，不與券詳情路由衝突。
 
-前端：素材編輯器開啟「插入領券連結」面板時才載入；403 顯示「沒有檢視優惠券的權限」，其他錯誤顯示看得到的訊息。沒有連結時說明並提供前往「優惠券」頁的連結。插入沿用游標與字數上限邏輯。
+前端：素材編輯器開啟「插入領券連結」面板時才載入，帶素材的渠道；403 說明需要「檢視優惠券」或「管理行銷」，其他錯誤顯示看得到的訊息。沒有連結時說明並提供前往「優惠券」頁的連結。插入沿用游標與字數上限邏輯。
 
 ## Risks / Trade-offs
 
 - 後端擋關鍵字規則可能讓少數既有規則下次編輯時存不了 → 訊息寫明原因與改法，停用不受影響。
-- 列出全部連結的 API 讓有 `coupon.view` 的人看到全部連結網址 → 與依券查詢的權限相同，沒有擴大可見範圍。
+- 只有 `marketing.manage` 的人也能看到可用領券連結的名稱、券名與公開網址 → 這些網址本來就是公開散布用的，不含名額或顧客資料，可接受。
+- 素材改成含 `{{coupon.url}}` 時，不會提醒該素材已被關鍵字規則使用 → 記在 issue #375，不在本 change 處理。

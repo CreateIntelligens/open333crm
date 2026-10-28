@@ -69,9 +69,10 @@ const availableFetcher = async (url: string) => (await api.get(url)).data.data a
 
 /**
  * 素材編輯器「插入領券連結」用的清單（change improve-coupon-url-insert-ux design D6）。
- * enabled 為 false 時不發請求：只有打開清單時才載入。
+ * enabled 為 false 時不發請求：只有打開清單時才載入。channelType 只列該渠道的連結（素材的渠道）。
  */
-export function useAvailableClaimLinks(enabled: boolean) {
-  const { data, error, isLoading } = useSWR(enabled ? '/coupons/claim-links' : null, availableFetcher);
+export function useAvailableClaimLinks(enabled: boolean, channelType?: string) {
+  const url = channelType ? `/coupons/claim-links?channelType=${encodeURIComponent(channelType)}` : '/coupons/claim-links';
+  const { data, error, isLoading } = useSWR(enabled ? url : null, availableFetcher);
   return { links: data, error, isLoading };
 }

@@ -27,9 +27,11 @@ interface Props {
   maxLength: number;
   placeholder?: string;
   rows?: number;
+  /** 素材的渠道類型（LINE、FB）：「插入領券連結」只列這個渠道的領券連結 */
+  claimLinkChannelType: 'LINE' | 'FB';
 }
 
-export function CouponUrlTextField({ value, onChange, maxLength, placeholder, rows = 5 }: Props) {
+export function CouponUrlTextField({ value, onChange, maxLength, placeholder, rows = 5, claimLinkChannelType }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 點按鈕時輸入框已失焦，但 selectionStart 仍在；只有曾經進過輸入框才採用它，
   // 否則瀏覽器預設的游標（可能在開頭）不代表使用者想插入的位置，改加在結尾。
@@ -133,7 +135,7 @@ export function CouponUrlTextField({ value, onChange, maxLength, placeholder, ro
         <div className="shrink-0 text-[11px] text-slate-400">{value.length} / {maxLength}</div>
       </div>
       {pickerOpen && (
-        <ClaimLinkPicker id={pickerId} onPick={insertClaimLink} onClose={() => setPickerOpen(false)} />
+        <ClaimLinkPicker id={pickerId} channelType={claimLinkChannelType} onPick={insertClaimLink} onClose={() => setPickerOpen(false)} />
       )}
       {overLimitMessage && (
         <p role="alert" className="text-xs text-red-600">{overLimitMessage}</p>
@@ -143,12 +145,19 @@ export function CouponUrlTextField({ value, onChange, maxLength, placeholder, ro
 }
 
 /** 「插入領券連結」的清單：打開時才載入租戶內可用的領券連結 */
-function ClaimLinkPicker({ id, onPick, onClose }: { id: string; onPick: (link: AvailableClaimLink) => void; onClose: () => void }) {
-  const { links, error, isLoading } = useAvailableClaimLinks(true);
+function ClaimLinkPicker({ id, channelType, onPick, onClose }: {
+  id: string;
+  channelType: 'LINE' | 'FB';
+  onPick: (link: AvailableClaimLink) => void;
+  onClose: () => void;
+}) {
+  // 只列與素材同渠道的連結：LINE 素材放 LINE 的領券連結，FB 素材放粉專的（Messenger）
+  const { links, error, isLoading } = useAvailableClaimLinks(true, channelType);
+  const channelLabel = CHANNEL_LABEL[channelType] ?? channelType;
   const status = (error as { response?: { status?: number } } | undefined)?.response?.status;
   const errorMessage = error
     ? status === 403
-      ? '你沒有檢視優惠券的權限，無法列出領券連結。請洽管理員開通「檢視優惠券」。'
+      ? '你沒有權限列出領券連結：需要「檢視優惠券」或「管理行銷」其中一個權限，請洽管理員開通。'
       : getApiErrorMessage(error, '無法載入領券連結，請稍後重試')
     : null;
 
@@ -163,7 +172,7 @@ function ClaimLinkPicker({ id, onPick, onClose }: { id: string; onPick: (link: A
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-semibold text-foreground">選擇要插入的領券連結</p>
+        <p className="text-xs font-semibold text-foreground">{`選擇要插入的領券連結（${channelLabel}）`}</p>
         <button
           type="button"
           onClick={onClose}
@@ -173,7 +182,7 @@ function ClaimLinkPicker({ id, onPick, onClose }: { id: string; onPick: (link: A
         </button>
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        領券連結人人共用：顧客點開後傳送領券訊息，系統才發券。適合一般廣播與關鍵字回覆。
+        領券連結人人共用：顧客點開後傳送領券訊息，系統才發券。適合一般廣播與關鍵字回覆。這裡只列與素材同渠道的連結。
       </p>
       {errorMessage ? (
         <p role="alert" className="text-xs text-destructive">{errorMessage}</p>
@@ -181,9 +190,9 @@ function ClaimLinkPicker({ id, onPick, onClose }: { id: string; onPick: (link: A
         <p className="text-xs text-muted-foreground">載入中…</p>
       ) : links.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          還沒有可用的領券連結（連結要啟用中、券要進行中）。請到
+          {`還沒有可用的 ${channelLabel} 領券連結（連結要啟用中、券要進行中）。請到`}
           <a href="/dashboard/marketing/coupons" className="mx-1 font-medium text-primary underline underline-offset-2">優惠券</a>
-          頁打開一張券，在「領券連結」分頁建立。
+          {`頁打開一張券，在「領券連結」分頁建立，渠道選 ${channelLabel}。`}
         </p>
       ) : (
         <ul className="max-h-56 space-y-1 overflow-y-auto">

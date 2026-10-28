@@ -15,6 +15,8 @@
 - [x] 3.3 `listAvailableClaimLinks()`（service）、`listAvailableClaimLinksFlow`、`GET /claim-links` 路由（design D6）
 - [x] 3.4 測試 `apps/web/tests/unit/components/materials/claim-link-insert.test.tsx`：「選一條領券連結插入」「沒有可用的領券連結」「插入領券連結超過字數上限」「清單載入失敗」，「其他版型沒有插入按鈕」加上領券連結按鈕的斷言，在現有程式上斷言失敗
 - [x] 3.5 新 hook `useAvailableClaimLinks`；`CouponUrlTextField.tsx` 加「插入領券連結」面板
+- [x] 3.6 測試（同 3.1、3.2、3.4 的檔案）：「依渠道篩選」「只有管理行銷權限的素材編輯者可以讀」「缺少檢視權限」改為兩種權限都沒有、「只列出與素材同渠道的領券連結」、403 說明兩種權限，在現有程式上斷言失敗
+- [x] 3.7 `channelType` 查詢參數與 service 篩選；路由改 `requireAnyPermission(['coupon.view', 'marketing.manage'])`；編輯器帶入素材渠道。突變驗證：改回 `requirePermission('coupon.view')` 時「只有管理行銷權限…可以讀」與 403 測試失敗；多放行 `marketing.view` 時 403 測試失敗
 
 ## 4. 用錯地方時提醒並擋下（coupon-management、automation-engine）
 

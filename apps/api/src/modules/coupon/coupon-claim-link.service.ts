@@ -112,13 +112,20 @@ const AVAILABLE_LINKS_LIMIT = 200;
  * 租戶內現在可以放進訊息的領券連結：連結啟用、券進行中、連結沒有結束（尚未開始的可以先放）。
  * 素材編輯器的「插入領券連結」用（change improve-coupon-url-insert-ux design D6）。
  */
-export async function listAvailableClaimLinks(ctx: TenantCtx, webBaseUrl: string, now: Date = new Date()): Promise<AvailableClaimLinkView[]> {
+export async function listAvailableClaimLinks(
+  ctx: TenantCtx,
+  webBaseUrl: string,
+  /** channelType：只列這個渠道類型（LINE、FB、THREADS）的連結；素材編輯器帶入素材的渠道 */
+  filter: { channelType?: string } = {},
+  now: Date = new Date(),
+): Promise<AvailableClaimLinkView[]> {
   const { tx, tenantId } = ctx;
   const rows = await tx.couponClaimLink.findMany({
     where: {
       tenantId,
       status: 'ACTIVE',
       coupon: { status: 'ACTIVE' },
+      ...(filter.channelType ? { channel: { channelType: filter.channelType as never } } : {}),
       OR: [{ endAt: null }, { endAt: { gt: now } }],
     },
     orderBy: { createdAt: 'desc' },

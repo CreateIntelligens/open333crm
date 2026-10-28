@@ -1,12 +1,12 @@
 /**
  * 公開領券連結的後台 API（add-coupon-system A15 15.29；design D30）。Prefix: /api/v1/coupons
  *
- * 看清單需 coupon.view（含素材編輯器用的「全部可用連結」），建立、修改、停用需 coupon.manage。讀寫都經過 coupon-claim-link.flow；QR Code 在交易外產生。
+ * 看清單需 coupon.view（素材編輯器用的「全部可用連結」為 coupon.view 或 marketing.manage），建立、修改、停用需 coupon.manage。讀寫都經過 coupon-claim-link.flow；QR Code 在交易外產生。
  * 路徑寫成字串字面值：部署前的 OpenAPI 產生器（openapi-inventory.mjs）只認得字面值路徑。
  */
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod/v3';
-import { requirePermission } from '../../guards/rbac.guard.js';
+import { requireAnyPermission, requirePermission } from '../../guards/rbac.guard.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { generateQrCode, generateQrCodePng } from '../shortlink/qrcode.service.js';
@@ -37,6 +37,9 @@ const updateSchema = z.object({
 });
 const couponParams = z.object({ id: z.string().uuid('優惠券識別格式不正確') });
 const linkParams = couponParams.extend({ linkId: z.string().uuid('領券連結識別格式不正確') });
+const availableQuery = z.object({
+  channelType: z.enum(['LINE', 'FB', 'THREADS'], { errorMap: () => ({ message: '渠道類型只能是 LINE、FB 或 THREADS' }) }).optional(),
+});
 
 const webBaseUrl = () => getConfig().WEB_BASE_URL;
 
@@ -58,9 +61,11 @@ export default async function couponClaimLinkRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   // 租戶內可用的領券連結（素材編輯器「插入領券連結」，change improve-coupon-url-insert-ux design D6）。
+  // 素材編輯者通常只有 marketing.manage，所以 coupon.view 或 marketing.manage 任一即可。
   // 靜態路徑優先於 /:id，不會被當成券 id
-  app.get('/claim-links', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
-    const links = await listAvailableClaimLinksFlow(app, request.agent.tenantId, webBaseUrl());
+  app.get('/claim-links', { preHandler: [requireAnyPermission(['coupon.view', 'marketing.manage'])] }, async (request) => {
+    const { channelType } = availableQuery.parse(request.query ?? {});
+    const links = await listAvailableClaimLinksFlow(app, request.agent.tenantId, webBaseUrl(), channelType ? { channelType } : {});
     return { success: true, data: links };
   });
 
