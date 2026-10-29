@@ -71,55 +71,62 @@ function decodeEntities(s: string): string {
 const isSpace = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 
 /**
- * 解析一個標籤內的屬性，屬性名轉小寫，同名只取第一個。
+ * 從 `start` 開始解析一個標籤的屬性，直到引號外的 `>` 為止；屬性名轉小寫，同名只取第一個。
  * 逐字元往前掃，時間與標籤長度成線性。抓回來的 HTML 由外部網站控制，
  * 回溯式正規表示式在特製的 HTML 上要好幾分鐘（issue #394）
+ * @returns 屬性，以及標籤結尾 `>` 的位置（找不到時是 HTML 長度）
  */
-function parseAttributes(tag: string): Map<string, string> {
+function parseTag(html: string, start: number): { attrs: Map<string, string>; end: number } {
   const attrs = new Map<string, string>();
-  const n = tag.length;
-  let i = 0;
-  while (i < n) {
-    while (i < n && (isSpace(tag[i]) || tag[i] === '/')) i++;
+  const n = html.length;
+  let i = start;
+  while (i < n && html[i] !== '>') {
+    while (i < n && (isSpace(html[i]) || html[i] === '/')) i++;
     const nameStart = i;
-    while (i < n && !isSpace(tag[i]) && tag[i] !== '/' && tag[i] !== '=') i++;
-    const name = tag.slice(nameStart, i).toLowerCase();
-    while (i < n && isSpace(tag[i])) i++;
+    while (i < n && !isSpace(html[i]) && html[i] !== '/' && html[i] !== '=' && html[i] !== '>') i++;
+    const name = html.slice(nameStart, i).toLowerCase();
+    while (i < n && isSpace(html[i])) i++;
     let value = '';
-    if (tag[i] === '=') {
+    if (html[i] === '=') {
       i++;
-      while (i < n && isSpace(tag[i])) i++;
-      const quote = tag[i];
+      while (i < n && isSpace(html[i])) i++;
+      const quote = html[i];
       if (quote === '"' || quote === "'") {
-        const close = tag.indexOf(quote, i + 1);
+        // 引號內的 > 是值的一部分，不是標籤結尾
+        const close = html.indexOf(quote, i + 1);
         const stop = close === -1 ? n : close;
-        value = tag.slice(i + 1, stop);
+        value = html.slice(i + 1, stop);
         i = stop + 1;
       } else {
-        const start = i;
-        while (i < n && !isSpace(tag[i])) i++;
-        value = tag.slice(start, i);
+        const valueStart = i;
+        while (i < n && !isSpace(html[i]) && html[i] !== '>') i++;
+        value = html.slice(valueStart, i);
       }
     }
     if (name && !attrs.has(name)) attrs.set(name, value);
   }
-  return attrs;
+  return { attrs, end: Math.min(i, n) };
 }
 
-/** 取出所有 `<meta>` 的 property／name 對應的 content（鍵轉小寫，同名取第一個非空值） */
+/**
+ * 取出所有 `<meta>` 的 property／name 對應的 content（鍵轉小寫，同名取第一個非空值）。
+ * `meta` 後面要接空白、`/` 或 `>`，`<metadata>` 不算；HTML 註解整段跳過
+ */
 function extractMetaTags(html: string): Map<string, string> {
   const found = new Map<string, string>();
-  const opening = /<meta/gi;
+  const token = /<!--|<meta(?=[\s/>])/gi;
   let match: RegExpExecArray | null;
-  while ((match = opening.exec(html))) {
-    const start = match.index + match[0].length;
-    const close = html.indexOf('>', start);
-    const end = close === -1 ? html.length : close;
-    const attrs = parseAttributes(html.slice(start, end));
+  while ((match = token.exec(html))) {
+    if (match[0] === '<!--') {
+      const close = html.indexOf('-->', match.index + 4);
+      token.lastIndex = close === -1 ? html.length : close + 3;
+      continue;
+    }
+    const { attrs, end } = parseTag(html, match.index + match[0].length);
     const key = (attrs.get('property') ?? attrs.get('name'))?.toLowerCase();
     const content = attrs.get('content');
     if (key && content && !found.has(key)) found.set(key, decodeEntities(content).trim());
-    opening.lastIndex = end;
+    token.lastIndex = end;
   }
   return found;
 }

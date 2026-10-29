@@ -42,6 +42,23 @@ test('Falls back to the description meta when og:description is missing', async 
   assert.equal(og.ogTitle, '標題');
 });
 
+test('Keeps a > inside a quoted attribute value', async () => {
+  html = `<meta property="og:title" content="5 > 3"><meta content='a > b' name='description'>`;
+  const og = await scrapeOg('https://shop.example.com/');
+  assert.equal(og.ogTitle, '5 > 3');
+  assert.equal(og.ogDescription, 'a > b');
+});
+
+test('Ignores <metadata> elements and meta tags inside HTML comments', async () => {
+  html = `<metadata property="og:title" content="wrong">
+    <!-- <meta property="og:description" content="commented out"> -->
+    <meta property="og:title" content="right">
+    <meta property="og:description" content="real">`;
+  const og = await scrapeOg('https://shop.example.com/');
+  assert.equal(og.ogTitle, 'right');
+  assert.equal(og.ogDescription, 'real');
+});
+
 test('Decodes HTML entities once', async () => {
   html = '<meta property="og:title" content="A &amp; B &amp;lt;tag&amp;gt; &quot;Q&quot; &#39;s&#x27;">';
   const og = await scrapeOg('https://shop.example.com/');
