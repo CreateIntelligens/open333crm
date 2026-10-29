@@ -1,6 +1,6 @@
 /**
  * 公開 WebChat 路由的濫用防護（主規格 webchat-public-abuse-controls），
- * 以及主規格 webchat-widget 在 API 端的訊息與上傳情境。
+ * 以及主規格 webchat-widget 在 API 端的訊息情境與停用的上傳路由。
  *
  * `/api/v1/chatbox/*` 與 `/api/v1/webchat/:channelId/*` 是兩組各自實作的路由，
  * 適用兩組的情境，兩組都要測。
@@ -14,7 +14,6 @@ import { afterEach, beforeEach, test, vi } from 'vitest';
 const service = vi.hoisted(() => ({
   createChatboxSession: vi.fn(),
   handleChatboxMessage: vi.fn(),
-  uploadChatboxMedia: vi.fn(),
 }));
 vi.mock('#src/modules/chatbox/chatbox.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/chatbox/chatbox.service.js')>()),
@@ -80,7 +79,6 @@ beforeEach(() => {
     config: { channelId: CHANNEL_ID },
   });
   service.handleChatboxMessage.mockReset().mockResolvedValue({ duplicate: false, message: { id: 'message-1' } });
-  service.uploadChatboxMedia.mockReset().mockResolvedValue({ url: 'https://cdn.test/file', contentType: 'image' });
 });
 
 afterEach(() => {
@@ -229,7 +227,7 @@ for (const family of families) {
   });
 }
 
-// ── 訊息與上傳請求的頻率限制 ───────────────────────────────
+// ── 訊息請求的頻率限制 ───────────────────────────────
 
 for (const family of families) {
   test(`同一個來源 IP 的訊息超過每分鐘上限（${family.name}）：回 429，不驗證工作階段，不交給進站處理`, async () => {
@@ -340,61 +338,6 @@ for (const family of families) {
     assert.equal(service.handleChatboxMessage.mock.calls.length, accepted);
     await app.close();
   });
-
-  test(`上傳超過每分鐘上限（${family.name}）：同一個來源 IP 或同一個工作階段，回 429，不儲存檔案`, async () => {
-    const logs: string[] = [];
-    const app = await buildApp(logs);
-
-    let accepted = 0;
-    let rejected: LightMyRequestResponse | undefined;
-    for (let i = 0; i < 100 && !rejected; i += 1) {
-      const response = await uploadMedia(app, family.media, { sessionId: sessionId(i), claimToken: CLAIM_TOKEN }, '10.0.0.2');
-      if (response.statusCode === 200) accepted += 1;
-      else rejected = response;
-    }
-    assert.ok(rejected, '同一個 IP 的上傳要被擋下');
-    assertRateLimited(rejected);
-    assert.equal(service.uploadChatboxMedia.mock.calls.length, accepted);
-
-    resetPublicWebchatLimits();
-    service.uploadChatboxMedia.mockClear();
-    accepted = 0;
-    rejected = undefined;
-    const id = sessionId('uploads');
-    for (let i = 0; i < 100 && !rejected; i += 1) {
-      const response = await uploadMedia(app, family.media, { sessionId: id, claimToken: CLAIM_TOKEN }, ip(1000 + i));
-      if (response.statusCode === 200) accepted += 1;
-      else rejected = response;
-    }
-    assert.ok(rejected, '同一個工作階段的上傳要被擋下');
-    assertRateLimited(rejected);
-    assert.equal(rejectedBy(logs), getPublicWebchatKey('session-media', id));
-    assert.equal(service.uploadChatboxMedia.mock.calls.length, accepted);
-    await app.close();
-  });
-
-  test(`訊息達到來源 IP 的上限後仍可上傳（${family.name}）：訊息不佔用上傳的 IP 計數`, async () => {
-    // 先量出同一個 IP 每分鐘能上傳幾次，再用新的 app 與計數，從同一個 IP 送出同樣多則訊息
-    const probe = await buildApp();
-    let uploadLimit = 0;
-    for (let i = 0; i < 100; i += 1) {
-      const response = await uploadMedia(probe, family.media, { sessionId: sessionId(i), claimToken: CLAIM_TOKEN }, '10.0.0.4');
-      if (response.statusCode !== 200) break;
-      uploadLimit += 1;
-    }
-    await probe.close();
-    resetPublicWebchatLimits();
-
-    const app = await buildApp();
-    for (let i = 0; i < uploadLimit; i += 1) {
-      const response = await postMessage(app, family.messages, messageBody(sessionId(`m${i}`)), '10.0.0.4');
-      assert.equal(response.statusCode, 200, '訊息要在訊息的上限以內');
-    }
-
-    const upload = await uploadMedia(app, family.media, { sessionId: sessionId('after'), claimToken: CLAIM_TOKEN }, '10.0.0.4');
-    assert.equal(upload.statusCode, 200);
-    await app.close();
-  });
 }
 
 // ── 建立工作階段與訪客 socket 連線的頻率限制 ──────────────────
@@ -453,7 +396,7 @@ for (const family of families) {
   });
 }
 
-// ── webchat-widget：Visitor message sending 的 API 端 ────────────
+// ── webchat-widget：Visitor sends text messages only 的 API 端、Visitor upload routes are disabled ──
 
 for (const family of families) {
   test(`Visitor sends a text message（${family.name}）：API 驗證工作階段後交給進站處理`, async () => {
@@ -471,22 +414,18 @@ for (const family of families) {
     await app.close();
   });
 
-  test(`Visitor sends an image（${family.name}）：API 以驗證過的工作階段儲存檔案`, async () => {
+  test(`Visitor uploads a file to the ${family.name === 'chatbox' ? 'chatbox' : 'legacy'} route（${family.name}）：上傳路由回 410 WEBCHAT_VISITOR_MEDIA_DISABLED，不驗證工作階段`, async () => {
     const app = await buildApp();
-    const id = sessionId('image');
 
-    const response = await uploadMedia(app, family.media, { sessionId: id, claimToken: CLAIM_TOKEN });
+    const response = await uploadMedia(app, family.media, { sessionId: sessionId('image'), claimToken: CLAIM_TOKEN });
 
-    assert.equal(response.statusCode, 200);
-    assert.equal(service.uploadChatboxMedia.mock.calls.length, 1);
-    const [, session, , , mimetype] = service.uploadChatboxMedia.mock.calls[0]!;
-    assert.equal(session.id, `verified-${id}`);
-    assert.equal(session.channelId, CHANNEL_ID);
-    assert.equal(mimetype, 'image/png');
+    assert.equal(response.statusCode, 410);
+    assert.equal(response.json().code, 'WEBCHAT_VISITOR_MEDIA_DISABLED');
+    assert.equal(verifier.verify.mock.calls.length, 0);
     await app.close();
   });
 
-  test(`Invalid visitorToken（${family.name}）：沒有憑證或驗證失敗時拒絕，不交給進站處理也不儲存檔案`, async () => {
+  test(`Invalid visitorToken（${family.name}）：沒有憑證或驗證失敗時拒絕，不交給進站處理`, async () => {
     const app = await buildApp();
     const id = sessionId('invalid');
 
@@ -498,32 +437,24 @@ for (const family of families) {
       content: { text: 'hello' },
     });
     assert.equal(visitorTokenOnly.statusCode, 400);
-    const noClaimUpload = await uploadMedia(app, family.media, { sessionId: id });
-    assert.ok([400, 401].includes(noClaimUpload.statusCode));
 
     verifyFails = () => true;
     const failedMessage = await postMessage(app, family.messages, messageBody(id));
     assert.equal(failedMessage.statusCode, 401);
-    const failedUpload = await uploadMedia(app, family.media, { sessionId: id, claimToken: CLAIM_TOKEN });
-    assert.equal(failedUpload.statusCode, 401);
 
     assert.equal(service.handleChatboxMessage.mock.calls.length, 0);
-    assert.equal(service.uploadChatboxMedia.mock.calls.length, 0);
     await app.close();
   });
 }
 
-test('Session belongs to another channel：回 404，不交給進站處理也不儲存檔案', async () => {
+test('Session belongs to another channel：回 404，不交給進站處理', async () => {
   const app = await buildApp();
   channelOfSession = () => OTHER_CHANNEL_ID;
   const id = sessionId('other-channel');
 
   const message = await postMessage(app, `/api/v1/webchat/${CHANNEL_ID}/messages`, messageBody(id));
-  const upload = await uploadMedia(app, `/api/v1/webchat/${CHANNEL_ID}/media`, { sessionId: id, claimToken: CLAIM_TOKEN });
 
   assert.equal(message.statusCode, 404);
-  assert.equal(upload.statusCode, 404);
   assert.equal(service.handleChatboxMessage.mock.calls.length, 0);
-  assert.equal(service.uploadChatboxMedia.mock.calls.length, 0);
   await app.close();
 });

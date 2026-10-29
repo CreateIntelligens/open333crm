@@ -1,6 +1,7 @@
 /**
  * 公開 WebChat 的大小與有效期限限制（主規格 webchat-public-abuse-controls），
- * 以及 webchat-widget 的「Visitor sends a text message」在進站處理端的部分。
+ * 以及 webchat-widget 的「Visitor sends a text message」在進站處理端的部分、
+ * webchat-message-contract 的「Image message input」（訪客的媒體訊息被拒絕）。
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
@@ -10,8 +11,6 @@ process.env.CHATBOX_SESSION_SECRET = process.env.CHATBOX_SESSION_SECRET || 'test
 
 const processInboundMessage = vi.hoisted(() => vi.fn());
 vi.mock('#src/modules/webhook/webhook.service.js', () => ({ processInboundMessage }));
-const uploadFile = vi.hoisted(() => vi.fn());
-vi.mock('#src/modules/storage/storage.service.js', () => ({ uploadFile }));
 
 import { registerChannelPlugin, webchatPlugin } from '@open333crm/channel-plugins';
 import { parseEnvConfig } from '#src/config/env.js';
@@ -29,7 +28,6 @@ import {
   createChatboxMessageRegistry,
   registerBuiltInChatboxMessageHandlers,
 } from '#src/modules/chatbox/chatbox.registry.js';
-import { uploadVisitorMedia } from '#src/modules/webchat/webchat.service.js';
 
 registerChannelPlugin(webchatPlugin);
 
@@ -57,7 +55,6 @@ beforeEach(() => {
       sequence: 1,
     },
   });
-  uploadFile.mockReset().mockResolvedValue({ url: 'https://cdn.test/file' });
 });
 
 afterEach(() => {
@@ -164,35 +161,20 @@ test('Visitor sends a text message：以驗證過的工作階段的租戶與對�
   assert.equal(parsed.contactUid, '33333333-3333-4333-8333-333333333333');
 });
 
-test('上傳的檔案類型不支援：回 400，不儲存檔案', async () => {
-  const prisma = { channel: { findFirst: async () => ({ id: 'channel-1', tenantId: 'tenant-1' }) } };
+test('Image message input：訪客送出 image、video、file 訊息時回 400，不交給進站處理', async () => {
+  const { sessionId, claimToken, prisma, redis } = await claimedSession();
 
-  await expectAppError(
-    () => uploadVisitorMedia(prisma as never, 'channel-1', 'visitor', Buffer.from('pdf'), 'file.pdf', 'application/pdf'),
-    400,
-  );
-  assert.equal(uploadFile.mock.calls.length, 0);
-});
-
-test('上傳的檔案超過大小上限：圖片超過 20 MB、影片超過 25 MB 時回 400，不儲存檔案', async () => {
-  const prisma = { channel: { findFirst: async () => ({ id: 'channel-1', tenantId: 'tenant-1' }) } };
-  const MB = 1024 * 1024;
-
-  await expectAppError(
-    () => uploadVisitorMedia(prisma as never, 'channel-1', 'visitor', Buffer.alloc(20 * MB + 1), 'a.png', 'image/png'),
-    400,
-  );
-  await expectAppError(
-    () => uploadVisitorMedia(prisma as never, 'channel-1', 'visitor', Buffer.alloc(25 * MB + 1), 'a.mp4', 'video/mp4'),
-    400,
-  );
-  assert.equal(uploadFile.mock.calls.length, 0);
-
-  const image = await uploadVisitorMedia(prisma as never, 'channel-1', 'visitor', Buffer.alloc(20 * MB), 'a.png', 'image/png');
-  const video = await uploadVisitorMedia(prisma as never, 'channel-1', 'visitor', Buffer.alloc(25 * MB), 'a.mp4', 'video/mp4');
-  assert.deepEqual([image.contentType, video.contentType], ['image', 'video']);
-  assert.equal(uploadFile.mock.calls.length, 2, '上限以內要能儲存');
-  assert.equal(uploadFile.mock.calls[0]![3], 'tenant-1', '檔案存在渠道的租戶底下');
+  for (const type of ['image', 'video', 'file'] as const) {
+    await expectAppError(() => handleChatboxMessage(prisma as never, {} as never, registry(), {
+      sessionId,
+      claimToken,
+      clientMessageId: `client-${type}`,
+      type,
+      payload: { url: 'https://cdn.test/file' },
+      fingerprint: FINGERPRINT,
+    }, redis), 400);
+  }
+  assert.equal(processInboundMessage.mock.calls.length, 0);
 });
 
 test('設定的有效期限超過三天：環境變數驗證失敗並指出 CHATBOX_SESSION_TTL_MINUTES', () => {

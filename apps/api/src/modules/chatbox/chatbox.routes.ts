@@ -7,7 +7,6 @@ import {
   bootstrapChatboxSession,
   createChatboxSession,
   handleChatboxMessage,
-  uploadChatboxMedia,
 } from './chatbox.service.js';
 import { consumePublicWebchatLimit, getPublicWebchatKey } from '../webchat/public-webchat-limits.js';
 
@@ -43,15 +42,6 @@ const messageSchema = z.object({
 function getUserAgent(app: FastifyInstance, headers: Record<string, unknown>): string {
   const ua = headers['user-agent'];
   return typeof ua === 'string' ? ua : '';
-}
-
-function parseJsonField(value: unknown): unknown {
-  if (typeof value !== 'string') return undefined;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
-  }
 }
 
 function checkPublicLimit(reply: FastifyReply, limits: Array<{ key: string; max: number; windowMs?: number }>): boolean {
@@ -147,49 +137,9 @@ export default async function chatboxRoutes(app: FastifyInstance) {
     return reply.send(success({ ok: true, duplicate: result.duplicate, message: result.message }));
   });
 
-  app.post('/media', {
-    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
-  }, async (req, reply) => {
-    if (!checkPublicLimit(reply, [
-      { key: getPublicWebchatKey('ip-media', req.ip), max: 10 },
-    ])) return;
-
-    const data = await req.file();
-    if (!data) {
-      return reply.status(400).send({ error: 'No file uploaded' });
-    }
-
-    const sessionId = data.fields?.sessionId as { value?: string } | undefined;
-    if (!sessionId?.value) {
-      return reply.status(400).send({ error: 'sessionId is required' });
-    }
-    const claimToken = data.fields?.claimToken as { value?: string } | undefined;
-    if (!claimToken?.value) {
-      return reply.status(400).send({ error: 'claimToken is required' });
-    }
-
-    if (!checkPublicLimit(reply, [
-      { key: getPublicWebchatKey('session-media', sessionId.value), max: 10 },
-    ])) return;
-
-    const fingerprintField = data.fields?.fingerprint as { value?: string } | undefined;
-    const fingerprint = fingerprintSchema.safeParse(parseJsonField(fingerprintField?.value));
-    const session = await req.server.chatboxSessionVerifier.verify({
-      sessionId: sessionId.value,
-      claimToken: claimToken.value,
-      fingerprint: fingerprint.success ? fingerprint.data : undefined,
-      userAgent: getUserAgent(req.server, req.headers),
-    });
-
-    const buffer = await data.toBuffer();
-    const result = await uploadChatboxMedia(
-      req.server.prismaAdmin,
-      session,
-      buffer,
-      data.filename,
-      data.mimetype,
-    );
-
-    return reply.send(success(result));
-  });
+  // 訪客上傳已停用（change remove-webchat-visitor-attachments），不驗證工作階段、不儲存檔案
+  app.post('/media', async (_req, reply) => reply.status(410).send({
+    code: 'WEBCHAT_VISITOR_MEDIA_DISABLED',
+    message: '網頁聊天不開放傳送圖片、影片或檔案',
+  }));
 }

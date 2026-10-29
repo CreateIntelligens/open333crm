@@ -6,7 +6,6 @@ import { AppError, success } from '../../shared/utils/response.js';
 import {
   createChatboxSession,
   handleChatboxMessage,
-  uploadChatboxMedia,
 } from '../chatbox/chatbox.service.js';
 import { ensureChannelPublicKey } from '../channel/channel.service.js';
 import { consumePublicWebchatLimit, getPublicWebchatKey } from './public-webchat-limits.js';
@@ -39,15 +38,6 @@ const sessionBodySchema = z.object({
 function getUserAgent(headers: Record<string, unknown>): string {
   const userAgent = headers['user-agent'];
   return typeof userAgent === 'string' ? userAgent : '';
-}
-
-function parseJsonField(value: unknown): unknown {
-  if (typeof value !== 'string') return undefined;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
-  }
 }
 
 function rejectRateLimited(reply: FastifyReply, retryAfterSeconds: number): void {
@@ -167,57 +157,9 @@ export default async function webchatRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post<{ Params: { channelId: string } }>(
-    '/:channelId/media',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
-    async (req, reply) => {
-      const { channelId } = req.params;
-      if (!isValidUuid(channelId)) {
-        return reply.status(400).send({ error: 'Invalid channelId' });
-      }
-
-      if (!checkPublicLimit(reply, [
-        { key: getPublicWebchatKey('ip-media', req.ip), max: 10 },
-        { key: getPublicWebchatKey('channel-media', channelId), max: 100 },
-      ])) return;
-
-      const data = await req.file();
-      if (!data) {
-        return reply.status(400).send({ error: 'No file uploaded' });
-      }
-
-      const sessionId = data.fields?.sessionId as { value?: string } | undefined;
-      const claimToken = data.fields?.claimToken as { value?: string } | undefined;
-      if (!sessionId?.value || !claimToken?.value) {
-        return reply.status(401).send({ code: 'UNAUTHORIZED', message: '請重新整理頁面以建立連線' });
-      }
-
-      if (!checkPublicLimit(reply, [
-        { key: getPublicWebchatKey('session-media', sessionId.value), max: 10 },
-      ])) return;
-
-      const fingerprintField = data.fields?.fingerprint as { value?: string } | undefined;
-      const fingerprint = fingerprintSchema.safeParse(parseJsonField(fingerprintField?.value));
-      const session = await req.server.chatboxSessionVerifier.verify({
-        sessionId: sessionId.value,
-        claimToken: claimToken.value,
-        fingerprint: fingerprint.success ? fingerprint.data : undefined,
-        userAgent: getUserAgent(req.headers),
-      });
-      if (session.channelId !== channelId) {
-        throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
-      }
-
-      const buffer = await data.toBuffer();
-      const result = await uploadChatboxMedia(
-        req.server.prismaAdmin,
-        session,
-        buffer,
-        data.filename,
-        data.mimetype,
-      );
-
-      return reply.send(success(result));
-    },
-  );
+  // 訪客上傳已停用（change remove-webchat-visitor-attachments），不驗證工作階段、不儲存檔案
+  app.post('/:channelId/media', async (_req, reply) => reply.status(410).send({
+    code: 'WEBCHAT_VISITOR_MEDIA_DISABLED',
+    message: '網頁聊天不開放傳送圖片、影片或檔案',
+  }));
 }

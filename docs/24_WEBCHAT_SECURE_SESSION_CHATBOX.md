@@ -376,6 +376,8 @@ POST /api/v1/chatbox/media
   returns: { type: "image" | "video" | "file", payload }
 ```
 
+> 2026-10-29 更新：訪客上傳已停用（change `remove-webchat-visitor-attachments`）。`POST /api/v1/chatbox/media` 與 `POST /api/v1/webchat/:channelId/media` 一律回 410 `WEBCHAT_VISITOR_MEDIA_DISABLED`，訪客只能傳文字。
+
 The existing `/api/v1/webchat/:channelId/messages` can remain for embed widget compatibility. `/chatbox/*` can be a new module that wraps the same service-level inbound message path after session verification.
 
 ---
