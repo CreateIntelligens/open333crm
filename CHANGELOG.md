@@ -18,6 +18,9 @@ All notable changes to **open333CRM** will be documented in this file.
   - 發起刪除時，刪除請求、`data.erasure.request` 稽核與刪除工作在同一個交易寫入。其中一項寫不進去時，三項都不留下，API 回錯誤；原本是稽核寫入失敗時只記 log，刪除請求照樣成立。
   - 刪除工作改經 outbox 送進 `data-erasure` 佇列，至少送出一次。Redis 無法使用時，API 回 HTTP 200，刪除請求維持 `pending`，由 outbox-relay 補送；原本是刪除請求改成 `failed`，回 HTTP 503 `ENQUEUE_FAILED`。worker 以刪除請求的狀態認領，重複的工作不會刪兩次。
   - `data-erasure` 佇列的 job id 改成 outbox id，完成與失敗的工作改保留 24 小時與 7 天；原本是保留 100 筆與 50 筆。
+- **資料匯出改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2，change `migrate-data-export-tenant-ctx`）— `data-export.service.ts` 改收 `TenantCtx`，`/api/v1/tenant/data-export` 的 3 條路由改呼叫新的 `data-export.flow.ts`。可觀察的差異：
+  - 發起匯出時，匯出請求、`data.export.request` 稽核與匯出工作在同一個交易寫入。其中一項寫不進去時，三項都不留下，API 回錯誤；原本是稽核寫入失敗時只記 log，匯出請求照樣成立。
+  - 匯出工作改經 outbox 送進 `data-export` 佇列，至少送出一次。Redis 無法使用時，API 回 HTTP 200，匯出請求維持 `pending`，由 outbox-relay 補送；原本是匯出請求改成 `failed`，回 HTTP 503 `ENQUEUE_FAILED`。worker 以匯出請求的狀態認領，重複的工作不會產生第二則完成通知。
 
 ### Removed
 
