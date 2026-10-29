@@ -1,9 +1,10 @@
 /**
  * 主規格 tenant-data-export 的路由與 worker 情境（change restore-tenant-audit-gdpr-specs）：
- * 沒有 data.export 不能發起、匯出只含本租戶的資料、上傳失敗時記錄原因、保留期內下載、清理後的匯出不能下載、清理過期的匯出。
+ * 發起匯出、沒有 data.export 不能發起、匯出只含本租戶的資料、上傳失敗時記錄原因、保留期內下載、清理後的匯出不能下載、
+ * 清理過期的匯出；以及 change migrate-data-export-tenant-ctx 的「發起匯出的寫入一起成立」。
  *
- * 路由走真實的 requirePermission 與 app_tenant 連線（RLS）；worker 直接呼叫
- * apps/workers 的 handler，資料庫是真的。物件儲存、下載連結與通知佇列以 mock 取代。
+ * 路由走真實的 requirePermission 與 app_tenant 連線（RLS）。匯出工作寫進真的 outbox，commit 後不送進 Redis；
+ * worker 直接呼叫 apps/workers 的 handler，資料庫是真的。物件儲存、下載連結與通知佇列以 mock 取代。
  * 每次執行建立兩個專用租戶，結束時整個刪除。
  */
 import assert from 'node:assert/strict';
@@ -33,6 +34,8 @@ const { loadEnvConfig } = await import('#src/config/env.js');
 const { tenantScopedClient } = await import('#src/lib/tenant-db.js');
 const { default: errorHandlerPlugin } = await import('#src/plugins/error-handler.plugin.js');
 const { default: dataExportRoutes } = await import('#src/modules/data-export/data-export.routes.js');
+const { createOutboxPublisher } = await import('#src/events/outbox-publisher.js');
+type EventPublisher = import('#src/events/outbox-publisher.js').EventPublisher;
 const { handleDataExportJob, handleDataExportCleanup } = await import(
   '../../../../../workers/src/handlers/data-export.handler.js'
 );
@@ -86,7 +89,10 @@ await owner.caseEvent.create({ data: { caseId: caseA.id, actorType: 'agent', eve
 await owner.caseTag.create({ data: { caseId: caseA.id, tagId: tagA.id } });
 await owner.contact.create({ data: { tenantId: tenantB.id, displayName: `${MARK}-客人B` } });
 
-async function buildApp(agent: { id: string; roleId: string }) {
+/** 寫進真的 outbox，commit 後不送進 Redis */
+const outboxOnly: EventPublisher = { write: createOutboxPublisher(tenantDb).write, dispatch: async () => {} };
+
+async function buildApp(agent: { id: string; roleId: string }, events: EventPublisher = outboxOnly) {
   const app = Fastify();
   await app.register(errorHandlerPlugin);
   app.decorate('prisma', tenantDb);
@@ -95,11 +101,14 @@ async function buildApp(agent: { id: string; roleId: string }) {
     request.agent = { id: agent.id, tenantId: A, role: 'AGENT', roleId: agent.roleId } as never;
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(tenantDb, A);
   });
-  await app.register(dataExportRoutes, { prefix: '/api/v1/tenant/data-export' });
+  await app.register(dataExportRoutes, { prefix: '/api/v1/tenant/data-export', events });
   await app.ready();
   return app;
 }
 
+/** outbox 裡送往 data-export 佇列的匯出工作 */
+const exportJobs = () => owner.outbox.findMany({ where: { tenantId: A, kind: 'job', queueName: 'data-export' } });
+const requestAudits = () => owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.export.request' } });
 const exporterApp = await buildApp({ id: exporter.id, roleId: exporterRole.id });
 const plainApp = await buildApp({ id: plain.id, roleId: plainRole.id });
 
@@ -124,7 +133,8 @@ function readZip(buffer: Buffer): Map<string, string> {
   return files;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await owner.outbox.deleteMany({ where: { tenantId: A } });
   mocks.upload.mockReset().mockResolvedValue(undefined);
   mocks.remove.mockReset().mockResolvedValue(undefined);
   mocks.notify.mockReset().mockResolvedValue(undefined);
@@ -134,6 +144,7 @@ afterAll(async () => {
   await Promise.all([exporterApp.close(), plainApp.close()]);
   for (const tenantId of [A, tenantB.id]) {
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
+    await owner.outbox.deleteMany({ where: { tenantId } });
     await owner.dataExportRequest.deleteMany({ where: { tenantId } });
     await owner.case.deleteMany({ where: { tenantId } });
     await owner.conversation.deleteMany({ where: { tenantId } });
@@ -148,11 +159,94 @@ afterAll(async () => {
   await tenantDb.$disconnect();
 });
 
+const post = (app: typeof exporterApp, payload: object = {}) =>
+  app.inject({ method: 'POST', url: '/api/v1/tenant/data-export', payload });
+
+test('發起匯出', async () => {
+  const res = await post(exporterApp, { scope: ['contacts'] });
+  assert.equal(res.statusCode, 200, res.body);
+
+  const request = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: res.json().data.id } });
+  assert.equal(request.status, 'pending');
+  assert.equal(request.requestedBy, exporter.id);
+  assert.equal(res.json().data.status, 'pending');
+
+  const jobs = await exportJobs();
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].name, 'data-export:generate');
+  assert.deepEqual(jobs[0].payload, { requestId: request.id, tenantId: A, requestedBy: exporter.id });
+
+  const logs = (await requestAudits()).filter((log) => log.targetId === request.id);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].actorId, exporter.id);
+  assert.deepEqual(logs[0].payload, { scope: ['contacts'] });
+});
+
+test('發起匯出的稽核記錄來源 IP', async () => {
+  const res = await exporterApp.inject({
+    method: 'POST',
+    url: '/api/v1/tenant/data-export',
+    payload: {},
+    remoteAddress: '203.0.113.7',
+  });
+  assert.equal(res.statusCode, 200, res.body);
+
+  const logs = (await requestAudits()).filter((log) => log.targetId === res.json().data.id);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].ip, '203.0.113.7');
+});
+
+test('匯出工作寫不進 outbox 時不留下請求與稽核', async () => {
+  const requestsBefore = await owner.dataExportRequest.count({ where: { tenantId: A } });
+  const auditsBefore = (await requestAudits()).length;
+  const failing: EventPublisher = {
+    write: async () => {
+      throw new Error('outbox write failed');
+    },
+    dispatch: async () => {},
+  };
+  const app = await buildApp({ id: exporter.id, roleId: exporterRole.id }, failing);
+  try {
+    const res = await post(app);
+    assert.equal(res.statusCode, 500, res.body);
+  } finally {
+    await app.close();
+  }
+  assert.equal(await owner.dataExportRequest.count({ where: { tenantId: A } }), requestsBefore);
+  assert.equal((await requestAudits()).length, auditsBefore);
+});
+
+test('commit 之後送不進佇列時，請求仍然成立', async () => {
+  const redisDown: EventPublisher = {
+    write: outboxOnly.write,
+    dispatch: async () => {
+      throw new Error('redis down');
+    },
+  };
+  const app = await buildApp({ id: exporter.id, roleId: exporterRole.id }, redisDown);
+  let requestId: string;
+  try {
+    const res = await post(app);
+    assert.equal(res.statusCode, 200, res.body);
+    requestId = res.json().data.id;
+  } finally {
+    await app.close();
+  }
+  const request = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: requestId } });
+  assert.equal(request.status, 'pending');
+  const jobs = await exportJobs();
+  assert.equal(jobs.length, 1, '匯出工作留在 outbox，由 outbox-relay 補送');
+  assert.equal(jobs[0].dispatchedAt, null);
+  assert.equal((jobs[0].payload as { requestId: string }).requestId, requestId);
+});
+
 test('沒有 data.export 不能發起', async () => {
-  const res = await plainApp.inject({ method: 'POST', url: '/api/v1/tenant/data-export', payload: {} });
+  const before = await owner.dataExportRequest.count({ where: { tenantId: A } });
+  const res = await post(plainApp);
   assert.equal(res.statusCode, 403, res.body);
   assert.equal(res.json().error.details.requiredPermission, 'data.export');
-  assert.equal(await owner.dataExportRequest.count({ where: { tenantId: A } }), 0);
+  assert.equal(await owner.dataExportRequest.count({ where: { tenantId: A } }), before);
+  assert.equal((await exportJobs()).length, 0);
 });
 
 test('匯出只含本租戶的資料', async () => {

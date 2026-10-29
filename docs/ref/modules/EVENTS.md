@@ -173,7 +173,7 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 | `notification` | API 的 `notification.worker.ts`；workers 的 `lib/notification-queue.ts` | `notification.handler.ts`。重試共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `automation` | API 的 `automation.worker.ts` | `automation.handler.ts`。重試共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `rich-menu-bind` | API 的 `rich-menu.service.ts` | `rich-menu-bind.handler.ts` | 完成 24 小時、失敗 7 天 |
-| `data-export` | API 的 `data-export.service.ts` | `data-export.handler.ts` | 完成 24 小時、失敗 7 天 |
+| `data-export` | API 的 `data-export.flow.ts`，經 outbox | `data-export.handler.ts` | 完成 24 小時、失敗 7 天 |
 | `data-erasure` | API 的 `data-erasure.flow.ts`，經 outbox | `data-erasure.handler.ts` | 完成 24 小時、失敗 7 天 |
 | `sla` | workers 啟動時註冊重複工作，每 5 分鐘 | `sla.handler.ts` | 完成 24 小時、失敗 7 天 |
 | `data-export-cleanup` | workers 啟動時註冊重複工作，每小時 | `data-export.handler.ts` | 完成 24 小時、失敗 7 天 |

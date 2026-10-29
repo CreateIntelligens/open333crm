@@ -81,3 +81,22 @@ worker 開始處理匯出工作時，MUST 以條件更新把請求從 `pending` 
 
 - **WHEN** 同一個匯出工作同時執行兩次
 - **THEN** 請求 MUST 是 `completed`，發起的成員 MUST 只收到一則完成通知
+
+### Requirement: 發起匯出的寫入一起成立
+
+發起匯出時，系統 MUST 在同一個交易寫入請求、`data.export.request` 稽核與匯出工作。其中一項寫不進去時，系統 MUST NOT 留下另外兩項，並回錯誤。匯出工作 MUST 在交易 commit 之後才送進 `data-export` 佇列，至少送出一次。commit 之後送不進佇列時，系統 MUST 仍回成功，請求維持 `pending`，匯出工作 MUST 留在 outbox，由補送排程送出。
+
+#### Scenario: 匯出工作寫不進 outbox 時不留下請求與稽核
+
+- **WHEN** 成員發起匯出，匯出工作寫不進 outbox
+- **THEN** 系統回錯誤，租戶沒有新的匯出請求，也沒有新的 `data.export.request` 稽核
+
+#### Scenario: 稽核寫不進去時不送出匯出工作
+
+- **WHEN** 成員發起匯出，`data.export.request` 稽核寫不進去
+- **THEN** 交易 rollback，匯出工作 MUST NOT 送進佇列
+
+#### Scenario: commit 之後送不進佇列時，請求仍然成立
+
+- **WHEN** 成員發起匯出，交易 commit 之後匯出工作送不進佇列
+- **THEN** 系統回 HTTP 200，請求是 `pending`，匯出工作留在 outbox，還沒有標記已送出

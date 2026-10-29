@@ -2,11 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import {
-  requestExport,
-  getExportRequest,
-  getExportDownload,
-} from './data-export.service.js';
+import type { EventPublisher } from '../../events/outbox-publisher.js';
+import { actorOf } from '../../lib/request-actor.js';
+import { getExportDownloadFlow, getExportRequestFlow, requestExportFlow } from './data-export.flow.js';
 
 const createBodySchema = z.object({
   // 匯出範圍：可指定資料類型陣列（如 ['contacts','cases']）；未給＝全部。
@@ -17,17 +15,19 @@ const idParamSchema = z.object({
   id: z.string().uuid(),
 });
 
-export default async function dataExportRoutes(fastify: FastifyInstance) {
+export interface DataExportRoutesOptions {
+  /** 測試用：取代寫 outbox 的 publisher */
+  events?: EventPublisher;
+}
+
+export default async function dataExportRoutes(fastify: FastifyInstance, opts: DataExportRoutesOptions = {}) {
   fastify.addHook('preHandler', fastify.authenticate);
 
-  // 發起資料匯出（建 pending + 寫稽核 + 入列 job）
+  // 發起資料匯出（建 pending + 寫稽核 + 匯出工作寫進 outbox）
   fastify.post('/', { preHandler: [requirePermission('data.export')] }, async (request) => {
     const body = createBodySchema.parse(request.body ?? {});
-    const req = await requestExport(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      requestedBy: request.agent.id,
+    const req = await requestExportFlow({ prisma: fastify.prisma, events: opts.events }, actorOf(request), {
       scope: body.scope,
-      ip: request.ip,
     });
     return success(req);
   });
@@ -35,7 +35,7 @@ export default async function dataExportRoutes(fastify: FastifyInstance) {
   // 查匯出請求狀態
   fastify.get('/:id', { preHandler: [requirePermission('data.export')] }, async (request) => {
     const { id } = idParamSchema.parse(request.params);
-    const req = await getExportRequest(request.tenantPrisma, request.agent.tenantId, id);
+    const req = await getExportRequestFlow(fastify, actorOf(request).tenantId, id);
     return success(req);
   });
 
@@ -45,7 +45,7 @@ export default async function dataExportRoutes(fastify: FastifyInstance) {
     { preHandler: [requirePermission('data.export')] },
     async (request) => {
       const { id } = idParamSchema.parse(request.params);
-      const result = await getExportDownload(request.tenantPrisma, request.agent.tenantId, id);
+      const result = await getExportDownloadFlow(fastify, actorOf(request).tenantId, id);
       return success(result);
     },
   );
