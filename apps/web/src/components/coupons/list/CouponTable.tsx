@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import type { CouponListItem } from '@/hooks/useCoupons';
 import { CouponPurposeBadge, CouponStatusBadge } from '@/components/coupons/CouponBadges';
 import { formatNumber, percent, validityText, VALIDITY_KIND } from '@/lib/coupon/labels';
+import { isCouponPastFixedEnd } from '@/lib/coupon/issuable';
 import { CouponRowActions } from './CouponRowActions';
 import type { RowActionKey } from './row-actions';
 
@@ -109,6 +110,10 @@ export function CouponTable({ coupons, canManage, onOpen, onAction }: Props) {
             </td>
             <td>
               <CouponStatusBadge status={c.status} />
+              {c.status === 'ACTIVE' && isCouponPastFixedEnd(c) && (
+                // 到期後狀態仍是進行中（不自動結束，顧客券夾才會顯示「已過期」），另外標示避免誤以為還能發
+                <div className="mt-1 whitespace-nowrap text-xs text-warning">已過到期日</div>
+              )}
             </td>
             <td className="text-right font-mono text-foreground">{countText(c.issuedCount)}</td>
             <td className="text-right font-mono text-foreground">{countText(c.claimedCount)}</td>
