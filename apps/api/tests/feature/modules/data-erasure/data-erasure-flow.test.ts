@@ -3,7 +3,7 @@
  * 發起匿名化、其他租戶的聯絡人被拒、沒有 data.erase 不能發起、匿名化、硬刪除、完成稽核與失敗紀錄。
  * 測試資料涵蓋規格列出的每一類資料，逐類檢查匿名化與硬刪除的結果。
  *
- * 路由走真實的 requirePermission 與 app_tenant 連線（RLS），入列以 setEnqueueErasureJob 取代；
+ * 路由走真實的 requirePermission 與 app_tenant 連線（RLS）。刪除工作寫進真的 outbox，commit 後不送進 Redis；
  * worker 直接呼叫 apps/workers 的 handler，資料庫是真的。物件儲存與通知佇列以 mock 取代。
  * 每次執行建立兩個專用租戶，結束時整個刪除。
  */
@@ -30,7 +30,8 @@ const { loadEnvConfig } = await import('#src/config/env.js');
 const { tenantScopedClient } = await import('#src/lib/tenant-db.js');
 const { default: errorHandlerPlugin } = await import('#src/plugins/error-handler.plugin.js');
 const { default: dataErasureRoutes } = await import('#src/modules/data-erasure/data-erasure.routes.js');
-const { setEnqueueErasureJob } = await import('#src/modules/data-erasure/data-erasure.service.js');
+const { createOutboxPublisher } = await import('#src/events/outbox-publisher.js');
+type EventPublisher = import('#src/events/outbox-publisher.js').EventPublisher;
 const { handleDataErasureJob } = await import('../../../../../workers/src/handlers/data-erasure.handler.js');
 
 loadEnvConfig();
@@ -133,7 +134,10 @@ const runJob = (request: { id: string; contactId: string; mode: string }) =>
     {} as never,
   );
 
-async function buildApp(agent: { id: string; roleId: string }) {
+/** 寫進真的 outbox，commit 後不送進 Redis */
+const outboxOnly: EventPublisher = { write: createOutboxPublisher(tenantDb).write, dispatch: async () => {} };
+
+async function buildApp(agent: { id: string; roleId: string }, events: EventPublisher = outboxOnly) {
   const app = Fastify();
   await app.register(errorHandlerPlugin);
   app.decorate('prisma', tenantDb);
@@ -142,29 +146,27 @@ async function buildApp(agent: { id: string; roleId: string }) {
     request.agent = { id: agent.id, tenantId: A, role: 'AGENT', roleId: agent.roleId } as never;
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(tenantDb, A);
   });
-  await app.register(dataErasureRoutes, { prefix: '/api/v1/tenant/data-erasure' });
+  await app.register(dataErasureRoutes, { prefix: '/api/v1/tenant/data-erasure', events });
   await app.ready();
   return app;
 }
 
-const enqueued: unknown[] = [];
-setEnqueueErasureJob(async (data) => {
-  enqueued.push(data);
-});
+/** outbox 裡送往 data-erasure 佇列的刪除工作 */
+const erasureJobs = () => owner.outbox.findMany({ where: { tenantId: A, kind: 'job', queueName: 'data-erasure' } });
 const eraserApp = await buildApp({ id: eraser.id, roleId: eraserRole.id });
 const plainApp = await buildApp({ id: plain.id, roleId: plainRole.id });
 
-beforeEach(() => {
-  enqueued.length = 0;
+beforeEach(async () => {
+  await owner.outbox.deleteMany({ where: { tenantId: A } });
   mocks.remove.mockReset().mockResolvedValue(undefined);
   mocks.notify.mockReset().mockResolvedValue(undefined);
 });
 
 afterAll(async () => {
-  setEnqueueErasureJob(null);
   await Promise.all([eraserApp.close(), plainApp.close()]);
   for (const tenantId of [A, tenantB.id]) {
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
+    await owner.outbox.deleteMany({ where: { tenantId } });
     await owner.dataErasureRequest.deleteMany({ where: { tenantId } });
     await owner.portalSubmission.deleteMany({ where: { tenantId } });
     await owner.pointTransaction.deleteMany({ where: { tenantId } });
@@ -195,8 +197,17 @@ test('發起匿名化', async () => {
   assert.equal(request.mode, 'anonymize');
   assert.equal(request.status, 'pending');
   assert.equal(request.reason, reason, 'reason 存在請求上');
-  assert.equal(enqueued.length, 1);
-  assert.ok(!JSON.stringify(enqueued[0]).includes(reason), '佇列的工作內容不含 reason');
+  const jobs = await erasureJobs();
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].name, 'data-erasure:process');
+  assert.deepEqual(jobs[0].payload, {
+    requestId: request.id,
+    tenantId: A,
+    contactId: contact.id,
+    mode: 'anonymize',
+    requestedBy: eraser.id,
+  });
+  assert.ok(!JSON.stringify(jobs[0].payload).includes(reason), '佇列的工作內容不含 reason');
 
   const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.erasure.request', targetId: contact.id } });
   assert.equal(logs.length, 1);
@@ -224,7 +235,51 @@ test('其他租戶的聯絡人被拒', async () => {
   assert.equal(res.statusCode, 404, res.body);
   assert.equal(res.json().error.code, 'CONTACT_NOT_FOUND');
   assert.equal(await owner.dataErasureRequest.count({ where: { tenantId: A } }), before);
-  assert.equal(enqueued.length, 0);
+  assert.equal((await erasureJobs()).length, 0);
+});
+
+test('刪除工作寫不進 outbox 時不留下請求與稽核', async () => {
+  const { contact } = await createSubject();
+  const failing: EventPublisher = {
+    write: async () => {
+      throw new Error('outbox write failed');
+    },
+    dispatch: async () => {},
+  };
+  const app = await buildApp({ id: eraser.id, roleId: eraserRole.id }, failing);
+  try {
+    const res = await post(app, { contactId: contact.id });
+    assert.equal(res.statusCode, 500, res.body);
+  } finally {
+    await app.close();
+  }
+  assert.equal(await owner.dataErasureRequest.count({ where: { contactId: contact.id } }), 0);
+  assert.equal(await owner.tenantAuditLog.count({ where: { tenantId: A, action: 'data.erasure.request', targetId: contact.id } }), 0);
+});
+
+test('commit 之後送不進佇列時，請求仍然成立', async () => {
+  const { contact } = await createSubject();
+  const redisDown: EventPublisher = {
+    write: outboxOnly.write,
+    dispatch: async () => {
+      throw new Error('redis down');
+    },
+  };
+  const app = await buildApp({ id: eraser.id, roleId: eraserRole.id }, redisDown);
+  let requestId: string;
+  try {
+    const res = await post(app, { contactId: contact.id });
+    assert.equal(res.statusCode, 200, res.body);
+    requestId = res.json().data.id;
+  } finally {
+    await app.close();
+  }
+  const request = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: requestId } });
+  assert.equal(request.status, 'pending');
+  const jobs = await erasureJobs();
+  assert.equal(jobs.length, 1, '刪除工作留在 outbox，由 outbox-relay 補送');
+  assert.equal(jobs[0].dispatchedAt, null);
+  assert.equal((jobs[0].payload as { requestId: string }).requestId, requestId);
 });
 
 test('沒有 data.erase 不能發起', async () => {

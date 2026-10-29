@@ -2,26 +2,30 @@
  * GDPR 資料刪除（被遺忘權，Art.17）服務層。
  *
  * 聯絡人粒度：可「匿名化」（anonymize，保留統計骨架）或「硬刪」（hard_delete，連鎖刪除）。
- * 本層只負責：驗目標聯絡人同租戶 → 建 pending 請求 → 寫稽核 → 入列 BullMQ job。
+ * 本層只負責：驗目標聯絡人同租戶 → 建 pending 請求。稽核與刪除工作由 data-erasure.flow.ts 在同一個交易寫入。
  * 實際刪除動作在 apps/workers 的 data-erasure.handler.ts 非同步執行。
  */
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { Queue } from 'bullmq';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
-import { logger } from '@open333crm/core';
-import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 export type ErasureMode = 'anonymize' | 'hard_delete';
 
-export interface RequestErasureInput {
-  tenantId: string;
+export const DATA_ERASURE_QUEUE = 'data-erasure';
+
+/**
+ * 刪除工作的 BullMQ 選項。job id 是 outbox id，保留期限就是去重的期限，所以以時間計算
+ * （docs/ref/modules/EVENTS.md）。不重試：worker 以請求狀態認領，失敗時把請求標成 failed。
+ */
+export const DATA_ERASURE_JOB_OPTIONS = {
+  removeOnComplete: { age: 86_400 },
+  removeOnFail: { age: 604_800 },
+};
+
+export interface CreateErasureRequestInput {
   requestedBy: string;
   contactId: string;
   mode: ErasureMode;
   reason?: string;
-  /** 發起請求的來源 IP，寫進稽核。 */
-  ip?: string;
 }
 
 /** BullMQ job payload（只帶最小識別欄位，不含 PII）。 */
@@ -33,56 +37,26 @@ export interface DataErasureJobData {
   requestedBy: string;
 }
 
-// Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL 導致 ioredis fallback 6379 噪音。
-let _erasureQueue: Queue<DataErasureJobData> | null = null;
-function erasureQueue(): Queue<DataErasureJobData> {
-  if (!_erasureQueue) {
-    _erasureQueue = new Queue<DataErasureJobData>('data-erasure', {
-      connection: { url: process.env.REDIS_URL! },
-      defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50 },
-    });
-  }
-  return _erasureQueue;
-}
-
-// 入列 seam：預設走 BullMQ；測試可用 setEnqueueErasureJob 注入替身避免真連 Redis。
-let enqueueImpl: (data: DataErasureJobData) => Promise<unknown> = (data) =>
-  erasureQueue().add('data-erasure:process', data);
-
-/** 測試用：覆寫入列實作（避免單元測試連 Redis）。傳 null 還原預設。 */
-export function setEnqueueErasureJob(
-  fn: ((data: DataErasureJobData) => Promise<unknown>) | null,
-): void {
-  enqueueImpl =
-    fn ?? ((data) => erasureQueue().add('data-erasure:process', data));
-}
-
 /**
- * 建立資料刪除請求。
+ * 建立 pending 的資料刪除請求。聯絡人不屬於此租戶時丟 404 CONTACT_NOT_FOUND，不建立請求。
  *
- * 流程：驗聯絡人同租戶（不存在→404）→ 建 pending DataErasureRequest →
- * 寫租戶稽核（action=data.erasure.request，payload 只放 contactId/mode，不含 PII）→ 入列 job。
- *
- * @param prisma Prisma client
- * @param input tenantId / requestedBy / contactId / mode / reason / ip
  * @returns 建立的 DataErasureRequest（含 id/status）
  */
-export async function requestErasure(prisma: TenantDb, input: RequestErasureInput) {
-  const { tenantId, requestedBy, contactId, mode, reason, ip } = input;
+export async function createErasureRequest(ctx: TenantCtx, input: CreateErasureRequestInput) {
+  const { requestedBy, contactId, mode, reason } = input;
 
-  // 1. 先驗目標聯絡人同租戶——避免跨租戶刪除他人資料
-  const contact = await prisma.contact.findFirst({
-    where: { id: contactId, tenantId },
+  // 先驗目標聯絡人同租戶——避免跨租戶刪除他人資料
+  const contact = await ctx.tx.contact.findFirst({
+    where: { id: contactId, tenantId: ctx.tenantId },
     select: { id: true },
   });
   if (!contact) {
     throw new AppError('聯絡人不存在或不屬於此租戶', 'CONTACT_NOT_FOUND', 404);
   }
 
-  // 2. 建 pending 請求
-  const erasure = await prisma.dataErasureRequest.create({
+  return ctx.tx.dataErasureRequest.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       requestedBy,
       contactId,
       mode,
@@ -90,36 +64,6 @@ export async function requestErasure(prisma: TenantDb, input: RequestErasureInpu
       reason: reason ?? null,
     },
   });
-
-  // 3. 寫租戶稽核（payload 不含 PII，只放 contactId/mode）
-  await writeTenantAudit(prisma, {
-    tenantId,
-    actorId: requestedBy,
-    action: 'data.erasure.request',
-    targetType: 'contact',
-    targetId: contactId,
-    payload: { contactId, mode },
-    ip,
-  });
-
-  // 4. 入列 BullMQ job。入列失敗（如 Redis 不可用）時把請求標 failed 並拋，避免永久卡 pending。
-  try {
-    await enqueueImpl({
-      requestId: erasure.id,
-      tenantId,
-      contactId,
-      mode: mode as ErasureMode,
-      requestedBy,
-    });
-  } catch (err) {
-    logger.error(`[data-erasure] enqueue failed for request ${erasure.id}:`, err);
-    await prisma.dataErasureRequest
-      .update({ where: { id: erasure.id }, data: { status: 'failed', error: '入列失敗，請重試' } })
-      .catch((e) => logger.error('[data-erasure] mark failed also failed:', e));
-    throw new AppError('刪除請求入列失敗，請稍後重試', 'ENQUEUE_FAILED', 503);
-  }
-
-  return erasure;
 }
 
 /**
@@ -127,15 +71,8 @@ export async function requestErasure(prisma: TenantDb, input: RequestErasureInpu
  *
  * @returns DataErasureRequest 或 null（不存在/非本租戶）
  */
-export async function getErasureRequest(prisma: TenantDb, tenantId: string, id: string) {
-  return prisma.dataErasureRequest.findFirst({
-    where: { id, tenantId },
+export async function getErasureRequest(ctx: TenantCtx, id: string) {
+  return ctx.tx.dataErasureRequest.findFirst({
+    where: { id, tenantId: ctx.tenantId },
   });
-}
-
-/** 測試/優雅關閉用：關閉 queue 連線。 */
-export async function closeErasureQueue(): Promise<void> {
-  if (!_erasureQueue) return;
-  await _erasureQueue.close();
-  _erasureQueue = null;
 }
