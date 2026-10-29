@@ -1,61 +1,12 @@
-import { PrismaClient, AgentRole, Prisma } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { systemTemplates } from './seed-data/system-templates.js';
-// 注意：database 套件不可 import @open333crm/core（會與 core→database 循環依賴）。
-// 正式的 seedRolesForTenant 在 core（供 API 用）；此處為 demo seed 的內嵌等效版。
-import { seedDemoRoles } from './seed-data/rbac-roles.js';
+import { seedDemoAccounts, shouldSeedDemoAccounts } from './seed-data/demo-accounts.js';
 
 const prisma = new PrismaClient();
 
-const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
-
-const agents = [
-  {
-    id: 'b0000000-0000-0000-0000-000000000001',
-    email: 'admin@open333crm.dev',
-    name: 'Admin',
-    role: AgentRole.ADMIN,
-    password: 'Admin1234!',
-  },
-  {
-    id: 'b0000000-0000-0000-0000-000000000002',
-    email: 'supervisor@open333crm.dev',
-    name: 'Supervisor',
-    role: AgentRole.SUPERVISOR,
-    password: 'Super1234!',
-  },
-  {
-    id: 'b0000000-0000-0000-0000-000000000003',
-    email: 'agent@open333crm.dev',
-    name: 'Agent',
-    role: AgentRole.AGENT,
-    password: 'Agent1234!',
-  },
-];
-
 async function main() {
-  // Tenant must exist before agents (FK constraint)
-  await prisma.tenant.upsert({
-    where: { id: TENANT_ID },
-    update: { name: 'Demo Tenant', isActive: true },
-    create: { id: TENANT_ID, name: 'Demo Tenant', isActive: true },
-  });
-
-  // RBAC: 為 demo 租戶建三 system role + 種預設權限，取得 slug→roleId 對映
-  const slugToRoleId = await seedDemoRoles(prisma, TENANT_ID);
-
-  for (const { id, password, ...data } of agents) {
-    const passwordHash = await bcrypt.hash(password, 10);
-    // 依 enum 對映到 system role slug，回填 roleId
-    const slug = { ADMIN: 'admin', SUPERVISOR: 'supervisor', AGENT: 'agent' }[data.role];
-    const roleId = slug ? slugToRoleId[slug] : null;
-    await prisma.agent.upsert({
-      // email 全域唯一，直接用 email 當 where（複合鍵 tenantId_email 已移除）
-      where: { email: data.email },
-      update: { name: data.name, role: data.role, roleId, passwordHash, isActive: true },
-      create: { id, tenantId: TENANT_ID, ...data, roleId, passwordHash, isActive: true },
-    });
-  }
+  const demo = shouldSeedDemoAccounts(process.env);
+  if (demo) await seedDemoAccounts(prisma);
 
   await seedSystemTemplates();
 
@@ -63,9 +14,9 @@ async function main() {
 
   await seedPlans();
 
-  await seedPlatformUser();
-
-  console.log(`Seed complete: 1 tenant, 3 agents (with roleId), 3 system roles, ${systemTemplates.length} system templates, model pricing, 5 plans, 1 platform user`);
+  console.log(
+    `Seed complete: ${demo ? 'demo tenant, 3 agents, 3 system roles, 1 platform user, ' : 'demo accounts skipped, '}${systemTemplates.length} system templates, model pricing, 5 plans`,
+  );
 }
 
 /**
@@ -128,18 +79,6 @@ async function seedPlans() {
       },
     });
   }
-}
-
-/**
- * dev 平台 superuser 種子。prod 由部署腳本另建（勿用此 dev 密碼）。
- */
-async function seedPlatformUser() {
-  const passwordHash = await bcrypt.hash('Platform1234!', 10);
-  await prisma.platformUser.upsert({
-    where: { email: 'platform@open333crm.dev' },
-    update: { name: 'Platform Admin', passwordHash, isActive: true },
-    create: { email: 'platform@open333crm.dev', name: 'Platform Admin', passwordHash },
-  });
 }
 
 /**

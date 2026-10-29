@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-29：seed 在正式環境的行為（USAGE-02）
+
+issue #394，分支 `fix/codeql-394`。以單元測試與本機資料庫實跑 seed 確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| USAGE-02 | 描述更正，項目本身未處理 | 原描述說 seed 不能在正式環境執行，但 `apps/api/docker-entrypoint.sh` 在 API 容器每次啟動時都跑 seed，而且會把 Demo 成員與開發用平台帳號的密碼設回原始碼裡的值。現在正式環境預設不建 Demo 帳號，已經存在的帳號不覆寫密碼與啟用狀態。`packages/database/tests/unit/seed/demo-accounts.test.ts` 確認；本機以 `NODE_ENV=development` 重跑 seed，三個 Demo 成員的密碼雜湊不變。價目表仍沒有維護介面 |
+
 ## 2026-10-27：角色的建立、改名、刪除寫稽核（AUD-01）
 
 分支 `feat/337-pilot-role-agent`，change `migrate-role-agent-tenant-ctx`。以 feature 測試確認，沒有連 UAT。
