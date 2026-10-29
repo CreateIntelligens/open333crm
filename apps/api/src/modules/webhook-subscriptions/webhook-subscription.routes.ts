@@ -3,14 +3,15 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { actorOf } from '../../lib/request-actor.js';
 import {
-  listSubscriptions,
-  getSubscription,
-  createSubscription,
-  updateSubscription,
-  deleteSubscription,
-  listDeliveries,
-} from './webhook-subscription.service.js';
+  createSubscriptionFlow,
+  deleteSubscriptionFlow,
+  getSubscriptionFlow,
+  listDeliveriesFlow,
+  listSubscriptionsFlow,
+  updateSubscriptionFlow,
+} from './webhook-subscription.flow.js';
 import { dispatchWebhook } from './webhook-dispatcher.js';
 import { isBlockedUrl } from '../webhook/downstream-forwarder.js';
 
@@ -33,13 +34,13 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
 
   // GET /api/v1/webhook-subscriptions
   fastify.get('/', { preHandler: requirePermission('webhook.view') }, async (request, reply) => {
-    const subs = await listSubscriptions(request.tenantPrisma, request.agent.tenantId);
+    const subs = await listSubscriptionsFlow(fastify, actorOf(request).tenantId);
     return reply.send(success(subs));
   });
 
   // GET /api/v1/webhook-subscriptions/:id
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('webhook.view') }, async (request, reply) => {
-    const sub = await getSubscription(request.tenantPrisma, request.params.id, request.agent.tenantId);
+    const sub = await getSubscriptionFlow(fastify, actorOf(request).tenantId, request.params.id);
     return reply.send(success(sub));
   });
 
@@ -49,7 +50,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
     if (await isBlockedUrl(data.url)) {
       throw new AppError('Webhook 網址必須是對外可連線的 HTTPS 位址', 'INVALID_WEBHOOK_URL', 400);
     }
-    const sub = await createSubscription(request.tenantPrisma, request.agent.tenantId, data);
+    const sub = await createSubscriptionFlow(fastify, actorOf(request).tenantId, data);
     return reply.status(201).send(success(sub));
   });
 
@@ -59,22 +60,13 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
     if (data.url && await isBlockedUrl(data.url)) {
       throw new AppError('Webhook 網址必須是對外可連線的 HTTPS 位址', 'INVALID_WEBHOOK_URL', 400);
     }
-    const sub = await updateSubscription(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-      data,
-    );
+    const sub = await updateSubscriptionFlow(fastify, actorOf(request).tenantId, request.params.id, data);
     return reply.send(success(sub));
   });
 
   // DELETE /api/v1/webhook-subscriptions/:id
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
-    const result = await deleteSubscription(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+    const result = await deleteSubscriptionFlow(fastify, actorOf(request).tenantId, request.params.id);
     return reply.send(success(result));
   });
 
@@ -84,19 +76,15 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
     { preHandler: requirePermission('webhook.view') },
     async (request, reply) => {
       const limit = parseInt(request.query.limit || '50', 10);
-      const deliveries = await listDeliveries(
-        request.tenantPrisma,
-        request.params.id,
-        request.agent.tenantId,
-        limit,
-      );
+      const deliveries = await listDeliveriesFlow(fastify, actorOf(request).tenantId, request.params.id, limit);
       return reply.send(success(deliveries));
     },
   );
 
   // POST /api/v1/webhook-subscriptions/:id/test — send a test event
+  // 讀訂閱走 flow；送出 HTTP 是外部呼叫，在交易之外執行。dispatchWebhook 仍收 request.tenantPrisma，隨階段 4 搬遷（#337）
   fastify.post<{ Params: { id: string } }>('/:id/test', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
-    const sub = await getSubscription(request.tenantPrisma, request.params.id, request.agent.tenantId);
+    const sub = await getSubscriptionFlow(fastify, actorOf(request).tenantId, request.params.id);
 
     // 測試送出只送一次，不重試；事件 id 每次新產生（webhook-subscription-egress「測試送出只送一次」）
     const testPayload = {

@@ -3,15 +3,14 @@ import { z } from 'zod/v3';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { getConfig } from '../../config/env.js';
-import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { actorOf } from '../../lib/request-actor.js';
+import { resolveWebTalkServerConfig, type WebTalkServerConfig } from './webtalk.service.js';
 import {
-  buildWebTalkSession,
-  getWebTalkSettings,
-  resolveWebTalkServerConfig,
-  rotateWebTalkRoom,
-  updateWebTalkSettings,
-  type WebTalkServerConfig,
-} from './webtalk.service.js';
+  buildWebTalkSessionFlow,
+  getWebTalkSettingsFlow,
+  rotateWebTalkRoomFlow,
+  updateWebTalkSettingsFlow,
+} from './webtalk.flow.js';
 
 export interface WebTalkRoutesOptions {
   /** 測試用：取代從環境變數讀取的伺服器設定 */
@@ -65,44 +64,26 @@ export default async function webtalkRoutes(fastify: FastifyInstance, opts: WebT
   // 租戶一律取自登入身分；伺服器未設定或租戶停用時回 enabled: false（fail-closed）。
   fastify.get('/session', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     assertHumanAgent(request);
-    const session = await buildWebTalkSession(request.tenantPrisma, request.agent.tenantId, resolveConfig());
+    const session = await buildWebTalkSessionFlow(fastify, actorOf(request).tenantId, resolveConfig());
     return reply.send(success(session));
   });
 
   // GET /api/v1/webtalk/settings
   fastify.get('/settings', { preHandler: [fastify.authenticate, manage] }, async (request, reply) => {
-    const { enabled, aiEnabled } = await getWebTalkSettings(request.tenantPrisma, request.agent.tenantId);
+    const { enabled, aiEnabled } = await getWebTalkSettingsFlow(fastify, actorOf(request).tenantId);
     return reply.send(success({ enabled, aiEnabled }));
   });
 
   // PUT /api/v1/webtalk/settings
   fastify.put('/settings', { preHandler: [fastify.authenticate, manage] }, async (request, reply) => {
     const data = updateSettingsSchema.parse(request.body);
-    const tenantId = request.agent.tenantId;
-    const result = await updateWebTalkSettings(request.tenantPrisma, tenantId, data);
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId,
-      actorId: request.agent.id,
-      action: 'settings.update',
-      targetType: 'settings',
-      payload: { section: 'webtalk', enabled: result.enabled, aiEnabled: result.aiEnabled },
-      ip: request.ip,
-    });
+    const result = await updateWebTalkSettingsFlow(fastify, actorOf(request), data);
     return reply.send(success(result));
   });
 
   // POST /api/v1/webtalk/settings/rotate-room — 重新產生房間代號（例如成員離職後）
   fastify.post('/settings/rotate-room', { preHandler: [fastify.authenticate, manage] }, async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    await rotateWebTalkRoom(request.tenantPrisma, tenantId);
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId,
-      actorId: request.agent.id,
-      action: 'settings.update',
-      targetType: 'settings',
-      payload: { section: 'webtalk', rotateRoom: true },
-      ip: request.ip,
-    });
+    await rotateWebTalkRoomFlow(fastify, actorOf(request));
     return reply.send(success({ rotated: true }));
   });
 }

@@ -130,7 +130,7 @@ WebTalk 是後台右下角的多人聊天工具列（外部 SDK），讓同一�
 | `webtalkAiEnabled` | 關 | AI 摘要會把整頁文字（含顧客個資）送到 `WEBTALK_AI_ENDPOINT`。伺服器沒有設定該端點時，開啟也不生效 |
 | `webtalkRoomVersion` | 0 | 按「重新產生房間代號」（`POST /webtalk/settings/rotate-room`）時加一，舊代號從此對不到這個租戶 |
 
-設定變更在成員重新整理頁面後生效。變更與重新產生房間代號都寫入租戶稽核（`settings.update`，`section: "webtalk"`）。
+設定變更在成員重新整理頁面後生效。變更與重新產生房間代號都寫入租戶稽核（`settings.update`，`section: "webtalk"`）。稽核與變更在同一個交易寫入：稽核寫入失敗時，變更不生效，請求回錯誤。
 
 **AI 摘要關閉時**：SDK 一定會顯示 AI 按鈕，前端把 SDK 的 AI 端點指向 `POST /webtalk/ai-disabled`。這個端點在解析 body 前就回 403 `WEBTALK_AI_DISABLED`，頁面內容不會送到外部。
 

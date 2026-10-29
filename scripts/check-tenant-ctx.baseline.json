@@ -64,8 +64,6 @@
     "modules/tenant-audit/tenant-audit.service.ts": 2,
     "modules/trial/token-quota.service.ts": 6,
     "modules/webhook-subscriptions/webhook-dispatcher.ts": 2,
-    "modules/webhook-subscriptions/webhook-subscription.service.ts": 7,
-    "modules/webtalk/webtalk.service.ts": 5,
     "services/channel-team-access.ts": 7,
     "services/channel-visibility.ts": 4,
     "services/permission.service.ts": 4
@@ -93,9 +91,8 @@
     "modules/notification/notification.routes.ts": 4,
     "modules/portal/portal.routes.ts": 13,
     "modules/settings/settings.routes.ts": 31,
-    "modules/webhook-subscriptions/webhook-subscription.routes.ts": 8,
+    "modules/webhook-subscriptions/webhook-subscription.routes.ts": 2,
     "modules/webhook/webhook.routes.ts": 1,
-    "modules/webtalk/webtalk.routes.ts": 6,
     "services/channel-visibility.ts": 6
   },
   "service 內的 withTenant(": {

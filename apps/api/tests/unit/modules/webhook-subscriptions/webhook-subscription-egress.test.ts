@@ -23,6 +23,7 @@ vi.mock('node:dns/promises', async (importOriginal) => {
 
 const PUBLIC_URL = 'https://93.184.216.34/hook';
 const SUB_ID = 'sub-1';
+const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 
 let app: FastifyInstance;
 const created: Array<Record<string, unknown>> = [];
@@ -36,21 +37,22 @@ beforeAll(async () => {
         created.push(args.data);
         return { id: SUB_ID, ...args.data };
       },
-      findFirst: async () => ({ id: SUB_ID, tenantId: 'tenant-1', url: PUBLIC_URL }),
+      findFirst: async () => ({ id: SUB_ID, tenantId: TENANT_ID, url: PUBLIC_URL }),
       update: async (args: { data: Record<string, unknown> }) => {
         updated.push(args.data);
         return { id: SUB_ID, ...args.data };
       },
     },
   };
+  // route 呼叫 flow，flow 以 fastify.prisma 開交易（#337 階段 3）
+  const txPrisma = { $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb({ $executeRaw: async () => 1, ...prisma }) };
+  app.decorate('prisma', txPrisma as never);
   // 已登入的請求：CLI session 身分讓 requirePermission 放行，只測網址檢查
   app.decorate('authenticate', async (request: never) => {
-    const req = request as { agent?: unknown; tenantPrisma?: unknown };
-    req.agent = { id: 'a1', tenantId: 'tenant-1', isCliSession: true };
-    req.tenantPrisma = prisma;
+    const req = request as { agent?: unknown };
+    req.agent = { id: 'a1', tenantId: TENANT_ID, isCliSession: true };
   });
   app.decorateRequest('agent', null);
-  app.decorateRequest('tenantPrisma', null);
   await app.register(errorHandlerPlugin);
   await app.register(webhookSubscriptionRoutes, { prefix: '/api/v1/webhook-subscriptions' });
   await app.ready();
