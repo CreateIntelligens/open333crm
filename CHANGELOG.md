@@ -2,6 +2,17 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-29]
+
+### Fixed
+
+- **Partner API 金鑰只能用在合作方推送路由**（issue #394）— 知識庫路由原本用 `request.url` 是否含 `/partner-ingest` 決定是否接受 Partner API 金鑰。`request.url` 含查詢字串與路徑參數，所以金鑰在網址加上這段字串，就能讀取同租戶的知識庫文章、搜尋與回饋列表。現在改依比對到的路由判斷，只有 `POST /api/v1/knowledge/partner-ingest` 接受金鑰，其他知識庫路由一律要成員登入（401）。
+- **短連結抓取 Open Graph 時不再卡住 API**（issue #394）— 建立或更新短連結時，抓回的網頁 HTML 原本用回溯式正規表示式找 `<meta>`，特製的 100 KB 頁面實測要 471 秒，期間整個 API 程序停擺。改為逐字元的線性解析。HTML 實體改為單次解碼，`&amp;lt;` 不再被解成 `<`。
+
+### Changed
+
+- **部署 workflow 的 `GITHUB_TOKEN` 只給讀取權限**（issue #394）— `deploy.yml` 加上 `permissions: contents: read`。
+
 ## [2026-10-28]
 
 ### Added

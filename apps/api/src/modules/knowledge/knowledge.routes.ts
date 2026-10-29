@@ -71,8 +71,11 @@ const importSchema = z.object({
 export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // Auth: most routes require agent JWT; partner-ingest additionally accepts
   // long-lived Partner API keys (Authorization: Bearer pk_...).
+  // 依比對到的路由判斷，不看 request.url：request.url 含查詢字串與路徑參數，
+  // 用 includes 判斷會讓 Partner API 金鑰進到其他知識庫路由（issue #394）
+  const partnerIngestRoute = `${fastify.prefix}/partner-ingest`;
   fastify.addHook('preHandler', async (request, reply) => {
-    if (request.url.includes('/partner-ingest')) {
+    if (request.routeOptions.url === partnerIngestRoute) {
       await fastify.authenticateJwtOrPartnerKey(request, reply);
     } else {
       await fastify.authenticate(request, reply);

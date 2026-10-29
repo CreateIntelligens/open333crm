@@ -13,6 +13,10 @@ concurrency:
   group: deploy-uat
   cancel-in-progress: false
 
+# GITHUB_TOKEN 只給 checkout 需要的讀取權限（issue #394）
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: [self-hosted, linux, arm64, uat]
