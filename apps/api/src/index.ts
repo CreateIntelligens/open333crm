@@ -69,6 +69,7 @@ import portalRoutes from './modules/portal/portal.routes.js';
 import memberBindingRoutes from './modules/member-binding/member-binding.routes.js';
 import memberBindingFanRoutes from './modules/member-binding/member-binding-fan.routes.js';
 import couponFanRoutes from './modules/coupon/coupon-fan.routes.js';
+import liffTestPublicRoutes from './modules/channel/liff-test-public.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import emailRegistrationRoutes from './modules/identity-binding/email-registration.routes.js';
 import phoneRegistrationRoutes from './modules/identity-binding/phone-registration.routes.js';
@@ -218,6 +219,7 @@ export async function bootstrap() {
   await app.register(webhookSubscriptionRoutes, { prefix: '/api/v1/webhook-subscriptions' });
   await app.register(portalRoutes, { prefix: '/api/v1/portal' });
   await app.register(couponFanRoutes, { prefix: '/api/v1/fan/coupons' });
+  await app.register(liffTestPublicRoutes, { prefix: '/api/v1/fan/liff-test' });
   await app.register(memberBindingRoutes, { prefix: '/api/v1/member-binding' });
   await app.register(memberBindingFanRoutes, { prefix: '/api/v1/fan/member-binding' });
   await app.register(portalPublicRoutes, { prefix: '/api/v1/fan' });
