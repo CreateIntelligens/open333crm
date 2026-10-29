@@ -56,7 +56,6 @@ export async function writeTenantAudit(prisma: TenantDb, input: TenantAuditInput
 }
 
 export interface ListAuditParams {
-  tenantId: string;
   action?: string;
   actorId?: string;
   from?: Date;
@@ -66,11 +65,11 @@ export interface ListAuditParams {
 }
 
 /** 查租戶稽核（分頁 + action/actor/日期篩選，一律 tenantId scoped）。 */
-export async function listTenantAudit(prisma: TenantDb, params: ListAuditParams) {
+export async function listTenantAudit({ tx, tenantId }: TenantCtx, params: ListAuditParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
   const where: Prisma.TenantAuditLogWhereInput = {
-    tenantId: params.tenantId,
+    tenantId,
     ...(params.action ? { action: params.action } : {}),
     ...(params.actorId ? { actorId: params.actorId } : {}),
     ...(params.from || params.to
@@ -79,7 +78,7 @@ export async function listTenantAudit(prisma: TenantDb, params: ListAuditParams)
   };
 
   const [rows, total] = await Promise.all([
-    prisma.tenantAuditLog.findMany({
+    tx.tenantAuditLog.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
@@ -95,7 +94,7 @@ export async function listTenantAudit(prisma: TenantDb, params: ListAuditParams)
         actor: { select: { id: true, name: true, email: true } },
       },
     }),
-    prisma.tenantAuditLog.count({ where }),
+    tx.tenantAuditLog.count({ where }),
   ]);
 
   return { rows, total, page, pageSize };

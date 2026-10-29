@@ -9,6 +9,7 @@ import {
   deleteSlaPolicy,
   updateSlaPolicy,
 } from '#src/modules/sla/sla.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const T = 'a0000000-0000-0000-0000-000000000001';
 
@@ -56,8 +57,7 @@ function db(policies: Policy[], cases: Case[] = []) {
       },
     },
   };
-  const prisma = { ...tx, $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) };
-  return { prisma: prisma as never, policies, cases };
+  return { ctx: createMockTenantCtx(tx, T).ctx, policies, cases };
 }
 
 const base = { priority: 'HIGH' as const, firstResponseMinutes: 30, resolutionMinutes: 240, warningBeforeMinutes: 30, isDefault: false };
@@ -65,8 +65,8 @@ const p = (id: string, name: string, extra: Partial<Policy> = {}): Policy => ({ 
 const c = (id: string, slaPolicy: string, status = 'OPEN'): Case => ({ id, tenantId: T, slaPolicy, status });
 
 test('建立同名政策被拒', async () => {
-  const { prisma, policies } = db([p('p1', 'VIP')]);
-  await assert.rejects(createSlaPolicy(prisma, T, { ...base, name: 'VIP' }), (err: { code?: string; statusCode?: number }) => {
+  const { ctx, policies } = db([p('p1', 'VIP')]);
+  await assert.rejects(createSlaPolicy(ctx, { ...base, name: 'VIP' }), (err: { code?: string; statusCode?: number }) => {
     assert.equal(err.code, 'DUPLICATE');
     assert.equal(err.statusCode, 409);
     return true;
@@ -75,27 +75,27 @@ test('建立同名政策被拒', async () => {
 });
 
 test('改名成已存在的名稱被拒', async () => {
-  const { prisma, policies } = db([p('p1', 'VIP'), p('p2', '標準')]);
-  await assert.rejects(updateSlaPolicy(prisma, T, 'p2', { name: 'VIP' }), (err: { code?: string }) => err.code === 'DUPLICATE');
+  const { ctx, policies } = db([p('p1', 'VIP'), p('p2', '標準')]);
+  await assert.rejects(updateSlaPolicy(ctx, 'p2', { name: 'VIP' }), (err: { code?: string }) => err.code === 'DUPLICATE');
   assert.equal(policies[1].name, '標準');
 });
 
 test('改名後舊工單記錄新名稱', async () => {
-  const { prisma, cases } = db([p('p1', '標準')], [c('k1', '標準'), c('k2', '其他')]);
-  await updateSlaPolicy(prisma, T, 'p1', { name: '標準服務' });
+  const { ctx, cases } = db([p('p1', '標準')], [c('k1', '標準'), c('k2', '其他')]);
+  await updateSlaPolicy(ctx, 'p1', { name: '標準服務' });
   assert.equal(cases[0].slaPolicy, '標準服務');
   assert.equal(cases[1].slaPolicy, '其他', '其他政策的工單不受影響');
 });
 
 test('設為預設時取消同優先級的其他預設', async () => {
-  const { prisma, policies } = db([p('p1', 'A', { isDefault: true }), p('p2', 'B')]);
-  await updateSlaPolicy(prisma, T, 'p2', { isDefault: true });
+  const { ctx, policies } = db([p('p1', 'A', { isDefault: true }), p('p2', 'B')]);
+  await updateSlaPolicy(ctx, 'p2', { isDefault: true });
   assert.deepEqual(policies.map((x) => x.isDefault), [false, true]);
 });
 
 test('有未結案工單的政策不能刪除', async () => {
-  const { prisma, policies } = db([p('p1', '標準')], [c('k1', '標準', 'OPEN'), c('k2', '標準', 'IN_PROGRESS'), c('k3', '標準', 'CLOSED')]);
-  await assert.rejects(deleteSlaPolicy(prisma, T, 'p1'), (err: { code?: string; statusCode?: number; details?: { openCaseCount?: number } }) => {
+  const { ctx, policies } = db([p('p1', '標準')], [c('k1', '標準', 'OPEN'), c('k2', '標準', 'IN_PROGRESS'), c('k3', '標準', 'CLOSED')]);
+  await assert.rejects(deleteSlaPolicy(ctx, 'p1'), (err: { code?: string; statusCode?: number; details?: { openCaseCount?: number } }) => {
     assert.equal(err.code, 'SLA_POLICY_IN_USE');
     assert.equal(err.statusCode, 409);
     assert.equal(err.details?.openCaseCount, 2);
@@ -105,13 +105,13 @@ test('有未結案工單的政策不能刪除', async () => {
 });
 
 test('只有已結案工單的政策可以刪除', async () => {
-  const { prisma, policies } = db([p('p1', '標準')], [c('k1', '標準', 'RESOLVED'), c('k2', '標準', 'CLOSED')]);
-  await deleteSlaPolicy(prisma, T, 'p1');
+  const { ctx, policies } = db([p('p1', '標準')], [c('k1', '標準', 'RESOLVED'), c('k2', '標準', 'CLOSED')]);
+  await deleteSlaPolicy(ctx, 'p1');
   assert.equal(policies.length, 0);
 });
 
 test('其他租戶的政策回 404', async () => {
-  const { prisma } = db([{ ...p('p1', '標準'), tenantId: 'b0000000-0000-0000-0000-000000000002' }]);
-  await assert.rejects(deleteSlaPolicy(prisma, T, 'p1'), (err: { statusCode?: number }) => err.statusCode === 404);
-  await assert.rejects(updateSlaPolicy(prisma, T, 'p1', { name: 'x' }), (err: { statusCode?: number }) => err.statusCode === 404);
+  const { ctx } = db([{ ...p('p1', '標準'), tenantId: 'b0000000-0000-0000-0000-000000000002' }]);
+  await assert.rejects(deleteSlaPolicy(ctx, 'p1'), (err: { statusCode?: number }) => err.statusCode === 404);
+  await assert.rejects(updateSlaPolicy(ctx, 'p1', { name: 'x' }), (err: { statusCode?: number }) => err.statusCode === 404);
 });

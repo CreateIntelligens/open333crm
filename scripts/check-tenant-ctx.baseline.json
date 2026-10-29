@@ -61,8 +61,7 @@
     "modules/settings/embedding-settings.service.ts": 4,
     "modules/settings/office-hours.service.ts": 5,
     "modules/settings/tracking-settings.service.ts": 3,
-    "modules/sla/sla.service.ts": 3,
-    "modules/tenant-audit/tenant-audit.service.ts": 3,
+    "modules/tenant-audit/tenant-audit.service.ts": 2,
     "modules/trial/token-quota.service.ts": 6,
     "modules/webhook-subscriptions/webhook-dispatcher.ts": 2,
     "modules/webhook-subscriptions/webhook-subscription.service.ts": 7,
@@ -94,16 +93,13 @@
     "modules/notification/notification.routes.ts": 4,
     "modules/portal/portal.routes.ts": 13,
     "modules/settings/settings.routes.ts": 31,
-    "modules/sla/sla.routes.ts": 1,
-    "modules/tenant-audit/tenant-audit.routes.ts": 1,
     "modules/webhook-subscriptions/webhook-subscription.routes.ts": 8,
     "modules/webhook/webhook.routes.ts": 1,
     "modules/webtalk/webtalk.routes.ts": 6,
     "services/channel-visibility.ts": 6
   },
   "service 內的 withTenant(": {
-    "modules/portal/portal.service.ts": 1,
-    "modules/sla/sla.service.ts": 3
+    "modules/portal/portal.service.ts": 1
   },
   "service 內的 $transaction(": {
     "modules/chatbox/chatbox.service.ts": 1,
