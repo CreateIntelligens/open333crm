@@ -123,14 +123,12 @@ test('ch08 截圖：附上優惠券、發券結果', async ({ browser }) => {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(800);
 
+  // 正式環境不建立廣播，發券結果要靠 UAT 上已發送過的附券廣播；找不到就讓測試失敗，免得手冊留著舊圖
   const result = page.getByRole('button', { name: '查看發券結果' }).first();
-  if (await result.count()) {
-    await result.click();
-    await page.waitForTimeout(1500);
-    await shot(page, page.getByRole('dialog'), 'ch08-broadcast-coupon-result');
-  } else {
-    console.log('✗ 沒有附券廣播可看發券結果');
-  }
+  if (!(await result.count())) throw new Error('列表上沒有附券廣播可看發券結果');
+  await result.click();
+  await page.waitForTimeout(1500);
+  await shot(page, page.getByRole('dialog'), 'ch08-broadcast-coupon-result');
   await page.context().close();
 });
 
@@ -187,10 +185,9 @@ test('ch18 影片：附券廣播（素材有顧客專屬券連結）', async ({ 
   await page.waitForTimeout(800);
 
   const result = page.getByRole('button', { name: '查看發券結果' }).first();
-  if (await result.count()) {
-    await caption(page, '發送後，按列表上的「發券結果」看每個人有沒有收到', 1200);
-    await tap(page, result, 1500);
-    await caption(page, '有失敗或跳過的人時，這裡會列出原因', 2800);
-  }
+  if (!(await result.count())) throw new Error('列表上沒有附券廣播可看發券結果');
+  await caption(page, '發送後，按列表上的「發券結果」看每個人有沒有收到', 1200);
+  await tap(page, result, 1500);
+  await caption(page, '有失敗或跳過的人時，這裡會列出原因', 2800);
   await finish(r, 4);
 });
