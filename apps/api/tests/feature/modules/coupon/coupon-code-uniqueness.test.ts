@@ -54,8 +54,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await owner.couponInstance.deleteMany({ where: { tenantId: T, couponId } });
-  await owner.coupon.deleteMany({ where: { id: couponId } });
+  // beforeAll 建券失敗時 couponId 還是空字串，拿空字串查 uuid 欄位會拋錯，連帶聯絡人清不掉
+  if (couponId) {
+    await owner.couponInstance.deleteMany({ where: { tenantId: T, couponId } });
+    await owner.coupon.deleteMany({ where: { id: couponId } });
+  }
   await owner.contact.deleteMany({ where: { tenantId: T, displayName: { startsWith: MARK } } });
   await owner.$disconnect();
   await prisma.$disconnect();
