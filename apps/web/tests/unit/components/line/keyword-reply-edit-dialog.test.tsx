@@ -130,7 +130,7 @@ test('素材與優惠券都沒選：表單提示至少選一個，不送出', as
 test('規則上的券已暫停，只修改關鍵字可以存檔：表單不擋，仍標示券已暫停', async () => {
   const onSave = openDialog(reply());
   await screen.findByRole('option', { name: '秋季九折（CP-24A7）· 行銷' });
-  screen.getByText(/這張券已暫停、已結束或被刪除/);
+  screen.getByText(/這張券已暫停、已結束、已過到期日或被刪除/);
   fireEvent.change(screen.getByPlaceholderText(/輸入關鍵字後按 Enter/), { target: { value: '優惠' } });
   fireEvent.click(screen.getByRole('button', { name: /加入/ }));
   await act(async () => {

@@ -17,6 +17,7 @@
 - [x] 3.5 新 hook `useAvailableClaimLinks`；`CouponUrlTextField.tsx` 加「插入領券連結」面板
 - [x] 3.6 測試（同 3.1、3.2、3.4 的檔案）：「依渠道篩選」「只有管理行銷權限的素材編輯者可以讀」「缺少檢視權限」改為兩種權限都沒有、「只列出與素材同渠道的領券連結」、403 說明兩種權限，在現有程式上斷言失敗
 - [x] 3.7 `channelType` 查詢參數與 service 篩選；路由改 `requireAnyPermission(['coupon.view', 'marketing.manage'])`；編輯器帶入素材渠道。突變驗證：改回 `requirePermission('coupon.view')` 時「只有管理行銷權限…可以讀」與 403 測試失敗；多放行 `marketing.view` 時 403 測試失敗
+- [x] 3.8 測試 `coupon-claim-link-available.test.ts`「不列出固定效期已到期的券」在現有程式上斷言失敗；service 以 `coupon.OR` 列出可用情況（不用 `NOT`，避免 NULL 被排除）。突變驗證：到期日條件改成不看現在時間時測試失敗
 
 ## 4. 用錯地方時提醒並擋下（coupon-management、automation-engine）
 
@@ -26,6 +27,18 @@
 - [x] 4.4 `assertSendMaterialReferences()` 查素材時選 `body`，含佔位字時回 400
 - [x] 4.5 測試 `apps/web/tests/unit/lib/marketing/broadcast-source-error.test.ts`（純函式）與 `apps/web/tests/unit/components/line/keyword-reply-coupon-url.test.tsx`：「建立對話框提醒並停用建立按鈕」（`broadcastSourceError` 回傳提醒、附券後為 null）、「關鍵字回覆對話框提醒並擋下存檔」，在現有程式上斷言失敗
 - [x] 4.6 `broadcastSourceError()` 收素材 body；`marketing/page.tsx` 顯示提醒並停用建立；`KeywordReplyEditDialog.tsx` 提醒並擋下存檔；`ActionEditor.tsx` 的素材選單顯示提醒（design D3）
+
+## 4b. 固定效期已過到期日的券不發放（coupon-management、automation-engine）
+
+- [x] 4b.1 測試 `packages/core/tests/unit/coupon/issue-expired.test.ts`「發券核心略過已到期的券」「到期當下就不再發」「不是固定效期的券不看到期日」，在現有程式上斷言失敗
+- [x] 4b.2 core `isCouponPastFixedEnd`、`couponNotPastFixedEnd`，`issueInstances` 略過並回報 `COUPON_EXPIRED`。突變驗證：拿掉略過時核心測試失敗；`<=` 改 `<` 時「到期當下」失敗
+- [x] 4b.3 測試：api `coupon-expired-gates.test.ts`（公開領券、發券服務）、`issue-coupon-reference.test.ts`（存檔擋下）、`keyword-yield-channel.test.ts`（不擋 AI）、feature `broadcast-coupon.test.ts`（建立擋下、發送時擋下）、`coupon-inbox.test.ts`（清單不列、發送擋下），workers `automation-issue-coupon-failure.test.ts`，web `issuable.test.ts`、`coupon-select-field.test.tsx`、`broadcast-coupon-field.test.tsx`、`coupon-detail.test.tsx`，在現有程式上斷言失敗
+- [x] 4b.4 各入口的檢查與訊息。突變驗證（各自拿掉該處檢查時測試失敗）：`issueCoupons`、`isClaimable`、規則存檔、keyword-yield、建立廣播、廣播發送、發券面板清單、選券欄、廣播選券、券詳情頁「發送給…」。對話發券的檢查單獨拿掉時測試仍過（`issueCoupons` 拋錯一樣回 `COUPON_NOT_ISSUABLE`），與 `issueCoupons` 一起拿掉時失敗；workers 兩處檢查與核心略過一起拿掉時失敗，原因文字改回時失敗
+- [x] 4b.6 PR #385 審查：發送途中券到期時原本當成暫停（`COUPON_NOT_ACTIVE`、提示恢復發放）。測試 feature「發送途中券過了到期日：保留時回報已到期」、unit `broadcast-coupon-stop.test.ts`，在現有程式上斷言失敗；`CouponExpiredError`、`couponUnavailableStop`。突變驗證：拿掉保留時對 `CouponExpiredError` 的判斷時 feature 測試失敗
+- [x] 4b.5 `coupon-detail.test.tsx` 既有「顯示發送給…」改用遠期到期日，避免預設資料的到期日過去後誤判
+- [x] 4b.7 測試 `coupon-list-view.test.tsx`「優惠券列表標示已到期的券」，在現有程式上斷言失敗
+- [x] 4b.9 PR #389 審查：測試 `issue-expired.test.ts`「券已到期時找不到的對象仍回報找不到聯絡人」「同一批發到一半券到期」，在現有程式上斷言失敗；`issueInstances` 的到期檢查移進迴圈、排在找不到聯絡人之後。突變驗證：檢查移回迴圈前時兩個測試都失敗
+- [x] 4b.8 `CouponTable` 狀態欄在進行中且已過到期日的券下方標示「已過到期日」。突變驗證：拿掉到期判斷時「還沒到期的券沒有標示」失敗
 
 ## 5. 文件
 

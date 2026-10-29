@@ -27,6 +27,10 @@ const rows = [
   row('e', T, { endAt: new Date('2026-12-31T00:00:00Z') }),
   row('x', OTHER),
   row('f', T, { channel: fbChannel }),
+  // 固定效期的券：到期日已過仍是 ACTIVE（系統沒有排程自動結束），發出去的券一拿到就過期
+  row('g', T, { coupon: { name: '已到期券', status: 'ACTIVE', validityMode: 'FIXED', endAt: new Date('2026-10-01T00:00:00Z') } }),
+  row('h', T, { coupon: { name: '年底券', status: 'ACTIVE', validityMode: 'FIXED', endAt: new Date('2026-12-31T00:00:00Z') } }),
+  row('i', T, { coupon: { name: '領取後計時券', status: 'ACTIVE', validityMode: 'AFTER_CLAIM', endAt: new Date('2026-10-01T00:00:00Z') } }),
 ];
 
 /** 模擬 Prisma 依 where 篩選：tenantId、連結狀態、券狀態、結束時間 */
@@ -41,6 +45,17 @@ function fakeCtx() {
           if (r.tenantId !== w.tenantId) return false;
           if (w.status && r.status !== w.status) return false;
           if (w.coupon?.status && r.coupon.status !== w.coupon.status) return false;
+          if (w.coupon?.OR) {
+            const c = r.coupon as { validityMode?: string; endAt?: Date };
+            const mode = c.validityMode ?? null;
+            const end = c.endAt ?? null;
+            const ok = w.coupon.OR.some((k: Record<string, any>) =>
+              ('validityMode' in k && k.validityMode === null && mode === null)
+              || (k.validityMode?.in && mode !== null && k.validityMode.in.includes(mode))
+              || ('endAt' in k && k.endAt === null && end === null)
+              || (k.endAt?.gt && end !== null && end > k.endAt.gt));
+            if (!ok) return false;
+          }
           if (w.channel?.channelType && r.channel.channelType !== w.channel.channelType) return false;
           if (w.OR) {
             const ok = w.OR.some((c: Record<string, any>) =>
@@ -58,7 +73,7 @@ function fakeCtx() {
 test('只列出可用的連結：啟用、券進行中、沒有結束', async () => {
   const { ctx } = fakeCtx();
   const links = await listAvailableClaimLinks(ctx, BASE, {}, NOW);
-  assert.deepEqual(links.map((l) => l.id), ['a', 'e', 'f']);
+  assert.deepEqual(links.map((l) => l.id), ['a', 'e', 'f', 'h', 'i']);
   assert.equal(links[0]!.couponName, '秋季九折');
   assert.equal(links[0]!.url, `${BASE}/coupon/claim/CODEA`);
   assert.equal(links[0]!.channel.displayName, 'LINE 官方帳號');
@@ -74,5 +89,13 @@ test('只列出同租戶的連結', async () => {
 test('只列出指定渠道的連結', async () => {
   const { ctx } = fakeCtx();
   assert.deepEqual((await listAvailableClaimLinks(ctx, BASE, { channelType: 'FB' }, NOW)).map((l) => l.id), ['f']);
-  assert.deepEqual((await listAvailableClaimLinks(ctx, BASE, { channelType: 'LINE' }, NOW)).map((l) => l.id), ['a', 'e']);
+  assert.deepEqual((await listAvailableClaimLinks(ctx, BASE, { channelType: 'LINE' }, NOW)).map((l) => l.id), ['a', 'e', 'h', 'i']);
+});
+
+test('不列出固定效期已到期的券', async () => {
+  const { ctx } = fakeCtx();
+  const links = await listAvailableClaimLinks(ctx, BASE, {}, NOW);
+  assert.ok(!links.some((l) => l.id === 'g'), '到期日已過的券，領到也不能用');
+  assert.ok(links.some((l) => l.id === 'h'), '還沒到期的固定效期券照常列出');
+  assert.ok(links.some((l) => l.id === 'i'), '不是固定效期的券不看到期日');
 });

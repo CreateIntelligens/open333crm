@@ -157,7 +157,20 @@ test('沒有對話與聯絡人時，有條件的規則不讓步', async () => {
 // ── 發券規則也算會回覆（add-coupon-system A15 15.9、design D25）：只發券的關鍵字規則命中時，
 //    AI 原本照常回覆，顧客一次收到兩則 ──
 
-function dbWithCoupon(couponStatus: string) {
+
+/** 模擬 Prisma 的 couponNotPastFixedEnd 條件（OR 明列可用情況） */
+function notPastFixedEnd(c: { validityMode?: string | null; endAt?: Date | null }, or: Array<Record<string, any>> | undefined) {
+  if (!or) return true;
+  const mode = c.validityMode ?? null;
+  const end = c.endAt ?? null;
+  return or.some((k) =>
+    ('validityMode' in k && k.validityMode === null && mode === null)
+    || (k.validityMode?.in && mode !== null && k.validityMode.in.includes(mode))
+    || ('endAt' in k && k.endAt === null && end === null)
+    || (k.endAt?.gt && end !== null && end > k.endAt.gt));
+}
+
+function dbWithCoupon(couponStatus: string, validity: { validityMode?: string; endAt?: Date } = {}) {
   return {
     automationRule: {
       findMany: async () => [
@@ -170,10 +183,11 @@ function dbWithCoupon(couponStatus: string) {
       ],
     },
     coupon: {
-      findMany: async ({ where }: { where: { id: { in: string[] }; tenantId: string; status?: string } }) =>
-        [{ id: 'c-1', tenantId: TENANT, status: couponStatus }]
+      findMany: async ({ where }: { where: { id: { in: string[] }; tenantId: string; status?: string; OR?: Array<Record<string, any>> } }) =>
+        [{ id: 'c-1', tenantId: TENANT, status: couponStatus, ...validity }]
           .filter((c) => where.id.in.includes(c.id) && c.tenantId === where.tenantId)
           .filter((c) => where.status === undefined || c.status === where.status)
+          .filter((c) => notPastFixedEnd(c, where.OR))
           .map((c) => ({ id: c.id })),
     },
   } as never;
@@ -185,6 +199,14 @@ test('規則發送進行中的優惠券', async () => {
 
 test('規則的優惠券不是進行中', async () => {
   assert.equal(await hasMatchingKeywordRule(dbWithCoupon('PAUSED'), TENANT, '我要領券', 'LINE'), false);
+});
+
+test('規則的優惠券已過固定效期的到期日', async () => {
+  // 到期後狀態仍是進行中，但 workers 不發券，AI 要照常回覆
+  const expired = { validityMode: 'FIXED', endAt: new Date(Date.now() - 60_000) };
+  assert.equal(await hasMatchingKeywordRule(dbWithCoupon('ACTIVE', expired), TENANT, '我要領券', 'LINE'), false);
+  const later = { validityMode: 'FIXED', endAt: new Date(Date.now() + 86_400_000) };
+  assert.equal(await hasMatchingKeywordRule(dbWithCoupon('ACTIVE', later), TENANT, '我要領券', 'LINE'), true);
 });
 
 test('網站聊天室的發券規則', async () => {

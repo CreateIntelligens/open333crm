@@ -79,7 +79,7 @@ let lineChannel = '';
 let fbChannel = '';
 let agentA = { id: '', name: '' };
 let agentB = { id: '', name: '' };
-const coupons = { amount: '', minSpend: '', expiring: '', limitOne: '', marketing: '', paused: '' };
+const coupons = { amount: '', minSpend: '', expiring: '', limitOne: '', marketing: '', paused: '', expired: '' };
 
 interface Person {
   contactId: string;
@@ -155,6 +155,12 @@ beforeAll(async () => {
   coupons.limitOne = await coupon('每人一張', { perContactLimit: 1 });
   coupons.marketing = await coupon('行銷券', { purpose: 'MARKETING' });
   coupons.paused = await coupon('已暫停的補償券', {}, 'PAUSED');
+  // 固定效期已過到期日、狀態仍是進行中（沒有排程自動結束）
+  coupons.expired = await coupon('已過到期日', {
+    validityMode: 'FIXED', afterClaimDays: null,
+    startAt: new Date(Date.now() - 2 * DAY), endAt: new Date(Date.now() + DAY),
+  });
+  await owner.coupon.update({ where: { id: coupons.expired }, data: { endAt: new Date(Date.now() - 60_000) } });
 });
 
 afterAll(async () => {
@@ -238,6 +244,13 @@ describe('客服可於對話中發券並歸戶', () => {
   it('只能發客服補償券', async () => {
     const p = await person('行銷券');
     const r = await issueInConversation(deps, input(p, coupons.marketing));
+    assert.equal(r.ok ? 'ok' : r.reason, 'COUPON_NOT_ISSUABLE');
+    assert.equal(await heldBy(p), 0);
+  });
+
+  it('固定效期已過到期日的券回報已停止發放', async () => {
+    const p = await person('已過到期');
+    const r = await issueInConversation(deps, input(p, coupons.expired));
     assert.equal(r.ok ? 'ok' : r.reason, 'COUPON_NOT_ISSUABLE');
     assert.equal(await heldBy(p), 0);
   });
@@ -424,6 +437,8 @@ describe('發券面板列出可發的補償券', () => {
     assert.ok(ids.includes(coupons.minSpend));
     assert.ok(!ids.includes(coupons.marketing));
     assert.ok(!ids.includes(coupons.paused));
+    assert.ok(!ids.includes(coupons.expired), '固定效期已過到期日的券不列出');
+    assert.ok(ids.includes(coupons.expiring), '還沒到期的固定效期券照常列出');
     assert.equal(ctx.conversation.contactName, `${MARK}-清單`);
     assert.equal(ctx.conversation.assignedToId, agentA.id);
   });

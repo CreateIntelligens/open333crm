@@ -29,6 +29,21 @@ describe('廣播可以附上優惠券', () => {
     assert.deepEqual(onChange.mock.calls[0], ['c1']);
   });
 
+  test('不列出固定效期已過到期日的券', async () => {
+    // 到期後狀態仍是進行中（沒有排程自動結束），選了也發不出去
+    h.get.mockResolvedValue({
+      data: {
+        data: [
+          { id: 'c1', name: '秋季九折', displayCode: 'MKT-1', status: 'ACTIVE', validityMode: 'FIXED', endAt: '2099-12-31T00:00:00Z' },
+          { id: 'c2', name: '夏季已到期', displayCode: 'MKT-2', status: 'ACTIVE', validityMode: 'FIXED', endAt: '2020-01-01T00:00:00Z' },
+        ],
+      },
+    });
+    render(<BroadcastCouponField value="" onChange={() => {}} preview={null} acknowledged={false} onAcknowledge={() => {}} />);
+    await screen.findByRole('option', { name: /秋季九折/ });
+    assert.ok(screen.queryByRole('option', { name: /夏季已到期/ }) === null);
+  });
+
   test('預覽顯示剩餘名額', async () => {
     const onAck = vi.fn();
     render(

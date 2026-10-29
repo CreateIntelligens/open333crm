@@ -10,7 +10,7 @@
  * service 只收 TenantCtx（AGENTS.md 結構規則 2）；交易由入口開。不在交易內呼叫渠道或 Redis。
  */
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { confirmPendingInstance, logger } from '@open333crm/core';
+import { confirmPendingInstance, couponNotPastFixedEnd, isCouponPastFixedEnd, logger } from '@open333crm/core';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { issueCoupons } from './coupon-issue.service.js';
@@ -109,7 +109,7 @@ export interface AvailableClaimLinkView extends ClaimLinkView {
 const AVAILABLE_LINKS_LIMIT = 200;
 
 /**
- * 租戶內現在可以放進訊息的領券連結：連結啟用、券進行中、連結沒有結束（尚未開始的可以先放）。
+ * 租戶內現在可以放進訊息的領券連結：連結啟用、券進行中且沒有過了固定效期、連結沒有結束（尚未開始的可以先放）。
  * 素材編輯器的「插入領券連結」用（change improve-coupon-url-insert-ux design D6）。
  */
 export async function listAvailableClaimLinks(
@@ -124,7 +124,8 @@ export async function listAvailableClaimLinks(
     where: {
       tenantId,
       status: 'ACTIVE',
-      coupon: { status: 'ACTIVE' },
+      // 固定效期的券到期後仍是 ACTIVE（沒有排程自動結束），發出去一拿到就過期，不列出
+      coupon: { status: 'ACTIVE', ...couponNotPastFixedEnd(now) },
       ...(filter.channelType ? { channel: { channelType: filter.channelType as never } } : {}),
       OR: [{ endAt: null }, { endAt: { gt: now } }],
     },
@@ -262,12 +263,13 @@ interface LinkAvailability {
   status: string;
   startAt: Date | null;
   endAt: Date | null;
-  coupon: { status: string };
+  coupon: { status: string; validityMode: string | null; endAt: Date | null };
 }
 
-/** 連結啟用、在期間內、券進行中才能領 */
+/** 連結啟用、在期間內、券進行中且沒過固定效期的到期日才能領 */
 export function isClaimable(link: LinkAvailability, now: Date): boolean {
   if (link.status !== 'ACTIVE' || link.coupon.status !== 'ACTIVE') return false;
+  if (isCouponPastFixedEnd(link.coupon, now)) return false;
   if (link.startAt && link.startAt.getTime() > now.getTime()) return false;
   if (link.endAt && link.endAt.getTime() <= now.getTime()) return false;
   return true;
@@ -344,6 +346,8 @@ export interface InboundClaimLink {
   channel: { channelType: string; settings: Prisma.JsonValue };
   coupon: {
     status: string;
+    validityMode: string | null;
+    endAt: Date | null;
     name: string;
     couponType: string | null;
     discountAmount: number | null;
@@ -374,7 +378,7 @@ export async function findInboundClaimLink(
       channel: { select: { channelType: true, settings: true } },
       coupon: {
         select: {
-          status: true, name: true, couponType: true, discountAmount: true, discountPercent: true,
+          status: true, validityMode: true, endAt: true, name: true, couponType: true, discountAmount: true, discountPercent: true,
           giftName: true, exchangeItem: true, minSpend: true, claimTagId: true, claimTagTtlDays: true,
         },
       },

@@ -522,6 +522,59 @@ describe('附券廣播發送前檢查名額與訊息額度', () => {
     assert.equal(batch.reachable, 1);
   });
 
+  it('券的固定效期已過到期日：預覽與建立擋下，已建立的廣播不發送', async () => {
+    // 到期後狀態仍是進行中（沒有排程自動結束），只看狀態會發出一拿到就過期的券
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const couponId = await coupon(`${MARK}秋到期`, {
+      validityMode: 'FIXED', afterClaimDays: null,
+      startAt: new Date(Date.now() - 2 * DAY_MS), endAt: new Date(Date.now() + DAY_MS),
+    });
+    const a = await person('expired-a');
+    const id = await broadcast({ couponId, contacts: [a] });
+    await owner.coupon.update({ where: { id: couponId }, data: { endAt: new Date(Date.now() - 60_000) } });
+
+    const message = '這張優惠券已過到期日，不能附上';
+    let createError: { code?: string; message: string } | null = null;
+    try {
+      await runInTenant(prisma, T, (ctx) =>
+        createBroadcast(ctx.tx, T, agentId, {
+          name: `${MARK} 到期`, channelId: lineChannel, targetType: 'contacts', targetConfig: { contactIds: [a.contactId] }, couponId,
+        }));
+    } catch (err) {
+      createError = { code: (err as { code?: string }).code, message: (err as Error).message };
+    }
+    assert.deepEqual(createError, { code: 'INVALID_COUPON', message });
+
+    await run(id);
+    assert.equal(sent.length, 0, '沒有送出任何訊息');
+    assert.equal((await instancesOf(a, couponId)).length, 0, '沒有建立任何券');
+    const row = await owner.broadcast.findFirst({ where: { id } });
+    assert.equal(row?.status, 'failed');
+    assert.equal(row?.failureCode, 'COUPON_EXPIRED');
+    assert.match(row?.failureReason ?? '', /到期日/);
+  });
+
+  it('發送途中券過了到期日：保留時回報已到期，不是暫停', async () => {
+    // PR #385 審查：原本一律當成暫停，失敗代碼是 COUPON_NOT_ACTIVE，提示「恢復發放」，但到期的券恢復不了
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const couponId = await coupon(`${MARK}秋途中到期`, {
+      validityMode: 'FIXED', afterClaimDays: null,
+      startAt: new Date(Date.now() - 2 * DAY_MS), endAt: new Date(Date.now() + DAY_MS),
+    });
+    const a = await person('mid-expired-a');
+    const id = await broadcast({ couponId, contacts: [a] });
+    const t0 = Date.now();
+    await runInTenant(prisma, T, (ctx) => queueCouponBroadcast(ctx, id, t0));
+    const claimed = await runInTenant(prisma, T, (ctx) => claimCouponBroadcast(ctx, id, t0));
+    assert.ok(claimed.ok);
+    await owner.coupon.update({ where: { id: couponId }, data: { endAt: new Date(Date.now() - 60_000) } });
+
+    const reservation = await runInTenant(prisma, T, (ctx) =>
+      reserveRecipient(ctx, claimed.ok ? claimed.plan : (null as never), { contactId: a.contactId, uid: a.uid, channelIdentityId: randomUUID() }));
+    assert.deepEqual(reservation, { kind: 'coupon_unavailable', expired: true });
+    assert.equal((await instancesOf(a, couponId)).length, 0);
+  });
+
   it('LINE 訊息額度不足', async () => {
     const couponId = await coupon(`${MARK}秋M`);
     const a = await person('lq-a');

@@ -11,6 +11,7 @@ import { evaluateRules } from './engine/rule-engine.js';
 import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateAutomationRuleContract } from '@open333crm/automation';
+import { couponNotPastFixedEnd } from '@open333crm/core';
 import { notFound } from '../../shared/messages/resource.js';
 import { bodyHasCouponUrl } from '../marketing/template-renderer.js';
 
@@ -149,13 +150,14 @@ async function assertIssueCouponReferences(
   const ids = couponIdsOf(actions).filter((id) => !(typeof id === 'string' && unchanged.has(id)));
   if (ids.length === 0) return;
 
-  const message = '找不到可發放的優惠券：發送優惠券要選同一個帳號下、進行中的券';
+  const message = '找不到可發放的優惠券：發送優惠券要選同一個帳號下、進行中且沒過到期日的券';
   const invalid = () =>
     new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'actions', message }] });
   if (ids.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) throw invalid();
   const unique = [...new Set(ids as string[])];
   const found = await prisma.coupon.findMany({
-    where: { tenantId, status: 'ACTIVE', id: { in: unique } },
+    // 固定效期已過到期日的券狀態仍是進行中，但 workers 不會發（isCouponPastFixedEnd）
+    where: { tenantId, status: 'ACTIVE', id: { in: unique }, ...couponNotPastFixedEnd(new Date()) },
     select: { id: true },
   });
   if (found.length !== unique.length) throw invalid();

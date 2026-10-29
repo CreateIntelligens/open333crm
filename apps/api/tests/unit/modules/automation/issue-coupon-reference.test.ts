@@ -13,21 +13,37 @@ const COUPON_OK = '11111111-1111-4111-8111-111111111111';
 const COUPON_PAUSED = '22222222-2222-4222-8222-222222222222';
 const COUPON_OTHER_TENANT = '33333333-3333-4333-8333-333333333333';
 const COUPON_MISSING = '44444444-4444-4444-8444-444444444444';
+/** 固定效期已過到期日、狀態仍是進行中 */
+const COUPON_EXPIRED = '55555555-5555-4555-8555-555555555555';
 
-const coupons = [
+const coupons: Array<{ id: string; tenantId: string; status: string; validityMode?: string; endAt?: Date }> = [
   { id: COUPON_OK, tenantId: T, status: 'ACTIVE' },
+  { id: COUPON_EXPIRED, tenantId: T, status: 'ACTIVE', validityMode: 'FIXED', endAt: new Date('2026-01-01T00:00:00Z') },
   { id: COUPON_PAUSED, tenantId: T, status: 'PAUSED' },
   { id: COUPON_OTHER_TENANT, tenantId: 'tenant-b', status: 'ACTIVE' },
 ];
+
+/** 模擬 Prisma 的 couponNotPastFixedEnd 條件（OR 明列可用情況） */
+function notPastFixedEnd(c: { validityMode?: string | null; endAt?: Date | null }, or: Array<Record<string, any>> | undefined) {
+  if (!or) return true;
+  const mode = c.validityMode ?? null;
+  const end = c.endAt ?? null;
+  return or.some((k) =>
+    ('validityMode' in k && k.validityMode === null && mode === null)
+    || (k.validityMode?.in && mode !== null && k.validityMode.in.includes(mode))
+    || ('endAt' in k && k.endAt === null && end === null)
+    || (k.endAt?.gt && end !== null && end > k.endAt.gt));
+}
 
 function fakeDb(existingCouponId = COUPON_PAUSED) {
   const writes: Array<Record<string, unknown>> = [];
   const db = {
     coupon: {
-      async findMany({ where }: { where: { tenantId: string; status?: string; id: { in: string[] } } }) {
+      async findMany({ where }: { where: { tenantId: string; status?: string; id: { in: string[] }; OR?: Array<Record<string, any>> } }) {
         return coupons
           .filter((c) => c.tenantId === where.tenantId && where.id.in.includes(c.id))
           .filter((c) => where.status === undefined || c.status === where.status)
+          .filter((c) => notPastFixedEnd(c, where.OR))
           .map((c) => ({ id: c.id }));
       },
     },
@@ -69,6 +85,7 @@ for (const [label, couponId] of [
   ['不存在', COUPON_MISSING],
   ['屬於其他租戶', COUPON_OTHER_TENANT],
   ['不是進行中', COUPON_PAUSED],
+  ['固定效期已過到期日', COUPON_EXPIRED],
 ] as const) {
   test(`存檔時券不存在或屬於其他租戶（${label}）：回 400，不儲存規則`, async () => {
     const { db, writes } = fakeDb();

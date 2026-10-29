@@ -295,6 +295,34 @@ describe('列表內容', () => {
     assert.match(draftRow.textContent ?? '', /尚未發放/);
   });
 
+  test('優惠券列表標示已到期的券', () => {
+    const expired = coupon({
+      id: 'c-expired',
+      name: '夏季清倉 滿五百折五十',
+      displayCode: 'MKT-SUMMER-50',
+      validityMode: 'FIXED',
+      startAt: '2026-06-01T00:00:00Z',
+      endAt: '2026-08-31T15:59:59Z',
+    });
+    const future = coupon({
+      id: 'c-future',
+      name: '年終感謝 滿千折兩百',
+      displayCode: 'MKT-YEAREND-200',
+      validityMode: 'FIXED',
+      startAt: '2026-10-01T00:00:00Z',
+      endAt: '2099-12-31T15:59:59Z',
+    });
+    setList([expired, future, ACTIVE]);
+    renderView();
+    const expiredRow = screen.getByText(expired.name).closest('tr') as HTMLElement;
+    assert.ok(within(expiredRow).queryByText('進行中') !== null, '狀態仍是進行中');
+    assert.ok(within(expiredRow).queryByText('已過到期日') !== null, '應標示已過到期日');
+    for (const c of [future, ACTIVE]) {
+      const row = screen.getByText(c.name).closest('tr') as HTMLElement;
+      assert.ok(within(row).queryByText('已過到期日') === null, `${c.name} 不應標示`);
+    }
+  });
+
   test('表尾在有篩選時標示全部張數', () => {
     state.list = [ACTIVE];
     state.total = 1;

@@ -345,6 +345,8 @@ describe('大量序號明細改背景匯出（design D22）', () => {
 describe('從券詳情頁批次發券（design D31）', () => {
   test('有發券權限時，進行中的券顯示「發送給…」', () => {
     h.perms = ['coupon.view', 'coupon.issue'];
+    // 固定效期要還沒到期（預設資料的到期日會隨時間過去）
+    h.coupon = { coupon: coupon({ endAt: '2099-12-31T00:00:00.000Z' }), error: undefined, isLoading: false, mutate: h.mutate };
     render(<CouponDetailView id={ID} />);
     assert.ok(screen.getByRole('button', { name: /發送給/ }));
   });
@@ -353,6 +355,15 @@ describe('從券詳情頁批次發券（design D31）', () => {
     h.perms = ['coupon.view', 'coupon.manage'];
     render(<CouponDetailView id={ID} />);
     assert.ok(screen.queryByRole('button', { name: /發送給/ }) === null);
+  });
+
+  test('固定效期已過到期日的券不顯示「發送給…」並說明原因', () => {
+    // 到期後狀態仍是進行中（沒有排程自動結束），發出去的券一拿到就過期
+    h.perms = ['coupon.view', 'coupon.issue'];
+    h.coupon = { coupon: coupon({ endAt: '2020-01-01T00:00:00.000Z' }), error: undefined, isLoading: false, mutate: h.mutate };
+    render(<CouponDetailView id={ID} />);
+    assert.ok(screen.queryByRole('button', { name: /發送給/ }) === null);
+    assert.ok(screen.queryByText('已過到期日，不能再發送') !== null);
   });
 
   test('暫停中的券不顯示「發送給…」', () => {

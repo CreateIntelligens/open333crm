@@ -6,7 +6,7 @@
  * 收呼叫端的 Prisma executor（AGENTS.md 結構規則 2），每個查詢都自帶 tenantId。
  */
 import { AUTOMATION_DELIVERY_CHANNEL_TYPES } from '@open333crm/channel-plugins';
-import { logger } from '@open333crm/core';
+import { couponNotPastFixedEnd, logger } from '@open333crm/core';
 import {
   buildAutomationFacts,
   evaluateRules,
@@ -129,7 +129,8 @@ export async function hasMatchingKeywordRule(
     .map((a) => a.params!.couponId as string);
   if (couponIds.length === 0) return false;
   const activeCoupons = await prisma.coupon.findMany({
-    where: { id: { in: couponIds }, tenantId, status: 'ACTIVE' },
+    // 固定效期已過到期日的券 workers 不發（isCouponPastFixedEnd），與暫停一樣讓 AI 回覆
+    where: { id: { in: couponIds }, tenantId, status: 'ACTIVE', ...couponNotPastFixedEnd(new Date()) },
     select: { id: true },
   });
   return activeCoupons.length > 0;

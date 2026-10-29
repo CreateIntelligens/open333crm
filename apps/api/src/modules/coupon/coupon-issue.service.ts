@@ -8,13 +8,21 @@
  * ⚠️ 全程在交易內：配額檢查與建立之間若被插隊，總量會超發。
  */
 
-import { couponSourceName, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
+import { couponSourceName, isCouponPastFixedEnd, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { ContactTagged } from '../tag/tagging.service.js';
 import { applyClaimTag } from './coupon-tagging.js';
 import { CouponValidationError } from './coupon.service.js';
 
 export type { IssuedInstance };
+
+/** 固定效期已過到期日：與暫停不同，恢復發放救不回來，附券廣播要分開回報（PR #385 審查） */
+export class CouponExpiredError extends CouponValidationError {
+  constructor() {
+    super('券已過到期日，無法發放');
+    this.name = 'CouponExpiredError';
+  }
+}
 
 /**
  * 入口分批發券時每批的人數：每人約 4～8 個查詢（設了領券標籤時更多），一批要在 5 秒的交易時限內完成，
@@ -67,6 +75,10 @@ export async function issueCoupons(
   if (!coupon) throw new CouponValidationError('查無此券');
   if (coupon.status !== 'ACTIVE') {
     throw new CouponValidationError('僅能發放進行中的券');
+  }
+  // 固定效期到期後狀態仍是進行中（沒有排程自動結束），發出去一拿到就過期
+  if (isCouponPastFixedEnd(coupon)) {
+    throw new CouponExpiredError();
   }
 
   const outcome = await issueInstances(tx, {
