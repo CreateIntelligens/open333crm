@@ -4,7 +4,7 @@
  * 照常發出去的券一拿到就過期。
  */
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { afterEach, test, vi } from 'vitest';
 import { isCouponPastFixedEnd, issueInstances } from '#src/coupon/issue.js';
 
 const T = 'a0000000-0000-4000-8000-000000000001';
@@ -42,5 +42,51 @@ test('issueInstances：固定效期已到期時每位對象都略過，不建立
   assert.deepEqual(out.skipped, [
     { contactId: 'p1', reason: 'COUPON_EXPIRED' },
     { contactId: 'p2', reason: 'COUPON_EXPIRED' },
+  ]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+test('issueInstances：券已到期時，不存在的對象仍回報找不到聯絡人', async () => {
+  const tx = {
+    $executeRaw: async () => 0,
+    contact: { findMany: async () => [{ id: 'p1' }] },
+    couponInstance: { count: async () => 0, findFirst: async () => null, create: async () => { throw new Error('不應建立'); } },
+  };
+  const out = await issueInstances(tx as never, { tenantId: T, coupon: coupon(), contactIds: ['p1', 'ghost'] });
+  assert.deepEqual(out.skipped, [
+    { contactId: 'p1', reason: 'COUPON_EXPIRED' },
+    { contactId: 'ghost', reason: 'CONTACT_NOT_FOUND' },
+  ]);
+});
+
+test('issueInstances：同一批發到一半券到期，之後的對象不再發', async () => {
+  const endAt = new Date('2026-10-28T08:00:10Z');
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-28T08:00:00Z'));
+  const tx = {
+    $executeRaw: async () => 0,
+    contact: { findMany: async () => [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }] },
+    couponInstance: {
+      count: async () => 0,
+      findFirst: async () => null,
+      create: async (args: { data: { contactId: string } }) => {
+        // 發完第一位時跨過到期時間
+        vi.setSystemTime(endAt);
+        return { id: `i-${args.data.contactId}`, contactId: args.data.contactId, code: 'X', status: 'CLAIMED' };
+      },
+    },
+  };
+  const out = await issueInstances(tx as never, {
+    tenantId: T,
+    coupon: coupon({ endAt }),
+    contactIds: ['p1', 'p2', 'p3'],
+  });
+  assert.deepEqual(out.issued.map((i) => i.contactId), ['p1']);
+  assert.deepEqual(out.skipped, [
+    { contactId: 'p2', reason: 'COUPON_EXPIRED' },
+    { contactId: 'p3', reason: 'COUPON_EXPIRED' },
   ]);
 });

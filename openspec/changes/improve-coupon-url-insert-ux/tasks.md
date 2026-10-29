@@ -37,6 +37,7 @@
 - [x] 4b.6 PR #385 審查：發送途中券到期時原本當成暫停（`COUPON_NOT_ACTIVE`、提示恢復發放）。測試 feature「發送途中券過了到期日：保留時回報已到期」、unit `broadcast-coupon-stop.test.ts`，在現有程式上斷言失敗；`CouponExpiredError`、`couponUnavailableStop`。突變驗證：拿掉保留時對 `CouponExpiredError` 的判斷時 feature 測試失敗
 - [x] 4b.5 `coupon-detail.test.tsx` 既有「顯示發送給…」改用遠期到期日，避免預設資料的到期日過去後誤判
 - [x] 4b.7 測試 `coupon-list-view.test.tsx`「優惠券列表標示已到期的券」，在現有程式上斷言失敗
+- [x] 4b.9 PR #389 審查：測試 `issue-expired.test.ts`「券已到期時找不到的對象仍回報找不到聯絡人」「同一批發到一半券到期」，在現有程式上斷言失敗；`issueInstances` 的到期檢查移進迴圈、排在找不到聯絡人之後。突變驗證：檢查移回迴圈前時兩個測試都失敗
 - [x] 4b.8 `CouponTable` 狀態欄在進行中且已過到期日的券下方標示「已過到期日」。突變驗證：拿掉到期判斷時「還沒到期的券沒有標示」失敗
 
 ## 5. 文件

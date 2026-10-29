@@ -197,14 +197,15 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
     (await tx.contact.findMany({ where: { id: { in: params.contactIds }, tenantId }, select: { id: true } })).map((c) => c.id),
   );
 
-  // 最後防線：各入口應先擋下並給清楚訊息，這裡確保任何路徑都不會發出一拿到就過期的券
-  if (isCouponPastFixedEnd(coupon, new Date())) {
-    return { issued, skipped: params.contactIds.map((contactId) => ({ contactId, reason: 'COUPON_EXPIRED' as const })) };
-  }
-
   for (const contactId of params.contactIds) {
     if (!known.has(contactId)) {
       skipped.push({ contactId, reason: 'CONTACT_NOT_FOUND' });
+      continue;
+    }
+    // 最後防線：各入口應先擋下並給清楚訊息，這裡確保任何路徑都不會發出一拿到就過期的券。
+    // 每位都重看一次時間：大批次發到一半可能跨過到期時間
+    if (isCouponPastFixedEnd(coupon, new Date())) {
+      skipped.push({ contactId, reason: 'COUPON_EXPIRED' });
       continue;
     }
     if (coupon.totalLimit != null) {
