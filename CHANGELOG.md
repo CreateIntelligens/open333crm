@@ -34,7 +34,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - OG 快照改成在建立短連結的交易 commit 之後才在背景抓取，再另開交易寫回。
 - **SLA 政策與租戶稽核查詢改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `sla.service.ts` 改收 `TenantCtx`，不再自己開交易；`/api/v1/sla-policies` 的 4 條路由改呼叫新的 `sla.flow.ts`。`listTenantAudit` 改收 `TenantCtx`，`GET /api/v1/tenant/audit-logs` 改呼叫新的 `tenant-audit.flow.ts`。沒有可觀察的差異：SLA 政策的建立、修改、刪除原本就各在一個交易內，這兩個模組也沒有推播、事件或稽核。`writeTenantAudit()` 不變，等其他呼叫端搬遷。`csat` 模組有外部呼叫，移到階段 4 搬遷。
 - **WebTalk 設定與 Webhook 訂閱管理改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `webtalk.service.ts`、`webhook-subscription.service.ts` 改收 `TenantCtx`，`/api/v1/webtalk` 的 4 條路由與 `/api/v1/webhook-subscriptions` 的 7 條路由改呼叫新的 `webtalk.flow.ts`、`webhook-subscription.flow.ts`。可觀察的差異：
-  - 修改 WebTalk 設定與重新產生房間代號時，`settings.update` 稽核與變更在同一個交易寫入。稽核寫入失敗時，變更不生效，請求回 400 `DATABASE_ERROR`；原本是變更照常生效、稽核遺失。
+  - 修改 WebTalk 設定與重新產生房間代號時，`settings.update` 稽核與變更在同一個交易寫入。稽核寫入失敗時，變更不生效，請求回錯誤（例如稽核違反外鍵時回 400 `DATABASE_ERROR`）；原本是變更照常生效、稽核遺失。
   - Webhook 訂閱的測試送出（`POST /:id/test`）只有讀取訂閱改走 flow。送出 HTTP 與寫入送出紀錄仍是原本的寫法，隨階段 4 搬遷。
 
 ### Fixed
