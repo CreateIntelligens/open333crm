@@ -111,7 +111,7 @@
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email 兩種模式都保留 | 靜態確認 |
-| [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體 | 靜態確認 |
+| [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體；打包時間長時，同一個請求可能被兩次執行同時處理 | 靜態確認 |
 | [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 部分修正 | 對外 Webhook 轉送所有內部事件：已有對外事件清單，但第一版等於所有事件；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
@@ -1509,19 +1509,43 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 **修正方向**：發起刪除時，一併處理 `mergedIntoId` 指向目標聯絡人的封存聯絡人（逐層往下找）。
 
 <a id="export-01"></a>
-### EXPORT-01：資料匯出的通知、範圍參數與記憶體用量
+### EXPORT-01：資料匯出的通知、範圍參數、記憶體用量與重複執行
 
-`POST /api/v1/tenant/data-export` 與 `apps/workers/src/handlers/data-export.handler.ts` 有三個問題：
+`POST /api/v1/tenant/data-export` 與 `apps/workers/src/handlers/data-export.handler.ts` 有四個問題：
 
 | 問題 | 現況 |
 | --- | --- |
 | 完成通知的連結 | 成功與失敗的通知都連到 `/dashboard/settings/data-export/<請求 ID>`。前端沒有這個頁面，也沒有任何匯出、稽核或資料刪除的畫面 |
 | 範圍參數 | API 接受 `scope`（資料類型陣列）並存進請求，但 worker 不讀它，一律匯出聯絡人、對話、訊息與工單 |
 | 記憶體用量 | `fetchAllPaged()` 分頁查詢，卻把每一頁累加到同一個陣列，最後連同 JSON 字串與 zip 一起留在記憶體。函式註解寫「避免一次全載入記憶體」，實際上整個租戶的資料都載入 |
+| 同時執行兩次 | 見下方「同一個請求同時執行兩次」 |
 
 前兩項讓使用者看到不存在的頁面，或以為只匯出了部分資料。第三項在資料量大的租戶可能讓 workers 的記憶體用盡，同一個行程的其他佇列也會中斷。
 
-**修正方向**：通知連結改到實際存在的頁面，或在前端做出匯出頁面之前拿掉連結；`scope` 要嘛在 worker 生效，要嘛從 API 移除；匯出改成逐表寫入 zip，不保留全部列。
+**同一個請求同時執行兩次**（2026-10-29，#337 階段 3 搬遷 `data-export` 時分析）。handler 以請求狀態認領（主規格 `tenant-data-export`「worker 不重新處理已結束的匯出請求」）：
+
+- 開始時，把 `pending` 或 `processing` 改成 `processing`。
+- 完成時，只把 `processing` 改成 `completed`。
+- 失敗時，只把 `processing` 改成 `failed`。
+
+兩次執行同時進行時，A 還在打包，B 先失敗，B 就把請求改成 `failed` 並通知發起的成員。A 之後上傳了檔案，但完成的條件不成立，請求維持 `failed`。上傳的檔案沒有請求指向它，清理排程只處理 `completed` 的請求，所以這個檔案一直留在物件儲存。
+
+同一個匯出工作被執行兩次的來源：
+
+| 來源 | 兩次會不會同時執行 |
+| --- | --- |
+| outbox 重送：快速送出成功，但標記已送出失敗，relay 2 分鐘後再送一次 | 不會。job id 是 outbox id，佇列裡已有同一個 id 時，BullMQ 不建立新的工作。完成的工作保留 24 小時，超過之後才補送時，第一次早已結束，第二次認領失敗後直接結束 |
+| BullMQ 判定工作卡住後重新派送：handler 以同步的 `JSON.stringify` 與 `zip.build()` 打包整個租戶的資料，event loop 被占住超過 lock 期限（預設 30 秒）時，lock 沒有續期 | 目前不會。workers 只有一個容器（compose 指定 `container_name`），data-export worker 的 `concurrency` 是預設的 1，重新派送的工作要等第一次結束才會被取出。workers 有兩個以上的行程時，會同時執行 |
+| 行程中途結束（部署、記憶體用盡） | 不會。第一次已經停止，第二次把 `processing` 的請求重新處理，這是規格要求的行為 |
+
+所以這個問題要同時滿足兩個條件才會發生：workers 有兩個以上的行程，而且某次打包占住 event loop 超過 lock 期限。根本原因與第三項相同。`data-erasure.handler.ts` 用同樣的方式認領，但刪除是資料庫交易，沒有長時間的同步運算，所以不列入本項。
+
+**修正方向**：
+
+- 通知連結改到實際存在的頁面，或在前端做出匯出頁面之前拿掉連結。
+- `scope` 要嘛在 worker 生效，要嘛從 API 移除。
+- 匯出改成逐表寫入 zip，不保留全部列。這也解決重複執行的根本原因：打包期間 event loop 不再被長時間占住，lock 能正常續期。
+- workers 擴充成多個行程之前，再評估是否讓「成功的那次執行為準」：完成的條件放寬為 `processing` 或 `failed`。檔案已經產生時，請求最後是 `completed`，不會留下沒有請求指向的檔案；代價是發起的成員會先收到失敗通知，再收到完成通知。這會改變既有的 Requirement，要開 change。
 
 <a id="hook-01"></a>
 ### HOOK-01：對外 Webhook 轉送所有內部事件，`message.received` 送出 `replyToken`

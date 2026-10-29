@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-29：資料匯出的重複執行（EXPORT-01）
+
+#337 階段 3 第五批，分支 `refactor/migrate-data-export-tenant-ctx`。以閱讀程式碼確認，沒有實測，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| EXPORT-01 | 新增「同一個請求同時執行兩次」，項目本身未處理 | 匯出工作改經 outbox 送出後，檢查同一個工作被執行兩次的來源。outbox 重送以 job id 去重（`packages/core/src/outbox/outbox.ts`），不會同時執行。BullMQ 重新派送卡住的工作時，只有 workers 有兩個以上的行程才會同時執行，目前只有一個（`docker-compose.yml`）。根本原因是打包時同步占住 event loop，與「記憶體用量」同一個修正 |
+
 ## 2026-10-29：seed 在正式環境的行為（USAGE-02）
 
 issue #394，分支 `fix/codeql-394`。以單元測試與本機資料庫實跑 seed 確認，沒有連 UAT。
