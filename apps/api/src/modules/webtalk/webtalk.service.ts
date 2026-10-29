@@ -7,7 +7,7 @@
  * 詳細的 SDK 研究與殘餘風險見 openspec/changes/webtalk-multi-tenant/design.md。
  */
 import { createHmac } from 'node:crypto';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 /** 房間密鑰最短長度；太短的密鑰可被暴力推算。 */
 export const WEBTALK_MIN_SECRET_LENGTH = 32;
@@ -104,14 +104,9 @@ export function deriveWebTalkRoomId(secret: string, siteId: string, tenantId: st
 
 /**
  * @description 讀取租戶的 WebTalk 設定；沒有設定列時回傳預設值，且不建立新列。
- * @param prisma 已綁定租戶的 Prisma executor
- * @param tenantId 租戶 ID
  */
-export async function getWebTalkSettings(
-  prisma: TenantDb,
-  tenantId: string,
-): Promise<WebTalkSettings & { roomVersion: number }> {
-  const row = await prisma.tenantSettings.findUnique({
+export async function getWebTalkSettings({ tx, tenantId }: TenantCtx): Promise<WebTalkSettings & { roomVersion: number }> {
+  const row = await tx.tenantSettings.findUnique({
     where: { tenantId },
     select: { webtalkEnabled: true, webtalkAiEnabled: true, webtalkRoomVersion: true },
   });
@@ -121,20 +116,17 @@ export async function getWebTalkSettings(
 
 /**
  * @description 更新租戶的 WebTalk 開關；只寫有提供的欄位。
- * @param prisma 已綁定租戶的 Prisma executor
- * @param tenantId 租戶 ID
  * @param patch 要更新的開關
  * @returns 更新後的開關
  */
 export async function updateWebTalkSettings(
-  prisma: TenantDb,
-  tenantId: string,
+  { tx, tenantId }: TenantCtx,
   patch: Partial<WebTalkSettings>,
 ): Promise<WebTalkSettings> {
   const data: { webtalkEnabled?: boolean; webtalkAiEnabled?: boolean } = {};
   if (patch.enabled !== undefined) data.webtalkEnabled = patch.enabled;
   if (patch.aiEnabled !== undefined) data.webtalkAiEnabled = patch.aiEnabled;
-  const row = await prisma.tenantSettings.upsert({
+  const row = await tx.tenantSettings.upsert({
     where: { tenantId },
     create: { tenantId, ...data },
     update: data,
@@ -145,11 +137,9 @@ export async function updateWebTalkSettings(
 
 /**
  * @description 重新產生租戶的房間代號（房間版本加一）。舊代號從此對不到這個租戶的成員。
- * @param prisma 已綁定租戶的 Prisma executor
- * @param tenantId 租戶 ID
  */
-export async function rotateWebTalkRoom(prisma: TenantDb, tenantId: string): Promise<void> {
-  await prisma.tenantSettings.upsert({
+export async function rotateWebTalkRoom({ tx, tenantId }: TenantCtx): Promise<void> {
+  await tx.tenantSettings.upsert({
     where: { tenantId },
     create: { tenantId, webtalkRoomVersion: 1 },
     update: { webtalkRoomVersion: { increment: 1 } },
@@ -160,17 +150,13 @@ export async function rotateWebTalkRoom(prisma: TenantDb, tenantId: string): Pro
 /**
  * @description 組出前端掛載 WebTalk 需要的 session。伺服器未設定或租戶停用時不含房間代號。
  *   AI 端點只在「租戶開啟 AI 摘要」且「伺服器有設定 AI 端點」時回傳。
- * @param prisma 已綁定租戶的 Prisma executor
- * @param tenantId 呼叫者的租戶 ID
+ * @param ctx 呼叫者租戶的交易
  * @param config `resolveWebTalkServerConfig()` 的結果
  */
-export async function buildWebTalkSession(
-  prisma: TenantDb,
-  tenantId: string,
-  config: WebTalkServerConfig | null,
-): Promise<WebTalkSession> {
+export async function buildWebTalkSession(ctx: TenantCtx, config: WebTalkServerConfig | null): Promise<WebTalkSession> {
   if (!config) return { enabled: false, reason: 'NOT_CONFIGURED' };
-  const settings = await getWebTalkSettings(prisma, tenantId);
+  const tenantId = ctx.tenantId;
+  const settings = await getWebTalkSettings(ctx);
   if (!settings.enabled) return { enabled: false, reason: 'TENANT_DISABLED' };
   const aiEnabled = settings.aiEnabled && config.aiEndpoint !== null;
   return {

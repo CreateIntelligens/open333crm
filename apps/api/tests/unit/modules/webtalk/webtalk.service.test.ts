@@ -13,6 +13,7 @@ import {
   updateWebTalkSettings,
   type WebTalkServerConfig,
 } from '#src/modules/webtalk/webtalk.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const TENANT_A = 'a0000000-0000-0000-0000-000000000001';
 const TENANT_B = 'b0000000-0000-0000-0000-000000000002';
@@ -56,6 +57,9 @@ function mockDb(rows: Record<string, Record<string, unknown>> = {}) {
   };
   return { db: db as never, calls, rows };
 }
+
+/** service 收的 TenantCtx：tx 是 mockDb，租戶預設是 TENANT_A */
+const ctx = (db: unknown, tenantId = TENANT_A) => createMockTenantCtx(db, tenantId).ctx;
 
 const config = (over: Partial<WebTalkServerConfig> = {}): WebTalkServerConfig => ({
   ...(resolveWebTalkServerConfig(ENV) as WebTalkServerConfig),
@@ -130,12 +134,12 @@ test('完整設定時解析成功；localhost 可用 http；AI 端點格式錯�
 
 test('Defaults without a settings row', async () => {
   const { db } = mockDb();
-  assert.deepEqual(await getWebTalkSettings(db, TENANT_A), { enabled: true, aiEnabled: false, roomVersion: 0 });
+  assert.deepEqual(await getWebTalkSettings(ctx(db)), { enabled: true, aiEnabled: false, roomVersion: 0 });
 });
 
 test('updateWebTalkSettings 只寫自己租戶、只寫有送的欄位', async () => {
   const { db, calls, rows } = mockDb();
-  const result = await updateWebTalkSettings(db, TENANT_A, { aiEnabled: true });
+  const result = await updateWebTalkSettings(ctx(db), { aiEnabled: true });
   assert.deepEqual(result, { enabled: true, aiEnabled: true });
   const upsert = calls.find((c) => c.method === 'upsert')!;
   assert.equal(upsert.args.where.tenantId, TENANT_A);
@@ -145,7 +149,7 @@ test('updateWebTalkSettings 只寫自己租戶、只寫有送的欄位', async (
 
 test('rotateWebTalkRoom 讓房間版本加一', async () => {
   const { db, rows } = mockDb({ [TENANT_A]: { webtalkEnabled: true, webtalkAiEnabled: false, webtalkRoomVersion: 2 } });
-  await rotateWebTalkRoom(db, TENANT_A);
+  await rotateWebTalkRoom(ctx(db));
   assert.equal(rows[TENANT_A].webtalkRoomVersion, 3);
 });
 
@@ -153,19 +157,19 @@ test('rotateWebTalkRoom 讓房間版本加一', async () => {
 
 test('伺服器未設定時 session 為 NOT_CONFIGURED，且不查資料庫', async () => {
   const { db, calls } = mockDb();
-  assert.deepEqual(await buildWebTalkSession(db, TENANT_A, null), { enabled: false, reason: 'NOT_CONFIGURED' });
+  assert.deepEqual(await buildWebTalkSession(ctx(db), null), { enabled: false, reason: 'NOT_CONFIGURED' });
   assert.equal(calls.length, 0);
 });
 
 test('Tenant disables WebTalk（session 為 TENANT_DISABLED，不含 roomId）', async () => {
   const { db } = mockDb({ [TENANT_A]: { webtalkEnabled: false, webtalkAiEnabled: true, webtalkRoomVersion: 0 } });
-  const session = await buildWebTalkSession(db, TENANT_A, config());
+  const session = await buildWebTalkSession(ctx(db), config());
   assert.deepEqual(session, { enabled: false, reason: 'TENANT_DISABLED' });
 });
 
 test('AI summary disabled by default', async () => {
   const { db } = mockDb();
-  const session = await buildWebTalkSession(db, TENANT_A, config({ aiEndpoint: 'https://ai.example.test/api/webtalk/ai' }));
+  const session = await buildWebTalkSession(ctx(db), config({ aiEndpoint: 'https://ai.example.test/api/webtalk/ai' }));
   assert.equal(session.enabled, true);
   if (!session.enabled) return;
   assert.equal(session.roomId, deriveWebTalkRoomId(SECRET, 'open333crm-test', TENANT_A, 0));
@@ -177,7 +181,7 @@ test('AI summary disabled by default', async () => {
 
 test('AI summary enabled by the tenant', async () => {
   const { db } = mockDb({ [TENANT_A]: { webtalkEnabled: true, webtalkAiEnabled: true, webtalkRoomVersion: 0 } });
-  const session = await buildWebTalkSession(db, TENANT_A, config({ aiEndpoint: 'https://ai.example.test/api/webtalk/ai' }));
+  const session = await buildWebTalkSession(ctx(db), config({ aiEndpoint: 'https://ai.example.test/api/webtalk/ai' }));
   assert.ok(session.enabled);
   assert.equal(session.aiEnabled, true);
   assert.equal(session.aiEndpoint, 'https://ai.example.test/api/webtalk/ai');
@@ -185,7 +189,7 @@ test('AI summary enabled by the tenant', async () => {
 
 test('AI enabled by the tenant but not configured on the server', async () => {
   const { db } = mockDb({ [TENANT_A]: { webtalkEnabled: true, webtalkAiEnabled: true, webtalkRoomVersion: 0 } });
-  const session = await buildWebTalkSession(db, TENANT_A, config({ aiEndpoint: null }));
+  const session = await buildWebTalkSession(ctx(db), config({ aiEndpoint: null }));
   assert.ok(session.enabled);
   assert.equal(session.aiEnabled, false);
   assert.equal(session.aiEndpoint, null);
@@ -193,7 +197,7 @@ test('AI enabled by the tenant but not configured on the server', async () => {
 
 test('session 的房間代號跟著房間版本走', async () => {
   const { db } = mockDb({ [TENANT_A]: { webtalkEnabled: true, webtalkAiEnabled: false, webtalkRoomVersion: 5 } });
-  const session = await buildWebTalkSession(db, TENANT_A, config());
+  const session = await buildWebTalkSession(ctx(db), config());
   assert.ok(session.enabled);
   assert.equal(session.roomId, deriveWebTalkRoomId(SECRET, 'open333crm-test', TENANT_A, 5));
 });

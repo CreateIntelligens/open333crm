@@ -1504,7 +1504,7 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作
 
-租戶稽核涵蓋成員、角色的建立改名刪除與權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。`role`、`agent` 以 `recordTenantAudit()` 在交易內寫稽核（change `migrate-role-agent-tenant-ctx`），其他模組仍呼叫 `writeTenantAudit()`。下列操作沒有寫稽核：
+租戶稽核涵蓋成員、角色的建立改名刪除與權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。`role`、`agent`（change `migrate-role-agent-tenant-ctx`）與 `case`、`contact`、`webtalk`（#337 階段 3）以 `recordTenantAudit()` 在交易內寫稽核，其他模組仍呼叫 `writeTenantAudit()`。下列操作沒有寫稽核：
 
 | 範圍 | 沒有稽核的操作 |
 | --- | --- |

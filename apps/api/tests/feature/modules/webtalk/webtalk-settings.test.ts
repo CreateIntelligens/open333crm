@@ -5,6 +5,7 @@
  * 結束時還原兩個租戶原本的 WebTalk 設定。
  */
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, test } from 'vitest';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
@@ -37,7 +38,9 @@ async function makeAgent(tenantId: string, permissions: string[]) {
 const adminA = await makeAgent(TENANT_A, ['settings.manage']);
 const memberA = await makeAgent(TENANT_A, []);
 const memberB = await makeAgent(TENANT_B, []);
-const actors = [adminA, memberA, memberB];
+// 有 settings.manage、但成員不存在：稽核的 actorId 違反外鍵，用來模擬稽核寫入失敗
+const ghostAdminA = { tenantId: TENANT_A, roleId: adminA.roleId, agentId: randomUUID() };
+const actors = [adminA, memberA, memberB, ghostAdminA];
 
 const settingsSelect = { webtalkEnabled: true, webtalkAiEnabled: true, webtalkRoomVersion: true } as const;
 const originals = new Map(
@@ -139,4 +142,22 @@ test('Rotation changes the room ID（真實資料庫）', async () => {
   assert.equal(res.statusCode, 200, res.body);
   assert.notEqual((await call(memberA, 'GET', '/session')).json().data.roomId, beforeA);
   assert.equal((await call(memberB, 'GET', '/session')).json().data.roomId, beforeB);
+});
+
+// 主規格 tenant-audit-log「交易內的稽核與主操作一起 commit」（#337 階段 3）
+test('稽核寫入失敗時，設定的修改一起 rollback', async () => {
+  const res = await call(ghostAdminA, 'PUT', '/settings', { enabled: false });
+  // error handler 把 Prisma 的外鍵錯誤轉成 400 DATABASE_ERROR
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error.code, 'DATABASE_ERROR');
+  assert.equal((await call(memberA, 'GET', '/session')).json().data.enabled, true, '設定沒有寫入');
+});
+
+test('稽核寫入失敗時，房間版本不變', async () => {
+  const before = (await call(memberA, 'GET', '/session')).json().data.roomId;
+  const res = await call(ghostAdminA, 'POST', '/settings/rotate-room');
+  // error handler 把 Prisma 的外鍵錯誤轉成 400 DATABASE_ERROR
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error.code, 'DATABASE_ERROR');
+  assert.equal((await call(memberA, 'GET', '/session')).json().data.roomId, before, '房間版本沒有加一');
 });

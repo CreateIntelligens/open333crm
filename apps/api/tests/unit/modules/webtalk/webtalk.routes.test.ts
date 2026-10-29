@@ -50,6 +50,25 @@ function tenantDb(tenantId: string) {
   };
 }
 
+/**
+ * 假的 fastify.prisma：inTenant() 開交易時以 set_config 設定租戶，之後的查詢落在該租戶的 tenantDb。
+ * route 不再收 request.tenantPrisma，所以 authenticate 不注入它。
+ */
+const prisma = {
+  async $transaction(cb: (tx: unknown) => Promise<unknown>) {
+    let tenantId = '';
+    const tx = {
+      $executeRaw: async (_sql: TemplateStringsArray, id: string) => {
+        tenantId = id;
+        return 1;
+      },
+      get tenantSettings() { return tenantDb(tenantId).tenantSettings; },
+      get tenantAuditLog() { return tenantDb(tenantId).tenantAuditLog; },
+    };
+    return cb(tx);
+  },
+};
+
 /** 以 header 指定登入身分；沒有 header 視為未登入 */
 async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   const raw = request.headers['x-test-agent'];
@@ -58,7 +77,6 @@ async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   }
   const agent = JSON.parse(raw);
   (request as any).agent = agent;
-  (request as any).tenantPrisma = tenantDb(agent.tenantId);
 }
 
 let app: FastifyInstance;
@@ -68,9 +86,9 @@ beforeAll(async () => {
   rolePermissions.set('role-agent', new Set(['inbox.view']));
   app = Fastify();
   app.decorate('authenticate', authenticate);
+  app.decorate('prisma', prisma as never);
   app.decorate('prismaAdmin', {} as never);
   app.decorateRequest('agent', null);
-  app.decorateRequest('tenantPrisma', null);
   await app.register(errorHandlerPlugin);
   await app.register(webtalkRoutes, { prefix: '/api/v1/webtalk', resolveConfig: () => serverConfig });
   await app.ready();

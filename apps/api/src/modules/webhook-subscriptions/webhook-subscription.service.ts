@@ -2,14 +2,13 @@
  * WebhookSubscription CRUD Service
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { randomBytes } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
 
-export async function listSubscriptions(prisma: TenantDb, tenantId: string) {
-  return prisma.webhookSubscription.findMany({
+export async function listSubscriptions({ tx, tenantId }: TenantCtx) {
+  return tx.webhookSubscription.findMany({
     where: { tenantId },
     orderBy: { createdAt: 'desc' },
     include: {
@@ -20,8 +19,8 @@ export async function listSubscriptions(prisma: TenantDb, tenantId: string) {
   });
 }
 
-export async function getSubscription(prisma: TenantDb, id: string, tenantId: string) {
-  const sub = await prisma.webhookSubscription.findFirst({
+export async function getSubscription({ tx, tenantId }: TenantCtx, id: string) {
+  const sub = await tx.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
   if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
@@ -29,8 +28,7 @@ export async function getSubscription(prisma: TenantDb, id: string, tenantId: st
 }
 
 export async function createSubscription(
-  prisma: TenantDb,
-  tenantId: string,
+  { tx, tenantId }: TenantCtx,
   data: {
     url: string;
     events: string[];
@@ -40,7 +38,7 @@ export async function createSubscription(
 ) {
   const secret = data.secret || randomBytes(32).toString('hex');
 
-  return prisma.webhookSubscription.create({
+  return tx.webhookSubscription.create({
     data: {
       tenantId,
       url: data.url,
@@ -52,9 +50,8 @@ export async function createSubscription(
 }
 
 export async function updateSubscription(
-  prisma: TenantDb,
+  { tx, tenantId }: TenantCtx,
   id: string,
-  tenantId: string,
   data: {
     url?: string;
     events?: string[];
@@ -62,40 +59,35 @@ export async function updateSubscription(
     isActive?: boolean;
   },
 ) {
-  const sub = await prisma.webhookSubscription.findFirst({
+  const sub = await tx.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
   if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
 
-  return prisma.webhookSubscription.update({
+  return tx.webhookSubscription.update({
     where: { id },
     data,
   });
 }
 
-export async function deleteSubscription(prisma: TenantDb, id: string, tenantId: string) {
-  const sub = await prisma.webhookSubscription.findFirst({
+export async function deleteSubscription({ tx, tenantId }: TenantCtx, id: string) {
+  const sub = await tx.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
   if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
 
-  await prisma.webhookSubscription.delete({ where: { id } });
+  await tx.webhookSubscription.delete({ where: { id } });
   return { deleted: true };
 }
 
-export async function listDeliveries(
-  prisma: TenantDb,
-  subscriptionId: string,
-  tenantId: string,
-  limit = 50,
-) {
+export async function listDeliveries({ tx, tenantId }: TenantCtx, subscriptionId: string, limit = 50) {
   // Verify subscription belongs to tenant
-  const sub = await prisma.webhookSubscription.findFirst({
+  const sub = await tx.webhookSubscription.findFirst({
     where: { id: subscriptionId, tenantId },
   });
   if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
 
-  return prisma.webhookDelivery.findMany({
+  return tx.webhookDelivery.findMany({
     where: { subscriptionId },
     orderBy: { createdAt: 'desc' },
     take: limit,
