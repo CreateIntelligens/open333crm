@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-29]
+
+### Changed
+
+- **附券廣播發送途中停止時的原因文字** — 「其餘 N 位沒有發送」改為「還有 N 位沒有發送」，讓人一看就知道是尚未處理的人數。
+
 ## [2026-10-28]
 
 ### Added
