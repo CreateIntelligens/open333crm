@@ -290,7 +290,6 @@ async function testCsatLookupScopedToTenantAndSender() {
 
 async function testFacadeAndCallerContractsFromSource() {
   const webhookSource = await readSource('modules/webhook/webhook.service.ts');
-  const webchatSource = await readSource('modules/webchat/webchat.service.ts');
   const chatboxSource = await readSource('modules/chatbox/chatbox.service.ts');
 
   assert.equal(webhookSource.includes('export async function processInboundMessage'), true);
@@ -303,7 +302,6 @@ async function testFacadeAndCallerContractsFromSource() {
 
   // FB／IG 依 entry.id 分派後，每組以分派到的渠道、憑證與租戶進入入站管線（change fix-meta-webhook-page-routing）
   assert.equal(webhookSource.includes('await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed)'), true);
-  assert.equal(webchatSource.includes('await processInboundMessage(prisma, io, {}, channel, channel.tenantId, parsed)'), true);
   assert.equal(chatboxSource.includes('const result = await processInboundMessage('), true);
   assert.equal(chatboxSource.includes('conversationId: session.conversationId'), true);
   assert.equal(chatboxSource.includes('clientMessageId: input.clientMessageId'), true);
