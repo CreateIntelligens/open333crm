@@ -32,6 +32,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 點擊紀錄、點擊次數與點擊貼標在同一個交易寫入，交易綁定短連結所屬的租戶。原本以 BYPASSRLS 的連線寫入，每個查詢各自 commit。點擊貼標失敗時點擊照樣記錄，與原本相同。`link.stats.updated` 推播在 commit 之後送出。同一個 LINE uid 的並行點擊改為排隊計數，不重複點擊數不會因為並行而多算或少算。
   - `POST /s/track` 以 slug 找到連結後立即回傳目標網址，點擊在背景寫入。原本要先查完點擊者才回應。
   - OG 快照改成在建立短連結的交易 commit 之後才在背景抓取，再另開交易寫回。
+- **SLA 政策與租戶稽核查詢改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `sla.service.ts` 改收 `TenantCtx`，不再自己開交易；`/api/v1/sla-policies` 的 4 條路由改呼叫新的 `sla.flow.ts`。`listTenantAudit` 改收 `TenantCtx`，`GET /api/v1/tenant/audit-logs` 改呼叫新的 `tenant-audit.flow.ts`。沒有可觀察的差異：SLA 政策的建立、修改、刪除原本就各在一個交易內，這兩個模組也沒有推播、事件或稽核。`writeTenantAudit()` 不變，等其他呼叫端搬遷。`csat` 模組有外部呼叫，移到階段 4 搬遷。
 
 ### Fixed
 

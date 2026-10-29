@@ -1,5 +1,5 @@
 /**
- * 租戶稽核 service 測試（writeTenantAudit / listTenantAudit）。
+ * 租戶稽核測試（writeTenantAudit / listTenantAuditFlow）。
  * 真連 DB：驗寫入欄位正確、寫入失敗不阻斷、查詢 tenantId 隔離。
  *
  * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
@@ -9,7 +9,8 @@ import { test, afterAll } from 'vitest';
 
 
 import { PrismaClient } from '@prisma/client';
-import { writeTenantAudit, listTenantAudit } from '#src/modules/tenant-audit/tenant-audit.service.js';
+import { writeTenantAudit } from '#src/modules/tenant-audit/tenant-audit.service.js';
+import { listTenantAuditFlow } from '#src/modules/tenant-audit/tenant-audit.flow.js';
 
 const prisma = new PrismaClient();
 const TENANT_A = 'a0000000-0000-0000-0000-000000000001'; // Demo Tenant
@@ -24,7 +25,7 @@ test('writeTenantAudit 寫入正確欄位', async () => {
     targetType: 'settings',
     payload: { section: 'chat' },
   });
-  const { rows } = await listTenantAudit(prisma, { tenantId: TENANT_A, action: `${MARK}.settings.update` });
+  const { rows } = await listTenantAuditFlow({ prisma }, TENANT_A, { action: `${MARK}.settings.update` });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].action, `${MARK}.settings.update`);
   assert.equal(rows[0].targetType, 'settings');
@@ -40,15 +41,14 @@ test('稽核寫入失敗不拋錯', async () => {
 
 test('listTenantAudit 跨租戶隔離：租戶 B 查不到租戶 A 的稽核', async () => {
   await writeTenantAudit(prisma, { tenantId: TENANT_A, action: `${MARK}.only-a` });
-  const bResult = await listTenantAudit(prisma, { tenantId: TENANT_B, action: `${MARK}.only-a` });
+  const bResult = await listTenantAuditFlow({ prisma }, TENANT_B, { action: `${MARK}.only-a` });
   assert.equal(bResult.rows.length, 0, '租戶 B 不應看到租戶 A 的稽核');
-  const aResult = await listTenantAudit(prisma, { tenantId: TENANT_A, action: `${MARK}.only-a` });
+  const aResult = await listTenantAuditFlow({ prisma }, TENANT_A, { action: `${MARK}.only-a` });
   assert.equal(aResult.rows.length, 1, '租戶 A 應看到自己的稽核');
 });
 
 test('分頁與日期篩選', async () => {
-  const { rows, total, page, pageSize } = await listTenantAudit(prisma, {
-    tenantId: TENANT_A,
+  const { rows, total, page, pageSize } = await listTenantAuditFlow({ prisma }, TENANT_A, {
     page: 1,
     pageSize: 5,
   });

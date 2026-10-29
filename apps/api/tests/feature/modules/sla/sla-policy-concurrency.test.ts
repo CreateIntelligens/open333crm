@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { test, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { withTenant } from '#src/lib/tenant-db.js';
-import { createSlaPolicy } from '#src/modules/sla/sla.service.js';
+import { createSlaPolicyFlow } from '#src/modules/sla/sla.flow.js';
 
 const prisma = new PrismaClient();
 const TENANT = 'a0000000-0000-0000-0000-000000000001';
@@ -34,7 +34,7 @@ afterAll(async () => {
 test('同時建立多條同名政策，只有一條成功', async () => {
   const name = `${MARK}-same`;
   const results = await Promise.allSettled(
-    Array.from({ length: 6 }, () => createSlaPolicy(prisma, TENANT, input(name))),
+    Array.from({ length: 6 }, () => createSlaPolicyFlow({ prisma }, TENANT, input(name))),
   );
 
   const ok = results.filter((r) => r.status === 'fulfilled');

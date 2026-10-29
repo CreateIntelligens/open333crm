@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { listTenantAudit } from './tenant-audit.service.js';
+import { actorOf } from '../../lib/request-actor.js';
+import { listTenantAuditFlow } from './tenant-audit.flow.js';
 
 const listQuerySchema = z.object({
   action: z.string().optional(),
@@ -19,8 +20,7 @@ export default async function tenantAuditRoutes(fastify: FastifyInstance) {
   // 租戶操作稽核查詢（分頁 + 篩選，一律 tenantId scoped）
   fastify.get('/', { preHandler: [requirePermission('audit.view')] }, async (request) => {
     const q = listQuerySchema.parse(request.query);
-    const result = await listTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
+    const result = await listTenantAuditFlow(fastify, actorOf(request).tenantId, {
       action: q.action,
       actorId: q.actorId,
       from: q.from,
