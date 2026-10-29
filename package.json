@@ -66,6 +66,7 @@
       "@fastify/busboy": "3.2.2",
       "follow-redirects": "1.16.1",
       "hono": "4.13.11",
+      "@hono/node-server": "2.1.5",
       "@humanfs/node": "0.16.8",
       "ip-address": "10.7.4",
       "js-yaml@>=4.0.0 <4.3.2": "4.3.2",

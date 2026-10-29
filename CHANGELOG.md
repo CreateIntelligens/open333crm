@@ -19,6 +19,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **網頁聊天拿掉訪客傳圖片、影片與檔案**（change `remove-webchat-visitor-attachments`）— 訪客傳圖片或影片時系統一定轉接真人，後台無法關閉。所有租戶的 `/chatbox` 頁面與嵌入式 widget 拿掉迴紋針按鈕與選檔，訪客只能傳文字。`POST /api/v1/chatbox/media` 與 `POST /api/v1/webchat/:channelId/media` 一律回 410 `WEBCHAT_VISITOR_MEDIA_DISABLED`；訪客送出 `image`、`video`、`file` 訊息時回 400。客服在收件匣傳圖片、影片給訪客不受影響，過去訪客傳的媒體照樣顯示。
 
+### Security
+
+- **處理 Dependabot 警示 #178：`@hono/node-server` 固定到 2.1.5** — `@modelcontextprotocol/sdk` 帶進來的間接依賴 `@hono/node-server` 2.1.1 有 `serveStatic` 二次解碼路徑、可繞過靜態路徑 middleware 的弱點（修補版 2.1.3）。專案沒有用到 `serveStatic`，實際不受影響。Dependabot 無法自動更新間接依賴，改在根目錄 `pnpm.overrides` 固定版本。
+
 ## [2026-10-28]
 
 ### Added
