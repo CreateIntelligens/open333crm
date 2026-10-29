@@ -24,7 +24,6 @@ import { getConfig } from '../../config/env.js';
 import { eventBus } from '../../events/event-bus.js';
 import { AppError } from '../../shared/utils/response.js';
 import { processInboundMessage } from '../webhook/webhook.service.js';
-import { uploadVisitorMedia } from '../webchat/webchat.service.js';
 import type { ChatboxMessageRegistry } from './chatbox.registry.js';
 import { notFound } from '../../shared/messages/resource.js';
 
@@ -593,6 +592,9 @@ export async function adaptChatboxMessageToWebchatParsed(
   };
 }
 
+// 訪客只能傳文字；客服傳給訪客的媒體不受影響
+const VISITOR_MEDIA_MESSAGE_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'file']);
+
 export async function handleChatboxMessage(
   prisma: PrismaClient,
   io: SocketIOServer,
@@ -600,6 +602,9 @@ export async function handleChatboxMessage(
   input: ChatboxMessageInput & { fingerprint?: ChatboxFingerprintInput; userAgent?: string },
   claimRedis?: ChatboxClaimRedis,
 ): Promise<{ message: ChatboxMessageOutput; duplicate: boolean }> {
+  if (VISITOR_MEDIA_MESSAGE_TYPES.has(input.type)) {
+    throw new AppError('網頁聊天不開放傳送圖片、影片或檔案', 'BAD_REQUEST', 400);
+  }
   const session = await verifyClaimedChatboxSession(prisma, input, claimRedis);
   const existing = await prisma.message.findUnique({
     where: {
@@ -639,14 +644,4 @@ export async function handleChatboxMessage(
   }
 
   return { message: registry.serialize(result.message), duplicate: result.duplicate };
-}
-
-export async function uploadChatboxMedia(
-  prisma: PrismaClient,
-  session: VerifiedChatboxSession,
-  fileBuffer: Buffer,
-  filename: string,
-  mimetype: string,
-): Promise<{ url: string; contentType: 'image' | 'video' }> {
-  return uploadVisitorMedia(prisma, session.channelId, session.visitorToken, fileBuffer, filename, mimetype);
 }

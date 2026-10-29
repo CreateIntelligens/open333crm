@@ -525,16 +525,15 @@ async function testSessionVerifyRouteClaimsAndRejectsDuplicate() {
   await app.close();
 }
 
-async function testMediaRouteRequiresClaimToken() {
+async function testClaimedPageUploadsMedia() {
   const app = Fastify();
   await app.register(multipart);
   await app.register(chatboxRoutes, { prefix: '/chatbox' });
   const boundary = '----open333crm-test-boundary';
+  const field = (name: string, value: string) => [`--${boundary}`, `Content-Disposition: form-data; name="${name}"`, '', value];
   const payload = [
-    `--${boundary}`,
-    'Content-Disposition: form-data; name="sessionId"',
-    '',
-    'x'.repeat(32),
+    ...field('sessionId', 'x'.repeat(32)),
+    ...field('claimToken', 'c'.repeat(32)),
     `--${boundary}`,
     'Content-Disposition: form-data; name="file"; filename="image.png"',
     'Content-Type: image/png',
@@ -550,8 +549,8 @@ async function testMediaRouteRequiresClaimToken() {
     headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
     payload,
   });
-  assert.equal(response.statusCode, 400);
-  assert.match(response.body, /claimToken/);
+  assert.equal(response.statusCode, 410);
+  assert.equal(response.json().code, 'WEBCHAT_VISITOR_MEDIA_DISABLED');
   await app.close();
 }
 
@@ -648,6 +647,6 @@ test('client message id duplicate returns original ack', testClientMessageIdDupl
 test('chatbox media uses session visitor token', testChatboxMediaUsesSessionVisitorToken);
 test('message route requires claim token', testMessageRouteRequiresClaimToken);
 test('session verify route claims and rejects duplicate', testSessionVerifyRouteClaimsAndRejectsDuplicate);
-test('media route requires claim token', testMediaRouteRequiresClaimToken);
+test('Claimed page uploads media：帶 sessionId 與 claim token 上傳仍回 410，不儲存檔案', testClaimedPageUploadsMedia);
 test('visitor socket requires and accepts claim token', testVisitorSocketRequiresAndAcceptsClaimToken);
 test('webchat plugin contract remains unchanged', testWebchatPluginContractRemainsUnchanged);

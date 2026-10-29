@@ -8,6 +8,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **附券廣播發送途中停止時的原因文字** — 「其餘 N 位沒有發送」改為「還有 N 位沒有發送」，讓人一看就知道是尚未處理的人數。
 
+### Removed
+
+- **網頁聊天拿掉訪客傳圖片、影片與檔案**（change `remove-webchat-visitor-attachments`）— 訪客傳圖片或影片時系統一定轉接真人，後台無法關閉。所有租戶的 `/chatbox` 頁面與嵌入式 widget 拿掉迴紋針按鈕與選檔，訪客只能傳文字。`POST /api/v1/chatbox/media` 與 `POST /api/v1/webchat/:channelId/media` 一律回 410 `WEBCHAT_VISITOR_MEDIA_DISABLED`；訪客送出 `image`、`video`、`file` 訊息時回 400。客服在收件匣傳圖片、影片給訪客不受影響，過去訪客傳的媒體照樣顯示。
+
 ## [2026-10-28]
 
 ### Added
