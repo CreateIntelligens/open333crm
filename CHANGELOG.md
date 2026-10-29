@@ -30,7 +30,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
-- **固定效期已過到期日的券仍會發出**（change `improve-coupon-url-insert-ux`，PR #385 審查）— 固定效期的券到期後狀態仍是進行中（系統沒有排程自動結束），對話發券、批次發券、附券廣播、公開領券、關鍵字回覆與加好友禮照常發券，顧客拿到就是過期的券。改為各入口擋下並說明原因：共用發券核心 `issueInstances` 略過並回報 `COUPON_EXPIRED`；`issueCoupons` 拋「券已過到期日，無法發放」；建立附券廣播回 400「這張優惠券已過到期日，不能附上」，已建立的在發送時、或發送途中才到期的，標為失敗（`failureCode` `COUPON_EXPIRED`，提示改附其他券，不是恢復發放）；規則發券留下「券不是進行中（已暫停、已結束或已過到期日）」；規則存檔不能換成已到期的券；選券清單、對話發券面板與「插入領券連結」不列，券詳情頁不顯示「發送給…」並說明原因。不改券的狀態，顧客券夾仍顯示「已過期」。
+- **固定效期已過到期日的券仍會發出**（change `improve-coupon-url-insert-ux`，PR #385 審查）— 固定效期的券到期後狀態仍是進行中（系統沒有排程自動結束），對話發券、批次發券、附券廣播、公開領券、關鍵字回覆與加好友禮照常發券，顧客拿到就是過期的券。改為各入口擋下並說明原因：共用發券核心 `issueInstances` 略過並回報 `COUPON_EXPIRED`；`issueCoupons` 拋「券已過到期日，無法發放」；建立附券廣播回 400「這張優惠券已過到期日，不能附上」，已建立的在發送時、或發送途中才到期的，標為失敗（`failureCode` `COUPON_EXPIRED`，提示改附其他券，不是恢復發放）；規則發券留下「券不是進行中（已暫停、已結束或已過到期日）」；規則存檔不能換成已到期的券；選券清單、對話發券面板與「插入領券連結」不列，券詳情頁不顯示「發送給…」並說明原因，優惠券列表在狀態下方標示「已過到期日」。不改券的狀態，顧客券夾仍顯示「已過期」。
 - **UAT 部署在建置 image 時失敗** — 修補依賴安全告警時新增的 pnpm patch（`patches/minio@8.0.7.patch`）沒有複製進 api、web、workers 的 Docker image，`pnpm install` 讀不到 patch 檔而中止（`ENOENT`）。三個 Dockerfile 在安裝相依套件之前先複製 `patches/`。
 - **修補依賴安全告警** — 升級 Zod、undici、body-parser、decode-uri-component、fast-uri、ip-address 與 qs 至修補版本；為 MinIO 替換停更的 `stream-json` 1.x JSONL parser，使用 `stream-chain` 的 Node parser，並由 pnpm patch 固定修補。
 
