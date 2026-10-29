@@ -7,6 +7,10 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Changed
 
 - **附券廣播發送途中停止時的原因文字** — 「其餘 N 位沒有發送」改為「還有 N 位沒有發送」，讓人一看就知道是尚未處理的人數。
+- **資料刪除改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2，change `migrate-data-erasure-tenant-ctx`）— `data-erasure.service.ts` 改收 `TenantCtx`，`/api/v1/tenant/data-erasure` 的 2 條路由改呼叫新的 `data-erasure.flow.ts`。可觀察的差異：
+  - 發起刪除時，刪除請求、`data.erasure.request` 稽核與刪除工作在同一個交易寫入。其中一項寫不進去時，三項都不留下，API 回錯誤；原本是稽核寫入失敗時只記 log，刪除請求照樣成立。
+  - 刪除工作改經 outbox 送進 `data-erasure` 佇列，至少送出一次。Redis 無法使用時，API 回 HTTP 200，刪除請求維持 `pending`，由 outbox-relay 補送；原本是刪除請求改成 `failed`，回 HTTP 503 `ENQUEUE_FAILED`。worker 以刪除請求的狀態認領，重複的工作不會刪兩次。
+  - `data-erasure` 佇列的 job id 改成 outbox id，完成與失敗的工作改保留 24 小時與 7 天；原本是保留 100 筆與 50 筆。
 
 ### Removed
 

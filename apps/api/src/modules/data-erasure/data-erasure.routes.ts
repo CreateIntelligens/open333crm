@@ -10,7 +10,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { success, AppError } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { requestErasure, getErasureRequest } from './data-erasure.service.js';
+import type { EventPublisher } from '../../events/outbox-publisher.js';
+import { actorOf } from '../../lib/request-actor.js';
+import { getErasureRequestFlow, requestErasureFlow } from './data-erasure.flow.js';
 
 const createSchema = z.object({
   contactId: z.string().uuid(),
@@ -22,27 +24,25 @@ const idParamSchema = z.object({
   id: z.string().uuid(),
 });
 
-export default async function dataErasureRoutes(fastify: FastifyInstance) {
+export interface DataErasureRoutesOptions {
+  /** 測試用：取代寫 outbox 的 publisher */
+  events?: EventPublisher;
+}
+
+export default async function dataErasureRoutes(fastify: FastifyInstance, opts: DataErasureRoutesOptions = {}) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // 建立刪除請求（非同步走 worker）
   fastify.post('/', { preHandler: [requirePermission('data.erase')] }, async (request) => {
     const body = createSchema.parse(request.body);
-    const erasure = await requestErasure(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      requestedBy: request.agent.id,
-      contactId: body.contactId,
-      mode: body.mode,
-      reason: body.reason,
-      ip: request.ip,
-    });
+    const erasure = await requestErasureFlow({ prisma: fastify.prisma, events: opts.events }, actorOf(request), body);
     return success(erasure);
   });
 
   // 查刪除請求狀態
   fastify.get('/:id', { preHandler: [requirePermission('data.erase')] }, async (request) => {
     const { id } = idParamSchema.parse(request.params);
-    const erasure = await getErasureRequest(request.tenantPrisma, request.agent.tenantId, id);
+    const erasure = await getErasureRequestFlow(fastify, actorOf(request).tenantId, id);
     if (!erasure) {
       throw new AppError('刪除請求不存在', 'ERASURE_REQUEST_NOT_FOUND', 404);
     }

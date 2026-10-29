@@ -1633,7 +1633,7 @@ BullMQ 預設保留所有完成與失敗的工作。
 | `rich-menu-bind`、`data-export` | 完成 24 小時、失敗 7 天 | change `queue-monitoring`（`aabe714f`） |
 | `sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup` | 完成 24 小時、失敗 7 天。workers 啟動時刪除既有的重複工作再重新註冊，部署前已排定的工作也套用 | change `queue-monitoring`（`aabe714f`）。`tag-expiry-cleanup` 先前漏列在本表 |
 | `ops-alert` | 完成 24 小時、失敗 7 天 | change `queue-monitoring` 新增時就設定 |
-| `data-erasure` | 完成 100 筆、失敗 50 筆 | 原本就設定 |
+| `data-erasure` | 完成 24 小時、失敗 7 天 | change `migrate-data-erasure-tenant-ctx` 改經 outbox 送出時，從 100 筆、50 筆改成以時間計算 |
 | `api-scheduler` | 完成 100 筆、失敗 50 筆 | 原本就設定 |
 
 **未修正的部分。** Redis（`docker-compose.yml`、`docker-compose.prod.yml`）沒有設定 `maxmemory` 或淘汰策略。每筆工作以 hash 存在 Redis，含完整的 `data`；保留期限限制了工作的數量，但 Redis 的用量仍沒有上限。
