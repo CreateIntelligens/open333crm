@@ -1,7 +1,4 @@
 import type { PrismaClient } from '@prisma/client';
-import type { Server as SocketIOServer } from 'socket.io';
-import { processInboundMessage } from '../webhook/webhook.service.js';
-import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import type { ChatboxThemeConfig } from '@open333crm/shared';
@@ -45,30 +42,4 @@ function getPublicWebchatTheme(settings: Record<string, unknown>): ChatboxThemeC
     foregroundColor: typeof theme.foregroundColor === 'string' ? theme.foregroundColor : undefined,
     accentColor: typeof theme.accentColor === 'string' ? theme.accentColor : undefined,
   };
-}
-
-export async function handleVisitorMessage(
-  prisma: PrismaClient,
-  io: SocketIOServer,
-  channelId: string,
-  visitorToken: string,
-  contentType: string,
-  content: Record<string, unknown>,
-): Promise<void> {
-  const channel = await prisma.channel.findFirst({
-    where: { id: channelId, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
-  });
-
-  if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
-
-  const parsed: ParsedWebhookMessage = {
-    channelMsgId: `webchat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    contactUid: visitorToken,
-    timestamp: new Date(),
-    contentType,
-    content,
-    rawPayload: { visitorToken, contentType, content },
-  };
-
-  await processInboundMessage(prisma, io, {}, channel, channel.tenantId, parsed);
 }

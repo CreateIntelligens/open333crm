@@ -138,7 +138,9 @@ export default async function chatboxRoutes(app: FastifyInstance) {
   });
 
   // 訪客上傳已停用（change remove-webchat-visitor-attachments），不驗證工作階段、不儲存檔案
-  app.post('/media', async (_req, reply) => reply.status(410).send({
+  app.post('/media', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (_req, reply) => reply.status(410).send({
     code: 'WEBCHAT_VISITOR_MEDIA_DISABLED',
     message: '網頁聊天不開放傳送圖片、影片或檔案',
   }));
