@@ -57,12 +57,6 @@ const STYLES = `
     display: flex; gap: 8px; padding: 10px 12px;
     border-top: 1px solid #e2e8f0; align-items: center;
   }
-  #o333-attach {
-    background: none; border: none; cursor: pointer;
-    font-size: 18px; padding: 4px; flex-shrink: 0;
-    color: #64748b; line-height: 1;
-  }
-  #o333-attach:hover { color: #2563eb; }
   #o333-input {
     flex: 1; border: 1px solid #cbd5e1; border-radius: 8px;
     padding: 8px 12px; font-size: 14px; outline: none;
@@ -96,8 +90,6 @@ export function createPanel(title: string): {
   messagesEl: HTMLElement;
   input: HTMLInputElement;
   sendBtn: HTMLButtonElement;
-  attachBtn: HTMLButtonElement;
-  fileInput: HTMLInputElement;
 } {
   const panel = document.createElement('div');
   panel.id = 'o333-panel';
@@ -106,8 +98,6 @@ export function createPanel(title: string): {
     <div id="o333-header">${escapeHtml(title)}</div>
     <div id="o333-messages"></div>
     <div id="o333-input-row">
-      <button id="o333-attach" title="Attach file">📎</button>
-      <input id="o333-file" type="file" accept="image/png,image/jpeg,video/mp4,video/quicktime" style="display:none" />
       <input id="o333-input" type="text" placeholder="Type a message..." autocomplete="off" />
       <button id="o333-send">Send</button>
     </div>
@@ -119,8 +109,6 @@ export function createPanel(title: string): {
     messagesEl: panel.querySelector('#o333-messages') as HTMLElement,
     input: panel.querySelector('#o333-input') as HTMLInputElement,
     sendBtn: panel.querySelector('#o333-send') as HTMLButtonElement,
-    attachBtn: panel.querySelector('#o333-attach') as HTMLButtonElement,
-    fileInput: panel.querySelector('#o333-file') as HTMLInputElement,
   };
 }
 

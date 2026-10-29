@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Paperclip, Send, XCircle } from 'lucide-react';
+import { Send, XCircle } from 'lucide-react';
 import { io, type Socket } from 'socket.io-client';
 import type {
   ChatboxBootstrapConfig,
@@ -83,7 +83,6 @@ export default function ChatboxPage() {
   const [messages, setMessages] = useState<ChatboxMessageOutput[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const fingerprintRef = useRef<ChatboxFingerprintInput | null>(null);
   const claimTokenRef = useRef<string | null>(null);
@@ -232,45 +231,6 @@ export default function ChatboxPage() {
     }
   }
 
-  async function sendMedia(file: File) {
-    if (!sessionId || !claimTokenRef.current) return;
-    const formData = new FormData();
-    formData.append('sessionId', sessionId);
-    formData.append('claimToken', claimTokenRef.current);
-    formData.append('fingerprint', JSON.stringify(fingerprintRef.current));
-    formData.append('file', file);
-
-    setSending(true);
-    try {
-      const upload = await fetch(`${API_BASE_URL}/chatbox/media`, { method: 'POST', body: formData });
-      if (!upload.ok) throw new Error('UPLOAD_FAILED');
-      const { data } = await upload.json();
-      const clientMessageId = newClientMessageId();
-      const response = await fetch(`${API_BASE_URL}/chatbox/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          claimToken: claimTokenRef.current,
-          clientMessageId,
-          type: data.contentType,
-          payload: { url: data.url, filename: file.name, mimeType: file.type, sizeBytes: file.size },
-          fingerprint: fingerprintRef.current,
-          sentAt: new Date().toISOString(),
-        }),
-      });
-      if (response.status === 401) throw new Error('SESSION_EXPIRED');
-      if (!response.ok) throw new Error('MEDIA_SEND_FAILED');
-      const result = await response.json();
-      setMessages((current) => [...current, result.data.message]);
-    } catch (err) {
-      setError(err instanceof Error && err.message === 'SESSION_EXPIRED' ? '此聊天已過期。' : '檔案傳送失敗。');
-    } finally {
-      setSending(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
   const background = config?.theme.backgroundImageUrl
     ? {
         backgroundImage: `linear-gradient(rgba(255,255,255,.88), rgba(255,255,255,.94)), url(${config.theme.backgroundImageUrl})`,
@@ -313,16 +273,6 @@ export default function ChatboxPage() {
 
         <footer className="border-t border-border bg-white p-3">
           <div className="flex items-end gap-2">
-            <button
-              type="button"
-              aria-label="Attach file"
-              title="Attach file"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sending}
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
             <textarea
               className="min-h-10 flex-1 resize-none rounded-md border border-input px-3 py-2 text-sm outline-none focus:border-primary"
               rows={1}
@@ -346,16 +296,6 @@ export default function ChatboxPage() {
               <Send className="h-4 w-4" />
             </button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept="image/png,image/jpeg,video/mp4,video/quicktime"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void sendMedia(file);
-            }}
-          />
         </footer>
       </section>
     </main>

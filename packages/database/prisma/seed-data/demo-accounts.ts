@@ -7,6 +7,7 @@
 
 import { AgentRole, type PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+// 正式的 seedRolesForTenant 在 core（供 API 用）；seedDemoRoles 是 demo seed 的等效版，權限對照同樣取自 @open333crm/shared。
 import { seedDemoRoles } from './rbac-roles.js';
 
 export const DEMO_TENANT_ID = 'a0000000-0000-0000-0000-000000000001';

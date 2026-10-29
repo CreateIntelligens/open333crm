@@ -73,11 +73,11 @@ export function couponUnavailableStop(cause: 'inactive' | 'expired', left: numbe
   return cause === 'expired'
     ? {
       code: 'COUPON_EXPIRED',
-      reason: `優惠券在發送途中過了到期日，已停止發送；其餘 ${left} 位沒有發送。請改附其他券建立新的廣播，已處理的人不會重複收到`,
+      reason: `優惠券在發送途中過了到期日，已停止發送；還有 ${left} 位沒有發送。請改附其他券建立新的廣播，已處理的人不會重複收到`,
     }
     : {
       code: 'COUPON_NOT_ACTIVE',
-      reason: `優惠券在發送途中被暫停或結束，已停止發送；其餘 ${left} 位沒有發送。恢復發放後可以重新發送，已處理的人不會重複收到`,
+      reason: `優惠券在發送途中被暫停或結束，已停止發送；還有 ${left} 位沒有發送。恢復發放後可以重新發送，已處理的人不會重複收到`,
     };
 }
 

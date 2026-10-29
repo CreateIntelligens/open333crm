@@ -53,4 +53,4 @@
 - [x] 6.4 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 加 `--strict`
 - [x] 6.5 `node scripts/validate-openspec.mjs improve-coupon-url-insert-ux` 與 `--specs`
 - [x] 6.6 `CHANGELOG.md` 的 `## [2026-10-28]` 加條目
-- [ ] 6.7 歸檔：PR 合併後以 `pnpm exec openspec archive improve-coupon-url-insert-ux` 歸檔
+- [x] 6.7 歸檔：PR #389 合併後以 `pnpm exec openspec archive improve-coupon-url-insert-ux` 歸檔

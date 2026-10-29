@@ -87,7 +87,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 ### 權限碼
 
-權限碼定義在 `packages/core/src/rbac/permissions.ts`，每個屬於一個功能（`features.ts`）。設定角色的權限碼時，`setRolePermissions()` 依序檢查：
+權限碼定義在 `packages/shared/src/rbac/permissions.ts`，每個屬於一個功能（`features.ts`）。設定角色的權限碼時，`setRolePermissions()` 依序檢查：
 
 1. 每個權限碼都存在於註冊表。
 2. 勾選的權限碼，其前置權限（`dependsOn`）也要勾選。
@@ -169,7 +169,6 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
 | 業務規則看舊的角色列舉 | 包含「最後一位管理員」的保護。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | **reconcile 腳本覆蓋系統角色的修改** | 詳見 `../../system/AUDIT.md` 的 RBAC-05 |
-| 開發環境的 `supervisor` 看得到所有渠道 | 預設權限有兩份，demo 資料的 `supervisor` 多了 `channel.view_all`；正式租戶沒有，這是定案的行為。詳見 `../../system/AUDIT.md` 的 RBAC-06 |
 | 角色頁顯示的權限不套方案天花板 | 詳見 `../../system/AUDIT.md` 的 PLAN-08 |
 | 停用成員不會中斷登入中的 token 與 socket | access token 有效到過期，socket 直到斷線。各憑證的生效時間見[認證與憑證](../../modules/AUTHENTICATION.md#停用與撤銷什麼時候生效) |
 | 沒有忘記密碼流程 | 詳見 `../../system/AUDIT.md` 的 AUTH-01 |

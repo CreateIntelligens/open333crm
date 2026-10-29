@@ -704,7 +704,7 @@ that no code registers. Thus a renamed or removed id does not stay in Redis.
 - **Soft-delete**: set `isActive: false`. Do not use a hard DELETE (agents, channels and similar).
 - **Commits**: use Conventional Commits (`feat:`, `fix:`, `chore:` and similar).
 - **Authorization**: guard a route with `requirePermission('<code>')` from
-  `apps/api/src/guards/rbac.guard.ts`. `packages/core/src/rbac/permissions.ts` registers the
+  `apps/api/src/guards/rbac.guard.ts`. `packages/shared/src/rbac/permissions.ts` registers the
   codes. `docs/ref/modules/PERMISSIONS.md` explains how the system calculates effective
   permissions.
 

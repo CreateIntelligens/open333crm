@@ -291,6 +291,12 @@
           <tr><td>發哪張券</td><td>建立廣播時選</td><td>建立領券連結時就決定了</td></tr>
         </tbody>
       </table>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch09-coupon-url.jpg">
+          <source src="uploads/videos/ch09-coupon-url.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>在 LINE 純文字素材插入顧客專屬券連結與領券連結（約 32 秒）</figcaption>
+      </figure>
       <h3>插入顧客專屬券連結</h3>
       <ol class="steps">
         <li>在訊息內容把游標放在要放連結的位置，例如「秋季感謝祭！點這裡領取：」的後面。</li>
@@ -298,6 +304,14 @@
         <li>右邊預覽會把它顯示成「顧客專屬券連結」標籤，存檔的內容仍是 <code>{{coupon.url}}</code>。</li>
         <li>存檔後，到「廣播」建立廣播，選這個素材，並在「附上優惠券」選要發的券（第 08 章第 4 節）。</li>
       </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch09-coupon-buttons.png" alt="訊息內容輸入框，文字後面插入了 {{coupon.url}}，下方是「插入顧客專屬券連結」與「插入領券連結」兩顆按鈕" loading="lazy">
+        <figcaption>按「插入顧客專屬券連結」後，游標位置插入 <code>{{coupon.url}}</code>。</figcaption>
+      </figure>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch09-coupon-preview.png" style="max-width:360px" alt="LINE 預覽：訊息文字下方顯示藍色的「顧客專屬券連結」標籤" loading="lazy">
+        <figcaption>預覽把 <code>{{coupon.url}}</code> 顯示成「顧客專屬券連結」標籤。</figcaption>
+      </figure>
       <div class="warn"><span>⚠️</span><div>含 <code>{{coupon.url}}</code> 的素材用在其他地方換不出連結：建立廣播時「不附券」，「建立」按鈕會停用並寫出原因；關鍵字回覆或自動化規則選了這種素材，會提醒並擋下存檔。素材裡也<b>不要</b>貼某一位顧客的券網址，那條連結只屬於他自己。</div></div>
       <h3>插入領券連結</h3>
       <ol class="steps">
@@ -305,6 +319,10 @@
         <li>回到素材，在訊息內容放好游標，按「插入領券連結」。</li>
         <li>清單會列出可用的領券連結（名稱、券名、渠道），選一條，網址就插在游標位置。</li>
       </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch09-claim-picker.png" alt="選擇要插入的領券連結（LINE）清單：上方說明領券連結人人共用，下方兩條連結各寫出券名與渠道" loading="lazy">
+        <figcaption>清單只列與素材同渠道、還能領的領券連結，每條寫出券名與渠道。</figcaption>
+      </figure>
       <table>
         <thead><tr><th>清單狀況</th><th>說明</th></tr></thead>
         <tbody>

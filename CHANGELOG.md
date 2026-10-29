@@ -8,12 +8,16 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **Partner API 金鑰只能用在合作方推送路由**（issue #394）— 知識庫路由原本用 `request.url` 是否含 `/partner-ingest` 決定是否接受 Partner API 金鑰。`request.url` 含查詢字串與路徑參數，所以金鑰在網址加上這段字串，就能讀取同租戶的知識庫文章、搜尋與回饋列表。現在改依比對到的路由判斷，只有 `POST /api/v1/knowledge/partner-ingest` 接受金鑰，其他知識庫路由一律要成員登入（401）。
 - **短連結抓取 Open Graph 時不再卡住 API**（issue #394）— 建立或更新短連結時，抓回的網頁 HTML 原本用回溯式正規表示式找 `<meta>`，特製的 100 KB 頁面實測要 471 秒，期間整個 API 程序停擺。改為逐字元的線性解析。HTML 實體改為單次解碼，`&amp;lt;` 不再被解成 `<`。
-
 - **部署時不再把 Demo 帳號的密碼設回預設值**（issue #394）— API 容器每次啟動都跑 seed，原本會把 Demo 租戶的三個成員與開發用平台帳號的密碼，設回寫在原始碼裡的值，也會重新啟用帳號，所以在後台改過的密碼與停用狀態，下次部署就被還原。現在 `NODE_ENV=production` 時預設不建這些帳號（設 `SEED_DEMO_ACCOUNTS=true` 才建）；帳號已經存在時，不論環境都不覆寫密碼與啟用狀態。本機 `docker-compose.dev.yml` 的 API 服務設定 `SEED_DEMO_ACCOUNTS=true`，照常建立 Demo 帳號。
 
 ### Changed
 
 - **部署 workflow 的 `GITHUB_TOKEN` 只給讀取權限**（issue #394）— `deploy.yml` 加上 `permissions: contents: read`。
+- **附券廣播發送途中停止時的原因文字** — 「其餘 N 位沒有發送」改為「還有 N 位沒有發送」，讓人一看就知道是尚未處理的人數。
+
+### Removed
+
+- **網頁聊天拿掉訪客傳圖片、影片與檔案**（change `remove-webchat-visitor-attachments`）— 訪客傳圖片或影片時系統一定轉接真人，後台無法關閉。所有租戶的 `/chatbox` 頁面與嵌入式 widget 拿掉迴紋針按鈕與選檔，訪客只能傳文字。`POST /api/v1/chatbox/media` 與 `POST /api/v1/webchat/:channelId/media` 一律回 410 `WEBCHAT_VISITOR_MEDIA_DISABLED`；訪客送出 `image`、`video`、`file` 訊息時回 400。客服在收件匣傳圖片、影片給訪客不受影響，過去訪客傳的媒體照樣顯示。
 
 ## [2026-10-28]
 
@@ -52,6 +56,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **UAT 每次部署後，Demo Tenant 的系統角色少了權限碼**（change `seed-roles-single-source`，AUDIT RBAC-06）— API 容器每次啟動都執行 demo seed，seed 依手抄的副本重建 Demo Tenant 的系統角色，副本沒有同步之後新增的權限碼：`admin` 少了 `audit.view`、`data.export`、`data.erase`、`coupon.*`、`store.*` 共 9 個，稽核、優惠券、門市、資料匯出與刪除的頁面回 403；`supervisor`、`agent` 少了 `coupon.view`、`coupon.issue`；`supervisor` 多了 `channel.view_all`。權限註冊表與預設角色表（`permissions.ts`、`default-roles.ts`）搬到 `packages/shared`，demo seed 與平台開通改用同一份；`@open333crm/core` 的 export 不變。修正後每次部署，Demo Tenant 的系統角色重設成與平台開通相同的預設值。
 - **附券廣播的素材短連結沒有 OG 快照** — 附券廣播把素材的外部連結換成短連結時，背景抓到 OG 後要寫回短連結，但寫入用的是已經結束的交易，每次都失敗、只記一筆 warning，爬蟲的預覽頁因此只有短連結的標題。現在改成交易 commit 之後才抓取，再另開交易寫回。
 - **固定效期已過到期日的券仍會發出**（change `improve-coupon-url-insert-ux`，PR #385 審查）— 固定效期的券到期後狀態仍是進行中（系統沒有排程自動結束），對話發券、批次發券、附券廣播、公開領券、關鍵字回覆與加好友禮照常發券，顧客拿到就是過期的券。改為各入口擋下並說明原因：共用發券核心 `issueInstances` 發給每位對象前都檢查到期（批次發到一半到期，之後的人也不發），略過並回報 `COUPON_EXPIRED`（找不到的聯絡人仍回報 `CONTACT_NOT_FOUND`）；`issueCoupons` 拋「券已過到期日，無法發放」；建立附券廣播回 400「這張優惠券已過到期日，不能附上」，已建立的在發送時、或發送途中才到期的，標為失敗（`failureCode` `COUPON_EXPIRED`，提示改附其他券，不是恢復發放）；規則發券留下「券不是進行中（已暫停、已結束或已過到期日）」；規則存檔不能換成已到期的券；選券清單、對話發券面板與「插入領券連結」不列，券詳情頁不顯示「發送給…」並說明原因，優惠券列表在狀態下方標示「已過到期日」。不改券的狀態，顧客券夾仍顯示「已過期」。
 - **UAT 部署在建置 image 時失敗** — 修補依賴安全告警時新增的 pnpm patch（`patches/minio@8.0.7.patch`）沒有複製進 api、web、workers 的 Docker image，`pnpm install` 讀不到 patch 檔而中止（`ENOENT`）。三個 Dockerfile 在安裝相依套件之前先複製 `patches/`。
