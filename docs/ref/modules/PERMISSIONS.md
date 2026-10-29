@@ -34,7 +34,7 @@
 
 ## 權限碼的註冊表
 
-所有權限碼宣告在 `packages/core/src/rbac/permissions.ts` 的 `PERMISSIONS`，這是唯一的來源。每個權限碼有下列欄位：
+所有權限碼宣告在 `packages/shared/src/rbac/permissions.ts` 的 `PERMISSIONS`，這是唯一的來源。`@open333crm/core` 轉出同一份；放在 `shared` 是為了讓 `database` 的 demo seed 也能 import（`database` 不能 import `core`，會循環依賴）。每個權限碼有下列欄位：
 
 | 欄位 | 作用 |
 | --- | --- |
@@ -193,12 +193,14 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 開通之後，租戶的管理員可以修改系統角色的權限碼。
 
+`permissions.ts` 與 `default-roles.ts` 都在 `packages/shared/src/rbac/`。demo 資料的 Demo Tenant 由 `packages/database/prisma/seed.ts` 的 `seedDemoRoles()` 建立，也寫入同一份 `DEFAULT_ROLE_PERMISSIONS`。API 容器每次啟動都會執行 seed（`apps/api/docker-entrypoint.sh`），所以 Demo Tenant 的系統角色在每次部署後重設成預設值，對它做過的修改不會保留。
+
 **新增權限碼時，既有租戶的角色不會自動取得。** 連 `admin` 也不會，因為 `admin` 的「全部權限」是開通當下的全部。要讓既有租戶取得新的碼，必須手動執行 `scripts/reconcile-system-role-permissions.mjs`。這個腳本對每個租戶重新執行 `seedRolesForTenant()`，而 `seedRolesForTenant()` 先刪除系統角色的所有權限碼，再依預設值重建。租戶管理員對系統角色做過的修改會被覆蓋，見 `../system/AUDIT.md` 的 RBAC-05。只要補上新增的權限碼時，改用 `scripts/grant-new-role-permissions.mjs <權限碼...>`：它只把指定的碼補到預設有這些碼的系統角色，不刪除、不重建，租戶的修改會保留。兩支腳本執行後都要清除 Redis 的權限快取。
 
 新增一個權限碼的步驟：
 
 1. 在 `permissions.ts` 加入權限碼，指定 `feature`，需要時加上 `dependsOn` 或 `implies`。
-2. 在 `default-roles.ts` 決定哪些系統角色預設擁有它。`packages/database/prisma/seed-data/rbac-roles.ts` 另有一份給 demo 資料用的預設值，兩份要一起改，見 `../system/AUDIT.md` 的 RBAC-06。
+2. 在 `default-roles.ts` 決定哪些系統角色預設擁有它。平台開通與 demo seed 用的是同一份。
 3. 在路由掛 `requirePermission()`。要讓 Partner API 金鑰使用，加進 `PARTNER_KEY_ALLOWED`。
 4. 需要在側欄控制顯示時，在 `Sidebar.tsx` 的 `NAV_TREE` 設定 `perm`。
 5. 部署後執行 reconcile 腳本，並清除 Redis 的 `perms:*` 快取。
@@ -226,7 +228,6 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 業務規則看舊的 `role`，不看細粒度角色 | RBAC-03 |
 | 渠道可見範圍沒有套用在租戶房間、聯絡人清單與合併、AI 輔助 | RBAC-04 |
 | reconcile 腳本會覆蓋租戶對系統角色的修改，也不清除快取 | RBAC-05 |
-| 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all` | RBAC-06 |
 | 角色與權限頁不套方案天花板 | PLAN-08 |
 | 功能天花板只在掛了 `requirePermission()` 的路由生效；行銷、知識庫、粉絲活動仍有路由沒掛 | PLAN-04 |
 | AI 不在功能天花板內 | PLAN-12 |
@@ -240,9 +241,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 grep -rn "requirePermission\|requireAnyPermission" apps/api/src/modules
 
 # 註冊表的權限碼有沒有被任何路由使用
-grep -o "code: '[a-z_.]*'" packages/core/src/rbac/permissions.ts | cut -d"'" -f2 \
+grep -o "code: '[a-z_.]*'" packages/shared/src/rbac/permissions.ts | cut -d"'" -f2 \
   | while read c; do grep -rq "'$c'" apps/api/src/modules apps/api/src/services || echo "未使用：$c"; done
 
-# 兩份預設角色是否都給了某個權限碼（以 channel.view_all 為例）
-grep -n "channel.view_all" packages/core/src/rbac/default-roles.ts packages/database/prisma/seed-data/rbac-roles.ts
 ```

@@ -4,6 +4,37 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-29：預設角色的權限改為一份（RBAC-06 修正）
+
+分支 `fix/seed-roles-single-source`，change `seed-roles-single-source`。以單元測試、`pnpm build` 與 API 的 Docker image 確認，沒有連 UAT。
+
+**怎麼發現的。** #337 階段 3 部署之後，在 UAT 量測 `GET /tenant/audit-logs` 時回 403（缺 `audit.view`）。以 `grant-new-role-permissions.mjs` 補上 Demo Tenant 缺的 9 個權限碼之後，下一次部署又全部消失。原因：API 容器每次啟動都執行 demo seed（`apps/api/docker-entrypoint.sh`），`seedDemoRoles()` 先刪除 Demo Tenant 系統角色的權限碼，再依 `seed-data/rbac-roles.ts` 手抄的副本重建。
+
+**修正前兩份的差異**（2026-10-29 以腳本比對 `DEFAULT_ROLE_PERMISSIONS` 與 seed 的副本）：
+
+| 角色 | 只在 core 的版本 | 只在 demo seed 的版本 |
+| --- | --- | --- |
+| `admin` | `audit.view`、`data.export`、`data.erase`、`coupon.view`、`coupon.manage`、`coupon.issue`、`coupon.redeem`、`store.view`、`store.manage` | 無 |
+| `supervisor` | `coupon.view`、`coupon.issue` | `channel.view_all` |
+| `agent` | `coupon.view`、`coupon.issue` | 無 |
+
+2026-09-30 記錄時只差 4 個碼；之後優惠券上線（2026-10-21）又只改了 core 的版本。
+
+**修正。** 依 2026-09-30 定案的方向：
+
+1. `permissions.ts` 與 `default-roles.ts` 從 `packages/core/src/rbac/` 搬到 `packages/shared/src/rbac/`。`shared` 沒有相依的套件，`core` 與 `database` 都能 import。`core` 原本的兩個檔改成具名轉出，`@open333crm/core` 對外的 export 不變。
+2. `seedDemoRoles()` 改用 `@open333crm/shared` 的 `DEFAULT_ROLE_PERMISSIONS`、`SYSTEM_ROLE_NAMES`、`SYSTEM_ROLE_SLUGS`，刪除手抄的副本。`database` 加上 `@open333crm/shared` 的相依。
+3. 修正後，demo seed 的 `supervisor` 沒有 `channel.view_all`，`admin` 是註冊表的全部權限碼，與平台開通的租戶相同。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| demo seed 的權限等於 `DEFAULT_ROLE_PERMISSIONS` | 修正前失敗（`admin` 的權限碼不同），修正後通過 | `packages/core/tests/unit/rbac/demo-seed-roles.test.ts` |
+| `@open333crm/core` 的 export 不變 | `pnpm test` 通過；`check-workspace-esm.mjs --strict` 通過 | 既有的 `rbac-registry.test.ts`、api 的權限測試 |
+| web 的 build 能打包 `shared` 的新檔 | `pnpm build` 通過 | `apps/web` 的 Next.js build |
+| API 容器內的 seed 找得到 `@open333crm/shared` | 通過：`seedDemoRoles` 載入成功，`DEFAULT_ROLE_PERMISSIONS` 的 `admin`、`supervisor`、`agent` 是 62、40、24 個碼 | `docker build -f apps/api/Dockerfile` 後，在容器的 `/app/packages/database` 以 `tsx` import `seed-data/rbac-roles.ts` |
+
+RBAC-06 已從 `AUDIT.md` 移除。
+
 ## 2026-10-27：角色的建立、改名、刪除寫稽核（AUD-01）
 
 分支 `feat/337-pilot-role-agent`，change `migrate-role-agent-tenant-ctx`。以 feature 測試確認，沒有連 UAT。

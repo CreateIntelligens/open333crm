@@ -74,7 +74,7 @@
 
 被拒絕時，角色的權限 MUST 不變。
 
-租戶對系統角色權限的修改 SHALL 在權限註冊表更新之後保留。同步系統角色預設權限的流程 MUST NOT 重新授予租戶已經移除的權限碼，也 MUST NOT 移除租戶已經加上的權限碼。
+租戶對系統角色權限的修改 SHALL 在權限註冊表更新之後保留。同步系統角色預設權限的流程 MUST NOT 重新授予租戶已經移除的權限碼，也 MUST NOT 移除租戶已經加上的權限碼。demo seed 的 Demo Tenant 是例外，見「demo seed 讓 Demo Tenant 與預設權限同步」。
 
 #### Scenario: 可以減少 supervisor 的權限
 - **WHEN** `supervisor` 系統角色有 `marketing.broadcast`，有 `role.manage` 的成員移除 `marketing.broadcast`
@@ -155,3 +155,11 @@
 #### Scenario: 權限矩陣涵蓋註冊表的每個權限點
 - **WHEN** 有 `role.view` 的成員呼叫 `GET /api/v1/roles/matrix`
 - **THEN** 註冊表的每個權限碼在回應中恰好出現一次，位於它的 `group` 之下，並帶有 `dependsOn`、`implies` 與 `adminLock`
+
+### Requirement: demo seed 讓 Demo Tenant 與預設權限同步
+
+demo seed（`packages/database/prisma/seed.ts`）每次執行時 SHALL 先刪除 Demo Tenant 三個系統角色的權限碼，再寫入 `DEFAULT_ROLE_PERMISSIONS` 中該角色的權限碼。demo seed 與平台開通 SHALL 讀同一份 `DEFAULT_ROLE_PERMISSIONS`，MUST NOT 另外維護一份預設權限。對 Demo Tenant 系統角色的修改不保留。
+
+#### Scenario: demo seed 讓 Demo Tenant 的系統角色與預設權限相同
+- **WHEN** Demo Tenant 的 `admin` 系統角色少了預設權限中的 `audit.view`，`supervisor` 多了預設沒有的 `channel.view_all`；之後 demo seed 執行
+- **THEN** 三個系統角色的權限碼都等於 `DEFAULT_ROLE_PERMISSIONS` 中該角色的權限碼，`admin` 有 `audit.view`，`supervisor` 沒有 `channel.view_all`
