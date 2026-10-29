@@ -21,7 +21,7 @@ loadEnvConfig();
 const owner = new PrismaClient();
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
 const T = TENANT_A;
-const MARK = `code-uniq-${Date.now().toString(36)}`;
+const MARK = `code-uniq-${randomUUID()}`;
 const creatorId = randomUUID();
 /** 一批發 500 張，交易內每位要查上限、產碼、建券，預設 5 秒不夠 */
 const TX = { timeout: 120_000, maxWait: 30_000 };
