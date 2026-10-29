@@ -67,7 +67,7 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 
 - **平台後台沒有任何路由或頁面能編輯它。** 整個 repo 只有 `packages/database/prisma/seed.ts` 會寫入，調價要改 seed 或直接改資料庫。
 - 查價結果在 API 行程內快取 10 分鐘，**查無價目的結果也一起快取**。直接改資料庫之後，最久要等 10 分鐘才會套用到新的呼叫，而且 `clearPricingCache()` 沒有對外的端點可以呼叫。多個 API 行程時，每個行程各自快取。
-- seed 也不是正式環境可用的途徑。`seed.ts` 的 `main()` 會建立 Demo Tenant 與固定密碼的 demo 成員，因此實務上只剩直接改資料庫。
+- seed 在 API 容器每次啟動時都會執行，改 seed 的價目再部署就會寫入，但這是改程式碼，不是平台方能自己做的調價。正式環境的 seed 只寫方案、價目與系統範本這類共用資料，不建 Demo 帳號（`seed-data/demo-accounts.ts`）。
 
 成本在寫入時定版、之後不重算，所以缺價期間的呼叫成本永久是 0。修正方向見 `../../system/AUDIT.md` 的 USAGE-02。
 

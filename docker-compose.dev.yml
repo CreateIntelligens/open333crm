@@ -139,6 +139,9 @@ services:
              pnpm --filter @open333crm/api dev"
     env_file:
       - .env.api
+    environment:
+      # .env.api 範例檔的 NODE_ENV 是 production，seed 預設會跳過 Demo 帳號；本機開發要建（issue #394）
+      SEED_DEMO_ACCOUNTS: "true"
     ports:
       - "3001:3001"
     volumes: *dev-mounts

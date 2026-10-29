@@ -171,7 +171,7 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 
 1. **租戶後台的路由用 `fastify.authenticate`，再掛 `requirePermission()`。** 只有 `authenticate` 會填 `roleId`，權限檢查才算得出權限集合。
 2. **不要把 `authenticateJwtOrCliSession` 與 `requirePermission()` 放在同一條路由。** CLI 分支會被 `requirePermission()` 直接放行，JWT 分支會因為沒有 `roleId` 而一律 403。同一條路由，CLI 失效開放，網頁失效關閉。CLI 路由改用 `hasCliScope()` 檢查 scope。
-3. **要讓 Partner API 金鑰呼叫新路由，就把權限碼加進 `rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED`。** 沒有列入的權限碼，金鑰一律 403。
+3. **要讓 Partner API 金鑰呼叫新路由，就把權限碼加進 `rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED`。** 沒有列入的權限碼，金鑰一律 403。路由本身也要改用 `authenticateJwtOrPartnerKey`。決定一條路由用哪個認證裝飾器時，依比對到的路由（`request.routeOptions.url`）判斷，不要用 `request.url`：`request.url` 含查詢字串與路徑參數，呼叫端可以控制它的內容。`knowledge.routes.ts` 曾用 `request.url.includes('/partner-ingest')` 判斷，金鑰只要在網址加上這段字串，就能進入其他沒有掛權限碼的知識庫路由（issue #394）。
 4. **公開端點的租戶與身分，要從驗證過的憑證推導。** 不要接受呼叫端在 body 或 query 指定 `tenantId`、`contactId` 或渠道身分。`/auth/line/authorize` 沒有遵守這條規則，見下一節。已刪除的 `/fan/auth` 也是因為違反這條規則而刪除。
 5. **確認新路由有沒有速率限制。** 速率限制外掛由各模組自己註冊，沒有全站設定。`auth`、`trial`、`platform` 以 `global: false` 註冊，只有個別設定 `config.rateLimit` 的路由受限。`chatbox`、`webchat` 對模組內每條路由套用同一個上限。其他模組沒有註冊外掛，在這些模組設定 `config.rateLimit` 不會生效，也不會報錯。見 `../system/AUDIT.md` 的 SEC-03。
 

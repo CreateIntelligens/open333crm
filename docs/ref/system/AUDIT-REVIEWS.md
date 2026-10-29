@@ -4,6 +4,16 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-29：seed 在正式環境的行為（USAGE-02）
+
+issue #394，分支 `fix/codeql-394`。以單元測試與本機資料庫實跑 seed 確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| USAGE-02 | 描述更正，項目本身未處理 | 原描述說 seed 不能在正式環境執行，但 `apps/api/docker-entrypoint.sh` 在 API 容器每次啟動時都跑 seed，而且會把 Demo 成員與開發用平台帳號的密碼設回原始碼裡的值。現在正式環境預設不建 Demo 帳號，已經存在的帳號不覆寫密碼與啟用狀態。`packages/database/tests/unit/seed/demo-accounts.test.ts` 確認；本機以 `NODE_ENV=development` 重跑 seed，三個 Demo 成員的密碼雜湊不變。價目表仍沒有維護介面 |
+
+seed 改為在正式環境不建 Demo 帳號之後，UAT 部署時也不再執行 `seedDemoRoles()`。Demo Tenant 的角色權限之後跟其他租戶一樣，新的權限碼以 `grant-new-role-permissions.mjs` 補上，部署不會再把補上的權限碼覆蓋掉（見下一筆 RBAC-06）。
+
 ## 2026-10-29：預設角色的權限改為一份（RBAC-06 修正）
 
 分支 `fix/seed-roles-single-source`，change `seed-roles-single-source`。以單元測試、`pnpm build` 與 API 的 Docker image 確認，沒有連 UAT。

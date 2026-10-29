@@ -53,27 +53,82 @@ async function hostIsBlocked(hostname: string): Promise<boolean> {
   }
 }
 
+const ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  '#39': "'",
+  '#039': "'",
+  '#x27': "'",
+};
+
+/** 單次替換：逐個解碼，`&amp;lt;` 解成 `&lt;`，不會再被解成 `<` */
 function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&#x27;/gi, "'");
+  return s.replace(/&(amp|lt|gt|quot|#0?39|#x27);/gi, (m, name: string) => ENTITIES[name.toLowerCase()] ?? m);
 }
 
-function extractMeta(html: string, property: string): string | undefined {
-  const esc = property.replace(/[:]/g, '\\$&');
-  const patterns = [
-    new RegExp(`<meta[^>]+(?:property|name)=["']${esc}["'][^>]*content=["']([^"']*)["']`, 'i'),
-    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${esc}["']`, 'i'),
-  ];
-  for (const re of patterns) {
-    const m = html.match(re);
-    if (m?.[1]) return decodeEntities(m[1]).trim();
+const isSpace = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+
+/**
+ * 從 `start` 開始解析一個標籤的屬性，直到引號外的 `>` 為止；屬性名轉小寫，同名只取第一個。
+ * 逐字元往前掃，時間與標籤長度成線性。抓回來的 HTML 由外部網站控制，
+ * 回溯式正規表示式在特製的 HTML 上要好幾分鐘（issue #394）
+ * @returns 屬性，以及標籤結尾 `>` 的位置（找不到時是 HTML 長度）
+ */
+function parseTag(html: string, start: number): { attrs: Map<string, string>; end: number } {
+  const attrs = new Map<string, string>();
+  const n = html.length;
+  let i = start;
+  while (i < n && html[i] !== '>') {
+    while (i < n && (isSpace(html[i]) || html[i] === '/')) i++;
+    const nameStart = i;
+    while (i < n && !isSpace(html[i]) && html[i] !== '/' && html[i] !== '=' && html[i] !== '>') i++;
+    const name = html.slice(nameStart, i).toLowerCase();
+    while (i < n && isSpace(html[i])) i++;
+    let value = '';
+    if (html[i] === '=') {
+      i++;
+      while (i < n && isSpace(html[i])) i++;
+      const quote = html[i];
+      if (quote === '"' || quote === "'") {
+        // 引號內的 > 是值的一部分，不是標籤結尾
+        const close = html.indexOf(quote, i + 1);
+        const stop = close === -1 ? n : close;
+        value = html.slice(i + 1, stop);
+        i = stop + 1;
+      } else {
+        const valueStart = i;
+        while (i < n && !isSpace(html[i]) && html[i] !== '>') i++;
+        value = html.slice(valueStart, i);
+      }
+    }
+    if (name && !attrs.has(name)) attrs.set(name, value);
   }
-  return undefined;
+  return { attrs, end: Math.min(i, n) };
+}
+
+/**
+ * 取出所有 `<meta>` 的 property／name 對應的 content（鍵轉小寫，同名取第一個非空值）。
+ * `meta` 後面要接空白、`/` 或 `>`，`<metadata>` 不算；HTML 註解整段跳過
+ */
+function extractMetaTags(html: string): Map<string, string> {
+  const found = new Map<string, string>();
+  const token = /<!--|<meta(?=[\s/>])/gi;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(html))) {
+    if (match[0] === '<!--') {
+      const close = html.indexOf('-->', match.index + 4);
+      token.lastIndex = close === -1 ? html.length : close + 3;
+      continue;
+    }
+    const { attrs, end } = parseTag(html, match.index + match[0].length);
+    const key = (attrs.get('property') ?? attrs.get('name'))?.toLowerCase();
+    const content = attrs.get('content');
+    if (key && content && !found.has(key)) found.set(key, decodeEntities(content).trim());
+    token.lastIndex = end;
+  }
+  return found;
 }
 
 async function readCapped(res: Response): Promise<string> {
@@ -151,9 +206,10 @@ export async function scrapeOg(targetUrl: string): Promise<OgSnapshot> {
     if (!contentType.includes('html')) return {};
 
     const html = await readCapped(res);
-    const ogTitle = extractMeta(html, 'og:title');
-    const ogDescription = extractMeta(html, 'og:description') ?? extractMeta(html, 'description');
-    let ogImage = extractMeta(html, 'og:image');
+    const meta = extractMetaTags(html);
+    const ogTitle = meta.get('og:title');
+    const ogDescription = meta.get('og:description') ?? meta.get('description');
+    let ogImage = meta.get('og:image');
     if (ogImage) {
       try {
         ogImage = new URL(ogImage, res.url || url.toString()).toString();

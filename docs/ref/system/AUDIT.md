@@ -1130,7 +1130,9 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 `ModelPricing` 以 `(model, effectiveFrom)` 版本化，結構本身支援調價。缺的是寫入途徑。
 
-**唯一的寫入端是 seed，而 seed 不能在正式環境執行。** 全 repo 只有 `packages/database/prisma/seed.ts` 的 `seedModelPricing()` 會寫 `modelPricing`，平台後台沒有任何路由。但 `seed.ts` 的 `main()` 會建立 Demo Tenant 與一批固定密碼的 demo 成員，`seedPlatformUser()` 種的也是開發用密碼。因此「調價要改 seed」在正式環境等於不可行，實務上只剩直接改資料庫一條路。
+**唯一的寫入端是 seed。** 全 repo 只有 `packages/database/prisma/seed.ts` 的 `seedModelPricing()` 會寫 `modelPricing`，平台後台沒有任何路由。`apps/api/docker-entrypoint.sh` 在 API 容器每次啟動時都跑 seed，所以改 seed 的價目、合併到 `main`，部署後就會寫入。但 seed 的價目是寫死的固定 `effectiveFrom`，調價要改程式碼再部署，平台方無法自己調。
+
+2026-10-29 以前，seed 每次啟動也會建立 Demo Tenant、固定密碼的 Demo 成員與開發用的平台帳號，並把它們的密碼與啟用狀態設回原始碼裡的值。現在 `NODE_ENV=production` 時預設不建這些帳號，帳號已經存在時也不覆寫密碼與啟用狀態（issue #394）。
 
 **缺價期間的成本無法事後修正。** 成本在寫入 `AiUsage` 的當下就算好，之後不重算。`getPricing()` 查不到價目時 `calcCostUsd()` 回 `null`，呼叫端記 `costUsd = 0` 並標 `usageMissing`。所以從新模型開始被使用、到有人手動補上價目之間的每一筆呼叫，成本永久是 0，而 repo 裡沒有任何重算路徑。
 

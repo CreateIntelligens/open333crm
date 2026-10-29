@@ -4,8 +4,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-29]
 
+### Fixed
+
+- **Partner API 金鑰只能用在合作方推送路由**（issue #394）— 知識庫路由原本用 `request.url` 是否含 `/partner-ingest` 決定是否接受 Partner API 金鑰。`request.url` 含查詢字串與路徑參數，所以金鑰在網址加上這段字串，就能讀取同租戶的知識庫文章、搜尋與回饋列表。現在改依比對到的路由判斷，只有 `POST /api/v1/knowledge/partner-ingest` 接受金鑰，其他知識庫路由一律要成員登入（401）。
+- **短連結抓取 Open Graph 時不再卡住 API**（issue #394）— 建立或更新短連結時，抓回的網頁 HTML 原本用回溯式正規表示式找 `<meta>`，特製的 100 KB 頁面實測要 471 秒，期間整個 API 程序停擺。改為逐字元的線性解析。HTML 實體改為單次解碼，`&amp;lt;` 不再被解成 `<`。
+- **部署時不再把 Demo 帳號的密碼設回預設值**（issue #394）— API 容器每次啟動都跑 seed，原本會把 Demo 租戶的三個成員與開發用平台帳號的密碼，設回寫在原始碼裡的值，也會重新啟用帳號，所以在後台改過的密碼與停用狀態，下次部署就被還原。現在 `NODE_ENV=production` 時預設不建這些帳號（設 `SEED_DEMO_ACCOUNTS=true` 才建）；帳號已經存在時，不論環境都不覆寫密碼與啟用狀態。本機 `docker-compose.dev.yml` 的 API 服務設定 `SEED_DEMO_ACCOUNTS=true`，照常建立 Demo 帳號。
+
 ### Changed
 
+- **部署 workflow 的 `GITHUB_TOKEN` 只給讀取權限**（issue #394）— `deploy.yml` 加上 `permissions: contents: read`。
 - **附券廣播發送途中停止時的原因文字** — 「其餘 N 位沒有發送」改為「還有 N 位沒有發送」，讓人一看就知道是尚未處理的人數。
 
 ### Removed

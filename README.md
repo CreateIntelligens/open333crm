@@ -244,7 +244,9 @@ pnpm --filter @open333crm/web dev     # 僅 Web
 
 ### 登入
 
-資料庫 seed 完成後，你可以用預設帳號登入。密碼請查看 `packages/database/prisma/seed.ts`。
+資料庫 seed 完成後，你可以用預設帳號登入。密碼請查看 `packages/database/prisma/seed-data/demo-accounts.ts`。
+
+這些帳號只在本機開發建立。`NODE_ENV=production` 時 seed 不建它們，除非設定 `SEED_DEMO_ACCOUNTS=true`。帳號已經存在時，seed 不會覆寫它的密碼與啟用狀態。
 
 ## 常用指令
 
