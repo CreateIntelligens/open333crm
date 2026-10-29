@@ -8,6 +8,8 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 
+// 真的 bcrypt（純 JS、cost 10）四次雜湊在 CPU 吃緊時會超過測試時限；這裡只檢查寫入的欄位
+vi.mock('bcryptjs', () => ({ default: { hash: async (password: string) => `hashed:${password}` } }));
 vi.mock('../../../prisma/seed-data/rbac-roles.js', () => ({
   seedDemoRoles: async () => ({ admin: 'role-admin', supervisor: 'role-supervisor', agent: 'role-agent' }),
 }));
