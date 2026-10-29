@@ -49,6 +49,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **UAT 每次部署後，Demo Tenant 的系統角色少了權限碼**（change `seed-roles-single-source`，AUDIT RBAC-06）— API 容器每次啟動都執行 demo seed，seed 依手抄的副本重建 Demo Tenant 的系統角色，副本沒有同步之後新增的權限碼：`admin` 少了 `audit.view`、`data.export`、`data.erase`、`coupon.*`、`store.*` 共 9 個，稽核、優惠券、門市、資料匯出與刪除的頁面回 403；`supervisor`、`agent` 少了 `coupon.view`、`coupon.issue`；`supervisor` 多了 `channel.view_all`。權限註冊表與預設角色表（`permissions.ts`、`default-roles.ts`）搬到 `packages/shared`，demo seed 與平台開通改用同一份；`@open333crm/core` 的 export 不變。修正後每次部署，Demo Tenant 的系統角色重設成與平台開通相同的預設值。
 - **附券廣播的素材短連結沒有 OG 快照** — 附券廣播把素材的外部連結換成短連結時，背景抓到 OG 後要寫回短連結，但寫入用的是已經結束的交易，每次都失敗、只記一筆 warning，爬蟲的預覽頁因此只有短連結的標題。現在改成交易 commit 之後才抓取，再另開交易寫回。
 - **固定效期已過到期日的券仍會發出**（change `improve-coupon-url-insert-ux`，PR #385 審查）— 固定效期的券到期後狀態仍是進行中（系統沒有排程自動結束），對話發券、批次發券、附券廣播、公開領券、關鍵字回覆與加好友禮照常發券，顧客拿到就是過期的券。改為各入口擋下並說明原因：共用發券核心 `issueInstances` 發給每位對象前都檢查到期（批次發到一半到期，之後的人也不發），略過並回報 `COUPON_EXPIRED`（找不到的聯絡人仍回報 `CONTACT_NOT_FOUND`）；`issueCoupons` 拋「券已過到期日，無法發放」；建立附券廣播回 400「這張優惠券已過到期日，不能附上」，已建立的在發送時、或發送途中才到期的，標為失敗（`failureCode` `COUPON_EXPIRED`，提示改附其他券，不是恢復發放）；規則發券留下「券不是進行中（已暫停、已結束或已過到期日）」；規則存檔不能換成已到期的券；選券清單、對話發券面板與「插入領券連結」不列，券詳情頁不顯示「發送給…」並說明原因，優惠券列表在狀態下方標示「已過到期日」。不改券的狀態，顧客券夾仍顯示「已過期」。
 - **UAT 部署在建置 image 時失敗** — 修補依賴安全告警時新增的 pnpm patch（`patches/minio@8.0.7.patch`）沒有複製進 api、web、workers 的 Docker image，`pnpm install` 讀不到 patch 檔而中止（`ENOENT`）。三個 Dockerfile 在安裝相依套件之前先複製 `patches/`。

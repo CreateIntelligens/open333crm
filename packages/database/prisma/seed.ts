@@ -2,7 +2,7 @@ import { PrismaClient, AgentRole, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { systemTemplates } from './seed-data/system-templates.js';
 // 注意：database 套件不可 import @open333crm/core（會與 core→database 循環依賴）。
-// 正式的 seedRolesForTenant 在 core（供 API 用）；此處為 demo seed 的內嵌等效版。
+// 正式的 seedRolesForTenant 在 core（供 API 用）；seedDemoRoles 是 demo seed 的等效版，權限對照同樣取自 @open333crm/shared。
 import { seedDemoRoles } from './seed-data/rbac-roles.js';
 
 const prisma = new PrismaClient();

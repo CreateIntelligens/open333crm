@@ -7,7 +7,7 @@
 
 ### Requirement: 權限註冊表是權限點的唯一來源
 
-系統 SHALL 在 `packages/core/src/rbac/permissions.ts` 的權限註冊表（`PERMISSIONS`）定義所有可以授予的權限點。每個權限點 SHALL 有下列欄位：
+系統 SHALL 在 `packages/shared/src/rbac/permissions.ts` 的權限註冊表（`PERMISSIONS`）定義所有可以授予的權限點。`@open333crm/core` SHALL 轉出同一份註冊表，MUST NOT 另外定義權限點。每個權限點 SHALL 有下列欄位：
 
 - `code`：權限碼。
 - `group`：畫面上的分群。分群 MUST NOT 影響授權判斷。
@@ -92,7 +92,7 @@ API 啟動時 SHALL 驗證權限註冊表。有下列任一種錯誤時，驗證
 - **THEN** 驗證失敗
 
 #### Scenario: 正式的註冊表通過驗證
-- **WHEN** 驗證 `packages/core/src/rbac/permissions.ts` 的註冊表
+- **WHEN** 驗證 `packages/shared/src/rbac/permissions.ts` 的註冊表
 - **THEN** 驗證沒有錯誤
 
 ### Requirement: 路由與註冊表一致
@@ -128,4 +128,3 @@ API 啟動時 SHALL 驗證權限註冊表。有下列任一種錯誤時，驗證
 #### Scenario: 預設只有 admin 有
 - **WHEN** 讀取系統角色的預設權限
 - **THEN** `admin` 有這三個權限碼，`supervisor` 與 `agent` 都沒有
-

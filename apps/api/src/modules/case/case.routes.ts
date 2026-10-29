@@ -137,7 +137,7 @@ const createCaseFromConvSchema = z.object({
   slaPolicyId: z.string().uuid().optional(),
 });
 
-// 工單路由的權限檢查集中在這裡（AUDIT RBAC-01；權限碼見 packages/core/src/rbac/permissions.ts）。
+// 工單路由的權限檢查集中在這裡（AUDIT RBAC-01；權限碼見 packages/shared/src/rbac/permissions.ts）。
 // 新增工單路由時請從這張表選用；路由層測試見 tests/feature/modules/route-permission-guards.test.ts
 const perm = {
   view: requirePermission('case.view'),

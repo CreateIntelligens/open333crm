@@ -17,3 +17,4 @@ export * from './line-flex-template.js';
 export * from './safe-reply.js';
 export * from './coupon/rules.js';
 export * from './coupon/issued-via.js';
+export * from './rbac/index.js';
