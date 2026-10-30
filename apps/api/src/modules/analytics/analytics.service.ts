@@ -180,7 +180,7 @@ export async function getMessageTrend(
   for (const row of rows) {
     const key = toIso(row.date);
     if (!map.has(key)) {
-      map.set(key, { date: 0, LINE: 0, FB: 0, WEBCHAT: 0, WHATSAPP: 0, total: 0 });
+      map.set(key, { LINE: 0, FB: 0, WEBCHAT: 0, WHATSAPP: 0, total: 0 });
     }
     const entry = map.get(key)!;
     const cnt = Number(row.count);

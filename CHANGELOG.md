@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **報表的訊息趨勢回傳日期**（#337 補測試時發現）— `GET /api/v1/analytics/message-trend` 與 `GET /api/v1/cli/analytics/message-trend` 每一列的 `date` 原本都是 `0`：初始化的欄位蓋掉了分組的日期。報表頁訊息趨勢圖的 X 軸因此全部顯示 0，`open333 stats` 顯示「Latest period: 0」。現在 `date` 是分組的日期（`YYYY-MM-DD`）。
 - **粉絲活動與積分不再寫錯資料**（change `portal-activity-guarantees`）— 前四項是同時操作的問題：這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查。後四項是讀取與輸入檢查的問題：
   - 同一位粉絲同時送出不允許重複參加的活動，原本兩次都成功，積分給兩次。現在先以 advisory lock 鎖住「活動＋聯絡人」再檢查，第二次回「您已參加過這個活動」。
   - 同時寫同一位聯絡人的積分（送出給點、後台調整、合併與解除合併轉點），原本兩筆都以同一個餘額計算。現在 `addPointTransaction()` 先鎖住這位聯絡人的帳本再讀餘額。寫入時間至少比最新一筆晚 1 毫秒，同一毫秒內連續寫入時，「最新一筆」不再不確定。合併與解除合併先依 id 排序鎖住雙方的帳本，再讀餘額，所以合併會轉出調整後的全部餘額，解除合併也不會把保留方扣成負數。
