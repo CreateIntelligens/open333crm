@@ -72,7 +72,7 @@
     "modules/knowledge/knowledge.routes.ts": 23,
     "modules/line/line-profile.routes.ts": 1,
     "modules/line/rich-menu.routes.ts": 10,
-    "modules/marketing/marketing.routes.ts": 19,
+    "modules/marketing/marketing.routes.ts": 18,
     "modules/marketing/material.routes.ts": 19,
     "modules/mcp/mcp.routes.ts": 1,
     "modules/meta-connect/meta-connect.routes.ts": 3,

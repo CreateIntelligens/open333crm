@@ -15,9 +15,9 @@
 
 ## 3. 完成檢查
 
-- [ ] 3.1 `pnpm test` 通過
-- [ ] 3.2 `CHANGELOG.md` 加條目
-- [ ] 3.3 `node scripts/validate-openspec.mjs improve-binding-prefill-and-webchat-links` 通過
+- [x] 3.1 `pnpm test` 通過
+- [x] 3.2 `CHANGELOG.md` 加條目
+- [x] 3.3 `node scripts/validate-openspec.mjs improve-binding-prefill-and-webchat-links` 通過
 
 ## 突變驗證
 

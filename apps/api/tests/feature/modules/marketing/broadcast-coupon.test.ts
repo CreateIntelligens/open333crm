@@ -219,7 +219,8 @@ beforeAll(async () => {
   roleId = (await owner.role.create({
     data: {
       tenantId: T, slug: MARK, name: MARK,
-      permissions: { create: ['marketing.view', 'marketing.manage', 'marketing.broadcast'].map((permissionCode) => ({ permissionCode })) },
+      // channel.view_all：這裡測附券廣播，不測渠道可見範圍（群發只能用可見渠道，見 channel-scoped-visibility.test.ts）
+      permissions: { create: ['marketing.view', 'marketing.manage', 'marketing.broadcast', 'channel.view_all'].map((permissionCode) => ({ permissionCode })) },
     },
   })).id;
 });

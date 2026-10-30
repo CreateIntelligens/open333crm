@@ -19,11 +19,24 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-30]
 
+### Added
+
+- **WebChat 文字訊息中的網址可以點**（issue #253，change `improve-binding-prefill-and-webchat-links`）— 嵌入式 widget 與 `/chatbox` 頁面原本把網址顯示成純文字，綁定邀請送出的連結訪客點不了。現在 `http://`、`https://` 網址顯示成另開分頁的連結（`rel="noopener noreferrer"`），結尾的標點不算進網址；其他 scheme（例如 `javascript:`）維持純文字，訊息也不當 HTML 解析。拆分規則在 `@open333crm/shared` 的 `splitTextLinks()`，兩邊共用。
+
 ### Fixed
 
 - **同時建立加好友禮時只留一條**（PR #426 審查發現）— 主規格 `coupon-management`「加好友禮」規定每個租戶只有一條加好友禮，已經有一條時，再建立或把另一條「加入好友」規則改成發券要回 409。檢查是先查再寫，原本沒有鎖，同時送出的請求都會通過檢查，留下兩條加好友禮，兩條都會執行。現在檢查前以租戶取得交易級 advisory lock，同一租戶的加好友禮寫入依序執行。
 - **試跑規則與讀取執行紀錄要求檢視權限**（change `guard-automation-test-and-logs`）— `POST /api/v1/automation/rules/:id/test` 與 `GET /api/v1/automation/logs` 原本只檢查登入。權限註冊表登記 `automation.view` 涵蓋這兩項，但沒有這個權限碼的成員（例如預設的「客服」角色）仍然可以試跑任何規則、讀取整個租戶的執行紀錄。現在缺少 `automation.view` 時回 403，`error.details.requiredPermission` 是 `automation.view`。前端不受影響：規則頁與側欄本來就要求這個權限碼。
 - **自動化規則與快速回覆預設組的路徑 id 先檢查格式**（#337 第八批發現）— `/api/v1/automation/rules/:id`（查詢、修改、刪除、試跑）與 `/api/v1/line/quick-reply-presets/:id`（修改、刪除）原本不檢查 `:id`。`:id` 不是 UUID 時，查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位，伺服器也每次記一筆錯誤。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
+- **分店帳號看不到其他分店的聯絡人、群發與報表**（issue #253，change `extend-channel-visibility-to-contacts-and-marketing`）— 渠道可見範圍原本只套在對話與工單：
+  - 聯絡人只過濾渠道身份，聯絡人本身照樣列出，分店看得到其他分店客人的姓名、電話與 email。現在只在不可見渠道有身份的聯絡人不出現在清單；以 ID 讀取、修改、貼標、移除標籤，讀取它的對話、訊息、工單、時間軸與合併紀錄，以及合併與合併預覽都回 404。沒有任何渠道身份的聯絡人（客服手動建立）照常看得到。合併的 409 訊息原本會帶出另一個渠道的名稱，現在看不到的聯絡人先回 404。
+  - 單筆對話與工單回傳的 `contact.channelIdentities` 原本含其他渠道的身份（uid、暱稱），現在只含可見渠道。
+  - 群發原本不依渠道限制。現在群發列表只列可見渠道的群發；讀取、收件人、送出、取消不可見渠道的群發回 404；建立群發與預估受眾時指定不可見的渠道回 404；分群預覽只算看得到的聯絡人。群發仍不檢查渠道存取層級。MCP 的 `crm_line_get_broadcast`、`crm_line_broadcast_initiate` 一樣。
+  - 報表原本統計全租戶。現在報表頁、匯出、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的報表工具只統計可見渠道。優惠券成效與「我的績效」不另外過濾；每日彙總照舊是全租戶的數字。
+  - 有 `channel.view_all`（總店）的成員不受影響。
+- **LINE 綁定連結的網址變短**（issue #253，change `improve-binding-prefill-and-webchat-links`）— 「送出代碼」連結原本預填「我要綁定帳號，代碼 …（請直接送出）」，中文編碼後網址很長，顧客可能不敢點。現在預填「綁定 {代碼}」。兌換方式不變。優惠券領券連結不受影響。
+- **API 啟動 log 列出全部的渠道外掛**（issue #253）— 原本寫死「LINE, FB, WEBCHAT」，漏了 THREADS。現在從註冊表讀出。
+- **Web 的 ESLint 可以執行**（issue #253）— `apps/web/eslint.config.mjs` 匯入 `eslint-config-next`，但 `apps/web` 沒有這個依賴，執行時 `ERR_MODULE_NOT_FOUND`。現在裝上與 `next` 同版本的 `eslint-config-next@15.5.27`，以 `FlatCompat` 載入。ESLint 能載入之後，`next build` 會在建置時跑 lint，`src` 有 80 個既有錯誤會讓建置失敗，因此 `next.config.ts` 設 `eslint.ignoreDuringBuilds`，維持原本建置不跑 lint 的行為；手動執行 `pnpm --filter @open333crm/web exec eslint src`。`apps/web` 也還沒有 `lint` script，加上會讓 `pnpm lint` 失敗。
 - **CLI 報表也擋下起始日晚於結束日的區間**（#337 review-loop 發現）— 主規格 `analytics-reports` 規定每一個接受 `from`、`to` 的報表端點，在 `from` 晚於 `to` 時回 400 並指出 `from`。`/api/v1/cli/analytics/*` 原本用自己的參數定義，沒有這項檢查，回 200 與看似正常的空報表。現在報表頁與 CLI 共用 `analytics/analytics-query.ts` 的參數定義。
 - **報表的訊息趨勢回傳日期**（#337 補測試時發現）— `GET /api/v1/analytics/message-trend` 與 `GET /api/v1/cli/analytics/message-trend` 每一列的 `date` 原本都是 `0`：初始化的欄位蓋掉了分組的日期。報表頁訊息趨勢圖的 X 軸因此全部顯示 0，`open333 stats` 顯示「Latest period: 0」。現在 `date` 是分組的日期（`YYYY-MM-DD`）。
 - **粉絲活動與積分不再寫錯資料**（change `portal-activity-guarantees`）— 前四項是同時操作的問題：這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查。後四項是讀取與輸入檢查的問題：
@@ -39,6 +52,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Changed
 
 - **自動化規則與快速回覆預設組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `automation.service.ts` 與 `quick-reply-preset.service.ts` 改收 `TenantCtx`，新增 `automation.flow.ts` 與 `quick-reply-preset.flow.ts`。`/api/v1/automation/*` 與 `/api/v1/line/quick-reply-presets` 的路由都呼叫 flow。每個請求在一個交易內完成。原本每個查詢各自一個交易，例如儲存規則時，檢查素材、優惠券、加好友禮與寫入規則分屬不同的交易。回應內容與狀態碼不變。
+- **四處 Redis 連線改為共用一條**（issue #253）— passkey challenge、登入失敗計數、綁定代碼與 webhook 去重原本各自 `new IORedis`，現在共用 `apps/api/src/lib/redis-client.ts` 的 `getSharedRedis()`，API 行程少開三條連線。`scripts/check-tenant-ctx.mjs` 把這個模組也算作 service 直接使用 Redis client。
 - **報表改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `analytics.service.ts` 改收 `TenantCtx`，新增 `analytics.flow.ts`。報表頁、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 都呼叫 flow。`GET /analytics/csat` 的查詢從路由移到 service，計算方式不變。回應內容不變。
   - 每個報表在一個交易內查詢。原本報表頁的每個查詢各自一個交易。
   - CLI 的報表原本以 `prismaAdmin`（BYPASSRLS）查詢，只靠查詢條件的 `tenantId` 隔離租戶。現在也受 RLS 限制。

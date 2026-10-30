@@ -21,15 +21,15 @@
 
 ## 5. 完成檢查
 
-- [ ] 5.1 `pnpm test`、`pnpm test:feature` 通過
-- [ ] 5.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
-- [ ] 5.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
-- [ ] 5.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
+- [x] 5.1 `pnpm test`、`pnpm test:feature` 通過
+- [x] 5.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
+- [x] 5.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
+- [x] 5.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
 
 ## 突變驗證與既有測試的調整
 
 - `mcp-channel-visibility.test.ts` 的三個新情境在實作之後才寫，以突變驗證：把 MCP 的 `visibleBroadcast()` 與建立群發前的檢查改成不檢查、`crm_line_get_conversation` 改傳 `ALL_CHANNELS`，三個情境都失敗。
 - 其他新情境都先寫測試、在斷言上失敗後才實作。
-- 下列既有測試的角色沒有 `channel.view_all` 也沒有綁任何渠道。這個 change 之後它們看不到有渠道身份的聯絡人與任何報表資料，這是刻意的行為改變，因此給這些測試的角色加上 `channel.view_all`（它們測的是合併規則與全租戶報表，不是可見範圍）：`contact-merge-routes.test.ts`、`contact-merge-same-channel.test.ts`、`analytics-reports.test.ts`。
+- 下列既有測試的角色沒有 `channel.view_all` 也沒有綁任何渠道。這個 change 之後它們看不到有渠道身份的聯絡人與任何報表資料，這是刻意的行為改變，因此給這些測試的角色加上 `channel.view_all`（它們測的是合併規則與全租戶報表，不是可見範圍）：`contact-merge-routes.test.ts`、`contact-merge-same-channel.test.ts`、`analytics-reports.test.ts`、`broadcast-coupon.test.ts`。
 - `cli-session-auth.test.ts`（單元）沒有註冊 prisma plugin，解析可見渠道會失敗；它測的是 CLI token 的 scope，因此把 `resolveChannelVisibility` mock 成 `ALL_CHANNELS`。`export-csv-bom.test.ts` 補上新的參數。
 - `analytics-reports.test.ts` 的「每日彙總」在並行執行時偶爾失敗，單獨重跑通過；修改報表程式之前就出現過，與這個 change 無關。
