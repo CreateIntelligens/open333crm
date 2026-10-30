@@ -433,6 +433,15 @@ test('CLI 報表：與報表頁同一份計算，只限本租戶；工單統計�
   assert.equal((await get(appB, `/api/v1/cli/analytics/overview?${RANGE}`)).totalMessages, 2);
 });
 
+test('CLI 報表的日期區間：from 晚於 to 回 400 並指出 from（主規格 analytics-reports）', async () => {
+  for (const path of ['overview', 'message-trend', 'cases', 'channels']) {
+    const res = await appA.inject({ method: 'GET', url: `/api/v1/cli/analytics/${path}?from=2026-12-31&to=2020-01-01` });
+    assert.equal(res.statusCode, 400, `${path}：${res.body}`);
+    const paths = (res.json().error?.details?.issues ?? []).map((i: { path: string }) => i.path);
+    assert.ok(paths.includes('from'), `${path} 應指出 from`);
+  }
+});
+
 test('MCP 工具：總覽與工單統計，只限本租戶', async () => {
   assert.deepEqual(await callTool(appA, 'crm_get_analytics_overview', RANGE_BODY), OVERVIEW_A);
   const cases = await callTool(appA, 'crm_get_case_statistics', RANGE_BODY);

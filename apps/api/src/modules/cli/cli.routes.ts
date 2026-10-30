@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod/v3';
 import type { getCaseStats } from '../analytics/analytics.service.js';
 import {
   getCaseStatsFlow,
@@ -8,6 +7,7 @@ import {
   getMyPerformanceFlow,
   getOverviewStatsFlow,
 } from '../analytics/analytics.flow.js';
+import { dateRangeSchema, messageTrendSchema } from '../analytics/analytics-query.js';
 import { actorOf } from '../../lib/request-actor.js';
 import { success } from '../../shared/utils/response.js';
 import {
@@ -20,15 +20,6 @@ import {
   flattenCliEndpoints,
   visibleCliCapabilities,
 } from './cli-endpoints.js';
-
-const dateRangeSchema = z.object({
-  from: z.coerce.date().default(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
-  to: z.coerce.date().default(() => new Date()),
-});
-
-const messageTrendSchema = dateRangeSchema.extend({
-  groupBy: z.enum(['day', 'week', 'month']).default('day'),
-});
 
 function sendInsufficientScope(reply: FastifyReply, scope: string) {
   return reply.status(403).send({
