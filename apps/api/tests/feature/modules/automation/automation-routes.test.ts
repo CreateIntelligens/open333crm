@@ -356,3 +356,34 @@ describe('試跑規則與讀取執行紀錄要求檢視權限', () => {
     assert.equal(logs.body.data.length, 1);
   });
 });
+
+describe('加好友禮在同時送出時也只留一條', () => {
+  // 主規格 coupon-management「加好友禮」：租戶唯一的一條規則。檢查是先查再寫，
+  // 沒有鎖時同時送出的請求都會通過檢查（PR #426 機器人審查）
+  const clearFollowGifts = () =>
+    owner.automationRule.updateMany({ where: { tenantId: A, eventType: 'contact.followed' }, data: { enabled: false, isActive: false } });
+  const liveGifts = async () =>
+    (await owner.automationRule.findMany({ where: { tenantId: A, enabled: true, eventType: 'contact.followed' }, select: { actions: true } }))
+      .filter((r) => (r.actions as Array<{ type: string }>).some((a) => a.type === 'issue_coupon')).length;
+
+  test('同時建立多條加好友禮：只有一條成功，其他回 409', async () => {
+    // 競爭要碰巧交錯才會出現，跑數回合，任何一回合多於一條就失敗
+    for (let round = 0; round < 5; round++) {
+      await clearFollowGifts();
+      const results = await Promise.all(Array.from({ length: 6 }, () => call(appA, 'POST', rules, followGift(coupon.id))));
+      assert.deepEqual(results.map((r) => r.status).sort(), [201, 409, 409, 409, 409, 409], `第 ${round + 1} 回合`);
+      assert.equal(await liveGifts(), 1);
+    }
+  });
+
+  test('同時把兩條加入好友規則改成發券：只有一條成功，另一條回 409', async () => {
+    await clearFollowGifts();
+    const welcome = (name: string) =>
+      create(appA, { ...followGift(coupon.id), name, actions: [{ type: 'send_message', params: { text: '歡迎' } }] });
+    const [r1, r2] = await Promise.all([welcome(`${MARK}-歡迎一`), welcome(`${MARK}-歡迎二`)]);
+    const issue = { actions: [{ type: 'issue_coupon', params: { couponId: coupon.id } }] };
+    const results = await Promise.all([r1, r2].map((r) => call(appA, 'PATCH', `${rules}/${r.id}`, issue)));
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+    assert.equal(await liveGifts(), 1);
+  });
+});

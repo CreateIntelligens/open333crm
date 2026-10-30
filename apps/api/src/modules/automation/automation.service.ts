@@ -171,6 +171,9 @@ async function assertSingleFollowGift(
 ): Promise<void> {
   const issuesCoupon = (list: unknown) => Array.isArray(list) && list.some((a) => (a as { type?: unknown })?.type === 'issue_coupon');
   if (eventType !== 'contact.followed' || !issuesCoupon(actions)) return;
+  // 先查再寫：同時送出的請求沒有鎖時都會通過檢查，留下兩條加好友禮。
+  // 同一租戶的加好友禮寫入依序執行；交易級 advisory lock，交易結束自動釋放（同 sla.service.ts）
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`follow-gift:${tenantId}`}, 0))`;
   const others = await tx.automationRule.findMany({
     where: { tenantId, enabled: true, eventType: 'contact.followed', ...(excludeRuleId ? { id: { not: excludeRuleId } } : {}) },
     select: { actions: true },

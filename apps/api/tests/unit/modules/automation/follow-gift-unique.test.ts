@@ -15,6 +15,8 @@ type Rule = { id: string; tenantId: string; enabled: boolean; eventType: string;
 function fakeDb(rules: Rule[]) {
   const writes: Array<Record<string, unknown>> = [];
   const db = {
+    // 加好友禮檢查前取得的 advisory lock；鎖的效果由 feature 測試驗證
+    $executeRaw: async () => 0,
     coupon: {
       async findMany({ where }: { where: { id: { in: string[] } } }) {
         return where.id.in.filter((id) => id === COUPON).map((id) => ({ id }));
