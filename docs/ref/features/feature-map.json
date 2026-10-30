@@ -1,0 +1,393 @@
+{
+  "description": "功能領域地圖。scripts/feature-impact.mjs 讀這份檔案做跨功能影響分析；每個領域的 Skill 在 .claude/skills/feature-<id>/SKILL.md。改程式路徑、資料表、事件或依賴後，請同步更新並跑 node scripts/feature-impact.mjs --check。",
+  "plannedDomains": [
+    "inbox",
+    "cases",
+    "notifications",
+    "automation",
+    "knowledge",
+    "line",
+    "portal",
+    "shortlinks",
+    "analytics",
+    "channels",
+    "members",
+    "settings",
+    "governance",
+    "sla",
+    "platform-auth",
+    "platform-tenants",
+    "platform-plans",
+    "platform-plan-changes",
+    "platform-usage",
+    "platform-users",
+    "platform-settings",
+    "platform-trials",
+    "platform-queue-monitoring"
+  ],
+  "commonTables": [
+    "Tenant",
+    "Agent",
+    "TenantSettings",
+    "TenantAuditLog",
+    "Outbox"
+  ],
+  "domains": [
+    {
+      "id": "contacts",
+      "title": "聯絡人與標籤",
+      "doc": "docs/ref/features/tenant/CONTACTS.md",
+      "health": "docs/ref/features/health/CONTACTS.md",
+      "paths": [
+        "apps/api/src/modules/contact/*",
+        "apps/api/src/modules/tag/*",
+        "apps/api/src/modules/webhook/inbound-contact-resolver.ts",
+        "apps/api/src/modules/webhook/inbound-avatar-refresh.ts",
+        "apps/api/src/modules/identity-binding/*",
+        "apps/api/src/modules/ai/other-channel-context.ts",
+        "apps/api/src/modules/line/line-profile.*",
+        "apps/api/src/modules/canvas/canvas.routes.ts",
+        "packages/core/src/identity/*",
+        "packages/core/src/contacts/contact-service.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/contacts/**",
+        "apps/web/src/components/contact/*",
+        "apps/web/src/hooks/useContacts.ts",
+        "apps/web/src/hooks/useContactTags.ts",
+        "apps/web/src/components/settings/TagManagement.tsx",
+        "apps/web/src/app/bind/**",
+        "apps/web/src/components/bind/*",
+        "apps/web/src/components/inbox/SendBindingLinkButton.tsx",
+        "apps/web/src/components/inbox/RegistrationLinkButtons.tsx",
+        "apps/web/src/components/inbox/identity-binding-status.ts",
+        "apps/web/src/components/inbox/OtherChannelConversations.tsx"
+      ],
+      "tables": [
+        "Contact",
+        "ChannelIdentity",
+        "IdentityMap",
+        "ContactMergeLog",
+        "MergeSuggestion",
+        "Tag",
+        "ContactTag",
+        "ContactAttribute",
+        "ContactRelation"
+      ],
+      "events": [
+        "contact.created",
+        "contact.tagged",
+        "contact.updated",
+        "contact.merged",
+        "contact.merge_reverted"
+      ],
+      "permissions": [
+        "contact.view",
+        "contact.update",
+        "contact.merge",
+        "tag.view",
+        "tag.manage",
+        "identity.review"
+      ],
+      "specs": [
+        "contact-management",
+        "tag-management",
+        "email-identity-merge",
+        "phone-identity-merge",
+        "cross-channel-binding-code",
+        "cross-channel-conversation-view",
+        "identity-stitching-engine",
+        "inbound-contact-resolution",
+        "line-contact-profile-sync",
+        "ai-cross-channel-context",
+        "material-action-tagging"
+      ],
+      "audit": [
+        "RBAC-04",
+        "IDENT-01",
+        "IDENT-03",
+        "AUTO-03",
+        "PLAN-04",
+        "DB-02",
+        "DB-04",
+        "ERASE-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch03-contacts.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-contacts.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-cases-contacts-inbox.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/contact/**",
+        "apps/api/tests/feature/modules/contact/**",
+        "apps/api/tests/unit/modules/tag/**",
+        "apps/api/tests/feature/modules/tag/**",
+        "apps/api/tests/unit/modules/identity-binding/**",
+        "apps/api/tests/feature/modules/identity-binding/**",
+        "apps/api/tests/unit/modules/webhook/inbound-contact-resolution.test.ts",
+        "apps/api/tests/unit/modules/webhook/inbound-first-contact-resolver.test.ts",
+        "apps/api/tests/unit/modules/webhook/inbound-avatar-refresh.test.ts",
+        "apps/api/tests/unit/modules/line/line-profile.service.test.ts",
+        "apps/api/tests/feature/modules/line/line-profile-sync.test.ts",
+        "apps/workers/tests/unit/lib/automation-add-tag.test.ts",
+        "apps/workers/tests/unit/lib/automation-remove-tag.test.ts",
+        "apps/web/tests/unit/app/contact-detail-page.test.tsx",
+        "apps/web/tests/unit/components/contact/**",
+        "apps/web/tests/unit/components/bind/**",
+        "apps/web/tests/unit/components/inbox/send-email-registration-link-button.test.tsx",
+        "apps/web/tests/unit/components/inbox/send-phone-registration-link-button.test.tsx",
+        "apps/web/tests/unit/components/inbox/other-channel-conversations.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "inbox",
+          "why": "聯絡人頁的對話紀錄讀 Conversation/Message；代發綁定與登記連結需要 inbox.reply 與對話渠道的回覆層級"
+        },
+        {
+          "domain": "cases",
+          "why": "時間軸讀工單；合併時搬移 Case"
+        },
+        {
+          "domain": "channels",
+          "why": "ChannelIdentity 綁定渠道；渠道可見範圍過濾身分、對話與時間軸"
+        },
+        {
+          "domain": "settings",
+          "why": "跨渠道綁定、email/手機登記的開關在設定頁；標籤管理頁也在設定"
+        },
+        {
+          "domain": "line",
+          "why": "line-profile 重抓 LINE 名稱與頭像"
+        },
+        {
+          "domain": "governance",
+          "why": "合併、解除合併、代發連結都寫租戶稽核紀錄"
+        },
+        {
+          "domain": "notifications",
+          "why": "email 登記的驗證碼走交易型 email"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "inbox",
+          "why": "ContactInfoPanel 讀聯絡人、貼對話標籤、顯示其他渠道對話、代發綁定與登記連結"
+        },
+        {
+          "domain": "automation",
+          "why": "訂閱 contact.created、contact.tagged；workers 的貼標/移除標籤動作寫 ContactTag"
+        },
+        {
+          "domain": "marketing",
+          "why": "群發以標籤選對象；優惠券以標籤發放與貼標；合併時搬 BroadcastRecipient、CouponInstance；領券前的 email 登記回到票券頁"
+        },
+        {
+          "domain": "shortlinks",
+          "why": "tagOnClick 點擊貼標；ClickLog 跟著合併搬移"
+        },
+        {
+          "domain": "cases",
+          "why": "建立工單時搜尋聯絡人；工單頁用 TagManager"
+        },
+        {
+          "domain": "portal",
+          "why": "點數頁搜尋聯絡人；合併時搬 PointTransaction、PortalSubmission"
+        },
+        {
+          "domain": "knowledge",
+          "why": "合併時搬 KbArticleFeedback；AI 回覆讀其他渠道上下文"
+        },
+        {
+          "domain": "analytics",
+          "why": "儀表板以 GET /contacts?limit=1 取聯絡人總數"
+        }
+      ]
+    },
+    {
+      "id": "marketing",
+      "title": "行銷活動、素材與優惠券",
+      "doc": "docs/ref/features/tenant/MARKETING.md",
+      "health": "docs/ref/features/health/MARKETING.md",
+      "paths": [
+        "apps/api/src/modules/marketing/**",
+        "apps/api/src/modules/coupon/**",
+        "apps/api/src/modules/store/store-console.*",
+        "apps/api/src/modules/ai/flex-ai.service.ts",
+        "apps/api/src/modules/webhook/inbound-coupon-claim.ts",
+        "apps/api/src/modules/webhook/inbound-postback-interceptors.ts",
+        "apps/workers/src/lib/rule-coupon-issue.ts",
+        "packages/core/src/coupon/**",
+        "packages/shared/src/coupon/**"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/marketing/**",
+        "apps/web/src/app/coupon/**",
+        "apps/web/src/app/redeem/**",
+        "apps/web/src/app/liff/redirect/page.tsx",
+        "apps/web/src/components/marketing/**",
+        "apps/web/src/components/materials/**",
+        "apps/web/src/components/coupons/**",
+        "apps/web/src/components/fan-coupon/**",
+        "apps/web/src/components/store-console/**",
+        "apps/web/src/components/inbox/coupon/**",
+        "apps/web/src/hooks/useMarketing.ts",
+        "apps/web/src/hooks/useMaterials.ts",
+        "apps/web/src/hooks/useCoupons.ts",
+        "apps/web/src/hooks/useCouponBatchIssue.ts",
+        "apps/web/src/hooks/useCouponClaimLinks.ts",
+        "apps/web/src/hooks/useFanCoupons.ts",
+        "apps/web/src/lib/marketing/**",
+        "apps/web/src/lib/coupon/**",
+        "apps/web/src/lib/fan-coupon/**",
+        "apps/web/src/lib/store-console-api.ts",
+        "apps/web/src/lib/direct-upload.ts"
+      ],
+      "tables": [
+        "Campaign",
+        "Broadcast",
+        "BroadcastRecipient",
+        "BroadcastDeliveryAttempt",
+        "Segment",
+        "Material",
+        "MaterialCategory",
+        "MaterialVersion",
+        "MessageTemplate",
+        "Coupon",
+        "CouponInstance",
+        "CouponCode",
+        "CouponClaimLink"
+      ],
+      "events": [
+        "coupon-broadcast",
+        "broadcast-scheduled",
+        "coupon-stale-pending-issue",
+        "coupon.instance.updated"
+      ],
+      "permissions": [
+        "marketing.view",
+        "marketing.manage",
+        "marketing.broadcast",
+        "coupon.view",
+        "coupon.manage",
+        "coupon.issue",
+        "coupon.redeem"
+      ],
+      "specs": [
+        "broadcast-audience",
+        "broadcast-failure-reason",
+        "marketing-scheduling",
+        "material-system",
+        "material-action-tagging",
+        "line-flex-material-import",
+        "coupon-management",
+        "coupon-redemption",
+        "store-redemption",
+        "member-binding"
+      ],
+      "audit": [
+        "MKT-01",
+        "AUD-01",
+        "DB-04",
+        "SHORT-01",
+        "RBAC-04"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch08-marketing.html",
+        "apps/web/public/manual/ch09-materials.html",
+        "apps/web/public/manual/ch18-coupons.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-marketing.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-marketing-line.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-materials.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-materials-all-types.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-materials-flex.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-materials.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-line-materials.spec.ts",
+        "apps/web/tests/e2e-uat/manual-material-field-probes.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/marketing/*.test.ts",
+        "apps/api/tests/unit/modules/coupon/*.test.ts",
+        "apps/api/tests/feature/modules/coupon/*.test.ts",
+        "apps/api/tests/feature/modules/marketing/broadcast-coupon.test.ts",
+        "apps/api/tests/unit/modules/automation/issue-coupon-reference.test.ts",
+        "apps/api/tests/unit/modules/automation/send-material-coupon-url.test.ts",
+        "apps/web/tests/unit/app/dashboard/marketing/*.test.tsx",
+        "apps/web/tests/unit/app/coupon/coupon-layout.test.tsx",
+        "apps/web/tests/unit/components/coupons/**",
+        "apps/web/tests/unit/components/fan-coupon/**",
+        "apps/web/tests/unit/components/marketing/*.test.tsx",
+        "apps/web/tests/unit/components/materials/**",
+        "apps/web/tests/unit/components/inbox/coupon-issue-dialog.test.tsx",
+        "apps/web/tests/unit/components/inbox/coupon-message-card.test.tsx",
+        "apps/web/tests/unit/components/inbox/issued-coupons-realtime.test.tsx",
+        "apps/web/tests/unit/hooks/coupon-batch-issues-polling.test.tsx",
+        "apps/web/tests/unit/hooks/use-broadcasts-polling.test.tsx",
+        "apps/web/tests/unit/lib/marketing/*.test.ts",
+        "apps/web/tests/unit/lib/coupon/liff-coupon.test.ts",
+        "apps/web/tests/unit/lib/fan-coupon/labels.test.ts",
+        "apps/workers/tests/unit/lib/automation-issue-coupon-*.test.ts",
+        "apps/workers/tests/unit/lib/automation-material-*.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "contacts",
+          "why": "分群條件與標籤受眾、聯絡人搜尋、領券與點擊貼標寫 contact.tagged、素材 MATERIAL 標籤；開票券前要先經 /bind/email 完成 email 登記與歸戶"
+        },
+        {
+          "domain": "channels",
+          "why": "渠道外掛發訊（multicast、逐人送出）、訊息視窗 messagingWindowHours、批次發券要渠道可見範圍 reply_only"
+        },
+        {
+          "domain": "line",
+          "why": "LINE validate/push 素材檢核、multicast、LIFF ID token 驗證開票券"
+        },
+        {
+          "domain": "shortlinks",
+          "why": "群發把素材網址換成短連結、uri 按鈕 tagOnClick 點擊貼標、OG 快照"
+        },
+        {
+          "domain": "settings",
+          "why": "租戶個資遮罩設定、門市與核銷帳號、AI 設定"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "Flex AI 產生使用租戶 AI 額度"
+        },
+        {
+          "domain": "notifications",
+          "why": "序號明細背景匯出完成寫站內通知"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "automation",
+          "why": "send_material、issue_coupon 動作；關鍵字回覆、加好友禮用素材與優惠券（workers rule-coupon-issue）"
+        },
+        {
+          "domain": "inbox",
+          "why": "快速回覆用 /marketing/templates、對話發券 /coupon-issue、券卡訊息與已發優惠券、群發回覆歸因"
+        },
+        {
+          "domain": "cases",
+          "why": "建立工單時 trackBroadcastCase 歸因到群發"
+        },
+        {
+          "domain": "line",
+          "why": "關鍵字回覆、加好友禮選券選素材；圖文選單按鈕放領券連結"
+        },
+        {
+          "domain": "analytics",
+          "why": "GET /analytics/coupons 優惠券成效報表"
+        },
+        {
+          "domain": "platform-queue-monitoring",
+          "why": "監控 coupon-broadcast 佇列"
+        }
+      ]
+    }
+  ]
+}
