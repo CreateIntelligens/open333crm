@@ -77,11 +77,12 @@ const appB = await buildApp(managerB);
 type App = typeof appA;
 const admin = (app: App, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object) =>
   app.inject({ method, url: `/api/v1/portal${url}`, payload });
-const fan = (app: App, contactId: string, method: 'GET' | 'POST', url: string, payload?: object) =>
+/** 以聯絡人自己的租戶簽 fanToken */
+const fan = (app: App, contact: { id: string; tenantId: string }, method: 'GET' | 'POST', url: string, payload?: object) =>
   app.inject({
     method,
     url: `/api/v1/fan${url}`,
-    headers: { authorization: `Bearer ${signFanToken(contactId, A)}` },
+    headers: { authorization: `Bearer ${signFanToken(contact.id, contact.tenantId)}` },
     payload,
   });
 
@@ -209,7 +210,7 @@ test('其他租戶的活動回 404', async () => {
 test('抽獎只從還沒中獎的作答抽出', async () => {
   const activity = await publishedPoll({ allowMultiple: true });
   for (const contact of [fanA, fanA2, fanA3]) {
-    const res = await fan(appA, contact.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
+    const res = await fan(appA, contact, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
     assert.equal(res.statusCode, 200, res.body);
   }
 
@@ -269,7 +270,7 @@ test('粉絲只看得到已發布、已開始、還沒結束的活動', async ()
   const future = await publishedPoll({}, { startsAt: new Date(Date.now() + 86_400_000).toISOString() });
   const draft = await admin(appA, 'POST', '/activities', { type: 'POLL', title: `${MARK}-草稿` });
 
-  const res = await fan(appA, fanA.id, 'GET', '/activities');
+  const res = await fan(appA, fanA, 'GET', '/activities');
   assert.equal(res.statusCode, 200, res.body);
   const ids = res.json().data.map((a: { id: string }) => a.id);
   assert.ok(ids.includes(open.id));
@@ -280,34 +281,34 @@ test('粉絲只看得到已發布、已開始、還沒結束的活動', async ()
     '列表不回傳正確答案',
   );
 
-  assert.equal((await fan(appA, fanA.id, 'GET', `/activities/${draft.json().data.id}`)).statusCode, 404);
+  assert.equal((await fan(appA, fanA, 'GET', `/activities/${draft.json().data.id}`)).statusCode, 404);
 });
 
 test('粉絲送出活動：記錄作答、給積分、詳情帶出自己的作答', async () => {
   const activity = await publishedPoll({ pointsPerSubmit: 5 });
   const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-作答` } });
 
-  const before = await fan(appA, contact.id, 'GET', `/activities/${activity.id}`);
+  const before = await fan(appA, contact, 'GET', `/activities/${activity.id}`);
   assert.equal(before.statusCode, 200, before.body);
   assert.equal(before.json().data.mySubmission, null);
 
-  const submitted = await fan(appA, contact.id, 'POST', `/activities/${activity.id}/submit`, {
+  const submitted = await fan(appA, contact, 'POST', `/activities/${activity.id}/submit`, {
     optionIds: [activity.options[1].id],
   });
   assert.equal(submitted.statusCode, 200, submitted.body);
   assert.equal(submitted.json().data.pointsEarned, 5);
 
-  const after = await fan(appA, contact.id, 'GET', `/activities/${activity.id}`);
+  const after = await fan(appA, contact, 'GET', `/activities/${activity.id}`);
   assert.equal(after.json().data.mySubmission.id, submitted.json().data.id);
 
-  const points = await fan(appA, contact.id, 'GET', '/me/points');
+  const points = await fan(appA, contact, 'GET', '/me/points');
   assert.equal(points.json().data.balance, 5);
   assert.equal(points.json().data.transactions[0].refId, submitted.json().data.id);
 
-  const mine = await fan(appA, contact.id, 'GET', '/me/activities');
+  const mine = await fan(appA, contact, 'GET', '/me/activities');
   assert.deepEqual(mine.json().data.map((s: { activity: { id: string } }) => s.activity.id), [activity.id]);
 
-  const result = await fan(appA, contact.id, 'GET', `/activities/${activity.id}/result`);
+  const result = await fan(appA, contact, 'GET', `/activities/${activity.id}/result`);
   assert.equal(result.json().data.totalSubmissions, 1);
   assert.deepEqual(result.json().data.options.map((o: { votes: number }) => o.votes), [0, 1]);
 });
@@ -316,12 +317,12 @@ test('第二次送出被拒絕，不再給積分', async () => {
   const activity = await publishedPoll({ pointsPerSubmit: 2 });
   const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-重複` } });
   const url = `/activities/${activity.id}/submit`;
-  assert.equal((await fan(appA, contact.id, 'POST', url, { optionIds: [activity.options[0].id] })).statusCode, 200);
+  assert.equal((await fan(appA, contact, 'POST', url, { optionIds: [activity.options[0].id] })).statusCode, 200);
 
-  const again = await fan(appA, contact.id, 'POST', url, { optionIds: [activity.options[0].id] });
+  const again = await fan(appA, contact, 'POST', url, { optionIds: [activity.options[0].id] });
   assert.equal(again.statusCode, 400, again.body);
   assert.equal(again.json().error.message, '您已參加過這個活動');
-  assert.equal((await fan(appA, contact.id, 'GET', '/me/points')).json().data.balance, 2);
+  assert.equal((await fan(appA, contact, 'GET', '/me/points')).json().data.balance, 2);
 });
 
 /** 直接把設定寫進資料庫，模擬入口驗證之前存進去的舊資料 */
@@ -333,9 +334,9 @@ test('allowMultiple 不是 true 時只能參加一次：字串 "false" 也不允
   await storeLegacySettings(activity.id, { allowMultiple: 'false' });
   const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-字串設定` } });
   const url = `/activities/${activity.id}/submit`;
-  assert.equal((await fan(appA, contact.id, 'POST', url, { optionIds: [activity.options[0].id] })).statusCode, 200);
+  assert.equal((await fan(appA, contact, 'POST', url, { optionIds: [activity.options[0].id] })).statusCode, 200);
 
-  const again = await fan(appA, contact.id, 'POST', url, { optionIds: [activity.options[0].id] });
+  const again = await fan(appA, contact, 'POST', url, { optionIds: [activity.options[0].id] });
   assert.equal(again.statusCode, 400, again.body);
   assert.equal(again.json().error.message, '您已參加過這個活動');
   assert.equal(await owner.portalSubmission.count({ where: { contactId: contact.id } }), 1);
@@ -374,7 +375,7 @@ test('舊資料的積分設定不合法時，送出成功但不給積分', async
     await storeLegacySettings(activity.id, { pointsPerSubmit });
     const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-舊設定` } });
 
-    const res = await fan(appA, contact.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
+    const res = await fan(appA, contact, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
     assert.equal(res.statusCode, 200, `${JSON.stringify(pointsPerSubmit)}: ${res.body}`);
     assert.equal(res.json().data.pointsEarned, 0);
     assert.equal(await owner.pointTransaction.count({ where: { contactId: contact.id } }), 0, '不給積分，也不扣積分');
@@ -397,11 +398,11 @@ test('後台與粉絲端的輸入不合法時回 400', async () => {
     ['後台：抽獎人數是小數', () => admin(appA, 'POST', `/activities/${activity.id}/draw`, { count: 1.5 })],
     ['後台：積分列表的聯絡人 id 不是 uuid', () => admin(appA, 'GET', `/points?contactId=${bad}`)],
     ['後台：積分餘額的聯絡人 id 不是 uuid', () => admin(appA, 'GET', `/points/balance/${bad}`)],
-    ['粉絲：活動 id 不是 uuid', () => fan(appA, fanA.id, 'GET', `/activities/${bad}`)],
-    ['粉絲：結果的活動 id 不是 uuid', () => fan(appA, fanA.id, 'GET', `/activities/${bad}/result`)],
-    ['粉絲：送出的 optionIds 不是陣列', () => fan(appA, fanA.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: 'x' })],
-    ['粉絲：送出的 optionIds 不是 uuid', () => fan(appA, fanA.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [bad] })],
-    ['粉絲：送出的欄位值不是字串', () => fan(appA, fanA.id, 'POST', `/activities/${activity.id}/submit`, { fields: { name: 1 } })],
+    ['粉絲：活動 id 不是 uuid', () => fan(appA, fanA, 'GET', `/activities/${bad}`)],
+    ['粉絲：結果的活動 id 不是 uuid', () => fan(appA, fanA, 'GET', `/activities/${bad}/result`)],
+    ['粉絲：送出的 optionIds 不是陣列', () => fan(appA, fanA, 'POST', `/activities/${activity.id}/submit`, { optionIds: 'x' })],
+    ['粉絲：送出的 optionIds 不是 uuid', () => fan(appA, fanA, 'POST', `/activities/${activity.id}/submit`, { optionIds: [bad] })],
+    ['粉絲：送出的欄位值不是字串', () => fan(appA, fanA, 'POST', `/activities/${activity.id}/submit`, { fields: { name: 1 } })],
   ];
   for (const [name, run] of cases) {
     const res = await run();
@@ -422,7 +423,7 @@ test('送出活動的事件與作答一起寫進 outbox', async () => {
   const activity = await publishedPoll();
   const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-事件` } });
 
-  const res = await fan(appA, contact.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
+  const res = await fan(appA, contact, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
   assert.equal(res.statusCode, 200, res.body);
 
   const events = await submittedEvents();
@@ -448,7 +449,7 @@ test('事件寫不進 outbox 時，作答與積分都不留下', async () => {
     const activity = await publishedPoll({ pointsPerSubmit: 3 });
     const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-失敗` } });
 
-    const res = await fan(app, contact.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
+    const res = await fan(app, contact, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
     assert.equal(res.statusCode, 400, res.body);
 
     assert.equal(await owner.portalSubmission.count({ where: { contactId: contact.id } }), 0, '作答 rollback');

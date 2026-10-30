@@ -61,12 +61,16 @@ export const getActivityForFanFlow = flowOf(getActivityForFan);
 export const getActivityResultFlow = flowOf(getActivityResult);
 export const listContactSubmissionsFlow = flowOf(listContactSubmissions);
 
-/** 粉絲的積分餘額與最近 50 筆交易，在同一個交易內讀取 */
+/**
+ * 粉絲的積分餘額與最近 50 筆交易。餘額取自清單的最新一筆：清單依 createdAt 由新到舊排序，
+ * 第一筆就是 getLatestPointEntry() 取的那一筆。read committed 之下，餘額另外查詢的話，
+ * 兩次查詢之間寫入的一筆會讓餘額是舊的、清單是新的。
+ */
 export function getFanPointsFlow(deps: { prisma: PrismaClient }, fan: FanActor) {
-  return inTenant(deps.prisma, fan.tenantId, async (scope) => ({
-    balance: await getPointBalance(scope, fan.contactId),
-    transactions: await listPointTransactions(scope, fan.contactId, 1, 50),
-  }));
+  return inTenant(deps.prisma, fan.tenantId, async (scope) => {
+    const transactions = await listPointTransactions(scope, fan.contactId, 1, 50);
+    return { balance: transactions.items[0]?.balance ?? 0, transactions };
+  });
 }
 
 /** 送出活動的入口：events 預設寫 outbox（測試可替換） */

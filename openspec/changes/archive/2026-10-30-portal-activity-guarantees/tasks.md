@@ -33,6 +33,8 @@
 
 - [x] 3.9 使用者決定在 AGENTS.md 定義輸入驗證的規則（Conventions 的 Validation），portal 先照規則改。兩個路由檔原本有 18 處以 `as` 轉型 `request.params`、`request.query`、`request.body`。`portal-flow.test.ts` 新增「後台與粉絲端的輸入不合法時回 400」，在修正前失敗在斷言上（不是 uuid 的活動 id 回 `DATABASE_ERROR`）。每個輸入改以 Zod 解析，分頁改用 `paginationSchema`。`tests/unit/shared/pagination.test.ts` 原本檢查 portal 有 `clampPage(`，改為檢查 portal 用 `paginationSchema`：這是刻意的改變，`?page=0` 從夾到第 1 頁改為回 400
 
+- [x] 3.10 PR #404 的機器人審查：`getFanPointsFlow()` 分兩次查詢餘額與清單，兩次之間寫入一筆時，回應不一致。`apps/api/tests/unit/modules/portal/fan-points-flow.test.ts` 新增「粉絲的積分餘額與交易清單一致」，在修正前失敗在斷言上。餘額改取自清單的最新一筆；`portal-public-tenant-scope.test.ts` 的 mock 跟著更新。`portal-flow.test.ts` 的 `fan()` 原本一律以租戶 A 簽 fanToken，改為以聯絡人自己的租戶簽
+
 ## 4. 完成定義
 
 - [x] 4.1 `pnpm test:all` 通過；`tsc --noEmit`、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 通過，基準檔已更新
