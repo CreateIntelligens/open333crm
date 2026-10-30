@@ -324,6 +324,18 @@ test('第二次送出被拒絕，不再給積分', async () => {
   assert.equal((await fan(appA, contact.id, 'GET', '/me/points')).json().data.balance, 2);
 });
 
+test('allowMultiple 不是 true 時只能參加一次：字串 "false" 也不允許重複', async () => {
+  const activity = await publishedPoll({ allowMultiple: 'false' });
+  const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-字串設定` } });
+  const url = `/activities/${activity.id}/submit`;
+  assert.equal((await fan(appA, contact.id, 'POST', url, { optionIds: [activity.options[0].id] })).statusCode, 200);
+
+  const again = await fan(appA, contact.id, 'POST', url, { optionIds: [activity.options[0].id] });
+  assert.equal(again.statusCode, 400, again.body);
+  assert.equal(again.json().error.message, '您已參加過這個活動');
+  assert.equal(await owner.portalSubmission.count({ where: { contactId: contact.id } }), 1);
+});
+
 test('沒有 fanToken 回 401', async () => {
   const res = await appA.inject({ method: 'GET', url: '/api/v1/fan/activities' });
   assert.equal(res.statusCode, 401);

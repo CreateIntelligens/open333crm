@@ -38,6 +38,11 @@
 - **WHEN** 粉絲送出不允許重複參加的活動之後，再送出一次
 - **THEN** 第二次回「您已參加過這個活動」，這位粉絲的積分只加一次
 
+#### Scenario: allowMultiple 不是 true 時只能參加一次：字串 "false" 也不允許重複
+
+- **WHEN** 活動的 `settings.allowMultiple` 是字串 `"false"`，粉絲送出之後再送出一次
+- **THEN** 第二次回「您已參加過這個活動」，這位粉絲只有一筆作答
+
 #### Scenario: 同一位粉絲同時送出兩次
 
 - **WHEN** 粉絲的第一次送出還沒 commit，第二次送出開始

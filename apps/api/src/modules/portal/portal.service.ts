@@ -306,7 +306,8 @@ export async function submitActivity(
 
   // Check duplicate submission
   const settings = activity.settings as Record<string, unknown>;
-  const allowMultiple = settings.allowMultiple ?? false;
+  // 只有 true 才允許重複參加：settings 是任意 JSON，字串 "false" 這類值不能當成允許（主規格 portal-activity）
+  const allowMultiple = settings.allowMultiple === true;
   if (!allowMultiple) {
     // 先鎖「活動＋聯絡人」再查：同一位粉絲同時送出時，後一次等前一次 commit 後才查得到它的作答。
     // 不鎖活動列，否則所有粉絲的送出都要排隊。

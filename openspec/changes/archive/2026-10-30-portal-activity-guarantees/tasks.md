@@ -27,6 +27,8 @@
 
 - [x] 3.6 後台調整積分原本不檢查聯絡人：外鍵檢查不受 RLS 限制，其他租戶的聯絡人回 200 並寫入紀錄，不存在的聯絡人回 `DATABASE_ERROR`。`portal-flow.test.ts` 新增「調整其他租戶聯絡人的積分回 404，不寫入」「調整不存在的聯絡人的積分回 404」，在修正前都失敗在斷言上。新增 `adjustPoints()`，先確認聯絡人屬於這個租戶，路由改呼叫 `adjustPointsFlow`
 
+- [x] 3.7 review-loop（第二次）第 1 輪：`submitActivity()` 以真假值判斷 `allowMultiple`，後台的 `settings` 接受任意 JSON，字串 `"false"` 會被當成允許重複參加。`portal-flow.test.ts` 新增「allowMultiple 不是 true 時只能參加一次：字串 "false" 也不允許重複」，在修正前失敗在斷言上。改為只有 `true` 才允許
+
 ## 4. 完成定義
 
 - [x] 4.1 `pnpm test:all` 通過；`tsc --noEmit`、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 通過，基準檔已更新
