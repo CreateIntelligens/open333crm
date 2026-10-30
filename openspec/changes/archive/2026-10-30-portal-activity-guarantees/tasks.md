@@ -23,6 +23,8 @@
   - `transferPoints()` 的帳本鎖 →「調整積分還沒 commit 時合併聯絡人」
   - 解除合併讀餘額前的帳本鎖 →「扣點還沒 commit 時解除合併」
 
+- [x] 3.5 review-loop 第 1 輪：鎖鍵是字串，uuid 的大小寫不同就是另一把鎖。`portal-concurrency.test.ts` 新增「同時送出時，活動 id 的大小寫不同」「同時寫入時，聯絡人 id 的大小寫不同」，在修正前都失敗在斷言上。送出的鎖鍵改用資料庫回傳的活動 id 與小寫的聯絡人 id；`lockPointLedgers()` 先把聯絡人 id 轉成小寫，再去重、排序
+
 ## 4. 完成定義
 
 - [x] 4.1 `pnpm test:all` 通過；`tsc --noEmit`、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 通過，基準檔已更新

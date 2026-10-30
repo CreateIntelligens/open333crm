@@ -131,6 +131,30 @@ test('同一位粉絲同時送出兩次', async () => {
   assert.equal(await owner.pointTransaction.count({ where: { contactId: contact.id } }), 1);
 });
 
+test('同時送出時，活動 id 的大小寫不同', async () => {
+  const activity = await newActivity('PUBLISHED', { pointsPerSubmit: 5 });
+  const contact = await newContact('大寫送出');
+  const answers = { optionIds: [activity.options[0].id] };
+
+  const first = await pausedTx((scope) => submitActivity(scope, activity.id, contact.id, answers));
+  const second = submitActivityFlow(
+    { prisma: tenantDb, events: noDispatch },
+    { tenantId: T, contactId: contact.id },
+    activity.id.toUpperCase(),
+    answers,
+  );
+  second.catch(() => {});
+  try {
+    assert.equal(await blockedOrFinished(first.pid, second), 'blocked', 'id 大小寫不同仍是同一把鎖');
+  } finally {
+    first.release();
+  }
+  await first.done;
+
+  await assert.rejects(second, (err: { code?: string }) => err.code === 'ALREADY_SUBMITTED');
+  assert.equal(await owner.portalSubmission.count({ where: { contactId: contact.id } }), 1);
+});
+
 // ─── 2. 積分帳本 ────────────────────────────────────────────────────────────
 
 test('同時寫同一位聯絡人的積分', async () => {
@@ -148,6 +172,20 @@ test('同時寫同一位聯絡人的積分', async () => {
 
   const rows = await owner.pointTransaction.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: 'desc' } });
   assert.deepEqual(rows.map((r) => r.balance), [13, 10], '最新一筆是後寫入的那筆');
+});
+
+test('同時寫入時，聯絡人 id 的大小寫不同', async () => {
+  const contact = await newContact('大寫積分');
+  const first = await pausedTx((scope) => addPointTransaction(scope, { contactId: contact.id, amount: 10, type: 'admin_adjust' }));
+  const second = addPointTransactionFlow(deps, T, { contactId: contact.id.toUpperCase(), amount: 3, type: 'admin_adjust' });
+  second.catch(() => {});
+  try {
+    assert.equal(await blockedOrFinished(first.pid, second), 'blocked', 'id 大小寫不同仍是同一把鎖');
+  } finally {
+    first.release();
+  }
+  await first.done;
+  assert.equal((await second).balance, 13);
 });
 
 test('同一毫秒內連續寫入', async () => {

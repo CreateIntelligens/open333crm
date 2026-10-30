@@ -43,6 +43,11 @@
 - **WHEN** 粉絲的第一次送出還沒 commit，第二次送出開始
 - **THEN** 第二次等第一次 commit 之後才檢查，回 `ALREADY_SUBMITTED`；這位粉絲只有一筆作答與一筆積分紀錄
 
+#### Scenario: 同時送出時，活動 id 的大小寫不同
+
+- **WHEN** 粉絲的第一次送出還沒 commit，第二次以大寫的活動 id 送出同一個活動
+- **THEN** 第二次仍等第一次 commit 之後才檢查，回 `ALREADY_SUBMITTED`；這位粉絲只有一筆作答
+
 ### Requirement: 積分帳本的餘額依序累計
 
 每一筆積分紀錄的 `balance` MUST 等於同一位聯絡人前一筆紀錄的 `balance` 加上這筆的 `amount`。目前餘額是 `createdAt` 最新的一筆。同時寫入同一位聯絡人的積分時，後一筆 MUST 以前一筆 commit 之後的餘額計算。新的一筆 MUST 排在既有紀錄之後，即使寫入時間落在同一毫秒。這條規則適用於送出活動給點、後台調整、聯絡人合併與解除合併轉移積分。
@@ -51,6 +56,11 @@
 
 - **WHEN** 加 10 點還沒 commit 時，另一個交易加 3 點
 - **THEN** 後一筆等前一筆 commit 之後才讀餘額；最新一筆的 `balance` 是 13，前一筆是 10
+
+#### Scenario: 同時寫入時，聯絡人 id 的大小寫不同
+
+- **WHEN** 加 10 點還沒 commit 時，另一個交易以大寫的聯絡人 id 加 3 點
+- **THEN** 後一筆仍等前一筆 commit 之後才讀餘額，`balance` 是 13
 
 #### Scenario: 同一毫秒內連續寫入
 

@@ -309,8 +309,9 @@ export async function submitActivity(
   const allowMultiple = settings.allowMultiple ?? false;
   if (!allowMultiple) {
     // 先鎖「活動＋聯絡人」再查：同一位粉絲同時送出時，後一次等前一次 commit 後才查得到它的作答。
-    // 不鎖活動列，否則所有粉絲的送出都要排隊
-    await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`portal-submit:${activityId}:${contactId}`}, 0))`;
+    // 不鎖活動列，否則所有粉絲的送出都要排隊。
+    // 鎖鍵是字串，uuid 的大小寫不同就是另一把鎖：活動 id 用資料庫回傳的值，聯絡人 id 轉成小寫
+    await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`portal-submit:${activity.id}:${contactId.toLowerCase()}`}, 0))`;
     const existing = await prisma.portalSubmission.findFirst({
       where: { activityId, contactId },
     });

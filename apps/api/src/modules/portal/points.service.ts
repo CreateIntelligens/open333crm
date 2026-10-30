@@ -12,9 +12,10 @@ import type { TenantCtx } from '../../lib/tenant-ctx.js';
  * 同時寫入同一位聯絡人時，後一筆等前一筆 commit 後才讀得到它的餘額，不會兩筆都以同一個餘額計算。
  * 同時鎖多位聯絡人時依 id 排序，避免「A 轉 B」與「B 轉 A」同時進行時互相等待而死結。
  * 同一個交易重複鎖同一位聯絡人不會卡住。
+ * 鎖鍵是字串，uuid 的大小寫不同就是另一把鎖，所以先轉成小寫再去重、排序。
  */
 export async function lockPointLedgers(ctx: TenantCtx, contactIds: string[]): Promise<void> {
-  for (const contactId of [...new Set(contactIds)].sort()) {
+  for (const contactId of [...new Set(contactIds.map((id) => id.toLowerCase()))].sort()) {
     await ctx.tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`point-ledger:${contactId}`}, 0))`;
   }
 }
