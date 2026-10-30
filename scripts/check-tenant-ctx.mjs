@@ -61,13 +61,15 @@ const PATTERNS = [
   { name: 'service 內的 withTenant(', re: /\bwithTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 $transaction(', re: /\$transaction\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 inTenant(', re: /\binTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
-  // Redis：core 的 redis singleton 或 namespace，或 ioredis 的任何值 import
+  // Redis：core 的 redis singleton 或 namespace、ioredis 的任何值 import，或 API 共用的連線（lib/redis-client.js）
   {
     name: 'service 直接 import Redis client',
     count: (sf) =>
       moduleRefs(sf).filter(
         ({ from, names, whole }) =>
-          from === 'ioredis' || (from === '@open333crm/core' && (whole || names.includes('redis'))),
+          from === 'ioredis' ||
+          /(?:^|\/)lib\/redis-client\.js$/.test(from) ||
+          (from === '@open333crm/core' && (whole || names.includes('redis'))),
       ).length,
     applies: isServiceFile,
   },

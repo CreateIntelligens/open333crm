@@ -9,8 +9,7 @@
  * 計數的是每次嘗試（成功時清除）；清除剛好遇到 Redis 出錯時，計數會留到區間結束。
  */
 import crypto from 'node:crypto';
-import IORedis from 'ioredis';
-import { getConfig } from '../../config/env.js';
+import { getSharedRedis } from '../../lib/redis-client.js';
 
 export const LOGIN_MAX_FAILURES = 5;
 export const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
@@ -55,8 +54,6 @@ export async function clearLoginAttempts(store: LoginAttemptStore, email: string
   await store.getdel(failureKey(email));
 }
 
-let redisClient: IORedis | undefined;
 export function getLoginAttemptStore(): LoginAttemptStore {
-  redisClient ??= new IORedis(getConfig().REDIS_URL, { maxRetriesPerRequest: 2 });
-  return redisClient as unknown as LoginAttemptStore;
+  return getSharedRedis() as unknown as LoginAttemptStore;
 }

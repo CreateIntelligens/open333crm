@@ -10,9 +10,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import IORedis from 'ioredis';
 import { logger } from '@open333crm/core';
-import { getConfig } from '../../config/env.js';
+import { getSharedRedis } from '../../lib/redis-client.js';
 
 const LOOP_GUARD_TTL_SECONDS = 86400; // 1 day: dedup window for loop breaking; keys auto-expire
 const KEY_PREFIX = 'downstream-webhook:seen';
@@ -28,15 +27,8 @@ export interface LoopGuardStore {
   ): Promise<'OK' | null>;
 }
 
-let redisClient: IORedis | null = null;
-function getRedis(): IORedis {
-  if (!redisClient) {
-    redisClient = new IORedis(getConfig().REDIS_URL, { maxRetriesPerRequest: 2 });
-    redisClient.on('error', (err: Error) =>
-      logger.warn('[DownstreamLoopGuard] Redis error', { error: err?.message }),
-    );
-  }
-  return redisClient;
+function getRedis(): LoopGuardStore {
+  return getSharedRedis();
 }
 
 /**
