@@ -1,7 +1,7 @@
 # portal-activity Specification
 
 ## Purpose
-粉絲活動與積分的保證：送出活動時作答、積分與事件一起成立；不允許重複參加的活動，每位粉絲只留下一筆作答；積分帳本的餘額依序累計；後台只能調整本租戶聯絡人的積分；抽獎不重複抽出；活動的編輯與狀態轉換依序執行。這些保證在同時操作時也成立。
+粉絲活動與積分的保證：送出活動時作答、積分與事件一起成立；不允許重複參加的活動，每位粉絲只留下一筆作答；活動設定在入口驗證，不合法的舊值採用安全的預設值；積分帳本的餘額依序累計；後台只能調整本租戶聯絡人的積分；抽獎不重複抽出；活動的編輯與狀態轉換依序執行。這些保證在同時操作時也成立。
 
 ## Requirements
 
@@ -52,6 +52,20 @@
 
 - **WHEN** 粉絲的第一次送出還沒 commit，第二次以大寫的活動 id 送出同一個活動
 - **THEN** 第二次仍等第一次 commit 之後才檢查，回 `ALREADY_SUBMITTED`；這位粉絲只有一筆作答
+
+### Requirement: 活動設定在入口驗證，不合法的舊值採用安全的預設值
+
+建立或編輯活動時，`settings.pointsPerSubmit` MUST 是 0 以上、可存進 Int 欄位的整數，`settings.allowMultiple` MUST 是布林值；不合法時，系統 MUST 回 400 `VALIDATION_ERROR`，MUST NOT 儲存。`settings` 的其他欄位照舊儲存。已經存在資料庫的設定不合法時，粉絲送出 MUST 仍然成功，系統 MUST NOT 給積分，也 MUST NOT 扣積分。
+
+#### Scenario: 活動設定不合法時，建立與編輯都回 400
+
+- **WHEN** 成員建立或編輯活動，`pointsPerSubmit` 是 -5、字串 `"5"`、1.5 或超過 Int 上限，或 `allowMultiple` 是字串 `"false"`
+- **THEN** 系統回 400 `VALIDATION_ERROR`，活動沒有建立，設定沒有改變
+
+#### Scenario: 舊資料的積分設定不合法時，送出成功但不給積分
+
+- **WHEN** 資料庫裡活動的 `pointsPerSubmit` 是 -5、字串 `"5"` 或 1.5，粉絲送出這個活動
+- **THEN** 送出成功，作答的 `pointsEarned` 是 0，這位粉絲沒有積分紀錄
 
 ### Requirement: 積分帳本的餘額依序累計
 

@@ -25,6 +25,7 @@ import { actorOf } from '../../lib/request-actor.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 import { z } from 'zod/v3';
 import { int4Schema } from '../../shared/utils/numeric-bounds.js';
+import { activitySettingsSchema } from './portal-settings.js';
 
 // 積分調整：允許負數（扣點），但必須是能存進 Int 欄位的整數。
 // 小數不做無條件捨去而是直接擋下——靜默改動使用者輸入的數字，
@@ -66,7 +67,7 @@ const createActivitySchema = z.object({
   title: z.string().trim().min(1, '活動標題不可為空白').max(200, '活動標題不可超過 200 字'),
   description: z.string().trim().max(5000, '活動說明不可超過 5000 字').optional(),
   coverImage: z.string().trim().max(2048).optional(),
-  settings: z.record(z.unknown()).optional(),
+  settings: activitySettingsSchema.optional(),
   startsAt: z.coerce.date({ errorMap: () => ({ message: '開始時間格式不正確' }) }).nullish(),
   endsAt: z.coerce.date({ errorMap: () => ({ message: '結束時間格式不正確' }) }).nullish(),
   options: z.array(activityOptionSchema).optional(),

@@ -324,8 +324,13 @@ test('第二次送出被拒絕，不再給積分', async () => {
   assert.equal((await fan(appA, contact.id, 'GET', '/me/points')).json().data.balance, 2);
 });
 
+/** 直接把設定寫進資料庫，模擬入口驗證之前存進去的舊資料 */
+const storeLegacySettings = (activityId: string, settings: Record<string, unknown>) =>
+  owner.portalActivity.update({ where: { id: activityId }, data: { settings: settings as never } });
+
 test('allowMultiple 不是 true 時只能參加一次：字串 "false" 也不允許重複', async () => {
-  const activity = await publishedPoll({ allowMultiple: 'false' });
+  const activity = await publishedPoll();
+  await storeLegacySettings(activity.id, { allowMultiple: 'false' });
   const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-字串設定` } });
   const url = `/activities/${activity.id}/submit`;
   assert.equal((await fan(appA, contact.id, 'POST', url, { optionIds: [activity.options[0].id] })).statusCode, 200);
@@ -334,6 +339,46 @@ test('allowMultiple 不是 true 時只能參加一次：字串 "false" 也不允
   assert.equal(again.statusCode, 400, again.body);
   assert.equal(again.json().error.message, '您已參加過這個活動');
   assert.equal(await owner.portalSubmission.count({ where: { contactId: contact.id } }), 1);
+});
+
+test('活動設定不合法時，建立與編輯都回 400', async () => {
+  const draft = (await admin(appA, 'POST', '/activities', { type: 'POLL', title: `${MARK}-設定` })).json().data.id as string;
+  for (const settings of [
+    { pointsPerSubmit: -5 },
+    { pointsPerSubmit: '5' },
+    { pointsPerSubmit: 1.5 },
+    { pointsPerSubmit: 2_147_483_648 },
+    { allowMultiple: 'false' },
+  ]) {
+    const created = await admin(appA, 'POST', '/activities', { type: 'POLL', title: `${MARK}-不合法`, settings });
+    assert.equal(created.statusCode, 400, `建立 ${JSON.stringify(settings)}: ${created.body}`);
+    assert.equal(created.json().error.code, 'VALIDATION_ERROR');
+    const patched = await admin(appA, 'PATCH', `/activities/${draft}`, { settings });
+    assert.equal(patched.statusCode, 400, `編輯 ${JSON.stringify(settings)}: ${patched.body}`);
+    assert.equal(patched.json().error.code, 'VALIDATION_ERROR');
+  }
+  assert.equal(
+    await owner.portalActivity.count({ where: { tenantId: A, title: `${MARK}-不合法` } }),
+    0,
+    '不合法的設定沒有存進去',
+  );
+
+  const ok = await admin(appA, 'PATCH', `/activities/${draft}`, { settings: { pointsPerSubmit: 3, allowMultiple: true, theme: 'dark' } });
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.deepEqual(ok.json().data.settings, { pointsPerSubmit: 3, allowMultiple: true, theme: 'dark' }, '其他欄位照舊存起來');
+});
+
+test('舊資料的積分設定不合法時，送出成功但不給積分', async () => {
+  for (const pointsPerSubmit of [-5, '5', 1.5]) {
+    const activity = await publishedPoll();
+    await storeLegacySettings(activity.id, { pointsPerSubmit });
+    const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-舊設定` } });
+
+    const res = await fan(appA, contact.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
+    assert.equal(res.statusCode, 200, `${JSON.stringify(pointsPerSubmit)}: ${res.body}`);
+    assert.equal(res.json().data.pointsEarned, 0);
+    assert.equal(await owner.pointTransaction.count({ where: { contactId: contact.id } }), 0, '不給積分，也不扣積分');
+  }
 });
 
 test('沒有 fanToken 回 401', async () => {

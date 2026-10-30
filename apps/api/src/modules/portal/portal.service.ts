@@ -8,6 +8,7 @@
 import type { PortalSubmission, Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { addPointTransaction } from './points.service.js';
+import { readActivitySettings } from './portal-settings.js';
 import { AppError } from '../../shared/utils/response.js';
 
 // ─── Activity CRUD ──────────────────────────────────────────────────────────
@@ -305,9 +306,8 @@ export async function submitActivity(
   if (activity.endsAt && now > activity.endsAt) throw new AppError('活動已結束', 'ACTIVITY_ENDED', 409);
 
   // Check duplicate submission
-  const settings = activity.settings as Record<string, unknown>;
-  // 只有 true 才允許重複參加：settings 是任意 JSON，字串 "false" 這類值不能當成允許（主規格 portal-activity）
-  const allowMultiple = settings.allowMultiple === true;
+  // 設定不合法時採用安全的預設值：不允許重複參加、不給積分（portal-settings.ts）
+  const { allowMultiple, pointsPerSubmit } = readActivitySettings(activity.settings);
   if (!allowMultiple) {
     // 先鎖「活動＋聯絡人」再查：同一位粉絲同時送出時，後一次等前一次 commit 後才查得到它的作答。
     // 不鎖活動列，否則所有粉絲的送出都要排隊。
@@ -325,9 +325,6 @@ export async function submitActivity(
     const correctIds = new Set(activity.options.filter((o) => o.isCorrect).map((o) => o.id));
     score = answers.optionIds.filter((id) => correctIds.has(id)).length;
   }
-
-  // Award points
-  const pointsPerSubmit = (settings.pointsPerSubmit as number) ?? 0;
 
   const submission = await prisma.portalSubmission.create({
     data: {

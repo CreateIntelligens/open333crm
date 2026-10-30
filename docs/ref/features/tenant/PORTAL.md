@@ -60,6 +60,7 @@
 - 活動設定的 `allowMultiple` 不是 `true` 時，同一個聯絡人只能提交一次。資料庫沒有唯一限制：系統先以 advisory lock 鎖住「活動＋聯絡人」，再檢查有沒有提交過。同一個人同時送出兩次時，第二次等第一次 commit 之後才檢查，回「您已參加過這個活動」。檢查時不鎖活動列，所以不同粉絲的提交不必排隊。
 - 問答的分數是「選中的正確選項數」。選錯不扣分，因此全選的人會拿到滿分。
 - 活動設定了 `pointsPerSubmit` 時，每次提交自動加積分。
+- `settings` 裡的 `allowMultiple` 與 `pointsPerSubmit` 由 `portal-settings.ts` 定義：建立與編輯活動時，`allowMultiple` 要是布林值，`pointsPerSubmit` 要是 0 以上的整數，不合法回 400；其他欄位照舊儲存。資料庫裡已經存在的不合法值，提交時當成不允許重複參加、不給積分。
 - 每次提交發布 `portal.activity.submitted`。事件與提交、積分在同一個交易寫進 outbox，commit 之後才送出；三者其中一項寫不進去時一起 rollback。這個事件有送進自動化的 queue，但不在自動化規則的契約裡，規則編輯器選不到，見[自動化](./AUTOMATION.md#哪些事件能觸發規則)。
 
 正確答案（`PortalOption.isCorrect`）不會回給粉絲端。

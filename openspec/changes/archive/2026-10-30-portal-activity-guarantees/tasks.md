@@ -29,6 +29,8 @@
 
 - [x] 3.7 review-loop（第二次）第 1 輪：`submitActivity()` 以真假值判斷 `allowMultiple`，後台的 `settings` 接受任意 JSON，字串 `"false"` 會被當成允許重複參加。`portal-flow.test.ts` 新增「allowMultiple 不是 true 時只能參加一次：字串 "false" 也不允許重複」，在修正前失敗在斷言上。改為只有 `true` 才允許
 
+- [x] 3.8 review-loop（第二次）第 1 輪之後，停止條件 4：uuid 大小寫與 `allowMultiple: "false"` 同屬「換一種合法的寫法就繞過檢查」，根本原因是 `settings` 沒有驗證。另外發現前端擋不住負數的 `pointsPerSubmit`，每次送出會扣積分。使用者決定做法 A：新增 `portal-settings.ts`，入口以 `activitySettingsSchema` 驗證，service 以 `readActivitySettings()` 讀取；前端不送出負數。`portal-flow.test.ts` 新增「活動設定不合法時，建立與編輯都回 400」「舊資料的積分設定不合法時，送出成功但不給積分」，3.7 的測試改為直接寫入舊資料；`apps/web/tests/unit/components/portal/activity-form-dialog.test.tsx` 新增「每次提交積分輸入負數時，送出 0」。三個測試在修正前都失敗在斷言上
+
 ## 4. 完成定義
 
 - [x] 4.1 `pnpm test:all` 通過；`tsc --noEmit`、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 通過，基準檔已更新
