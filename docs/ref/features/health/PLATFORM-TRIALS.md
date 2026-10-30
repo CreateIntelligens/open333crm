@@ -18,10 +18,10 @@
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-PLATFORM-TRIALS-01 | P1 | **任何人都能改寫別人「待驗證」申請的密碼，取得對方的試用站台。** 同一 email 再送一次申請時，`requestTrial` 直接用新送的值覆寫 `passwordHash` 與 `siteName`，並寄一封新驗證信給該 email（舊連結失效）。申請人點最新那封信，租戶就以攻擊者的密碼開通。攻擊者知道 email 與密碼，可以登入這個站台的 ADMIN 帳號，看到申請人之後放進去的所有客戶資料；申請人自己的密碼反而登不進去。攻擊者也可以對從未申請的 email 先送申請，對方點信就落入同一個情況（搶先註冊） | **實測**（本機）：IP-1 以 `hc-platform-trials-a@example.test` / `Passw0rd!` 申請 → IP-2 用同一 email、密碼 `Attacker99!`、站台名稱 `…-attacker` 再申請（202）→ 第一封信的連結回 410 → 點第二封信開通成功 → `POST /auth/login`：`Passw0rd!` 401、`Attacker99!` 200。第二封信的主旨會帶攻擊者填的站台名稱，這是申請人唯一看得出異狀的地方 | `apps/api/src/modules/trial/trial.service.ts:87-101`（`existing` 分支覆寫 `siteName`、`passwordHash`）；`:200`（開通沿用 `signupRow.passwordHash`） | 新 |
-| HC-PLATFORM-TRIALS-02 | P2 | 再送一次申請會繞過重寄節流。`/resend` 有「間隔 60 秒、最多 5 次」，`/signups` 遇到 pending 的申請卻每次都換 token 寄信，只受「每個 IP 每 10 分鐘 5 次」限制。換 IP 就能對任意信箱無限寄驗證信（以平台名義寄信轟炸，也會耗掉寄信額度與網域信譽）。違反主規格 `trial-application`「防枚舉統一回應」：pending 未過期 → 依節流規則重寄 | **實測**：7 個不同的 `X-Forwarded-For`，對 `hc-platform-trials-b@example.test` 連送 7 次申請，幾秒內 API log 有 7 封驗證信、`verifySentCount=7`；接著 `/resend` 兩次都沒有寄（節流正確）。同一 IP 第 6 次申請 429，正確 | `apps/api/src/modules/trial/trial.service.ts:87-118`；節流只在 `resendTrial`（`:131-135`） | 新 |
-| HC-PLATFORM-TRIALS-03 | P2 | `/admin/trial` 的操作都沒有錯誤處理：延長、轉正式、復原、重寄、作廢，失敗時畫面沒有任何訊息，錯誤成為未處理的 rejection。操作者會以為按了沒反應，或以為已經處理（例如以為已延長，客戶隔天仍被停用） | **實測**：Playwright 攔截 `PATCH /trial-tenants/*/extend` 回 500 → 按「延長」輸入 3 → 畫面無訊息，console 只有 `Request failed with status code 500`。其他操作讀程式，寫法相同 | `apps/web/src/app/admin/trial/page.tsx:88-123`；初始載入 `:59-75` 也沒有 catch | `saveSetting` 部分已在 TRIAL-02；其餘為新 |
-| HC-PLATFORM-TRIALS-04 | P2 | 申請與開通完全沒有自動測試。`trial-application` 的 9 個 scenario（總開關、關閉後仍可開通、防枚舉、gmail 別名、過期 token、重寄後舊連結失效、開通成功、中途失敗可重試、email 已被建走）都找不到測試，`trial.service.ts`、`email-normalizer.ts`、`trial.routes.ts` 沒有任何測試引用。HC-01、HC-02 就是在沒有測試的地方 | 讀程式：`git ls-files apps/*/tests` 搜尋 `requestTrial`、`verifyAndProvision`、`normalizeEmail`、`trial/signups` 都沒有結果 | `apps/api/src/modules/trial/trial.service.ts`、`apps/api/src/modules/trial/email-normalizer.ts` | 新 |
+| HC-PLATFORM-TRIALS-01 | P1 | **任何人都能改寫別人「待驗證」申請的密碼，取得對方的試用站台。** 同一 email 再送一次申請時，`requestTrial` 直接用新送的值覆寫 `passwordHash` 與 `siteName`，並寄一封新驗證信給該 email（舊連結失效）。申請人點最新那封信，租戶就以攻擊者的密碼開通。攻擊者知道 email 與密碼，可以登入這個站台的 ADMIN 帳號，看到申請人之後放進去的所有客戶資料；申請人自己的密碼反而登不進去。攻擊者也可以對從未申請的 email 先送申請，對方點信就落入同一個情況（搶先註冊） | **實測**（本機）：IP-1 以 `hc-platform-trials-a@example.test` / `Passw0rd!` 申請 → IP-2 用同一 email、密碼 `Attacker99!`、站台名稱 `…-attacker` 再申請（202）→ 第一封信的連結回 410 → 點第二封信開通成功 → `POST /auth/login`：`Passw0rd!` 401、`Attacker99!` 200。第二封信的主旨會帶攻擊者填的站台名稱，這是申請人唯一看得出異狀的地方 | `apps/api/src/modules/trial/trial.service.ts:87-101`（`existing` 分支覆寫 `siteName`、`passwordHash`）；`:200`（開通沿用 `signupRow.passwordHash`） | TRIAL-05 |
+| HC-PLATFORM-TRIALS-02 | P2 | 再送一次申請會繞過重寄節流。`/resend` 有「間隔 60 秒、最多 5 次」，`/signups` 遇到 pending 的申請卻每次都換 token 寄信，只受「每個 IP 每 10 分鐘 5 次」限制。換 IP 就能對任意信箱無限寄驗證信（以平台名義寄信轟炸，也會耗掉寄信額度與網域信譽）。違反主規格 `trial-application`「防枚舉統一回應」：pending 未過期 → 依節流規則重寄 | **實測**：7 個不同的 `X-Forwarded-For`，對 `hc-platform-trials-b@example.test` 連送 7 次申請，幾秒內 API log 有 7 封驗證信、`verifySentCount=7`；接著 `/resend` 兩次都沒有寄（節流正確）。同一 IP 第 6 次申請 429，正確 | `apps/api/src/modules/trial/trial.service.ts:87-118`；節流只在 `resendTrial`（`:131-135`） | TRIAL-06 |
+| HC-PLATFORM-TRIALS-03 | P2 | `/admin/trial` 的操作都沒有錯誤處理：延長、轉正式、復原、重寄、作廢，失敗時畫面沒有任何訊息，錯誤成為未處理的 rejection。操作者會以為按了沒反應，或以為已經處理（例如以為已延長，客戶隔天仍被停用） | **實測**：Playwright 攔截 `PATCH /trial-tenants/*/extend` 回 500 → 按「延長」輸入 3 → 畫面無訊息，console 只有 `Request failed with status code 500`。其他操作讀程式，寫法相同 | `apps/web/src/app/admin/trial/page.tsx:88-123`；初始載入 `:59-75` 也沒有 catch | APP-11（`saveSetting` 部分在 TRIAL-02） |
+| HC-PLATFORM-TRIALS-04 | P2 | 申請與開通完全沒有自動測試。`trial-application` 的 9 個 scenario（總開關、關閉後仍可開通、防枚舉、gmail 別名、過期 token、重寄後舊連結失效、開通成功、中途失敗可重試、email 已被建走）都找不到測試，`trial.service.ts`、`email-normalizer.ts`、`trial.routes.ts` 沒有任何測試引用。HC-01、HC-02 就是在沒有測試的地方 | 讀程式：`git ls-files apps/*/tests` 搜尋 `requestTrial`、`verifyAndProvision`、`normalizeEmail`、`trial/signups` 都沒有結果 | `apps/api/src/modules/trial/trial.service.ts`、`apps/api/src/modules/trial/email-normalizer.ts` | CI-04 |
 | TRIAL-04 | P3 | 租戶頁「啟用」已到期的試用租戶，下一輪排程又停用並重寄到期信 | **實測**：`hc-platform-trials-A-attacker` 到期停用 → `PATCH /tenants/:id/active {isActive:true}` → 執行 `runTrialLifecycle` → 又變停用，API log 多一封「試用已到期」，稽核多一筆 `tenant.trial.expire` | 見 AUDIT | TRIAL-04（仍存在） |
 | SEC-02 | P3 | 平台「重寄驗證信」沒有寫稽核 | **實測**：`POST /trial-signups/:id/resend` 200，`platform_audit_logs` 沒有新紀錄；「作廢」有 `trial.signup.fail` | 見 AUDIT | SEC-02（仍存在） |
 | TRIAL-03 | P2 | 保留期滿只標記 `purgedAt`，不刪資料 | **實測**：保留期滿的 `hc-platform-trials-C` 被標記 `purgedAt` 並寫 `tenant.trial.purge`，業務資料不變 | 見 AUDIT | TRIAL-03（仍存在） |
@@ -36,8 +36,8 @@
 | HC-PLATFORM-TRIALS-13 | P3 | 平台「作廢」的申請不是終止：申請人再送一次申請，`requestTrial` 把 `failed` 改回 `pending_verification` 並寄新驗證信。驗證頁對已作廢的連結也顯示「請重新申請」。如果作廢是為了擋濫用，擋不住 | 讀程式（作廢後的連結回 410 為實測） | `apps/api/src/modules/trial/trial.service.ts:87-101`（註解寫明「pending（或 failed）」）；`trial-admin.service.ts:189-199` | 新 |
 | HC-PLATFORM-TRIALS-14 | P3 | email 正規化與主規格不一致：規格寫 gmail 才移除 `+tag`，程式對所有網域都移除。`a+x@corp.com` 申請過之後，`a@corp.com` 會被靜默擋下（202 但不寄信）。gmail 別名再送申請時，驗證信寄到新寫的別名，站台名稱被覆寫（同 HC-01） | **實測**：`hc.platform.trials.g@gmail.com` 申請後，`hcplatformtrialsg+demo@googlemail.com` 申請 → 同一筆記錄、`siteName` 變成第二次填的值，驗證信寄到 `…+demo@googlemail.com`。非 gmail 網域讀程式 | `apps/api/src/modules/trial/email-normalizer.ts:17-19`；規格 `openspec/specs/trial-application/spec.md`「一個 email 只能申請一次」 | 新 |
 | HC-PLATFORM-TRIALS-15 | P3 | 轉正式的方案選單寫死 4 個 slug（`light`、`standard`、`professional`、`enterprise`），不讀 `/plans`。平台新增的方案選不到，停售的方案仍可選，改了 slug 會 404 | 讀程式（與 HC-PLATFORM-TENANTS-10 相同問題） | `apps/web/src/app/admin/trial/page.tsx:36-42` | 新（與 PLAN-01 相關） |
-| HC-PLATFORM-TENANTS-05 | P2 | 手動開通預設「免費試用」方案但不設 `trialEndsAt`，這類租戶不會出現在 `/admin/trial` | 本次在 `/admin/trial` 確認：手動開通的租戶都不在清單上 | 見租戶管理報告 | 引用 |
-| HC-PLATFORM-TENANTS-01 | P1 | 停用的租戶仍收得到 WebChat 訊息。試用到期停用的租戶也一樣，違反 `trial-lifecycle`「到期停用」的「inbound 訊息被丟棄」 | 見租戶管理報告（實測） | 見租戶管理報告 | 引用 |
+| HC-PLATFORM-TENANTS-05 | P2 | 手動開通預設「免費試用」方案但不設 `trialEndsAt`，這類租戶不會出現在 `/admin/trial` | 本次在 `/admin/trial` 確認：手動開通的租戶都不在清單上 | 見租戶管理報告 | TRIAL-07（引用） |
+| HC-PLATFORM-TENANTS-01 | P1 | 停用的租戶仍收得到 WebChat 訊息。試用到期停用的租戶也一樣，違反 `trial-lifecycle`「到期停用」的「inbound 訊息被丟棄」 | 見租戶管理報告（實測） | 見租戶管理報告 | AUTH-11（引用） |
 
 ### 已確認正常（與文件一致）
 
@@ -103,7 +103,7 @@
 ## 待真機驗
 
 - 驗證信、開通信、提醒信、到期信在真實信箱的呈現與連結（需要 Resend，且不能寄到真實地址）。
-- UAT 的 `trial.enabled` 目前是否開啟：只能送申請或登入平台後台才看得出來，本次都沒有做。若已開啟，HC-01、HC-02 在正式環境可被利用。
+- ~~UAT 的 `trial.enabled` 目前是否開啟~~ **已確認**：主控 2026-10-30 以平台 API 唯讀查詢，UAT 的 `trial.enabled` 是 `true`（公開試用申請開放中），所以 HC-01、HC-02 在正式環境可被利用。
 - 正式環境的 `X-Forwarded-For` 鏈：本機 loopback 受信任，所以能用標頭換 IP；正式環境依 `apps/api/src/lib/trust-proxy.ts` 應只採 nginx 附加的值，未在 UAT 驗證。
 
 ## UAT 操作紀錄
