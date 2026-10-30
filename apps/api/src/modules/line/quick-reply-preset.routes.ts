@@ -8,13 +8,16 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import {
-  listPresets,
-  createPreset,
-  updatePreset,
-  deletePreset,
-} from './quick-reply-preset.service.js';
+  listPresetsFlow,
+  createPresetFlow,
+  updatePresetFlow,
+  deletePresetFlow,
+} from './quick-reply-preset.flow.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { actorOf } from '../../lib/request-actor.js';
+
+const idParams = z.object({ id: z.string().uuid('預設組識別格式不正確') });
 
 const itemSchema = z.object({
   label: z.string().min(1).max(20),
@@ -37,41 +40,34 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/line/quick-reply-presets — 任何登入 agent 可讀
   fastify.get('/', async (request, reply) => {
-    const list = await listPresets(request.tenantPrisma, request.agent.tenantId);
+    const list = await listPresetsFlow(fastify, actorOf(request).tenantId);
     return reply.send(success(list));
   });
 
   // 以下寫操作限 SUPERVISOR
   fastify.post('/', { preHandler: [requirePermission('quickreply.manage')] }, async (request, reply) => {
     const data = createSchema.parse(request.body);
-    const preset = await createPreset(request.tenantPrisma, request.agent.tenantId, data);
+    const preset = await createPresetFlow(fastify, actorOf(request).tenantId, data);
     return reply.code(201).send(success(preset));
   });
 
-  fastify.patch<{ Params: { id: string } }>(
+  fastify.patch(
     '/:id',
     { preHandler: [requirePermission('quickreply.manage')] },
     async (request, reply) => {
+      const { id } = idParams.parse(request.params);
       const data = updateSchema.parse(request.body);
-      const preset = await updatePreset(
-        request.tenantPrisma,
-        request.params.id,
-        request.agent.tenantId,
-        data,
-      );
+      const preset = await updatePresetFlow(fastify, actorOf(request).tenantId, id, data);
       return reply.send(success(preset));
     },
   );
 
-  fastify.delete<{ Params: { id: string } }>(
+  fastify.delete(
     '/:id',
     { preHandler: [requirePermission('quickreply.manage')] },
     async (request, reply) => {
-      const result = await deletePreset(
-        request.tenantPrisma,
-        request.params.id,
-        request.agent.tenantId,
-      );
+      const { id } = idParams.parse(request.params);
+      const result = await deletePresetFlow(fastify, actorOf(request).tenantId, id);
       return reply.send(success(result));
     },
   );

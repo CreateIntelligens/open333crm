@@ -9,7 +9,7 @@
 
 | 模組 | 行程 | 負責什麼 |
 | --- | --- | --- |
-| `automation` 的 `automation.routes.ts`、`automation.service.ts` | API | 規則的 CRUD、試跑、執行紀錄查詢 |
+| `automation` 的 `automation.routes.ts`、`automation.flow.ts`、`automation.service.ts` | API | 規則的 CRUD、試跑、執行紀錄查詢。每個請求在 flow 開的一個租戶交易內完成 |
 | `automation` 的 `automation.worker.ts` | API | 處理 `event-automation` 佇列的事件，把事件送進 `automation` queue。這個檔案同時負責機器人回覆，見[收件匣與對話](./INBOX.md#機器人什麼時候回覆) |
 | `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作。處理 `message.received` 時，一併比對關鍵字規則 |
 | `packages/automation` | 兩邊共用 | 規則契約（事件、事實、動作的定義）與規則引擎 |
@@ -146,9 +146,8 @@ AI 是否讓步的判斷也呼叫 `matchKeywordTrigger()`，所以兩邊對同�
 
 | 路由 | 權限 |
 | --- | --- |
-| `GET /automation/rules`、`GET /rules/:id` | `automation.view` |
+| `GET /automation/rules`、`GET /rules/:id`、`POST /rules/:id/test`、`GET /automation/logs` | `automation.view` |
 | `POST`、`PATCH`、`DELETE /automation/rules` | `automation.manage` |
-| `POST /automation/rules/:id/test`、`GET /automation/logs` | 只驗登入 |
 
 關鍵字回覆頁呼叫的是同一組路由，因此管理關鍵字回覆也需要 `automation.manage`。側欄的「渠道」選單另外要求 `richmenu.manage` 才顯示。
 

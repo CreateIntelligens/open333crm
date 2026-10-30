@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { listRules } from '#src/modules/automation/automation.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 test('Rules share priority and creation time：依 priority、createdAt、id 排序', async () => {
   let orderBy: unknown;
@@ -18,6 +19,6 @@ test('Rules share priority and creation time：依 priority、createdAt、id 排
       count: async () => 0,
     },
   };
-  await listRules(prisma as never, 'tenant-1', {}, { page: 2, limit: 100 });
+  await listRules(createMockTenantCtx(prisma as never, 'tenant-1').ctx, {}, { page: 2, limit: 100 });
   assert.deepEqual(orderBy, [{ priority: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]);
 });

@@ -13,6 +13,7 @@ import {
   getAutomationActionOptionsForEvent,
   validateAutomationRuleContract,
 } from '@open333crm/automation';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const EVENT = AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED;
 const RETIRED = ['assign_bot', 'kb_auto_reply', 'llm_reply'];
@@ -64,11 +65,11 @@ test('Disabling a rule that contains an unsupported action：只改啟用狀態�
       },
     },
   } as never;
-  await updateRule(prisma, 'r1', 't1', { isActive: false });
-  await updateRule(prisma, 'r1', 't1', { name: '改名' });
+  await updateRule(createMockTenantCtx(prisma, 't1').ctx, 'r1', { isActive: false });
+  await updateRule(createMockTenantCtx(prisma, 't1').ctx, 'r1', { name: '改名' });
   assert.equal(updates.length, 2);
   await assert.rejects(
-    () => updateRule(prisma, 'r1', 't1', { actions: [{ type: 'llm_reply', params: {} }] }),
+    () => updateRule(createMockTenantCtx(prisma, 't1').ctx, 'r1', { actions: [{ type: 'llm_reply', params: {} }] }),
     /已停用/,
   );
 });

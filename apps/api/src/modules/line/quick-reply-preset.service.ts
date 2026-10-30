@@ -1,10 +1,11 @@
 /**
  * Quick Reply Preset service — 客服可重用的快速回覆按鈕組。
  * Tenant-scoped；不綁定特定 channel（所有 LINE channel 共用同一組 preset）。
+ * 每個函式在呼叫端（quick-reply-preset.flow.ts）開的租戶交易內執行（AGENTS.md 結構規則 2）。
  */
 
-import type { PrismaClient, Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { Prisma } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 
 export interface QuickReplyItem {
@@ -58,27 +59,23 @@ function validateName(name: string): void {
   }
 }
 
-export async function listPresets(prisma: TenantDb, tenantId: string) {
-  return prisma.quickReplyPreset.findMany({
+export async function listPresets({ tx, tenantId }: TenantCtx) {
+  return tx.quickReplyPreset.findMany({
     where: { tenantId, isActive: true },
     orderBy: { createdAt: 'desc' },
   });
 }
 
-export async function getPreset(prisma: TenantDb, id: string, tenantId: string) {
-  const preset = await prisma.quickReplyPreset.findFirst({ where: { id, tenantId } });
+export async function getPreset({ tx, tenantId }: TenantCtx, id: string) {
+  const preset = await tx.quickReplyPreset.findFirst({ where: { id, tenantId } });
   if (!preset) throw new AppError('預設組不存在', 'NOT_FOUND', 404);
   return preset;
 }
 
-export async function createPreset(
-  prisma: TenantDb,
-  tenantId: string,
-  input: CreatePresetInput,
-) {
+export async function createPreset({ tx, tenantId }: TenantCtx, input: CreatePresetInput) {
   validateName(input.name);
   validateItems(input.items);
-  return prisma.quickReplyPreset.create({
+  return tx.quickReplyPreset.create({
     data: {
       tenantId,
       name: input.name.trim(),
@@ -87,13 +84,8 @@ export async function createPreset(
   });
 }
 
-export async function updatePreset(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-  input: UpdatePresetInput,
-) {
-  await getPreset(prisma, id, tenantId);
+export async function updatePreset(ctx: TenantCtx, id: string, input: UpdatePresetInput) {
+  await getPreset(ctx, id);
   if (input.name !== undefined) validateName(input.name);
   if (input.items !== undefined) validateItems(input.items);
 
@@ -102,11 +94,11 @@ export async function updatePreset(
   if (input.items !== undefined) data.items = input.items as unknown as Prisma.InputJsonValue;
   if (input.isActive !== undefined) data.isActive = input.isActive;
 
-  return prisma.quickReplyPreset.update({ where: { id }, data });
+  return ctx.tx.quickReplyPreset.update({ where: { id }, data });
 }
 
-export async function deletePreset(prisma: TenantDb, id: string, tenantId: string) {
-  await getPreset(prisma, id, tenantId);
-  await prisma.quickReplyPreset.delete({ where: { id } });
+export async function deletePreset(ctx: TenantCtx, id: string) {
+  await getPreset(ctx, id);
+  await ctx.tx.quickReplyPreset.delete({ where: { id } });
   return { deleted: true };
 }

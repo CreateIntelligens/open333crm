@@ -8,18 +8,21 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import {
-  listRules,
-  getRule,
-  createRule,
-  updateRule,
-  deleteRule,
-  testRule,
-  listLogs,
-} from './automation.service.js';
+  listRulesFlow,
+  getRuleFlow,
+  createRuleFlow,
+  updateRuleFlow,
+  deleteRuleFlow,
+  testRuleFlow,
+  listLogsFlow,
+} from './automation.flow.js';
 import { success, paginated } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { actorOf } from '../../lib/request-actor.js';
 
 // ── Validation schemas ──────────────────────────────────────────────────────
+
+const idParams = z.object({ id: z.string().uuid('規則識別格式不正確') });
 
 const listQuerySchema = z.object({
   isActive: z
@@ -133,12 +136,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
-    const { rules, total } = await listRules(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      filters,
-      { page, limit },
-    );
+    const { rules, total } = await listRulesFlow(fastify, actorOf(request).tenantId, filters, { page, limit });
 
     return reply.send(paginated(rules, total, page, limit));
   });
@@ -147,76 +145,53 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   fastify.post('/rules', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
     const data = createRuleSchema.parse(request.body);
 
-    const rule = await createRule(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      data,
-    );
+    const rule = await createRuleFlow(fastify, actorOf(request).tenantId, data);
 
     return reply.status(201).send(success(rule));
   });
 
   // ── GET /api/v1/automation/rules/:id ────────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
-    const rule = await getRule(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+  fastify.get('/rules/:id', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const rule = await getRuleFlow(fastify, actorOf(request).tenantId, id);
 
     return reply.send(success(rule));
   });
 
   // ── PATCH /api/v1/automation/rules/:id ──────────────────────────────────
-  fastify.patch<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
+  fastify.patch('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
+    const { id } = idParams.parse(request.params);
     const data = updateRuleSchema.parse(request.body);
 
-    const rule = await updateRule(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-      data,
-    );
+    const rule = await updateRuleFlow(fastify, actorOf(request).tenantId, id, data);
 
     return reply.send(success(rule));
   });
 
   // ── DELETE /api/v1/automation/rules/:id ─────────────────────────────────
-  fastify.delete<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
-    const rule = await deleteRule(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+  fastify.delete('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const rule = await deleteRuleFlow(fastify, actorOf(request).tenantId, id);
 
     return reply.send(success(rule));
   });
 
   // ── POST /api/v1/automation/rules/:id/test ──────────────────────────────
-  fastify.post<{ Params: { id: string } }>('/rules/:id/test', async (request, reply) => {
+  fastify.post('/rules/:id/test', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
+    const { id } = idParams.parse(request.params);
     const data = testRuleSchema.parse(request.body);
 
-    const result = await testRule(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      request.params.id,
-      data.facts,
-    );
+    const result = await testRuleFlow(fastify, actorOf(request).tenantId, id, data.facts);
 
     return reply.send(success(result));
   });
 
   // ── GET /api/v1/automation/logs ─────────────────────────────────────────
-  fastify.get('/logs', async (request, reply) => {
+  fastify.get('/logs', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
     const query = logQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
-    const { logs, total } = await listLogs(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      { page, limit },
-      filters,
-    );
+    const { logs, total } = await listLogsFlow(fastify, actorOf(request).tenantId, { page, limit }, filters);
 
     return reply.send(paginated(logs, total, page, limit));
   });
