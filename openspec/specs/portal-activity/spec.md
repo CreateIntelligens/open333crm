@@ -98,7 +98,7 @@
 #### Scenario: 發布還沒 commit 時編輯、刪除、封存或再發布一次
 
 - **WHEN** 草稿的發布還沒 commit 時，開始編輯、刪除、封存或再發布同一個活動
-- **THEN** 該操作等發布 commit 之後才檢查，回 `INVALID_ACTIVITY_STATUS`；活動維持已發布，選項沒有被換掉
+- **THEN** 該操作等發布 commit 之後才檢查，以 `INVALID_ACTIVITY_STATUS` 失敗；活動維持已發布，選項沒有被換掉。HTTP 回應沿用後台路由既有的錯誤處理：封存回 409 `INVALID_ACTIVITY_STATUS`，編輯、刪除、發布回 400 `BAD_REQUEST`
 
 #### Scenario: 編輯還沒 commit 時發布
 
