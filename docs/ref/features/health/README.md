@@ -4,7 +4,7 @@
 - 環境：本機（獨立資料庫 `open333crm_advisor`，寄信為 log 模式）＋ UAT Demo 租戶（以唯讀為主）
 - 範圍：25 個功能領域，每個領域一份報告，對應的 Skill 在 `.claude/skills/feature-<id>/SKILL.md`
 - 做法：規格、程式、前端入口三方對照；跑該領域的 unit 與 feature 測試；逐條實際操作前端流程（正向往返、錯誤案例、非 admin 角色）。步驟見 `.claude/agents/feature-health-checker.md`。
-- 健檢只記錄問題，沒有改程式。新問題編號 `HC-<領域>-NN`，尚未寫入 `docs/ref/system/AUDIT.md`。
+- 健檢只記錄問題，沒有改程式。新問題編號 `HC-<領域>-NN`；P1 與 P2 已寫入 `docs/ref/system/AUDIT.md`（新增 90 項，見 `docs/ref/system/AUDIT-REVIEWS.md` 2026-10-30 的紀錄），各報告的 AUDIT 欄是對應編號。P3 只留在健檢報告。
 
 本次跑過的自動測試全部通過，沒有失敗也沒有 skip。測試全綠，不代表下面的問題不存在：大部分問題落在沒有測試的情境。
 
@@ -16,7 +16,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 聯絡人與標籤 | [CONTACTS](CONTACTS.md) | 0 | 0 | 11 | 9 |
 | 行銷活動、素材與優惠券 | [MARKETING](MARKETING.md) | 0 | 4 | 13 | 14 |
-| 收件匣與對話 | [INBOX](INBOX.md) | 0 | 0 | 8 | 15 |
+| 收件匣與對話 | [INBOX](INBOX.md) | 0 | 1 | 7 | 15 |
 | 工單 | [CASES](CASES.md) | 0 | 0 | 14 | 15 |
 | 通知 | [NOTIFICATIONS](NOTIFICATIONS.md) | 0 | 0 | 7 | 9 |
 | 自動化規則 | [AUTOMATION](AUTOMATION.md) | 0 | 1 | 8 | 6 |
@@ -24,7 +24,7 @@
 | LINE 專屬功能 | [LINE](LINE.md) | 0 | 1 | 7 | 10 |
 | 會員入口 | [PORTAL](PORTAL.md) | 0 | 1 | 5 | 9 |
 | 短連結 | [SHORTLINKS](SHORTLINKS.md) | 0 | 0 | 3 | 10 |
-| 數據分析與報表 | [ANALYTICS](ANALYTICS.md) | 0 | 1 | 4 | 11 |
+| 數據分析與報表 | [ANALYTICS](ANALYTICS.md) | 0 | 3 | 2 | 11 |
 | 渠道管理 | [CHANNELS](CHANNELS.md) | 0 | 1 | 6 | 19 |
 | 成員、角色與權限 | [MEMBERS](MEMBERS.md) | 0 | 1 | 6 | 9 |
 | 租戶設定 | [SETTINGS](SETTINGS.md) | 0 | 1 | 5 | 11 |
@@ -36,47 +36,40 @@
 | 方案異動申請與審核 | [PLATFORM-PLAN-CHANGES](PLATFORM-PLAN-CHANGES.md) | 0 | 0 | 6 | 8 |
 | 用量統計與 AI 成本 | [PLATFORM-USAGE](PLATFORM-USAGE.md) | 0 | 0 | 4 | 7 |
 | 平台帳號管理 | [PLATFORM-USERS](PLATFORM-USERS.md) | 0 | 0 | 3 | 7 |
-| 平台設定 | [PLATFORM-SETTINGS](PLATFORM-SETTINGS.md) | 0 | 0 | 3 | 4 |
+| 平台設定 | [PLATFORM-SETTINGS](PLATFORM-SETTINGS.md) | 0 | 1 | 2 | 4 |
 | 試用申請與到期處理 | [PLATFORM-TRIALS](PLATFORM-TRIALS.md) | 0 | 2 | 5 | 13 |
 | 佇列監控 | [PLATFORM-QUEUE-MONITORING](PLATFORM-QUEUE-MONITORING.md) | 0 | 0 | 3 | 6 |
 
 ## P1 清單
 
-沒有 P0。以下 18 個是新發現的 P1（試用報告引用的 HC-PLATFORM-TENANTS-01 只算一次）。「驗證」欄寫明是實際操作重現，還是只讀程式。
+沒有 P0。以下 22 個是新發現的 P1，HC-ANALYTICS-01 已在 main 修正，其餘 21 個未修（試用報告引用的 HC-PLATFORM-TENANTS-01 只算一次）。最後 4 個原列 P2，2026-10-30 經使用者決定升為 P1。「驗證」欄寫明是實際操作重現，還是只讀程式。
 
-| 編號 | 問題 | 驗證 |
-| --- | --- | --- |
-| HC-MARKETING-01 | 沒有 `marketing.broadcast` 的人，建立帶排程時間的群發，到期照樣送出 | 本機實測 |
-| HC-MARKETING-02 | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 本機實測（發出 3 張） |
-| HC-MARKETING-03 | 群發不套用渠道可見範圍，分店帳號可對看不到的渠道群發 | 本機實測 |
-| HC-MARKETING-04 | WebChat 群發與批次發券顯示成功，顧客實際收不到 | 本機實測 |
-| HC-CHANNELS-01 | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
-| HC-MEMBERS-01 | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式 |
-| HC-GOVERNANCE-01 | 永久刪除成員後，他的稽核紀錄全部變成沒有操作者（`onDelete: SetNull`） | 本機實測 |
-| HC-PLATFORM-TENANTS-01 | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
-| HC-PLATFORM-TRIALS-01 | 同一 email 待驗證時再申請一次，會覆寫密碼，申請人點信後站台以他人密碼開通 | 本機實測 |
-| HC-PLATFORM-PLANS-01 | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容未確認 |
-| HC-LINE-01 | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗 |
-| HC-KNOWLEDGE-01 | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
-| HC-KNOWLEDGE-02 | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
-| HC-KNOWLEDGE-03 | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |
-| HC-AUTOMATION-01 | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測 |
-| HC-ANALYTICS-01 | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測 |
-| HC-PORTAL-01 | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測；main 仍存在 |
-| HC-SETTINGS-01 | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測 |
+| 編號 | AUDIT | 問題 | 驗證 |
+| --- | --- | --- | --- |
+| HC-MARKETING-01 | [MKT-02](../../system/AUDIT.md#mkt-02) | 沒有 `marketing.broadcast` 的人，建立帶排程時間的群發，到期照樣送出 | 本機實測 |
+| HC-MARKETING-02 | [MKT-03](../../system/AUDIT.md#mkt-03) | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 本機實測（發出 3 張） |
+| HC-MARKETING-03 | [MKT-04](../../system/AUDIT.md#mkt-04) | 群發不套用渠道可見範圍，分店帳號可對看不到的渠道群發 | 本機實測 |
+| HC-MARKETING-04 | [CHAN-02](../../system/AUDIT.md#chan-02) | WebChat 群發與批次發券顯示成功，顧客實際收不到 | 本機實測 |
+| HC-CHANNELS-01 | [RBAC-07](../../system/AUDIT.md#rbac-07) | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
+| HC-MEMBERS-01 | [RBAC-08](../../system/AUDIT.md#rbac-08) | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式 |
+| HC-GOVERNANCE-01 | [AUD-03](../../system/AUDIT.md#aud-03) | 永久刪除成員後，他的稽核紀錄全部變成沒有操作者（`onDelete: SetNull`） | 本機實測 |
+| HC-PLATFORM-TENANTS-01 | [AUTH-11](../../system/AUDIT.md#auth-11) | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
+| HC-PLATFORM-TRIALS-01 | [TRIAL-05](../../system/AUDIT.md#trial-05) | 同一 email 待驗證時再申請一次，會覆寫密碼，申請人點信後站台以他人密碼開通 | 本機實測；UAT 的 `trial.enabled` 為 true，正式環境可被利用 |
+| HC-PLATFORM-PLANS-01 | [PLAN-14](../../system/AUDIT.md#plan-14) | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容相同（2026-10-30 平台 API 唯讀確認） |
+| HC-LINE-01 | [CASE-03](../../system/AUDIT.md#case-03) | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗 |
+| HC-KNOWLEDGE-01 | [KB-01](../../system/AUDIT.md#kb-01) | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
+| HC-KNOWLEDGE-02 | [KB-02](../../system/AUDIT.md#kb-02) | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
+| HC-KNOWLEDGE-03 | [KB-03](../../system/AUDIT.md#kb-03) | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |
+| HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測 |
+| HC-ANALYTICS-01 | 未收錄 | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測；main 的 `093b7e75` 已修正 |
+| HC-PORTAL-01 | [PORTAL-03](../../system/AUDIT.md#portal-03) | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測；main 仍存在 |
+| HC-SETTINGS-01 | [HOURS-01](../../system/AUDIT.md#hours-01) | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測 |
+| HC-PLATFORM-SETTINGS-02 | [RLS-10](../../system/AUDIT.md#rls-10) | `rls_roles_and_grants` migration 把整個 schema 授權給 `app_tenant`：租戶連線能讀平台帳號的密碼雜湊、改價目表與其他租戶的平台設定。要先有注入點才能利用，但 RLS 少了一道防線 | 本機實測（交易內，已 ROLLBACK） |
+| HC-INBOX-01 | [CONV-04](../../system/AUDIT.md#conv-04) | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 本機與 UAT 實測 |
+| HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值 |
+| HC-ANALYTICS-04 | [ANA-03](../../system/AUDIT.md#ana-03) | 匯出 CSV 沒有跳脫，顧客暱稱含逗號會錯位、以 `=` 開頭會被 Excel 當公式 | 本機實測 |
 
 另外，AUDIT 既有的 P1 RBAC-02（agent 用 CLI 登入就能讀全租戶報表）在本機實測重現。
-
-## 建議升級的項目
-
-子代理列為 P2，主控建議升為 P1，請決定：
-
-| 編號 | 理由 |
-| --- | --- |
-| HC-PLATFORM-SETTINGS-02 | `rls_roles_and_grants` migration 把整個 schema 授權給 `app_tenant`：租戶連線能讀平台帳號的密碼雜湊、改價目表與其他租戶的平台設定。要先有注入點才能利用，但 RLS 少了一道防線 |
-| HC-INBOX-01 | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 |
-| HC-ANALYTICS-02 | 直接關閉的工單不寫 `resolvedAt`，SLA 達成率等主要 KPI 失真 |
-| HC-ANALYTICS-04 | 匯出 CSV 沒有跳脫，顧客暱稱以 `=` 開頭會被 Excel 當公式 |
 
 ## 跨領域的共同問題
 
@@ -91,13 +84,11 @@
 
 ## 需要決定的事
 
-1. 上面「建議升級的項目」。
-2. 聯絡人列表排除只有 WebChat 身分的客人（規格明訂；UAT Demo 170 位只列 27 位），要不要改。
-3. SLA 以日曆時間連續計算、不扣營業時間（HC-SLA-01），是產品決定還是缺陷。
-4. 「通知偏好、靜音」前後端都沒有，要不要排。
-5. UAT Demo 有一筆 2026-09-16 起待審的加購申請，擋住 Demo 新申請與 E2E，需要有人在平台後台處理。
-6. 有幾件要用平台帳號在 UAT 唯讀確認：試用申請是否開放（決定 HC-PLATFORM-TRIALS-01 能不能被利用）、方案內容是否與 seed 相同（HC-PLATFORM-PLANS-01）。
-7. 新問題要不要寫進 `docs/ref/system/AUDIT.md`。每份報告末尾都列了「建議新增到 AUDIT.md 的項目」與「文件過時之處」。
+1. 聯絡人列表排除只有 WebChat 身分的客人（規格明訂；UAT Demo 170 位只列 27 位），要不要改。
+2. SLA 以日曆時間連續計算、不扣營業時間（HC-SLA-01），是產品決定還是缺陷。
+3. 「通知偏好、靜音」前後端都沒有，要不要排。
+
+UAT Demo 有一筆 2026-09-16 起待審的加購申請，是 BD 在測試使用的，不要審核或清除。它會擋住 Demo 送出新的方案申請，相關 E2E（`cross-plan-request.spec.ts`）在 Demo 上跑不了。
 
 ## 待真機驗
 

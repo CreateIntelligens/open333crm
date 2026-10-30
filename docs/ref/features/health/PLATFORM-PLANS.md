@@ -7,7 +7,7 @@
   - 方案 `hc-platform-plans-a`（以 SQL 建立，因為沒有新增方案的 API）：`features` 依測試切換，`limits {maxAgents:2, maxChannels:1, maxTags:1, monthlyTokens:100}`、`allowedChannelTypes ["WEBCHAT"]`
   - 方案 `hc-platform-plans-b`：`features [inbox, marketing, core]`、`limits {maxAgents:5, maxTags:10, monthlyTokens:null}`
   - 租戶 `hc-platform-plans-T1`（`5bdbbb17-e740-413e-83df-c49f83d0a47c`，平台 API 開通），成員 hc-platform-plans-admin／-sup／-ag
-- UAT 平台後台：未登入。無法確定 UAT 平台帳號的密碼，依規定不登入，因此 UAT 的方案內容沒有核對。
+- UAT 平台後台：健檢時未登入。UAT 的方案內容由主控 2026-10-30 以平台 API 唯讀確認（`trial`、`light` 都不含 `channels`，與 seed 相同）。
 
 ## 摘要
 
@@ -21,8 +21,8 @@
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-PLATFORM-PLANS-01 | P1 | seed 的 `trial`（免費試用）與 `light`（輕量版）方案的 `features` 不含 `channels`。`channel.view`、`channel.create` 都屬於 `channels` feature，因此這兩個方案的租戶連管理員都看不到、也建不了任何渠道，接不了 LINE／FB／IG／WebChat。渠道頁把 403 顯示成「沒有渠道」，旁邊的「新增渠道」按下才 403 | **實測（本機）**：把自建方案設成與 `light` 相同的 `["inbox","core"]`，租戶管理員 `GET /channels` → 403 `requiredPermission: channel.view`；`/dashboard/settings/channels` 顯示「沒有渠道／新增您的第一個渠道」，但租戶實際有 2 個啟用中的渠道。**未確認** UAT 的方案內容是否與 seed 相同（未登入 UAT 平台後台） | `packages/database/prisma/seed.ts:31,38`、`packages/shared/src/rbac/permissions.ts:76-83` | 新 |
-| HC-PLATFORM-PLANS-02 | P2 | `/admin/plans` 同時編輯兩張方案卡片時，先儲存的那張會重載全部方案的狀態，另一張的數值輸入框（`defaultValue`，非受控）仍顯示新值。再儲存另一張時送出的是舊值，畫面卻顯示「已更新…該方案所有租戶即時生效」 | **實測（本機 Playwright）**：A 卡「客服人數」改成 7 不存 → 按 B 卡「儲存」→ A 卡輸入框仍顯示 7 → 按 A 卡「儲存」→ 綠色「已更新」，資料庫 `maxAgents` 仍是 1，重新整理顯示 1 | `apps/web/src/app/admin/plans/page.tsx:44-47,131-132,239` | 新 |
+| HC-PLATFORM-PLANS-01 | P1 | seed 的 `trial`（免費試用）與 `light`（輕量版）方案的 `features` 不含 `channels`。`channel.view`、`channel.create` 都屬於 `channels` feature，因此這兩個方案的租戶連管理員都看不到、也建不了任何渠道，接不了 LINE／FB／IG／WebChat。渠道頁把 403 顯示成「沒有渠道」，旁邊的「新增渠道」按下才 403 | **實測（本機）**：把自建方案設成與 `light` 相同的 `["inbox","core"]`，租戶管理員 `GET /channels` → 403 `requiredPermission: channel.view`；`/dashboard/settings/channels` 顯示「沒有渠道／新增您的第一個渠道」，但租戶實際有 2 個啟用中的渠道。**UAT 已確認**：主控 2026-10-30 以平台 API 唯讀查詢，UAT 的 `trial` 是 `["inbox","knowledge","core"]`、`light` 是 `["inbox","core"]`，兩者都不含 `channels`，與 seed 相同 | `packages/database/prisma/seed.ts:31,38`、`packages/shared/src/rbac/permissions.ts:76-83` | PLAN-14 |
+| HC-PLATFORM-PLANS-02 | P2 | `/admin/plans` 同時編輯兩張方案卡片時，先儲存的那張會重載全部方案的狀態，另一張的數值輸入框（`defaultValue`，非受控）仍顯示新值。再儲存另一張時送出的是舊值，畫面卻顯示「已更新…該方案所有租戶即時生效」 | **實測（本機 Playwright）**：A 卡「客服人數」改成 7 不存 → 按 B 卡「儲存」→ A 卡輸入框仍顯示 7 → 按 A 卡「儲存」→ 綠色「已更新」，資料庫 `maxAgents` 仍是 1，重新整理顯示 1 | `apps/web/src/app/admin/plans/page.tsx:44-47,131-132,239` | PLAN-15 |
 | HC-PLATFORM-PLANS-03 | P3 | 方案只能改不能增刪；`name`、`priceMonthly`、`isActive` 只有 API。AUDIT PLAN-01 寫「`/admin/plans` 也能切換」停售，與程式不符：頁面自 #145 起就沒有停售、名稱、月費的欄位 | **實測**：`/admin/plans` 卡片只有功能、上限、渠道類型與「儲存」；`PATCH /platform/plans/:id {"isActive":false}` 200。平台路由只有 `GET /plans`、`PATCH /plans/:id`；本次測試方案只能用 SQL 建立 | `apps/api/src/modules/platform/platform.routes.ts:249-261`、`apps/web/src/app/admin/plans/page.tsx:121-130` | PLAN-01（文字過時） |
 | HC-PLATFORM-PLANS-04 | P3 | 數值上限輸入用 `parseInt`：`1.5` 存成 1、`abc` 不更新卻顯示「已更新」、`-3` 被後端擋下但只顯示「儲存失敗」，而且失敗訊息與成功訊息同樣是綠底 | **實測（本機 Playwright）**：依序輸入 `1.5`、`abc`、`-3` 儲存，資料庫分別為 1、不變、不變；`-3` 的訊息顏色 `rgb(23,147,91)` | `apps/web/src/app/admin/plans/page.tsx:103-119,133-134,168-171` | 新 |
 | HC-PLATFORM-PLANS-05 | P3 | `updatePlanSchema` 驗證過寬：`name` 可為空字串、`priceMonthly` 接受負數且小數被截成整數、`features` 不驗 slug、`limits` 沒有 key 白名單（錯字 key 會把整份 `limits` 換掉，四項上限一起變無上限）、空主體 `{}` 回 200 並寫一筆空稽核；`:id` 不是 UUID 時回 400 `DATABASE_ERROR` | **實測（本機 API，對自建方案 B）**：`{"name":""}`、`{"priceMonthly":-100}`、`{"priceMonthly":1.5}`（存成 1）、`{"features":["nonexistent"]}`、`{"limits":{"bogusKey":5}}` 都回 200；`PATCH /plans/not-a-uuid` 回 400 `DATABASE_ERROR`。已改回原值 | `apps/api/src/modules/platform/platform.routes.ts:65-82` | PLAN-07（`{}` 的部分已記錄） |
@@ -74,7 +74,7 @@
 ## 待真機驗
 
 - 多個 API 行程時，平台換方案後其他行程最多 60 秒仍用舊方案（PLAN-03 第三點）。本機只有一個 API 行程。
-- UAT 的五個方案內容是否與 seed 相同，尤其 `trial`、`light` 是否含 `channels`（HC-PLATFORM-PLANS-01）。需要能登入 UAT 平台後台的人唯讀確認 `/admin/plans`。
+- ~~UAT 的五個方案內容是否與 seed 相同~~ **已確認**（主控 2026-10-30 唯讀查詢）：`trial` 是 `["inbox","knowledge","core"]`、`light` 是 `["inbox","core"]`，都不含 `channels`，HC-PLATFORM-PLANS-01 在 UAT 存在。
 - 實際 LLM 呼叫累加計數器、跨越 80%／100% 告警（需要平台 AI 金鑰與真實用量）。
 
 ## 環境與測試資料
@@ -86,7 +86,7 @@
 
 ## 建議新增到 AUDIT.md 的項目
 
-- HC-PLATFORM-PLANS-01：`trial`、`light` 方案不含 `channels`，租戶無法建立或查看渠道。先確認 UAT 方案內容；如果是刻意設計，平台與手冊要說明這兩個方案怎麼接渠道。
+- HC-PLATFORM-PLANS-01：`trial`、`light` 方案不含 `channels`，租戶無法建立或查看渠道。UAT 方案內容已確認相同；如果是刻意設計，平台與手冊要說明這兩個方案怎麼接渠道。
 - HC-PLATFORM-PLANS-02：方案頁跨卡片儲存送出舊值、卻顯示已更新（改成受控輸入，或儲存後只更新該卡）。
 - HC-PLATFORM-PLANS-05：`updatePlanSchema` 補 `limits` key 白名單、`name` 最小長度、`priceMonthly` 非負整數、`features` 驗 slug。
 - HC-PLATFORM-PLANS-07：額度告警的連結與收件人。

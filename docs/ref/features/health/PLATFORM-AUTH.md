@@ -19,7 +19,7 @@ P0：無。P1：無（RBAC-02 依 AUDIT 的嚴重度另列，見下表）。
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-PLATFORM-AUTH-01 | P2 | 平台「修改密碼」打錯目前密碼，後端回 401 `UNAUTHORIZED`「舊密碼不正確」，前端攔截器把所有 401 當成 token 失效：清掉 `platformToken`、整頁導回 `/admin/login`，錯誤訊息看不到。強制改密碼（`?forced=1`）時打錯臨時密碼也一樣被登出，要重新登入再來一次 | **實測（本機瀏覽器）**：自建平台帳號登入 → `/admin/change-password` → 目前密碼填錯、新密碼 `HcPlat-Pass-5` → 按「更新密碼」→ 網址變成 `/admin/login`，localStorage 沒有 `platformToken` | `apps/api/src/modules/platform/platform-password-recovery.service.ts:35`（業務錯誤用 401）；`apps/web/src/app/admin/lib/platform-api.ts:51-55` | 新 |
+| HC-PLATFORM-AUTH-01 | P2 | 平台「修改密碼」打錯目前密碼，後端回 401 `UNAUTHORIZED`「舊密碼不正確」，前端攔截器把所有 401 當成 token 失效：清掉 `platformToken`、整頁導回 `/admin/login`，錯誤訊息看不到。強制改密碼（`?forced=1`）時打錯臨時密碼也一樣被登出，要重新登入再來一次 | **實測（本機瀏覽器）**：自建平台帳號登入 → `/admin/change-password` → 目前密碼填錯、新密碼 `HcPlat-Pass-5` → 按「更新密碼」→ 網址變成 `/admin/login`，localStorage 沒有 `platformToken` | `apps/api/src/modules/platform/platform-password-recovery.service.ts:35`（業務錯誤用 401）；`apps/web/src/app/admin/lib/platform-api.ts:51-55` | AUTH-12 |
 | RBAC-02 | 依 AUDIT | 任何成員用帳密 `POST /auth/cli/login` 拿到 `cli:analytics:read`，讀全租戶報表 | **實測（本機）**：自建 AGENT 角色成員，網頁 `GET /analytics/overview` 403，CLI token `GET /cli/analytics/overview` 200 | `apps/api/src/modules/auth/cli-session.service.ts:16` | RBAC-02（仍存在） |
 | AUTH-02 | P2 | 停用租戶後，該租戶成員手上的 CLI token 仍可呼叫 API | **實測（本機）**：自建租戶 → 管理員 CLI 登入 → 平台停用租戶 → 密碼登入 403 `TENANT_DISABLED`、refresh 401，但 CLI token 打 `/auth/me` 與 `/cli/analytics/overview` 都 200 | `cli-session.service.ts:125-145`（沒檢查 `tenant.isActive`） | AUTH-02（仍存在） |
 | AUTH-03 | P2 | 平台帳號改密碼、忘記密碼重設後，舊平台 JWT 仍可用 | **實測（本機）**：取得 token → 自助改密碼 → token 打 `/platform/plans` 200 → 走忘記密碼重設 → 仍 200 | `apps/api/src/plugins/auth.plugin.ts:157-180` | AUTH-03（仍存在） |
@@ -33,7 +33,7 @@ P0：無。P1：無（RBAC-02 依 AUDIT 的嚴重度另列，見下表）。
 | HC-PLATFORM-AUTH-06 | P3 | 平台帳號被停用時，手上的 token 回 401 `PLATFORM_USER_DISABLED`，前端直接導回登入頁、不顯示原因；再登入只看到「帳號或密碼不正確」。被停用的人無從得知是帳號被停用 | **實測（本機瀏覽器）**：登入後在 DB 停用自建帳號 → 開 `/admin/tenants` → 回到登入頁，畫面沒有任何訊息 | `platform-api.ts:51-55` | 新 |
 | HC-PLATFORM-AUTH-07 | P3 | 登入頁按「使用 Passkey 登入」而驗證失敗（401「Passkey 回應無效」）時，`api.ts` 的攔截器只排除 `/auth/login`、`/auth/refresh`，會先試 `/auth/refresh`，失敗後整頁導向 `/login`，錯誤訊息消失、夾娃娃機要重玩 | 讀程式（本機沒設定 WebAuthn，UAT 不做登入嘗試） | `apps/web/src/lib/api.ts:47-54, 80-85` | 新 |
 | HC-PLATFORM-AUTH-08 | P3 | `open333 login` 先在伺服器建立 CLI session 再寫 keychain；keychain 不可用時指令失敗，但伺服器上的 session 已啟用 30 天，只能從網頁撤銷。CLI 也沒有 `logout` 指令，`POST /auth/cli/logout` 沒有呼叫端 | 讀程式 | `apps/cli/src/commands/login.ts:22-30`；`apps/cli/src/credential-store.ts:31-37` | 新 |
-| HC-SETTINGS-02 | P2（設定領域） | 側欄「CLI 連線」不依 `settings.manage` 隱藏，seed 的 agent 打開看到載入錯誤 | **實測（本機 API）**：agent 打 `GET /settings/cli-sessions` 403 `requiredPermission: settings.manage` | `apps/web/src/components/layout/Sidebar.tsx:113` | 設定領域已報 |
+| HC-SETTINGS-02 | P2（設定領域） | 側欄「CLI 連線」不依 `settings.manage` 隱藏，seed 的 agent 打開看到載入錯誤 | **實測（本機 API）**：agent 打 `GET /settings/cli-sessions` 403 `requiredPermission: settings.manage` | `apps/web/src/components/layout/Sidebar.tsx:113` | RBAC-11（設定領域已報） |
 | HC-PLATFORM-AUTH-09 | P3 | 文件過時：`docs/ref/features/platform/README.md` 的「目前的限制」寫平台模組「沒有任何測試」，現在已有 `platform-auth-guard`、`platform-auth-disabled`、`platform-audit-routes` 等測試；真正沒有測試的是 `platform-password-recovery.service.ts` | 讀程式 | `docs/ref/features/platform/README.md:122` | 新（文件） |
 
 ### 已知 AUDIT 項目的現況
