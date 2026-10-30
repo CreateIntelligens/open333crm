@@ -1,3 +1,4 @@
+import { splitTextLinks } from '@open333crm/shared';
 import type { Message } from './session.js';
 
 interface PanelTheme {
@@ -45,6 +46,7 @@ const STYLES = `
     background: #2563eb; color: #fff;
     align-self: flex-end; border-bottom-right-radius: 4px;
   }
+  .o333-msg a { color: inherit; text-decoration: underline; word-break: break-all; }
   .o333-msg-img img {
     max-width: 100%; max-height: 200px; border-radius: 8px;
     display: block;
@@ -144,13 +146,29 @@ export function appendMessage(container: HTMLElement, msg: Message, fromVisitor:
   } else if (msg.contentType === 'text' || !msg.contentType) {
     const text = msg.content?.text ?? '';
     if (!text) return;
-    el.textContent = text;
+    appendTextWithLinks(el, text);
   } else {
     el.textContent = '[unsupported]';
   }
 
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
+}
+
+/** 網址顯示成連結；一律用 DOM 節點組出，不把訊息內容當 HTML 解析 */
+function appendTextWithLinks(el: HTMLElement, text: string): void {
+  for (const part of splitTextLinks(text)) {
+    if (part.type === 'text') {
+      el.appendChild(document.createTextNode(part.value));
+      continue;
+    }
+    const a = document.createElement('a');
+    a.href = part.value;
+    a.textContent = part.value;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    el.appendChild(a);
+  }
 }
 
 function escapeHtml(str: string): string {

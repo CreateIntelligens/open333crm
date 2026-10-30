@@ -10,6 +10,7 @@ import type {
   ChatboxMessageType,
 } from '@open333crm/shared';
 import { API_BASE_URL, REALTIME_ORIGIN } from '@/lib/constants';
+import { LinkifiedText } from '@/components/chatbox/LinkifiedText';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -332,5 +333,5 @@ function MessageContent({ message }: { message: ChatboxMessageOutput }) {
   if (message.type === 'emoji' && typeof payload.emoji === 'string') {
     return <span className="text-2xl leading-none">{payload.emoji}</span>;
   }
-  return <p className="whitespace-pre-wrap break-words">{typeof payload.text === 'string' ? payload.text : ''}</p>;
+  return <LinkifiedText text={typeof payload.text === 'string' ? payload.text : ''} />;
 }

@@ -119,9 +119,12 @@ export interface BindingLink {
   sendCodeUrl: string;
 }
 
-/** LINE 預填文字（顧客改動前後文字仍可兌換，見 binding-code.ts 的比對規則） */
+/**
+ * LINE 預填文字（顧客改動前後文字仍可兌換，見 binding-code.ts 的比對規則）。
+ * 預填放在網址裡，每個中文字會編碼成 9 個字元，所以只放短句。
+ */
 export function linePrefillText(code: string): string {
-  return `我要綁定帳號，代碼 ${code}（請直接送出）`;
+  return `綁定 ${code}`;
 }
 
 export function buildBindingLink(target: BindingTarget, code: string): BindingLink {

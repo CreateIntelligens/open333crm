@@ -223,3 +223,35 @@ test('Agent and bot messages are on the other side：問候語與 agent:message 
   socket.handlers[0]!({ direction: 'OUTBOUND', senderType: 'BOT', contentType: 'image', content: { url: 'https://cdn.test/a.png' } });
   assert.equal(sideOf(messages.lastElementChild), 'other', 'Bot 圖片');
 });
+
+// ── Web addresses in text messages are links ────
+
+test('Agent reply with an address：網址變成另開分頁的連結，前後文字維持純文字', async () => {
+  const { messages } = await loadWidget();
+  socket.handlers[0]!({
+    direction: 'OUTBOUND',
+    senderType: 'AGENT',
+    contentType: 'text',
+    content: { text: '請點 https://m.me/shop?ref=BIND-7K2M9QH4TX 完成綁定' },
+  });
+
+  const el = messages.lastElementChild!;
+  const links = el.querySelectorAll('a');
+  assert.equal(links.length, 1);
+  assert.equal(links[0]!.getAttribute('href'), 'https://m.me/shop?ref=BIND-7K2M9QH4TX');
+  assert.equal(links[0]!.textContent, 'https://m.me/shop?ref=BIND-7K2M9QH4TX');
+  assert.equal(links[0]!.getAttribute('target'), '_blank');
+  assert.equal(links[0]!.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(el.textContent, '請點 https://m.me/shop?ref=BIND-7K2M9QH4TX 完成綁定');
+});
+
+test('Other schemes stay text：javascript: 不產生連結，HTML 標籤以文字顯示', async () => {
+  const { messages } = await loadWidget();
+  socket.handlers[0]!({ direction: 'OUTBOUND', senderType: 'AGENT', contentType: 'text', content: { text: 'javascript:alert(1)' } });
+  assert.equal(messages.lastElementChild!.querySelectorAll('a').length, 0);
+
+  socket.handlers[0]!({ direction: 'OUTBOUND', senderType: 'AGENT', contentType: 'text', content: { text: '<b>粗體</b> <img src=x>' } });
+  const el = messages.lastElementChild!;
+  assert.equal(el.querySelectorAll('b, img').length, 0);
+  assert.equal(el.textContent, '<b>粗體</b> <img src=x>');
+});
