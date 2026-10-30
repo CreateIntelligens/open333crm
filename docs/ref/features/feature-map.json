@@ -1326,7 +1326,8 @@
         "settings.manage"
       ],
       "specs": [
-        "member-binding"
+        "member-binding",
+        "portal-activity"
       ],
       "audit": [
         "PORTAL-01",
@@ -1345,6 +1346,7 @@
         "apps/api/tests/unit/modules/portal/**",
         "apps/api/tests/unit/modules/member-binding/**",
         "apps/api/tests/feature/modules/member-binding/**",
+        "apps/api/tests/feature/modules/portal/**",
         "apps/web/tests/unit/components/portal/**",
         "apps/web/tests/unit/lib/fan-api-token.test.ts",
         "apps/web/tests/unit/lib/fan-device.test.ts",
