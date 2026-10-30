@@ -4,6 +4,7 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod/v3';
 import type { EventPublisher } from '../../events/outbox-publisher.js';
 import { verifyFanToken, type FanPayload } from './portal-auth.service.js';
 import {
@@ -38,6 +39,18 @@ async function authenticateFan(request: FastifyRequest, reply: FastifyReply) {
   request.fan = payload;
 }
 
+// 每個輸入欄位都以 Zod 解析，不以 as 轉型（AGENTS.md Conventions 的 Validation）。這是公開端點
+const idParams = z.object({ id: z.string().uuid('活動識別格式不正確') });
+
+/** 作答：optionIds 是選項 id；fields 是表單欄位，鍵是 fieldKey，值是填寫的文字 */
+const submitBody = z.object({
+  optionIds: z.array(z.string().uuid('選項識別格式不正確')).max(100, '選項不可超過 100 個').optional(),
+  fields: z
+    .record(z.string().max(100, '欄位代碼不可超過 100 字'), z.string().max(5000, '填寫內容不可超過 5000 字'))
+    .refine((f) => Object.keys(f).length <= 100, '欄位不可超過 100 個')
+    .optional(),
+});
+
 export interface PortalPublicRoutesOptions {
   /** 測試用：取代寫 outbox 的 publisher */
   events?: EventPublisher;
@@ -62,7 +75,7 @@ export default async function portalPublicRoutes(app: FastifyInstance, opts: Por
 
   app.get('/activities/:id', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fan!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const activity = await getActivityForFanFlow(app, fan.tenantId, id, fan.contactId);
     if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
     return { success: true, data: activity };
@@ -70,8 +83,9 @@ export default async function portalPublicRoutes(app: FastifyInstance, opts: Por
 
   app.post('/activities/:id/submit', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fan!;
-    const { id } = request.params as { id: string };
-    const body = request.body as { optionIds?: string[]; fields?: Record<string, string> };
+    const { id } = idParams.parse(request.params);
+    // 在 try 之外解析：不合法的輸入回 400 VALIDATION_ERROR，不被下面的 catch 改成 BAD_REQUEST（PORTAL-02）
+    const body = submitBody.parse(request.body ?? {});
     try {
       const submission = await submitActivityFlow({ prisma: app.prisma, events: opts.events }, fan, id, body);
       return { success: true, data: submission };
@@ -82,7 +96,7 @@ export default async function portalPublicRoutes(app: FastifyInstance, opts: Por
 
   app.get('/activities/:id/result', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fan!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const result = await getActivityResultFlow(app, fan.tenantId, id);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
     return { success: true, data: result };

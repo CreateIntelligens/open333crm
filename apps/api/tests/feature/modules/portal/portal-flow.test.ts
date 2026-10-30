@@ -381,6 +381,36 @@ test('舊資料的積分設定不合法時，送出成功但不給積分', async
   }
 });
 
+test('後台與粉絲端的輸入不合法時回 400', async () => {
+  const activity = await publishedPoll();
+  const bad = 'not-a-uuid';
+  const cases: Array<[string, () => ReturnType<typeof admin>]> = [
+    ['後台：活動 id 不是 uuid', () => admin(appA, 'GET', `/activities/${bad}`)],
+    ['後台：編輯的活動 id 不是 uuid', () => admin(appA, 'PATCH', `/activities/${bad}`, { title: 'x' })],
+    ['後台：發布的活動 id 不是 uuid', () => admin(appA, 'POST', `/activities/${bad}/publish`)],
+    ['後台：列表的狀態不在選項內', () => admin(appA, 'GET', '/activities?status=WHATEVER')],
+    ['後台：列表的類型不在選項內', () => admin(appA, 'GET', '/activities?type=WHATEVER')],
+    ['後台：頁碼不是數字', () => admin(appA, 'GET', '/activities?page=abc')],
+    ['後台：頁碼是 0', () => admin(appA, 'GET', '/activities?page=0')],
+    ['後台：作答列表的每頁筆數超過上限', () => admin(appA, 'GET', `/activities/${activity.id}/submissions?limit=1000`)],
+    ['後台：抽獎人數是字串', () => admin(appA, 'POST', `/activities/${activity.id}/draw`, { count: 'abc' })],
+    ['後台：抽獎人數是小數', () => admin(appA, 'POST', `/activities/${activity.id}/draw`, { count: 1.5 })],
+    ['後台：積分列表的聯絡人 id 不是 uuid', () => admin(appA, 'GET', `/points?contactId=${bad}`)],
+    ['後台：積分餘額的聯絡人 id 不是 uuid', () => admin(appA, 'GET', `/points/balance/${bad}`)],
+    ['粉絲：活動 id 不是 uuid', () => fan(appA, fanA.id, 'GET', `/activities/${bad}`)],
+    ['粉絲：結果的活動 id 不是 uuid', () => fan(appA, fanA.id, 'GET', `/activities/${bad}/result`)],
+    ['粉絲：送出的 optionIds 不是陣列', () => fan(appA, fanA.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: 'x' })],
+    ['粉絲：送出的 optionIds 不是 uuid', () => fan(appA, fanA.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [bad] })],
+    ['粉絲：送出的欄位值不是字串', () => fan(appA, fanA.id, 'POST', `/activities/${activity.id}/submit`, { fields: { name: 1 } })],
+  ];
+  for (const [name, run] of cases) {
+    const res = await run();
+    assert.equal(res.statusCode, 400, `${name}: ${res.body}`);
+    assert.equal(res.json().error.code, 'VALIDATION_ERROR', `${name}: ${res.body}`);
+  }
+  assert.equal(await owner.portalSubmission.count({ where: { activityId: activity.id } }), 0, '不合法的送出沒有留下作答');
+});
+
 test('沒有 fanToken 回 401', async () => {
   const res = await appA.inject({ method: 'GET', url: '/api/v1/fan/activities' });
   assert.equal(res.statusCode, 401);

@@ -48,6 +48,15 @@
 - **WHEN** 粉絲的第一次送出還沒 commit，第二次以大寫的活動 id 送出同一個活動
 - **THEN** 第二次仍等第一次 commit 之後才檢查，回 `ALREADY_SUBMITTED`；這位粉絲只有一筆作答
 
+### Requirement: 後台與粉絲端的輸入在 API 驗證
+
+系統 MUST 在 API 驗證每個輸入欄位的型別與範圍，MUST NOT 依賴前端的驗證：路徑上的 id MUST 是 uuid；列表的類型與狀態 MUST 是允許的值；頁碼與每頁筆數 MUST 符合共用的分頁規則；抽獎人數 MUST 是正整數；粉絲送出的 `optionIds` MUST 是 uuid 陣列，`fields` 的值 MUST 是字串。不合法時，系統 MUST 回 400 `VALIDATION_ERROR`，MUST NOT 讀寫資料。
+
+#### Scenario: 後台與粉絲端的輸入不合法時回 400
+
+- **WHEN** 成員或粉絲送出不合法的輸入，例如不是 uuid 的活動 id、不在選項內的狀態、頁碼 0、字串或小數的抽獎人數、不是 uuid 的 `optionIds`、不是字串的欄位值
+- **THEN** 系統回 400 `VALIDATION_ERROR`，不留下作答
+
 ### Requirement: 活動設定在入口驗證，不合法的舊值採用安全的預設值
 
 建立或編輯活動時，`settings.pointsPerSubmit` MUST 是 0 以上、可存進 Int 欄位的整數，`settings.allowMultiple` MUST 是布林值；不合法時，系統 MUST 回 400 `VALIDATION_ERROR`，MUST NOT 儲存。`settings` 的其他欄位照舊儲存。已經存在資料庫的設定不合法時，粉絲送出 MUST 仍然成功，系統 MUST NOT 給積分，也 MUST NOT 扣積分。

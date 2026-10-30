@@ -31,6 +31,8 @@
 
 - [x] 3.8 review-loop（第二次）第 1 輪之後，停止條件 4：uuid 大小寫與 `allowMultiple: "false"` 同屬「換一種合法的寫法就繞過檢查」，根本原因是 `settings` 沒有驗證。另外發現前端擋不住負數的 `pointsPerSubmit`，每次送出會扣積分。使用者決定做法 A：新增 `portal-settings.ts`，入口以 `activitySettingsSchema` 驗證，service 以 `readActivitySettings()` 讀取；前端不送出負數。`portal-flow.test.ts` 新增「活動設定不合法時，建立與編輯都回 400」「舊資料的積分設定不合法時，送出成功但不給積分」，3.7 的測試改為直接寫入舊資料；`apps/web/tests/unit/components/portal/activity-form-dialog.test.tsx` 新增「每次提交積分輸入負數時，送出 0」。三個測試在修正前都失敗在斷言上
 
+- [x] 3.9 使用者決定在 AGENTS.md 定義輸入驗證的規則（Conventions 的 Validation），portal 先照規則改。兩個路由檔原本有 18 處以 `as` 轉型 `request.params`、`request.query`、`request.body`。`portal-flow.test.ts` 新增「後台與粉絲端的輸入不合法時回 400」，在修正前失敗在斷言上（不是 uuid 的活動 id 回 `DATABASE_ERROR`）。每個輸入改以 Zod 解析，分頁改用 `paginationSchema`。`tests/unit/shared/pagination.test.ts` 原本檢查 portal 有 `clampPage(`，改為檢查 portal 用 `paginationSchema`：這是刻意的改變，`?page=0` 從夾到第 1 頁改為回 400
+
 ## 4. 完成定義
 
 - [x] 4.1 `pnpm test:all` 通過；`tsc --noEmit`、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 通過，基準檔已更新

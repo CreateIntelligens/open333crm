@@ -6,12 +6,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
-- **粉絲活動與積分不再寫錯資料**（change `portal-activity-guarantees`）— 前四項是同時操作的問題：這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查。後兩項是輸入檢查的問題：
+- **粉絲活動與積分不再寫錯資料**（change `portal-activity-guarantees`）— 前四項是同時操作的問題：這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查。後三項是輸入檢查的問題：
   - 同一位粉絲同時送出不允許重複參加的活動，原本兩次都成功，積分給兩次。現在先以 advisory lock 鎖住「活動＋聯絡人」再檢查，第二次回「您已參加過這個活動」。
   - 同時寫同一位聯絡人的積分（送出給點、後台調整、合併與解除合併轉點），原本兩筆都以同一個餘額計算。現在 `addPointTransaction()` 先鎖住這位聯絡人的帳本再讀餘額。寫入時間至少比最新一筆晚 1 毫秒，同一毫秒內連續寫入時，「最新一筆」不再不確定。合併與解除合併先依 id 排序鎖住雙方的帳本，再讀餘額，所以合併會轉出調整後的全部餘額，解除合併也不會把保留方扣成負數。
   - 同時抽獎原本會抽到同一批人。現在抽獎先鎖住活動列。
   - 編輯、刪除與狀態轉換原本先讀狀態再以 id 更新。例如發布還沒 commit 時開始編輯，編輯會在發布 commit 之後換掉已發布活動的選項；刪除與封存也會作用在已發布的活動上。現在先鎖住活動列再檢查狀態，狀態已經改變時回 `INVALID_ACTIVITY_STATUS`；等鎖期間活動被刪除時，回找不到，不再回 500。
   - 活動的 `settings` 原本不驗證：字串 `"false"` 的 `allowMultiple` 會被當成允許重複參加；後台表單擋不住手動輸入負數的 `pointsPerSubmit`，之後每次送出都會扣粉絲的積分；字串或小數的 `pointsPerSubmit` 讓粉絲送不出。現在建立與編輯活動時，`allowMultiple` 不是布林值、`pointsPerSubmit` 不是 0 以上的整數就回 400 `VALIDATION_ERROR`；資料庫裡已經存在的不合法值，送出時當成不允許重複參加、不給積分。表單輸入負數時送出 0。
+  - `/api/v1/portal` 與 `/api/v1/fan` 的路由原本以 `as` 轉型輸入：不是 uuid 的 id 回 `DATABASE_ERROR`，字串的抽獎人數照樣通過，粉絲送出的作答原樣存進資料庫。現在每個輸入都以 Zod 解析，不合法時回 400 `VALIDATION_ERROR`。分頁改用共用的 `paginationSchema`，`?page=0` 從夾到第 1 頁改為回 400。AGENTS.md 的 Conventions 新增輸入驗證的規則（Validation）。
   - 後台調整積分（`POST /api/v1/portal/points/adjust`）原本不檢查聯絡人。外鍵檢查不受 RLS 限制，所以其他租戶的聯絡人回 200，並寫入一筆指向對方聯絡人的紀錄；不存在的聯絡人回 `DATABASE_ERROR`。現在兩者都回 404 `CONTACT_NOT_FOUND`，不寫入。
 
 ### Changed
