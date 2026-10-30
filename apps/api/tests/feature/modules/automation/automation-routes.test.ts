@@ -304,3 +304,24 @@ describe('快速回覆預設組', () => {
     assert.equal(blank.body.error!.message, '名稱不能為空');
   });
 });
+
+describe('路徑的 id 不是 UUID', () => {
+  // 原本查詢送到資料庫才失敗，回 400 DATABASE_ERROR，訊息沒有指出欄位（AGENTS.md Conventions：Validation）
+  const cases: Array<[method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object]> = [
+    ['GET', `${rules}/abc`],
+    ['PATCH', `${rules}/abc`, { name: '改' }],
+    ['DELETE', `${rules}/abc`],
+    ['POST', `${rules}/abc/test`, {}],
+    ['PATCH', '/api/v1/line/quick-reply-presets/abc', { name: '改' }],
+    ['DELETE', '/api/v1/line/quick-reply-presets/abc'],
+  ];
+  test.each(cases)('%s %s：回 400 VALIDATION_ERROR，指出 id', async (method, url, payload) => {
+    const res = await call(appA, method, url, payload);
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error!.code, 'VALIDATION_ERROR');
+    assert.deepEqual(
+      (res.body.error as unknown as { details: { issues: Array<{ path: string }> } }).details.issues.map((i) => i.path),
+      ['id'],
+    );
+  });
+});

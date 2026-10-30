@@ -22,6 +22,8 @@ import { actorOf } from '../../lib/request-actor.js';
 
 // ── Validation schemas ──────────────────────────────────────────────────────
 
+const idParams = z.object({ id: z.string().uuid('規則識別格式不正確') });
+
 const listQuerySchema = z.object({
   isActive: z
     .enum(['true', 'false'])
@@ -149,33 +151,37 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   });
 
   // ── GET /api/v1/automation/rules/:id ────────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
-    const rule = await getRuleFlow(fastify, actorOf(request).tenantId, request.params.id);
+  fastify.get('/rules/:id', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const rule = await getRuleFlow(fastify, actorOf(request).tenantId, id);
 
     return reply.send(success(rule));
   });
 
   // ── PATCH /api/v1/automation/rules/:id ──────────────────────────────────
-  fastify.patch<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
+  fastify.patch('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
+    const { id } = idParams.parse(request.params);
     const data = updateRuleSchema.parse(request.body);
 
-    const rule = await updateRuleFlow(fastify, actorOf(request).tenantId, request.params.id, data);
+    const rule = await updateRuleFlow(fastify, actorOf(request).tenantId, id, data);
 
     return reply.send(success(rule));
   });
 
   // ── DELETE /api/v1/automation/rules/:id ─────────────────────────────────
-  fastify.delete<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
-    const rule = await deleteRuleFlow(fastify, actorOf(request).tenantId, request.params.id);
+  fastify.delete('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const rule = await deleteRuleFlow(fastify, actorOf(request).tenantId, id);
 
     return reply.send(success(rule));
   });
 
   // ── POST /api/v1/automation/rules/:id/test ──────────────────────────────
-  fastify.post<{ Params: { id: string } }>('/rules/:id/test', async (request, reply) => {
+  fastify.post('/rules/:id/test', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
     const data = testRuleSchema.parse(request.body);
 
-    const result = await testRuleFlow(fastify, actorOf(request).tenantId, request.params.id, data.facts);
+    const result = await testRuleFlow(fastify, actorOf(request).tenantId, id, data.facts);
 
     return reply.send(success(result));
   });

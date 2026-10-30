@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **自動化規則與快速回覆預設組的路徑 id 先檢查格式**（#337 第八批發現）— `/api/v1/automation/rules/:id`（查詢、修改、刪除、試跑）與 `/api/v1/line/quick-reply-presets/:id`（修改、刪除）原本不檢查 `:id`。`:id` 不是 UUID 時，查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位，伺服器也每次記一筆錯誤。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
 - **CLI 報表也擋下起始日晚於結束日的區間**（#337 review-loop 發現）— 主規格 `analytics-reports` 規定每一個接受 `from`、`to` 的報表端點，在 `from` 晚於 `to` 時回 400 並指出 `from`。`/api/v1/cli/analytics/*` 原本用自己的參數定義，沒有這項檢查，回 200 與看似正常的空報表。現在報表頁與 CLI 共用 `analytics/analytics-query.ts` 的參數定義。
 - **報表的訊息趨勢回傳日期**（#337 補測試時發現）— `GET /api/v1/analytics/message-trend` 與 `GET /api/v1/cli/analytics/message-trend` 每一列的 `date` 原本都是 `0`：初始化的欄位蓋掉了分組的日期。報表頁訊息趨勢圖的 X 軸因此全部顯示 0，`open333 stats` 顯示「Latest period: 0」。現在 `date` 是分組的日期（`YYYY-MM-DD`）。
 - **粉絲活動與積分不再寫錯資料**（change `portal-activity-guarantees`）— 前四項是同時操作的問題：這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查。後四項是讀取與輸入檢查的問題：

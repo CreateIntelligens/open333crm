@@ -17,6 +17,8 @@ import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { actorOf } from '../../lib/request-actor.js';
 
+const idParams = z.object({ id: z.string().uuid('預設組識別格式不正確') });
+
 const itemSchema = z.object({
   label: z.string().min(1).max(20),
   text: z.string().min(1).max(300).optional(),
@@ -49,21 +51,23 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
     return reply.code(201).send(success(preset));
   });
 
-  fastify.patch<{ Params: { id: string } }>(
+  fastify.patch(
     '/:id',
     { preHandler: [requirePermission('quickreply.manage')] },
     async (request, reply) => {
+      const { id } = idParams.parse(request.params);
       const data = updateSchema.parse(request.body);
-      const preset = await updatePresetFlow(fastify, actorOf(request).tenantId, request.params.id, data);
+      const preset = await updatePresetFlow(fastify, actorOf(request).tenantId, id, data);
       return reply.send(success(preset));
     },
   );
 
-  fastify.delete<{ Params: { id: string } }>(
+  fastify.delete(
     '/:id',
     { preHandler: [requirePermission('quickreply.manage')] },
     async (request, reply) => {
-      const result = await deletePresetFlow(fastify, actorOf(request).tenantId, request.params.id);
+      const { id } = idParams.parse(request.params);
+      const result = await deletePresetFlow(fastify, actorOf(request).tenantId, id);
       return reply.send(success(result));
     },
   );
