@@ -162,7 +162,8 @@ function createPrismaMock(agent: ReturnType<typeof createAgent>) {
 
 async function createApp(prisma: ReturnType<typeof createPrismaMock>) {
   const app = Fastify();
-  app.decorate('prisma', prisma);
+  // 已搬到 flow 的 CLI 報表（#337）以 fastify.prisma 開租戶交易；交易內拿到同一份 mock
+  app.decorate('prisma', { ...prisma, $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb({ ...prisma, $executeRaw: async () => 1 }) });
   // 登入與 CLI token 驗證走 BYPASSRLS 連線（6bca767 起），兩者都指向同一個 mock。
   app.decorate('prismaAdmin', prisma);
   loadEnvConfig();

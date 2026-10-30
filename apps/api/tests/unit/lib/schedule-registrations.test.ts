@@ -18,7 +18,7 @@ import { setupOutboxSchedulers } from '#src/modules/outbox/outbox.scheduler.js';
 
 const aggregated: { tenantId: string; date: Date }[] = [];
 vi.mock('#src/modules/analytics/analytics.aggregator.js', () => ({
-  runDailyAggregation: async (_prisma: unknown, tenantId: string, date: Date) => void aggregated.push({ tenantId, date }),
+  runDailyAggregation: async (ctx: { tenantId: string }, date: Date) => void aggregated.push({ tenantId: ctx.tenantId, date }),
 }));
 
 const prisma = {} as PrismaClient;
@@ -100,22 +100,30 @@ test('meta-token-health：每 6 小時，不加鎖', () => {
 
 test('analytics 的 run：對每個啟用中的租戶彙總前一天', async () => {
   vi.setSystemTime(new Date(2026, 9, 19, 2, 0, 0));
+  const TENANT = 'a0000000-0000-4000-8000-000000000001';
   const { scheduler, defs } = fakeScheduler();
   const where: unknown[] = [];
   const fakePrisma = {
     tenant: {
       findMany: async (args: { where: unknown }) => {
         where.push(args.where);
-        return [{ id: 't1' }];
+        return [{ id: TENANT }];
       },
     },
   } as unknown as PrismaClient;
-  setupAnalyticsScheduler(scheduler, fakePrisma);
+  // 每個租戶的彙總在自己的租戶交易內執行
+  const bound: string[] = [];
+  const tenantPrisma = {
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
+      cb({ $executeRaw: async (_s: TemplateStringsArray, tenantId: string) => void bound.push(tenantId) }),
+  } as unknown as PrismaClient;
+  setupAnalyticsScheduler(scheduler, { admin: fakePrisma, prisma: tenantPrisma });
   await defs[0].run();
   assert.deepEqual(where, [{ isActive: true }]);
   assert.equal(aggregated.length, 1);
-  assert.equal(aggregated[0].tenantId, 't1');
+  assert.equal(aggregated[0].tenantId, TENANT);
   assert.equal(aggregated[0].date.getDate(), 18);
+  assert.deepEqual(bound, [TENANT]);
 });
 
 test('outbox：補送每 60 秒，以 withoutOverlapping 防重疊，鎖最久 5 分鐘；清理每天 03:30（cron）', () => {

@@ -6,6 +6,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **CLI 報表也擋下起始日晚於結束日的區間**（#337 review-loop 發現）— 主規格 `analytics-reports` 規定每一個接受 `from`、`to` 的報表端點，在 `from` 晚於 `to` 時回 400 並指出 `from`。`/api/v1/cli/analytics/*` 原本用自己的參數定義，沒有這項檢查，回 200 與看似正常的空報表。現在報表頁與 CLI 共用 `analytics/analytics-query.ts` 的參數定義。
+- **報表的訊息趨勢回傳日期**（#337 補測試時發現）— `GET /api/v1/analytics/message-trend` 與 `GET /api/v1/cli/analytics/message-trend` 每一列的 `date` 原本都是 `0`：初始化的欄位蓋掉了分組的日期。報表頁訊息趨勢圖的 X 軸因此全部顯示 0，`open333 stats` 顯示「Latest period: 0」。現在 `date` 是分組的日期（`YYYY-MM-DD`）。
 - **粉絲活動與積分不再寫錯資料**（change `portal-activity-guarantees`）— 前四項是同時操作的問題：這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查。後四項是讀取與輸入檢查的問題：
   - 同一位粉絲同時送出不允許重複參加的活動，原本兩次都成功，積分給兩次。現在先以 advisory lock 鎖住「活動＋聯絡人」再檢查，第二次回「您已參加過這個活動」。
   - 同時寫同一位聯絡人的積分（送出給點、後台調整、合併與解除合併轉點），原本兩筆都以同一個餘額計算。現在 `addPointTransaction()` 先鎖住這位聯絡人的帳本再讀餘額。寫入時間至少比最新一筆晚 1 毫秒，同一毫秒內連續寫入時，「最新一筆」不再不確定。合併與解除合併先依 id 排序鎖住雙方的帳本，再讀餘額，所以合併會轉出調整後的全部餘額，解除合併也不會把保留方扣成負數。
@@ -18,6 +20,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **報表改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `analytics.service.ts` 改收 `TenantCtx`，新增 `analytics.flow.ts`。報表頁、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 都呼叫 flow。`GET /analytics/csat` 的查詢從路由移到 service，計算方式不變。回應內容不變。
+  - 每個報表在一個交易內查詢。原本報表頁的每個查詢各自一個交易。
+  - CLI 的報表原本以 `prismaAdmin`（BYPASSRLS）查詢，只靠查詢條件的 `tenantId` 隔離租戶。現在也受 RLS 限制。
+  - 每日彙總（`analytics-daily`）為每個租戶開一個交易，五種統計一起寫入。原本以 `prismaAdmin` 逐筆寫入，某個租戶中途失敗時，留下已經寫入的部分。現在這個租戶這一天的統計整個不寫入。仍然逐一處理租戶，做法等 #318 決定。
 - **粉絲活動與積分改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2，change `portal-activity-guarantees`）— `portal.service.ts` 與 `points.service.ts` 改收 `TenantCtx`，`/api/v1/portal` 與 `/api/v1/fan` 的路由改呼叫新的 `portal.flow.ts`。粉絲端原本在路由裡的查詢移進 `portal.service.ts`。`contact-merge.service.ts` 轉移點數時改傳 `TenantCtx`。可觀察的差異：
   - 粉絲送出活動時，`portal.activity.submitted` 事件與作答、積分在同一個交易寫進 outbox，commit 之後才送出，至少送出一次。原本以 `eventBus.publish()` 在 commit 之前送出：交易 rollback 時事件照樣送出，行程在送出之前結束時事件遺失。事件寫不進 outbox 時，作答與積分都不留下，API 回 400。
   - 後台的每個請求在一個交易內完成。原本每個查詢各自一個交易，例如調整積分時，讀取餘額與寫入交易紀錄分屬兩個交易。

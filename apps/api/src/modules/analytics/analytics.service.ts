@@ -1,6 +1,5 @@
-import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -26,13 +25,12 @@ function groupByClause(groupBy: string) {
 /* -------------------------------------------------------------------------- */
 
 export async function getOverviewStats(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   from: Date,
   to: Date,
 ) {
   // Total messages in range (via conversations belonging to tenant)
-  const messageStats = await prisma.$queryRaw<
+  const messageStats = await ctx.tx.$queryRaw<
     { total: bigint; inbound: bigint; outbound: bigint }[]
   >`
     SELECT
@@ -41,7 +39,7 @@ export async function getOverviewStats(
       COUNT(*) FILTER (WHERE m.direction = 'OUTBOUND')::bigint AS outbound
     FROM messages m
     JOIN conversations c ON c.id = m."conversationId"
-    WHERE c."tenantId" = ${tenantId}::uuid
+    WHERE c."tenantId" = ${ctx.tenantId}::uuid
       AND m."createdAt" >= ${from}
       AND m."createdAt" <= ${to}
   `;
@@ -49,38 +47,38 @@ export async function getOverviewStats(
   const msg = messageStats[0] || { total: 0n, inbound: 0n, outbound: 0n };
 
   // Open cases (current snapshot)
-  const openCases = await prisma.case.count({
+  const openCases = await ctx.tx.case.count({
     where: {
-      tenantId,
+      tenantId: ctx.tenantId,
       status: { in: ['OPEN', 'IN_PROGRESS', 'PENDING', 'ESCALATED'] },
     },
   });
 
   // New cases in range
-  const newCases = await prisma.case.count({
+  const newCases = await ctx.tx.case.count({
     where: {
-      tenantId,
+      tenantId: ctx.tenantId,
       createdAt: { gte: from, lte: to },
     },
   });
 
   // Resolved cases in range
-  const resolvedCases = await prisma.case.count({
+  const resolvedCases = await ctx.tx.case.count({
     where: {
-      tenantId,
+      tenantId: ctx.tenantId,
       resolvedAt: { gte: from, lte: to, not: null },
     },
   });
 
   // SLA achievement rate
-  const slaRows = await prisma.$queryRaw<
+  const slaRows = await ctx.tx.$queryRaw<
     { total: bigint; achieved: bigint }[]
   >`
     SELECT
       COUNT(*)::bigint AS total,
       COUNT(*) FILTER (WHERE "resolvedAt" <= "slaDueAt")::bigint AS achieved
     FROM cases
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "resolvedAt" IS NOT NULL
       AND "slaDueAt" IS NOT NULL
       AND "resolvedAt" >= ${from}
@@ -93,7 +91,7 @@ export async function getOverviewStats(
       : null;
 
   // Avg first response & resolution times
-  const timeRows = await prisma.$queryRaw<
+  const timeRows = await ctx.tx.$queryRaw<
     { avg_first_response: number | null; avg_resolution: number | null }[]
   >`
     SELECT
@@ -102,14 +100,14 @@ export async function getOverviewStats(
       AVG(EXTRACT(EPOCH FROM ("resolvedAt" - "createdAt")) / 60)
         FILTER (WHERE "resolvedAt" IS NOT NULL) AS avg_resolution
     FROM cases
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
   `;
   const times = timeRows[0] || { avg_first_response: null, avg_resolution: null };
 
   // CSAT
-  const csatRows = await prisma.$queryRaw<
+  const csatRows = await ctx.tx.$queryRaw<
     { avg_score: number | null; total: bigint; positive: bigint }[]
   >`
     SELECT
@@ -117,7 +115,7 @@ export async function getOverviewStats(
       COUNT(*)::bigint AS total,
       COUNT(*) FILTER (WHERE "csatScore" >= 4)::bigint AS positive
     FROM cases
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "csatScore" IS NOT NULL
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
@@ -151,15 +149,14 @@ export async function getOverviewStats(
 /* -------------------------------------------------------------------------- */
 
 export async function getMessageTrend(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   from: Date,
   to: Date,
   groupBy: string = 'day',
 ) {
   const trunc = groupByClause(groupBy);
 
-  const rows = await prisma.$queryRaw<
+  const rows = await ctx.tx.$queryRaw<
     { date: Date; channel_type: string; count: bigint }[]
   >`
     SELECT
@@ -168,7 +165,7 @@ export async function getMessageTrend(
       COUNT(*)::bigint AS count
     FROM messages m
     JOIN conversations c ON c.id = m."conversationId"
-    WHERE c."tenantId" = ${tenantId}::uuid
+    WHERE c."tenantId" = ${ctx.tenantId}::uuid
       AND m."createdAt" >= ${from}
       AND m."createdAt" <= ${to}
     GROUP BY 1, 2
@@ -180,7 +177,7 @@ export async function getMessageTrend(
   for (const row of rows) {
     const key = toIso(row.date);
     if (!map.has(key)) {
-      map.set(key, { date: 0, LINE: 0, FB: 0, WEBCHAT: 0, WHATSAPP: 0, total: 0 });
+      map.set(key, { LINE: 0, FB: 0, WEBCHAT: 0, WHATSAPP: 0, total: 0 });
     }
     const entry = map.get(key)!;
     const cnt = Number(row.count);
@@ -199,13 +196,12 @@ export async function getMessageTrend(
 /* -------------------------------------------------------------------------- */
 
 export async function getCaseStats(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   from: Date,
   to: Date,
 ) {
   // Trend: daily opened / closed
-  const trendRows = await prisma.$queryRaw<
+  const trendRows = await ctx.tx.$queryRaw<
     { date: Date; opened: bigint; closed: bigint }[]
   >`
     SELECT
@@ -213,7 +209,7 @@ export async function getCaseStats(
       COUNT(*)::bigint AS opened,
       COUNT(*) FILTER (WHERE "resolvedAt" IS NOT NULL)::bigint AS closed
     FROM cases
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -227,12 +223,12 @@ export async function getCaseStats(
   }));
 
   // Category distribution
-  const categoryRows = await prisma.$queryRaw<
+  const categoryRows = await ctx.tx.$queryRaw<
     { category: string | null; count: bigint }[]
   >`
     SELECT COALESCE(category, '未分類') AS category, COUNT(*)::bigint AS count
     FROM cases
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -245,12 +241,12 @@ export async function getCaseStats(
   }));
 
   // Priority distribution
-  const priorityRows = await prisma.$queryRaw<
+  const priorityRows = await ctx.tx.$queryRaw<
     { priority: string; count: bigint }[]
   >`
     SELECT priority, COUNT(*)::bigint AS count
     FROM cases
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -262,12 +258,12 @@ export async function getCaseStats(
   }));
 
   // Status distribution
-  const statusRows = await prisma.$queryRaw<
+  const statusRows = await ctx.tx.$queryRaw<
     { status: string; count: bigint }[]
   >`
     SELECT status, COUNT(*)::bigint AS count
     FROM cases
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -279,9 +275,9 @@ export async function getCaseStats(
   }));
 
   // SLA violations
-  const slaViolations = await prisma.case.findMany({
+  const slaViolations = await ctx.tx.case.findMany({
     where: {
-      tenantId,
+      tenantId: ctx.tenantId,
       status: { notIn: ['CLOSED', 'RESOLVED'] },
       slaDueAt: { lt: new Date() },
     },
@@ -294,11 +290,11 @@ export async function getCaseStats(
   });
 
   // Escalation rate
-  const totalInRange = await prisma.case.count({
-    where: { tenantId, createdAt: { gte: from, lte: to } },
+  const totalInRange = await ctx.tx.case.count({
+    where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to } },
   });
-  const escalatedInRange = await prisma.case.count({
-    where: { tenantId, createdAt: { gte: from, lte: to }, status: 'ESCALATED' },
+  const escalatedInRange = await ctx.tx.case.count({
+    where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to }, status: 'ESCALATED' },
   });
   const escalationRate =
     totalInRange > 0
@@ -320,15 +316,14 @@ export async function getCaseStats(
 /* -------------------------------------------------------------------------- */
 
 export async function getAgentPerformance(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   from: Date,
   to: Date,
   agentId?: string,
 ) {
   const agentFilter = agentId ? Prisma.sql`AND c."assigneeId" = ${agentId}::uuid` : Prisma.sql``;
 
-  const rows = await prisma.$queryRaw<
+  const rows = await ctx.tx.$queryRaw<
     {
       agent_id: string;
       agent_name: string;
@@ -359,7 +354,7 @@ export async function getAgentPerformance(
     LEFT JOIN cases c ON c."assigneeId" = a.id
       AND c."createdAt" >= ${from}
       AND c."createdAt" <= ${to}
-    WHERE a."tenantId" = ${tenantId}::uuid
+    WHERE a."tenantId" = ${ctx.tenantId}::uuid
       AND a."isActive" = true
       ${agentFilter}
     GROUP BY a.id, a.name, a.role
@@ -391,19 +386,18 @@ export async function getAgentPerformance(
 /* -------------------------------------------------------------------------- */
 
 export async function getChannelAnalytics(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   from: Date,
   to: Date,
 ) {
   // Messages per channel
-  const msgRows = await prisma.$queryRaw<
+  const msgRows = await ctx.tx.$queryRaw<
     { channel_type: string; count: bigint }[]
   >`
     SELECT c."channelType" AS channel_type, COUNT(*)::bigint AS count
     FROM messages m
     JOIN conversations c ON c.id = m."conversationId"
-    WHERE c."tenantId" = ${tenantId}::uuid
+    WHERE c."tenantId" = ${ctx.tenantId}::uuid
       AND m."createdAt" >= ${from}
       AND m."createdAt" <= ${to}
     GROUP BY 1
@@ -415,12 +409,12 @@ export async function getChannelAnalytics(
   }));
 
   // Conversations per channel
-  const convRows = await prisma.$queryRaw<
+  const convRows = await ctx.tx.$queryRaw<
     { channel_type: string; count: bigint }[]
   >`
     SELECT "channelType" AS channel_type, COUNT(*)::bigint AS count
     FROM conversations
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -432,12 +426,12 @@ export async function getChannelAnalytics(
   }));
 
   // Bot vs human
-  const botHumanRows = await prisma.$queryRaw<
+  const botHumanRows = await ctx.tx.$queryRaw<
     { status: string; count: bigint }[]
   >`
     SELECT status, COUNT(*)::bigint AS count
     FROM conversations
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
       AND status IN ('BOT_HANDLED', 'AGENT_HANDLED')
@@ -450,13 +444,13 @@ export async function getChannelAnalytics(
   }));
 
   // New contacts per channel
-  const contactRows = await prisma.$queryRaw<
+  const contactRows = await ctx.tx.$queryRaw<
     { channel_type: string; count: bigint }[]
   >`
     SELECT ci."channelType" AS channel_type, COUNT(*)::bigint AS count
     FROM channel_identities ci
     JOIN contacts c ON c.id = ci."contactId"
-    WHERE c."tenantId" = ${tenantId}::uuid
+    WHERE c."tenantId" = ${ctx.tenantId}::uuid
       AND ci."linkedAt" >= ${from}
       AND ci."linkedAt" <= ${to}
     GROUP BY 1
@@ -480,18 +474,17 @@ export async function getChannelAnalytics(
 /* -------------------------------------------------------------------------- */
 
 export async function getContactAnalytics(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   from: Date,
   to: Date,
 ) {
   // New contacts trend
-  const trendRows = await prisma.$queryRaw<
+  const trendRows = await ctx.tx.$queryRaw<
     { date: Date; count: bigint }[]
   >`
     SELECT date_trunc('day', "createdAt") AS date, COUNT(*)::bigint AS count
     FROM contacts
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -504,10 +497,10 @@ export async function getContactAnalytics(
   }));
 
   // Active contacts (have conversation in range)
-  const activeRows = await prisma.$queryRaw<{ count: bigint }[]>`
+  const activeRows = await ctx.tx.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(DISTINCT "contactId")::bigint AS count
     FROM conversations
-    WHERE "tenantId" = ${tenantId}::uuid
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
   `;
@@ -515,13 +508,13 @@ export async function getContactAnalytics(
   const activeContacts = Number(activeRows[0]?.count || 0n);
 
   // Top 10 tags
-  const tagRows = await prisma.$queryRaw<
+  const tagRows = await ctx.tx.$queryRaw<
     { name: string; count: bigint }[]
   >`
     SELECT t.name, COUNT(ct.id)::bigint AS count
     FROM contact_tags ct
     JOIN tags t ON t.id = ct."tagId"
-    WHERE t."tenantId" = ${tenantId}::uuid
+    WHERE t."tenantId" = ${ctx.tenantId}::uuid
     GROUP BY t.name
     ORDER BY count DESC
     LIMIT 10
@@ -533,9 +526,9 @@ export async function getContactAnalytics(
   }));
 
   // Total new contacts
-  const totalNew = await prisma.contact.count({
+  const totalNew = await ctx.tx.contact.count({
     where: {
-      tenantId,
+      tenantId: ctx.tenantId,
       createdAt: { gte: from, lte: to },
     },
   });
@@ -553,8 +546,7 @@ export async function getContactAnalytics(
 /* -------------------------------------------------------------------------- */
 
 export async function getMyPerformance(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
 ) {
   const now = new Date();
@@ -562,7 +554,7 @@ export async function getMyPerformance(
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
   const [agents] = await Promise.all([
-    getAgentPerformance(prisma, tenantId, startOfMonth, endOfMonth, agentId),
+    getAgentPerformance(ctx, startOfMonth, endOfMonth, agentId),
   ]);
 
   const myStats = agents[0] || {
@@ -578,18 +570,18 @@ export async function getMyPerformance(
   };
 
   // Pending cases
-  const pendingCases = await prisma.case.count({
+  const pendingCases = await ctx.tx.case.count({
     where: {
-      tenantId,
+      tenantId: ctx.tenantId,
       assigneeId: agentId,
       status: { in: ['OPEN', 'IN_PROGRESS'] },
     },
   });
 
   // SLA about to expire (within 30 min)
-  const soonDue = await prisma.case.count({
+  const soonDue = await ctx.tx.case.count({
     where: {
-      tenantId,
+      tenantId: ctx.tenantId,
       assigneeId: agentId,
       status: { notIn: ['CLOSED', 'RESOLVED'] },
       slaDueAt: {
@@ -607,6 +599,51 @@ export async function getMyPerformance(
 }
 
 /* -------------------------------------------------------------------------- */
+/*  2i. CSAT Report                                                            */
+/* -------------------------------------------------------------------------- */
+
+/** 期間內送出問卷的工單。讀出全部工單後在這裡計算，資料量大時會變慢（AUDIT ANA-02） */
+export async function getCsatReport(ctx: TenantCtx, from: Date, to: Date) {
+  const cases = await ctx.tx.case.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      csatSentAt: { gte: from, lte: to },
+    },
+    select: {
+      csatScore: true,
+      csatSentAt: true,
+      csatRespondedAt: true,
+      csatComment: true,
+      id: true,
+      title: true,
+    },
+  });
+
+  const totalSent = cases.length;
+  const responded = cases.filter((c) => c.csatScore !== null);
+  const responseRate = totalSent > 0 ? responded.length / totalSent : 0;
+  const scores = responded.map((c) => c.csatScore!);
+  const avgScore = scores.length > 0
+    ? scores.reduce((a, b) => a + b, 0) / scores.length
+    : 0;
+  const satisfiedCount = scores.filter((s) => s >= 4).length;
+  const csatRate = scores.length > 0 ? satisfiedCount / scores.length : 0;
+  const lowScoreCases = responded
+    .filter((c) => c.csatScore! <= 2)
+    .map((c) => ({ id: c.id, title: c.title, score: c.csatScore }));
+
+  return {
+    totalSent,
+    totalResponded: responded.length,
+    responseRate: Math.round(responseRate * 100) / 100,
+    avgScore: Math.round(avgScore * 100) / 100,
+    csatRate: Math.round(csatRate * 100) / 100,
+    lowScoreCount: lowScoreCases.length,
+    lowScoreCases: lowScoreCases.slice(0, 20),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /*  2h. CSV Export                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -614,25 +651,23 @@ export async function getMyPerformance(
 const UTF8_BOM = '\uFEFF';
 
 export async function exportCsv(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   reportType: string,
   from: Date,
   to: Date,
 ): Promise<string> {
-  return UTF8_BOM + (await buildCsv(prisma, tenantId, reportType, from, to));
+  return UTF8_BOM + (await buildCsv(ctx, reportType, from, to));
 }
 
 async function buildCsv(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   reportType: string,
   from: Date,
   to: Date,
 ): Promise<string> {
   switch (reportType) {
     case 'overview': {
-      const data = await getOverviewStats(prisma, tenantId, from, to);
+      const data = await getOverviewStats(ctx, from, to);
       const headers = Object.keys(data).join(',');
       const values = Object.values(data)
         .map((v) => (v === null ? '' : String(v)))
@@ -641,8 +676,8 @@ async function buildCsv(
     }
 
     case 'cases': {
-      const cases = await prisma.case.findMany({
-        where: { tenantId, createdAt: { gte: from, lte: to } },
+      const cases = await ctx.tx.case.findMany({
+        where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to } },
         include: {
           assignee: { select: { name: true } },
           contact: { select: { displayName: true } },
@@ -668,7 +703,7 @@ async function buildCsv(
     }
 
     case 'agents': {
-      const agents = await getAgentPerformance(prisma, tenantId, from, to);
+      const agents = await getAgentPerformance(ctx, from, to);
       const headers = '客服ID,姓名,角色,處理案件數,已解決,平均首次回應(分),平均解決時間(分),CSAT,SLA達成率(%)';
       const rows = agents.map((a) =>
         [
@@ -687,7 +722,7 @@ async function buildCsv(
     }
 
     case 'channels': {
-      const data = await getChannelAnalytics(prisma, tenantId, from, to);
+      const data = await getChannelAnalytics(ctx, from, to);
       const headers = '渠道,訊息數,對話數';
       const channelMap = new Map<string, { msgs: number; convs: number }>();
       for (const m of data.messagesByChannel) {

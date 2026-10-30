@@ -223,7 +223,7 @@ workers 產生的業務事件（`create_case` 的 `case.created`、`add_tag` 的
 | `inactivity-close` | `setupInactivityCloseWorker()` | `conversation` | 每 5 分鐘 | 關閉閒置過久的對話 |
 | `trial-lifecycle` | `setupTrialScheduler()` | `trial` | 每小時 | 試用到期的提醒、停用與軟刪 |
 | `meta-token-health` | `setupMetaTokenHealthScheduler()` | `channel` | 每 6 小時 | 檢查 FB、IG 渠道的權杖，失效時通知租戶管理員 |
-| `analytics-daily` | `setupAnalyticsScheduler()` | `analytics` | 每天 02:00（行程所在時區） | 把前一天的彙總寫入 `DailyStat` |
+| `analytics-daily` | `setupAnalyticsScheduler()` | `analytics` | 每天 02:00（行程所在時區） | 把前一天的彙總寫入 `DailyStat`，每個啟用中的租戶一個交易，逐一處理 |
 | `outbox-cleanup` | `setupOutboxSchedulers()` | `outbox` | 每天 03:30（行程所在時區） | 刪除已送出超過 7 天的 outbox 與建立超過 30 天的認領紀錄 |
 
 `startA2ABridgeWorker()`（`settings`）也跑在 API 行程，但它是常駐輪詢 A2A Hub，不是排程，由 `A2A_BRIDGE_ENABLED` 控制。

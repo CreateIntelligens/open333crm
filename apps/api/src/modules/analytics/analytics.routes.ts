@@ -1,39 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import {
-  getOverviewStats,
-  getMessageTrend,
-  getCaseStats,
-  getAgentPerformance,
-  getChannelAnalytics,
-  getContactAnalytics,
-  getMyPerformance,
-  exportCsv,
-} from './analytics.service.js';
+  exportCsvFlow,
+  getAgentPerformanceFlow,
+  getCaseStatsFlow,
+  getChannelAnalyticsFlow,
+  getContactAnalyticsFlow,
+  getCsatReportFlow,
+  getMessageTrendFlow,
+  getMyPerformanceFlow,
+  getOverviewStatsFlow,
+} from './analytics.flow.js';
 import { getCouponAnalyticsFlow } from '../coupon/coupon-stats.flow.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission, requireAnyPermission } from '../../guards/rbac.guard.js';
-
-const dateRangeFields = z.object({
-  from: z.coerce.date().default(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
-  to: z.coerce.date().default(() => new Date()),
-});
-
-/** 起始日晚於結束日時擋下：原本會回傳全 0 報表，使用者以為沒有資料 */
-function ordered<T extends z.ZodTypeAny>(schema: T) {
-  return schema.refine((d: { from: Date; to: Date }) => d.from <= d.to, {
-    path: ['from'],
-    message: '起始日不可晚於結束日',
-  });
-}
-
-const dateRangeSchema = ordered(dateRangeFields);
-
-const messageTrendSchema = ordered(
-  dateRangeFields.extend({
-    groupBy: z.enum(['day', 'week', 'month']).default('day'),
-  }),
-);
+import { actorOf } from '../../lib/request-actor.js';
+import { dateRangeFields, dateRangeSchema, messageTrendSchema, ordered } from './analytics-query.js';
 
 const caseStatsSchema = ordered(
   dateRangeFields.extend({
@@ -66,122 +48,69 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   // GET /analytics/overview
   fastify.get('/overview', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getOverviewStats(request.tenantPrisma, request.agent.tenantId, from, to);
+    const data = await getOverviewStatsFlow(fastify, actorOf(request).tenantId, from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/message-trend
   fastify.get('/message-trend', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to, groupBy } = messageTrendSchema.parse(request.query);
-    const data = await getMessageTrend(request.tenantPrisma, request.agent.tenantId, from, to, groupBy);
+    const data = await getMessageTrendFlow(fastify, actorOf(request).tenantId, from, to, groupBy);
     return reply.send(success(data));
   });
 
   // GET /analytics/cases
   fastify.get('/cases', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = caseStatsSchema.parse(request.query);
-    const data = await getCaseStats(request.tenantPrisma, request.agent.tenantId, from, to);
+    const data = await getCaseStatsFlow(fastify, actorOf(request).tenantId, from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/agents
   fastify.get('/agents', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to, agentId } = agentSchema.parse(request.query);
-    const data = await getAgentPerformance(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      from,
-      to,
-      agentId,
-    );
+    const data = await getAgentPerformanceFlow(fastify, actorOf(request).tenantId, from, to, agentId);
     return reply.send(success(data));
   });
 
   // GET /analytics/channels
   fastify.get('/channels', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getChannelAnalytics(request.tenantPrisma, request.agent.tenantId, from, to);
+    const data = await getChannelAnalyticsFlow(fastify, actorOf(request).tenantId, from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/contacts
   fastify.get('/contacts', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getContactAnalytics(request.tenantPrisma, request.agent.tenantId, from, to);
+    const data = await getContactAnalyticsFlow(fastify, actorOf(request).tenantId, from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/coupons — 優惠券成效（add-coupon-system 12.16）
   fastify.get('/coupons', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    return reply.send(success(await getCouponAnalyticsFlow(fastify, request.agent.tenantId, from, to)));
+    return reply.send(success(await getCouponAnalyticsFlow(fastify, actorOf(request).tenantId, from, to)));
   });
 
   // GET /analytics/my — 看自己的個人數據；不掛額外 requirePermission，
   // 靠 module-level 的 requireAnyPermission 放行（analytics.view.self 即可，一般專員也看得到）。
   fastify.get('/my', async (request, reply) => {
-    const data = await getMyPerformance(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      request.agent.id,
-    );
+    const actor = actorOf(request);
+    const data = await getMyPerformanceFlow(fastify, actor.tenantId, actor.agentId);
     return reply.send(success(data));
   });
 
   // GET /analytics/csat — CSAT report statistics
   fastify.get('/csat', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const tenantId = request.agent.tenantId;
-
-    const cases = await request.tenantPrisma.case.findMany({
-      where: {
-        tenantId,
-        csatSentAt: { gte: from, lte: to },
-      },
-      select: {
-        csatScore: true,
-        csatSentAt: true,
-        csatRespondedAt: true,
-        csatComment: true,
-        id: true,
-        title: true,
-      },
-    });
-
-    const totalSent = cases.length;
-    const responded = cases.filter((c) => c.csatScore !== null);
-    const responseRate = totalSent > 0 ? responded.length / totalSent : 0;
-    const scores = responded.map((c) => c.csatScore!);
-    const avgScore = scores.length > 0
-      ? scores.reduce((a, b) => a + b, 0) / scores.length
-      : 0;
-    const satisfiedCount = scores.filter((s) => s >= 4).length;
-    const csatRate = scores.length > 0 ? satisfiedCount / scores.length : 0;
-    const lowScoreCases = responded
-      .filter((c) => c.csatScore! <= 2)
-      .map((c) => ({ id: c.id, title: c.title, score: c.csatScore }));
-
-    return reply.send(success({
-      totalSent,
-      totalResponded: responded.length,
-      responseRate: Math.round(responseRate * 100) / 100,
-      avgScore: Math.round(avgScore * 100) / 100,
-      csatRate: Math.round(csatRate * 100) / 100,
-      lowScoreCount: lowScoreCases.length,
-      lowScoreCases: lowScoreCases.slice(0, 20),
-    }));
+    return reply.send(success(await getCsatReportFlow(fastify, actorOf(request).tenantId, from, to)));
   });
 
   // POST /analytics/export
   fastify.post('/export', { preHandler: requirePermission('analytics.export') }, async (request, reply) => {
     const { reportType, from, to } = exportSchema.parse(request.body);
-    const csv = await exportCsv(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      reportType,
-      from,
-      to,
-    );
+    const csv = await exportCsvFlow(fastify, actorOf(request).tenantId, reportType, from, to);
     return reply
       .header('Content-Type', 'text/csv; charset=utf-8')
       .header('Content-Disposition', `attachment; filename="${reportType}_report.csv"`)
