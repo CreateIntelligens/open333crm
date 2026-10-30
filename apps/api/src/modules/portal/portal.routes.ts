@@ -17,7 +17,7 @@ import {
   listSubmissionsFlow,
   drawWinnersFlow,
   listPointTransactionsFlow,
-  addPointTransactionFlow,
+  adjustPointsFlow,
   getPointBalanceFlow,
 } from './portal.flow.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
@@ -227,12 +227,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     // 超大 amount（999999999999999）會溢位 int4 → 500；
     // 小數（1.5）被 Prisma 靜默無條件捨去成 1，使用者完全無感知。
     const { contactId, amount, note } = adjustPointsSchema.parse(request.body);
-    const entry = await addPointTransactionFlow(app, actorOf(request).tenantId, {
-      contactId,
-      amount,
-      type: 'admin_adjust',
-      note,
-    });
+    const entry = await adjustPointsFlow(app, actorOf(request).tenantId, { contactId, amount, note });
     return { success: true, data: entry };
   });
 

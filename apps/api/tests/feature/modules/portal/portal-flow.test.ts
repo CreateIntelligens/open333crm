@@ -248,6 +248,20 @@ test('調整積分累計餘額，其他租戶看不到', async () => {
   assert.equal((await admin(appB, 'GET', `/points?contactId=${contact.id}`)).json().meta.total, 0);
 });
 
+test('調整其他租戶聯絡人的積分回 404，不寫入', async () => {
+  const foreign = await owner.contact.create({ data: { tenantId: B, displayName: `${MARK}-他租戶` } });
+  const res = await admin(appA, 'POST', '/points/adjust', { contactId: foreign.id, amount: 10 });
+  assert.equal(res.statusCode, 404, res.body);
+  assert.equal(res.json().error.code, 'CONTACT_NOT_FOUND');
+  assert.equal(await owner.pointTransaction.count({ where: { contactId: foreign.id } }), 0);
+});
+
+test('調整不存在的聯絡人的積分回 404', async () => {
+  const res = await admin(appA, 'POST', '/points/adjust', { contactId: '00000000-0000-4000-8000-000000000000', amount: 10 });
+  assert.equal(res.statusCode, 404, res.body);
+  assert.equal(res.json().error.code, 'CONTACT_NOT_FOUND');
+});
+
 // ─── 粉絲門戶 ──────────────────────────────────────────────────────────────
 
 test('粉絲只看得到已發布、已開始、還沒結束的活動', async () => {

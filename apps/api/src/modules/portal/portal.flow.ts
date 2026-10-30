@@ -26,7 +26,7 @@ import {
   unarchiveActivity,
   updateActivity,
 } from './portal.service.js';
-import { addPointTransaction, getPointBalance, listPointTransactions } from './points.service.js';
+import { adjustPoints, getPointBalance, listPointTransactions } from './points.service.js';
 
 // ─── 後台：活動 ─────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ export const drawWinnersFlow = flowOf(drawWinners);
 // ─── 後台：積分 ─────────────────────────────────────────────────────────────
 
 export const listPointTransactionsFlow = flowOf(listPointTransactions);
-export const addPointTransactionFlow = flowOf(addPointTransaction);
+export const adjustPointsFlow = flowOf(adjustPoints);
 export const getPointBalanceFlow = flowOf(getPointBalance);
 
 // ─── 粉絲門戶 ──────────────────────────────────────────────────────────────

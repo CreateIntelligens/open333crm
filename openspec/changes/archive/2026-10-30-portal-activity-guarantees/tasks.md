@@ -25,6 +25,8 @@
 
 - [x] 3.5 review-loop 第 1 輪：鎖鍵是字串，uuid 的大小寫不同就是另一把鎖。`portal-concurrency.test.ts` 新增「同時送出時，活動 id 的大小寫不同」「同時寫入時，聯絡人 id 的大小寫不同」，在修正前都失敗在斷言上。送出的鎖鍵改用資料庫回傳的活動 id 與小寫的聯絡人 id；`lockPointLedgers()` 先把聯絡人 id 轉成小寫，再去重、排序
 
+- [x] 3.6 後台調整積分原本不檢查聯絡人：外鍵檢查不受 RLS 限制，其他租戶的聯絡人回 200 並寫入紀錄，不存在的聯絡人回 `DATABASE_ERROR`。`portal-flow.test.ts` 新增「調整其他租戶聯絡人的積分回 404，不寫入」「調整不存在的聯絡人的積分回 404」，在修正前都失敗在斷言上。新增 `adjustPoints()`，先確認聯絡人屬於這個租戶，路由改呼叫 `adjustPointsFlow`
+
 ## 4. 完成定義
 
 - [x] 4.1 `pnpm test:all` 通過；`tsc --noEmit`、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 通過，基準檔已更新

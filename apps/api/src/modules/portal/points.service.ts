@@ -6,6 +6,7 @@
  */
 
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { AppError } from '../../shared/utils/response.js';
 
 /**
  * 鎖住聯絡人的積分帳本到交易結束。寫入帳本前要先鎖住再讀餘額：
@@ -79,6 +80,23 @@ export async function addPointTransaction(
       createdAt,
     },
   });
+}
+
+/**
+ * 後台調整積分。contactId 來自請求，所以先確認聯絡人屬於這個租戶：
+ * 外鍵檢查不受 RLS 限制，不檢查的話會寫入一筆指向其他租戶聯絡人的紀錄；
+ * 聯絡人不存在時，外鍵錯誤會變成 500。
+ */
+export async function adjustPoints(
+  ctx: TenantCtx,
+  input: { contactId: string; amount: number; note?: string },
+) {
+  const contact = await ctx.tx.contact.findFirst({
+    where: { id: input.contactId, tenantId: ctx.tenantId },
+    select: { id: true },
+  });
+  if (!contact) throw new AppError('聯絡人不存在或不屬於此租戶', 'CONTACT_NOT_FOUND', 404);
+  return addPointTransaction(ctx, { contactId: contact.id, amount: input.amount, type: 'admin_adjust', note: input.note });
 }
 
 /**

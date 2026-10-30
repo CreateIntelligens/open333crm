@@ -79,7 +79,7 @@
 | 來源 | 程式 |
 | --- | --- |
 | 提交活動 | `submitActivity()` 依 `pointsPerSubmit` 自動加 |
-| 管理員調整 | `POST /portal/points/adjust`，需要 `portal.manage`，可以加也可以扣 |
+| 管理員調整 | `POST /portal/points/adjust`，需要 `portal.manage`，可以加也可以扣。聯絡人不存在或屬於其他租戶時回 404 `CONTACT_NOT_FOUND` |
 
 積分綁在聯絡人上。合併聯絡人時，被合併那一方的積分與活動提交會搬到主要聯絡人；解除合併時再搬回去，見[聯絡人](./CONTACTS.md#合併)。
 

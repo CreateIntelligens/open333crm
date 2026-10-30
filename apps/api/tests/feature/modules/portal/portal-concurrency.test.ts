@@ -25,7 +25,7 @@ import {
 import { addPointTransaction } from '#src/modules/portal/points.service.js';
 import { mergeContacts, revertMerge } from '#src/modules/contact/contact-merge.service.js';
 import {
-  addPointTransactionFlow,
+  adjustPointsFlow,
   archiveActivityFlow,
   deleteActivityFlow,
   drawWinnersFlow,
@@ -64,6 +64,10 @@ afterAll(async () => {
   await owner.$disconnect();
   await tenantDb.$disconnect();
 });
+
+/** 在一個交易內寫一筆積分（不經後台的聯絡人檢查，可以指定 contactId 的寫法與寫入時間） */
+const addPoints = (input: Parameters<typeof addPointTransaction>[1]) =>
+  inTenant(tenantDb, T, (scope) => addPointTransaction(scope, input));
 
 const newContact = (name: string) => owner.contact.create({ data: { tenantId: T, displayName: `${MARK}-${name}` } });
 const newActivity = (status: 'DRAFT' | 'PUBLISHED', settings: Record<string, unknown> = {}) =>
@@ -160,7 +164,7 @@ test('同時送出時，活動 id 的大小寫不同', async () => {
 test('同時寫同一位聯絡人的積分', async () => {
   const contact = await newContact('積分');
   const first = await pausedTx((scope) => addPointTransaction(scope, { contactId: contact.id, amount: 10, type: 'admin_adjust' }));
-  const second = addPointTransactionFlow(deps, T, { contactId: contact.id, amount: 3, type: 'admin_adjust' });
+  const second = adjustPointsFlow(deps, T, { contactId: contact.id, amount: 3 });
   second.catch(() => {});
   try {
     assert.equal(await blockedOrFinished(first.pid, second), 'blocked', '第二筆要等第一筆 commit');
@@ -177,7 +181,7 @@ test('同時寫同一位聯絡人的積分', async () => {
 test('同時寫入時，聯絡人 id 的大小寫不同', async () => {
   const contact = await newContact('大寫積分');
   const first = await pausedTx((scope) => addPointTransaction(scope, { contactId: contact.id, amount: 10, type: 'admin_adjust' }));
-  const second = addPointTransactionFlow(deps, T, { contactId: contact.id.toUpperCase(), amount: 3, type: 'admin_adjust' });
+  const second = addPoints({ contactId: contact.id.toUpperCase(), amount: 3, type: 'admin_adjust' });
   second.catch(() => {});
   try {
     assert.equal(await blockedOrFinished(first.pid, second), 'blocked', 'id 大小寫不同仍是同一把鎖');
@@ -192,9 +196,9 @@ test('同一毫秒內連續寫入', async () => {
   const contact = await newContact('同一毫秒');
   const at = new Date(Date.now() + 60_000);
   // 指定同一個時間寫入兩筆：後一筆要排在前一筆之後，否則「最新一筆」不確定
-  await addPointTransactionFlow(deps, T, { contactId: contact.id, amount: 1, type: 'admin_adjust', createdAt: at });
-  await addPointTransactionFlow(deps, T, { contactId: contact.id, amount: 1, type: 'admin_adjust', createdAt: at });
-  await addPointTransactionFlow(deps, T, { contactId: contact.id, amount: 1, type: 'admin_adjust', createdAt: at });
+  await addPoints({ contactId: contact.id, amount: 1, type: 'admin_adjust', createdAt: at });
+  await addPoints({ contactId: contact.id, amount: 1, type: 'admin_adjust', createdAt: at });
+  await addPoints({ contactId: contact.id, amount: 1, type: 'admin_adjust', createdAt: at });
 
   const rows = await owner.pointTransaction.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: 'desc' } });
   assert.deepEqual(rows.map((r) => r.balance), [3, 2, 1]);
@@ -204,7 +208,7 @@ test('同一毫秒內連續寫入', async () => {
 test('調整積分還沒 commit 時合併聯絡人', async () => {
   const merged = await newContact('被合併');
   const survivor = await newContact('保留');
-  await addPointTransactionFlow(deps, T, { contactId: merged.id, amount: 10, type: 'admin_adjust' });
+  await addPoints({ contactId: merged.id, amount: 10, type: 'admin_adjust' });
 
   const first = await pausedTx((scope) => addPointTransaction(scope, { contactId: merged.id, amount: 5, type: 'admin_adjust' }));
   const second = inTenant(tenantDb, T, (scope) =>
@@ -228,7 +232,7 @@ test('調整積分還沒 commit 時合併聯絡人', async () => {
 test('扣點還沒 commit 時解除合併', async () => {
   const merged = await newContact('解除-被合併');
   const survivor = await newContact('解除-保留');
-  await addPointTransactionFlow(deps, T, { contactId: merged.id, amount: 10, type: 'admin_adjust' });
+  await addPoints({ contactId: merged.id, amount: 10, type: 'admin_adjust' });
   const { mergeLogId } = await inTenant(tenantDb, T, (scope) =>
     mergeContacts(scope, { survivorId: survivor.id, mergedId: merged.id, source: 'MANUAL', actorAgentId: agent.id }),
   );
