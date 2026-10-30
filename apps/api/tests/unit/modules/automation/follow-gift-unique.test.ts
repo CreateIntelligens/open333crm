@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createRule, updateRule } from '#src/modules/automation/automation.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const T = 'tenant-a';
 const COUPON = '11111111-1111-4111-8111-111111111111';
@@ -67,31 +68,31 @@ const isConflict = (e: { statusCode?: number; message?: string }) =>
 
 test('已經有加好友禮時，再建立一條含發券的加入好友規則：回 409，不儲存', async () => {
   const { db, writes } = fakeDb([existingGift]);
-  await assert.rejects(createRule(db, T, followGift()), isConflict);
+  await assert.rejects(createRule(createMockTenantCtx(db, T).ctx, followGift()), isConflict);
   assert.equal(writes.length, 0);
 });
 
 test('沒有加好友禮時可以建立', async () => {
   const { db, writes } = fakeDb([]);
-  await createRule(db, T, followGift());
+  await createRule(createMockTenantCtx(db, T).ctx, followGift());
   assert.equal(writes.length, 1);
 });
 
 test('加入好友規則只傳送訊息、不發券：不受限制', async () => {
   const { db, writes } = fakeDb([existingGift]);
-  await createRule(db, T, followGift([{ type: 'send_message', params: { text: '歡迎' } }]));
+  await createRule(createMockTenantCtx(db, T).ctx, followGift([{ type: 'send_message', params: { text: '歡迎' } }]));
   assert.equal(writes.length, 1);
 });
 
 test('已刪除的加好友禮不算', async () => {
   const { db, writes } = fakeDb([{ ...existingGift, enabled: false }]);
-  await createRule(db, T, followGift());
+  await createRule(createMockTenantCtx(db, T).ctx, followGift());
   assert.equal(writes.length, 1);
 });
 
 test('修改加好友禮本身（換券、改條件）不算重複', async () => {
   const { db, writes } = fakeDb([existingGift]);
-  await updateRule(db, 'r1', T, { actions: [{ type: 'issue_coupon', params: { couponId: COUPON } }] });
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', { actions: [{ type: 'issue_coupon', params: { couponId: COUPON } }] });
   assert.equal(writes.length, 1);
 });
 
@@ -99,7 +100,7 @@ test('把另一條加入好友規則改成發券：已有加好友禮時回 409'
   const other: Rule = { ...existingGift, id: 'r2', actions: [{ type: 'send_message', params: { text: '歡迎' } }] };
   const { db, writes } = fakeDb([existingGift, other]);
   await assert.rejects(
-    updateRule(db, 'r2', T, { actions: [{ type: 'issue_coupon', params: { couponId: COUPON } }] }),
+    updateRule(createMockTenantCtx(db, T).ctx, 'r2', { actions: [{ type: 'issue_coupon', params: { couponId: COUPON } }] }),
     isConflict,
   );
   assert.equal(writes.length, 0);
@@ -107,6 +108,6 @@ test('把另一條加入好友規則改成發券：已有加好友禮時回 409'
 
 test('其他租戶的加好友禮不影響', async () => {
   const { db, writes } = fakeDb([{ ...existingGift, tenantId: 'tenant-b' }]);
-  await createRule(db, T, followGift());
+  await createRule(createMockTenantCtx(db, T).ctx, followGift());
   assert.equal(writes.length, 1);
 });

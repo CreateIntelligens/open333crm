@@ -20,6 +20,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **自動化規則與快速回覆預設組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `automation.service.ts` 與 `quick-reply-preset.service.ts` 改收 `TenantCtx`，新增 `automation.flow.ts` 與 `quick-reply-preset.flow.ts`。`/api/v1/automation/*` 與 `/api/v1/line/quick-reply-presets` 的路由都呼叫 flow。每個請求在一個交易內完成。原本每個查詢各自一個交易，例如儲存規則時，檢查素材、優惠券、加好友禮與寫入規則分屬不同的交易。回應內容與狀態碼不變。
 - **報表改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `analytics.service.ts` 改收 `TenantCtx`，新增 `analytics.flow.ts`。報表頁、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 都呼叫 flow。`GET /analytics/csat` 的查詢從路由移到 service，計算方式不變。回應內容不變。
   - 每個報表在一個交易內查詢。原本報表頁的每個查詢各自一個交易。
   - CLI 的報表原本以 `prismaAdmin`（BYPASSRLS）查詢，只靠查詢條件的 `tenantId` 隔離租戶。現在也受 RLS 限制。

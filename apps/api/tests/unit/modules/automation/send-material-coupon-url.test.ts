@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createRule, updateRule } from '#src/modules/automation/automation.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const T = 'tenant-a';
 const MAT_COUPON_URL = '11111111-1111-4111-8111-111111111111';
@@ -63,25 +64,25 @@ const rejectsCouponUrl = (e: { statusCode?: number; message?: string }) =>
 
 test('建立關鍵字回覆時選了含券連結的素材：回 400，不建立規則', async () => {
   const { db, writes } = fakeDb();
-  await assert.rejects(createRule(db, T, rule(MAT_COUPON_URL)), rejectsCouponUrl);
+  await assert.rejects(createRule(createMockTenantCtx(db, T).ctx, rule(MAT_COUPON_URL)), rejectsCouponUrl);
   assert.equal(writes.length, 0);
 });
 
 test('不含券連結的素材：建立成功', async () => {
   const { db, writes } = fakeDb();
-  await createRule(db, T, rule(MAT_PLAIN));
+  await createRule(createMockTenantCtx(db, T).ctx, rule(MAT_PLAIN));
   assert.equal(writes.length, 1);
 });
 
 test('更新動作時同樣檢查', async () => {
   const { db, writes } = fakeDb();
-  await assert.rejects(updateRule(db, 'r1', T, { actions: rule(MAT_COUPON_URL).actions }), rejectsCouponUrl);
+  await assert.rejects(updateRule(createMockTenantCtx(db, T).ctx, 'r1', { actions: rule(MAT_COUPON_URL).actions }), rejectsCouponUrl);
   assert.equal(writes.length, 0);
 });
 
 test('只改啟用狀態不檢查：既有規則的素材含券連結，停用或改名仍成功', async () => {
   const { db, writes } = fakeDb(MAT_COUPON_URL);
-  await updateRule(db, 'r1', T, { isActive: false });
-  await updateRule(db, 'r1', T, { name: '改名' });
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', { isActive: false });
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', { name: '改名' });
   assert.equal(writes.length, 2);
 });
