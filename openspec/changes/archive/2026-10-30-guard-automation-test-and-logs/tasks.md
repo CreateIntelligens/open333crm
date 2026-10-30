@@ -14,4 +14,4 @@
 - [x] 3.1 `pnpm test`；api feature 測試
 - [x] 3.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 加 `--strict`
 - [x] 3.3 `node scripts/validate-openspec.mjs guard-automation-test-and-logs`
-- [ ] 3.4 歸檔：`pnpm exec openspec archive guard-automation-test-and-logs`，之後 `node scripts/validate-openspec.mjs --specs`
+- [x] 3.4 歸檔：`pnpm exec openspec archive guard-automation-test-and-logs`，之後 `node scripts/validate-openspec.mjs --specs`
