@@ -44,12 +44,22 @@ function pick(row: Row, select?: Record<string, boolean>): Row {
 
 type OrderBy = Record<string, 'asc' | 'desc'>;
 
-/** 支援單一欄位排序（點數帳本以 createdAt desc 取最新一筆餘額） */
-function sorted(list: Row[], orderBy?: OrderBy): Row[] {
-  const [key, dir] = Object.entries(orderBy ?? {})[0] ?? [];
-  if (!key) return list;
-  const val = (r: Row) => (r[key] instanceof Date ? (r[key] as Date).getTime() : (r[key] as number));
-  return [...list].sort((a, b) => (dir === 'desc' ? val(b) - val(a) : val(a) - val(b)));
+/** 支援單一欄位或多欄位排序（點數帳本以 createdAt desc、再以 id desc 取最新一筆餘額） */
+function sorted(list: Row[], orderBy?: OrderBy | OrderBy[]): Row[] {
+  const keys = (Array.isArray(orderBy) ? orderBy : orderBy ? [orderBy] : []).map((o) => Object.entries(o)[0]);
+  if (keys.length === 0) return list;
+  const compare = (x: unknown, y: unknown) => {
+    if (x instanceof Date && y instanceof Date) return x.getTime() - y.getTime();
+    if (typeof x === 'number' && typeof y === 'number') return x - y;
+    return String(x).localeCompare(String(y));
+  };
+  return [...list].sort((a, b) => {
+    for (const [key, dir] of keys) {
+      const c = compare(a[key], b[key]);
+      if (c !== 0) return dir === 'desc' ? -c : c;
+    }
+    return 0;
+  });
 }
 
 /** 建立一張假表；unique 為唯一鍵欄位組，寫入後違反即丟錯（模擬 Postgres） */
@@ -66,10 +76,10 @@ function table(rows: Row[], unique: string[][] = []) {
   };
   return {
     rows,
-    async findMany(args: { where?: Where; select?: Record<string, boolean>; orderBy?: OrderBy } = {}) {
+    async findMany(args: { where?: Where; select?: Record<string, boolean>; orderBy?: OrderBy | OrderBy[] } = {}) {
       return sorted(rows.filter((r) => matches(r, args.where)), args.orderBy).map((r) => pick(r, args.select));
     },
-    async findFirst(args: { where?: Where; select?: Record<string, boolean>; orderBy?: OrderBy } = {}) {
+    async findFirst(args: { where?: Where; select?: Record<string, boolean>; orderBy?: OrderBy | OrderBy[] } = {}) {
       const r = sorted(rows.filter((row) => matches(row, args.where)), args.orderBy)[0];
       return r ? pick(r, args.select) : null;
     },
