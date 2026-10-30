@@ -206,7 +206,7 @@ test('其他租戶的活動回 404', async () => {
   assert.deepEqual(subs.json().meta.total, 0);
 });
 
-test('抽獎只從還沒中獎的參加者抽出', async () => {
+test('抽獎只從還沒中獎的作答抽出', async () => {
   const activity = await publishedPoll({ allowMultiple: true });
   for (const contact of [fanA, fanA2, fanA3]) {
     const res = await fan(appA, contact.id, 'POST', `/activities/${activity.id}/submit`, { optionIds: [activity.options[0].id] });
@@ -298,7 +298,7 @@ test('粉絲送出活動：記錄作答、給積分、詳情帶出自己的作�
   assert.deepEqual(result.json().data.options.map((o: { votes: number }) => o.votes), [0, 1]);
 });
 
-test('不允許重複參加時，第二次送出回 400，不再給積分', async () => {
+test('第二次送出被拒絕，不再給積分', async () => {
   const activity = await publishedPoll({ pointsPerSubmit: 2 });
   const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-重複` } });
   const url = `/activities/${activity.id}/submit`;

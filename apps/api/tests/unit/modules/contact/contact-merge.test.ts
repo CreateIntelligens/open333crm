@@ -130,6 +130,8 @@ function contact(id: string, extra: Row = {}): Row {
 /** 建立 survivor(S) 與 merged(M) 兩個聯絡人，各表都有資料的完整場景 */
 function makeDb() {
   const db = {
+    // 積分帳本的 advisory lock（points.service.ts 的 lockPointLedgers）；單元測試不測鎖，並行在 feature 組驗證
+    $executeRaw: async () => 1,
     contact: table([
       contact('S', { email: 's@example.com' }),
       contact('M', { phone: '0912345678', email: 'm@example.com', avatarUrl: 'https://img/m.png' }),

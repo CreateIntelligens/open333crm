@@ -95,6 +95,24 @@ export async function createActivity(
   });
 }
 
+/**
+ * 鎖住活動列到交易結束，回傳鎖住之後的活動；活動不存在（或等鎖期間被刪除）時回 null。
+ *
+ * 改變活動狀態或內容的函式都先呼叫這支，再檢查狀態：只讀不鎖時，另一個交易可以在檢查之後、
+ * 寫入之前改掉狀態，例如發布還沒 commit 時開始編輯，等發布 commit 後換掉已發布活動的選項。
+ * 抽獎也鎖同一列，兩次同時抽獎依序執行，不會抽到同一批人。粉絲送出不鎖活動列，見 submitActivity。
+ */
+async function lockActivity(ctx: TenantCtx, id: string) {
+  const { tx, tenantId } = ctx;
+  // 先以 Prisma 查一次：id 格式不對時與其他查詢的錯誤相同，不會在原生 SQL 轉型時才失敗
+  if (!(await tx.portalActivity.findFirst({ where: { id, tenantId }, select: { id: true } }))) return null;
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM portal_activities WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid FOR UPDATE`;
+  if (locked.length === 0) return null;
+  // read committed：鎖住之後的查詢讀得到對方 commit 的狀態
+  return tx.portalActivity.findFirst({ where: { id, tenantId } });
+}
+
 // 選項與欄位的刪除、重建和活動的更新在呼叫端 flow 的同一個交易內完成
 export async function updateActivity(
   ctx: TenantCtx,
@@ -111,8 +129,8 @@ export async function updateActivity(
     fields?: Array<{ id?: string; fieldKey: string; label: string; fieldType?: string; options?: unknown; isRequired?: boolean; sortOrder?: number }>;
   },
 ) {
-  const { tx: prisma, tenantId } = ctx;
-  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  const { tx: prisma } = ctx;
+  const activity = await lockActivity(ctx, id);
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以編輯', 'INVALID_ACTIVITY_STATUS', 409);
 
@@ -172,16 +190,16 @@ export async function updateActivity(
 }
 
 export async function deleteActivity(ctx: TenantCtx, id: string) {
-  const { tx: prisma, tenantId } = ctx;
-  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  const { tx: prisma } = ctx;
+  const activity = await lockActivity(ctx, id);
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以刪除', 'INVALID_ACTIVITY_STATUS', 409);
   return prisma.portalActivity.delete({ where: { id } });
 }
 
 export async function publishActivity(ctx: TenantCtx, id: string) {
-  const { tx: prisma, tenantId } = ctx;
-  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  const { tx: prisma } = ctx;
+  const activity = await lockActivity(ctx, id);
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以發布', 'INVALID_ACTIVITY_STATUS', 409);
   return prisma.portalActivity.update({
@@ -191,8 +209,8 @@ export async function publishActivity(ctx: TenantCtx, id: string) {
 }
 
 export async function endActivity(ctx: TenantCtx, id: string) {
-  const { tx: prisma, tenantId } = ctx;
-  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  const { tx: prisma } = ctx;
+  const activity = await lockActivity(ctx, id);
   if (!activity) return null;
   if (activity.status !== 'PUBLISHED') throw new AppError('僅已發布的活動可以結束', 'INVALID_ACTIVITY_STATUS', 409);
   return prisma.portalActivity.update({
@@ -212,8 +230,8 @@ export async function endActivity(ctx: TenantCtx, id: string) {
  * 要先按「結束」。
  */
 export async function archiveActivity(ctx: TenantCtx, id: string) {
-  const { tx: prisma, tenantId } = ctx;
-  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  const { tx: prisma } = ctx;
+  const activity = await lockActivity(ctx, id);
   if (!activity) return null;
   if (activity.status === 'PUBLISHED') {
     throw new AppError('進行中的活動請先結束再封存', 'INVALID_ACTIVITY_STATUS', 409);
@@ -229,8 +247,8 @@ export async function archiveActivity(ctx: TenantCtx, id: string) {
 
 /** 取消封存：把活動放回列表（回到 ENDED） */
 export async function unarchiveActivity(ctx: TenantCtx, id: string) {
-  const { tx: prisma, tenantId } = ctx;
-  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  const { tx: prisma } = ctx;
+  const activity = await lockActivity(ctx, id);
   if (!activity) return null;
   if (activity.status !== 'ARCHIVED') {
     throw new AppError('此活動未封存', 'INVALID_ACTIVITY_STATUS', 409);
@@ -290,6 +308,9 @@ export async function submitActivity(
   const settings = activity.settings as Record<string, unknown>;
   const allowMultiple = settings.allowMultiple ?? false;
   if (!allowMultiple) {
+    // 先鎖「活動＋聯絡人」再查：同一位粉絲同時送出時，後一次等前一次 commit 後才查得到它的作答。
+    // 不鎖活動列，否則所有粉絲的送出都要排隊
+    await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`portal-submit:${activityId}:${contactId}`}, 0))`;
     const existing = await prisma.portalSubmission.findFirst({
       where: { activityId, contactId },
     });
@@ -339,6 +360,8 @@ export async function drawWinners(
   count: number,
 ) {
   const { tx: prisma, tenantId } = ctx;
+  // 鎖住活動到交易結束：同時抽獎時，後一次等前一次 commit 後才讀未中獎名單
+  if (!(await lockActivity(ctx, activityId))) return [];
   // Get all non-winner submissions
   const eligible = await prisma.portalSubmission.findMany({
     where: { activityId, tenantId, isWinner: false },

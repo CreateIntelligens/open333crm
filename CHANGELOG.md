@@ -4,9 +4,17 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-30]
 
+### Fixed
+
+- **粉絲活動與積分在同時操作時不再寫錯資料**（change `portal-activity-guarantees`）— 這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查：
+  - 同一位粉絲同時送出不允許重複參加的活動，原本兩次都成功，積分給兩次。現在先以 advisory lock 鎖住「活動＋聯絡人」再檢查，第二次回「您已參加過這個活動」。
+  - 同時寫同一位聯絡人的積分（送出給點、後台調整、合併與解除合併轉點），原本兩筆都以同一個餘額計算。現在 `addPointTransaction()` 先鎖住這位聯絡人的帳本再讀餘額。寫入時間至少比最新一筆晚 1 毫秒，同一毫秒內連續寫入時，「最新一筆」不再不確定。合併與解除合併先依 id 排序鎖住雙方的帳本，再讀餘額，所以合併會轉出調整後的全部餘額，解除合併也不會把保留方扣成負數。
+  - 同時抽獎原本會抽到同一批人。現在抽獎先鎖住活動列。
+  - 編輯、刪除與狀態轉換原本先讀狀態再以 id 更新。例如發布還沒 commit 時開始編輯，編輯會在發布 commit 之後換掉已發布活動的選項；刪除與封存也會作用在已發布的活動上。現在先鎖住活動列再檢查狀態，狀態已經改變時回 `INVALID_ACTIVITY_STATUS`；等鎖期間活動被刪除時，回找不到，不再回 500。
+
 ### Changed
 
-- **粉絲活動與積分改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `portal.service.ts` 與 `points.service.ts` 改收 `TenantCtx`，`/api/v1/portal` 與 `/api/v1/fan` 的路由改呼叫新的 `portal.flow.ts`。粉絲端原本在路由裡的查詢移進 `portal.service.ts`。`contact-merge.service.ts` 轉移點數時改傳 `TenantCtx`。可觀察的差異：
+- **粉絲活動與積分改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2，change `portal-activity-guarantees`）— `portal.service.ts` 與 `points.service.ts` 改收 `TenantCtx`，`/api/v1/portal` 與 `/api/v1/fan` 的路由改呼叫新的 `portal.flow.ts`。粉絲端原本在路由裡的查詢移進 `portal.service.ts`。`contact-merge.service.ts` 轉移點數時改傳 `TenantCtx`。可觀察的差異：
   - 粉絲送出活動時，`portal.activity.submitted` 事件與作答、積分在同一個交易寫進 outbox，commit 之後才送出，至少送出一次。原本以 `eventBus.publish()` 在 commit 之前送出：交易 rollback 時事件照樣送出，行程在送出之前結束時事件遺失。事件寫不進 outbox 時，作答與積分都不留下，API 回 400。
   - 後台的每個請求在一個交易內完成。原本每個查詢各自一個交易，例如調整積分時，讀取餘額與寫入交易紀錄分屬兩個交易。
 

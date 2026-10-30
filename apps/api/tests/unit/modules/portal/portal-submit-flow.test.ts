@@ -44,7 +44,7 @@ function flowTx(log: ReturnType<typeof createFlowLog>, pointsFail = false) {
   };
 }
 
-test('作答、積分與事件在同一個交易寫入，commit 之後才送出事件', async () => {
+test('事件在 commit 之後才送出', async () => {
   const log = createFlowLog();
   const result = await submitActivityFlow(
     { prisma: mockTransactionPrisma(log, flowTx(log)), events: recordingPublisher(log) },
@@ -69,7 +69,7 @@ test('作答、積分與事件在同一個交易寫入，commit 之後才送出�
   });
 });
 
-test('積分寫不進去時 rollback，不送出事件', async () => {
+test('積分寫不進去時不送出事件', async () => {
   const log = createFlowLog();
   await assert.rejects(
     () =>

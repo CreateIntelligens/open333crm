@@ -15,7 +15,7 @@
 import type { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
-import { addPointTransaction, getLatestPointEntry } from '../portal/points.service.js';
+import { addPointTransaction, getLatestPointEntry, lockPointLedgers } from '../portal/points.service.js';
 
 export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL' | 'PHONE';
 
@@ -133,10 +133,10 @@ async function transferPoints(
   amount?: number,
   expected?: number,
 ): Promise<number> {
-  const [from, to] = await Promise.all([
-    getLatestPointEntry(ctx, fromId),
-    getLatestPointEntry(ctx, toId),
-  ]);
+  // 先鎖住雙方的帳本再讀餘額：同時調整積分或另一個轉移時，才不會以舊餘額計算
+  await lockPointLedgers(ctx, [fromId, toId]);
+  const from = await getLatestPointEntry(ctx, fromId);
+  const to = await getLatestPointEntry(ctx, toId);
   const fromBalance = from?.balance ?? 0;
   const value = amount ?? fromBalance;
   if (value <= 0) return 0;
@@ -514,6 +514,8 @@ export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Prom
   if (moved.pointsTransferred && moved.pointsTransferred > 0) {
     // 把當初轉入的點數轉回；survivor 若在合併後已用掉一部分，只轉回剩餘的
     const holderId = holderChain[holderChain.length - 1];
+    // 先鎖住帳本再讀餘額：轉回的點數依這個餘額決定，讀完之後不能再被同時的扣點改掉
+    await lockPointLedgers(ctx, [holderId, log.mergedId]);
     const holderBalance = (await getLatestPointEntry(ctx, holderId))?.balance ?? 0;
     const amount = Math.min(moved.pointsTransferred, Math.max(holderBalance, 0));
     if (amount > 0) {

@@ -8,6 +8,18 @@
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 /**
+ * 鎖住聯絡人的積分帳本到交易結束。寫入帳本前要先鎖住再讀餘額：
+ * 同時寫入同一位聯絡人時，後一筆等前一筆 commit 後才讀得到它的餘額，不會兩筆都以同一個餘額計算。
+ * 同時鎖多位聯絡人時依 id 排序，避免「A 轉 B」與「B 轉 A」同時進行時互相等待而死結。
+ * 同一個交易重複鎖同一位聯絡人不會卡住。
+ */
+export async function lockPointLedgers(ctx: TenantCtx, contactIds: string[]): Promise<void> {
+  for (const contactId of [...new Set(contactIds)].sort()) {
+    await ctx.tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`point-ledger:${contactId}`}, 0))`;
+  }
+}
+
+/**
  * Get current point balance for a contact.
  */
 export async function getPointBalance(ctx: TenantCtx, contactId: string): Promise<number> {
@@ -32,6 +44,9 @@ export async function getLatestPointEntry(
 /**
  * Add a point transaction (positive or negative amount).
  * Returns the new transaction record.
+ *
+ * 寫入時間取 createdAt（省略為現在）與「最新一筆 + 1 毫秒」中較晚的一個：
+ * 同一毫秒內連續寫入時，「取最新一筆」仍取得到後寫入的那筆。
  */
 export async function addPointTransaction(
   ctx: TenantCtx,
@@ -41,12 +56,15 @@ export async function addPointTransaction(
     type: string; // activity_submit | admin_adjust | reward_redeem
     refId?: string;
     note?: string;
-    /** 指定寫入時間（合併轉移點數時用，確保排在雙方既有交易之後）；省略為現在 */
+    /** 指定寫入時間（合併轉移點數時用，讓轉出與轉入同一個時間）；省略為現在 */
     createdAt?: Date;
   },
 ) {
-  const currentBalance = await getPointBalance(ctx, data.contactId);
-  const newBalance = currentBalance + data.amount;
+  await lockPointLedgers(ctx, [data.contactId]);
+  const latest = await getLatestPointEntry(ctx, data.contactId);
+  const newBalance = (latest?.balance ?? 0) + data.amount;
+  const requested = (data.createdAt ?? new Date()).getTime();
+  const createdAt = new Date(latest ? Math.max(requested, latest.createdAt.getTime() + 1) : requested);
 
   return ctx.tx.pointTransaction.create({
     data: {
@@ -57,7 +75,7 @@ export async function addPointTransaction(
       type: data.type,
       refId: data.refId,
       note: data.note,
-      ...(data.createdAt ? { createdAt: data.createdAt } : {}),
+      createdAt,
     },
   });
 }
