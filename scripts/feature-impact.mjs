@@ -8,9 +8,13 @@
  * ## 判斷方式
  *
  * 1. 直接影響：改動的檔案符合某領域的 `paths`、`pages` 或 `tests`。
- * 2. 資料表與事件：改動內容（diff 的增刪行）提到某領域的 `tables` 或 `events`。
+ * 2. 資料表與事件：改動內容（diff 的增刪行）以 Prisma 的寫法提到某領域的 `tables`
+ *    （`prisma.plan.findMany`、`tx.plan.update` 這類存取，或 `model Plan {`），或提到它的 `events`。
  *    `commonTables` 列的表（例如 Tenant）幾乎每個領域都用，不納入比對。
- * 3. 間接影響：直接受影響領域的 `usedBy`，以及別的領域 `dependsOn` 指向它。
+ * 3. 間接影響：改到功能程式（`paths`、`pages`）的領域，它的 `usedBy`，以及別的領域 `dependsOn`
+ *    指向它。只改到測試檔，或只因資料表、事件命中的領域，不往外擴。
+ *    依賴說明（why）裡的識別字或檔名出現在這次的 diff 或檔名中，才列為間接影響；
+ *    其餘的只列名稱，放在「其他可能相關」。
  *
  * 用法：
  *   node scripts/feature-impact.mjs                      # 比對 origin/main...HEAD 加上未 commit 的改動
@@ -68,10 +72,8 @@ function globToRegExp(glob) {
 function loadMap() {
   const map = JSON.parse(readFileSync(join(ROOT, MAP_PATH), 'utf8'));
   for (const d of map.domains) {
-    d._fileRes = [...(d.paths ?? []), ...(d.pages ?? []), ...(d.tests ?? []), ...(d.e2e ?? [])].map((g) => [
-      g,
-      globToRegExp(g),
-    ]);
+    const src = new Set([...(d.paths ?? []), ...(d.pages ?? [])]);
+    d._fileRes = [...src, ...(d.tests ?? []), ...(d.e2e ?? [])].map((g) => [g, globToRegExp(g), src.has(g)]);
   }
   return map;
 }
@@ -108,14 +110,35 @@ function wordRe(token) {
   return new RegExp(`(?<![A-Za-z0-9_])${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_])`);
 }
 
+/** 依賴說明裡的識別字（函式、檔名、資料表、事件、路由片段）有沒有出現在這次的檔名或 diff。 */
+function relatedToChange(why, haystack) {
+  const tokens = why.match(/[A-Za-z_][A-Za-z0-9_.-]{3,}/g) ?? [];
+  return tokens.some((t) => {
+    const name = t.replace(/\.(ts|tsx|mjs|js)$/, '').replace(/[.-]+$/, '');
+    return name.length >= 4 && !GENERIC_TOKENS.has(name) && wordRe(name).test(haystack);
+  });
+}
+
+/** 太常見、出現在 diff 也不代表相關的字。 */
+const GENERIC_TOKENS = new Set([
+  'LINE', 'Channel', 'Contact', 'Conversation', 'Message', 'Agent', 'Tenant', 'TenantSettings', 'Plan', 'settings',
+  'channelType', 'channelId', 'tenantId', 'contactId', 'agentId', 'GET', 'POST', 'PATCH', 'DELETE', 'agent', 'true', 'false', 'null',
+]);
+
+/** Prisma 存取（`.plan.find…`）或 schema 定義（`model Plan {`）。只比對單字會被註解或英文字誤中。 */
+function tableRe(table) {
+  const accessor = table[0].toLowerCase() + table.slice(1);
+  return new RegExp(`\\.${accessor}\\.[a-zA-Z]+\\(|\\bmodel ${table} \\{`);
+}
+
 function analyze(map, files, diffText) {
   const byId = new Map(map.domains.map((d) => [d.id, d]));
   const common = new Set(map.commonTables ?? []);
-  /** id → { domain, level: 'direct' | 'data' | 'indirect', reasons: string[] } */
+  /** id → { domain, level: 'direct' | 'data' | 'indirect' | 'weak', reasons: string[], spreads: boolean } */
   const hits = new Map();
   const hit = (id, level, reason) => {
-    const rank = { direct: 0, data: 1, indirect: 2 };
-    const h = hits.get(id) ?? { domain: byId.get(id), level, reasons: [] };
+    const rank = { direct: 0, data: 1, indirect: 2, weak: 3 };
+    const h = hits.get(id) ?? { domain: byId.get(id), level, reasons: [], spreads: false };
     if (rank[level] < rank[h.level]) h.level = level;
     if (!h.reasons.includes(reason)) h.reasons.push(reason);
     hits.set(id, h);
@@ -124,14 +147,17 @@ function analyze(map, files, diffText) {
   for (const d of map.domains) {
     for (const f of files) {
       const m = d._fileRes.find(([, re]) => re.test(f));
-      if (m) hit(d.id, 'direct', `改到 ${f}（符合 ${m[0]}）`);
+      if (m) {
+        hit(d.id, 'direct', `改到 ${f}（符合 ${m[0]}）`);
+        if (m[2]) hits.get(d.id).spreads = true;
+      }
     }
   }
 
   if (diffText) {
     for (const d of map.domains) {
       for (const t of d.tables ?? []) {
-        if (!common.has(t) && wordRe(t).test(diffText)) hit(d.id, 'data', `改動內容提到資料表 ${t}`);
+        if (!common.has(t) && tableRe(t).test(diffText)) hit(d.id, 'data', `改動內容存取資料表 ${t}`);
       }
       for (const e of d.events ?? []) {
         if (wordRe(e).test(diffText)) hit(d.id, 'data', `改動內容提到事件或佇列 ${e}`);
@@ -141,15 +167,17 @@ function analyze(map, files, diffText) {
 
   // 被依賴、但還沒建好地圖與 Skill 的領域，另外列出
   const pending = new Set();
-  for (const id of [...hits.keys()]) {
+  const haystack = `${files.join('\n')}\n${diffText ?? ''}`;
+  const level = (why) => (relatedToChange(why, haystack) ? 'indirect' : 'weak');
+  for (const id of [...hits.keys()].filter((k) => hits.get(k).spreads)) {
     const d = byId.get(id);
     for (const u of d.usedBy ?? []) {
-      if (byId.has(u.domain)) hit(u.domain, 'indirect', `${d.title} 被它使用：${u.why}`);
+      if (byId.has(u.domain)) hit(u.domain, level(u.why), `${d.title} 被它使用：${u.why}`);
       else pending.add(`${u.domain}（${u.why}）`);
     }
     for (const other of map.domains) {
       for (const dep of other.dependsOn ?? []) {
-        if (dep.domain === id) hit(other.id, 'indirect', `它依賴 ${d.title}：${dep.why}`);
+        if (dep.domain === id) hit(other.id, level(dep.why), `它依賴 ${d.title}：${dep.why}`);
       }
     }
   }
@@ -180,6 +208,12 @@ function printReport(results) {
       if (d.e2e?.length) console.log(`- E2E：${d.e2e.join('、')}`);
       if (d.health) console.log(`- 健檢報告與手動回歸流程：${d.health}`);
     }
+  }
+  const weak = results.filter((r) => r.level === 'weak');
+  if (weak.length) {
+    console.log(`\n## 其他可能相關（${weak.length}）`);
+    console.log('依賴關係上相連，但依賴說明沒有提到這次改的檔案或識別字。需要時用 --domain <id> 看細節。');
+    console.log(`- ${weak.map((r) => `${r.domain.title}（${r.domain.id}）`).join('、')}`);
   }
   if (results.pending?.length) {
     console.log('\n## 尚未建立 Skill 的相關領域（請手動確認）');

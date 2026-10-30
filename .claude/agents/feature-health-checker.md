@@ -40,9 +40,10 @@ tools: Bash, Read, Write, Edit, Glob, Grep, Skill
   ```bash
   L=/tmp/open333-feature-test.lock
   until mkdir "$L" 2>/dev/null; do sleep 15; done
-  pnpm --filter @open333crm/api test:feature -- <檔名過濾>; rc=$?
+  pnpm --filter @open333crm/api test:feature <路徑過濾，例如 modules/case>; rc=$?
   rmdir "$L"
   ```
+  feature 測試的過濾**不要加 `--`**，加了會原樣傳給 vitest，變成跑全套。跑完確認輸出的檔案數只有本領域。
 - 記錄通過、失敗、`test.fail` 與 skip 的數量。失敗要附錯誤摘要。
 
 ### 3. 實際操作（瀏覽器）
