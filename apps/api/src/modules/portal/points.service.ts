@@ -9,6 +9,13 @@ import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 
 /**
+ * 帳本的排序：createdAt 由新到舊，時間相同時以 id 決定。
+ * 新寫入的一筆一定比最新一筆晚 1 毫秒（addPointTransaction），但修正之前寫入的舊資料可能有時間相同的紀錄。
+ * 最新一筆與交易清單都用這個排序，時間相同時也選到同一筆。id 不代表寫入順序，只讓結果固定。
+ */
+const LEDGER_ORDER = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
+
+/**
  * 鎖住聯絡人的積分帳本到交易結束。寫入帳本前要先鎖住再讀餘額：
  * 同時寫入同一位聯絡人時，後一筆等前一筆 commit 後才讀得到它的餘額，不會兩筆都以同一個餘額計算。
  * 同時鎖多位聯絡人時依 id 排序，避免「A 轉 B」與「B 轉 A」同時進行時互相等待而死結。
@@ -29,7 +36,7 @@ export async function getPointBalance(ctx: TenantCtx, contactId: string): Promis
 }
 
 /**
- * 帳本最新一筆（餘額與時間）。餘額規則只寫在這裡：取 createdAt 最新一筆的 balance。
+ * 帳本最新一筆（餘額與時間）。餘額規則只寫在這裡：取 LEDGER_ORDER 第一筆的 balance。
  * 合併引擎轉移點數時也用這支，確保與點數頁算出的餘額一致。
  */
 export async function getLatestPointEntry(
@@ -38,7 +45,7 @@ export async function getLatestPointEntry(
 ): Promise<{ balance: number; createdAt: Date } | null> {
   return ctx.tx.pointTransaction.findFirst({
     where: { contactId, tenantId: ctx.tenantId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: LEDGER_ORDER,
     select: { balance: true, createdAt: true },
   });
 }
@@ -112,7 +119,7 @@ export async function listPointTransactions(
   // 同一個交易內依序查詢（交易用戶端不支援並行查詢）
   const items = await tx.pointTransaction.findMany({
     where: { tenantId, contactId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: LEDGER_ORDER,
     skip: (page - 1) * limit,
     take: limit,
   });

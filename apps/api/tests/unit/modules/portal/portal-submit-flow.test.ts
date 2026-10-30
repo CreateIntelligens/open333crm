@@ -1,7 +1,7 @@
 /**
  * 粉絲送出活動的 flow（#337 階段 3，AGENTS.md 結構規則 2）：
  * 作答、積分與 portal.activity.submitted 事件在同一個交易寫入，事件在 commit 之後才送出；
- * 積分寫不進去時 rollback，事件不送出。
+ * 積分寫不進去時 rollback，事件不送出；commit 之後送不進佇列時，作答仍然成立。
  *
  * prisma.$transaction 以 mock 模擬，見 tests/support/flow-harness.ts。
  */
@@ -83,4 +83,28 @@ test('積分寫不進去時不送出事件', async () => {
   );
   assert.ok(log.entries.includes('rollback'));
   assert.ok(!log.entries.some((e) => e.startsWith('event:') || e.startsWith('dispatch:')));
+});
+
+test('commit 之後送不進佇列時，作答仍然成立', async () => {
+  const log = createFlowLog();
+  const base = recordingPublisher(log);
+  const events = {
+    write: base.write,
+    dispatch: async () => {
+      log.entries.push('dispatch-failed');
+      throw new Error('redis down');
+    },
+  };
+
+  const result = await submitActivityFlow(
+    { prisma: mockTransactionPrisma(log, flowTx(log)), events },
+    fan,
+    'activity-1',
+    { optionIds: [] },
+  );
+
+  assert.deepEqual(result, { id: 'submission-1' }, '回傳作答，不回錯誤');
+  assert.deepEqual(log.entries.slice(0, 4), ['write:submission', 'write:points', 'event:portal.activity.submitted', 'commit']);
+  assert.ok(log.entries.includes('dispatch-failed'), 'commit 之後有嘗試送出');
+  assert.ok(!log.entries.includes('rollback'), '已 commit 的作答不 rollback；事件留在 outbox，由 outbox-relay 補送');
 });

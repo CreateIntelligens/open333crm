@@ -7,7 +7,7 @@
 
 ### Requirement: 送出活動的寫入一起成立
 
-粉絲送出活動時，系統 MUST 在同一個交易寫入作答、活動設定的積分與 `portal.activity.submitted` 事件。其中一項寫不進去時，系統 MUST NOT 留下另外兩項，並回錯誤。事件 MUST 寫進 outbox，在交易 commit 之後才送給訂閱者，至少送出一次。事件內容 MUST 包含 `activityId`、`contactId`、`submissionId` 與 `activityType`。
+粉絲送出活動時，系統 MUST 在同一個交易寫入作答、活動設定的積分與 `portal.activity.submitted` 事件。其中一項寫不進去時，系統 MUST NOT 留下另外兩項，並回錯誤。事件 MUST 寫進 outbox，在交易 commit 之後才送給訂閱者，至少送出一次。事件內容 MUST 包含 `activityId`、`contactId`、`submissionId` 與 `activityType`。commit 之後送不進佇列時，系統 MUST 仍回成功，事件留在 outbox，由補送排程送出。
 
 #### Scenario: 送出活動的事件與作答一起寫進 outbox
 
@@ -28,6 +28,11 @@
 
 - **WHEN** 粉絲送出活動成功
 - **THEN** 寫入的順序是作答、積分、事件，交易 commit 之後才送出事件
+
+#### Scenario: commit 之後送不進佇列時，作答仍然成立
+
+- **WHEN** 粉絲送出活動，交易 commit 之後事件送不進佇列
+- **THEN** 系統回傳這次的作答，作答與積分不 rollback
 
 ### Requirement: 不允許重複參加的活動，每位粉絲只留下一筆作答
 
@@ -99,6 +104,11 @@
 
 - **WHEN** 粉絲讀取自己的積分，讀取期間有另一筆積分寫入
 - **THEN** 回應的餘額等於交易清單最新一筆的 `balance`
+
+#### Scenario: 時間相同的積分紀錄，最新一筆與交易清單的排序相同
+
+- **WHEN** 同一位聯絡人有 `createdAt` 相同的舊紀錄，系統讀取最新一筆與交易清單
+- **THEN** 兩者都依 `createdAt` 由新到舊、再依 `id` 排序，選到同一筆
 
 #### Scenario: 調整積分還沒 commit 時合併聯絡人
 

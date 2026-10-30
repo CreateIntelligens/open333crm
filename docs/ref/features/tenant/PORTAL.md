@@ -49,7 +49,7 @@
 2. 以 token 瀏覽活動（`GET /fan/activities`）並提交（`POST /fan/activities/:id/submit`）。
 3. 查看結果（`/fan/activities/:id/result`）、自己參加過的活動（`/fan/me/activities`）與積分（`/fan/me/points`）。
 
-粉絲端的每個查詢都以 token 裡的 `tenantId` 與 `contactId` 過濾，因此只看得到自己租戶的活動與自己的紀錄。這組路由的 flow 以 `fan.tenantId` 開交易，查詢走 RLS，查詢條件漏帶 `tenantId` 時仍有 RLS 兜底（2026-10-06 之前使用 `prismaAdmin`，租戶隔離完全靠查詢條件，積分餘額就漏帶了 `tenantId`）。結果端點會回傳測驗的正確答案，見 `../../system/AUDIT.md` 的 PORTAL-01。
+粉絲端的每個查詢都以 token 裡的 `tenantId` 與 `contactId` 過濾，因此只看得到自己租戶的活動與自己的紀錄。這組路由的 flow 以 `fan.tenantId` 開交易，查詢走 RLS，查詢條件漏帶 `tenantId` 時仍有 RLS 兜底（2026-10-06 之前使用 `prismaAdmin`，租戶隔離完全靠查詢條件，積分餘額就漏帶了 `tenantId`）。結果端點會回傳測驗的正確答案，詳情端點不看活動的開始與結束時間，見 `../../system/AUDIT.md` 的 PORTAL-01。
 
 **粉絲 token 不能通過客服認證。** 粉絲 token 與客服的 JWT 用同一把 `JWT_SECRET` 簽發，但驗證端會檢查用途：客服端的 `authenticate` 與 socket 只接受 `typ` 為 `access` 的 token（`apps/api/src/lib/agent-token.ts`），粉絲端的 `verifyFanToken()` 只接受 `sub` 為 `fan` 的 token。接回簽發路徑時，要從驗證過的憑證（例如 LINE LIFF 的 ID token）推導出聯絡人，不可接受呼叫端指定的 `contactId`。
 

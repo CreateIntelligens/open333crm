@@ -13,7 +13,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 編輯、刪除與狀態轉換原本先讀狀態再以 id 更新。例如發布還沒 commit 時開始編輯，編輯會在發布 commit 之後換掉已發布活動的選項；刪除與封存也會作用在已發布的活動上。現在先鎖住活動列再檢查狀態，狀態已經改變時回 `INVALID_ACTIVITY_STATUS`；等鎖期間活動被刪除時，回找不到，不再回 500。
   - 活動的 `settings` 原本不驗證：字串 `"false"` 的 `allowMultiple` 會被當成允許重複參加；後台表單擋不住手動輸入負數的 `pointsPerSubmit`，之後每次送出都會扣粉絲的積分；字串或小數的 `pointsPerSubmit` 讓粉絲送不出。現在建立與編輯活動時，`allowMultiple` 不是布林值、`pointsPerSubmit` 不是 0 以上的整數就回 400 `VALIDATION_ERROR`；資料庫裡已經存在的不合法值，送出時當成不允許重複參加、不給積分。表單輸入負數時送出 0。
   - `/api/v1/portal` 與 `/api/v1/fan` 的路由原本以 `as` 轉型輸入：不是 uuid 的 id 回 `DATABASE_ERROR`，字串的抽獎人數照樣通過，粉絲送出的作答原樣存進資料庫。現在每個輸入都以 Zod 解析，不合法時回 400 `VALIDATION_ERROR`。分頁改用共用的 `paginationSchema`，`?page=0` 從夾到第 1 頁改為回 400。AGENTS.md 的 Conventions 新增輸入驗證的規則（Validation）。
-  - 粉絲讀取積分（`GET /api/v1/fan/me/points`）原本分兩次查詢餘額與交易清單，兩次之間寫入一筆時，餘額是舊的、清單是新的。現在餘額取自清單的最新一筆。
+  - 粉絲讀取積分（`GET /api/v1/fan/me/points`）原本分兩次查詢餘額與交易清單，兩次之間寫入一筆時，餘額是舊的、清單是新的。現在餘額取自清單的最新一筆。最新一筆與清單都依 `createdAt` 由新到舊、再依 `id` 排序，舊資料的時間相同時也選到同一筆。
   - 後台調整積分（`POST /api/v1/portal/points/adjust`）原本不檢查聯絡人。外鍵檢查不受 RLS 限制，所以其他租戶的聯絡人回 200，並寫入一筆指向對方聯絡人的紀錄；不存在的聯絡人回 `DATABASE_ERROR`。現在兩者都回 404 `CONTACT_NOT_FOUND`，不寫入。
 
 ### Changed

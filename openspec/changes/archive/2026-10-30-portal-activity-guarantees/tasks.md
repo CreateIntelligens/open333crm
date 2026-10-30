@@ -35,6 +35,11 @@
 
 - [x] 3.10 PR #404 的機器人審查：`getFanPointsFlow()` 分兩次查詢餘額與清單，兩次之間寫入一筆時，回應不一致。`apps/api/tests/unit/modules/portal/fan-points-flow.test.ts` 新增「粉絲的積分餘額與交易清單一致」，在修正前失敗在斷言上。餘額改取自清單的最新一筆；`portal-public-tenant-scope.test.ts` 的 mock 跟著更新。`portal-flow.test.ts` 的 `fan()` 原本一律以租戶 A 簽 fanToken，改為以聯絡人自己的租戶簽
 
+- [x] 3.11 PR #404 機器人審查的第二批：
+  - 積分的排序只依 `createdAt`，舊資料的時間相同時，最新一筆與交易清單可能選到不同的一筆。`apps/api/tests/unit/modules/portal/points-ordering.test.ts` 新增「時間相同的積分紀錄，最新一筆與交易清單的排序相同」，在修正前失敗在斷言上。兩個查詢改用 `LEDGER_ORDER`（`createdAt` 由新到舊，再依 `id`）
+  - `portal-submit-flow.test.ts` 新增「commit 之後送不進佇列時，作答仍然成立」。行為原本就成立，以突變驗證：flow 在交易內直接 `await dispatch` 時，這個測試失敗
+  - 粉絲的活動詳情不看開始與結束時間，屬於搬遷前的行為，記進 `docs/ref/system/AUDIT.md` 的 PORTAL-01
+
 ## 4. 完成定義
 
 - [x] 4.1 `pnpm test:all` 通過；`tsc --noEmit`、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 通過，基準檔已更新
