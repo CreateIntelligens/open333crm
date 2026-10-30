@@ -2,18 +2,19 @@
 
 報表彙整一段期間內的訊息量、工單處理、客服績效、渠道分布、聯絡人成長與滿意度。管理者看「總覽」，每個客服可以在「我的績效」看自己的數字。
 
-- **資料來源**：`apps/api/src/modules/analytics/*`、`apps/api/src/modules/cli/cli.routes.ts`、`apps/api/src/guards/rbac.guard.ts`
-- **核對日期**：2026-09-30
+- **資料來源**：`apps/api/src/modules/analytics/*`、`apps/api/src/modules/cli/cli.routes.ts`、`apps/api/src/modules/mcp/mcp.server.ts`、`apps/api/src/guards/rbac.guard.ts`
+- **核對日期**：2026-10-30
 
 ## 負責的程式
 
 | 程式 | 負責什麼 |
 | --- | --- |
 | `analytics.routes.ts` | 報表路由與權限 |
+| `analytics.flow.ts` | 每個報表在一個租戶交易內查詢。報表頁、CLI 與 MCP 都呼叫這裡 |
 | `analytics.service.ts` | 每個報表的查詢。全部在查詢當下從原始資料表計算 |
-| `analytics.scheduler.ts`、`analytics.aggregator.ts` | 每天把前一天的彙總寫入 `DailyStat`。沒有任何報表讀這張表，見 `../../system/AUDIT.md` 的 DB-03 |
+| `analytics.scheduler.ts`、`analytics.aggregator.ts` | 每天把前一天的彙總寫入 `DailyStat`，每個租戶一個交易。沒有任何報表讀這張表，見 `../../system/AUDIT.md` 的 DB-03 與 #318 |
 
-CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 scope 授權，見 `../../system/AUDIT.md` 的 RBAC-02。
+CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 呼叫同一組 flow，但走 CLI 的 scope 授權，見 `../../system/AUDIT.md` 的 RBAC-02。
 
 ## 有哪些報表
 
@@ -25,7 +26,7 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 | `GET /analytics/agents` | 每個客服的處理量、平均首次回應與解決時間、CSAT、SLA 達成率。可以用 `agentId` 只看一人 |
 | `GET /analytics/channels` | 各渠道類型的訊息量、對話量與新聯絡人數，以及機器人與真人處理的比例 |
 | `GET /analytics/contacts` | 新聯絡人趨勢、活躍聯絡人數、最常用的標籤 |
-| `GET /analytics/csat` | CSAT 的分數分布 |
+| `GET /analytics/csat` | 期間內送出問卷的工單：回覆率、平均分數、滿意率（4 分以上），以及最多 20 張低分（2 分以下）工單。依送出問卷的時間篩選 |
 | `GET /analytics/my` | 自己本月的績效，以及手上待處理與快到期的工單 |
 | `POST /analytics/export` | 匯出 CSV，可選總覽、工單、客服或渠道 |
 
@@ -33,7 +34,7 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 
 ## 數字怎麼算
 
-**即時計算。** 每次查詢都直接統計 `cases`、`messages`、`conversations`、`contacts` 等資料表，沒有快取，也不讀 `DailyStat`。資料量大時，報表的查詢時間會跟著增加。
+**即時計算。** 每次查詢都直接統計 `cases`、`messages`、`conversations`、`contacts` 等資料表，沒有快取，也不讀 `DailyStat`。資料量大時，報表的查詢時間會跟著增加。工單報表的匯出與 CSAT 報表讀出期間內的所有工單，見 `../../system/AUDIT.md` 的 ANA-02。
 
 **SLA 達成率**是已解決、而且 `resolvedAt` 不晚於 `slaDueAt` 的工單比例。沒有 SLA 期限的工單不計入。
 

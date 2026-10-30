@@ -1,12 +1,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod/v3';
+import type { getCaseStats } from '../analytics/analytics.service.js';
 import {
-  getCaseStats,
-  getChannelAnalytics,
-  getMessageTrend,
-  getMyPerformance,
-  getOverviewStats,
-} from '../analytics/analytics.service.js';
+  getCaseStatsFlow,
+  getChannelAnalyticsFlow,
+  getMessageTrendFlow,
+  getMyPerformanceFlow,
+  getOverviewStatsFlow,
+} from '../analytics/analytics.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { success } from '../../shared/utils/response.js';
 import {
   CLI_ANALYTICS_READ_SCOPE,
@@ -93,7 +95,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getOverviewStats(fastify.prismaAdmin, request.agent.tenantId, from, to);
+    const data = await getOverviewStatsFlow(fastify, actorOf(request).tenantId, from, to);
     return reply.send(success(data));
   });
 
@@ -105,7 +107,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to, groupBy } = messageTrendSchema.parse(request.query);
-    const data = await getMessageTrend(fastify.prismaAdmin, request.agent.tenantId, from, to, groupBy);
+    const data = await getMessageTrendFlow(fastify, actorOf(request).tenantId, from, to, groupBy);
     return reply.send(success(data));
   });
 
@@ -117,7 +119,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getCaseStats(fastify.prismaAdmin, request.agent.tenantId, from, to);
+    const data = await getCaseStatsFlow(fastify, actorOf(request).tenantId, from, to);
     return reply.send(success(summarizeCaseStats(data)));
   });
 
@@ -129,7 +131,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getChannelAnalytics(fastify.prismaAdmin, request.agent.tenantId, from, to);
+    const data = await getChannelAnalyticsFlow(fastify, actorOf(request).tenantId, from, to);
     return reply.send(success(data));
   });
 
@@ -140,11 +142,8 @@ export default async function cliRoutes(fastify: FastifyInstance) {
       return sendInsufficientScope(reply, CLI_ANALYTICS_READ_SCOPE);
     }
 
-    const data = await getMyPerformance(
-      fastify.prismaAdmin,
-      request.agent.tenantId,
-      request.agent.id,
-    );
+    const actor = actorOf(request);
+    const data = await getMyPerformanceFlow(fastify, actor.tenantId, actor.agentId);
     return reply.send(success(data));
   });
 }

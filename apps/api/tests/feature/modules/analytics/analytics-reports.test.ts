@@ -17,6 +17,7 @@ import analyticsRoutes from '#src/modules/analytics/analytics.routes.js';
 import cliRoutes from '#src/modules/cli/cli.routes.js';
 import mcpRoutes from '#src/modules/mcp/mcp.routes.js';
 import { runDailyAggregation } from '#src/modules/analytics/analytics.aggregator.js';
+import { inTenant } from '#src/lib/tenant-ctx.js';
 import { CLI_ANALYTICS_READ_SCOPE } from '#src/modules/auth/cli-session.service.js';
 import { MCP_READ_SCOPE } from '#src/modules/mcp/mcp.constants.js';
 
@@ -445,7 +446,7 @@ test('MCP 工具：總覽與工單統計，只限本租戶', async () => {
 
 test('每日彙總：把一天的總覽、工單、客服、渠道與聯絡人寫入 DailyStat，只算本租戶', async () => {
   // 以行程時區的 2001-03-11 中午為準：UTC 與台灣時間的這一天都涵蓋 03-11 06:00～07:01Z 的資料，不涵蓋 03-12
-  await runDailyAggregation(owner, A, new Date(2001, 2, 11, 12));
+  await inTenant(tenantDb, A, (scope) => runDailyAggregation(scope, new Date(2001, 2, 11, 12)));
 
   const rows = await owner.dailyStat.findMany({ where: { tenantId: A } });
   const data = (statType: string, dimensionId = '') =>

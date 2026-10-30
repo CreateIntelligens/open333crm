@@ -15,10 +15,7 @@ import { AppError } from "../../shared/utils/response.js";
 import { notFound } from "../../shared/messages/resource.js";
 import { logger } from "@open333crm/core";
 import { getConversation, listConversations } from "../conversation/conversation.service.js";
-import {
-  getCaseStats,
-  getOverviewStats,
-} from "../analytics/analytics.service.js";
+import { getCaseStatsFlow, getOverviewStatsFlow } from "../analytics/analytics.flow.js";
 import { listCasesFlow, getCaseFlow } from "../case/case.flow.js";
 import { createBroadcast, executeBroadcast, getBroadcast } from "../marketing/marketing.service.js";
 import { decryptCredentials } from "../channel/channel.service.js";
@@ -282,7 +279,7 @@ export function createMcpServer(
     async (input) => {
       const { from, to } = dateRange(input);
       return textResult(
-        await getOverviewStats(prisma, agent.tenantId, from, to),
+        await getOverviewStatsFlow(flowDeps, agent.tenantId, from, to),
       );
     },
   );
@@ -309,7 +306,7 @@ export function createMcpServer(
     },
     async (input) => {
       const { from, to } = dateRange(input);
-      return textResult(await getCaseStats(prisma, agent.tenantId, from, to));
+      return textResult(await getCaseStatsFlow(flowDeps, agent.tenantId, from, to));
     },
   );
 

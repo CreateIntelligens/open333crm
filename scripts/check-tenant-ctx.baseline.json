@@ -14,7 +14,6 @@
     "modules/ai/other-channel-context.ts": 2,
     "modules/ai/pricing.service.ts": 2,
     "modules/ai/sentiment.service.ts": 2,
-    "modules/analytics/analytics.service.ts": 10,
     "modules/auth/auth.service.ts": 2,
     "modules/auth/cli-session.service.ts": 5,
     "modules/auth/partner-api-key.service.ts": 5,
@@ -66,7 +65,6 @@
   },
   "request.tenantPrisma": {
     "modules/ai/ai.routes.ts": 8,
-    "modules/analytics/analytics.routes.ts": 9,
     "modules/automation/automation.routes.ts": 7,
     "modules/canvas/canvas.routes.ts": 8,
     "modules/case/case.routes.ts": 1,

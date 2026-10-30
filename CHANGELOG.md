@@ -19,6 +19,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **報表改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `analytics.service.ts` 改收 `TenantCtx`，新增 `analytics.flow.ts`。報表頁、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 都呼叫 flow。`GET /analytics/csat` 的查詢從路由移到 service，計算方式不變。回應內容不變。
+  - 每個報表在一個交易內查詢。原本報表頁的每個查詢各自一個交易。
+  - CLI 的報表原本以 `prismaAdmin`（BYPASSRLS）查詢，只靠查詢條件的 `tenantId` 隔離租戶。現在也受 RLS 限制。
+  - 每日彙總（`analytics-daily`）為每個租戶開一個交易，五種統計一起寫入。原本以 `prismaAdmin` 逐筆寫入，某個租戶中途失敗時，留下已經寫入的部分。現在這個租戶這一天的統計整個不寫入。仍然逐一處理租戶，做法等 #318 決定。
 - **粉絲活動與積分改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2，change `portal-activity-guarantees`）— `portal.service.ts` 與 `points.service.ts` 改收 `TenantCtx`，`/api/v1/portal` 與 `/api/v1/fan` 的路由改呼叫新的 `portal.flow.ts`。粉絲端原本在路由裡的查詢移進 `portal.service.ts`。`contact-merge.service.ts` 轉移點數時改傳 `TenantCtx`。可觀察的差異：
   - 粉絲送出活動時，`portal.activity.submitted` 事件與作答、積分在同一個交易寫進 outbox，commit 之後才送出，至少送出一次。原本以 `eventBus.publish()` 在 commit 之前送出：交易 rollback 時事件照樣送出，行程在送出之前結束時事件遺失。事件寫不進 outbox 時，作答與積分都不留下，API 回 400。
   - 後台的每個請求在一個交易內完成。原本每個查詢各自一個交易，例如調整積分時，讀取餘額與寫入交易紀錄分屬兩個交易。

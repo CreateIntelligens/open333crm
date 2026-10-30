@@ -290,7 +290,7 @@ export async function bootstrap() {
   // 定時工作一律經 Job Scheduler：多個實例時每一期只執行一次。註冊不等 Redis 回應，
   // Redis 連不上時 API 照常啟動，排程等 Redis 恢復後才開始
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
-  setupAnalyticsScheduler(jobScheduler, app.prismaAdmin);
+  setupAnalyticsScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
   setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, { prisma: app.prisma, store: getBindingStore() });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
