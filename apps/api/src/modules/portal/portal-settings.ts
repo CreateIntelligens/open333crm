@@ -16,7 +16,11 @@ const pointsPerSubmitSchema = z
   .min(0, '每次參加的積分不可為負數')
   .max(INT4_MAX, `每次參加的積分不可大於 ${INT4_MAX}`);
 
-/** 其他欄位照舊接受，原樣存起來 */
+/**
+ * 其他欄位照舊接受，原樣存起來（AGENTS.md Conventions 的 Validation：只存放、不讀取的值）。
+ * 程式只讀 allowMultiple 與 pointsPerSubmit。既有的活動可能存了其他欄位，改成 strict 的話，
+ * 編輯這些活動時會回 400。
+ */
 export const activitySettingsSchema = z
   .object({
     allowMultiple: allowMultipleSchema.optional(),
