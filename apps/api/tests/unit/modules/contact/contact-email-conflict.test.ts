@@ -28,7 +28,11 @@ function mockDb(
   };
   const db = {
     contact: {
-      findFirst: async ({ where }: { where: Record<string, any> }) => contacts.find((c) => matches(c, where)) ?? null,
+      findFirst: async ({ where }: { where: Record<string, any> }) => {
+        const c = contacts.find((row) => matches(row, where));
+        // isContactVisible() 從聯絡人一次讀出渠道身分與 mergedIntoId
+        return c ? { ...c, mergedIntoId: null, channelIdentities: identities.filter((i) => i.contactId === c.id) } : null;
+      },
       updateMany: async () => ({ count: 1 }),
       update: async (args: { where: unknown; data: Record<string, unknown> }) => {
         updates.push(args);

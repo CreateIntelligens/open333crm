@@ -327,6 +327,10 @@ const audienceTag = await owner.tag.create({ data: { tenantId: A, name: `${MARK}
 
 afterAll(async () => {
   await marketerApp.close();
+  // 群發本身由上方的 afterAll 依渠道刪除（後註冊的 afterAll 先執行，所以這裡先刪群發再刪活動）
+  await owner.broadcast.deleteMany({ where: { tenantId: A, name: { startsWith: MARK } } });
+  await owner.campaign.deleteMany({ where: { tenantId: A, name: { startsWith: MARK } } });
+  await owner.segment.deleteMany({ where: { tenantId: A, name: { startsWith: MARK } } });
   await owner.contactTag.deleteMany({ where: { tagId: audienceTag.id } });
   await owner.tag.deleteMany({ where: { id: audienceTag.id, tenantId: A } });
 });
@@ -439,4 +443,47 @@ test('分眾預覽只算看得到的聯絡人：可見渠道 2 位、只在不�
   });
   assert.equal(res.statusCode, 200, res.body);
   assert.equal(res.json().data.count, 2);
+});
+
+test('分眾預覽只算看得到的聯絡人：分眾列表與單筆的 contactCount 也只算看得到的聯絡人', async () => {
+  // 儲存的 contactCount 是全租戶的 5（建立時以 ALL_CHANNELS 計算）
+  const segment = await owner.segment.create({
+    data: {
+      tenantId: A,
+      name: `${MARK}-segment`,
+      rules: { conditions: [{ field: 'tag', operator: 'eq', value: audienceTag.id }], logic: 'AND' },
+      conditions: [{ field: 'tag', operator: 'eq', value: audienceTag.id }],
+      contactCount: 5,
+    },
+  });
+
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/segments?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const row = (list.json().data as Array<{ id: string; contactCount: number }>).find((s) => s.id === segment.id);
+  assert.equal(row?.contactCount, 2);
+  const one = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/segments/${segment.id}` });
+  assert.equal(one.statusCode, 200, one.body);
+  assert.equal(one.json().data.contactCount, 2);
+});
+
+test('行銷活動只含可見渠道的群發：活動列表的群發數是 1，詳情只列 CH-A 的群發', async () => {
+  const campaign = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign`, createdById: marketer.id } });
+  const inCampaign = await Promise.all(
+    [visible, hidden].map((ch) =>
+      owner.broadcast.create({
+        data: { tenantId: A, channelId: ch.id, campaignId: campaign.id, name: `${MARK}-campaign-bc-${ch.id}`, createdById: marketer.id, totalCount: 7 },
+      }),
+    ),
+  );
+
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const row = (list.json().data as Array<{ id: string; _count: { broadcasts: number } }>).find((c) => c.id === campaign.id);
+  assert.equal(row?._count.broadcasts, 1);
+
+  const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${campaign.id}` });
+  assert.equal(detail.statusCode, 200, detail.body);
+  const ids = (detail.json().data.broadcasts as Array<{ id: string }>).map((b) => b.id);
+  assert.deepEqual(ids, [inCampaign[0]!.id]);
+  assert.ok(!detail.body.includes(`${MARK}-campaign-bc-${hidden.id}`), '不可出現不可見渠道的群發');
 });

@@ -26,4 +26,3 @@
 - widget：把 `appendTextWithLinks(el, text)` 改成 `el.innerHTML = text`，`widget.test.ts` 的兩個情境都失敗。
 - chatbox：把 `LinkifiedText` 改成 `dangerouslySetInnerHTML` 並以正規式包 `<a>`，`linkified-text.test.tsx` 的兩個情境都失敗。
 
-1.3 的全套 feature 測試中，`analytics-reports.test.ts` 的「每日彙總」在並行時失敗一次，單獨重跑 13 項全過，與這個 change 無關。

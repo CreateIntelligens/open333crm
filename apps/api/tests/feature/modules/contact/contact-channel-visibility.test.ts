@@ -55,6 +55,21 @@ await identity(P.id, chB.id, 'P-B');
 await identity(Q.id, chA.id, 'Q-A');
 await identity(Q.id, chB.id, 'Q-B');
 const tag = await prisma.tag.create({ data: { tenantId: T, name: `${mark} 標籤` } });
+// 不可見的 LINE 渠道：Q2 在可見的 A（WEBCHAT）與這個 LINE 渠道都有身份
+const chLine = await prisma.channel.create({
+  data: { tenantId: T, channelType: 'LINE', displayName: `${mark} 渠道 LINE`, credentialsEncrypted: 'x' },
+});
+const Q2 = await mkContact('Q2');
+await identity(Q2.id, chA.id, 'Q2-A');
+await prisma.channelIdentity.create({
+  data: { contactId: Q2.id, channelId: chLine.id, channelType: 'LINE', uid: `ci-vis-Q2-LINE-${stamp}` },
+});
+// S 已併入 P（身份都移到 P）；S2 已併入 Q
+const S = await prisma.contact.create({ data: { tenantId: T, displayName: `${mark} S`, isArchived: true, mergedIntoId: P.id } });
+const S2 = await prisma.contact.create({ data: { tenantId: T, displayName: `${mark} S2`, isArchived: true, mergedIntoId: Q.id } });
+const hiddenLog = await prisma.contactMergeLog.create({
+  data: { tenantId: T, survivorId: P.id, mergedId: S.id, source: 'MANUAL', movedRecords: {} },
+});
 
 const app = Fastify();
 app.decorate('prisma', prisma);
@@ -69,14 +84,15 @@ await app.ready();
 
 afterAll(async () => {
   await app.close().catch(() => {});
-  const ids = [P.id, Q.id, R.id];
+  const ids = [P.id, Q.id, R.id, Q2.id, S.id, S2.id];
+  await prisma.contactMergeLog.deleteMany({ where: { tenantId: T, id: hiddenLog.id } });
   await prisma.contactTag.deleteMany({ where: { contactId: { in: ids } } });
   await prisma.tag.deleteMany({ where: { id: tag.id, tenantId: T } });
   await prisma.channelIdentity.deleteMany({ where: { contactId: { in: ids } } });
   await prisma.contact.deleteMany({ where: { tenantId: T, id: { in: ids } } });
   await prisma.agentChannelAccess.deleteMany({ where: { agentId: agent.id } });
   await prisma.agent.deleteMany({ where: { id: agent.id, tenantId: T } });
-  await prisma.channel.deleteMany({ where: { tenantId: T, id: { in: [chA.id, chB.id] } } });
+  await prisma.channel.deleteMany({ where: { tenantId: T, id: { in: [chA.id, chB.id, chLine.id] } } });
   await prisma.role.deleteMany({ where: { id: role.id } });
   await prisma.$disconnect();
 });
@@ -85,8 +101,8 @@ test('聯絡人列表只含看得到的聯絡人：含 Q 與 R，不含 P，tota
   const res = await app.inject({ method: 'GET', url: `/api/v1/contacts?q=${encodeURIComponent(mark)}&limit=50` });
   assert.equal(res.statusCode, 200, res.body);
   const ids = (res.json().data as Array<{ id: string }>).map((c) => c.id).sort();
-  assert.deepEqual(ids, [Q.id, R.id].sort());
-  assert.equal(res.json().meta.total, 2);
+  assert.deepEqual(ids, [Q.id, R.id, Q2.id].sort(), '已合併（封存）的 S、S2 不列出');
+  assert.equal(res.json().meta.total, 3);
 });
 
 test('讀取看不到的聯絡人被拒：回 404，不回傳姓名、電話與 email', async () => {
@@ -143,4 +159,37 @@ test('沒有渠道身份的聯絡人：R 的詳情照常回傳，也可以修改
   assert.equal(res.json().data.id, R.id);
   const patch = await app.inject({ method: 'PATCH', url: `/api/v1/contacts/${R.id}`, payload: { language: 'en' } });
   assert.equal(patch.statusCode, 200, patch.body);
+});
+
+test('解除看不到的聯絡人的合併被拒：回 404，合併紀錄維持未解除', async () => {
+  const res = await app.inject({ method: 'POST', url: `/api/v1/contacts/merge-logs/${hiddenLog.id}/revert` });
+  assert.equal(res.statusCode, 404, res.body);
+  const log = await prisma.contactMergeLog.findUniqueOrThrow({ where: { id: hiddenLog.id } });
+  assert.equal(log.revertedAt, null);
+});
+
+test('被合併的聯絡人依保留方判斷：S 併入看不到的 P → 404；S2 併入看得到的 Q → 200', async () => {
+  const s1 = await app.inject({ method: 'GET', url: `/api/v1/contacts/${S.id}` });
+  assert.equal(s1.statusCode, 404, s1.body);
+  assert.ok(!s1.body.includes(`${mark} S`), '不可回傳被合併聯絡人的姓名');
+  const s2 = await app.inject({ method: 'GET', url: `/api/v1/contacts/${S2.id}` });
+  assert.equal(s2.statusCode, 200, s2.body);
+});
+
+test('依渠道類型篩選只比對可見渠道：以 LINE 篩選不列出只在不可見 LINE 渠道有身份的 Q2', async () => {
+  const res = await app.inject({ method: 'GET', url: `/api/v1/contacts?q=${encodeURIComponent(mark)}&channelType=LINE&limit=50` });
+  assert.equal(res.statusCode, 200, res.body);
+  const ids = (res.json().data as Array<{ id: string }>).map((c) => c.id);
+  assert.ok(!ids.includes(Q2.id), '不可藉渠道類型篩選看出 Q2 在其他分店有 LINE 帳號');
+});
+
+test('合併預覽與修改的回應只含可見渠道的身份', async () => {
+  const preview = await app.inject({ method: 'GET', url: `/api/v1/contacts/merge-preview?primaryId=${Q.id}&secondaryId=${R.id}` });
+  assert.equal(preview.statusCode, 200, preview.body);
+  assert.ok(!preview.body.includes(`ci-vis-Q-B-${stamp}`), '合併預覽不可出現不可見渠道的 uid');
+  assert.ok(!preview.body.includes('CI 暱稱 Q-B'), '合併預覽不可出現不可見渠道的暱稱');
+
+  const patch = await app.inject({ method: 'PATCH', url: `/api/v1/contacts/${Q.id}`, payload: { language: 'ja' } });
+  assert.equal(patch.statusCode, 200, patch.body);
+  assert.ok(!patch.body.includes(`ci-vis-Q-B-${stamp}`), '修改的回應不可出現不可見渠道的 uid');
 });

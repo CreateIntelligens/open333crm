@@ -63,7 +63,7 @@ for (const [ch, messages, cases] of [[chA, 3, 2], [chB, 5, 4]] as const) {
   }
   for (let i = 0; i < cases; i += 1) {
     await owner.case.create({
-      data: { tenantId: T, contactId: contact.id, channelId: ch.id, title: `${MARK}-${ch.channelType}-${i}`, createdAt: DAY, assigneeId: branch.id },
+      data: { tenantId: T, contactId: contact.id, channelId: ch.id, title: `${MARK}-${ch.channelType}-${i}`, createdAt: DAY, assigneeId: ch.id === chA.id ? branch.id : other.id },
     });
   }
 }
@@ -182,4 +182,15 @@ test('總店看全部：訊息數 8、新工單 6，渠道分布含 LINE 與 FB'
   assert.equal(overview.newCases, 6);
   const names = ((await report(hqApp, 'channels')).messagesByChannel as Array<{ name: string }>).map((r) => r.name).sort();
   assert.deepEqual(names, ['FB', 'LINE']);
+});
+
+test('客服績效不列出其他分店的客服：只處理 CH-B 工單的客服不在報表與匯出中', async () => {
+  const agents = (await report(branchApp, 'agents')) as Array<{ agentId: string }>;
+  assert.deepEqual(agents.map((a) => a.agentId), [branch.id]);
+  const res = await branchApp.inject({ method: 'POST', url: '/api/v1/analytics/export', payload: { reportType: 'agents', ...RANGE_BODY } });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.ok(!res.body.includes(other.id), '匯出不可含其他分店的客服');
+
+  const hqAgents = (await report(hqApp, 'agents')) as Array<{ agentId: string }>;
+  assert.ok(hqAgents.some((a) => a.agentId === other.id), '總店看得到所有客服');
 });

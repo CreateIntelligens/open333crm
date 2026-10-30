@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
@@ -141,6 +142,15 @@ export async function listBroadcasts(
   ]);
 
   return { broadcasts, total, page, limit };
+}
+
+/** 群發的渠道（可見範圍守門用，不算收件人統計）；找不到回 404 */
+export async function getBroadcastChannelId(ctx: TenantCtx, id: string): Promise<string> {
+  const broadcast = await ctx.tx.broadcast.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { channelId: true } });
+  if (!broadcast) {
+    throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
+  }
+  return broadcast.channelId;
 }
 
 export async function getBroadcast(prisma: TenantDb, id: string, tenantId: string) {

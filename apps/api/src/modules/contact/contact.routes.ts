@@ -7,6 +7,7 @@ import {
   getContactFlow,
   getContactMessagesFlow,
   getContactTimelineFlow,
+  getMergeLogContactIdsFlow,
   getMergePreviewFlow,
   listContactsFlow,
   listMergeLogsFlow,
@@ -25,7 +26,7 @@ import {
 import { issueEmailRegistrationLink } from '../identity-binding/email-registration.service.js';
 import { issuePhoneRegistrationLink } from '../identity-binding/phone-registration.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { assertConversationChannelVisible, resolveChannelVisibility, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, assertConversationChannelVisible, resolveChannelVisibility, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -114,7 +115,10 @@ export default async function contactRoutes(fastify: FastifyInstance) {
    */
   async function visibleContacts(request: FastifyRequest, ...contactIds: string[]): Promise<AccessibleChannels> {
     const accessible = await resolveChannelVisibility(request);
-    await assertContactsVisibleFlow(fastify, actorOf(request).tenantId, contactIds, accessible);
+    // 總店看得到全部，不必為了檢查另開交易
+    if (accessible !== ALL_CHANNELS) {
+      await assertContactsVisibleFlow(fastify, actorOf(request).tenantId, contactIds, accessible);
+    }
     return accessible;
   }
 
@@ -138,13 +142,14 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // Must be before /:id to avoid being captured as a param
   fastify.get('/merge-preview', { preHandler: [perm.merge] }, async (request, reply) => {
     const query = mergePreviewQuerySchema.parse(request.query);
-    await visibleContacts(request, query.primaryId, query.secondaryId);
+    const accessible = await visibleContacts(request, query.primaryId, query.secondaryId);
 
     const preview = await getMergePreviewFlow(
       fastify,
       actorOf(request).tenantId,
       query.primaryId,
       query.secondaryId,
+      accessible,
     );
 
     return reply.send(success(preview));
@@ -165,6 +170,9 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     { preHandler: [perm.merge] },
     async (request, reply) => {
       const { logId } = mergeLogParamsSchema.parse(request.params);
+      // 兩方任一看不到就回 404（channel-scoped-visibility）；找不到紀錄交給 revertMerge 回 404
+      const contactIds = await getMergeLogContactIdsFlow(fastify, actorOf(request).tenantId, logId);
+      if (contactIds) await visibleContacts(request, ...contactIds);
       const result = await revertMergeFlow(fastify, actorOf(request), logId);
       return reply.send(success(result));
     },

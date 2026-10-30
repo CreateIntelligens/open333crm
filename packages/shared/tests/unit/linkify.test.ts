@@ -51,3 +51,18 @@ test('只有 scheme 沒有主機不算網址；空字串回空陣列', () => {
   assert.deepEqual(splitTextLinks('https://'), [{ type: 'text', value: 'https://' }]);
   assert.deepEqual(splitTextLinks(''), []);
 });
+
+test('網址內成對的括號保留；不成對的結尾括號不算進網址', () => {
+  const link = (text: string) => splitTextLinks(text).find((p) => p.type === 'link')?.value;
+  assert.equal(link('見 https://en.wikipedia.org/wiki/Foo_(bar) 說明'), 'https://en.wikipedia.org/wiki/Foo_(bar)');
+  assert.equal(link('(見 https://en.wikipedia.org/wiki/Foo_(bar))'), 'https://en.wikipedia.org/wiki/Foo_(bar)');
+  assert.equal(link('(https://x.test/p)'), 'https://x.test/p');
+  assert.equal(link('https://en.wikipedia.org/wiki/Foo_(bar).'), 'https://en.wikipedia.org/wiki/Foo_(bar)');
+});
+
+test('網址緊接日文假名或韓文時在文字前結束', () => {
+  const link = (text: string) => splitTextLinks(text).find((p) => p.type === 'link')?.value;
+  assert.equal(link('https://x.jp/aこちら'), 'https://x.jp/a');
+  assert.equal(link('https://x.jp/aカタカナ'), 'https://x.jp/a');
+  assert.equal(link('https://x.kr/a여기'), 'https://x.kr/a');
+});

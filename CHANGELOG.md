@@ -21,7 +21,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
-- **WebChat 文字訊息中的網址可以點**（issue #253，change `improve-binding-prefill-and-webchat-links`）— 嵌入式 widget 與 `/chatbox` 頁面原本把網址顯示成純文字，綁定邀請送出的連結訪客點不了。現在 `http://`、`https://` 網址顯示成另開分頁的連結（`rel="noopener noreferrer"`），結尾的標點不算進網址；其他 scheme（例如 `javascript:`）維持純文字，訊息也不當 HTML 解析。拆分規則在 `@open333crm/shared` 的 `splitTextLinks()`，兩邊共用。
+- **WebChat 文字訊息中的網址可以點**（issue #253，change `improve-binding-prefill-and-webchat-links`）— 嵌入式 widget 與 `/chatbox` 頁面原本把網址顯示成純文字，綁定邀請送出的連結訪客點不了。現在 `http://`、`https://` 網址顯示成另開分頁的連結（`rel="noopener noreferrer"`），結尾的標點不算進網址（網址內成對的括號保留）；其他 scheme（例如 `javascript:`）維持純文字，訊息也不當 HTML 解析。拆分規則在 `@open333crm/shared` 的 `splitTextLinks()`，兩邊共用。
 
 ### Fixed
 
@@ -33,7 +33,9 @@ All notable changes to **open333CRM** will be documented in this file.
   - 單筆對話與工單回傳的 `contact.channelIdentities` 原本含其他渠道的身份（uid、暱稱），現在只含可見渠道。
   - 群發原本不依渠道限制。現在群發列表只列可見渠道的群發；讀取、收件人、送出、取消不可見渠道的群發回 404；建立群發與預估受眾時指定不可見的渠道回 404；分群預覽只算看得到的聯絡人。群發仍不檢查渠道存取層級。MCP 的 `crm_line_get_broadcast`、`crm_line_broadcast_initiate` 一樣。
   - 報表原本統計全租戶。現在報表頁、匯出、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的報表工具只統計可見渠道。優惠券成效與「我的績效」不另外過濾；每日彙總照舊是全租戶的數字。
+  - 解除合併、依渠道類型篩選聯絡人、合併預覽與修改聯絡人的回應、分群的人數（列表、單筆、預覽）、行銷活動的群發數與清單，也都只依可見範圍。已被合併的聯絡人依它併入的聯絡人判斷可見。客服績效只列出在可見渠道有工單的客服。
   - 有 `channel.view_all`（總店）的成員不受影響。
+- **報表的優先級與狀態分布順序固定**（issue #253 review 發現）— 這兩個查詢沒有排序，每日彙總存下的順序與即時報表可能不同。現在依名稱排序。
 - **LINE 綁定連結的網址變短**（issue #253，change `improve-binding-prefill-and-webchat-links`）— 「送出代碼」連結原本預填「我要綁定帳號，代碼 …（請直接送出）」，中文編碼後網址很長，顧客可能不敢點。現在預填「綁定 {代碼}」。兌換方式不變。優惠券領券連結不受影響。
 - **API 啟動 log 列出全部的渠道外掛**（issue #253）— 原本寫死「LINE, FB, WEBCHAT」，漏了 THREADS。現在從註冊表讀出。
 - **Web 的 ESLint 可以執行**（issue #253）— `apps/web/eslint.config.mjs` 匯入 `eslint-config-next`，但 `apps/web` 沒有這個依賴，執行時 `ERR_MODULE_NOT_FOUND`。現在裝上與 `next` 同版本的 `eslint-config-next@15.5.27`，以 `FlatCompat` 載入。ESLint 能載入之後，`next build` 會在建置時跑 lint，`src` 有 80 個既有錯誤會讓建置失敗，因此 `next.config.ts` 設 `eslint.ignoreDuringBuilds`，維持原本建置不跑 lint 的行為；手動執行 `pnpm --filter @open333crm/web exec eslint src`。`apps/web` 也還沒有 `lint` script，加上會讓 `pnpm lint` 失敗。

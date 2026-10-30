@@ -25,6 +25,7 @@ import {
   deleteCampaign,
 } from './campaign.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { getBroadcastChannelIdFlow } from './marketing.flow.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { assertChannelVisible, isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import {
@@ -124,12 +125,17 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
    * 以 ID 讀取或操作群發：群發的渠道不可見時回 404，與群發不存在相同（channel-scoped-visibility）。
    * 只檢查可見，不檢查渠道存取層級：群發由 marketing.broadcast 控管。
    */
-  async function visibleBroadcast(request: FastifyRequest, id: string) {
-    const broadcast = await getBroadcast(request.tenantPrisma, id, request.agent.tenantId);
-    if (!isChannelAccessible(await resolveChannelVisibility(request), broadcast.channelId)) {
+  async function assertBroadcastVisible(request: FastifyRequest, id: string): Promise<void> {
+    const channelId = await getBroadcastChannelIdFlow(fastify, request.agent.tenantId, id);
+    if (!isChannelAccessible(await resolveChannelVisibility(request), channelId)) {
       throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
     }
-    return broadcast;
+  }
+
+  /** 讀取或送出群發：先檢查渠道可見，再讀完整的群發（含收件人統計） */
+  async function visibleBroadcast(request: FastifyRequest, id: string) {
+    await assertBroadcastVisible(request, id);
+    return getBroadcast(request.tenantPrisma, id, request.agent.tenantId);
   }
 
   // ─── Templates (read-only) ────────────────────────────────────────────────
@@ -161,7 +167,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const page = clampPage(parseInt(query.page || '1', 10));
     const limit = clampLimit(parseInt(query.limit || '50', 10), 50);
 
-    const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit);
+    const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit, await resolveChannelVisibility(request));
     return reply.send(paginated(result.segments, result.total, result.page, result.limit));
   });
 
@@ -172,6 +178,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       request.agent.id,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.status(201).send(success(segment));
   });
@@ -181,6 +188,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(segment));
   });
@@ -192,6 +200,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(segment));
   });
@@ -229,7 +238,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       status: query.status || undefined,
       page,
       limit,
-    });
+    }, await resolveChannelVisibility(request));
     return reply.send(paginated(result.campaigns, result.total, result.page, result.limit));
   });
 
@@ -249,6 +258,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(campaign));
   });
@@ -327,7 +337,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       page: z.coerce.number().int().positive().default(1),
       limit: z.coerce.number().int().positive().max(100).default(50),
     }).parse(request.query);
-    await visibleBroadcast(request, id);
+    await assertBroadcastVisible(request, id);
     const result = await listBroadcastRecipientsFlow(fastify, request.agent.tenantId, id, query);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到這則廣播' } });
     return reply.send(paginated(result.items, result.total, result.page, result.limit));
@@ -347,7 +357,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   // POST /broadcasts/:id/cancel — cancel a draft/scheduled broadcast
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/cancel', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
-    await visibleBroadcast(request, request.params.id);
+    await assertBroadcastVisible(request, request.params.id);
     const result = await cancelBroadcast(
       request.tenantPrisma,
       request.params.id,

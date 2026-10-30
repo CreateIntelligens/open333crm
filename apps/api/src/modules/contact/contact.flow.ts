@@ -18,6 +18,7 @@ import {
   getContactConversations,
   getContactMessages,
   getContactTimeline,
+  getMergeLogContactIds,
   getMergePreview,
   listContacts,
   updateContact,
@@ -38,6 +39,7 @@ export const getContactConversationsFlow = flowOf(getContactConversations);
 export const getContactCasesFlow = flowOf(getContactCases);
 export const getContactTimelineFlow = flowOf(getContactTimeline);
 export const getMergePreviewFlow = flowOf(getMergePreview);
+export const getMergeLogContactIdsFlow = flowOf(getMergeLogContactIds);
 export const listMergeLogsFlow = flowOf(listMergeLogs);
 
 export function mergeContactsFlow(

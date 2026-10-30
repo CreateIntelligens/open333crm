@@ -3,7 +3,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { ALL_CHANNELS, type AccessibleChannels } from '../../services/channel-visibility.js';
-import { visibleContactWhere } from '../contact/contact.service.js';
+import { visibleContactWhere, visibleIdentityInclude } from '../contact/contact.service.js';
 
 export interface SegmentRules {
   conditions: Array<{
@@ -48,11 +48,27 @@ export function assertSegmentRulesHaveValues(rules: SegmentRules) {
   }
 }
 
+/**
+ * 分眾的 contactCount 是儲存當下的全租戶人數。非總店成員讀取時改以可見範圍重新計算
+ * （channel-scoped-visibility「群發只能使用可見渠道」），不讓其他分店的客戶量外流。
+ */
+async function withVisibleContactCount<T extends { rules: unknown; contactCount: number }>(
+  segment: T,
+  accessibleChannels: AccessibleChannels,
+  countVisible: (rules: SegmentRules) => Promise<{ count: number }>,
+): Promise<T> {
+  if (accessibleChannels === ALL_CHANNELS) return segment;
+  const { count } = await countVisible(segment.rules as SegmentRules);
+  return { ...segment, contactCount: count };
+}
+
 export async function listSegments(
   prisma: TenantDb,
   tenantId: string,
-  page = 1,
-  limit = 50,
+  page: number,
+  limit: number,
+  /** contactCount 只算成員看得到的聯絡人；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
   const where = { tenantId };
   const [segments, total] = await Promise.all([
@@ -64,17 +80,25 @@ export async function listSegments(
     }),
     prisma.segment.count({ where }),
   ]);
-  return { segments, total, page, limit };
+  const visible = [];
+  for (const segment of segments) visible.push(await withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels)));
+  return { segments: visible, total, page, limit };
 }
 
-export async function getSegment(prisma: TenantDb, id: string, tenantId: string) {
+export async function getSegment(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  /** contactCount 只算成員看得到的聯絡人；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+) {
   const segment = await prisma.segment.findFirst({
     where: { id, tenantId },
   });
   if (!segment) {
     throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
   }
-  return segment;
+  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels));
 }
 
 export async function createSegment(
@@ -82,6 +106,8 @@ export async function createSegment(
   tenantId: string,
   agentId: string,
   data: { name: string; description?: string; rules: SegmentRules },
+  /** 回應的 contactCount 只算成員看得到的聯絡人（儲存的仍是全租戶人數） */
+  accessibleChannels: AccessibleChannels,
 ) {
   assertSegmentRulesHaveValues(data.rules);
   // Calculate initial contact count
@@ -98,7 +124,7 @@ export async function createSegment(
       createdById: agentId,
     },
   });
-  return segment;
+  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels));
 }
 
 export async function updateSegment(
@@ -106,6 +132,8 @@ export async function updateSegment(
   id: string,
   tenantId: string,
   data: { name?: string; description?: string; rules?: SegmentRules },
+  /** 回應的 contactCount 只算成員看得到的聯絡人（儲存的仍是全租戶人數） */
+  accessibleChannels: AccessibleChannels,
 ) {
   if (data.rules !== undefined) assertSegmentRulesHaveValues(data.rules);
   const existing = await prisma.segment.findFirst({ where: { id, tenantId } });
@@ -127,7 +155,7 @@ export async function updateSegment(
     where: { id },
     data: updateData,
   });
-  return segment;
+  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels));
 }
 
 export async function deleteSegment(prisma: TenantDb, id: string, tenantId: string) {
@@ -176,8 +204,9 @@ export async function calculateSegmentContacts(
         });
         break;
       case 'channelType':
+        // 只比對可見渠道的身分：否則會算進只在其他分店有這種帳號的聯絡人
         filters.push({
-          channelIdentities: { some: { channelType: cond.value as string } },
+          channelIdentities: { some: { channelType: cond.value as string, ...visibleIdentityInclude(accessibleChannels).where } },
         });
         break;
       case 'createdAfter':

@@ -11,13 +11,34 @@ export interface TextLinkPart {
 }
 
 /**
- * 網址字元不含空白、引號、角括號，也不含中日韓文字與全形符號：
- * 中文訊息常把網址直接接在文字或全形標點前，例如「https://ig.me/m/shop點這裡」。
+ * 網址字元不含空白、引號、角括號，也不含中日韓文字（含假名、韓文）與全形符號：
+ * 訊息常把網址直接接在文字或全形標點前，例如「https://ig.me/m/shop點這裡」。
  */
-const URL_PATTERN = /https?:\/\/[^\s<>"'`　-〿㐀-鿿豈-﫿＀-￯]+/gi;
+const URL_PATTERN =
+  /https?:\/\/[^\s<>"'`ᄀ-ᇿ　-ヿ㄰-㆏㐀-鿿가-힯豈-﫿＀-￯]+/gi;
 
 /** 網址結尾的半形標點多半屬於句子，不屬於網址 */
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}]+$/;
+const TRAILING_PUNCTUATION = /[.,;:!?]$/;
+const OPENING_BRACKET: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+const countOf = (text: string, char: string) => text.split(char).length - 1;
+
+/**
+ * 去掉結尾不屬於網址的標點。結尾括號只在沒有成對的左括號時去掉：
+ * 「https://en.wikipedia.org/wiki/Foo_(bar)」的「)」屬於網址，「(https://x.test/p)」的不屬於。
+ */
+function trimTrailing(url: string): string {
+  let result = url;
+  for (;;) {
+    const last = result.at(-1) ?? '';
+    const open = OPENING_BRACKET[last];
+    if (TRAILING_PUNCTUATION.test(last) || (open && countOf(result, last) > countOf(result, open))) {
+      result = result.slice(0, -1);
+    } else {
+      return result;
+    }
+  }
+}
 
 export function splitTextLinks(text: string): TextLinkPart[] {
   const parts: TextLinkPart[] = [];
@@ -25,7 +46,7 @@ export function splitTextLinks(text: string): TextLinkPart[] {
 
   for (const match of text.matchAll(URL_PATTERN)) {
     const start = match.index ?? 0;
-    const url = match[0].replace(TRAILING_PUNCTUATION, '');
+    const url = trimTrailing(match[0]);
     // 只有 scheme 沒有主機（例如「https://」）不算網址
     if (!/^https?:\/\/[^/?#]/i.test(url)) continue;
     if (start > textStart) parts.push({ type: 'text', value: text.slice(textStart, start) });

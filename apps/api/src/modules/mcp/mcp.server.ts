@@ -18,6 +18,7 @@ import { getConversation, listConversations } from "../conversation/conversation
 import { getCaseStatsFlow, getOverviewStatsFlow } from "../analytics/analytics.flow.js";
 import { listCasesFlow, getCaseFlow } from "../case/case.flow.js";
 import { createBroadcast, executeBroadcast, getBroadcast } from "../marketing/marketing.service.js";
+import { getBroadcastChannelIdFlow } from "../marketing/marketing.flow.js";
 import { decryptCredentials } from "../channel/channel.service.js";
 import { getChannelPlugin } from "@open333crm/channel-plugins";
 import { sendMessage as sendConversationMessage } from "../conversation/conversation.service.js";
@@ -149,11 +150,11 @@ export function createMcpServer(
 
   /** 群發的渠道不可見時丟出與「查無群發」相同的例外（與 REST 一致；群發不檢查渠道層級） */
   async function visibleBroadcast(id: string) {
-    const broadcast = await getBroadcast(prisma, id, agent.tenantId);
-    if (!isChannelAccessible(await accessible(), broadcast.channelId)) {
+    // 先只查渠道守門，看不到的群發不算收件人統計
+    if (!isChannelAccessible(await accessible(), await getBroadcastChannelIdFlow(flowDeps, agent.tenantId, id))) {
       throw new AppError(notFound("broadcast"), "NOT_FOUND", 404);
     }
-    return broadcast;
+    return getBroadcast(prisma, id, agent.tenantId);
   }
 
   /** 單筆讀取：渠道不可見時丟出與 service「查無資料」相同的例外（與 REST GET /:id 一致，不洩漏他店資料是否存在） */

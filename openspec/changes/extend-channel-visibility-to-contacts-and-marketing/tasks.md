@@ -19,12 +19,19 @@
 - [x] 4.1 先寫測試：`apps/api/tests/feature/modules/analytics/analytics-channel-visibility.test.ts`，情境「總覽只算可見渠道」「渠道報表不列出不可見渠道」「總店看全部」
 - [x] 4.2 analytics service 與 flow 收可見渠道；REST、CLI、MCP 傳入
 
-## 5. 完成檢查
+## 5. Code review 修正
 
-- [x] 5.1 `pnpm test`、`pnpm test:feature` 通過
-- [x] 5.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
-- [x] 5.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
-- [x] 5.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
+- [x] 5.1 先寫測試：`contact-channel-visibility.test.ts` 的「解除看不到的聯絡人的合併被拒」「被合併的聯絡人依保留方判斷」「依渠道類型篩選只比對可見渠道」「合併預覽與修改的回應只含可見渠道的身份」；`channel-scoped-visibility.test.ts` 的「分眾預覽只算看得到的聯絡人」（列表與單筆的人數）、「行銷活動只含可見渠道的群發」；`analytics-channel-visibility.test.ts` 的「客服績效不列出其他分店的客服」；`packages/shared/tests/unit/linkify.test.ts` 的括號與假名、韓文。每個都先在斷言上失敗
+- [x] 5.2 實作上述修正
+- [x] 5.3 效能：群發的守門改為只查 `channelId`（`getBroadcastChannelIdFlow`），不再為守門算收件人統計；聯絡人檢查每位一次查詢，總店不另開交易
+- [x] 5.4 `analytics.service.ts` 的優先級與狀態分布加 `ORDER BY`：沒有排序時，每日彙總存下的順序與即時報表可能不同，`analytics-reports.test.ts` 的「每日彙總」因此時好時壞
+
+## 6. 完成檢查
+
+- [x] 6.1 `pnpm test`、`pnpm test:feature` 通過
+- [x] 6.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
+- [x] 6.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
+- [x] 6.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
 
 ## 突變驗證與既有測試的調整
 
@@ -32,4 +39,3 @@
 - 其他新情境都先寫測試、在斷言上失敗後才實作。
 - 下列既有測試的角色沒有 `channel.view_all` 也沒有綁任何渠道。這個 change 之後它們看不到有渠道身份的聯絡人與任何報表資料，這是刻意的行為改變，因此給這些測試的角色加上 `channel.view_all`（它們測的是合併規則與全租戶報表，不是可見範圍）：`contact-merge-routes.test.ts`、`contact-merge-same-channel.test.ts`、`analytics-reports.test.ts`、`broadcast-coupon.test.ts`。
 - `cli-session-auth.test.ts`（單元）沒有註冊 prisma plugin，解析可見渠道會失敗；它測的是 CLI token 的 scope，因此把 `resolveChannelVisibility` mock 成 `ALL_CHANNELS`。`export-csv-bom.test.ts` 補上新的參數。
-- `analytics-reports.test.ts` 的「每日彙總」在並行執行時偶爾失敗，單獨重跑通過；修改報表程式之前就出現過，與這個 change 無關。

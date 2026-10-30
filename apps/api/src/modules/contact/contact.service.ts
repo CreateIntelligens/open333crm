@@ -66,9 +66,11 @@ export async function listContacts(
     };
   }
 
+  // 依渠道類型篩選只比對可見渠道的身份：否則會藉篩選看出聯絡人在其他分店有這種帳號
+  const visibleIdentity = visibleIdentityInclude(accessibleChannels).where ?? {};
   if (filters.channelType) {
     where.channelIdentities = {
-      some: { channelType: filters.channelType as any },
+      some: { channelType: filters.channelType as any, ...visibleIdentity },
     };
   }
 
@@ -86,7 +88,7 @@ export async function listContacts(
   if (channelIdentityWhere) {
     where.channelIdentities = {
       some: combineChannelIdentityFilters([
-        ...(filters.channelType ? [{ channelType: filters.channelType as any }] : []),
+        ...(filters.channelType ? [{ channelType: filters.channelType as any, ...visibleIdentity }] : []),
         channelIdentityWhere,
       ]),
     };
@@ -184,23 +186,42 @@ export async function getContact(
 }
 
 /**
- * 聯絡人在可見渠道有身分、或沒有任何渠道身分（客服手動建立）時視為看得到
+ * 聯絡人在可見渠道有身分、或沒有任何渠道身分且沒有被合併（客服手動建立）時視為看得到
  * （channel-scoped-visibility「聯絡人依渠道身份判斷可見」）。ALL_CHANNELS 回 undefined，不加條件。
+ * 已被合併的聯絡人身分都移到保留方，要依保留方判斷，見 isContactVisible()；列表本來就不列出封存的聯絡人。
  */
 export function visibleContactWhere(accessibleChannels: AccessibleChannels): Prisma.ContactWhereInput | undefined {
   const channelId = channelIdWhereFilter(accessibleChannels);
   if (!channelId) return undefined;
-  return { OR: [{ channelIdentities: { some: { channelId } } }, { channelIdentities: { none: {} } }] };
+  return { OR: [{ channelIdentities: { some: { channelId } } }, { channelIdentities: { none: {} }, mergedIntoId: null }] };
 }
 
-/** 規則同 visibleContactWhere()；不存在的聯絡人回 true，讓呼叫端照原本的流程回 404 */
+/** include 渠道身分時只取可見渠道（ALL_CHANNELS 回空物件） */
+export function visibleIdentityInclude(accessibleChannels: AccessibleChannels): { where?: { channelId: { in: string[] } } } {
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  return channelId ? { where: { channelId } } : {};
+}
+
+/** 合併鏈的上限：正常不會超過幾層，避免資料異常形成環時無限查詢 */
+const MAX_MERGE_HOPS = 10;
+
+/** 規則同 visibleContactWhere()，另外沿 mergedIntoId 依保留方判斷；不存在的聯絡人回 true，讓呼叫端照原本的流程回 404 */
 async function isContactVisible(ctx: TenantCtx, contactId: string, accessibleChannels: AccessibleChannels): Promise<boolean> {
   if (accessibleChannels === ALL_CHANNELS) return true;
-  const identities = await ctx.tx.channelIdentity.findMany({
-    where: { contactId, contact: { tenantId: ctx.tenantId } },
-    select: { channelId: true },
-  });
-  return identities.length === 0 || identities.some((i) => accessibleChannels.has(i.channelId));
+  let id: string | null = contactId;
+  for (let hop = 0; id && hop < MAX_MERGE_HOPS; hop += 1) {
+    const contact: { mergedIntoId: string | null; channelIdentities: Array<{ channelId: string }> } | null =
+      await ctx.tx.contact.findFirst({
+        where: { id, tenantId: ctx.tenantId },
+        select: { mergedIntoId: true, channelIdentities: { select: { channelId: true } } },
+      });
+    if (!contact) return hop === 0;
+    if (contact.channelIdentities.some((i) => accessibleChannels.has(i.channelId))) return true;
+    if (contact.channelIdentities.length > 0) return false;
+    if (!contact.mergedIntoId) return true;
+    id = contact.mergedIntoId;
+  }
+  return false;
 }
 
 /**
@@ -269,6 +290,7 @@ export async function updateContact(
     data: fields,
     include: {
       channelIdentities: {
+        ...visibleIdentityInclude(accessibleChannels),
         select: {
           id: true,
           channelType: true,
@@ -598,29 +620,39 @@ export async function getContactTimeline(
   return timeline;
 }
 
-export async function getMergePreview(ctx: TenantCtx, primaryId: string, secondaryId: string) {
+export async function getMergePreview(
+  ctx: TenantCtx,
+  primaryId: string,
+  secondaryId: string,
+  /** 渠道身分、對話數與工單數只計可見渠道（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+) {
   const { tx: prisma, tenantId } = ctx;
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  const inVisible = channelId ? { where: { channelId } } : true;
   const [primary, secondary] = await Promise.all([
     prisma.contact.findFirst({
       where: { id: primaryId, tenantId },
       include: {
         channelIdentities: {
+          ...visibleIdentityInclude(accessibleChannels),
           select: { id: true, channelType: true, uid: true, profileName: true, channelId: true },
         },
         tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
         attributes: { select: { id: true, key: true, value: true } },
-        _count: { select: { conversations: true, cases: true } },
+        _count: { select: { conversations: inVisible, cases: inVisible } },
       },
     }),
     prisma.contact.findFirst({
       where: { id: secondaryId, tenantId },
       include: {
         channelIdentities: {
+          ...visibleIdentityInclude(accessibleChannels),
           select: { id: true, channelType: true, uid: true, profileName: true, channelId: true },
         },
         tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
         attributes: { select: { id: true, key: true, value: true } },
-        _count: { select: { conversations: true, cases: true } },
+        _count: { select: { conversations: inVisible, cases: inVisible } },
       },
     }),
   ]);
@@ -676,4 +708,13 @@ export async function getMergePreview(ctx: TenantCtx, primaryId: string, seconda
       totalCases: primary._count.cases + secondary._count.cases,
     },
   };
+}
+
+/** 合併紀錄的兩方（解除合併前檢查可見範圍用）；找不到回 null，讓 revertMerge 照原本回 404 */
+export async function getMergeLogContactIds(ctx: TenantCtx, mergeLogId: string): Promise<string[] | null> {
+  const log = await ctx.tx.contactMergeLog.findFirst({
+    where: { id: mergeLogId, tenantId: ctx.tenantId },
+    select: { survivorId: true, mergedId: true },
+  });
+  return log ? [log.survivorId, log.mergedId] : null;
 }

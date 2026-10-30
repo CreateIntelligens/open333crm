@@ -33,14 +33,17 @@ function channelSql(accessible: AccessibleChannels, column: string) {
   return ids ? Prisma.sql`AND ${Prisma.raw(column)} = ANY(${ids.in}::uuid[])` : Prisma.empty;
 }
 
-/** 聯絡人可見：有可見渠道的身份，或沒有任何渠道身份（同 contact.service 的 visibleContactWhere） */
+/** 聯絡人可見：有可見渠道的身份，或沒有任何渠道身份且沒有被合併（同 contact.service 的 visibleContactWhere） */
 function contactSql(accessible: AccessibleChannels, contactIdColumn: string) {
   const ids = channelIdWhereFilter(accessible);
   if (!ids) return Prisma.empty;
   const col = Prisma.raw(contactIdColumn);
   return Prisma.sql`AND (
     EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${col} AND vci."channelId" = ANY(${ids.in}::uuid[]))
-    OR NOT EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${col})
+    OR (
+      NOT EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${col})
+      AND NOT EXISTS (SELECT 1 FROM contacts vc WHERE vc.id = ${col} AND vc."mergedIntoId" IS NOT NULL)
+    )
   )`;
 }
 
@@ -294,6 +297,8 @@ export async function getCaseStats(
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
+    -- 固定順序：每日彙總存下的分布與即時報表要一致
+    ORDER BY 1
   `;
 
   const priorityDistribution = priorityRows.map((r) => ({
@@ -312,6 +317,8 @@ export async function getCaseStats(
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
+    -- 固定順序：每日彙總存下的分布與即時報表要一致
+    ORDER BY 1
   `;
 
   const statusDistribution = statusRows.map((r) => ({
@@ -369,6 +376,8 @@ export async function getAgentPerformance(
   agentId?: string,
 ) {
   const agentFilter = agentId ? Prisma.sql`AND c."assigneeId" = ${agentId}::uuid` : Prisma.sql``;
+  // 非總店只列出在可見渠道有工單的客服，不列出其他分店的客服（channel-scoped-visibility）
+  const visibleAgentsOnly = channelIdWhereFilter(accessible) ? Prisma.sql`HAVING COUNT(c.id) > 0` : Prisma.empty;
 
   const rows = await ctx.tx.$queryRaw<
     {
@@ -406,6 +415,7 @@ export async function getAgentPerformance(
       AND a."isActive" = true
       ${agentFilter}
     GROUP BY a.id, a.name, a.role
+    ${visibleAgentsOnly}
     ORDER BY cases_handled DESC
   `;
 

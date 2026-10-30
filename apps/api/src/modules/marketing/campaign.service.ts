@@ -2,11 +2,20 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+
+/** 行銷活動的群發只計可見渠道（channel-scoped-visibility）；總店回空物件 */
+function visibleBroadcastWhere(accessibleChannels: AccessibleChannels) {
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  return channelId ? { channelId } : {};
+}
 
 export async function listCampaigns(
   prisma: TenantDb,
   tenantId: string,
-  filters: { status?: string; page?: number; limit?: number } = {},
+  filters: { status?: string; page?: number; limit?: number },
+  /** 群發數只計可見渠道；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
   const { status, page = 1, limit = 50 } = filters;
   const where: Record<string, unknown> = { tenantId };
@@ -19,7 +28,7 @@ export async function listCampaigns(
       skip: (page - 1) * limit,
       take: limit,
       include: {
-        _count: { select: { broadcasts: true } },
+        _count: { select: { broadcasts: { where: visibleBroadcastWhere(accessibleChannels) } } },
       },
     }),
     prisma.campaign.count({ where: where as any }),
@@ -28,11 +37,18 @@ export async function listCampaigns(
   return { campaigns, total, page, limit };
 }
 
-export async function getCampaign(prisma: TenantDb, id: string, tenantId: string) {
+export async function getCampaign(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  /** 群發清單與成效只計可見渠道；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+) {
   const campaign = await prisma.campaign.findFirst({
     where: { id, tenantId },
     include: {
       broadcasts: {
+        where: visibleBroadcastWhere(accessibleChannels),
         orderBy: { createdAt: 'desc' },
       },
     },
