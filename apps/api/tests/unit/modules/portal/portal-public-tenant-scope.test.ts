@@ -36,7 +36,11 @@ const tx = {
       pointWheres.push(args.where);
       return { balance: 30 };
     },
-    findMany: async () => [],
+    // 餘額取自清單的最新一筆（getFanPointsFlow），所以清單也要帶 tenantId
+    findMany: async (args: { where: unknown }) => {
+      pointWheres.push(args.where);
+      return [{ balance: 30 }];
+    },
     count: async () => 0,
   },
 };

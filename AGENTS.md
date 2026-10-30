@@ -695,7 +695,36 @@ that no code registers. Thus a renamed or removed id does not stay in Redis.
 - **CHANGELOG Date Format (CRITICAL / MANDATORY)**: each new or updated release section **MUST**
   use the date-only heading format `## [YYYY-MM-DD]`. **Never create or restore `## [Unreleased]`**.
   Do not change existing version headings, unless the user explicitly asks for a history rewrite.
-- **Validation**: use Zod in API route handlers.
+- **Validation**: the API parses each input field with a Zod schema. Do not rely on the
+  validation of the frontend. A client can send any request. Other clients (the CLI, MCP,
+  webhooks, scripts) do not use the frontend.
+  - Parse `request.params`, `request.query` and `request.body` with a Zod schema before you use
+    them. Do not cast them with `as`. A cast only tells the compiler the type. It does not check
+    the value at runtime.
+  - Give each field its type and its limits: the format (for example `.uuid()`), the length, the
+    range and the allowed values (`z.enum`).
+  - A field that the database stores in an `Int` column must fit in int4. Use `int4Schema` from
+    `apps/api/src/shared/utils/numeric-bounds.ts`.
+  - For `page` and `limit`, use `paginationSchema` from `apps/api/src/shared/utils/pagination.ts`.
+  - A JSON field (for example `settings` or `config`) gets a schema for each key that the code
+    reads. Do not accept it as `z.record(z.unknown())`. Put the schema in a module file. Then the
+    route and the service use the same schema.
+  - When the code reads a JSON column from the database, parse the value with the same schema.
+    Do not cast it with `as`. A row that the code wrote before the schema existed can hold any
+    value. If the value is invalid, use a default that cannot cause harm. For example,
+    `readActivitySettings()` in `apps/api/src/modules/portal/portal-settings.ts` does not allow
+    a second submission and gives 0 points.
+  - Use `z.record(z.unknown())` only for a value that the code stores or forwards and never
+    reads. An example is `clientExtensionResults` from WebAuthn. Write a comment that tells why.
+  - Frontend validation (for example `<input min={0}>`) only helps the user. The API rejects
+    the same invalid values with HTTP 400.
+
+  `apps/api/src/modules/portal/` shows the pattern. `portal.routes.ts` and
+  `portal-public.routes.ts` parse each input. `portal-settings.ts` defines the activity settings
+  for the routes and the service.
+
+  Many existing routes still cast their input with `as`. Issue #405 lists the
+  `z.record(z.unknown())` fields. Fix them when you change the route for a different reason.
 - **Errors**: `throw new AppError(message, code, statusCode, details?)`
   (`apps/api/src/shared/utils/response.ts`). **The message comes first.** `code` has the default
   `INTERNAL_ERROR`, and `statusCode` has the default 500. Thus, give both values. Do not return

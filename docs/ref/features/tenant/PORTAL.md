@@ -14,7 +14,7 @@
 | 後台 | `portal.routes.ts` | `/api/v1/portal` | 客服與管理員 | 客服登入，整個 plugin 要求 `portal.view` |
 | 粉絲端 | `portal-public.routes.ts` | `/api/v1/fan` | 粉絲 | 粉絲 token（`authenticateFan`） |
 
-服務分成 `portal.service.ts`（活動、提交、抽獎、結果）、`points.service.ts`（積分）與 `portal-auth.service.ts`（粉絲 token）。
+兩組路由都呼叫 `portal.flow.ts`，由 flow 以請求的租戶開一個交易（`inTenant()`），再呼叫服務。送出、積分帳本、抽獎與狀態轉換在同時操作時的保證，見主規格 `portal-activity`。服務分成 `portal.service.ts`（活動、提交、抽獎、結果）、`points.service.ts`（積分）與 `portal-auth.service.ts`（粉絲 token）。
 
 租戶後台的前端頁面有活動管理、提交紀錄與積分管理。粉絲端的前端不在這個 repo，`/api/v1/fan` 沒有已知的呼叫端。
 
@@ -39,6 +39,8 @@
 | `ENDED` | 已結束，不再接受提交 | `POST /activities/:id/end` |
 | `ARCHIVED` | 封存，不在清單顯示 | `POST /activities/:id/archive`，可以用 `/unarchive` 還原 |
 
+編輯、刪除與每一種狀態轉換，都先鎖住活動列，再檢查狀態。兩個操作同時進行時，後一個等前一個 commit 之後才檢查。例如發布還沒 commit 時開始編輯，編輯會在發布 commit 之後回 409，不會換掉已發布活動的選項。
+
 活動可以設定開始與結束時間。粉絲提交時，系統檢查活動是否已發布、是否已開始、是否已結束。時間到了狀態不會自動變成 `ENDED`，只是提交會被擋下。
 
 ## 粉絲怎麼參加
@@ -47,7 +49,7 @@
 2. 以 token 瀏覽活動（`GET /fan/activities`）並提交（`POST /fan/activities/:id/submit`）。
 3. 查看結果（`/fan/activities/:id/result`）、自己參加過的活動（`/fan/me/activities`）與積分（`/fan/me/points`）。
 
-粉絲端的每個查詢都以 token 裡的 `tenantId` 與 `contactId` 過濾，因此只看得到自己租戶的活動與自己的紀錄。這組路由以 `withTenant(app.prisma, fan.tenantId, …)` 執行，查詢走 RLS，查詢條件漏帶 `tenantId` 時仍有 RLS 兜底（2026-10-06 之前使用 `prismaAdmin`，租戶隔離完全靠查詢條件，積分餘額就漏帶了 `tenantId`）。結果端點會回傳測驗的正確答案，見 `../../system/AUDIT.md` 的 PORTAL-01。
+粉絲端的每個查詢都以 token 裡的 `tenantId` 與 `contactId` 過濾，因此只看得到自己租戶的活動與自己的紀錄。這組路由的 flow 以 `fan.tenantId` 開交易，查詢走 RLS，查詢條件漏帶 `tenantId` 時仍有 RLS 兜底（2026-10-06 之前使用 `prismaAdmin`，租戶隔離完全靠查詢條件，積分餘額就漏帶了 `tenantId`）。結果端點會回傳測驗的正確答案，詳情端點不看活動的開始與結束時間，見 `../../system/AUDIT.md` 的 PORTAL-01。
 
 **粉絲 token 不能通過客服認證。** 粉絲 token 與客服的 JWT 用同一把 `JWT_SECRET` 簽發，但驗證端會檢查用途：客服端的 `authenticate` 與 socket 只接受 `typ` 為 `access` 的 token（`apps/api/src/lib/agent-token.ts`），粉絲端的 `verifyFanToken()` 只接受 `sub` 為 `fan` 的 token。接回簽發路徑時，要從驗證過的憑證（例如 LINE LIFF 的 ID token）推導出聯絡人，不可接受呼叫端指定的 `contactId`。
 
@@ -55,10 +57,11 @@
 
 `submitActivity()` 的規則：
 
-- 活動設定的 `allowMultiple` 不是 `true` 時，同一個聯絡人只能提交一次。這個檢查在應用層，資料庫沒有唯一限制，同時送出兩次可能都成功。
+- 活動設定的 `allowMultiple` 不是 `true` 時，同一個聯絡人只能提交一次。資料庫沒有唯一限制：系統先以 advisory lock 鎖住「活動＋聯絡人」，再檢查有沒有提交過。同一個人同時送出兩次時，第二次等第一次 commit 之後才檢查，回「您已參加過這個活動」。檢查時不鎖活動列，所以不同粉絲的提交不必排隊。
 - 問答的分數是「選中的正確選項數」。選錯不扣分，因此全選的人會拿到滿分。
 - 活動設定了 `pointsPerSubmit` 時，每次提交自動加積分。
-- 每次提交發布 `portal.activity.submitted`。這個事件有送進自動化的 queue，但不在自動化規則的契約裡，規則編輯器選不到，見[自動化](./AUTOMATION.md#哪些事件能觸發規則)。
+- `settings` 裡的 `allowMultiple` 與 `pointsPerSubmit` 由 `portal-settings.ts` 定義：建立與編輯活動時，`allowMultiple` 要是布林值，`pointsPerSubmit` 要是 0 以上的整數，不合法回 400；其他欄位照舊儲存。資料庫裡已經存在的不合法值，提交時當成不允許重複參加、不給積分。
+- 每次提交發布 `portal.activity.submitted`。事件與提交、積分在同一個交易寫進 outbox，commit 之後才送出；三者其中一項寫不進去時一起 rollback。這個事件有送進自動化的 queue，但不在自動化規則的契約裡，規則編輯器選不到，見[自動化](./AUTOMATION.md#哪些事件能觸發規則)。
 
 正確答案（`PortalOption.isCorrect`）不會回給粉絲端。
 
@@ -66,14 +69,18 @@
 
 `POST /activities/:id/draw` 從還沒中獎的提交中隨機抽出指定數量，標記為中獎（`isWinner`）。抽的單位是提交，不是聯絡人：允許重複提交的活動，同一個人提交越多次，中獎機率越高，也可能中獎不只一次。
 
+抽獎會鎖住活動列。兩次抽獎同時進行時，後一次等前一次 commit 之後才讀未中獎名單，不會抽到同一批人。
+
 ## 積分
 
-積分以交易紀錄（`PointTransaction`）累加，餘額是該聯絡人所有交易的總和。
+積分以交易紀錄（`PointTransaction`）累加。每筆紀錄存著寫入後的餘額（`balance`），目前餘額取 `createdAt` 最新的一筆。
+
+`points.service.ts` 的 `addPointTransaction()` 寫入前，會先以 advisory lock 鎖住這位聯絡人的帳本，再讀最新一筆。同時寫入同一位聯絡人時，後一筆以前一筆的餘額計算。寫入時間取「現在」與「最新一筆＋1 毫秒」中較晚的一個，所以同一毫秒內連續寫入時，最新一筆仍是後寫入的那筆。合併與解除合併轉移積分時，先依 id 排序鎖住雙方的帳本，再讀餘額。
 
 | 來源 | 程式 |
 | --- | --- |
 | 提交活動 | `submitActivity()` 依 `pointsPerSubmit` 自動加 |
-| 管理員調整 | `POST /portal/points/adjust`，需要 `portal.manage`，可以加也可以扣 |
+| 管理員調整 | `POST /portal/points/adjust`，需要 `portal.manage`，可以加也可以扣。聯絡人不存在或屬於其他租戶時回 404 `CONTACT_NOT_FOUND` |
 
 積分綁在聯絡人上。合併聯絡人時，被合併那一方的積分與活動提交會搬到主要聯絡人；解除合併時再搬回去，見[聯絡人](./CONTACTS.md#合併)。
 
@@ -89,7 +96,7 @@
 | 限制 | 說明 |
 | --- | --- |
 | **系統目前不簽發粉絲 token，粉絲端無法使用** | 見[負責的程式](#負責的程式) |
-| 重複提交只在應用層檢查 | 同時送出可能重複加分 |
+| 提交與結束活動同時進行時，提交可能成功 | 提交讀到活動已發布之後，結束才 commit。提交時不鎖活動列，所以會多一筆剛好在結束時送出的提交 |
 | 問答錯選不扣分 | 全選即可拿滿分 |
 | 抽獎以提交為單位 | 允許重複提交時，多提交的人中獎機率較高 |
 | 活動結束時間到了不會自動改狀態 | 提交會被擋下，但狀態仍是 `PUBLISHED` |

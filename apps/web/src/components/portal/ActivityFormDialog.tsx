@@ -166,7 +166,8 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
 
           <div>
             <label className="text-sm font-medium">每次提交積分</label>
-            <Input type="number" value={pointsPerSubmit} onChange={(e) => setPointsPerSubmit(parseInt(e.target.value) || 0)} min={0} />
+            {/* min 擋不住手動輸入負數；後端只接受 0 以上的整數 */}
+            <Input type="number" value={pointsPerSubmit} onChange={(e) => setPointsPerSubmit(Math.max(0, parseInt(e.target.value) || 0))} min={0} />
           </div>
 
           {/* Options editor for POLL/QUIZ */}

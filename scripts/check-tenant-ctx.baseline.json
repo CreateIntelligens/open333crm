@@ -53,8 +53,6 @@
     "modules/notification/notification.service.ts": 7,
     "modules/platform/ai-privacy.service.ts": 3,
     "modules/platform/plan-limits.service.ts": 2,
-    "modules/portal/points.service.ts": 5,
-    "modules/portal/portal.service.ts": 14,
     "modules/settings/chat-settings.service.ts": 3,
     "modules/settings/embedding-settings.service.ts": 4,
     "modules/settings/office-hours.service.ts": 5,
@@ -85,15 +83,12 @@
     "modules/mcp/mcp.routes.ts": 1,
     "modules/meta-connect/meta-connect.routes.ts": 3,
     "modules/notification/notification.routes.ts": 4,
-    "modules/portal/portal.routes.ts": 13,
     "modules/settings/settings.routes.ts": 31,
     "modules/webhook-subscriptions/webhook-subscription.routes.ts": 2,
     "modules/webhook/webhook.routes.ts": 1,
     "services/channel-visibility.ts": 6
   },
-  "service 內的 withTenant(": {
-    "modules/portal/portal.service.ts": 1
-  },
+  "service 內的 withTenant(": {},
   "service 內的 $transaction(": {
     "modules/chatbox/chatbox.service.ts": 1,
     "modules/platform/ai-privacy.service.ts": 1,
