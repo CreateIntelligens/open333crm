@@ -18,3 +18,15 @@
 | 2026-10-29 | marketing | 受眾分群 | 2e2c7dea-4d05-4912-9d85-df6cb667b279 | 健檢-2026-10-29-UAT分群（條件 createdAfter 2099-01-01，0 人） | 已刪除（DELETE 硬刪，GET 回 404） |
 | 2026-10-29 | marketing | 優惠券（草稿，未發布） | 5a9fd04b-08e6-4fa7-81ed-9a1523c16069 | 健檢-2026-10-29-UAT草稿券 | 已刪除（草稿 DELETE 硬刪，GET 回 404） |
 | 2026-10-29 | marketing | 素材（LINE 文字，草稿） | bb51d627-f6b6-409b-a235-84408421be70 | 健檢-2026-10-29-UAT LINE文字（建立時後端呼叫 LINE validate API，未發送訊息） | 已刪除（素材只有軟刪：isActive=false，列表搜尋 0 筆；資料列仍在 DB，沒有硬刪 API） |
+
+## portal
+
+| 日期 | 領域 | 類型 | ID | 名稱／內容 | 狀態 |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-30 | portal | 粉絲活動（QUIZ 草稿） | ffc8a500-9710-4fcf-b37f-6a1f7c74faa7 | 健檢-2026-10-30-portal-編輯（後改名為 健檢-2026-10-30-portal-編輯2） | 已刪除（DELETE 200，之後 GET 404） |
+
+## 其他領域
+
+2026-10-30 這一輪的其他領域在 UAT 只做唯讀確認，沒有建立、修改或刪除資料：inbox、cases、notifications、automation、knowledge、line、shortlinks、analytics、channels、members、settings、governance、sla、platform-auth、platform-tenants、platform-plans、platform-plan-changes。平台後台領域都沒有登入 UAT 平台後台。
+
+line 領域對 Demo「LINE OA」的 webhook 送了 3 個不會被處理的請求（錯簽章 403、無簽章 403、非 UUID 網址 500），沒有寫入資料。

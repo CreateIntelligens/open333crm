@@ -1,30 +1,6 @@
 {
   "description": "功能領域地圖。scripts/feature-impact.mjs 讀這份檔案做跨功能影響分析；每個領域的 Skill 在 .claude/skills/feature-<id>/SKILL.md。改程式路徑、資料表、事件或依賴後，請同步更新並跑 node scripts/feature-impact.mjs --check。",
-  "plannedDomains": [
-    "inbox",
-    "cases",
-    "notifications",
-    "automation",
-    "knowledge",
-    "line",
-    "portal",
-    "shortlinks",
-    "analytics",
-    "channels",
-    "members",
-    "settings",
-    "governance",
-    "sla",
-    "platform-auth",
-    "platform-tenants",
-    "platform-plans",
-    "platform-plan-changes",
-    "platform-usage",
-    "platform-users",
-    "platform-settings",
-    "platform-trials",
-    "platform-queue-monitoring"
-  ],
+  "plannedDomains": [],
   "commonTables": [
     "Tenant",
     "Agent",
@@ -386,6 +362,2873 @@
         {
           "domain": "platform-queue-monitoring",
           "why": "監控 coupon-broadcast 佇列"
+        }
+      ]
+    },
+    {
+      "id": "notifications",
+      "title": "通知",
+      "doc": "docs/ref/features/tenant/NOTIFICATIONS.md",
+      "health": "docs/ref/features/health/NOTIFICATIONS.md",
+      "paths": [
+        "apps/api/src/modules/notification/*",
+        "apps/api/src/modules/trial/usage-alert-emails.ts",
+        "apps/api/src/modules/email/email.service.ts",
+        "apps/workers/src/handlers/notification.handler.ts",
+        "apps/workers/src/lib/notification-queue.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/notifications/**",
+        "apps/web/src/components/notification/*",
+        "apps/web/src/hooks/useNotifications.ts"
+      ],
+      "tables": [
+        "Notification"
+      ],
+      "events": [
+        "usage.quota.threshold",
+        "case.assigned",
+        "case.escalated",
+        "message.received",
+        "conversation.assigned",
+        "sla.warning",
+        "sla.breached"
+      ],
+      "permissions": [],
+      "specs": [
+        "usage-quota-alerts",
+        "email-delivery",
+        "standalone-worker-runtime"
+      ],
+      "audit": [
+        "RBAC-03",
+        "CONV-02",
+        "CONV-03",
+        "PLAN-13",
+        "EXPORT-01",
+        "APP-04",
+        "APP-05"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch04-notifications.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-misc.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-smoke.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/notification/**",
+        "apps/api/tests/unit/modules/email/email-delivery.test.ts",
+        "apps/api/tests/feature/modules/trial/token-quota-alert.test.ts",
+        "apps/api/tests/feature/modules/case/case-escalate-notify-targets.test.ts",
+        "apps/workers/tests/unit/handlers/notification.handler.test.ts",
+        "apps/workers/tests/unit/lib/notification-queue.test.ts",
+        "apps/workers/tests/unit/lib/automation-notify.test.ts",
+        "apps/workers/tests/unit/lib/automation-notify-copy.test.ts",
+        "apps/web/tests/unit/app/notifications-type-labels.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "members",
+          "why": "收件人以 Agent.role（ADMIN/SUPERVISOR/AGENT 舊列舉）與 isActive 決定，不看細粒度角色（RBAC-03）；成員清除時連同通知刪除"
+        },
+        {
+          "domain": "channels",
+          "why": "新訊息通知的收件人不看渠道可見範圍；權杖失效通知由 meta-token-health 排程發出"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "inbox",
+          "why": "message.received 觸發新訊息通知（已指派通知負責人、未指派通知全部主管）；點擊連到 /dashboard/inbox?conv="
+        },
+        {
+          "domain": "cases",
+          "why": "case.assigned、case.escalated（升級對話框的 notifyTargets）觸發通知；CSAT 低分在 csat.service 直接 createAndDispatch"
+        },
+        {
+          "domain": "sla",
+          "why": "workers 的 sla.handler 直接 enqueueNotification 送 SLA 預警與逾時"
+        },
+        {
+          "domain": "automation",
+          "why": "workers 的「傳送通知」「通知主管」動作寫 sla_rule 類型通知"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "AI 用量達 80%/100% 發 usage.quota.threshold，通知與 email 管理員"
+        },
+        {
+          "domain": "governance",
+          "why": "資料匯出與資料刪除完成時通知發起人"
+        },
+        {
+          "domain": "channels",
+          "why": "FB/IG 權杖失效時站內通知與 email 管理員"
+        },
+        {
+          "domain": "contacts",
+          "why": "email 登記驗證碼與各種系統信共用 email.service 的寄送模式"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "試用驗證信、到期信經 email.service 寄出"
+        }
+      ]
+    },
+    {
+      "id": "cases",
+      "title": "工單",
+      "doc": "docs/ref/features/tenant/CASES.md",
+      "health": "docs/ref/features/health/CASES.md",
+      "paths": [
+        "apps/api/src/modules/case/*",
+        "apps/api/src/modules/csat/*",
+        "apps/api/src/scripts/backfill-case-first-response.ts",
+        "packages/shared/src/constants/case-transitions.ts",
+        "packages/shared/src/constants/case-categories.ts",
+        "packages/shared/src/types/case.types.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/cases/**",
+        "apps/web/src/components/case/*",
+        "apps/web/src/hooks/useCases.ts",
+        "apps/web/src/components/inbox/CsatMessage.tsx"
+      ],
+      "tables": [
+        "Case",
+        "CaseEvent",
+        "CaseNote",
+        "CaseTag",
+        "CaseRelation"
+      ],
+      "events": [
+        "case.created",
+        "case.updated",
+        "case.assigned",
+        "case.escalated",
+        "case.resolved",
+        "case.closed",
+        "case.deleted"
+      ],
+      "permissions": [
+        "case.view",
+        "case.create",
+        "case.update",
+        "case.assign",
+        "case.escalate",
+        "case.delete"
+      ],
+      "specs": [
+        "case-management",
+        "csat-survey",
+        "sla-policy-selection"
+      ],
+      "audit": [
+        "CASE-02",
+        "RBAC-03",
+        "RBAC-04",
+        "SLA-04",
+        "SLA-05",
+        "DB-04",
+        "AUTO-05",
+        "ANA-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch02-cases.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-cases.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-cases-contacts-inbox.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/case/**",
+        "apps/api/tests/feature/modules/case/**",
+        "apps/api/tests/unit/modules/csat/**",
+        "apps/api/tests/feature/modules/csat/**",
+        "apps/api/tests/unit/modules/notification/escalation-recipients.test.ts",
+        "apps/workers/tests/unit/lib/automation-create-case.test.ts",
+        "apps/web/tests/unit/app/cases/**",
+        "apps/web/tests/unit/components/case/**"
+      ],
+      "dependsOn": [
+        {
+          "domain": "contacts",
+          "why": "工單掛在聯絡人上；建立時搜尋聯絡人（GET /contacts），渠道只能選聯絡人有身分的渠道；工單標籤用 TagManager"
+        },
+        {
+          "domain": "inbox",
+          "why": "從對話建立工單（POST /conversations/:id/case）與連結對話；首次回應由 conversation.service 的 sendMessage 寫入；CSAT 問卷與追蹤訊息寫進對話並經 deliverToChannel 送出；逾時結案時關閉對話"
+        },
+        {
+          "domain": "channels",
+          "why": "工單依 channelId 套用渠道可見範圍（read_only / reply_only / full）；自動指派只挑直綁或團隊被授權該渠道的成員"
+        },
+        {
+          "domain": "sla",
+          "why": "建立工單時依優先級挑 SLA 政策並算 slaDueAt；工單以政策名稱記錄政策；逾時掃描、預警與自動提高優先級在 workers"
+        },
+        {
+          "domain": "members",
+          "why": "負責人下拉讀 GET /agents；自動指派讀 Agent.role 與 AgentTeamMember；團隊（Team）沒有管理介面"
+        },
+        {
+          "domain": "notifications",
+          "why": "case.assigned、case.escalated、CSAT 低分由通知訂閱者送站內通知"
+        },
+        {
+          "domain": "governance",
+          "why": "刪除工單寫租戶稽核 case.delete，與刪除同一交易"
+        },
+        {
+          "domain": "line",
+          "why": "LINE 渠道的 CSAT 問卷是 Flex Message，postback csat:<分數>:<工單 ID> 由進站攔截器記錄"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "inbox",
+          "why": "ContactInfoPanel 的「建立工單」、已關閉對話的 CSAT 與工單時間；ChatWindow 的 CSAT 卡片呼叫 POST /cases/:id/csat；進站 CSAT 攔截器呼叫 recordCsatScore"
+        },
+        {
+          "domain": "automation",
+          "why": "訂閱 case.created、case.escalated；workers 的「建立工單」「指派客服」動作直接寫 Case"
+        },
+        {
+          "domain": "sla",
+          "why": "workers 的 sla.handler 掃描未結工單、寫 CaseEvent、提高優先級"
+        },
+        {
+          "domain": "contacts",
+          "why": "聯絡人時間軸與 /contacts/:id/cases 讀工單；合併聯絡人時搬移 Case"
+        },
+        {
+          "domain": "marketing",
+          "why": "建立工單時歸因到聯絡人最近一筆群發（trackBroadcastCase）；活動詳情彙總開案數"
+        },
+        {
+          "domain": "analytics",
+          "why": "報表讀工單數、分類、首次回應時間與 CSAT 分數"
+        },
+        {
+          "domain": "knowledge",
+          "why": "AI 在 case.created 後替沒有分類的工單自動分類（classify.service）"
+        }
+      ]
+    },
+    {
+      "id": "knowledge",
+      "title": "知識庫與 AI 回覆",
+      "doc": "docs/ref/features/tenant/KNOWLEDGE.md",
+      "health": "docs/ref/features/health/KNOWLEDGE.md",
+      "paths": [
+        "apps/api/src/modules/knowledge/*",
+        "apps/api/src/modules/embedding/*",
+        "apps/api/src/modules/ai/kb-autoreply.service.ts",
+        "apps/api/src/modules/ai/llm.service.ts",
+        "apps/api/src/modules/ai/ai.service.ts",
+        "apps/api/src/modules/ai/ai.routes.ts",
+        "apps/api/src/modules/ai/ai-key.service.ts",
+        "apps/api/src/modules/ai/model-matcher.ts",
+        "apps/api/src/modules/ai/model-registry.service.ts",
+        "apps/api/src/modules/ai/pricing.service.ts",
+        "apps/api/src/modules/ai/deidentification.service.ts",
+        "apps/api/src/modules/ai/classify.service.ts",
+        "apps/api/src/modules/ai/sentiment.service.ts",
+        "apps/api/src/modules/ai/providers/*",
+        "apps/api/src/modules/ai/agent/*",
+        "apps/api/src/modules/settings/chat-settings.service.ts",
+        "apps/api/src/modules/settings/embedding-settings.service.ts",
+        "apps/api/src/modules/trial/token-quota.service.ts",
+        "apps/api/src/modules/trial/usage-alert-emails.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/knowledge/**",
+        "apps/web/src/components/knowledge/*",
+        "apps/web/src/hooks/useKnowledge.ts",
+        "apps/web/src/hooks/useKbFeedback.ts"
+      ],
+      "tables": [
+        "KmArticle",
+        "KmArticleAttachment",
+        "KbArticleFeedback",
+        "PartnerApiKey",
+        "AiUsage",
+        "AgentRun",
+        "AgentToolCall",
+        "LongTermMemory"
+      ],
+      "events": [
+        "usage.quota.threshold"
+      ],
+      "permissions": [
+        "knowledge.view",
+        "knowledge.manage",
+        "knowledge.admin",
+        "settings.manage"
+      ],
+      "specs": [
+        "km-ingestion",
+        "knowledge-base-information-architecture",
+        "token-quota",
+        "usage-quota-alerts",
+        "ai-usage-recording",
+        "agentic-llm-orchestration",
+        "bot-handoff-config"
+      ],
+      "audit": [
+        "RBAC-01",
+        "AUTH-06",
+        "PLAN-12",
+        "PLAN-02",
+        "PLAN-13",
+        "AI-01",
+        "USAGE-03",
+        "LLM-01",
+        "LLM-03",
+        "LLM-04",
+        "DB-01",
+        "ARCH-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch06-knowledge.html",
+        "apps/web/public/manual/ch07-ai-settings.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-knowledge.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-knowledge-automation.spec.ts",
+        "apps/web/tests/manual-ch06.spec.ts",
+        "apps/web/tests/manual-ch07.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/knowledge/**",
+        "apps/api/tests/unit/modules/embedding/**",
+        "apps/api/tests/unit/modules/ai/agent-*.test.ts",
+        "apps/api/tests/unit/modules/ai/agent/**",
+        "apps/api/tests/unit/modules/ai/ai-routes-channel-scope.test.ts",
+        "apps/api/tests/unit/modules/ai/ai.service-tenant-scope.test.ts",
+        "apps/api/tests/unit/modules/ai/auto-classify-new-case.test.ts",
+        "apps/api/tests/unit/modules/ai/deidentification.test.ts",
+        "apps/api/tests/unit/modules/ai/gemini-tool-turn-max-tokens.test.ts",
+        "apps/api/tests/unit/modules/ai/kb-autoreply-history.test.ts",
+        "apps/api/tests/unit/modules/ai/llm-system-prompt.test.ts",
+        "apps/api/tests/unit/modules/ai/pricing.test.ts",
+        "apps/api/tests/unit/modules/ai/two-md-client-resilience.test.ts",
+        "apps/api/tests/unit/modules/ai/usage-quota.test.ts",
+        "apps/api/tests/feature/modules/trial/token-quota-alert.test.ts",
+        "apps/web/tests/unit/app/knowledge-feedback-page.test.tsx",
+        "apps/web/tests/unit/components/knowledge/**"
+      ],
+      "dependsOn": [
+        {
+          "domain": "settings",
+          "why": "Chat、Embedding、自備金鑰的 API 在 settings.routes.ts，整組要求 settings.manage；Partner API 金鑰在設定頁建立"
+        },
+        {
+          "domain": "channels",
+          "why": "渠道 settings.botConfig 的 botMode 決定要不要 AI 回覆；handoff 提示樣式與 maxBotReplies 也在 botConfig"
+        },
+        {
+          "domain": "inbox",
+          "why": "KB 自動回覆寫 BOT 訊息、推 socket message.new、經 deliverToChannel 送回渠道；AI 建議回覆與摘要讀對話"
+        },
+        {
+          "domain": "automation",
+          "why": "automation.worker.ts 的 message.received 處理先做自動轉接、讓步關鍵字規則，才呼叫 Agent 與 attemptKbAutoReply"
+        },
+        {
+          "domain": "contacts",
+          "why": "AI 回覆讀同一位顧客其他渠道的上下文（other-channel-context.ts）；回饋記 contactId"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "monthlyTokens 月額度來自方案與租戶覆寫"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "個資遮罩政策由平台後台逐租戶啟用，啟用後所有模型輸入與向量化先經 2md 去識別化"
+        },
+        {
+          "domain": "notifications",
+          "why": "用量 80%/100% 告警走站內通知與 email"
+        },
+        {
+          "domain": "governance",
+          "why": "改 Chat、Embedding、金鑰寫租戶稽核"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "inbox",
+          "why": "收件匣 AI 建議回覆、摘要、潤稿（/ai/*），以及客人看到的機器人回覆與「沒幫到我」回報"
+        },
+        {
+          "domain": "automation",
+          "why": "自動轉接時呼叫 summarizeConversation；自動化 AI 動作與情緒分析用 llm.service"
+        },
+        {
+          "domain": "cases",
+          "why": "新工單自動分類（classify.service）"
+        },
+        {
+          "domain": "marketing",
+          "why": "素材 Flex AI 生成與文字潤稿用 llm.service、計入月額度"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "平台用量頁讀 AiUsage 與 ModelPricing 的成本"
+        },
+        {
+          "domain": "contacts",
+          "why": "合併聯絡人時搬移 KbArticleFeedback"
+        }
+      ]
+    },
+    {
+      "id": "automation",
+      "title": "自動化規則",
+      "doc": "docs/ref/features/tenant/AUTOMATION.md",
+      "health": "docs/ref/features/health/AUTOMATION.md",
+      "paths": [
+        "apps/api/src/modules/automation/**",
+        "apps/api/src/modules/canvas/**",
+        "apps/workers/src/handlers/automation.handler.ts",
+        "apps/workers/src/lib/automation-actions.ts",
+        "packages/automation/**",
+        "packages/core/src/canvas/**"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/automation/**",
+        "apps/web/src/app/dashboard/line/keyword-replies/page.tsx",
+        "apps/web/src/app/dashboard/line/follow-gift/page.tsx",
+        "apps/web/src/components/automation/**",
+        "apps/web/src/components/line/keyword-reply/**",
+        "apps/web/src/hooks/useAutomation.ts",
+        "apps/web/src/hooks/useKeywordReplies.ts",
+        "apps/web/src/hooks/useFollowGift.ts",
+        "apps/web/src/lib/automation/**"
+      ],
+      "tables": [
+        "AutomationRule",
+        "AutomationLog",
+        "AutomationExecution",
+        "InteractionFlow",
+        "InteractionNode",
+        "FlowExecution",
+        "FlowLog"
+      ],
+      "events": [
+        "event-automation",
+        "automation.executed",
+        "keyword.matched",
+        "contact.followed",
+        "contact.tagged",
+        "link.clicked",
+        "canvas.send_message",
+        "canvas.action",
+        "flow.completed"
+      ],
+      "permissions": [
+        "automation.view",
+        "automation.manage",
+        "canvas.use"
+      ],
+      "specs": [
+        "automation-engine",
+        "automation-contract-composer",
+        "interaction-canvas"
+      ],
+      "audit": [
+        "AUTO-02",
+        "AUTO-03",
+        "AUTO-05",
+        "CHAN-02",
+        "RBAC-03",
+        "PLAN-04",
+        "RLS-01",
+        "APP-07",
+        "APP-09"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch05-automation.html",
+        "apps/web/public/manual/ch10-line.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-automation.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-automation-editor-fixes.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-knowledge-automation.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/automation/*.test.ts",
+        "apps/workers/tests/unit/handlers/automation*.test.ts",
+        "apps/workers/tests/unit/lib/automation-*.test.ts",
+        "packages/automation/tests/unit/**",
+        "packages/core/tests/unit/canvas/*.test.ts",
+        "apps/web/tests/unit/lib/automation/*.test.ts",
+        "apps/web/tests/unit/components/automation/*.test.tsx",
+        "apps/web/tests/unit/app/dashboard/line/keyword-replies-*.test.tsx",
+        "apps/web/tests/unit/components/line/keyword-reply-*.test.tsx",
+        "apps/web/tests/unit/components/line/follow-gift-page.test.tsx",
+        "apps/web/tests/unit/hooks/use-keyword-replies.test.tsx",
+        "apps/api/tests/feature/migrations/remove-retired-automation-actions.test.ts",
+        "apps/api/tests/feature/modules/webhook/follow-tracking.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "contacts",
+          "why": "add_tag/remove_tag 寫聯絡人標籤；contact.created、contact.tagged 事件與 contact.tags、contact.name 等條件事實"
+        },
+        {
+          "domain": "cases",
+          "why": "create_case 建單、update_case_status/escalate_case/set_case_priority/assign_agent 直接改 Case（不經 case.service）；case.created、case.escalated 觸發"
+        },
+        {
+          "domain": "inbox",
+          "why": "message.received、conversation.created 由進站管線發布；send_message/send_material 寫進對話；AI 讓步判斷（keyword-yield）"
+        },
+        {
+          "domain": "channels",
+          "why": "workers 的 createWorkerPluginRegistry 決定哪些渠道送得出回覆（WebChat 沒有，CHAN-02）；渠道憑證解密"
+        },
+        {
+          "domain": "marketing",
+          "why": "send_material 讀素材與變數代入；issue_coupon 走 rule-coupon-issue 發券（關鍵字回覆、加好友禮）"
+        },
+        {
+          "domain": "notifications",
+          "why": "notify、notify_supervisor 排入 notification 佇列寫站內通知"
+        },
+        {
+          "domain": "sla",
+          "why": "SLA 五種事件由 workers sla.handler.ts 直接查規則並執行動作"
+        },
+        {
+          "domain": "shortlinks",
+          "why": "link.clicked 事件由短連結點擊發布"
+        },
+        {
+          "domain": "line",
+          "why": "contact.followed 來自 LINE follow 事件；回覆權杖 30 秒內以 reply 送出"
+        },
+        {
+          "domain": "members",
+          "why": "assign_agent、notify 的對象是成員；通知主管看 Agent.role 舊列舉（RBAC-03）"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "line",
+          "why": "關鍵字回覆頁、加好友禮頁都存成 AutomationRule（keyword.matched、contact.followed）"
+        },
+        {
+          "domain": "marketing",
+          "why": "關鍵字領券、加好友禮的 issue_coupon 由自動化規則觸發"
+        },
+        {
+          "domain": "inbox",
+          "why": "收件匣看到規則送出的訊息與「沒有送出」紀錄；關鍵字命中時機器人 AI 讓步"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "方案 features 的 automation 天花板只在掛 requirePermission 的路由生效（PLAN-04）"
+        },
+        {
+          "domain": "platform-queue-monitoring",
+          "why": "監控 event-automation、automation 佇列與 skippedClaims"
+        }
+      ]
+    },
+    {
+      "id": "line",
+      "title": "LINE 專屬功能",
+      "doc": "docs/ref/features/tenant/LINE.md",
+      "health": "docs/ref/features/health/LINE.md",
+      "paths": [
+        "packages/channel-plugins/src/line/**",
+        "packages/channel-plugins/src/signature.ts",
+        "packages/shared/src/safe-reply.ts",
+        "packages/shared/src/line-flex-template.ts",
+        "packages/shared/src/constants/line-media-limits.ts",
+        "apps/api/src/modules/line/rich-menu.*",
+        "apps/api/src/modules/line/quick-reply-preset.*",
+        "apps/api/src/modules/webhook/downstream-forwarder.ts",
+        "apps/api/src/modules/webhook/downstream-loop-guard.ts",
+        "apps/api/src/modules/webhook/inbound-postback-interceptors.ts",
+        "apps/api/src/modules/channel/line-webhook-setup.service.ts",
+        "apps/api/src/modules/storage/line-imagemap.routes.ts",
+        "apps/api/src/modules/storage/line-media.service.ts",
+        "apps/api/src/modules/storage/avatar-mirror.service.ts",
+        "apps/api/src/modules/coupon/line-id-token.ts",
+        "apps/api/src/modules/mcp/line-mcp-*.ts",
+        "apps/workers/src/handlers/rich-menu-bind.handler.ts",
+        "apps/workers/src/lib/credentials.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/line/rich-menus/**",
+        "apps/web/src/app/dashboard/line/quick-replies/page.tsx",
+        "apps/web/src/components/line/rich-menu/*",
+        "apps/web/src/components/line/quick-reply/*",
+        "apps/web/src/components/line/LineModuleTabs.tsx",
+        "apps/web/src/components/line/OaSwitcher.tsx",
+        "apps/web/src/hooks/useRichMenus.ts",
+        "apps/web/src/hooks/useQuickReplyPresets.ts",
+        "apps/web/src/lib/rich-menu-confirm.ts",
+        "apps/web/src/lib/imagemap-url.ts",
+        "apps/web/src/lib/liff.ts",
+        "apps/web/src/app/liff/callback/page.tsx"
+      ],
+      "tables": [
+        "RichMenu",
+        "QuickReplyPreset"
+      ],
+      "events": [
+        "contact.followed",
+        "conversation.handoff"
+      ],
+      "permissions": [
+        "richmenu.manage",
+        "quickreply.manage"
+      ],
+      "specs": [
+        "line-webhook-events",
+        "line-messaging",
+        "line-safe-reply",
+        "line-rich-menu",
+        "line-downstream-webhook",
+        "credential-encryption"
+      ],
+      "audit": [
+        "CASE-02",
+        "HOOK-01",
+        "PKG-06",
+        "AI-01",
+        "AUD-01",
+        "RBAC-02",
+        "ARCH-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch10-line.html",
+        "apps/web/public/manual/ch15-channels.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-line-materials.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-marketing-line.spec.ts"
+      ],
+      "tests": [
+        "packages/channel-plugins/tests/unit/line/**",
+        "packages/channel-plugins/tests/unit/signature-verification.test.ts",
+        "packages/shared/tests/unit/safe-reply.test.ts",
+        "packages/shared/tests/unit/line-flex-template.test.ts",
+        "apps/api/tests/unit/modules/line/rich-menu-*.test.ts",
+        "apps/api/tests/unit/modules/webhook/webhook-signature.test.ts",
+        "apps/api/tests/unit/modules/webhook/webhook-ssrf.test.ts",
+        "apps/api/tests/unit/modules/webhook/downstream-forwarder.test.ts",
+        "apps/api/tests/unit/modules/webhook/inbound-media.test.ts",
+        "apps/api/tests/unit/modules/webhook/inbound-channel-msg-dedup.test.ts",
+        "apps/api/tests/unit/modules/webhook/tag-on-click.test.ts",
+        "apps/api/tests/unit/modules/channel/channel-credential-security.test.ts",
+        "apps/api/tests/unit/modules/coupon/line-id-token.test.ts",
+        "apps/api/tests/unit/modules/storage/line-imagemap-demo.test.ts",
+        "apps/api/tests/unit/modules/storage/avatar-mirror.test.ts",
+        "apps/api/tests/unit/modules/mcp/line-mcp-audit.test.ts",
+        "apps/api/tests/unit/modules/mcp/mcp-line-contracts.test.ts",
+        "apps/api/tests/feature/modules/webhook/follow-tracking.test.ts",
+        "apps/api/tests/feature/modules/channel/channel-liff-id.test.ts",
+        "apps/api/tests/feature/modules/coupon/coupon-line-login.test.ts",
+        "apps/workers/tests/unit/handlers/rich-menu-bind.test.ts",
+        "apps/workers/tests/unit/lib/credentials.test.ts",
+        "apps/web/tests/unit/components/line/rich-menu-*.test.ts*",
+        "apps/web/tests/unit/lib/imagemap-url.test.ts",
+        "apps/web/tests/unit/components/settings/bot-config-form-line-login.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "channels",
+          "why": "LINE 憑證（channelSecret、channelAccessToken）與 settings（liffConfig、downstreamWebhook、botConfig）都存在 Channel，由渠道設定頁寫入；加解密函式在 channel.service.ts"
+        },
+        {
+          "domain": "inbox",
+          "why": "webhook.routes.ts／webhook.service.ts 的共用進站管線把 LINE 事件存成訊息、建對話；客服回覆走 conversation.service.ts 的 deliverToChannel 與 safe reply"
+        },
+        {
+          "domain": "contacts",
+          "why": "進站以 ChannelIdentity 建聯絡人；頭像補存寫 ChannelIdentity.profilePic；postback tag:<uuid> 經 tag.flow 貼標"
+        },
+        {
+          "domain": "marketing",
+          "why": "圖文選單綁定受眾讀分群（calculateSegmentContacts）；LIFF 開票券與 /liff/redirect 頁在優惠券流程"
+        },
+        {
+          "domain": "cases",
+          "why": "LINE 的滿意度調查（csat.service.ts）以 Flex 經 LINE 外掛送出，postback csat:<分數>:<工單> 由進站攔截記分"
+        },
+        {
+          "domain": "knowledge",
+          "why": "postback kb_feedback:* 由進站攔截寫 KB 回饋"
+        },
+        {
+          "domain": "platform-queue-monitoring",
+          "why": "rich-menu-bind 佇列失敗只看得到在佇列監控"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "marketing",
+          "why": "LINE 素材（Flex、imagemap 多尺寸圖端、輪播、影片）由 buildLineMessage／builders.ts 轉成 LINE 格式；群發 multicast；開票券以 LINE Login 驗 ID token（line-id-token.ts）"
+        },
+        {
+          "domain": "inbox",
+          "why": "客服回覆 LINE 對話用 safe reply（reply token 30 秒內才用 reply）；輸入框套用快速回覆預設組；收件匣顯示 LINE 進站事件與媒體下載結果"
+        },
+        {
+          "domain": "automation",
+          "why": "加好友事件 contact.followed 與 isFirstFollow 觸發加好友禮；關鍵字回覆在 LINE 對話用 reply token；workers 以 LINE 外掛送素材"
+        },
+        {
+          "domain": "cases",
+          "why": "滿意度調查在 LINE 渠道以 Flex postback 收分數（目前送不出，見健檢 HC-LINE-01）"
+        },
+        {
+          "domain": "shortlinks",
+          "why": "短連結在 LINE 內開啟時，依渠道 liffConfig.liffId 轉到 LIFF 取得 LINE uid（apps/web/src/lib/liff.ts）"
+        },
+        {
+          "domain": "contacts",
+          "why": "LINE 頭像下載後存物件儲存（avatar-mirror.service.ts）"
+        },
+        {
+          "domain": "settings",
+          "why": "MCP 的 LINE 工具（直接發送、群發）稽核與確認權杖在 line-mcp-*.ts"
+        }
+      ]
+    },
+    {
+      "id": "inbox",
+      "title": "收件匣與對話",
+      "doc": "docs/ref/features/tenant/INBOX.md",
+      "health": "docs/ref/features/health/INBOX.md",
+      "paths": [
+        "apps/api/src/modules/conversation/*",
+        "apps/api/src/modules/socket/*",
+        "apps/api/src/plugins/socket.plugin.ts",
+        "apps/api/src/events/socket-push.ts",
+        "apps/api/src/services/channel-visibility.ts",
+        "apps/api/src/modules/ai/ai.routes.ts",
+        "apps/api/src/modules/ai/ai.service.ts",
+        "apps/api/src/modules/automation/automation.worker.ts",
+        "apps/api/src/modules/automation/bot-reply-guard.ts",
+        "apps/api/src/modules/webhook/inbound-conversation-resolver.ts",
+        "apps/api/src/modules/webhook/inbound-message-writer.ts",
+        "apps/api/src/modules/webhook/inbound-socket-presenter.ts",
+        "packages/automation/src/bot-config.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/inbox/**",
+        "apps/web/src/components/inbox/AiSuggestPanel.tsx",
+        "apps/web/src/components/inbox/ChatWindow.tsx",
+        "apps/web/src/components/inbox/ContactInfoPanel.tsx",
+        "apps/web/src/components/inbox/ConversationList.tsx",
+        "apps/web/src/components/inbox/ConversationListItem.tsx",
+        "apps/web/src/components/inbox/CsatMessage.tsx",
+        "apps/web/src/components/inbox/FilterChips.tsx",
+        "apps/web/src/components/inbox/FilterDrawer.tsx",
+        "apps/web/src/components/inbox/HandoffModal.tsx",
+        "apps/web/src/components/inbox/MessageBubble.tsx",
+        "apps/web/src/components/inbox/MessageInput.tsx",
+        "apps/web/src/components/inbox/ReturnToBotButton.tsx",
+        "apps/web/src/components/inbox/StatusBanner.tsx",
+        "apps/web/src/components/inbox/TemplatePicker.tsx",
+        "apps/web/src/components/inbox/TypingIndicator.tsx",
+        "apps/web/src/hooks/useConversations.ts",
+        "apps/web/src/hooks/useMessages.ts",
+        "apps/web/src/lib/inbox/*",
+        "apps/web/src/lib/socket.ts",
+        "apps/web/src/providers/SocketProvider.tsx"
+      ],
+      "tables": [
+        "Conversation",
+        "Message",
+        "ConversationTag",
+        "SideEffectClaim",
+        "AgentChannelAccess",
+        "ChannelTeamAccess"
+      ],
+      "events": [
+        "message.received",
+        "message.sent",
+        "conversation.created",
+        "conversation.updated",
+        "conversation.closed",
+        "conversation.handoff",
+        "conversation.assigned",
+        "sentiment.negative"
+      ],
+      "permissions": [
+        "inbox.view",
+        "inbox.reply",
+        "inbox.manage",
+        "channel.view_all"
+      ],
+      "specs": [
+        "core-inbox",
+        "channel-scoped-visibility",
+        "bot-handoff-config",
+        "socket-room-authorization",
+        "fb-chat-media"
+      ],
+      "audit": [
+        "RBAC-04",
+        "CONV-01",
+        "CONV-02",
+        "CONV-03",
+        "TEAM-01",
+        "PLAN-12",
+        "RLS-09",
+        "AUTH-02",
+        "CHAN-02",
+        "IDENT-03",
+        "APP-06"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch01-inbox.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-inbox.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-cases-contacts-inbox.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/conversation/**",
+        "apps/api/tests/unit/modules/socket/**",
+        "apps/api/tests/unit/services/channel-visibility.test.ts",
+        "apps/api/tests/unit/plugins/socket-token.test.ts",
+        "apps/api/tests/unit/modules/automation/auto-handoff.test.ts",
+        "apps/api/tests/unit/modules/automation/bot-reply-claim.test.ts",
+        "apps/api/tests/unit/modules/automation/automation.worker.test.ts",
+        "apps/api/tests/unit/modules/automation/keyword-suppresses-ai.test.ts",
+        "apps/api/tests/unit/modules/automation/non-text-no-ai-reply.test.ts",
+        "apps/api/tests/unit/modules/automation/sentiment-claim.test.ts",
+        "apps/api/tests/unit/modules/ai/ai-routes-channel-scope.test.ts",
+        "apps/api/tests/unit/modules/channel/bot-config-validation.test.ts",
+        "apps/api/tests/feature/modules/channel/channel-scoped-visibility.test.ts",
+        "apps/api/tests/feature/modules/route-permission-guards.test.ts",
+        "apps/web/tests/unit/components/inbox/ai-suggest-adopt.test.tsx",
+        "apps/web/tests/unit/components/inbox/chat-window-status-close.test.tsx",
+        "apps/web/tests/unit/components/inbox/inbox-action-errors.test.tsx",
+        "apps/web/tests/unit/components/inbox/instagram-inbox.test.tsx",
+        "apps/web/tests/unit/components/inbox/message-bubble.test.tsx",
+        "apps/web/tests/unit/components/inbox/message-privacy-control.test.tsx",
+        "apps/web/tests/unit/components/inbox/return-to-bot-button.test.tsx",
+        "apps/web/tests/unit/lib/inbox/**",
+        "apps/web/tests/unit/lib/socket.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "channels",
+          "why": "訊息經渠道外掛送出與收進；機器人設定（botConfig）存在渠道上；渠道可見範圍的授權（AgentChannelAccess、ChannelTeamAccess）在渠道與成員設定"
+        },
+        {
+          "domain": "contacts",
+          "why": "右側 ContactInfoPanel 讀聯絡人、渠道身分、聯絡人標籤；其他渠道的對話與代發登記、綁定連結屬聯絡人領域"
+        },
+        {
+          "domain": "members",
+          "why": "負責人下拉讀 GET /agents；權限碼 inbox.view/reply/manage 由角色決定"
+        },
+        {
+          "domain": "knowledge",
+          "why": "機器人的 AI 與知識庫自動回覆、AI 建議回覆都讀知識庫"
+        },
+        {
+          "domain": "automation",
+          "why": "關鍵字規則命中時 AI 讓出回覆；message.received 由自動化訂閱者處理"
+        },
+        {
+          "domain": "cases",
+          "why": "右側「建立工單」走 POST /cases/from-conversation；CSAT 逾時關工單時連帶關閉對話"
+        },
+        {
+          "domain": "marketing",
+          "why": "輸入框的模板挑選器讀訊息模板；對話內發券與券卡；handoff_request postback 攔截檔由行銷領域列管"
+        },
+        {
+          "domain": "notifications",
+          "why": "新訊息通知負責人或主管；轉真人與指派的通知缺口（CONV-02、CONV-03）"
+        },
+        {
+          "domain": "settings",
+          "why": "個資遮罩開關（/ai/privacy/status）、營業時間與離線問候影響機器人回覆；閒置自動關閉時限在 TenantSettings"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "contacts",
+          "why": "聯絡人詳情的對話紀錄、其他渠道的對話讀 Conversation/Message；合併時搬對話"
+        },
+        {
+          "domain": "cases",
+          "why": "從對話建立工單、客服第一則回覆寫首次回應時間、工單頁顯示關聯對話"
+        },
+        {
+          "domain": "sla",
+          "why": "首次回應時間來自 sendMessage 的 markCaseFirstResponse"
+        },
+        {
+          "domain": "automation",
+          "why": "訂閱 message.received、conversation.closed 等事件；規則動作在對話中送訊息"
+        },
+        {
+          "domain": "marketing",
+          "why": "群發與發券的訊息寫進對話，收件匣顯示券卡"
+        },
+        {
+          "domain": "notifications",
+          "why": "新訊息與轉真人通知以對話為來源，clickUrl 指向 /dashboard/inbox?conv="
+        },
+        {
+          "domain": "analytics",
+          "why": "對話數、回覆時間等報表讀 Conversation/Message"
+        },
+        {
+          "domain": "governance",
+          "why": "資料匯出與刪除涵蓋對話與訊息"
+        }
+      ]
+    },
+    {
+      "id": "portal",
+      "title": "會員入口（Fan Portal）",
+      "doc": "docs/ref/features/tenant/PORTAL.md",
+      "health": "docs/ref/features/health/PORTAL.md",
+      "paths": [
+        "apps/api/src/modules/portal/*",
+        "apps/api/src/modules/member-binding/*"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/portal/**",
+        "apps/web/src/components/portal/*",
+        "apps/web/src/hooks/usePortal.ts",
+        "apps/web/src/lib/fan-api.ts",
+        "apps/web/src/lib/fan-device.ts"
+      ],
+      "tables": [
+        "PortalActivity",
+        "PortalOption",
+        "PortalField",
+        "PortalSubmission",
+        "PointTransaction"
+      ],
+      "events": [
+        "portal.activity.submitted"
+      ],
+      "permissions": [
+        "portal.view",
+        "portal.manage",
+        "settings.manage"
+      ],
+      "specs": [
+        "member-binding"
+      ],
+      "audit": [
+        "PORTAL-01",
+        "PORTAL-02",
+        "PLAN-04",
+        "AUTO-05",
+        "ERASE-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch11-portal.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-fields-channels-portal.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/portal/**",
+        "apps/api/tests/unit/modules/member-binding/**",
+        "apps/api/tests/feature/modules/member-binding/**",
+        "apps/web/tests/unit/components/portal/**",
+        "apps/web/tests/unit/lib/fan-api-token.test.ts",
+        "apps/web/tests/unit/lib/fan-device.test.ts",
+        "apps/web/tests/unit/hooks/portal-shortlink-all-pages.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "contacts",
+          "why": "積分與活動提交掛在 Contact；積分頁以 GET /contacts?q 搜尋聯絡人；合併時由 contact-merge.service 呼叫 points.service 轉移點數"
+        },
+        {
+          "domain": "marketing",
+          "why": "顧客端的 fanToken 目前只由優惠券票券夾（coupon-wallet.service 的 grantWalletSession）簽發；/fan/* 與 /fan/coupons 共用同一顆 token"
+        },
+        {
+          "domain": "line",
+          "why": "顧客以 LIFF ID token（/fan/coupons/liff-session）或 email 驗證碼確認身分後才拿到 fanToken；LIFF ID 與 LINE Login Channel ID 設在渠道的 Bot 設定"
+        },
+        {
+          "domain": "settings",
+          "why": "會員綁定設定存在 TenantSettings.memberBinding，讀寫需要 settings.manage"
+        },
+        {
+          "domain": "members",
+          "why": "portal.view、portal.manage 預設只有 admin 角色有；supervisor、agent 要另開自訂角色"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "方案的 feature portal 是後台路由的功能天花板（requirePermission 計算）"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "contacts",
+          "why": "合併與解除合併搬移 PortalSubmission、PointTransaction，並以 addPointTransaction/getLatestPointEntry 轉移點數；email/手機登記成功後以 signFanDeviceToken 發裝置憑證"
+        },
+        {
+          "domain": "marketing",
+          "why": "票券夾以 signFanToken、signFanDeviceToken、verifyFanToken 簽發與驗證顧客憑證；web 的 fan-coupon 元件用 lib/fan-api.ts、lib/fan-device.ts 存取"
+        },
+        {
+          "domain": "automation",
+          "why": "automation.worker 訂閱 portal.activity.submitted 送進規則評估（不在規則契約裡，編輯器選不到，AUTO-05）"
+        },
+        {
+          "domain": "governance",
+          "why": "資料刪除（data-erasure.handler）hard_delete 時刪除活動提交與積分，anonymize 時保留（ERASE-01）"
+        }
+      ]
+    },
+    {
+      "id": "shortlinks",
+      "title": "短連結",
+      "doc": "docs/ref/features/tenant/SHORTLINKS.md",
+      "health": "docs/ref/features/health/SHORTLINKS.md",
+      "paths": [
+        "apps/api/src/modules/shortlink/**"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/shortlinks/**",
+        "apps/web/src/components/shortlink/**",
+        "apps/web/src/hooks/useShortLinks.ts"
+      ],
+      "tables": [
+        "ShortLink",
+        "ClickLog"
+      ],
+      "events": [
+        "link.clicked",
+        "link.stats.updated"
+      ],
+      "permissions": [
+        "shortlink.view",
+        "shortlink.manage"
+      ],
+      "specs": [
+        "shortlink-routing",
+        "shortlink-ua-strategy",
+        "tracking-settings"
+      ],
+      "audit": [
+        "SHORT-01",
+        "RBAC-01",
+        "ARCH-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch12-shortlinks.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-misc.spec.ts",
+        "apps/web/tests/manual-ch12.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/shortlink/*.test.ts",
+        "apps/api/tests/feature/modules/shortlink/*.test.ts",
+        "apps/api/tests/unit/modules/marketing/material-short-link-placeholder.test.ts",
+        "apps/web/tests/unit/components/shortlink/*.test.tsx",
+        "apps/web/tests/unit/app/dashboard/shortlinks/*.test.tsx",
+        "apps/web/tests/unit/hooks/portal-shortlink-all-pages.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "contacts",
+          "why": "點擊貼標呼叫 tag/tagging.service.ts 的 addTagToTarget 並發 contact.tagged；lineUid 經 ChannelIdentity 找聯絡人；聯絡人合併時 ClickLog.contactId 搬到主聯絡人"
+        },
+        {
+          "domain": "channels",
+          "why": "lineChannelId 綁 LINE 渠道，LIFF 轉址讀 Channel.settings.liffConfig.liffId（channel 領域驗證 LIFF ID 格式）"
+        },
+        {
+          "domain": "line",
+          "why": "LINE 內建瀏覽器點擊導向 liff.line.me，再由 /liff/redirect 取得 LINE uid 呼叫 /s/track"
+        },
+        {
+          "domain": "settings",
+          "why": "轉址中轉頁讀 TenantSettings 的 gaId、metaPixelId 放入 GA4 與 Meta Pixel；設定頁沿用 tracking-snippet.ts 的格式驗證"
+        },
+        {
+          "domain": "marketing",
+          "why": "素材刪除時 ShortLink.materialId 設為 null；素材成效依 ClickLog→ShortLink.materialId 彙總"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "marketing",
+          "why": "群發與附券群發以 findOrCreateMaterialShortLink 把素材網址換成短連結（點擊貼標 tagOnClick、OG 快照）；素材點擊成效"
+        },
+        {
+          "domain": "automation",
+          "why": "訂閱 link.clicked 事件（短連結被點擊）；點擊貼標的 contact.tagged 也會觸發「被貼標」規則"
+        },
+        {
+          "domain": "contacts",
+          "why": "合併與解除合併搬移 ClickLog.contactId（contact-merge.service.ts）"
+        },
+        {
+          "domain": "portal",
+          "why": "粉絲活動頁與短連結列表共用 fetchAllPages 逐頁取回"
+        }
+      ]
+    },
+    {
+      "id": "analytics",
+      "title": "數據分析與報表",
+      "doc": "docs/ref/features/tenant/ANALYTICS.md",
+      "health": "docs/ref/features/health/ANALYTICS.md",
+      "paths": [
+        "apps/api/src/modules/analytics/*",
+        "apps/api/src/modules/cli/*",
+        "apps/cli/src/commands/stats.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/analytics/**",
+        "apps/web/src/components/analytics/*",
+        "apps/web/src/hooks/useAnalytics.ts",
+        "apps/web/src/app/dashboard/page.tsx"
+      ],
+      "tables": [
+        "DailyStat"
+      ],
+      "events": [],
+      "permissions": [
+        "analytics.view",
+        "analytics.view.self",
+        "analytics.export"
+      ],
+      "specs": [
+        "analytics-reports",
+        "cli-analytics"
+      ],
+      "audit": [
+        "ANA-01",
+        "DB-03",
+        "RBAC-02",
+        "SLA-05"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch13-analytics.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-analytics.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/analytics/**",
+        "apps/api/tests/feature/modules/analytics/**",
+        "apps/cli/tests/unit/commands/stats-command.test.ts",
+        "apps/web/tests/unit/app/dashboard/analytics/**",
+        "apps/web/tests/unit/components/analytics/**"
+      ],
+      "dependsOn": [
+        {
+          "domain": "cases",
+          "why": "總覽、案件報表、客服績效、我的績效都讀 Case 的 status、resolvedAt、firstResponseAt、slaDueAt、csatScore；工單狀態轉換怎麼寫 resolvedAt 直接決定「已解決」與 SLA 達成率"
+        },
+        {
+          "domain": "inbox",
+          "why": "訊息總量、訊息趨勢、渠道分析讀 Message 與 Conversation（channelType、status）"
+        },
+        {
+          "domain": "contacts",
+          "why": "新聯絡人趨勢、活躍聯絡人、熱門標籤讀 Contact、ChannelIdentity、ContactTag；首頁「聯絡人總數」打 GET /contacts?limit=1"
+        },
+        {
+          "domain": "sla",
+          "why": "SLA 達成率與 SLA 違規清單讀 Case.slaDueAt，由 SLA 政策寫入"
+        },
+        {
+          "domain": "marketing",
+          "why": "報表頁「優惠券成效」分頁打 GET /analytics/coupons，計算在 coupon-stats.flow.ts"
+        },
+        {
+          "domain": "members",
+          "why": "客服績效列出所有啟用中的成員，角色欄顯示舊的 role 列舉；權限 analytics.* 由角色授予"
+        },
+        {
+          "domain": "channels",
+          "why": "報表依 channelType 分組；目前不套用成員的渠道可見範圍"
+        },
+        {
+          "domain": "automation",
+          "why": "首頁「活躍自動化規則」打 GET /automation/rules?limit=1"
+        },
+        {
+          "domain": "settings",
+          "why": "設定頁發的 CLI token 決定 scope cli:analytics:read；open333 stats 用它讀 /cli/analytics/*"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "方案的 analytics 功能是 analytics.* 權限的天花板（CLI 路由不看，見 RBAC-02）"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "settings",
+          "why": "MCP 工具 crm_get_analytics_overview（mcp.server.ts）與網頁 WebMCP（webmcp.ts）呼叫報表服務"
+        }
+      ]
+    },
+    {
+      "id": "members",
+      "title": "成員、角色與權限",
+      "doc": "docs/ref/features/tenant/MEMBERS.md",
+      "health": "docs/ref/features/health/MEMBERS.md",
+      "paths": [
+        "apps/api/src/modules/agent/*",
+        "apps/api/src/modules/role/*",
+        "apps/api/src/modules/auth/auth.routes.ts",
+        "apps/api/src/modules/auth/auth.schema.ts",
+        "apps/api/src/modules/auth/auth.service.ts",
+        "apps/api/src/modules/auth/login-attempts.ts",
+        "apps/api/src/modules/auth/passkey.service.ts",
+        "apps/api/src/plugins/auth.plugin.ts",
+        "apps/api/src/guards/rbac.guard.ts",
+        "apps/api/src/services/permission.service.ts",
+        "apps/api/src/services/tenant-plan.cache.ts",
+        "apps/api/src/services/channel-team-access.ts",
+        "packages/core/src/rbac/*",
+        "packages/shared/src/rbac/*",
+        "packages/database/prisma/seed-data/rbac-roles.ts",
+        "scripts/reconcile-system-role-permissions.mjs",
+        "scripts/grant-new-role-permissions.mjs"
+      ],
+      "pages": [
+        "apps/web/src/components/settings/AgentManagement.tsx",
+        "apps/web/src/components/settings/RolePermissionMatrix.tsx",
+        "apps/web/src/components/settings/AccessChecklist.tsx",
+        "apps/web/src/components/settings/GeneralSettings.tsx",
+        "apps/web/src/components/settings/PasskeyManagement.tsx",
+        "apps/web/src/app/login/**",
+        "apps/web/src/providers/AuthProvider.tsx"
+      ],
+      "tables": [
+        "Agent",
+        "Role",
+        "RolePermission",
+        "Team",
+        "AgentTeamMember",
+        "AgentChannelAccess",
+        "PasskeyCredential"
+      ],
+      "events": [],
+      "permissions": [
+        "agent.view",
+        "agent.manage",
+        "agent.role.assign",
+        "agent.password.reset",
+        "agent.deactivate",
+        "agent.purge",
+        "agent.delete",
+        "role.view",
+        "role.manage",
+        "channel.assign_team",
+        "channel.view_all"
+      ],
+      "specs": [
+        "agent-lifecycle",
+        "agent-management",
+        "role-management",
+        "role-settings-page",
+        "permission-model",
+        "permission-check",
+        "rbac",
+        "channel-team-access",
+        "auth-session"
+      ],
+      "audit": [
+        "RBAC-01",
+        "RBAC-02",
+        "RBAC-03",
+        "RBAC-04",
+        "RBAC-05",
+        "TEAM-01",
+        "PLAN-03",
+        "PLAN-08",
+        "AUTH-01",
+        "AUTH-06",
+        "AUTH-08",
+        "AUTH-10",
+        "SEC-06",
+        "AUD-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch16-team.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-rbac.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-settings-team.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/agent/**",
+        "apps/api/tests/unit/modules/role/**",
+        "apps/api/tests/unit/modules/auth/**",
+        "apps/api/tests/unit/setup/role-login-check.test.ts",
+        "apps/api/tests/feature/modules/agent/**",
+        "apps/api/tests/feature/modules/role/**",
+        "apps/api/tests/feature/modules/auth/**",
+        "apps/api/tests/feature/guards/permission-check.test.ts",
+        "apps/api/tests/feature/modules/route-permission-guards.test.ts",
+        "packages/core/tests/unit/rbac/**",
+        "apps/web/tests/unit/components/settings/agent-management.test.tsx",
+        "apps/web/tests/unit/components/settings/role-permission-matrix.test.tsx",
+        "apps/web/tests/unit/providers/auth-provider.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "channels",
+          "why": "新增成員與「可使用的渠道」讀 GET /channels、/channels/assignable；可指派範圍與層級由 channel-visibility.ts 的 resolveChannelGrantScope 決定；渠道管理頁的團隊授權寫 ChannelTeamAccess"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "有效權限 = 角色權限 ∩ 方案功能天花板（permsForFeatures、permissionOverrides.deny）；新增與重新啟用成員受方案 maxAgents 上限（getEffectiveLimit）"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "開通租戶時 seedRolesForTenant 建立三個系統角色與第一位 ADMIN；平台可改成員 email、重寄開通信；停用租戶擋登入與換發 token"
+        },
+        {
+          "domain": "governance",
+          "why": "成員與角色的每個寫入在同一交易內寫租戶稽核（agent.create、agent.role.assign、agent.password.reset、agent.deactivate、agent.reactivate、agent.purge、agent.channels.set、role.*）"
+        },
+        {
+          "domain": "settings",
+          "why": "CLI 連線、API 金鑰與 Passkey 頁共用設定頁框架；CLI token 以 scope 授權，不經過角色權限（RBAC-02）"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "inbox",
+          "why": "每條收件匣路由以 requirePermission 檢查 inbox.*；渠道可見範圍讀 AgentChannelAccess 與團隊授權；轉接與指派讀 GET /agents"
+        },
+        {
+          "domain": "cases",
+          "why": "負責人下拉讀 GET /agents；case.assign 隱含 agent.view；自動指派讀舊角色列舉 Agent.role 與 AgentTeamMember（RBAC-03、TEAM-01）"
+        },
+        {
+          "domain": "notifications",
+          "why": "主管與管理員通知、AI 額度告警、Meta 權杖失效通知依舊角色列舉 role 找收件人（RBAC-03）；永久刪除成員時先刪除其通知"
+        },
+        {
+          "domain": "automation",
+          "why": "workers 的「通知主管」動作讀 role in (SUPERVISOR, ADMIN)；automation.manage 隱含 channel.view"
+        },
+        {
+          "domain": "contacts",
+          "why": "contact.* 權限碼與 contact.update、marketing.manage、coupon.issue 的 implies；聯絡人身分依渠道可見範圍過濾"
+        },
+        {
+          "domain": "marketing",
+          "why": "marketing.*、coupon.*、store.* 權限碼；方案天花板以 marketing 功能模組開關"
+        },
+        {
+          "domain": "knowledge",
+          "why": "knowledge.manage、knowledge.admin 守寫入路由；讀取路由沒有 knowledge.view（RBAC-01）"
+        },
+        {
+          "domain": "analytics",
+          "why": "analytics.view、analytics.view.self 以 requireAnyPermission 檢查；成員績效表讀成員清單"
+        },
+        {
+          "domain": "sla",
+          "why": "sla.manage 以 addHook 掛在整個模組"
+        },
+        {
+          "domain": "settings",
+          "why": "settings.manage 守系統設定各頁；設定頁的分頁依 role.view、store.view、settings.manage 顯示"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "試用到期通知信只寄給舊角色列舉為 ADMIN 的成員（RBAC-03）"
+        },
+        {
+          "domain": "channels",
+          "why": "新增渠道時替成員寫 AgentChannelAccess；渠道路由要求 channel.*；channel.view_all 決定總店可見範圍"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "租戶設定",
+      "doc": "docs/ref/features/tenant/SETTINGS.md",
+      "health": "docs/ref/features/health/SETTINGS.md",
+      "paths": [
+        "apps/api/src/modules/settings/settings.routes.ts",
+        "apps/api/src/modules/settings/office-hours.service.ts",
+        "apps/api/src/modules/settings/tracking-settings.service.ts",
+        "apps/api/src/modules/settings/a2a-status.service.ts",
+        "apps/api/src/modules/settings/a2a-bridge.worker.ts",
+        "apps/api/src/modules/webtalk/*",
+        "apps/api/src/modules/auth/partner-api-key.service.ts",
+        "apps/api/src/modules/auth/cli-session.service.ts",
+        "apps/api/src/modules/mcp/mcp.routes.ts",
+        "apps/api/src/modules/mcp/mcp.server.ts",
+        "apps/api/src/modules/mcp/mcp.constants.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/settings/**",
+        "apps/web/src/components/settings/OfficeHoursSettings.tsx",
+        "apps/web/src/components/settings/TrackingSettings.tsx",
+        "apps/web/src/components/settings/IdentityBindingSettings.tsx",
+        "apps/web/src/components/settings/WebTalkSettings.tsx",
+        "apps/web/src/components/settings/ApiKeyManagement.tsx",
+        "apps/web/src/components/settings/CliSessionManagement.tsx",
+        "apps/web/src/components/webtalk/*",
+        "apps/web/src/lib/webtalk.ts",
+        "apps/web/src/components/ai/WebMcpProvider.tsx",
+        "apps/web/src/lib/webmcp.ts"
+      ],
+      "tables": [
+        "TenantSettings",
+        "PartnerApiKey",
+        "CliSession"
+      ],
+      "events": [],
+      "permissions": [
+        "settings.manage"
+      ],
+      "specs": [
+        "office-hours-settings",
+        "tracking-settings",
+        "webtalk-collaboration",
+        "open333-cli-auth",
+        "a2a-agent-tenant-routing",
+        "a2a-standard-persistent-connection"
+      ],
+      "audit": [
+        "RBAC-02",
+        "AUTH-02",
+        "A2A-01",
+        "AUD-01",
+        "CONV-01",
+        "AI-01",
+        "ARCH-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch17-settings.html",
+        "apps/web/public/manual/ch07-ai-settings.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-settings-ops.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-settings.spec.ts",
+        "apps/web/tests/manual-ch17.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/settings/**",
+        "apps/api/tests/feature/modules/settings/**",
+        "apps/api/tests/unit/modules/webtalk/**",
+        "apps/api/tests/feature/modules/webtalk/**",
+        "apps/api/tests/unit/modules/auth/cli-session-auth.test.ts",
+        "apps/api/tests/unit/modules/knowledge/knowledge-partner-key-auth.test.ts",
+        "apps/api/tests/unit/modules/mcp/mcp.routes.test.ts",
+        "apps/api/tests/feature/modules/mcp/mcp-channel-visibility.test.ts",
+        "apps/api/tests/feature/modules/shortlink/shortlink-tracking-injection.test.ts",
+        "apps/api/tests/unit/modules/shortlink/tracking-snippet.test.ts",
+        "apps/web/tests/unit/app/dashboard/settings/settings-page.test.tsx",
+        "apps/web/tests/unit/components/settings/office-hours-settings.test.tsx",
+        "apps/web/tests/unit/components/settings/identity-binding-settings.test.tsx",
+        "apps/web/tests/unit/components/settings/cli-session-management.test.tsx",
+        "apps/web/tests/unit/components/settings/settings-load-errors.test.tsx",
+        "apps/web/tests/unit/components/settings/webtalk-settings.test.tsx",
+        "apps/web/tests/unit/components/webtalk/**",
+        "apps/web/tests/unit/lib/webtalk.test.ts",
+        "apps/web/tests/unit/lib/webmcp.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "members",
+          "why": "settings.manage 由角色授予（系統角色 admin、supervisor 預設都有）；一般設定的改密碼與 Passkey 分頁的程式歸成員領域；CLI token 歸屬成員，停用成員才會讓 CLI token 失效"
+        },
+        {
+          "domain": "governance",
+          "why": "營業時間、追蹤、跨渠道綁定、Chat、Embedding、自備金鑰、WebTalk 的修改都寫 settings.update 租戶稽核；API 金鑰與 CLI token 沒有稽核（AUD-01）"
+        },
+        {
+          "domain": "channels",
+          "why": "渠道 botConfig.offlineGreeting 會蓋掉營業時間的自動回覆文字；跨渠道綁定連結需要渠道的導流識別（bindingHandle）"
+        },
+        {
+          "domain": "inbox",
+          "why": "非營業時間自動回覆在進站管線最後一步（inbound-side-effects.ts 的 sendOutsideHoursAutoReply），寫 SYSTEM 訊息並經 deliverToChannel 送出"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "停用租戶不會讓 CLI token 與 Partner API 金鑰失效（AUTH-02）；開通租戶不建立 TenantSettings"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "contacts",
+          "why": "跨渠道綁定、email/手機登記的開關與關鍵字存在 TenantSettings.identityBinding，進站時以 15 秒快取讀取；收件匣代發按鈕依啟用狀態顯示"
+        },
+        {
+          "domain": "knowledge",
+          "why": "Chat、Embedding、自備 Gemini 金鑰的讀寫路由在 settings.routes.ts；Partner API 金鑰只能呼叫 POST /knowledge/partner-ingest"
+        },
+        {
+          "domain": "shortlinks",
+          "why": "短連結中轉頁輸出 TenantSettings 的 gaId、metaPixelId 追蹤碼"
+        },
+        {
+          "domain": "inbox",
+          "why": "TenantSettings.officeHours 與 timezone 決定非營業時間自動回覆；inactivityCloseHours 決定閒置自動關閉（沒有設定頁，CONV-01）"
+        },
+        {
+          "domain": "analytics",
+          "why": "CLI token 的 cli:analytics:read 讀 /cli/analytics/*，不看角色與方案（RBAC-02）"
+        },
+        {
+          "domain": "line",
+          "why": "CLI token 帶 mcp:line:* scope 時，MCP 的 LINE 工具可直接發送與群發"
+        }
+      ]
+    },
+    {
+      "id": "channels",
+      "title": "渠道管理",
+      "doc": "docs/ref/features/tenant/CHANNELS.md",
+      "health": "docs/ref/features/health/CHANNELS.md",
+      "paths": [
+        "apps/api/src/modules/channel/channel.routes.ts",
+        "apps/api/src/modules/channel/channel.service.ts",
+        "apps/api/src/modules/channel/fb-token-monitor.service.ts",
+        "apps/api/src/modules/channel/meta-token-health.ts",
+        "apps/api/src/modules/channel/webchat-embed.service.ts",
+        "apps/api/src/modules/meta-connect/*",
+        "apps/api/src/modules/webhook/webhook.routes.ts",
+        "apps/api/src/modules/webhook/webhook.service.ts",
+        "apps/api/src/modules/webhook/webhook-account-routing.ts",
+        "apps/api/src/services/channel-team-access.ts",
+        "apps/api/src/scripts/backfill-channel-external-account-id.ts",
+        "packages/channel-plugins/src/index.ts",
+        "packages/channel-plugins/src/facebook/**",
+        "packages/channel-plugins/src/threads.ts",
+        "packages/channel-plugins/src/webchat/**",
+        "packages/channel-plugins/src/telegram.ts",
+        "apps/workers/src/lib/plugin-registry.ts",
+        "apps/workers/src/lib/channel-delivery.ts"
+      ],
+      "pages": [
+        "apps/web/src/components/settings/ChannelManagement.tsx",
+        "apps/web/src/components/settings/ChannelFormDialog.tsx",
+        "apps/web/src/components/settings/ChannelWizard.tsx",
+        "apps/web/src/components/settings/ChannelTeamAssignment.tsx",
+        "apps/web/src/components/settings/ChannelAccountRouting.tsx",
+        "apps/web/src/components/settings/ChannelFieldGuide.tsx",
+        "apps/web/src/components/settings/ChannelBindingHandleField.tsx",
+        "apps/web/src/components/settings/BotConfigForm.tsx",
+        "apps/web/src/components/settings/DownstreamWebhookDialog.tsx",
+        "apps/web/src/components/settings/MetaConnect.tsx",
+        "apps/web/src/hooks/useChannels.ts",
+        "apps/web/src/hooks/useWebchat.ts",
+        "apps/web/public/channel-guide/**"
+      ],
+      "tables": [
+        "Channel",
+        "ChannelTeamAccess",
+        "AgentChannelAccess",
+        "ChannelUsage"
+      ],
+      "events": [],
+      "permissions": [
+        "channel.view",
+        "channel.create",
+        "channel.update",
+        "channel.delete",
+        "channel.assign_team",
+        "channel.view_all"
+      ],
+      "specs": [
+        "channel-management",
+        "channel-plugins",
+        "channel-visibility-defaults",
+        "channel-team-access",
+        "threads-channel",
+        "webchat-admin-theme"
+      ],
+      "audit": [
+        "CHAN-01",
+        "CHAN-02",
+        "APP-02",
+        "APP-03",
+        "PLAN-07",
+        "PKG-01",
+        "PKG-02",
+        "PKG-06",
+        "TEAM-01",
+        "AUD-01",
+        "RBAC-03",
+        "RBAC-04"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch15-channels.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-settings-channels.spec.ts",
+        "apps/web/tests/e2e-uat/tenant-fields-channels-portal.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/channel/channel-create-visibility.test.ts",
+        "apps/api/tests/unit/modules/channel/channel-delete-in-use.test.ts",
+        "apps/api/tests/unit/modules/channel/channel-instagram.test.ts",
+        "apps/api/tests/unit/modules/channel/channel-plan-limits.test.ts",
+        "apps/api/tests/unit/modules/channel/fb-token-status-readonly.test.ts",
+        "apps/api/tests/unit/modules/channel/meta-token-health.test.ts",
+        "apps/api/tests/unit/modules/channel/webhook-base-url.test.ts",
+        "apps/api/tests/unit/services/channel-visibility.test.ts",
+        "apps/api/tests/unit/modules/webhook/threads-webhook.test.ts",
+        "apps/api/tests/feature/modules/channel/channel-external-account.test.ts",
+        "apps/api/tests/feature/modules/channel/channel-status-guard.test.ts",
+        "apps/api/tests/feature/modules/channel/channel-team-access.test.ts",
+        "apps/api/tests/feature/modules/channel/meta-token-health.test.ts",
+        "apps/api/tests/feature/modules/meta-connect/**",
+        "apps/api/tests/feature/modules/webhook/webhook-account-routing.test.ts",
+        "apps/api/tests/feature/migrations/backfill-unbound-channel-access.test.ts",
+        "apps/workers/tests/unit/lib/plugin-registry.test.ts",
+        "packages/channel-plugins/tests/unit/account-id-parsing.test.ts",
+        "packages/channel-plugins/tests/unit/threads-plugin.test.ts",
+        "packages/channel-plugins/tests/unit/facebook-site-path-urls.test.ts",
+        "apps/web/tests/unit/components/settings/channel-management.test.tsx",
+        "apps/web/tests/unit/components/settings/channel-form-ig-fields.test.tsx",
+        "apps/web/tests/unit/components/settings/channel-team-assignment.test.tsx",
+        "apps/web/tests/unit/components/settings/bot-config-form-line-login.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "members",
+          "why": "新增渠道的「誰看得到這個渠道」讀 GET /agents；建立後改可見範圍在人員管理頁（PUT /agents/:id/channels）；channel.* 權限與 channel.view_all 由角色決定"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "createChannel 讀方案的 allowedChannelTypes 與 maxChannels（PLAN-07：種子方案都沒填，等於不限制）"
+        },
+        {
+          "domain": "notifications",
+          "why": "權杖失效通知走站內通知（channel_token_invalid）與交易型 email"
+        },
+        {
+          "domain": "governance",
+          "why": "建立、刪除、團隊授權寫租戶稽核；PATCH 修改與換憑證沒有稽核（AUD-01）"
+        },
+        {
+          "domain": "line",
+          "why": "LINE 的 webhook 驗簽、自動設定 webhook（line-webhook-setup）、下游轉發、liffConfig 驗證；憑證加解密規格 credential-encryption 歸在 line"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "inbox",
+          "why": "進站訊息經 webhook 路由與外掛解析；客服回覆經 getChannelPlugin() 送出；botConfig（botMode、maxBotReplies、轉接關鍵字）存在 Channel.settings；可見範圍以 AgentChannelAccess、ChannelTeamAccess 過濾對話"
+        },
+        {
+          "domain": "line",
+          "why": "LINE 圖文選單、群發、頭像重抓都讀 Channel 的憑證；LIFF ID 與下游轉發存在渠道設定"
+        },
+        {
+          "domain": "automation",
+          "why": "workers 以 createWorkerPluginRegistry() 送出規則訊息，缺外掛時寫失敗紀錄（CHAN-02 網站聊天室）；自動轉接讀 maxBotReplies"
+        },
+        {
+          "domain": "cases",
+          "why": "建立工單時檢查渠道可見與層級；自動指派只派給綁定渠道的成員"
+        },
+        {
+          "domain": "contacts",
+          "why": "ChannelIdentity 掛在渠道上；刪除沒有對話的渠道會連帶刪除身分（CHAN-01）；導流識別（bindingHandle）供跨渠道綁定連結"
+        },
+        {
+          "domain": "marketing",
+          "why": "群發與素材依渠道類型選擇外掛與 multicast"
+        },
+        {
+          "domain": "knowledge",
+          "why": "AI 自動回覆讀 botConfig 的 botMode 與轉接提示設定"
+        },
+        {
+          "domain": "shortlinks",
+          "why": "短連結的 LIFF 轉址讀渠道的 liffConfig.liffId"
+        },
+        {
+          "domain": "analytics",
+          "why": "渠道分布圖依 channelType 統計"
+        },
+        {
+          "domain": "members",
+          "why": "新增成員可選的渠道來自 GET /channels 與 /channels/assignable"
+        }
+      ]
+    },
+    {
+      "id": "platform-auth",
+      "title": "登入與身分驗證（租戶端＋平台後台）",
+      "doc": "docs/ref/features/platform/AUTH.md",
+      "health": "docs/ref/features/health/PLATFORM-AUTH.md",
+      "paths": [
+        "apps/api/src/modules/platform/platform-auth.service.ts",
+        "apps/api/src/modules/platform/platform-password-recovery.service.ts",
+        "apps/api/src/modules/cli/*",
+        "apps/api/src/lib/trust-proxy.ts",
+        "apps/api/src/lib/agent-token.ts",
+        "apps/api/src/shared/utils/password.ts",
+        "apps/api/src/plugins/cookie.plugin.ts",
+        "apps/cli/src/commands/login.ts",
+        "apps/cli/src/commands/status.ts",
+        "apps/cli/src/credential-store.ts",
+        "apps/cli/src/config-store.ts",
+        "apps/cli/src/api-client.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/admin/login/**",
+        "apps/web/src/app/admin/forgot-password/**",
+        "apps/web/src/app/admin/reset-password/**",
+        "apps/web/src/app/admin/change-password/**",
+        "apps/web/src/app/admin/layout.tsx",
+        "apps/web/src/app/admin/lib/AuthShell.tsx",
+        "apps/web/src/app/admin/lib/platform-api.ts",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/api-error.ts"
+      ],
+      "tables": [
+        "PlatformUser",
+        "CliSession",
+        "PasskeyCredential"
+      ],
+      "events": [],
+      "permissions": [
+        "settings.manage"
+      ],
+      "specs": [
+        "platform-auth",
+        "platform-password-recovery",
+        "login-captcha",
+        "open333-cli-auth"
+      ],
+      "audit": [
+        "AUTH-02",
+        "AUTH-03",
+        "AUTH-04",
+        "AUTH-07",
+        "AUTH-08",
+        "AUTH-10",
+        "SEC-02",
+        "SEC-03",
+        "SEC-06",
+        "RBAC-02"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch16-team.html",
+        "apps/web/public/manual/ch17-settings.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/platform-smoke.spec.ts",
+        "apps/web/tests/e2e-uat/cross-tenant-lifecycle.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/platform/platform-auth-guard.test.ts",
+        "apps/api/tests/unit/modules/platform/platform-auth-disabled.test.ts",
+        "apps/api/tests/unit/modules/auth/**",
+        "apps/api/tests/feature/modules/auth/**",
+        "apps/api/tests/unit/lib/agent-token.test.ts",
+        "apps/api/tests/unit/lib/trust-proxy.test.ts",
+        "apps/web/tests/unit/providers/auth-provider.test.tsx",
+        "apps/web/tests/unit/components/settings/cli-session-management.test.tsx",
+        "apps/cli/tests/unit/commands/stats-command.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "members",
+          "why": "租戶登入的路由、帳號鎖定、passkey、auth.plugin 與 AuthProvider 歸人員與權限；本領域的 refresh、CLI 與平台登入都讀 Agent、角色與停用狀態"
+        },
+        {
+          "domain": "platform-users",
+          "why": "平台帳號的建立、停用、重寄開通信（設 mustChangePassword）與重設信模板 platform-user-emails.ts"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "停用租戶擋登入與換發；平台開通租戶時建立第一位管理員並寄開通信"
+        },
+        {
+          "domain": "settings",
+          "why": "CLI 連線與 Passkey 管理頁在設定；cli-session.service、CLI token 的建立與撤銷路由在 settings.routes.ts"
+        },
+        {
+          "domain": "notifications",
+          "why": "平台忘記密碼信走 email.service（EMAIL_DELIVERY_MODE）"
+        },
+        {
+          "domain": "governance",
+          "why": "平台改密碼寫 platform_audit_logs；登入與重設沒有寫（SEC-02）"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "members",
+          "why": "所有租戶頁面靠 api.ts 的 401 自動換發與導回 /login"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "所有 /admin 頁面靠 platform-api.ts 帶平台 token、401 導回 /admin/login、MUST_CHANGE_PASSWORD 導向改密碼"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "同上，/admin/plans 是平台登入後的首頁"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "同上，/admin 頁面共用平台 token 與 guard"
+        },
+        {
+          "domain": "platform-plan-changes",
+          "why": "同上"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "同上"
+        },
+        {
+          "domain": "platform-users",
+          "why": "同上；改 email 後忘記密碼信寄到新信箱（AUTH-04）"
+        },
+        {
+          "domain": "platform-settings",
+          "why": "同上"
+        },
+        {
+          "domain": "platform-queue-monitoring",
+          "why": "佇列監控 cookie 由平台 JWT 換發，驗證順序沿用平台 guard"
+        },
+        {
+          "domain": "analytics",
+          "why": "CLI token（cli:analytics:read）讀 /cli/analytics/*，繞過角色權限（RBAC-02）"
+        },
+        {
+          "domain": "inbox",
+          "why": "socket 連線只收 access token；token 換發後重連"
+        }
+      ]
+    },
+    {
+      "id": "governance",
+      "title": "治理：稽核、匯出與資料刪除",
+      "doc": "docs/ref/features/tenant/GOVERNANCE.md",
+      "health": "docs/ref/features/health/GOVERNANCE.md",
+      "paths": [
+        "apps/api/src/modules/tenant-audit/*",
+        "apps/api/src/modules/data-export/*",
+        "apps/api/src/modules/data-erasure/*",
+        "apps/api/src/modules/webhook-subscriptions/*",
+        "apps/workers/src/handlers/data-export.handler.ts",
+        "apps/workers/src/handlers/data-erasure.handler.ts",
+        "apps/workers/src/lib/simple-zip.ts"
+      ],
+      "pages": [],
+      "tables": [
+        "TenantAuditLog",
+        "DataExportRequest",
+        "DataErasureRequest",
+        "WebhookSubscription",
+        "WebhookDelivery"
+      ],
+      "events": [],
+      "permissions": [
+        "audit.view",
+        "data.export",
+        "data.erase",
+        "webhook.view",
+        "webhook.manage"
+      ],
+      "specs": [
+        "tenant-audit-log",
+        "tenant-data-export",
+        "tenant-data-erasure",
+        "webhook-subscription-egress"
+      ],
+      "audit": [
+        "AUD-01",
+        "ERASE-01",
+        "EXPORT-01",
+        "HOOK-01",
+        "RBAC-02",
+        "STO-01",
+        "TRIAL-03"
+      ],
+      "manual": [],
+      "e2e": [],
+      "tests": [
+        "apps/api/tests/unit/modules/tenant-audit/**",
+        "apps/api/tests/feature/modules/tenant-audit/**",
+        "apps/api/tests/unit/modules/data-export/**",
+        "apps/api/tests/feature/modules/data-export/**",
+        "apps/api/tests/unit/modules/data-erasure/**",
+        "apps/api/tests/feature/modules/data-erasure/**",
+        "apps/api/tests/unit/modules/webhook-subscriptions/**",
+        "apps/api/tests/feature/modules/webhook-subscriptions/**",
+        "apps/workers/tests/unit/handlers/data-export.handler.test.ts",
+        "apps/workers/tests/unit/handlers/data-erasure.handler.test.ts",
+        "apps/workers/tests/unit/lib/data-export-zip.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "contacts",
+          "why": "資料刪除以聯絡人為單位，處理 Contact、ChannelIdentity、IdentityMap；合併留下的封存聯絡人不處理（ERASE-01），解除合併可讓已刪除的人重新出現"
+        },
+        {
+          "domain": "inbox",
+          "why": "匯出與刪除涵蓋 Conversation、Message；anonymize 把進站訊息換成 { redacted: true }，出站訊息保留"
+        },
+        {
+          "domain": "cases",
+          "why": "匯出含工單、備註與事件；hard_delete 刪工單；工單刪除寫 case.delete 稽核"
+        },
+        {
+          "domain": "portal",
+          "why": "hard_delete 刪活動提交與積分（Restrict 關聯要先刪），anonymize 保留"
+        },
+        {
+          "domain": "notifications",
+          "why": "匯出完成／失敗、刪除完成以站內通知告知發起人；匯出通知連到不存在的頁面（EXPORT-01）"
+        },
+        {
+          "domain": "members",
+          "why": "稽核的 actor 外鍵 SetNull：永久刪除成員後，他做過的操作在稽核裡變成沒有操作者"
+        },
+        {
+          "domain": "settings",
+          "why": "API 金鑰、CLI token、MCP 在設定頁；這些憑證的建立撤銷沒有稽核（AUD-01）；MCP 的 LINE 操作寫 mcp.line.* 稽核"
+        },
+        {
+          "domain": "automation",
+          "why": "對外 Webhook 是 event-webhook 佇列的訂閱者，轉送的事件來自業務事件（HOOK-01）"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "members",
+          "why": "成員與角色的寫入在交易內呼叫 recordTenantAudit（agent.*、role.*）"
+        },
+        {
+          "domain": "channels",
+          "why": "渠道建立、刪除、團隊授權呼叫 writeTenantAudit；meta-connect 寫 channel.create／channel.update"
+        },
+        {
+          "domain": "settings",
+          "why": "營業時間、追蹤、綁定、Embedding、Chat、Gemini 金鑰、WebTalk 修改寫 settings.update"
+        },
+        {
+          "domain": "contacts",
+          "why": "合併、解除合併、代發綁定與登記連結寫稽核"
+        },
+        {
+          "domain": "cases",
+          "why": "刪除工單寫 case.delete"
+        },
+        {
+          "domain": "line",
+          "why": "MCP 的 LINE 直接發送與群發寫 mcp.line.* 稽核（line-mcp-audit.ts）"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "試用保留期滿只標記 purgedAt，不刪租戶資料，也不寫租戶稽核（TRIAL-03）"
+        }
+      ]
+    },
+    {
+      "id": "platform-tenants",
+      "title": "平台後台：租戶管理",
+      "doc": "docs/ref/features/platform/TENANTS.md",
+      "health": "docs/ref/features/health/PLATFORM-TENANTS.md",
+      "paths": [
+        "apps/api/src/modules/platform/platform-tenant.service.ts",
+        "apps/api/src/modules/platform/platform-audit.service.ts",
+        "apps/api/src/modules/platform/ai-privacy.routes.ts",
+        "apps/api/src/modules/platform/ai-privacy.service.ts",
+        "apps/api/src/modules/platform/platform.routes.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/admin/tenants/**"
+      ],
+      "tables": [
+        "Tenant",
+        "PlatformAuditLog",
+        "PlatformSetting"
+      ],
+      "events": [],
+      "permissions": [],
+      "specs": [
+        "tenant-provisioning",
+        "tenant-contract-dates",
+        "trial-data-purge"
+      ],
+      "audit": [
+        "AUTH-01",
+        "AUTH-02",
+        "AUTH-10",
+        "TRIAL-03",
+        "TRIAL-04",
+        "PLAN-01",
+        "PLAN-03",
+        "SEC-03",
+        "CI-01"
+      ],
+      "manual": [],
+      "e2e": [
+        "apps/web/tests/e2e-uat/cross-tenant-lifecycle.spec.ts",
+        "apps/web/tests/e2e-uat/platform-smoke.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/feature/modules/platform/tenant-contract-dates.test.ts",
+        "apps/api/tests/feature/modules/trial/trial-data-purge.test.ts",
+        "apps/api/tests/feature/modules/auth/tenant-disabled-access.test.ts",
+        "apps/api/tests/unit/modules/platform/platform-audit-routes.test.ts",
+        "apps/api/tests/unit/modules/platform/ai-privacy.test.ts",
+        "apps/api/tests/unit/modules/platform/tenant-plan.test.ts",
+        "apps/web/tests/unit/components/admin/ai-privacy-control.test.tsx",
+        "apps/web/tests/unit/app/admin/trial-page.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "platform-auth",
+          "why": "所有 /admin/tenants 操作靠平台 token 與 authenticatePlatformSuperuser；開通的管理員以租戶登入（login 擋 TENANT_DISABLED、refresh 擋停用租戶）"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "開通與改方案以 planSlug 查 Plan；改方案失效權限天花板快取與租戶方案快取"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "試用自動開通共用 provisionTenant；復原（/tenants/:id/restore）與合約（/tenants/:id/contract）實作在 trial-admin.service.ts，復原按鈕在 /admin/trial；試用排程停用與標記 purgedAt"
+        },
+        {
+          "domain": "members",
+          "why": "開通時 seedRolesForTenant 建三個系統角色與第一位 ADMIN；改成員登入 email 與成員管理共用 Agent.email 全域唯一"
+        },
+        {
+          "domain": "notifications",
+          "why": "開通信與重寄開通信走 sendEmail（trial-emails.ts 的 sendManualProvisionedEmail）"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "platform-auth",
+          "why": "Tenant.isActive=false 時租戶成員登入回 403 TENANT_DISABLED、refresh 換不到 token"
+        },
+        {
+          "domain": "channels",
+          "why": "停用租戶時 LINE/FB/IG webhook 依 tenant.isActive 丟棄進站事件（WebChat 目前沒擋，HC-PLATFORM-TENANTS-01）"
+        },
+        {
+          "domain": "inbox",
+          "why": "停用租戶不再收進站訊息；既有 socket 連線不中斷（AUTH-02）"
+        },
+        {
+          "domain": "knowledge",
+          "why": "個資遮罩政策由平台租戶詳細頁逐租戶啟用（ai.privacy.<tenantId>），AI 作業每次讀取"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "租戶頁的啟用/停用不處理 trialEndsAt 與 purgedAt（TRIAL-04）"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "用量頁以租戶清單為母體"
+        },
+        {
+          "domain": "marketing",
+          "why": "停用租戶的排程群發仍會執行（broadcast.scheduler 不看 tenant.isActive，HC-PLATFORM-TENANTS-04）"
+        }
+      ]
+    },
+    {
+      "id": "sla",
+      "title": "SLA 與營業時間",
+      "doc": "docs/ref/features/SLA.md",
+      "health": "docs/ref/features/health/SLA.md",
+      "paths": [
+        "apps/api/src/modules/sla/*",
+        "apps/workers/src/handlers/sla.handler.ts",
+        "packages/shared/src/sla/*",
+        "packages/shared/src/constants/sla-defaults.ts"
+      ],
+      "pages": [
+        "apps/web/src/components/settings/SlaManagement.tsx",
+        "apps/web/src/components/shared/SlaCountdown.tsx"
+      ],
+      "tables": [
+        "SlaPolicy",
+        "Case",
+        "CaseEvent"
+      ],
+      "events": [
+        "sla:poll",
+        "sla.first_response.warning",
+        "sla.first_response.breached",
+        "sla.resolution.warning",
+        "sla.resolution.breached",
+        "sla.customer_waiting.breached",
+        "sla.event",
+        "sla.warning",
+        "sla.breached"
+      ],
+      "permissions": [
+        "sla.manage"
+      ],
+      "specs": [
+        "sla-policy-selection",
+        "standalone-worker-runtime"
+      ],
+      "audit": [
+        "SLA-02",
+        "SLA-04",
+        "SLA-05",
+        "APP-05",
+        "ANA-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch17-settings.html",
+        "apps/web/public/manual/ch02-cases.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/tenant-settings-ops.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/sla/**",
+        "apps/api/tests/feature/modules/sla/**",
+        "apps/api/tests/unit/modules/case/case-sla-default.test.ts",
+        "apps/workers/tests/unit/handlers/sla-outcome-once.test.ts",
+        "apps/web/tests/unit/components/settings/sla-management.test.tsx",
+        "apps/web/tests/unit/components/shared/sla-countdown.test.tsx",
+        "apps/web/tests/unit/components/case/case-timeline-sla-events.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "cases",
+          "why": "建立工單時挑政策並寫 Case.slaPolicy（名稱）與 slaDueAt；首次回應時間由客服在關聯對話回覆時寫入（case.service.ts markCaseFirstResponse）"
+        },
+        {
+          "domain": "inbox",
+          "why": "客戶枯等以工單關聯對話的訊息計算；客服送訊息時寫首次回應"
+        },
+        {
+          "domain": "notifications",
+          "why": "預警、逾時與 SLA 規則的「通知」動作經 workers 的 notification 佇列寫站內通知"
+        },
+        {
+          "domain": "automation",
+          "why": "SLA 五種事件觸發租戶的自動化規則，動作由 workers 的 automation-actions.ts 執行"
+        },
+        {
+          "domain": "contacts",
+          "why": "facts 讀聯絡人標籤判斷 VIP"
+        },
+        {
+          "domain": "settings",
+          "why": "SLA 政策與營業時間兩個分頁在設定頁；營業時間目前不影響 SLA 計時"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "cases",
+          "why": "工單列表、詳情的 SLA 倒數、SLA 篩選、統計卡的逾期與即將到期數、詳情頁的政策時限（slaPolicyData）、時間軸的 SLA 事件"
+        },
+        {
+          "domain": "automation",
+          "why": "規則編輯器列出 SLA 事件與 facts（packages/shared/src/sla）"
+        },
+        {
+          "domain": "analytics",
+          "why": "總覽的 SLA 達成率、案件報表的 SLA 違規表、客服績效的 SLA 達成率、我的績效的即將到期數，都讀 Case.slaDueAt"
+        },
+        {
+          "domain": "inbox",
+          "why": "收件匣建立工單對話框的「SLA 政策」下拉讀 GET /sla-policies"
+        }
+      ]
+    },
+    {
+      "id": "platform-plan-changes",
+      "title": "方案異動申請與審核",
+      "doc": "docs/ref/features/platform/PLAN-CHANGES.md",
+      "health": "docs/ref/features/health/PLATFORM-PLAN-CHANGES.md",
+      "paths": [
+        "apps/api/src/modules/platform/plan-change.service.ts",
+        "apps/api/src/modules/platform/plan-change.routes.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/plan/**",
+        "apps/web/src/app/admin/plan-changes/**"
+      ],
+      "tables": [
+        "PlanChangeRequest",
+        "Plan",
+        "PlatformAuditLog"
+      ],
+      "events": [],
+      "permissions": [
+        "settings.manage"
+      ],
+      "specs": [
+        "plan-change-request",
+        "trial-lifecycle",
+        "usage-quota-alerts"
+      ],
+      "audit": [
+        "PLAN-01",
+        "PLAN-02",
+        "PLAN-03",
+        "PLAN-05",
+        "PLAN-10",
+        "PLAN-11",
+        "PLAN-13",
+        "USAGE-03",
+        "RBAC-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch14-plan.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/cross-plan-request.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/platform/plan-change.test.ts",
+        "apps/api/tests/feature/modules/platform/plan-change-trial-exit.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "platform-plans",
+          "why": "申請的目標方案依 slug 查 Plan；方案的 features 決定核准後的功能天花板，limits.monthlyTokens 是加購的計算基準（覆寫優先，見 PLAN-05）"
+        },
+        {
+          "domain": "platform-auth",
+          "why": "審核端點掛 authenticatePlatformSuperuser + blockIfMustChangePassword；平台頁用 platformApi（401 導回登入）"
+        },
+        {
+          "domain": "members",
+          "why": "租戶端送出與查詢需要 settings.manage；核准升級後呼叫 invalidatePlanPermissions（Redis 權限交集快取）與 invalidateTenantPlan（getTenantPlanId 60 秒進程內快取）"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "assertNotTrialPlan 擋試用方案當目標；核准試用租戶的 upgrade 套用 TRIAL_EXIT_DATA 脫離試用"
+        },
+        {
+          "domain": "knowledge",
+          "why": "核准加購呼叫 token-quota.service 的 clearTokenQuotaCache、clearQuotaAlertFlags，月額度檢查擋 AI 回覆"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "審核路由寫在 platform.routes.ts，用 writePlatformAudit 記 plan_change.approve / plan_change.reject"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "platform-trials",
+          "why": "試用轉正式的設計是租戶送 upgrade 申請、平台核准（另有 convertToPaid 直接轉）"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "加購量寫進 limitOverrides.monthlyTokens，改變用量統計與額度告警的上限"
+        },
+        {
+          "domain": "notifications",
+          "why": "AI 額度告警的站內通知與 email 按鈕連到 /dashboard/plan"
+        }
+      ]
+    },
+    {
+      "id": "platform-plans",
+      "title": "方案與上限",
+      "doc": "docs/ref/features/platform/PLANS.md",
+      "health": "docs/ref/features/health/PLATFORM-PLANS.md",
+      "paths": [
+        "apps/api/src/modules/platform/plan.service.ts",
+        "apps/api/src/modules/platform/plan-limits.service.ts",
+        "apps/api/src/services/tenant-plan.cache.ts",
+        "apps/api/src/modules/trial/token-quota.service.ts",
+        "packages/core/src/rbac/features.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/admin/plans/page.tsx",
+        "apps/web/src/app/dashboard/plan/page.tsx"
+      ],
+      "tables": [
+        "Plan",
+        "AiUsage",
+        "PlatformAuditLog"
+      ],
+      "events": [
+        "usage.quota.threshold"
+      ],
+      "permissions": [
+        "settings.manage",
+        "billing.view"
+      ],
+      "specs": [
+        "tenant-plan",
+        "plan-limits-core",
+        "granular-plan-entitlement",
+        "token-quota"
+      ],
+      "audit": [
+        "PLAN-01",
+        "PLAN-03",
+        "PLAN-04",
+        "PLAN-05",
+        "PLAN-07",
+        "PLAN-08",
+        "PLAN-09",
+        "PLAN-10",
+        "PLAN-12",
+        "PLAN-13",
+        "RBAC-01"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch14-plan.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/platform-smoke.spec.ts",
+        "apps/web/tests/e2e-uat/cross-plan-request.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/platform/plan-limits.test.ts",
+        "apps/api/tests/unit/modules/platform/tenant-plan.test.ts",
+        "apps/api/tests/unit/modules/channel/channel-plan-limits.test.ts",
+        "apps/api/tests/unit/modules/agent/agent-reactivate.test.ts",
+        "apps/api/tests/unit/modules/ai/usage-quota.test.ts",
+        "apps/api/tests/unit/modules/ai/agent-quota.test.ts",
+        "apps/web/tests/unit/app/admin/plans-page.test.tsx",
+        "packages/core/tests/unit/rbac/*.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "platform-auth",
+          "why": "/platform/plans、/platform/registry 掛平台 superuser 認證；/admin/plans 用 platformApi（token 存 localStorage）"
+        },
+        {
+          "domain": "members",
+          "why": "功能天花板在 requirePermission() 與 getEffectiveTenantPermissions() 計算（角色權限 ∩ 天花板，Redis perms:tenant:{roleId}:{planId} 快取）；maxAgents 在 createAgent/reactivateAgent 硬擋"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "租戶的 planId 由開通與 PATCH /platform/tenants/:id 的 planSlug 寫入，寫入時呼叫 invalidateTenantPlan 與 invalidatePlanPermissions；方案路由與稽核寫在 platform.routes.ts"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "monthlyTokens 硬擋讀 AiUsage 與 Redis 計數器 aiquota:{tenantId}:{YYYY-MM}；只算 keySource=platform"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "channels",
+          "why": "createChannel 檢查 allowedChannelTypes（CHANNEL_TYPE_NOT_ALLOWED）與 maxChannels（PLAN_LIMIT_EXCEEDED）；channels feature 不在方案內時渠道頁顯示「沒有渠道」"
+        },
+        {
+          "domain": "members",
+          "why": "新增與重新啟用成員受 maxAgents 限制；角色頁不套天花板（PLAN-08）"
+        },
+        {
+          "domain": "knowledge",
+          "why": "AI 回覆（generateReply、runAgentReply、Flex AI、潤稿）達 monthlyTokens 時回 403 PLAN_LIMIT_EXCEEDED"
+        },
+        {
+          "domain": "marketing",
+          "why": "marketing feature 與 permissionOverrides（例如 deny marketing.broadcast）決定行銷路由是否 403"
+        },
+        {
+          "domain": "platform-plan-changes",
+          "why": "升級申請依 slug 查 Plan、核准後換 planId 並失效快取；加購寫 limitOverrides.monthlyTokens（覆寫優先）"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "試用開通綁定 trial 方案；試用方案的 features 不含 channels（HC-PLATFORM-PLANS-01）"
+        },
+        {
+          "domain": "notifications",
+          "why": "AI 額度告警的站內通知與 email 連結指向 /dashboard/plan"
+        },
+        {
+          "domain": "inbox",
+          "why": "socket 房間授權與渠道可見範圍也讀 getTenantPlanId 套天花板"
+        }
+      ]
+    },
+    {
+      "id": "platform-users",
+      "title": "平台帳號管理",
+      "doc": "docs/ref/features/platform/PLATFORM-USERS.md",
+      "health": "docs/ref/features/health/PLATFORM-USERS.md",
+      "paths": [
+        "apps/api/src/modules/platform/platform-user.service.ts",
+        "apps/api/src/modules/platform/platform-user-emails.ts",
+        "apps/api/src/shared/utils/temp-password.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/admin/platform-users/**"
+      ],
+      "tables": [
+        "PlatformUser",
+        "PlatformAuditLog"
+      ],
+      "events": [],
+      "permissions": [],
+      "specs": [
+        "platform-user-management"
+      ],
+      "audit": [
+        "AUTH-03",
+        "AUTH-04",
+        "SEC-02",
+        "PLAN-11"
+      ],
+      "manual": [],
+      "e2e": [],
+      "tests": [
+        "apps/api/tests/unit/modules/platform/platform-audit-routes.test.ts",
+        "apps/api/tests/unit/modules/platform/platform-auth-guard.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "platform-auth",
+          "why": "所有 /admin/platform-users 操作靠平台 token 與 authenticatePlatformSuperuser（每次請求查 isActive、mustChangePassword）；強制改密碼頁 /admin/change-password 與 platform-api.ts 的 401／MUST_CHANGE_PASSWORD 導向在該領域"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "路由檔 platform.routes.ts 與稽核寫入 platform-audit.service.ts（writePlatformAudit）歸租戶管理"
+        },
+        {
+          "domain": "notifications",
+          "why": "開通信與重寄開通信走 email.service 的 sendEmail（EMAIL_DELIVERY_MODE）；platform-user-emails.ts 的 safeSend 吞掉寄信錯誤"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "platform-auth",
+          "why": "開通與重寄開通信設 mustChangePassword=true 並換掉 passwordHash；停用帳號後平台 token 立即 401 PLATFORM_USER_DISABLED；改 email 後忘記密碼信寄到新信箱（AUTH-04）；忘記密碼重設信模板在 platform-user-emails.ts"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "平台稽核唯一的查詢端點 GET /platform-users/:id/audit-logs，租戶開通、停用、改方案的紀錄只能從操作者的帳號頁查"
+        },
+        {
+          "domain": "platform-plan-changes",
+          "why": "審核者 reviewedBy 存 platformUserId（非外鍵）；核准／駁回紀錄只能從平台帳號頁的操作紀錄查（PLAN-11）"
+        },
+        {
+          "domain": "platform-trials",
+          "why": "試用延長、轉正、復原的平台稽核同樣只能從平台帳號頁查"
+        },
+        {
+          "domain": "platform-queue-monitoring",
+          "why": "佇列監控 cookie 驗證時讀 PlatformUser.isActive，停用帳號即失去監控入口"
+        }
+      ]
+    },
+    {
+      "id": "platform-usage",
+      "title": "用量統計與 AI 成本",
+      "doc": "docs/ref/features/platform/USAGE.md",
+      "health": "docs/ref/features/health/PLATFORM-USAGE.md",
+      "paths": [
+        "apps/api/src/modules/platform/platform-usage.service.ts",
+        "apps/api/src/modules/ai/pricing.service.ts",
+        "apps/api/src/modules/trial/token-quota.service.ts",
+        "apps/api/src/modules/trial/usage-alert-emails.ts",
+        "apps/api/src/modules/notification/usage-alert-email.worker.ts",
+        "apps/api/verify-quota.mts"
+      ],
+      "pages": [
+        "apps/web/src/app/admin/usage/**",
+        "apps/web/src/app/admin/lib/format.ts"
+      ],
+      "tables": [
+        "AiUsage",
+        "ModelPricing"
+      ],
+      "events": [
+        "usage.quota.threshold"
+      ],
+      "permissions": [],
+      "specs": [
+        "ai-usage-recording",
+        "model-pricing",
+        "platform-usage",
+        "token-quota",
+        "usage-quota-alerts"
+      ],
+      "audit": [
+        "AI-01",
+        "USAGE-01",
+        "USAGE-02",
+        "USAGE-03",
+        "PLAN-13",
+        "PLAN-10"
+      ],
+      "manual": [
+        "apps/web/public/manual/ch14-plan.html",
+        "apps/web/public/manual/ch04-notifications.html"
+      ],
+      "e2e": [
+        "apps/web/tests/e2e-uat/platform-smoke.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/ai/pricing.test.ts",
+        "apps/api/tests/unit/modules/ai/usage-quota.test.ts",
+        "apps/api/tests/unit/modules/ai/agent-quota.test.ts",
+        "apps/api/tests/unit/modules/notification/usage-quota-alert.test.ts",
+        "apps/api/tests/feature/modules/platform/platform-usage.test.ts",
+        "apps/api/tests/feature/modules/trial/token-quota-alert.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "knowledge",
+          "why": "用量的寫入端 recordAiUsage()、月額度檢查的呼叫點 generateReply() 與 Agent 回覆、金鑰來源 resolveGeminiKey()（BYOK）都在 ai 模組"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "月額度的數值是有效 monthlyTokens（plan-limits.service.ts 的 getEffectiveLimit：limitOverrides ?? Plan.limits）"
+        },
+        {
+          "domain": "platform-plan-changes",
+          "why": "核准加購會呼叫 clearTokenQuotaCache() 與 clearQuotaAlertFlags()；升級與平台換方案不清告警旗標（PLAN-13）"
+        },
+        {
+          "domain": "notifications",
+          "why": "usage.quota.threshold 的訂閱者在 notification.worker.ts，站內通知走 notification:dispatch，信件走 usage-alert-email 佇列與 email.service"
+        },
+        {
+          "domain": "settings",
+          "why": "租戶的 AI provider、model、baseUrl 與自備 Gemini 金鑰決定 provider、keySource 與能不能查到價目"
+        },
+        {
+          "domain": "platform-auth",
+          "why": "/admin/usage 與 /platform/usage/* 用平台 token 與 guard"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "用量排行顯示租戶名稱與方案名稱"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "knowledge",
+          "why": "AI 自動回覆、Agent 回覆在月額度用完時被 403 PLAN_LIMIT_EXCEEDED 擋下"
+        },
+        {
+          "domain": "inbox",
+          "why": "額度用完時建議回覆改回知識庫原文、摘要回固定範本文字（HC-PLATFORM-USAGE-04），都回 200 不顯示原因"
+        },
+        {
+          "domain": "automation",
+          "why": "訊息觸發的 AI 回覆在額度用完時停止；情緒分析與分類改用關鍵字降級；自動轉接的系統訊息會帶固定範本摘要（HC-PLATFORM-USAGE-04）"
+        },
+        {
+          "domain": "marketing",
+          "why": "素材的 AI 潤稿（ai-rewrite）與 Flex 生成（flex-generate）計入用量並受月額度限制"
+        },
+        {
+          "domain": "platform-plan-changes",
+          "why": "租戶端 /dashboard/plan 是告警信與通知的連結目標，但該頁不顯示用量（PLAN-10）"
+        }
+      ]
+    },
+    {
+      "id": "platform-trials",
+      "title": "試用申請與到期處理",
+      "doc": "docs/ref/features/platform/TRIALS.md",
+      "health": "docs/ref/features/health/PLATFORM-TRIALS.md",
+      "paths": [
+        "apps/api/src/modules/trial/trial.routes.ts",
+        "apps/api/src/modules/trial/trial.service.ts",
+        "apps/api/src/modules/trial/trial.scheduler.ts",
+        "apps/api/src/modules/trial/trial-policy.service.ts",
+        "apps/api/src/modules/trial/trial-emails.ts",
+        "apps/api/src/modules/trial/email-normalizer.ts",
+        "apps/api/src/modules/platform/trial-admin.service.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/trial/**",
+        "apps/web/src/app/admin/trial/**"
+      ],
+      "tables": [
+        "TrialSignup",
+        "Tenant",
+        "PlatformSetting",
+        "PlatformAuditLog"
+      ],
+      "events": [],
+      "permissions": [],
+      "specs": [
+        "trial-application",
+        "trial-lifecycle",
+        "trial-data-purge",
+        "tenant-contract-dates"
+      ],
+      "audit": [
+        "TRIAL-02",
+        "TRIAL-03",
+        "TRIAL-04",
+        "SEC-02",
+        "SEC-03",
+        "RBAC-03",
+        "PLAN-01",
+        "AUTH-02"
+      ],
+      "manual": [],
+      "e2e": [
+        "apps/web/tests/e2e-uat/platform-smoke.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/feature/modules/trial/trial-data-purge.test.ts",
+        "apps/api/tests/feature/modules/trial/trial-extend.test.ts",
+        "apps/api/tests/feature/modules/trial/trial-scheduler-race.test.ts",
+        "apps/api/tests/feature/modules/platform/plan-change-trial-exit.test.ts",
+        "apps/api/tests/feature/modules/platform/tenant-contract-dates.test.ts",
+        "apps/api/tests/unit/modules/platform/platform-audit-routes.test.ts",
+        "apps/api/tests/unit/lib/schedule-registrations.test.ts",
+        "apps/web/tests/unit/app/admin/trial-page.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "platform-tenants",
+          "why": "驗證即開通呼叫 provisionTenant(tx, …)（與 token 消耗同一交易）；到期停用沿用 Tenant.isActive=false 的停用行為"
+        },
+        {
+          "domain": "platform-auth",
+          "why": "/admin/trial 所有操作靠平台 token（authenticatePlatformSuperuser）；試用租戶到期後成員登入回 TENANT_DISABLED"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "開通綁 trial.planSlug 方案（features 天花板限制試用功能）；轉正式以 planSlug 查方案並失效權限天花板與租戶方案快取"
+        },
+        {
+          "domain": "platform-settings",
+          "why": "試用政策存在 PlatformSetting 的 trial.* 鍵，/admin/trial 政策分頁用 PUT /settings/:key 寫入（TRIAL-02）"
+        },
+        {
+          "domain": "notifications",
+          "why": "驗證信、開通信、提醒信、到期信都經 email.service 的 sendEmail；safeSend 吞掉寄送失敗"
+        },
+        {
+          "domain": "members",
+          "why": "提醒與到期信只寄舊角色列舉為 ADMIN 的啟用成員（RBAC-03）；申請時以正規化 email 比對既有 Agent"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "platform-tenants",
+          "why": "合約起訖日（updateTenantContract）與復原（restorePurgedTenant）實作在 trial-admin.service.ts；手動開通與 email 寄信共用 trial-emails.ts"
+        },
+        {
+          "domain": "platform-plan-changes",
+          "why": "核准試用租戶的 upgrade 申請套用 TRIAL_EXIT_DATA 脫離試用；assertNotTrialPlan 擋試用方案當目標"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "試用租戶的 AI 月額度依 trial 方案 monthlyTokens 硬擋（token-quota）"
+        }
+      ]
+    },
+    {
+      "id": "platform-settings",
+      "title": "平台設定（KV、權限註冊表、模型價目）",
+      "doc": "docs/ref/features/platform/SETTINGS.md",
+      "health": "docs/ref/features/health/PLATFORM-SETTINGS.md",
+      "paths": [
+        "apps/api/src/modules/platform/platform-setting.service.ts",
+        "apps/api/src/modules/trial/trial-policy.service.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/admin/trial/page.tsx"
+      ],
+      "tables": [
+        "PlatformSetting",
+        "ModelPricing",
+        "PlatformAuditLog"
+      ],
+      "events": [],
+      "permissions": [],
+      "specs": [
+        "platform-auth",
+        "trial-lifecycle",
+        "model-pricing"
+      ],
+      "audit": [
+        "TRIAL-02",
+        "USAGE-02",
+        "PLAN-09",
+        "SEC-03",
+        "CI-01"
+      ],
+      "manual": [],
+      "e2e": [
+        "apps/web/tests/e2e-uat/platform-smoke.spec.ts"
+      ],
+      "tests": [
+        "apps/api/tests/unit/modules/platform/platform-audit-routes.test.ts",
+        "apps/api/tests/unit/modules/ai/pricing.test.ts",
+        "apps/api/tests/feature/modules/trial/trial-scheduler-race.test.ts",
+        "apps/web/tests/unit/app/admin/plans-page.test.tsx",
+        "packages/core/tests/unit/rbac/rbac-registry.test.ts",
+        "packages/core/tests/unit/rbac/registry-validation.test.ts"
+      ],
+      "dependsOn": [
+        {
+          "domain": "platform-auth",
+          "why": "所有 /settings/:key、/registry 都掛平台 guard（authenticatePlatformSuperuser）；平台帳號沒有角色分級，任何平台帳號都能改全域設定"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "GET/PUT /settings/:key 與 GET /registry 的路由寫在 platform.routes.ts；個資遮罩 ai.privacy.<tenantId> 也存在 platform_settings（ai-privacy.service.ts），稽核寫入 platform-audit.service.ts"
+        },
+        {
+          "domain": "members",
+          "why": "/registry 的 features 由 packages/core/src/rbac 的 FEATURES 與 PERMISSIONS 推導"
+        },
+        {
+          "domain": "knowledge",
+          "why": "ModelPricing 的讀取端 pricing.service.ts 與成本寫入 llm.service.ts 的 recordAiUsage() 在 AI 模組；模型白名單在 gemini.provider.ts"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "platform-trials",
+          "why": "試用政策 trial.* 全部存在 platform_settings，getTrialPolicy() 讀取；/admin/trial「政策設定」分頁是這張表唯一的維護介面"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "/admin/plans 的功能清單與渠道白名單選項來自 GET /registry"
+        },
+        {
+          "domain": "platform-usage",
+          "why": "/admin/usage 的平台成本以 ModelPricing 計算；缺價的模型成本永久記 0（USAGE-02）"
+        },
+        {
+          "domain": "platform-tenants",
+          "why": "通用 PUT /settings/:key 可以覆寫 ai.privacy.<tenantId>，寫入非法值會讓該租戶的租戶詳細頁個資遮罩開關 503（HC-PLATFORM-SETTINGS-01）"
+        },
+        {
+          "domain": "inbox",
+          "why": "每則訊息寫入前都讀 ai.privacy.<tenantId>（prepareStoredMessageContent）；值不合法時進站與回覆一律 503"
+        },
+        {
+          "domain": "marketing",
+          "why": "素材存檔讀 ai.privacy.<tenantId>（prepareStoredMaterialBody）"
+        }
+      ]
+    },
+    {
+      "id": "platform-queue-monitoring",
+      "title": "佇列監控",
+      "doc": "docs/ref/features/platform/QUEUE-MONITORING.md",
+      "health": "docs/ref/features/health/PLATFORM-QUEUE-MONITORING.md",
+      "paths": [
+        "apps/api/src/modules/queue-monitoring/*",
+        "apps/api/src/modules/ops-alert/*",
+        "apps/api/src/modules/outbox/*",
+        "apps/api/src/events/subscriber-workers.ts",
+        "apps/api/src/lib/job-scheduler.ts",
+        "apps/workers/src/index.ts",
+        "apps/workers/src/lib/repeating-jobs.ts",
+        "packages/core/src/outbox/*"
+      ],
+      "pages": [
+        "apps/web/src/app/admin/lib/QueueMonitorLink.tsx"
+      ],
+      "tables": [
+        "Outbox",
+        "SideEffectClaim",
+        "PlatformAuditLog",
+        "PlatformUser"
+      ],
+      "events": [],
+      "permissions": [],
+      "specs": [
+        "queue-monitoring",
+        "ops-alert",
+        "event-delivery",
+        "side-effect-claims"
+      ],
+      "audit": [
+        "APP-08",
+        "APP-09",
+        "APP-07",
+        "APP-04"
+      ],
+      "manual": [],
+      "e2e": [],
+      "tests": [
+        "apps/api/tests/unit/modules/queue-monitoring/**",
+        "apps/api/tests/feature/modules/queue-monitoring/**",
+        "apps/api/tests/support/queue-monitoring-app.ts",
+        "apps/api/tests/unit/modules/ops-alert/**",
+        "apps/api/tests/unit/modules/outbox/**",
+        "apps/api/tests/unit/events/subscriber-workers.test.ts",
+        "apps/api/tests/unit/lib/job-scheduler.test.ts",
+        "apps/api/tests/feature/lib/job-scheduler.test.ts",
+        "apps/api/tests/feature/lib/outbox*.test.ts",
+        "apps/api/tests/feature/lib/side-effect-claims.test.ts",
+        "apps/workers/tests/unit/lib/repeating-jobs.test.ts",
+        "packages/core/tests/unit/outbox/**",
+        "apps/web/tests/unit/components/admin/queue-monitor-link.test.tsx"
+      ],
+      "dependsOn": [
+        {
+          "domain": "platform-auth",
+          "why": "換發監控 cookie 走 authenticatePlatformSuperuser；cookie 金鑰由 PLATFORM_JWT_SECRET 衍生；須改密碼的帳號被擋"
+        },
+        {
+          "domain": "platform-users",
+          "why": "每個監控請求即時查 PlatformUser 的 isActive 與 mustChangePassword；重送寫 PlatformAuditLog"
+        }
+      ],
+      "usedBy": [
+        {
+          "domain": "notifications",
+          "why": "event-notification、notification、usage-alert-email 佇列在監控清單與失敗告警內；通知經 outbox 送出"
+        },
+        {
+          "domain": "automation",
+          "why": "event-automation、automation 佇列；規則動作以 side_effect_claims 認領，重送時回傳 skippedClaims"
+        },
+        {
+          "domain": "inbox",
+          "why": "機器人回覆在 event-automation 佇列，以 bot_reply 認領；重送不會再回覆客人"
+        },
+        {
+          "domain": "marketing",
+          "why": "coupon-broadcast 佇列與 api-scheduler 的 broadcast-scheduled 排程"
+        },
+        {
+          "domain": "sla",
+          "why": "workers 的 sla 週期 job；processor 把錯誤吞掉，失敗不會出現在監控（HC-PLATFORM-QUEUE-MONITORING-01）"
+        },
+        {
+          "domain": "governance",
+          "why": "data-export、data-erasure、data-export-cleanup、agent-retention-cleanup 佇列"
+        },
+        {
+          "domain": "line",
+          "why": "rich-menu-bind 佇列"
+        },
+        {
+          "domain": "settings",
+          "why": "對外 Webhook 的 event-webhook、webhook-delivery 佇列"
+        },
+        {
+          "domain": "analytics",
+          "why": "api-scheduler 的 analytics-daily 排程"
         }
       ]
     }
