@@ -204,10 +204,12 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/conversations/:id
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [perm.view] }, async (request, reply) => {
+    const accessible = await resolveChannelVisibility(request);
     const conversation = await getConversation(
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      accessible,
     );
 
     // 查無此對話（或非本租戶）→ 404，避免下方存取 channelId 觸發 500
@@ -216,7 +218,6 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     }
 
     // CM-173：渠道不在可見集合 → 視為不存在（404），不洩漏他店資料
-    const accessible = await resolveChannelVisibility(request);
     if (!isChannelAccessible(accessible, conversation.channelId)) {
       throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
     }

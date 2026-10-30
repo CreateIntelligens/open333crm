@@ -135,8 +135,14 @@ export async function listCases(
   return { cases, total };
 }
 
-export async function getCase(ctx: TenantCtx, id: string) {
+export async function getCase(
+  ctx: TenantCtx,
+  id: string,
+  /** 聯絡人的渠道身份只列出可見渠道（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+) {
   const { tx: prisma, tenantId } = ctx;
+  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const caseRecord = await prisma.case.findFirst({
     where: { id, tenantId },
     include: {
@@ -148,6 +154,7 @@ export async function getCase(ctx: TenantCtx, id: string) {
           phone: true,
           email: true,
           channelIdentities: {
+            ...(visibleChannelId ? { where: { channelId: visibleChannelId } } : {}),
             select: {
               id: true,
               channelType: true,

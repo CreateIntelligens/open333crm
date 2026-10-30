@@ -90,7 +90,8 @@ const errorOf = (res: { json: () => unknown }) => {
 
 const line = await channel('LINE', '同渠道測試 LINE');
 const fb = await channel('FB', '同渠道測試粉專');
-const mergeRole = await role('merge', ['contact.view', 'contact.merge']);
+// channel.view_all：這裡測合併規則，不測渠道可見範圍（看不到的聯絡人合併回 404，見 contact-channel-visibility.test.ts）
+const mergeRole = await role('merge', ['contact.view', 'contact.merge', 'channel.view_all']);
 const reviewRole = await role('review', ['identity.review']);
 const mergeApp = await buildApp(mergeRole.id);
 const reviewApp = await buildApp(reviewRole.id);

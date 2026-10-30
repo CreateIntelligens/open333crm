@@ -197,14 +197,14 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [perm.view] }, async (request, reply) => {
     // 先取案件（單次查詢），再做渠道可見性檢查，避免先前「findFirst 取 channelId + getCase」
     // 的重複查詢；比照 conversation.routes.ts GET /:id 的寫法。
-    const caseRecord = await getCaseFlow(fastify, actorOf(request).tenantId, request.params.id);
+    const accessible = await resolveChannelVisibility(request);
+    const caseRecord = await getCaseFlow(fastify, actorOf(request).tenantId, request.params.id, accessible);
     if (!caseRecord) {
       throw new AppError(notFound('case'), 'NOT_FOUND', 404);
     }
 
     // CM-173：案件所屬渠道不在可見集合 → 視為不存在（404）。
     // 總店（ALL_CHANNELS）時 isChannelAccessible 直接回 true。
-    const accessible = await resolveChannelVisibility(request);
     if (!isChannelAccessible(accessible, caseRecord.channelId)) {
       throw new AppError(notFound('case'), 'NOT_FOUND', 404);
     }

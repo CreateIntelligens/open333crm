@@ -180,13 +180,17 @@ export async function getConversation(
   prisma: TenantDb,
   id: string,
   tenantId: string,
+  /** 聯絡人的渠道身份只列出可見渠道（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
+  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const conversation = await prisma.conversation.findFirst({
     where: { id, tenantId },
     include: {
       contact: {
         include: {
           channelIdentities: {
+            ...(visibleChannelId ? { where: { channelId: visibleChannelId } } : {}),
             include: {
               channel: {
                 select: {

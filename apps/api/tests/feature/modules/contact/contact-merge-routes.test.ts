@@ -26,7 +26,8 @@ const role = await owner.role.create({
     tenantId: T,
     slug: `${MARK}-role`,
     name: `${MARK}-role`,
-    permissions: { create: ['contact.view', 'contact.merge'].map((permissionCode) => ({ permissionCode })) },
+    // channel.view_all：這裡測合併規則，不測渠道可見範圍（看不到的聯絡人合併回 404，見 contact-channel-visibility.test.ts）
+    permissions: { create: ['contact.view', 'contact.merge', 'channel.view_all'].map((permissionCode) => ({ permissionCode })) },
   },
 });
 const agent = await owner.agent.create({

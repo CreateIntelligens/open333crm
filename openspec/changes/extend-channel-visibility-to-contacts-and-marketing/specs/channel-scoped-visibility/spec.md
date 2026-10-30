@@ -1,0 +1,133 @@
+## MODIFIED Requirements
+
+### Requirement: 列表查詢套用渠道過濾
+
+對話列表、工單列表、聯絡人列表與群發列表 SHALL 只回傳成員可見的資料：對話、工單與群發看它們的渠道是否在可見渠道集合內；聯絡人依「聯絡人依渠道身份判斷可見」判斷。
+
+#### Scenario: 對話列表只含可見渠道
+- **WHEN** 成員的可見渠道集合為 {CH-A}，租戶有 CH-A 與 CH-B 的對話
+- **THEN** 該成員的對話列表只含 CH-A 的對話
+
+#### Scenario: 工單列表只含可見渠道
+- **WHEN** 成員的可見渠道集合為 {CH-A}，租戶有關聯 CH-A 與 CH-B 的工單
+- **THEN** 該成員的工單列表只含關聯 CH-A 的工單
+
+#### Scenario: 聯絡人列表只含看得到的聯絡人
+- **WHEN** 成員的可見渠道集合為 {CH-A}，租戶有只在 CH-B 有身份的聯絡人 P、在 CH-A 與 CH-B 都有身份的聯絡人 Q、沒有任何渠道身份的聯絡人 R
+- **THEN** 該成員的聯絡人列表含 Q 與 R，不含 P，`total` 也不計入 P
+
+#### Scenario: 群發列表只含可見渠道
+- **WHEN** 成員的可見渠道集合為 {CH-A}，租戶有 CH-A 與 CH-B 的群發
+- **THEN** 該成員的群發列表只含 CH-A 的群發
+
+### Requirement: 單筆讀取與操作的存取檢查
+
+成員以 ID 讀取或操作單一對話、工單、聯絡人或群發，而成員看不到該筆資料時，系統 SHALL 回 HTTP 404，與資源不存在時相同。系統 MUST NOT 回傳資源內容，也 MUST NOT 執行操作。聯絡人的操作包括修改、貼標、移除標籤，以及讀取它的對話、訊息、工單、時間軸與合併紀錄；群發的操作包括讀取收件人、送出與取消。
+
+#### Scenario: 讀取不可見渠道的對話被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，以 ID 讀取 CH-B 的對話
+- **THEN** 系統回 HTTP 404，不回傳對話內容
+
+#### Scenario: 讀取不可見渠道的工單被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，以 ID 讀取關聯 CH-B 的工單
+- **THEN** 系統回 HTTP 404，不回傳工單內容
+
+#### Scenario: 操作不可見渠道的對話被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，對 CH-B 的對話送出回覆或關閉
+- **THEN** 系統回 HTTP 404，不送出訊息，對話狀態不變
+
+#### Scenario: 讀取看不到的聯絡人被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，以 ID 讀取只在 CH-B 有身份的聯絡人
+- **THEN** 系統回 HTTP 404，不回傳聯絡人的姓名、電話與 email
+
+#### Scenario: 修改看不到的聯絡人被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，修改只在 CH-B 有身份的聯絡人，或為他貼標
+- **THEN** 系統回 HTTP 404，聯絡人的資料與標籤不變
+
+#### Scenario: 送出不可見渠道的群發被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，有 `marketing.broadcast`，送出或取消 CH-B 的群發
+- **THEN** 系統回 HTTP 404，群發的狀態不變，沒有送出任何訊息
+
+### Requirement: 存取層級
+
+成員對可見渠道的存取層級由低到高是 `read_only`、`reply_only`、`full`。同一個渠道有多個來源時，系統 SHALL 取最高的層級。對話與工單的操作 SHALL 要求下列層級：
+
+- 讀取：`read_only`。
+- 回覆、送出媒體、貼標與加註：`reply_only`。
+- 修改、關閉與轉接對話；修改、刪除、指派、解決、關閉、重啟、升級工單，連結對話到工單，記錄滿意度：`full`。
+
+層級不足時，系統 SHALL 回 HTTP 403，錯誤碼為 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`，MUST NOT 執行操作。群發不受渠道存取層級限制，由權限碼 `marketing.broadcast` 控管，但群發的渠道 MUST 是可見渠道。
+
+#### Scenario: 多個來源取最高層級
+- **WHEN** 成員直接綁定渠道 CH-A 的層級是 `read_only`，所屬團隊對 CH-A 的層級是 `full`
+- **THEN** 該成員對 CH-A 的層級是 `full`
+
+#### Scenario: 唯讀成員不能回覆
+- **WHEN** 成員對 CH-A 的層級是 `read_only`，對 CH-A 的對話送出回覆
+- **THEN** 系統回 HTTP 403，錯誤碼為 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`，不送出訊息
+
+#### Scenario: 回覆層級不能關閉對話
+- **WHEN** 成員對 CH-A 的層級是 `reply_only`，關閉 CH-A 的對話
+- **THEN** 系統回 HTTP 403，錯誤碼為 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`，對話狀態不變
+
+#### Scenario: 群發不檢查渠道層級
+- **WHEN** 成員有 `marketing.broadcast`，對 CH-A 的層級是 `read_only`，透過 CH-A 送出群發
+- **THEN** 系統不因渠道層級拒絕這次群發
+
+## ADDED Requirements
+
+### Requirement: 聯絡人依渠道身份判斷可見
+
+沒有 `channel.view_all` 的成員，在聯絡人有任一渠道身份屬於可見渠道，或聯絡人沒有任何渠道身份（例如客服手動建立）時，SHALL 看得到該聯絡人。聯絡人的渠道身份都在不可見渠道時，成員 MUST NOT 看到該聯絡人。看得到的聯絡人，回傳的渠道身份 SHALL 只含可見渠道的身份。
+
+#### Scenario: 跨渠道聯絡人只列出可見渠道的身份
+- **WHEN** 成員的可見渠道集合為 {CH-A}，讀取在 CH-A 與 CH-B 都有身份的聯絡人
+- **THEN** 系統回傳該聯絡人，`channelIdentities` 只含 CH-A 的身份
+
+#### Scenario: 沒有渠道身份的聯絡人
+- **WHEN** 成員的可見渠道集合為 {CH-A}，讀取沒有任何渠道身份的聯絡人
+- **THEN** 系統回傳該聯絡人
+
+### Requirement: 單筆對話與工單只回傳可見渠道的身份
+
+成員讀取單筆對話或工單時，回傳的 `contact.channelIdentities` SHALL 只含可見渠道的身份。對話與工單本身的渠道一定可見，其他渠道的身份 MUST NOT 出現。
+
+#### Scenario: 對話的聯絡人身份
+- **WHEN** 成員的可見渠道集合為 {CH-A}，讀取 CH-A 的對話，對話的聯絡人在 CH-B 也有身份
+- **THEN** 回傳的 `contact.channelIdentities` 只含 CH-A 的身份，不含 CH-B 身份的 uid 與暱稱
+
+#### Scenario: 工單的聯絡人身份
+- **WHEN** 成員的可見渠道集合為 {CH-A}，讀取關聯 CH-A 的工單，工單的聯絡人在 CH-B 也有身份
+- **THEN** 回傳的 `contact.channelIdentities` 只含 CH-A 的身份
+
+### Requirement: 群發只能使用可見渠道
+
+成員建立群發或預估群發受眾時，指定的渠道 MUST 是可見渠道，否則系統 SHALL 回 HTTP 404，MUST NOT 建立群發，也 MUST NOT 回傳人數。預覽分眾人數時，系統 SHALL 只計入成員看得到的聯絡人。
+
+#### Scenario: 用不可見渠道建立群發被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，以 CH-B 建立群發
+- **THEN** 系統回 HTTP 404，不建立群發
+
+#### Scenario: 預估不可見渠道的受眾被拒
+- **WHEN** 成員的可見渠道集合為 {CH-A}，以 CH-B 預估群發受眾
+- **THEN** 系統回 HTTP 404，不回傳人數
+
+#### Scenario: 分眾預覽只算看得到的聯絡人
+- **WHEN** 成員的可見渠道集合為 {CH-A}，分眾條件符合 CH-A 的聯絡人 2 位、只在 CH-B 的聯絡人 3 位
+- **THEN** 預覽人數是 2
+
+### Requirement: 報表只統計可見渠道
+
+沒有 `channel.view_all` 的成員讀取或匯出報表時，系統 SHALL 只統計可見渠道的資料：訊息與對話依對話的渠道，工單依工單的渠道，聯絡人與標籤依「聯絡人依渠道身份判斷可見」，客服績效只計入可見渠道的工單。REST、CLI 與 MCP 的報表 SHALL 使用同一個判斷。優惠券成效不依渠道過濾，因為優惠券不屬於任何渠道；個人數據只含成員自己的工單，也不另外過濾。
+
+#### Scenario: 總覽只算可見渠道
+- **WHEN** 成員的可見渠道集合為 {CH-A}，期間內 CH-A 有 3 則訊息、2 張新工單，CH-B 有 5 則訊息、4 張新工單
+- **THEN** 總覽的訊息數是 3，新工單數是 2
+
+#### Scenario: 渠道報表不列出不可見渠道
+- **WHEN** 成員的可見渠道集合為 {CH-A}，CH-A 是 LINE、CH-B 是 FB，兩者期間內都有訊息
+- **THEN** 渠道報表的訊息分布不含 FB
+
+#### Scenario: 總店看全部
+- **WHEN** 成員有 `channel.view_all`，讀取總覽
+- **THEN** 訊息數與工單數包含所有渠道

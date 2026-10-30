@@ -150,7 +150,9 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 `GET /marketing/templates` 在同一個 plugin 內，因此收件匣插入範本也需要 `marketing.view`。沒有這個權限的客服在收件匣載入不到範本。
 
-群發選擇渠道時不套用渠道可見範圍，有 `marketing.broadcast` 的成員可以用租戶內任何渠道發送。這是刻意的設計：主規格 `channel-scoped-visibility` 的「存取層級」規定群發不受渠道存取層級限制（issue #217）。
+群發的渠道必須在成員的可見範圍內：群發列表只列可見渠道的群發；以 ID 讀取、查看收件人、送出或取消不可見渠道的群發回 404；建立群發與預估受眾時指定不可見的渠道也回 404。分群預覽只算成員看得到的聯絡人。MCP 的群發工具用同一個判斷。群發不檢查渠道存取層級：唯讀渠道的成員只要有 `marketing.broadcast` 就能送出（issue #217）。主規格 `channel-scoped-visibility` 的「群發只能使用可見渠道」。
+
+分群列表上的 `contactCount` 是儲存分群當下的全租戶人數，不依可見範圍重算。
 
 ## 目前的限制
 

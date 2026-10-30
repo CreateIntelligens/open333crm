@@ -45,7 +45,8 @@ async function makeRole(tenantId: string) {
       slug: `${MARK}-analyst`,
       name: 'analyst',
       permissions: {
-        create: ['analytics.view', 'analytics.view.self', 'analytics.export'].map((permissionCode) => ({ permissionCode })),
+        // channel.view_all：這組測試看全租戶的數字；分店只看可見渠道的情境見 analytics-channel-visibility.test.ts
+        create: ['analytics.view', 'analytics.view.self', 'analytics.export', 'channel.view_all'].map((permissionCode) => ({ permissionCode })),
       },
     },
   });

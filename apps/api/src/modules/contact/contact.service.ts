@@ -93,8 +93,10 @@ export async function listContacts(
   }
 
   // 列出的渠道身份只含可見渠道（CM-173）：否則分店帳號會看到其他分店渠道的名稱與 uid。
-  // 聯絡人本身是否該被列出屬 tasks 9.3.9，這裡只收掉身份明細。
+  // 聯絡人本身依 visibleContactWhere() 過濾：只在其他渠道有身份的聯絡人不列出。
   const visibleChannelId = channelIdWhereFilter(accessibleChannels);
+  const visibleWhere = visibleContactWhere(accessibleChannels);
+  if (visibleWhere) where.AND = [visibleWhere];
   const includedIdentityWhere = combineIdentityInclude(channelIdentityWhere, visibleChannelId);
 
   const [contacts, total] = await Promise.all([
@@ -174,18 +176,47 @@ export async function getContact(
     },
   });
 
-  if (!contact) {
+  if (!contact || !(await isContactVisible(ctx, id, accessibleChannels))) {
     throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
   }
 
   return contact;
 }
 
-/** 聯絡人在可見渠道有身分、或沒有任何渠道身分（客服手動建立）時視為看得到 */
+/**
+ * 聯絡人在可見渠道有身分、或沒有任何渠道身分（客服手動建立）時視為看得到
+ * （channel-scoped-visibility「聯絡人依渠道身份判斷可見」）。ALL_CHANNELS 回 undefined，不加條件。
+ */
+export function visibleContactWhere(accessibleChannels: AccessibleChannels): Prisma.ContactWhereInput | undefined {
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  if (!channelId) return undefined;
+  return { OR: [{ channelIdentities: { some: { channelId } } }, { channelIdentities: { none: {} } }] };
+}
+
+/** 規則同 visibleContactWhere()；不存在的聯絡人回 true，讓呼叫端照原本的流程回 404 */
 async function isContactVisible(ctx: TenantCtx, contactId: string, accessibleChannels: AccessibleChannels): Promise<boolean> {
   if (accessibleChannels === ALL_CHANNELS) return true;
-  const identities = await ctx.tx.channelIdentity.findMany({ where: { contactId }, select: { channelId: true } });
+  const identities = await ctx.tx.channelIdentity.findMany({
+    where: { contactId, contact: { tenantId: ctx.tenantId } },
+    select: { channelId: true },
+  });
   return identities.length === 0 || identities.some((i) => accessibleChannels.has(i.channelId));
+}
+
+/**
+ * 以 ID 讀取或操作聯絡人之前的檢查：任一位看不到就回 404，與聯絡人不存在相同，
+ * 不透露這位聯絡人在其他渠道存在（channel-scoped-visibility「單筆讀取與操作的存取檢查」）。
+ */
+export async function assertContactsVisible(
+  ctx: TenantCtx,
+  contactIds: string[],
+  accessibleChannels: AccessibleChannels,
+): Promise<void> {
+  for (const id of contactIds) {
+    if (!(await isContactVisible(ctx, id, accessibleChannels))) {
+      throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
+    }
+  }
 }
 
 export async function updateContact(

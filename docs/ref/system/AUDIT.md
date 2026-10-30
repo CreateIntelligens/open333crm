@@ -55,7 +55,7 @@
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 執行時確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人（含權杖失效通知）與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色；持 `agent.manage` 的非管理員可以建立列舉為 `ADMIN` 的成員 | 執行時確認 |
-| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、聯絡人清單與合併、`GET /cases/stats` 沒有套用；報表與匯出、工單與對話詳情的渠道身分、資料匯出與刪除、新訊息通知也沒有套用（2026-10-30 健檢）；聯絡人的對話、工單、時間軸（`481452a`）、AI 輔助端點、`POST /cases`（#281）與 `POST /cases/from-conversation/:id` 已修正 | 執行時確認 |
+| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、`GET /cases/stats`、資料匯出與刪除、新訊息通知沒有套用；聯絡人的對話、工單、時間軸（`481452a`）、AI 輔助端點、`POST /cases`（#281）、`POST /cases/from-conversation/:id`，以及聯絡人清單與合併、報表與匯出、工單與對話詳情（#430）已修正 | 執行時確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
 | [RBAC-07](#rbac-07) | 租戶隔離與權限 | P1 | 未處理 | 單筆渠道的讀取、修改、停用、換憑證、刪除都不檢查渠道可見範圍，分店成員知道渠道 ID 就能操作看不到的渠道 | 執行時確認 |
 | [RBAC-08](#rbac-08) | 租戶隔離與權限 | P1 | 未處理 | 改成員角色不比較目標的權限，也沒有最後一位管理員保護：主管可以把唯一的管理員降級，之後無人能改回 | 執行時確認 |
@@ -157,7 +157,6 @@
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 部分修正 | 群發失敗後重試，逐人送出的群發會對全部對象重送；連按兩次與排程重疊已擋下 | 靜態確認 |
 | [MKT-02](#mkt-02) | 聯絡人、行銷與報表 | P1 | 未處理 | 沒有 `marketing.broadcast` 的成員，建立帶排程時間的群發，到期照樣送出 | 執行時確認 |
 | [MKT-03](#mkt-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 執行時確認 |
-| [MKT-04](#mkt-04) | 聯絡人、行銷與報表 | P1 | 未處理 | 群發不套用渠道可見範圍，分店帳號可以對看不到的渠道預估人數、建立並送出群發 | 執行時確認 |
 | [MKT-05](#mkt-05) | 聯絡人、行銷與報表 | P2 | 未處理 | 分群的「建立日期」條件以 UTC 午夜切日，台灣 00:00–07:59 建立的聯絡人算到前一天 | 執行時確認 |
 | [MKT-06](#mkt-06) | 聯絡人、行銷與報表 | P2 | 未處理 | 群發的素材選單要 200 筆但後端上限 100，分群下拉只拿第一頁 50 筆 | 執行時確認 |
 | [MKT-07](#mkt-07) | 聯絡人、行銷與報表 | P2 | 未處理 | 刪除分群不檢查是否被排程群發引用，群發到期失敗時的原因看不出是分群被刪 | 執行時確認 |
@@ -443,27 +442,24 @@ CLI token 的停用問題另見 AUTH-02。
 | 路徑 | 沒有套用的結果 |
 | --- | --- |
 | `plugins/socket.plugin.ts` 在連線時讓每條 socket 自動加入 `tenant:<租戶 ID>` | `conversation.service.ts` 的 `sendMessage()` 與 `webhook/inbound-socket-presenter.ts` 的 `emitToConversationAndTenant()` 都把含訊息內容的 `message.new` 發到租戶房間。受限的客服即時收到所有渠道的訊息 |
-| `contact.routes.ts` 的清單、詳情與合併 | 清單與詳情只過濾回傳的渠道身分，聯絡人本身照樣列出：其他渠道的聯絡人的姓名、電話、email 都看得到。`/merge-preview` 與 `/merge` 不檢查兩個聯絡人的渠道 |
 | `case.routes.ts` 的 `GET /stats` | 統計全租戶的工單 |
-| `analytics.routes.ts` 的全部報表與匯出、CLI 報表 | 統計全租戶。「SLA 違規案件」回傳整筆工單（標題、描述、`csatComment`、聯絡人名稱），工單匯出列出期間內全部工單的標題與聯絡人名稱。只有 `analytics.view`、沒有 `case.view`、`contact.view` 的成員也拿得到（HC-ANALYTICS-03） |
-| `GET /cases/:id` | 回傳聯絡人的全部渠道身分（uid、暱稱），`conversations` 也列出看不到的渠道的對話（HC-CASES-08） |
-| `GET /conversations/:id` | 回傳聯絡人的全部渠道身分（HC-INBOX-05） |
-| `PATCH /contacts/:id` 的回應、`/merge-preview` | 回傳雙方的全部渠道身分；`GET /contacts/:id` 已過濾（HC-CONTACTS-10） |
 | 資料匯出（`data-export.handler.ts`） | 只以 `tenantId` 篩選。持 `data.export` 的成員即使沒有任何渠道授權、沒有 `inbox.view` 與 `case.view`，也能匯出全租戶的聯絡人（含各渠道 uid）、對話、訊息與工單（HC-GOVERNANCE-02） |
 | 資料刪除（`data-erasure.service.ts`） | 持 `data.erase` 但看不到某渠道的成員，可以匿名化或硬刪除只在那個渠道出現的聯絡人（HC-GOVERNANCE-05） |
 | `notification.worker.ts` 的未指派對話新訊息通知 | 通知所有 `ADMIN`、`SUPERVISOR`，不看渠道。只看得到分店渠道的主管仍收到其他渠道客人的名稱，點進去是 404（HC-NOTIFICATIONS-01） |
 
 第一項影響最大：只要受限客服的畫面連著 socket，渠道可見範圍在即時事件上等於不存在。2026-10-30 功能健檢實測重現：沒有任何渠道授權的成員訂閱對話房間被拒，但仍從租戶房間收到 WebChat 的 `message.new`，含訊息全文（[INBOX 健檢](../features/health/INBOX.md)）。
 
-**2026-10-30 功能健檢新增的路徑。** 上表 `GET /stats` 之後的七列都是健檢實測發現的。影響較大或修法不同的另列一項：單筆渠道的路由（RBAC-07，P1）、群發（MKT-04，P1）、連結對話到工單（CASE-06）、指派給看不到渠道的成員（CONV-06）。**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-03（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-08（[CASES 健檢](../features/health/CASES.md)）、HC-INBOX-05（[INBOX 健檢](../features/health/INBOX.md)）、HC-CONTACTS-10（[CONTACTS 健檢](../features/health/CONTACTS.md)）、HC-GOVERNANCE-02（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-05（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-NOTIFICATIONS-01（[NOTIFICATIONS 健檢](../features/health/NOTIFICATIONS.md)）。證據：各報告以只綁一個渠道或沒有渠道授權的自訂角色實測，例如 `apps/api/src/modules/analytics/analytics.service.ts:282-294`、`apps/api/src/modules/case/case.service.ts:150-157`、`apps/api/src/modules/conversation/conversation.service.ts:184-206`、`apps/api/src/modules/contact/contact.service.ts:236-244`、`apps/workers/src/handlers/data-export.handler.ts:56-112`、`apps/api/src/modules/data-erasure/data-erasure.service.ts:45-56`、`apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236`。
+**2026-10-30 功能健檢新增的路徑。** 健檢實測發現七條路徑；報表與匯出（HC-ANALYTICS-03）、工單詳情（HC-CASES-08）、對話詳情（HC-INBOX-05）、聯絡人修改與合併預覽（HC-CONTACTS-10）已由 #430 修正並從上表移除，上表 `GET /stats` 之後剩下的三列是其餘的健檢發現。影響較大或修法不同的另列一項：單筆渠道的路由（RBAC-07，P1）、連結對話到工單（CASE-06）、指派給看不到渠道的成員（CONV-06）；群發（原 MKT-04，P1）已由 #430 修正並移除。**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-03（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-08（[CASES 健檢](../features/health/CASES.md)）、HC-INBOX-05（[INBOX 健檢](../features/health/INBOX.md)）、HC-CONTACTS-10（[CONTACTS 健檢](../features/health/CONTACTS.md)）、HC-GOVERNANCE-02（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-05（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-NOTIFICATIONS-01（[NOTIFICATIONS 健檢](../features/health/NOTIFICATIONS.md)）。證據：各報告以只綁一個渠道或沒有渠道授權的自訂角色實測，例如 `apps/api/src/modules/analytics/analytics.service.ts:282-294`、`apps/api/src/modules/case/case.service.ts:150-157`、`apps/api/src/modules/conversation/conversation.service.ts:184-206`、`apps/api/src/modules/contact/contact.service.ts:236-244`、`apps/workers/src/handlers/data-export.handler.ts:56-112`、`apps/api/src/modules/data-erasure/data-erasure.service.ts:45-56`、`apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236`。
 
 **規格依據。** 主規格 `channel-scoped-visibility` 的「與即時推播一致」，現況沒有做到：
 
 - 「與即時推播一致」：不可見渠道的訊息事件 MUST NOT 送達成員，包括送到租戶房間的事件。第一項違反這條需求。
 
-聯絡人與 `GET /cases/stats` 不在這份規格的範圍內：規格只規定對話與工單的列表、單筆讀取與操作。
+`GET /cases/stats` 不在這份規格的範圍內。
 
 **部分修正。** `481452a`（#185，2026-09-30）讓聯絡人的 `/:id/conversations`、`/:id/cases`、`/:id/timeline` 依可見範圍過濾，清單與詳情也只回傳可見渠道的身分。聯絡人本身要不要依渠道過濾，`add-cross-channel-one-id` 的任務 9.3.9 記為「跨渠道聯絡人的歸屬規則需另行設計」。
+
+2026-10-30，change `extend-channel-visibility-to-contacts-and-marketing`（issue #253）讓聯絡人本身依渠道過濾：只在不可見渠道有身分的聯絡人不出現在清單，以 ID 讀取、修改、貼標與合併都回 404；單筆對話與工單的 `contact.channelIdentities` 只含可見渠道；群發與報表（含 CLI、MCP）只限可見渠道。主規格 `channel-scoped-visibility` 同時延伸到聯絡人、群發與報表。
 
 2026-10-15，#281（`ee79c5ae`）讓 `POST /cases` 以 `assertChannelVisible(…, 'full')` 檢查指定的渠道，看不到的渠道回 404。2026-10-16，`POST /cases/from-conversation/:conversationId` 改為和 `POST /conversations/:id/case` 一樣，先以 `assertConversationChannelVisible(…, 'full')` 檢查對話的渠道；修正前看不到該渠道的成員只要知道對話 ID，就能替那則對話建立工單並連結。
 
@@ -2081,15 +2077,6 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 `marketing.service.ts` 的 `assertBroadcastCoupon()` 只檢查券的狀態，不檢查操作者有沒有 `coupon.issue`。沒有任何優惠券權限的成員可以建立並送出附券群發。前端附券選單因 `GET /coupons` 403 顯示載入失敗，但 API 照收。`audience-preview` 也把券的剩餘名額回給沒有 `coupon.view` 的成員。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-02（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`apps/api/src/modules/marketing/marketing.service.ts:227-228`、`marketing.routes.ts:290-294`；沒有 `coupon.view`、`coupon.issue` 的成員帶 `couponId` 建立群發 201、送出 202，結果發券 3 張（健檢實測）。
-
-<a id="mkt-04"></a>
-### MKT-04：群發不套用渠道可見範圍
-
-行銷模組沒有任何 `assertChannelVisible()` 呼叫（批次發券有）。成員可以對看不到的渠道預估人數、建立群發，排程後由排程器送出；群發列表也列出所有渠道的群發。其他沒有套用可見範圍的路徑見 RBAC-04、RBAC-07。
-
-**規格依據。** 主規格 `channel-visibility-defaults` 的「Unbound Channel Is Not Visible」規定沒有綁定的渠道不可見。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-03（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`apps/api/src/modules/marketing/marketing.service.ts:205-341`、`marketing.routes.ts:263-294`；只綁 WebChat 的成員對「健檢 FB」呼叫 `audience-preview` 回 200（matched 1）、建立群發 201（健檢實測）。
 
 <a id="mkt-05"></a>
 ### MKT-05：分群的建立日期條件以 UTC 切日

@@ -12,6 +12,7 @@ import type { RequestActor } from '../../lib/request-actor.js';
 import { notifyTenant } from '../../events/socket-push.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import {
+  assertContactsVisible,
   getContact,
   getContactCases,
   getContactConversations,
@@ -28,6 +29,7 @@ export interface ContactFlowDeps {
   io: Server;
 }
 
+export const assertContactsVisibleFlow = flowOf(assertContactsVisible);
 export const listContactsFlow = flowOf(listContacts);
 export const getContactFlow = flowOf(getContact);
 export const updateContactFlow = flowOf(updateContact);

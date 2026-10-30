@@ -2,6 +2,8 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { ALL_CHANNELS, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { visibleContactWhere } from '../contact/contact.service.js';
 
 export interface SegmentRules {
   conditions: Array<{
@@ -83,7 +85,7 @@ export async function createSegment(
 ) {
   assertSegmentRulesHaveValues(data.rules);
   // Calculate initial contact count
-  const { contactIds } = await calculateSegmentContacts(prisma, tenantId, data.rules);
+  const { contactIds } = await calculateSegmentContacts(prisma, tenantId, data.rules, ALL_CHANNELS);
 
   const segment = await prisma.segment.create({
     data: {
@@ -117,7 +119,7 @@ export async function updateSegment(
   if (data.rules !== undefined) {
     updateData.rules = data.rules;
     updateData.conditions = data.rules.conditions;
-    const { contactIds } = await calculateSegmentContacts(prisma, tenantId, data.rules);
+    const { contactIds } = await calculateSegmentContacts(prisma, tenantId, data.rules, ALL_CHANNELS);
     updateData.contactCount = contactIds.length;
   }
 
@@ -150,6 +152,11 @@ export async function calculateSegmentContacts(
   prisma: TenantDb,
   tenantId: string,
   rules: SegmentRules,
+  /**
+   * 只算成員看得到的聯絡人（channel-scoped-visibility「群發只能使用可見渠道」）。
+   * 後台預覽傳成員的可見渠道；儲存分眾與發送時解析受眾傳 ALL_CHANNELS。必填，避免新呼叫端漏傳。
+   */
+  accessibleChannels: AccessibleChannels,
 ): Promise<{ count: number; contactIds: string[] }> {
   const { logic } = rules;
   const conditions = effectiveSegmentConditions(rules);
@@ -196,6 +203,8 @@ export async function calculateSegmentContacts(
   } else {
     where.AND = filters;
   }
+  const visibleWhere = visibleContactWhere(accessibleChannels);
+  if (visibleWhere) where.AND = [...(where.AND ?? []), visibleWhere];
 
   const contacts = await prisma.contact.findMany({
     where,

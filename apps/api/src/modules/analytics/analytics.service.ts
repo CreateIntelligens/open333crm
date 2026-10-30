@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { visibleContactWhere } from '../contact/contact.service.js';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -20,12 +22,41 @@ function groupByClause(groupBy: string) {
   }
 }
 
+/*
+ * 渠道可見範圍（channel-scoped-visibility「報表只統計可見渠道」）：每個報表收成員的可見渠道，
+ * 總店（ALL_CHANNELS）不加條件；空集合等於什麼都看不到。
+ */
+
+/** `AND <column> = ANY(可見渠道)`；總店回空片段 */
+function channelSql(accessible: AccessibleChannels, column: string) {
+  const ids = channelIdWhereFilter(accessible);
+  return ids ? Prisma.sql`AND ${Prisma.raw(column)} = ANY(${ids.in}::uuid[])` : Prisma.empty;
+}
+
+/** 聯絡人可見：有可見渠道的身份，或沒有任何渠道身份（同 contact.service 的 visibleContactWhere） */
+function contactSql(accessible: AccessibleChannels, contactIdColumn: string) {
+  const ids = channelIdWhereFilter(accessible);
+  if (!ids) return Prisma.empty;
+  const col = Prisma.raw(contactIdColumn);
+  return Prisma.sql`AND (
+    EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${col} AND vci."channelId" = ANY(${ids.in}::uuid[]))
+    OR NOT EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${col})
+  )`;
+}
+
+/** Prisma where 的工單渠道條件；總店回空物件 */
+function caseChannelWhere(accessible: AccessibleChannels): Prisma.CaseWhereInput {
+  const ids = channelIdWhereFilter(accessible);
+  return ids ? { channelId: ids } : {};
+}
+
 /* -------------------------------------------------------------------------- */
 /*  2a. Overview Stats                                                         */
 /* -------------------------------------------------------------------------- */
 
 export async function getOverviewStats(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   from: Date,
   to: Date,
 ) {
@@ -42,6 +73,7 @@ export async function getOverviewStats(
     WHERE c."tenantId" = ${ctx.tenantId}::uuid
       AND m."createdAt" >= ${from}
       AND m."createdAt" <= ${to}
+      ${channelSql(accessible, 'c."channelId"')}
   `;
 
   const msg = messageStats[0] || { total: 0n, inbound: 0n, outbound: 0n };
@@ -51,6 +83,7 @@ export async function getOverviewStats(
     where: {
       tenantId: ctx.tenantId,
       status: { in: ['OPEN', 'IN_PROGRESS', 'PENDING', 'ESCALATED'] },
+      ...caseChannelWhere(accessible),
     },
   });
 
@@ -59,6 +92,7 @@ export async function getOverviewStats(
     where: {
       tenantId: ctx.tenantId,
       createdAt: { gte: from, lte: to },
+      ...caseChannelWhere(accessible),
     },
   });
 
@@ -67,6 +101,7 @@ export async function getOverviewStats(
     where: {
       tenantId: ctx.tenantId,
       resolvedAt: { gte: from, lte: to, not: null },
+      ...caseChannelWhere(accessible),
     },
   });
 
@@ -79,6 +114,7 @@ export async function getOverviewStats(
       COUNT(*) FILTER (WHERE "resolvedAt" <= "slaDueAt")::bigint AS achieved
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "resolvedAt" IS NOT NULL
       AND "slaDueAt" IS NOT NULL
       AND "resolvedAt" >= ${from}
@@ -101,6 +137,7 @@ export async function getOverviewStats(
         FILTER (WHERE "resolvedAt" IS NOT NULL) AS avg_resolution
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
   `;
@@ -116,6 +153,7 @@ export async function getOverviewStats(
       COUNT(*) FILTER (WHERE "csatScore" >= 4)::bigint AS positive
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "csatScore" IS NOT NULL
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
@@ -150,6 +188,7 @@ export async function getOverviewStats(
 
 export async function getMessageTrend(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   from: Date,
   to: Date,
   groupBy: string = 'day',
@@ -168,6 +207,7 @@ export async function getMessageTrend(
     WHERE c."tenantId" = ${ctx.tenantId}::uuid
       AND m."createdAt" >= ${from}
       AND m."createdAt" <= ${to}
+      ${channelSql(accessible, 'c."channelId"')}
     GROUP BY 1, 2
     ORDER BY 1
   `;
@@ -197,6 +237,7 @@ export async function getMessageTrend(
 
 export async function getCaseStats(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   from: Date,
   to: Date,
 ) {
@@ -210,6 +251,7 @@ export async function getCaseStats(
       COUNT(*) FILTER (WHERE "resolvedAt" IS NOT NULL)::bigint AS closed
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -229,6 +271,7 @@ export async function getCaseStats(
     SELECT COALESCE(category, '未分類') AS category, COUNT(*)::bigint AS count
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -247,6 +290,7 @@ export async function getCaseStats(
     SELECT priority, COUNT(*)::bigint AS count
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -264,6 +308,7 @@ export async function getCaseStats(
     SELECT status, COUNT(*)::bigint AS count
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -280,6 +325,7 @@ export async function getCaseStats(
       tenantId: ctx.tenantId,
       status: { notIn: ['CLOSED', 'RESOLVED'] },
       slaDueAt: { lt: new Date() },
+      ...caseChannelWhere(accessible),
     },
     include: {
       assignee: { select: { id: true, name: true } },
@@ -291,10 +337,10 @@ export async function getCaseStats(
 
   // Escalation rate
   const totalInRange = await ctx.tx.case.count({
-    where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to } },
+    where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to }, ...caseChannelWhere(accessible) },
   });
   const escalatedInRange = await ctx.tx.case.count({
-    where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to }, status: 'ESCALATED' },
+    where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to }, status: 'ESCALATED', ...caseChannelWhere(accessible) },
   });
   const escalationRate =
     totalInRange > 0
@@ -317,6 +363,7 @@ export async function getCaseStats(
 
 export async function getAgentPerformance(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   from: Date,
   to: Date,
   agentId?: string,
@@ -354,6 +401,7 @@ export async function getAgentPerformance(
     LEFT JOIN cases c ON c."assigneeId" = a.id
       AND c."createdAt" >= ${from}
       AND c."createdAt" <= ${to}
+      ${channelSql(accessible, 'c."channelId"')}
     WHERE a."tenantId" = ${ctx.tenantId}::uuid
       AND a."isActive" = true
       ${agentFilter}
@@ -387,6 +435,7 @@ export async function getAgentPerformance(
 
 export async function getChannelAnalytics(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   from: Date,
   to: Date,
 ) {
@@ -400,6 +449,7 @@ export async function getChannelAnalytics(
     WHERE c."tenantId" = ${ctx.tenantId}::uuid
       AND m."createdAt" >= ${from}
       AND m."createdAt" <= ${to}
+      ${channelSql(accessible, 'c."channelId"')}
     GROUP BY 1
   `;
 
@@ -415,6 +465,7 @@ export async function getChannelAnalytics(
     SELECT "channelType" AS channel_type, COUNT(*)::bigint AS count
     FROM conversations
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -432,6 +483,7 @@ export async function getChannelAnalytics(
     SELECT status, COUNT(*)::bigint AS count
     FROM conversations
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
       AND status IN ('BOT_HANDLED', 'AGENT_HANDLED')
@@ -451,6 +503,7 @@ export async function getChannelAnalytics(
     FROM channel_identities ci
     JOIN contacts c ON c.id = ci."contactId"
     WHERE c."tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, 'ci."channelId"')}
       AND ci."linkedAt" >= ${from}
       AND ci."linkedAt" <= ${to}
     GROUP BY 1
@@ -475,6 +528,7 @@ export async function getChannelAnalytics(
 
 export async function getContactAnalytics(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   from: Date,
   to: Date,
 ) {
@@ -485,6 +539,7 @@ export async function getContactAnalytics(
     SELECT date_trunc('day', "createdAt") AS date, COUNT(*)::bigint AS count
     FROM contacts
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${contactSql(accessible, 'contacts.id')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
     GROUP BY 1
@@ -501,6 +556,7 @@ export async function getContactAnalytics(
     SELECT COUNT(DISTINCT "contactId")::bigint AS count
     FROM conversations
     WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${channelSql(accessible, '"channelId"')}
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
   `;
@@ -515,6 +571,7 @@ export async function getContactAnalytics(
     FROM contact_tags ct
     JOIN tags t ON t.id = ct."tagId"
     WHERE t."tenantId" = ${ctx.tenantId}::uuid
+      ${contactSql(accessible, 'ct."contactId"')}
     GROUP BY t.name
     ORDER BY count DESC
     LIMIT 10
@@ -530,6 +587,7 @@ export async function getContactAnalytics(
     where: {
       tenantId: ctx.tenantId,
       createdAt: { gte: from, lte: to },
+      ...visibleContactWhere(accessible),
     },
   });
 
@@ -554,7 +612,8 @@ export async function getMyPerformance(
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
   const [agents] = await Promise.all([
-    getAgentPerformance(ctx, startOfMonth, endOfMonth, agentId),
+    // 個人數據只含自己的工單，不另依渠道過濾
+    getAgentPerformance(ctx, ALL_CHANNELS, startOfMonth, endOfMonth, agentId),
   ]);
 
   const myStats = agents[0] || {
@@ -603,11 +662,12 @@ export async function getMyPerformance(
 /* -------------------------------------------------------------------------- */
 
 /** 期間內送出問卷的工單。讀出全部工單後在這裡計算，資料量大時會變慢（AUDIT ANA-02） */
-export async function getCsatReport(ctx: TenantCtx, from: Date, to: Date) {
+export async function getCsatReport(ctx: TenantCtx, accessible: AccessibleChannels, from: Date, to: Date) {
   const cases = await ctx.tx.case.findMany({
     where: {
       tenantId: ctx.tenantId,
       csatSentAt: { gte: from, lte: to },
+      ...caseChannelWhere(accessible),
     },
     select: {
       csatScore: true,
@@ -652,22 +712,24 @@ const UTF8_BOM = '\uFEFF';
 
 export async function exportCsv(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   reportType: string,
   from: Date,
   to: Date,
 ): Promise<string> {
-  return UTF8_BOM + (await buildCsv(ctx, reportType, from, to));
+  return UTF8_BOM + (await buildCsv(ctx, accessible, reportType, from, to));
 }
 
 async function buildCsv(
   ctx: TenantCtx,
+  accessible: AccessibleChannels,
   reportType: string,
   from: Date,
   to: Date,
 ): Promise<string> {
   switch (reportType) {
     case 'overview': {
-      const data = await getOverviewStats(ctx, from, to);
+      const data = await getOverviewStats(ctx, accessible, from, to);
       const headers = Object.keys(data).join(',');
       const values = Object.values(data)
         .map((v) => (v === null ? '' : String(v)))
@@ -677,7 +739,7 @@ async function buildCsv(
 
     case 'cases': {
       const cases = await ctx.tx.case.findMany({
-        where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to } },
+        where: { tenantId: ctx.tenantId, createdAt: { gte: from, lte: to }, ...caseChannelWhere(accessible) },
         include: {
           assignee: { select: { name: true } },
           contact: { select: { displayName: true } },
@@ -703,7 +765,7 @@ async function buildCsv(
     }
 
     case 'agents': {
-      const agents = await getAgentPerformance(ctx, from, to);
+      const agents = await getAgentPerformance(ctx, accessible, from, to);
       const headers = '客服ID,姓名,角色,處理案件數,已解決,平均首次回應(分),平均解決時間(分),CSAT,SLA達成率(%)';
       const rows = agents.map((a) =>
         [
@@ -722,7 +784,7 @@ async function buildCsv(
     }
 
     case 'channels': {
-      const data = await getChannelAnalytics(ctx, from, to);
+      const data = await getChannelAnalytics(ctx, accessible, from, to);
       const headers = '渠道,訊息數,對話數';
       const channelMap = new Map<string, { msgs: number; convs: number }>();
       for (const m of data.messagesByChannel) {

@@ -20,6 +20,7 @@ import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
+import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 // --- Broadcast audience ---
 
@@ -115,12 +116,16 @@ export async function listTemplates(
 export async function listBroadcasts(
   prisma: TenantDb,
   tenantId: string,
-  filters: { campaignId?: string; status?: string; page?: number; limit?: number } = {},
+  filters: { campaignId?: string; status?: string; page?: number; limit?: number },
+  /** 只列出可見渠道的群發（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
   const { campaignId, status, page = 1, limit = 50 } = filters;
   const where: Record<string, unknown> = { tenantId };
   if (campaignId) where.campaignId = campaignId;
   if (status) where.status = status;
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  if (channelId) where.channelId = channelId;
 
   const [broadcasts, total] = await Promise.all([
     prisma.broadcast.findMany({
@@ -932,6 +937,8 @@ export async function resolveAudience(
       prisma,
       broadcast.tenantId,
       segment!.rules as unknown as SegmentRules,
+      // 收件人另以群發渠道的身份限定；群發渠道在建立與送出時已檢查可見
+      ALL_CHANNELS,
     );
     if (contactIds.length > 0) {
       identityWhere.contactId = { in: contactIds };

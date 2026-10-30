@@ -42,13 +42,13 @@
 
 ## P1 清單
 
-沒有 P0。以下 22 個是新發現的 P1，HC-ANALYTICS-01 已在 main 修正，其餘 21 個未修（試用報告引用的 HC-PLATFORM-TENANTS-01 只算一次）。最後 4 個原列 P2，2026-10-30 經使用者決定升為 P1。「驗證」欄寫明是實際操作重現，還是只讀程式。
+沒有 P0。以下 22 個是新發現的 P1，HC-ANALYTICS-01 已在 main 修正，其餘 21 個健檢當時未修（試用報告引用的 HC-PLATFORM-TENANTS-01 只算一次）；之後修正的項目在各列的 Issue 欄註明。最後 4 個原列 P2，2026-10-30 經使用者決定升為 P1。「驗證」欄寫明是實際操作重現，還是只讀程式。
 
 | 編號 | AUDIT | Issue | 問題 | 驗證 |
 | --- | --- | --- | --- | --- |
 | HC-MARKETING-01 | [MKT-02](../../system/AUDIT.md#mkt-02) | #409 | 沒有 `marketing.broadcast` 的人，建立帶排程時間的群發，到期照樣送出 | 本機實測 |
 | HC-MARKETING-02 | [MKT-03](../../system/AUDIT.md#mkt-03) | #409 | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 本機實測（發出 3 張） |
-| HC-MARKETING-03 | [MKT-04](../../system/AUDIT.md#mkt-04) | #409 | 群發不套用渠道可見範圍，分店帳號可對看不到的渠道群發 | 本機實測 |
+| HC-MARKETING-03 | MKT-04（已修正並從 AUDIT 移除） | #409，已修正（#430） | 群發不套用渠道可見範圍，分店帳號可對看不到的渠道群發 | 本機實測；修正（#430，change `extend-channel-visibility-to-contacts-and-marketing`）以 feature 測試驗證 |
 | HC-MARKETING-04 | [CHAN-02](../../system/AUDIT.md#chan-02) | #415 | WebChat 群發與批次發券顯示成功，顧客實際收不到 | 本機實測 |
 | HC-CHANNELS-01 | [RBAC-07](../../system/AUDIT.md#rbac-07) | #408 | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
 | HC-MEMBERS-01 | [RBAC-08](../../system/AUDIT.md#rbac-08) | #413 | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式 |
