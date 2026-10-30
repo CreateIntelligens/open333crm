@@ -453,9 +453,13 @@ test('MCP 工具：總覽與工單統計，只限本租戶', async () => {
   assert.equal((await callTool(appB, 'crm_get_analytics_overview', RANGE_BODY)).totalMessages, 2);
 });
 
-test('每日彙總：把一天的總覽、工單、客服、渠道與聯絡人寫入 DailyStat，只算本租戶', async () => {
-  // 以行程時區的 2001-03-11 中午為準：UTC 與台灣時間的這一天都涵蓋 03-11 06:00～07:01Z 的資料，不涵蓋 03-12
-  await inTenant(tenantDb, A, (scope) => runDailyAggregation(scope, new Date(2001, 2, 11, 12)));
+test('每日彙總：把一天的總覽、工單、客服、渠道與聯絡人寫入 DailyStat，與同一天的報表相同，只算本租戶', async () => {
+  // 彙總以行程時區切出「一天」。傳入 D11（03-11 06:00Z），所以不論行程在哪個時區，這一天都包含 k1。
+  // 每種統計與同一段期間的報表比對，不寫死數字，結果不受行程時區影響
+  await inTenant(tenantDb, A, (scope) => runDailyAggregation(scope, D11));
+  const dayStart = new Date(D11.getFullYear(), D11.getMonth(), D11.getDate());
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const day = `from=${dayStart.toISOString()}&to=${dayEnd.toISOString()}`;
 
   const rows = await owner.dailyStat.findMany({ where: { tenantId: A } });
   const data = (statType: string, dimensionId = '') =>
@@ -469,19 +473,22 @@ test('每日彙總：把一天的總覽、工單、客服、渠道與聯絡人�
     'overview:',
   ].sort());
 
-  const overview = data('overview');
-  assert.equal(overview.totalMessages, 4);
-  assert.equal(overview.newCases, 2);
-  assert.equal(overview.openCases, 3);
-  assert.equal(data('agent', mgr.id).casesHandled, 2);
-  assert.equal(data('agent', agent2.id).casesHandled, 0);
-  assert.equal(data('contact').totalNewContacts, 1);
-  // 他租戶也有 VIP 標籤：每日彙總若不限租戶，VIP 會變成 3
+  assert.deepEqual(data('overview'), await report(appA, 'overview', day));
+  assert.deepEqual(data('case'), await report(appA, 'cases', day));
+  assert.deepEqual(data('channel'), await report(appA, 'channels', day));
+  assert.deepEqual(data('contact'), await report(appA, 'contacts', day));
+  for (const agent of await report(appA, 'agents', day)) {
+    assert.deepEqual(data('agent', agent.agentId), agent);
+  }
+
+  // 這一天確實有資料，上面的比對不是兩邊都空
+  assert.ok((data('overview').newCases as number) >= 1);
+  // 不看日期的統計：未結工單與熱門標籤。他租戶也有未結工單與 VIP 標籤，彙總若不限租戶，數字會變大
+  assert.equal(data('overview').openCases, 3);
   assert.deepEqual(data('contact').topTags, [
     { name: 'VIP', value: 2 },
     { name: '新客', value: 1 },
   ]);
-  assert.deepEqual(data('case').trend, [{ date: '2001-03-11', opened: 2, closed: 2 }]);
 
   assert.equal(await owner.dailyStat.count({ where: { tenantId: B } }), 0);
 });
