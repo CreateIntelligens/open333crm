@@ -4,11 +4,16 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { Prisma } from '@prisma/client';
-import { withTenant } from '../../lib/tenant-db.js';
+import type { EventPublisher } from '../../events/outbox-publisher.js';
 import { verifyFanToken, type FanPayload } from './portal-auth.service.js';
-import { submitActivity, getActivityResult } from './portal.service.js';
-import { getPointBalance, listPointTransactions } from './points.service.js';
+import {
+  getActivityForFanFlow,
+  getActivityResultFlow,
+  getFanPointsFlow,
+  listContactSubmissionsFlow,
+  listOpenActivitiesForFanFlow,
+  submitActivityFlow,
+} from './portal.flow.js';
 
 // Extend FastifyRequest with fan payload
 declare module 'fastify' {
@@ -33,12 +38,15 @@ async function authenticateFan(request: FastifyRequest, reply: FastifyReply) {
   request.fan = payload;
 }
 
-export default async function portalPublicRoutes(app: FastifyInstance) {
+export interface PortalPublicRoutesOptions {
+  /** 測試用：取代寫 outbox 的 publisher */
+  events?: EventPublisher;
+}
+
+export default async function portalPublicRoutes(app: FastifyInstance, opts: PortalPublicRoutesOptions = {}) {
   // 粉絲門戶是公開端點（訪客持 fanToken，非租戶客服登入）。租戶取自已驗簽的 fanToken，
-  // 每個請求以 withTenant 綁定該租戶，查詢走 RLS（不使用 BYPASSRLS 的 prismaAdmin）：
+  // flow 以該租戶開交易，查詢走 RLS（不使用 BYPASSRLS 的 prismaAdmin）：
   // 查詢條件漏帶 tenantId 時仍有 RLS 兜底（原本 getPointBalance 就漏帶，AUDIT RLS-07 的 code review）。
-  const inFanTenant = <T>(fan: FanPayload, fn: (tx: Prisma.TransactionClient) => Promise<T>) =>
-    withTenant(app.prisma, fan.tenantId, fn);
 
   // 已移除 POST /auth：舊版憑任意 {contactId, tenantId} 即簽發 fanToken，
   // 不驗證呼叫者身分（任何人都能冒充任一顧客）。fanToken 改由經平台驗證的流程
@@ -48,53 +56,16 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
 
   app.get('/activities', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fan!;
-    const now = new Date();
-    const activities = await inFanTenant(fan, (prisma) => prisma.portalActivity.findMany({
-      where: {
-        tenantId: fan.tenantId,
-        status: 'PUBLISHED',
-        OR: [
-          { startsAt: null },
-          { startsAt: { lte: now } },
-        ],
-      },
-      include: {
-        _count: { select: { submissions: true } },
-        options: { orderBy: { sortOrder: 'asc' }, select: { id: true, label: true, imageUrl: true, sortOrder: true } },
-        fields: { orderBy: { sortOrder: 'asc' } },
-      },
-      orderBy: { publishedAt: 'desc' },
-    }));
-
-    // Filter out activities that have ended
-    const filtered = activities.filter((a) => !a.endsAt || a.endsAt > now);
-
-    return { success: true, data: filtered };
+    const activities = await listOpenActivitiesForFanFlow(app, fan.tenantId);
+    return { success: true, data: activities };
   });
 
   app.get('/activities/:id', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fan!;
     const { id } = request.params as { id: string };
-    const found = await inFanTenant(fan, async (prisma) => {
-      const activity = await prisma.portalActivity.findFirst({
-        where: { id, tenantId: fan.tenantId, status: 'PUBLISHED' },
-        include: {
-          options: { orderBy: { sortOrder: 'asc' }, select: { id: true, label: true, imageUrl: true, sortOrder: true } },
-          fields: { orderBy: { sortOrder: 'asc' } },
-          _count: { select: { submissions: true } },
-        },
-      });
-      if (!activity) return null;
-      // Check if fan has already submitted
-      const mySubmission = await prisma.portalSubmission.findFirst({
-        where: { activityId: id, contactId: fan.contactId, tenantId: fan.tenantId },
-      });
-      return { activity, mySubmission };
-    });
-    if (!found) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
-    const { activity, mySubmission } = found;
-
-    return { success: true, data: { ...activity, mySubmission } };
+    const activity = await getActivityForFanFlow(app, fan.tenantId, id, fan.contactId);
+    if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
+    return { success: true, data: activity };
   });
 
   app.post('/activities/:id/submit', { preHandler: authenticateFan }, async (request, reply) => {
@@ -102,7 +73,7 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = request.body as { optionIds?: string[]; fields?: Record<string, string> };
     try {
-      const submission = await inFanTenant(fan, (prisma) => submitActivity(prisma, id, fan.contactId, fan.tenantId, body));
+      const submission = await submitActivityFlow({ prisma: app.prisma, events: opts.events }, fan, id, body);
       return { success: true, data: submission };
     } catch (err: unknown) {
       return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: (err as Error).message } });
@@ -112,28 +83,20 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
   app.get('/activities/:id/result', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fan!;
     const { id } = request.params as { id: string };
-    const result = await inFanTenant(fan, (prisma) => getActivityResult(prisma, id, fan.tenantId));
+    const result = await getActivityResultFlow(app, fan.tenantId, id);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
     return { success: true, data: result };
   });
 
   app.get('/me/activities', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fan!;
-    const submissions = await inFanTenant(fan, (prisma) => prisma.portalSubmission.findMany({
-      where: { contactId: fan.contactId, tenantId: fan.tenantId },
-      include: { activity: { select: { id: true, title: true, type: true, status: true } } },
-      orderBy: { createdAt: 'desc' },
-    }));
+    const submissions = await listContactSubmissionsFlow(app, fan.tenantId, fan.contactId);
     return { success: true, data: submissions };
   });
 
   app.get('/me/points', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fan!;
-    // 同一個交易內依序查詢（交易用戶端不支援並行查詢）；餘額查詢補上原本漏帶的 tenantId
-    const { balance, transactions } = await inFanTenant(fan, async (prisma) => ({
-      balance: await getPointBalance(prisma, fan.contactId, fan.tenantId),
-      transactions: await listPointTransactions(prisma, fan.tenantId, fan.contactId, 1, 50),
-    }));
+    const { balance, transactions } = await getFanPointsFlow(app, fan);
     return { success: true, data: { balance, transactions: transactions.items } };
   });
 }

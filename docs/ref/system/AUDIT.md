@@ -1426,7 +1426,7 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 <a id="portal-02"></a>
 ### PORTAL-02：粉絲門戶送出活動一律回 400
 
-`POST /api/v1/fan/activities/:id/submit` 以 `try/catch` 包住 `submitActivity()`，所有錯誤都回 400 `BAD_REQUEST`，`message` 是原始錯誤訊息。
+`POST /api/v1/fan/activities/:id/submit` 以 `try/catch` 包住 `submitActivityFlow()`，所有錯誤都回 400 `BAD_REQUEST`，`message` 是原始錯誤訊息。
 
 - `submitActivity()` 拋出的 `AppError` 本來帶有 404 `ACTIVITY_NOT_AVAILABLE`、409 `ACTIVITY_NOT_STARTED`、`ACTIVITY_ENDED`、`ALREADY_SUBMITTED` 等狀態碼與代碼，全部被改成 400，用戶端分不出「已經作答過」與「輸入錯誤」。
 - 非 `AppError` 的例外（例如 Prisma 錯誤）也把原始訊息回給公開用戶端，違反 `AGENTS.md` 的「Do not return raw errors」。

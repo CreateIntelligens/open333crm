@@ -133,10 +133,9 @@ async function transferPoints(
   amount?: number,
   expected?: number,
 ): Promise<number> {
-  const { tx: db, tenantId } = ctx;
   const [from, to] = await Promise.all([
-    getLatestPointEntry(db, fromId, tenantId),
-    getLatestPointEntry(db, toId, tenantId),
+    getLatestPointEntry(ctx, fromId),
+    getLatestPointEntry(ctx, toId),
   ]);
   const fromBalance = from?.balance ?? 0;
   const value = amount ?? fromBalance;
@@ -148,8 +147,8 @@ async function transferPoints(
   const note = reason === 'merge' ? '聯絡人合併：點數轉移' : `解除合併：點數轉回${partial}`;
 
   // 帳本寫入規則只在 points.service 一處（取最新餘額 + amount）
-  await addPointTransaction(db, { tenantId, contactId: fromId, amount: -value, type: `${reason}_transfer_out`, note, createdAt });
-  await addPointTransaction(db, { tenantId, contactId: toId, amount: value, type: `${reason}_transfer_in`, note, createdAt });
+  await addPointTransaction(ctx, { contactId: fromId, amount: -value, type: `${reason}_transfer_out`, note, createdAt });
+  await addPointTransaction(ctx, { contactId: toId, amount: value, type: `${reason}_transfer_in`, note, createdAt });
   return value;
 }
 
@@ -515,7 +514,7 @@ export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Prom
   if (moved.pointsTransferred && moved.pointsTransferred > 0) {
     // 把當初轉入的點數轉回；survivor 若在合併後已用掉一部分，只轉回剩餘的
     const holderId = holderChain[holderChain.length - 1];
-    const holderBalance = (await getLatestPointEntry(db, holderId, tenantId))?.balance ?? 0;
+    const holderBalance = (await getLatestPointEntry(ctx, holderId))?.balance ?? 0;
     const amount = Math.min(moved.pointsTransferred, Math.max(holderBalance, 0));
     if (amount > 0) {
       await transferPoints(ctx, holderId, log.mergedId, 'revert', amount, moved.pointsTransferred);

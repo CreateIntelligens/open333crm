@@ -2,6 +2,14 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-30]
+
+### Changed
+
+- **粉絲活動與積分改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `portal.service.ts` 與 `points.service.ts` 改收 `TenantCtx`，`/api/v1/portal` 與 `/api/v1/fan` 的路由改呼叫新的 `portal.flow.ts`。粉絲端原本在路由裡的查詢移進 `portal.service.ts`。`contact-merge.service.ts` 轉移點數時改傳 `TenantCtx`。可觀察的差異：
+  - 粉絲送出活動時，`portal.activity.submitted` 事件與作答、積分在同一個交易寫進 outbox，commit 之後才送出，至少送出一次。原本以 `eventBus.publish()` 在 commit 之前送出：交易 rollback 時事件照樣送出，行程在送出之前結束時事件遺失。事件寫不進 outbox 時，作答與積分都不留下，API 回 400。
+  - 後台的每個請求在一個交易內完成。原本每個查詢各自一個交易，例如調整積分時，讀取餘額與寫入交易紀錄分屬兩個交易。
+
 ## [2026-10-29]
 
 ### Fixed

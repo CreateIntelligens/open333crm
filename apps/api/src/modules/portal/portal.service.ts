@@ -1,20 +1,22 @@
 /**
  * Portal activity service — CRUD, submissions, draw.
+ *
+ * 每個函式收呼叫端 flow 的 TenantCtx（#337 階段 3，AGENTS.md 結構規則 2）。
+ * 送出活動的事件由 flow 寫進 outbox，見 portal.flow.ts。
  */
 
-import type { Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { eventBus } from '../../events/event-bus.js';
+import type { PortalSubmission, Prisma } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { addPointTransaction } from './points.service.js';
 import { AppError } from '../../shared/utils/response.js';
 
 // ─── Activity CRUD ──────────────────────────────────────────────────────────
 
 export async function listActivities(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   filters: { type?: string; status?: string; page?: number; limit?: number },
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const where: Record<string, unknown> = { tenantId };
   if (filters.type) where.type = filters.type;
   if (filters.status) {
@@ -28,23 +30,22 @@ export async function listActivities(
   const page = filters.page ?? 1;
   const limit = filters.limit ?? 20;
 
-  const [items, total] = await Promise.all([
-    prisma.portalActivity.findMany({
-      where,
-      include: { _count: { select: { submissions: true } } },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.portalActivity.count({ where }),
-  ]);
+  // 同一個交易內依序查詢（交易用戶端不支援並行查詢）
+  const items = await prisma.portalActivity.findMany({
+    where,
+    include: { _count: { select: { submissions: true } } },
+    orderBy: { createdAt: 'desc' },
+    skip: (page - 1) * limit,
+    take: limit,
+  });
+  const total = await prisma.portalActivity.count({ where });
 
   return { items, total, page, limit };
 }
 
-export async function getActivity(prisma: TenantDb, id: string, tenantId: string) {
-  return prisma.portalActivity.findFirst({
-    where: { id, tenantId },
+export async function getActivity(ctx: TenantCtx, id: string) {
+  return ctx.tx.portalActivity.findFirst({
+    where: { id, tenantId: ctx.tenantId },
     include: {
       options: { orderBy: { sortOrder: 'asc' } },
       fields: { orderBy: { sortOrder: 'asc' } },
@@ -54,8 +55,7 @@ export async function getActivity(prisma: TenantDb, id: string, tenantId: string
 }
 
 export async function createActivity(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   createdById: string,
   data: {
     type: string;
@@ -70,9 +70,9 @@ export async function createActivity(
     fields?: Array<{ fieldKey: string; label: string; fieldType?: string; options?: unknown; isRequired?: boolean; sortOrder?: number }>;
   },
 ) {
-  return prisma.portalActivity.create({
+  return ctx.tx.portalActivity.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       createdById,
       type: data.type as 'POLL' | 'FORM' | 'QUIZ',
       title: data.title,
@@ -95,12 +95,10 @@ export async function createActivity(
   });
 }
 
-// ⚠️ 呼叫端須先用 withTenant(fastify.prisma, tenantId, tx => updateActivity(tx, ...)) 開好
-// 綁定 RLS 的交易，本函式在該 tx 內直接操作（不可再自開 $transaction，交易不可巢狀）。
+// 選項與欄位的刪除、重建和活動的更新在呼叫端 flow 的同一個交易內完成
 export async function updateActivity(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   id: string,
-  tenantId: string,
   data: {
     title?: string;
     description?: string;
@@ -113,6 +111,7 @@ export async function updateActivity(
     fields?: Array<{ id?: string; fieldKey: string; label: string; fieldType?: string; options?: unknown; isRequired?: boolean; sortOrder?: number }>;
   },
 ) {
+  const { tx: prisma, tenantId } = ctx;
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以編輯', 'INVALID_ACTIVITY_STATUS', 409);
@@ -172,14 +171,16 @@ export async function updateActivity(
   });
 }
 
-export async function deleteActivity(prisma: TenantDb, id: string, tenantId: string) {
+export async function deleteActivity(ctx: TenantCtx, id: string) {
+  const { tx: prisma, tenantId } = ctx;
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以刪除', 'INVALID_ACTIVITY_STATUS', 409);
   return prisma.portalActivity.delete({ where: { id } });
 }
 
-export async function publishActivity(prisma: TenantDb, id: string, tenantId: string) {
+export async function publishActivity(ctx: TenantCtx, id: string) {
+  const { tx: prisma, tenantId } = ctx;
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以發布', 'INVALID_ACTIVITY_STATUS', 409);
@@ -189,7 +190,8 @@ export async function publishActivity(prisma: TenantDb, id: string, tenantId: st
   });
 }
 
-export async function endActivity(prisma: TenantDb, id: string, tenantId: string) {
+export async function endActivity(ctx: TenantCtx, id: string) {
+  const { tx: prisma, tenantId } = ctx;
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'PUBLISHED') throw new AppError('僅已發布的活動可以結束', 'INVALID_ACTIVITY_STATUS', 409);
@@ -209,7 +211,8 @@ export async function endActivity(prisma: TenantDb, id: string, tenantId: string
  * 已發布中（PUBLISHED）的活動不可封存——那是還在進行的活動，
  * 要先按「結束」。
  */
-export async function archiveActivity(prisma: TenantDb, id: string, tenantId: string) {
+export async function archiveActivity(ctx: TenantCtx, id: string) {
+  const { tx: prisma, tenantId } = ctx;
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status === 'PUBLISHED') {
@@ -225,7 +228,8 @@ export async function archiveActivity(prisma: TenantDb, id: string, tenantId: st
 }
 
 /** 取消封存：把活動放回列表（回到 ENDED） */
-export async function unarchiveActivity(prisma: TenantDb, id: string, tenantId: string) {
+export async function unarchiveActivity(ctx: TenantCtx, id: string) {
+  const { tx: prisma, tenantId } = ctx;
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'ARCHIVED') {
@@ -240,33 +244,37 @@ export async function unarchiveActivity(prisma: TenantDb, id: string, tenantId: 
 // ─── Submissions ────────────────────────────────────────────────────────────
 
 export async function listSubmissions(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   activityId: string,
-  tenantId: string,
   page = 1,
   limit = 20,
 ) {
-  const [items, total] = await Promise.all([
-    prisma.portalSubmission.findMany({
-      where: { activityId, tenantId },
-      include: { contact: { select: { id: true, displayName: true, avatarUrl: true } } },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.portalSubmission.count({ where: { activityId, tenantId } }),
-  ]);
+  const { tx: prisma, tenantId } = ctx;
+  const items = await prisma.portalSubmission.findMany({
+    where: { activityId, tenantId },
+    include: { contact: { select: { id: true, displayName: true, avatarUrl: true } } },
+    orderBy: { createdAt: 'desc' },
+    skip: (page - 1) * limit,
+    take: limit,
+  });
+  const total = await prisma.portalSubmission.count({ where: { activityId, tenantId } });
 
   return { items, total, page, limit };
 }
 
+/** 送出活動的結果：flow 依 activityType 組 portal.activity.submitted 事件 */
+export interface SubmittedActivity {
+  submission: PortalSubmission;
+  activityType: string;
+}
+
 export async function submitActivity(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   activityId: string,
   contactId: string,
-  tenantId: string,
   answers: { optionIds?: string[]; fields?: Record<string, string> },
-) {
+): Promise<SubmittedActivity> {
+  const { tx: prisma, tenantId } = ctx;
   const activity = await prisma.portalActivity.findFirst({
     where: { id: activityId, tenantId, status: 'PUBLISHED' },
     include: { options: true },
@@ -311,8 +319,7 @@ export async function submitActivity(
 
   // Add points if configured
   if (pointsPerSubmit > 0) {
-    await addPointTransaction(prisma, {
-      tenantId,
+    await addPointTransaction(ctx, {
       contactId,
       amount: pointsPerSubmit,
       type: 'activity_submit',
@@ -321,25 +328,17 @@ export async function submitActivity(
     });
   }
 
-  // Publish event
-  eventBus.publish({
-    name: 'portal.activity.submitted',
-    tenantId,
-    timestamp: new Date(),
-    payload: { activityId, contactId, submissionId: submission.id, activityType: activity.type },
-  });
-
-  return submission;
+  return { submission, activityType: activity.type };
 }
 
 // ─── Draw (random winners) ──────────────────────────────────────────────────
 
 export async function drawWinners(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   activityId: string,
-  tenantId: string,
   count: number,
 ) {
+  const { tx: prisma, tenantId } = ctx;
   // Get all non-winner submissions
   const eligible = await prisma.portalSubmission.findMany({
     where: { activityId, tenantId, isWinner: false },
@@ -364,15 +363,69 @@ export async function drawWinners(
   });
 }
 
+// ─── Fan portal (public) ────────────────────────────────────────────────────
+
+/** 粉絲看得到的選項欄位：不含 isCorrect（測驗的正確答案） */
+const fanOptionSelect = { id: true, label: true, imageUrl: true, sortOrder: true } as const;
+
+/** 粉絲門戶的活動列表：已發布、已開始、還沒結束 */
+export async function listOpenActivitiesForFan(ctx: TenantCtx) {
+  const now = new Date();
+  const activities = await ctx.tx.portalActivity.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      status: 'PUBLISHED',
+      OR: [
+        { startsAt: null },
+        { startsAt: { lte: now } },
+      ],
+    },
+    include: {
+      _count: { select: { submissions: true } },
+      options: { orderBy: { sortOrder: 'asc' }, select: fanOptionSelect },
+      fields: { orderBy: { sortOrder: 'asc' } },
+    },
+    orderBy: { publishedAt: 'desc' },
+  });
+
+  // Filter out activities that have ended
+  return activities.filter((a) => !a.endsAt || a.endsAt > now);
+}
+
+/** 粉絲門戶的活動詳情，附上這位粉絲自己的作答；活動不存在或沒有發布時回 null */
+export async function getActivityForFan(ctx: TenantCtx, id: string, contactId: string) {
+  const { tx: prisma, tenantId } = ctx;
+  const activity = await prisma.portalActivity.findFirst({
+    where: { id, tenantId, status: 'PUBLISHED' },
+    include: {
+      options: { orderBy: { sortOrder: 'asc' }, select: fanOptionSelect },
+      fields: { orderBy: { sortOrder: 'asc' } },
+      _count: { select: { submissions: true } },
+    },
+  });
+  if (!activity) return null;
+  // Check if fan has already submitted
+  const mySubmission = await prisma.portalSubmission.findFirst({
+    where: { activityId: id, contactId, tenantId },
+  });
+  return { ...activity, mySubmission };
+}
+
+/** 粉絲自己參加過的活動 */
+export async function listContactSubmissions(ctx: TenantCtx, contactId: string) {
+  return ctx.tx.portalSubmission.findMany({
+    where: { contactId, tenantId: ctx.tenantId },
+    include: { activity: { select: { id: true, title: true, type: true, status: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
 // ─── Activity result stats (public) ─────────────────────────────────────────
 
-export async function getActivityResult(
-  prisma: TenantDb,
-  activityId: string,
-  tenantId: string,
-) {
-  // tenantId 為必填：本函式的唯一呼叫端是公開的粉絲門戶。呼叫端已以 withTenant 綁定 fanToken 的租戶，
+export async function getActivityResult(ctx: TenantCtx, activityId: string) {
+  // 本函式的唯一呼叫端是公開的粉絲門戶。flow 以 fanToken 的租戶開交易，
   // 查詢條件仍明確限定租戶，不只倚賴 RLS。
+  const { tx: prisma, tenantId } = ctx;
   // 已知問題（AUDIT PORTAL-01）：回傳測驗選項的 isCorrect，也不看活動狀態。
   const activity = await prisma.portalActivity.findFirst({
     where: { id: activityId, tenantId },

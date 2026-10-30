@@ -94,7 +94,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `keyword.matched` | workers 的 `automation.handler.ts`（outbox） | 無。關鍵字規則由 workers 處理 `message.received` 時直接比對 |
 | `sentiment.negative` | `automation.worker.ts`（outbox） | 無 |
 | `sla.warning`、`sla.breached` | **無** | 通知。見 APP-05 |
-| `portal.activity.submitted` | `portal.service.ts` | 自動化 |
+| `portal.activity.submitted` | `portal/portal.flow.ts` 的 `submitActivityFlow()`（outbox） | 自動化 |
 | `link.clicked` | `shortlink/shortlink.flow.ts` 的 `trackClickFlow()`（outbox） | 自動化 |
 | `usage.quota.threshold` | `ai/llm.service.ts` | 通知 |
 

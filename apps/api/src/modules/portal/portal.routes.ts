@@ -5,25 +5,23 @@
 
 import type { FastifyInstance } from 'fastify';
 import {
-  listActivities,
-  getActivity,
-  createActivity,
-  updateActivity,
-  deleteActivity,
-  publishActivity,
-  endActivity,
-  archiveActivity,
-  unarchiveActivity,
-  listSubmissions,
-  drawWinners,
-} from './portal.service.js';
-import {
-  listPointTransactions,
-  addPointTransaction,
-  getPointBalance,
-} from './points.service.js';
+  listActivitiesFlow,
+  getActivityFlow,
+  createActivityFlow,
+  updateActivityFlow,
+  deleteActivityFlow,
+  publishActivityFlow,
+  endActivityFlow,
+  archiveActivityFlow,
+  unarchiveActivityFlow,
+  listSubmissionsFlow,
+  drawWinnersFlow,
+  listPointTransactionsFlow,
+  addPointTransactionFlow,
+  getPointBalanceFlow,
+} from './portal.flow.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 import { z } from 'zod/v3';
 import { int4Schema } from '../../shared/utils/numeric-bounds.js';
@@ -107,7 +105,7 @@ export default async function portalRoutes(app: FastifyInstance) {
 
   app.get('/activities', async (request) => {
     const { type, status, page, limit } = request.query as Record<string, string>;
-    const result = await listActivities(request.tenantPrisma, request.agent.tenantId, {
+    const result = await listActivitiesFlow(app, actorOf(request).tenantId, {
       type,
       status,
       // 夾制下限：parseInt 讓 page=0/-1 算出負 skip，Prisma 拋錯 → 500
@@ -119,13 +117,14 @@ export default async function portalRoutes(app: FastifyInstance) {
 
   app.post('/activities', { preHandler: requirePermission('portal.manage') }, async (request) => {
     const body = createActivityBody.parse(request.body);
-    const activity = await createActivity(request.tenantPrisma, request.agent.tenantId, request.agent.id, body as Parameters<typeof createActivity>[3]);
+    const actor = actorOf(request);
+    const activity = await createActivityFlow(app, actor.tenantId, actor.agentId, body);
     return { success: true, data: activity };
   });
 
   app.get('/activities/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const activity = await getActivity(request.tenantPrisma, id, request.agent.tenantId);
+    const activity = await getActivityFlow(app, actorOf(request).tenantId, id);
     // 先前漏了 reply.status，NOT_FOUND 實際以 HTTP 200 送出，前端判斷不到失敗
     if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
     return { success: true, data: activity };
@@ -135,11 +134,8 @@ export default async function portalRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = updateActivitySchema.parse(request.body);
     try {
-      // updateActivity 內部有多筆 delete/create（選項、欄位），需在單一綁定租戶的交易內原子完成；
-      // RLS 下交易不可巢狀，故由呼叫端用 withTenant 開好交易再把 tx 傳入（函式本身只用傳入的 tx）。
-      const activity = await withTenant(app.prisma, request.agent.tenantId, (tx) =>
-        updateActivity(tx, id, request.agent.tenantId, body as Parameters<typeof updateActivity>[3]),
-      );
+      // 選項與欄位的刪除、重建在 flow 的同一個交易內完成
+      const activity = await updateActivityFlow(app, actorOf(request).tenantId, id, body);
       if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true, data: activity };
     } catch (err: unknown) {
@@ -150,7 +146,7 @@ export default async function portalRoutes(app: FastifyInstance) {
   app.delete('/activities/:id', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const result = await deleteActivity(request.tenantPrisma, id, request.agent.tenantId);
+      const result = await deleteActivityFlow(app, actorOf(request).tenantId, id);
       if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true };
     } catch (err: unknown) {
@@ -161,7 +157,7 @@ export default async function portalRoutes(app: FastifyInstance) {
   app.post('/activities/:id/publish', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const activity = await publishActivity(request.tenantPrisma, id, request.agent.tenantId);
+      const activity = await publishActivityFlow(app, actorOf(request).tenantId, id);
       if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true, data: activity };
     } catch (err: unknown) {
@@ -172,7 +168,7 @@ export default async function portalRoutes(app: FastifyInstance) {
   app.post('/activities/:id/end', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const activity = await endActivity(request.tenantPrisma, id, request.agent.tenantId);
+      const activity = await endActivityFlow(app, actorOf(request).tenantId, id);
       if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true, data: activity };
     } catch (err: unknown) {
@@ -191,21 +187,21 @@ export default async function portalRoutes(app: FastifyInstance) {
   // （狀態不對是 409 CONFLICT），交給全域 error handler 保留原碼即可。
   app.post('/activities/:id/archive', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const activity = await archiveActivity(request.tenantPrisma, id, request.agent.tenantId);
+    const activity = await archiveActivityFlow(app, actorOf(request).tenantId, id);
     if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
     return { success: true, data: activity };
   });
 
   app.post('/activities/:id/unarchive', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const activity = await unarchiveActivity(request.tenantPrisma, id, request.agent.tenantId);
+    const activity = await unarchiveActivityFlow(app, actorOf(request).tenantId, id);
     if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
     return { success: true, data: activity };
   });
   app.get('/activities/:id/submissions', async (request) => {
     const { id } = request.params as { id: string };
     const { page, limit } = request.query as Record<string, string>;
-    const result = await listSubmissions(request.tenantPrisma, id, request.agent.tenantId, page ? clampPage(parseInt(page)) : undefined, limit ? clampLimit(parseInt(limit)) : undefined);
+    const result = await listSubmissionsFlow(app, actorOf(request).tenantId, id, page ? clampPage(parseInt(page)) : undefined, limit ? clampLimit(parseInt(limit)) : undefined);
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
@@ -213,7 +209,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const { count } = request.body as { count: number };
     if (!count || count < 1) return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: 'count is required' } });
-    const winners = await drawWinners(request.tenantPrisma, id, request.agent.tenantId, count);
+    const winners = await drawWinnersFlow(app, actorOf(request).tenantId, id, count);
     return { success: true, data: winners };
   });
 
@@ -222,7 +218,7 @@ export default async function portalRoutes(app: FastifyInstance) {
   app.get('/points', async (request) => {
     const { contactId, page, limit } = request.query as Record<string, string>;
     if (!contactId) return { success: true, data: [], meta: { total: 0 } };
-    const result = await listPointTransactions(request.tenantPrisma, request.agent.tenantId, contactId, page ? clampPage(parseInt(page)) : undefined, limit ? clampLimit(parseInt(limit)) : undefined);
+    const result = await listPointTransactionsFlow(app, actorOf(request).tenantId, contactId, page ? clampPage(parseInt(page)) : undefined, limit ? clampLimit(parseInt(limit)) : undefined);
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
@@ -231,19 +227,18 @@ export default async function portalRoutes(app: FastifyInstance) {
     // 超大 amount（999999999999999）會溢位 int4 → 500；
     // 小數（1.5）被 Prisma 靜默無條件捨去成 1，使用者完全無感知。
     const { contactId, amount, note } = adjustPointsSchema.parse(request.body);
-    const tx = await addPointTransaction(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
+    const entry = await addPointTransactionFlow(app, actorOf(request).tenantId, {
       contactId,
       amount,
       type: 'admin_adjust',
       note,
     });
-    return { success: true, data: tx };
+    return { success: true, data: entry };
   });
 
   app.get('/points/balance/:contactId', async (request) => {
     const { contactId } = request.params as { contactId: string };
-    const balance = await getPointBalance(request.tenantPrisma, contactId);
+    const balance = await getPointBalanceFlow(app, actorOf(request).tenantId, contactId);
     return { success: true, data: { contactId, balance } };
   });
 }
