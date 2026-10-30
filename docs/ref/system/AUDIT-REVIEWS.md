@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-30：analytics 的長讀取（ANA-02）
+
+#337 階段 3 第七批，分支 `refactor/migrate-analytics-tenant-ctx`。在 UAT 量測 analytics 的所有端點，再閱讀查詢的寫法。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ANA-02 | 新增，未處理 | analytics 的 9 個 GET 端點與 `POST /analytics/export` 的 4 種報表，分別量最近 30 天與全部期間，各 20 次，伺服器端的最大值是 118 ms。Demo Tenant 只有 10 張工單，所以另外閱讀 `analytics.service.ts` 與 `analytics.routes.ts` 的查詢：工單報表的匯出與 CSAT 報表以 `findMany` 讀出期間內的所有工單，沒有 `take`。其他統計以 SQL 彙總或有 `take` |
+
 ## 2026-10-30：粉絲活動詳情的開放時間（PORTAL-01）
 
 #337 階段 3 第六批，PR #404 的機器人審查提出。以閱讀程式碼確認，沒有實測，沒有連 UAT。
