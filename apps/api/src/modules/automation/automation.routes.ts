@@ -177,7 +177,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   });
 
   // ── POST /api/v1/automation/rules/:id/test ──────────────────────────────
-  fastify.post('/rules/:id/test', async (request, reply) => {
+  fastify.post('/rules/:id/test', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
     const data = testRuleSchema.parse(request.body);
 
@@ -187,7 +187,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   });
 
   // ── GET /api/v1/automation/logs ─────────────────────────────────────────
-  fastify.get('/logs', async (request, reply) => {
+  fastify.get('/logs', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
     const query = logQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 

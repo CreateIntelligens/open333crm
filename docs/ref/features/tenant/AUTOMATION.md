@@ -146,9 +146,8 @@ AI 是否讓步的判斷也呼叫 `matchKeywordTrigger()`，所以兩邊對同�
 
 | 路由 | 權限 |
 | --- | --- |
-| `GET /automation/rules`、`GET /rules/:id` | `automation.view` |
+| `GET /automation/rules`、`GET /rules/:id`、`POST /rules/:id/test`、`GET /automation/logs` | `automation.view` |
 | `POST`、`PATCH`、`DELETE /automation/rules` | `automation.manage` |
-| `POST /automation/rules/:id/test`、`GET /automation/logs` | 只驗登入 |
 
 關鍵字回覆頁呼叫的是同一組路由，因此管理關鍵字回覆也需要 `automation.manage`。側欄的「渠道」選單另外要求 `richmenu.manage` 才顯示。
 

@@ -25,19 +25,21 @@ const tenantB = await owner.tenant.create({ data: { name: `${MARK}-b` } });
 const A = tenantA.id;
 const B = tenantB.id;
 
-async function makeAgent(tenantId: string) {
+async function makeAgent(
+  tenantId: string,
+  name = 'manager',
+  codes = ['automation.view', 'automation.manage', 'quickreply.manage'],
+) {
   const role = await owner.role.create({
     data: {
       tenantId,
-      slug: `${MARK}-manager`,
-      name: 'manager',
-      permissions: {
-        create: ['automation.view', 'automation.manage', 'quickreply.manage'].map((permissionCode) => ({ permissionCode })),
-      },
+      slug: `${MARK}-${name}`,
+      name,
+      permissions: { create: codes.map((permissionCode) => ({ permissionCode })) },
     },
   });
   const agent = await owner.agent.create({
-    data: { tenantId, roleId: role.id, name: 'manager', email: `${MARK}-${tenantId}@example.test`, passwordHash: 'x' },
+    data: { tenantId, roleId: role.id, name, email: `${MARK}-${name}-${tenantId}@example.test`, passwordHash: 'x' },
   });
   return { id: agent.id, tenantId, roleId: role.id };
 }
@@ -59,6 +61,8 @@ async function buildApp(agent: { id: string; tenantId: string; roleId: string })
 
 const appA = await buildApp(await makeAgent(A));
 const appB = await buildApp(await makeAgent(B));
+const appInboxOnly = await buildApp(await makeAgent(A, 'inbox-only', ['inbox.view']));
+const appViewOnly = await buildApp(await makeAgent(A, 'view-only', ['automation.view']));
 type App = typeof appA;
 
 // ── 資料 ──
@@ -74,7 +78,7 @@ const coupon = await couponOf(A, `${MARK}-A`, MISSING);
 const couponB = await couponOf(B, `${MARK}-B`, MISSING);
 
 afterAll(async () => {
-  await Promise.all([appA.close(), appB.close()]);
+  await Promise.all([appA.close(), appB.close(), appInboxOnly.close(), appViewOnly.close()]);
   for (const tenantId of [A, B]) {
     await owner.quickReplyPreset.deleteMany({ where: { tenantId } });
     await owner.automationLog.deleteMany({ where: { tenantId } });
@@ -323,5 +327,32 @@ describe('路徑的 id 不是 UUID', () => {
       (res.body.error as unknown as { details: { issues: Array<{ path: string }> } }).details.issues.map((i) => i.path),
       ['id'],
     );
+  });
+});
+
+describe('試跑規則與讀取執行紀錄要求檢視權限', () => {
+  const forbidden = (res: Awaited<ReturnType<typeof call>>) => {
+    assert.equal(res.status, 403);
+    assert.equal((res.body.error as unknown as { details: { requiredPermission: string } }).details.requiredPermission, 'automation.view');
+  };
+
+  test('沒有檢視權限時試跑規則', async () => {
+    const r = await create(appA, rule({ name: `${MARK}-權限試跑` }));
+    forbidden(await call(appInboxOnly, 'POST', `${rules}/${r.id}/test`, {}));
+  });
+
+  test('沒有檢視權限時讀取執行紀錄', async () => {
+    forbidden(await call(appInboxOnly, 'GET', '/api/v1/automation/logs'));
+  });
+
+  test('只有檢視權限時試跑規則與讀取執行紀錄', async () => {
+    const r = await create(appA, rule({ name: `${MARK}-只能看` }));
+    await owner.automationLog.create({ data: { tenantId: A, ruleId: r.id, success: true } });
+    const tested = await call(appViewOnly, 'POST', `${rules}/${r.id}/test`, {});
+    assert.equal(tested.status, 200, JSON.stringify(tested.body));
+    assert.equal(tested.body.data.rule.id, r.id);
+    const logs = await call(appViewOnly, 'GET', `/api/v1/automation/logs?ruleId=${r.id}`);
+    assert.equal(logs.status, 200);
+    assert.equal(logs.body.data.length, 1);
   });
 });
