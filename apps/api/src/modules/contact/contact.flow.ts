@@ -9,6 +9,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { flowOf, inTenant } from '../../lib/tenant-ctx.js';
 import type { RequestActor } from '../../lib/request-actor.js';
+import type { AccessibleChannels } from '../../services/channel-visibility.js';
 import { notifyTenant } from '../../events/socket-push.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import {
@@ -18,7 +19,8 @@ import {
   getContactConversations,
   getContactMessages,
   getContactTimeline,
-  getMergeLogContactIds,
+  assertMergeLogVisible,
+  assertNoOtherChannelIdentities,
   getMergePreview,
   listContacts,
   updateContact,
@@ -39,16 +41,19 @@ export const getContactConversationsFlow = flowOf(getContactConversations);
 export const getContactCasesFlow = flowOf(getContactCases);
 export const getContactTimelineFlow = flowOf(getContactTimeline);
 export const getMergePreviewFlow = flowOf(getMergePreview);
-export const getMergeLogContactIdsFlow = flowOf(getMergeLogContactIds);
 export const listMergeLogsFlow = flowOf(listMergeLogs);
 
 export function mergeContactsFlow(
   deps: ContactFlowDeps,
   actor: RequestActor,
   input: { primaryContactId: string; secondaryContactId: string },
+  /** 兩位任一看不到回 404、在其他分店渠道還有資料回 403（channel-scoped-visibility），與合併在同一個交易 */
+  accessibleChannels: AccessibleChannels,
 ) {
   const { primaryContactId, secondaryContactId } = input;
   return inTenant(deps.prisma, actor.tenantId, async (scope) => {
+    await assertContactsVisible(scope, [primaryContactId, secondaryContactId], accessibleChannels);
+    await assertNoOtherChannelIdentities(scope, [primaryContactId, secondaryContactId], accessibleChannels);
     const result = await mergeContacts(scope, {
       survivorId: primaryContactId,
       mergedId: secondaryContactId,
@@ -71,8 +76,15 @@ export function mergeContactsFlow(
 }
 
 /** 解除一次合併（任何來源的合併都可以） */
-export function revertMergeFlow(deps: ContactFlowDeps, actor: RequestActor, mergeLogId: string) {
+export function revertMergeFlow(
+  deps: ContactFlowDeps,
+  actor: RequestActor,
+  mergeLogId: string,
+  /** 兩方任一看不到回 404、在其他分店渠道還有資料回 403，與解除合併在同一個交易 */
+  accessibleChannels: AccessibleChannels,
+) {
   return inTenant(deps.prisma, actor.tenantId, async (scope) => {
+    await assertMergeLogVisible(scope, mergeLogId, accessibleChannels);
     const result = await revertMerge(scope, { mergeLogId, revertedBy: actor.agentId });
     await recordTenantAudit(scope, {
       actorId: actor.agentId,

@@ -80,8 +80,13 @@ export async function listSegments(
     }),
     prisma.segment.count({ where }),
   ]);
-  const visible = [];
-  for (const segment of segments) visible.push(await withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels)));
+  const visible = await Promise.all(
+    segments.map((segment) =>
+      withVisibleContactCount(segment, accessibleChannels, (rules) =>
+        calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels, { countOnly: true }),
+      ),
+    ),
+  );
   return { segments: visible, total, page, limit };
 }
 
@@ -98,7 +103,7 @@ export async function getSegment(
   if (!segment) {
     throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
   }
-  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels));
+  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels, { countOnly: true }));
 }
 
 export async function createSegment(
@@ -124,7 +129,7 @@ export async function createSegment(
       createdById: agentId,
     },
   });
-  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels));
+  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels, { countOnly: true }));
 }
 
 export async function updateSegment(
@@ -155,7 +160,7 @@ export async function updateSegment(
     where: { id },
     data: updateData,
   });
-  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels));
+  return withVisibleContactCount(segment, accessibleChannels, (rules) => calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels, { countOnly: true }));
 }
 
 export async function deleteSegment(prisma: TenantDb, id: string, tenantId: string) {
@@ -185,8 +190,11 @@ export async function calculateSegmentContacts(
    * 後台預覽傳成員的可見渠道；儲存分眾與發送時解析受眾傳 ALL_CHANNELS。必填，避免新呼叫端漏傳。
    */
   accessibleChannels: AccessibleChannels,
+  /** 只要人數時用 count，不讀出每位聯絡人的 id（分眾列表逐筆計算時用） */
+  options: { countOnly?: boolean } = {},
 ): Promise<{ count: number; contactIds: string[] }> {
-  const { logic } = rules;
+  // 舊資料的 rules 可能是 NULL（只有 conditions 欄位）：視為沒有有效條件，0 人
+  const logic = rules?.logic;
   const conditions = effectiveSegmentConditions(rules);
 
   // 沒有有效條件 => 0 人（fail-closed）。以前回傳全部聯絡人，廣播會發給所有人
@@ -234,6 +242,10 @@ export async function calculateSegmentContacts(
   }
   const visibleWhere = visibleContactWhere(accessibleChannels);
   if (visibleWhere) where.AND = [...(where.AND ?? []), visibleWhere];
+
+  if (options.countOnly) {
+    return { count: await prisma.contact.count({ where }), contactIds: [] };
+  }
 
   const contacts = await prisma.contact.findMany({
     where,

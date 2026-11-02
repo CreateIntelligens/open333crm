@@ -145,6 +145,15 @@ export function channelIdWhereFilter(
 }
 
 /**
+ * Prisma where 片段：`{ channelId: { in: 可見渠道 } }`；總店回空物件，展開後不加條件。
+ * 渠道身分、群發、工單等以 channelId 過濾的地方共用，空集合的 fail-closed 行為只定義在這裡。
+ */
+export function channelIdWhere(accessible: AccessibleChannels): { channelId?: { in: string[] } } {
+  const channelId = channelIdWhereFilter(accessible);
+  return channelId ? { channelId } : {};
+}
+
+/**
  * request 層便利函式：判斷當前 agent 是否持有 `channel.view_all`（總店），
  * 再解析其可見渠道集合。查詢層一行呼叫即可。
  * 權限判斷比照 requirePermission guard：角色權限 ∩ 方案天花板。

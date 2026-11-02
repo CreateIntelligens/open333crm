@@ -26,12 +26,23 @@
 - [x] 5.3 效能：群發的守門改為只查 `channelId`（`getBroadcastChannelIdFlow`），不再為守門算收件人統計；聯絡人檢查每位一次查詢，總店不另開交易
 - [x] 5.4 `analytics.service.ts` 的優先級與狀態分布加 `ORDER BY`：沒有排序時，每日彙總存下的順序與即時報表可能不同，`analytics-reports.test.ts` 的「每日彙總」因此時好時壞
 
-## 6. 完成檢查
+## 6. 第二輪 code review 修正
 
-- [x] 6.1 `pnpm test`、`pnpm test:feature` 通過
-- [x] 6.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
-- [x] 6.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
-- [x] 6.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
+- [x] 6.1 先寫測試，都先在斷言上失敗：`contact-channel-visibility.test.ts` 的「合併有其他渠道資料的聯絡人須由總店處理」、兩層合併鏈（S3）看不到；`channel-scoped-visibility.test.ts` 的舊分眾 `rules` 為空（原本 500）、「只有其他分店群發的行銷活動」（含修改、刪除）；`analytics-channel-visibility.test.ts` 的「同分店沒有工單的客服照常列出」與併入可見聯絡人的 SA 計入新聯絡人
+- [x] 6.2 合併、合併預覽、解除合併：任一方在其他分店渠道還有身分回 403 `CONTACT_HAS_OTHER_CHANNELS`；合併與解除合併的可見檢查移進 flow 的同一個交易
+- [x] 6.3 被合併的聯絡人只依直接保留方判斷（取代原本最多 10 層的迴圈），`isContactVisible()` 與報表的 `contactSql()` 同一套規則；新聯絡人總數改用 `contactSql()`
+- [x] 6.4 分眾：`rules` 為空時算 0 人；列表以 `count` 並行計算
+- [x] 6.5 行銷活動：群發都在其他分店的活動不列出，讀取、修改、刪除回 404
+- [x] 6.6 客服績效：列出被授權可見渠道或有可見工單的客服；`agentId` 過濾改在 `a.id`，期間內沒有工單的客服不再因 LEFT JOIN 消失（既有問題）
+- [x] 6.7 抽出 `channelIdWhere()`（`services/channel-visibility.ts`），取代三處重複的渠道過濾寫法
+- [x] 6.8 `contact.flow.test.ts`、`campaign-dates.test.ts` 補上新參數 `ALL_CHANNELS`（它們不測可見範圍）
+
+## 7. 完成檢查
+
+- [x] 7.1 `pnpm test`、`pnpm test:feature` 通過
+- [x] 7.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
+- [x] 7.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
+- [x] 7.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
 
 ## 突變驗證與既有測試的調整
 

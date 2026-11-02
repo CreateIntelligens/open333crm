@@ -47,12 +47,17 @@ const chA = await mkChannel('LINE', 'a');
 const chB = await mkChannel('FB', 'b');
 await owner.agentChannelAccess.create({ data: { agentId: branch.id, channelId: chA.id, accessLevel: 'full' } });
 await owner.agentChannelAccess.create({ data: { agentId: other.id, channelId: chB.id, accessLevel: 'full' } });
+// 同分店、期間內沒有工單的客服
+const idle = await mkAgent('idle', branchRole.id);
+await owner.agentChannelAccess.create({ data: { agentId: idle.id, channelId: chA.id, accessLevel: 'full' } });
 
+const contactByChannel = new Map<string, string>();
 for (const [ch, messages, cases] of [[chA, 3, 2], [chB, 5, 4]] as const) {
   const contact = await owner.contact.create({ data: { tenantId: T, displayName: `${MARK}-${ch.channelType}`, createdAt: DAY } });
   await owner.channelIdentity.create({
     data: { contactId: contact.id, channelId: ch.id, channelType: ch.channelType, uid: `${MARK}-${ch.id}`, linkedAt: DAY },
   });
+  contactByChannel.set(ch.id, contact.id);
   const conv = await owner.conversation.create({
     data: { tenantId: T, contactId: contact.id, channelId: ch.id, channelType: ch.channelType, createdAt: DAY },
   });
@@ -66,6 +71,13 @@ for (const [ch, messages, cases] of [[chA, 3, 2], [chB, 5, 4]] as const) {
       data: { tenantId: T, contactId: contact.id, channelId: ch.id, title: `${MARK}-${ch.channelType}-${i}`, createdAt: DAY, assigneeId: ch.id === chA.id ? branch.id : other.id },
     });
   }
+}
+
+// 期間內建立、後來併入 CH-A 聯絡人的 SA，與併入 CH-B 聯絡人的 SB：依保留方判斷（與單筆讀取一致）
+for (const [label, ch] of [['SA', chA], ['SB', chB]] as const) {
+  await owner.contact.create({
+    data: { tenantId: T, displayName: `${MARK}-${label}`, createdAt: DAY, isArchived: true, mergedIntoId: contactByChannel.get(ch.id) },
+  });
 }
 
 const cliSession = (scopes: string[]) => ({
@@ -164,7 +176,8 @@ test('渠道報表不列出不可見渠道：工單、聯絡人、客服績效�
   const cases = await report(branchApp, 'cases');
   assert.equal(cases.trend.reduce((sum: number, r: { opened: number }) => sum + r.opened, 0), 2);
   const contacts = await report(branchApp, 'contacts');
-  assert.equal(contacts.totalNewContacts, 1);
+  assert.equal(contacts.totalNewContacts, 2, 'CH-A 的聯絡人與併入它的 SA');
+  assert.equal(contacts.newContactsTrend.reduce((sum: number, r: { count: number }) => sum + r.count, 0), 2);
   assert.equal(contacts.activeContacts, 1);
   const agents = (await report(branchApp, 'agents')) as Array<{ agentId: string; casesHandled: number }>;
   assert.equal(agents.find((a) => a.agentId === branch.id)?.casesHandled, 2);
@@ -185,12 +198,19 @@ test('總店看全部：訊息數 8、新工單 6，渠道分布含 LINE 與 FB'
 });
 
 test('客服績效不列出其他分店的客服：只處理 CH-B 工單的客服不在報表與匯出中', async () => {
-  const agents = (await report(branchApp, 'agents')) as Array<{ agentId: string }>;
-  assert.deepEqual(agents.map((a) => a.agentId), [branch.id]);
+  const agents = (await report(branchApp, 'agents')) as Array<{ agentId: string; casesHandled: number }>;
+  assert.deepEqual(agents.map((a) => a.agentId).sort(), [branch.id, idle.id].sort());
   const res = await branchApp.inject({ method: 'POST', url: '/api/v1/analytics/export', payload: { reportType: 'agents', ...RANGE_BODY } });
   assert.equal(res.statusCode, 200, res.body);
   assert.ok(!res.body.includes(other.id), '匯出不可含其他分店的客服');
 
   const hqAgents = (await report(hqApp, 'agents')) as Array<{ agentId: string }>;
   assert.ok(hqAgents.some((a) => a.agentId === other.id), '總店看得到所有客服');
+});
+
+test('同分店沒有工單的客服照常列出：處理數是 0，指定 agentId 也查得到', async () => {
+  const agents = (await report(branchApp, 'agents')) as Array<{ agentId: string; casesHandled: number }>;
+  assert.equal(agents.find((a) => a.agentId === idle.id)?.casesHandled, 0);
+  const one = (await get(branchApp, `/api/v1/analytics/agents?${RANGE}&agentId=${idle.id}`)) as Array<{ agentId: string }>;
+  assert.deepEqual(one.map((a) => a.agentId), [idle.id]);
 });

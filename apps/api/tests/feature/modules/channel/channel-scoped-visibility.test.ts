@@ -487,3 +487,36 @@ test('行銷活動只含可見渠道的群發：活動列表的群發數是 1，
   assert.deepEqual(ids, [inCampaign[0]!.id]);
   assert.ok(!detail.body.includes(`${MARK}-campaign-bc-${hidden.id}`), '不可出現不可見渠道的群發');
 });
+
+test('分眾預覽只算看得到的聯絡人：舊資料 rules 為空的分眾不讓列表變成 500，人數是 0', async () => {
+  const legacy = await owner.segment.create({
+    data: { tenantId: A, name: `${MARK}-segment-legacy`, rules: undefined, conditions: [], contactCount: 9 },
+  });
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/segments?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const row = (list.json().data as Array<{ id: string; contactCount: number }>).find((s) => s.id === legacy.id);
+  assert.equal(row?.contactCount, 0);
+});
+
+test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 404；沒有群發的活動照常看得到', async () => {
+  const hiddenOnly = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-hidden`, createdById: other.id } });
+  await owner.broadcast.create({
+    data: { tenantId: A, channelId: hidden.id, campaignId: hiddenOnly.id, name: `${MARK}-campaign-hidden-bc`, createdById: other.id },
+  });
+  const empty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-empty`, createdById: other.id } });
+
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const ids = (list.json().data as Array<{ id: string }>).map((c) => c.id);
+  assert.ok(!ids.includes(hiddenOnly.id), '不可列出只有其他分店群發的活動');
+  assert.ok(ids.includes(empty.id), '沒有群發的活動照常列出');
+
+  const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}` });
+  assert.equal(detail.statusCode, 404, detail.body);
+  assert.ok(!detail.body.includes(`${MARK}-campaign-hidden`), '不可回傳活動名稱');
+  const patch = await marketerApp.inject({ method: 'PATCH', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}`, payload: { name: '改名' } });
+  assert.equal(patch.statusCode, 404, patch.body);
+  const del = await marketerApp.inject({ method: 'DELETE', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}` });
+  assert.equal(del.statusCode, 404, del.body);
+  assert.equal((await owner.campaign.findUniqueOrThrow({ where: { id: hiddenOnly.id } })).name, `${MARK}-campaign-hidden`);
+});

@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 import { AppError } from '#src/shared/utils/response.js';
 import { createFlowLog, mockTransactionPrisma, recordingIo, type FlowLog } from '#tests/support/flow-harness.js';
+// 這裡測交易與推播的順序，不測渠道可見範圍（見 tests/feature/modules/contact/contact-channel-visibility.test.ts）
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 const engine = vi.hoisted(() => ({
   mergeContacts: vi.fn(),
@@ -62,7 +64,7 @@ test('合併：引擎與稽核在同一個交易，contact.merged 在 commit 之
     return mergeResult;
   });
 
-  const result = await mergeContactsFlow(depsOf(log), actor, { primaryContactId: 'P', secondaryContactId: 'S' });
+  const result = await mergeContactsFlow(depsOf(log), actor, { primaryContactId: 'P', secondaryContactId: 'S' }, ALL_CHANNELS);
 
   assert.deepEqual(log.entries, ['merge', 'audit:contact.merge', 'commit', 'push:contact.merged']);
   assert.deepEqual(engine.mergeContacts.mock.calls[0][1], {
@@ -93,7 +95,7 @@ test('合併：引擎拒絕時 rollback，不寫稽核，不推播', async () =>
   engine.mergeContacts.mockRejectedValue(new AppError('無法合併', 'SAME_CHANNEL_CONFLICT', 409));
 
   await assert.rejects(
-    () => mergeContactsFlow(depsOf(log), actor, { primaryContactId: 'P', secondaryContactId: 'S' }),
+    () => mergeContactsFlow(depsOf(log), actor, { primaryContactId: 'P', secondaryContactId: 'S' }, ALL_CHANNELS),
     (err: unknown) => err instanceof AppError && err.code === 'SAME_CHANNEL_CONFLICT',
   );
 
@@ -109,7 +111,7 @@ test('合併：稽核寫入失敗時整筆 rollback，不推播', async () => {
   });
 
   await assert.rejects(
-    () => mergeContactsFlow(depsOf(log, true), actor, { primaryContactId: 'P', secondaryContactId: 'S' }),
+    () => mergeContactsFlow(depsOf(log, true), actor, { primaryContactId: 'P', secondaryContactId: 'S' }, ALL_CHANNELS),
     /audit insert failed/,
   );
 
@@ -126,7 +128,7 @@ test('解除合併：引擎與稽核在同一個交易，contact.merge_reverted 
     return revertResult;
   });
 
-  const result = await revertMergeFlow(depsOf(log), actor, 'log-1');
+  const result = await revertMergeFlow(depsOf(log), actor, 'log-1', ALL_CHANNELS);
 
   assert.deepEqual(log.entries, ['revert', 'audit:contact.merge_revert', 'commit', 'push:contact.merge_reverted']);
   assert.deepEqual(engine.revertMerge.mock.calls[0][1], { mergeLogId: 'log-1', revertedBy: 'agent-1' });
@@ -148,7 +150,7 @@ test('解除合併：稽核寫入失敗時整筆 rollback，不推播', async ()
     return revertResult;
   });
 
-  await assert.rejects(() => revertMergeFlow(depsOf(log, true), actor, 'log-1'), /audit insert failed/);
+  await assert.rejects(() => revertMergeFlow(depsOf(log, true), actor, 'log-1', ALL_CHANNELS), /audit insert failed/);
 
   assert.deepEqual(log.entries, ['revert', 'rollback']);
   assert.deepEqual(log.pushes, []);

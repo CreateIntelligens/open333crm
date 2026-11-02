@@ -7,7 +7,6 @@ import {
   getContactFlow,
   getContactMessagesFlow,
   getContactTimelineFlow,
-  getMergeLogContactIdsFlow,
   getMergePreviewFlow,
   listContactsFlow,
   listMergeLogsFlow,
@@ -158,9 +157,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // POST /api/v1/contacts/merge
   fastify.post('/merge', { preHandler: [perm.merge] }, async (request, reply) => {
     const body = mergeBodySchema.parse(request.body);
-    await visibleContacts(request, body.primaryContactId, body.secondaryContactId);
-
-    const result = await mergeContactsFlow(fastify, actorOf(request), body);
+    // 可見範圍在合併的同一個交易內檢查（見 mergeContactsFlow）
+    const result = await mergeContactsFlow(fastify, actorOf(request), body, await resolveChannelVisibility(request));
     return reply.send(success(result));
   });
 
@@ -170,10 +168,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     { preHandler: [perm.merge] },
     async (request, reply) => {
       const { logId } = mergeLogParamsSchema.parse(request.params);
-      // 兩方任一看不到就回 404（channel-scoped-visibility）；找不到紀錄交給 revertMerge 回 404
-      const contactIds = await getMergeLogContactIdsFlow(fastify, actorOf(request).tenantId, logId);
-      if (contactIds) await visibleContacts(request, ...contactIds);
-      const result = await revertMergeFlow(fastify, actorOf(request), logId);
+      // 可見範圍在解除合併的同一個交易內檢查（見 revertMergeFlow）
+      const result = await revertMergeFlow(fastify, actorOf(request), logId, await resolveChannelVisibility(request));
       return reply.send(success(result));
     },
   );

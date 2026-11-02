@@ -1,7 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
-import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
-import { visibleContactWhere } from '../contact/contact.service.js';
+import { ALL_CHANNELS, channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -33,24 +32,36 @@ function channelSql(accessible: AccessibleChannels, column: string) {
   return ids ? Prisma.sql`AND ${Prisma.raw(column)} = ANY(${ids.in}::uuid[])` : Prisma.empty;
 }
 
-/** 聯絡人可見：有可見渠道的身份，或沒有任何渠道身份且沒有被合併（同 contact.service 的 visibleContactWhere） */
+/**
+ * 聯絡人可見，規則同 contact.service 的 isContactVisible()：有可見渠道的身份，或沒有身份且沒有被合併；
+ * 已被合併、身份都移走的聯絡人依直接保留方判斷（只看一層）。
+ */
 function contactSql(accessible: AccessibleChannels, contactIdColumn: string) {
   const ids = channelIdWhereFilter(accessible);
   if (!ids) return Prisma.empty;
   const col = Prisma.raw(contactIdColumn);
-  return Prisma.sql`AND (
-    EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${col} AND vci."channelId" = ANY(${ids.in}::uuid[]))
+  const directlyVisible = (contactId: Prisma.Sql) => Prisma.sql`(
+    EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${contactId} AND vci."channelId" = ANY(${ids.in}::uuid[]))
     OR (
-      NOT EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${col})
-      AND NOT EXISTS (SELECT 1 FROM contacts vc WHERE vc.id = ${col} AND vc."mergedIntoId" IS NOT NULL)
+      NOT EXISTS (SELECT 1 FROM channel_identities vci WHERE vci."contactId" = ${contactId})
+      AND EXISTS (SELECT 1 FROM contacts vc WHERE vc.id = ${contactId} AND vc."mergedIntoId" IS NULL)
+    )
+  )`;
+  return Prisma.sql`AND (
+    ${directlyVisible(col)}
+    OR EXISTS (
+      SELECT 1 FROM contacts merged
+      WHERE merged.id = ${col}
+        AND merged."mergedIntoId" IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM channel_identities mci WHERE mci."contactId" = merged.id)
+        AND ${directlyVisible(Prisma.raw('merged."mergedIntoId"'))}
     )
   )`;
 }
 
 /** Prisma where 的工單渠道條件；總店回空物件 */
 function caseChannelWhere(accessible: AccessibleChannels): Prisma.CaseWhereInput {
-  const ids = channelIdWhereFilter(accessible);
-  return ids ? { channelId: ids } : {};
+  return channelIdWhere(accessible);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -375,9 +386,20 @@ export async function getAgentPerformance(
   to: Date,
   agentId?: string,
 ) {
-  const agentFilter = agentId ? Prisma.sql`AND c."assigneeId" = ${agentId}::uuid` : Prisma.sql``;
-  // 非總店只列出在可見渠道有工單的客服，不列出其他分店的客服（channel-scoped-visibility）
-  const visibleAgentsOnly = channelIdWhereFilter(accessible) ? Prisma.sql`HAVING COUNT(c.id) > 0` : Prisma.empty;
+  // 過濾客服本身（a.id）：以 c."assigneeId" 過濾時，期間內沒有工單的客服會因 LEFT JOIN 沒有對到而消失
+  const agentFilter = agentId ? Prisma.sql`AND a.id = ${agentId}::uuid` : Prisma.sql``;
+  // 非總店只列出被授權任一可見渠道（直綁或所屬團隊）、或在可見渠道有工單的客服（channel-scoped-visibility）：
+  // 同分店期間內沒有工單的客服照常以 0 列出，其他分店的客服不列出
+  const visibleIds = channelIdWhereFilter(accessible);
+  const visibleAgentsOnly = visibleIds
+    ? Prisma.sql`HAVING COUNT(c.id) > 0
+      OR EXISTS (SELECT 1 FROM agent_channel_accesses aca WHERE aca."agentId" = a.id AND aca."channelId" = ANY(${visibleIds.in}::uuid[]))
+      OR EXISTS (
+        SELECT 1 FROM agent_team_members atm
+        JOIN channel_team_accesses cta ON cta."teamId" = atm."teamId"
+        WHERE atm."agentId" = a.id AND cta."channelId" = ANY(${visibleIds.in}::uuid[])
+      )`
+    : Prisma.empty;
 
   const rows = await ctx.tx.$queryRaw<
     {
@@ -592,14 +614,16 @@ export async function getContactAnalytics(
     value: Number(r.count),
   }));
 
-  // Total new contacts
-  const totalNew = await ctx.tx.contact.count({
-    where: {
-      tenantId: ctx.tenantId,
-      createdAt: { gte: from, lte: to },
-      ...visibleContactWhere(accessible),
-    },
-  });
+  // Total new contacts（與新聯絡人趨勢用同一個可見條件，含依保留方判斷的已合併聯絡人）
+  const totalRows = await ctx.tx.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(*)::bigint AS count
+    FROM contacts
+    WHERE "tenantId" = ${ctx.tenantId}::uuid
+      ${contactSql(accessible, 'contacts.id')}
+      AND "createdAt" >= ${from}
+      AND "createdAt" <= ${to}
+  `;
+  const totalNew = Number(totalRows[0]?.count ?? 0n);
 
   return {
     newContactsTrend,

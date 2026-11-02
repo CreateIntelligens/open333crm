@@ -270,6 +270,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(campaign));
   });
@@ -279,6 +280,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(result));
   });
