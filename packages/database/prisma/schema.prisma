@@ -2197,9 +2197,9 @@ model TrialSignup {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                String // 原始 lowercase，開通時用它建 Agent（既有 login 大小寫敏感）
   emailNormalized      String    @unique // 去 gmail +tag/dots 的正規化值，唯一鍵擋別名重複
-  siteName             String
-  passwordHash         String // 申請時即 bcrypt，開通時搬給 Agent
-  // pending_verification | provisioned | failed
+  siteName             String // 申請時填的名稱；驗證頁可修改，開通時以驗證頁送出的為準
+  // 不存密碼：管理員密碼在點驗證連結後設定（TRIAL-05）
+  // pending_verification | provisioning | provisioned | failed
   status               String    @default("pending_verification")
   verifyTokenHash      String?   @unique // sha256(32-byte random)；明文只出現在信裡
   verifyTokenExpiresAt DateTime?

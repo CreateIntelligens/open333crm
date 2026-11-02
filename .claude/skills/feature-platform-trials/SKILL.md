@@ -1,8 +1,8 @@
 ---
 name: feature-platform-trials
 description: >
-  open333CRM「試用申請與到期處理」功能顧問：公開試用申請頁 /trial（email、站台名稱、密碼，防枚舉 202、
-  gmail 別名正規化、速率限制）、驗證即開通 /trial/verify（provisionTenant、trialEndsAt、冪等）、
+  open333CRM「試用申請與到期處理」功能顧問：公開試用申請頁 /trial（email、站台名稱，不收密碼；防枚舉 202、
+  gmail 別名正規化、速率限制）、驗證頁 /trial/verify（確認連結 → 設定密碼 → provisionTenant、trialEndsAt、冪等）、
   平台後台 /admin/trial（試用租戶清單與狀態、延長試用、轉正式方案、復原已清除、申請記錄重寄與作廢、
   試用政策設定 trial.enabled/durationDays/reminderDaysBefore/verifyTokenTtlHours/dataRetentionDays/planSlug）、
   每小時試用排程（到期前提醒信、到期自動停用、保留期滿軟刪 purgedAt）、合約起訖日、試用相關 email。
@@ -16,11 +16,11 @@ description: >
 
 ## 先讀
 - 功能現況：`docs/ref/features/platform/TRIALS.md`（生命週期、排程三步、清單狀態判定、每項操作改了什麼）；平台共通機制 `docs/ref/features/platform/README.md`
-  - 注意：TRIALS.md 沒寫「同一 email 再送申請會覆寫密碼與站台名稱、並繞過重寄節流」（健檢 HC-PLATFORM-TRIALS-01、02），也沒列公開頁面與速率限制。
+  - TRIALS.md 的「申請與驗證」一節列了公開端點、速率限制與 `requestTrial()` 的分流（2026-11-02 起）。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-TRIALS.md`；租戶停用、合約、復原的 API 細節在 `docs/ref/features/health/PLATFORM-TENANTS.md`
 - 規格：`openspec/specs/trial-application/spec.md`、`openspec/specs/trial-lifecycle/spec.md`、`openspec/specs/trial-data-purge/spec.md`、`openspec/specs/tenant-contract-dates/spec.md`
-  - 注意：`trial-application` 寫 token 消耗時「設為 null」，程式保留雜湊、以 `status` 當閘（為了重按冪等）；寫 gmail 才去 `+tag`，程式對所有網域都去。
-- AUDIT：TRIAL-02（政策 KV 無型別）、TRIAL-03（保留期滿只標記不刪）、TRIAL-04（租戶頁啟用不處理試用狀態）、SEC-02（平台重寄驗證信無稽核）、SEC-03（rate-limit 註冊在路由模組內）、RBAC-03（到期信只寄 `role=ADMIN`）
+  - 注意：程式消耗 token 時保留雜湊、以 `status` 當閘（為了重按冪等）；`trial-application` 寫 gmail 才去 `+tag`，程式對所有網域都去。
+- AUDIT：TRIAL-05、TRIAL-06 已修正（change `trial-set-password-after-verify`：申請不收密碼、驗證後設定、待驗證再申請走重寄節流）；TRIAL-02（政策 KV 無型別）、TRIAL-03（保留期滿只標記不刪）、TRIAL-04（租戶頁啟用不處理試用狀態）、SEC-02（平台重寄驗證信無稽核）、SEC-03（rate-limit 註冊在路由模組內）、RBAC-03（到期信只寄 `role=ADMIN`）
 - 影響分析：`node scripts/feature-impact.mjs --domain platform-trials`
 
 程式位置：公開端點 `apps/api/src/modules/trial/trial.routes.ts`（前綴 `/api/v1/trial`）→ `apps/api/src/modules/trial/trial.service.ts`；平台端點在 `apps/api/src/modules/platform/platform.routes.ts`（前綴 `/api/v1/platform`）→ `apps/api/src/modules/platform/trial-admin.service.ts`；排程 `apps/api/src/modules/trial/trial.scheduler.ts`；政策 `apps/api/src/modules/trial/trial-policy.service.ts`；信件 `apps/api/src/modules/trial/trial-emails.ts`；正規化 `apps/api/src/modules/trial/email-normalizer.ts`。全程用 `fastify.prismaAdmin`（BYPASSRLS；`trial_signups`、`tenants`、`platform_settings` 都是平台表，沒有 RLS）。
@@ -30,9 +30,10 @@ description: >
 ### 公開（申請人）
 | # | 流程 | 入口 | API → 後端 | 副作用 | 重點 |
 | - | ---- | ---- | ---------- | ------ | ---- |
-| 1 | 申請 | `/trial`（`apps/web/src/app/trial/page.tsx`） | `POST /trial/signups {email, siteName, password}` → `requestTrial` | 新 email：建 `TrialSignup`（`pending_verification`）＋驗證信；pending/failed：**覆寫 `siteName`、`passwordHash`**、換 token、寄新信（不經節流） | `trial.enabled=false` 回 403 `TRIAL_CLOSED`（唯一對外可見差異）；其餘一律 202 同文案（防枚舉）；已開通過或已是 Agent 的 email 靜默不寄；每 IP 10 分鐘 5 次 |
+| 1 | 申請 | `/trial`（`apps/web/src/app/trial/page.tsx`） | `POST /trial/signups {email, siteName}` → `requestTrial` | 新 email：建 `TrialSignup`（`pending_verification`）＋驗證信；pending：**不改任何欄位**，交給 `resendTrial`（同 `/resend` 的節流，寄到原申請的 email）；failed：視同重新申請（換站台名稱與 token、寄送次數重算為 1）；請求帶 `password` 忽略不存 | `trial.enabled=false` 回 403 `TRIAL_CLOSED`（唯一對外可見差異）；其餘一律 202 同文案（防枚舉）；已開通過或已是 Agent 的 email 靜默不寄；每 IP 10 分鐘 5 次 |
 | 2 | 重寄 | 申請成功畫面「重新寄送」 | `POST /trial/resend {email}` → `resendTrial` | 只對 pending；間隔 60 秒、最多 5 次 | 一律 202；畫面沒有回饋；每 IP 10 分鐘 3 次 |
-| 3 | 驗證即開通 | 信中連結 → `/trial/verify?token=`（`apps/web/src/app/trial/verify/page.tsx`） | `GET /trial/verify?token=` → `verifyAndProvision` | 交易內：條件更新 `status` pending→provisioning → `provisionTenant`（方案 `trial.planSlug`、`trialEndsAt = now + durationDays`、三個系統角色、ADMIN）→ provisioned；交易外寄開通信 | 不看 `trial.enabled`（關閉後已寄的連結仍可開通）；過期 410 `TRIAL_TOKEN_EXPIRED`、無效 410 `TRIAL_TOKEN_INVALID`、email 被建走 409 `EMAIL_IN_USE` 並標 failed、重按冪等成功；每分鐘 10 次 |
+| 3a | 確認連結 | 信中連結 → `/trial/verify?token=`（`apps/web/src/app/trial/verify/page.tsx`） | `GET /trial/verify?token=` → `getVerifyStatus` | 無（只讀，不消耗 token） | 回 email、站台名稱、`pending`／`provisioned`；過期 410 `TRIAL_TOKEN_EXPIRED`、無效 410 `TRIAL_TOKEN_INVALID`、failed 409 `EMAIL_IN_USE`；每分鐘 10 次 |
+| 3b | 設定密碼並開通 | 驗證頁的表單（站台名稱可改、密碼輸入兩次） | `POST /trial/verify {token, password, siteName}` → `verifyAndProvision` | 交易內：條件更新 `status` pending→provisioning（並比對 token）→ `provisionTenant`（方案 `trial.planSlug`、`trialEndsAt = now + durationDays`、三個系統角色、ADMIN，密碼為這次送出的）→ provisioned、寫入最終站台名稱；交易外寄開通信 | 密碼至少 8 碼、站台名稱 1–100 字，否則 400 且 token 仍可用；不看 `trial.enabled`；email 被建走 409 `EMAIL_IN_USE` 並標 failed；同一 token 再送冪等回 `alreadyProvisioned`，不改密碼；每分鐘 10 次 |
 
 ### 平台後台 `/admin/trial`（`apps/web/src/app/admin/trial/page.tsx`）
 | # | 流程 | 入口 | API → 後端 | 副作用 | 注意 |
@@ -58,10 +59,11 @@ description: >
 
 **有後端、沒有前端入口**：`trial.planSlug`（只能直接打 `PUT /settings/trial.planSlug`）；`TrialSignup.requestIp`、`verifySentCount`、`lastVerifySentAt`；依租戶查平台稽核。
 
-**前端實際送出的值**：申請 `email`（瀏覽器 `type=email` 去頭尾空白）、`siteName`（不 trim、無 `maxLength`，後端上限 100）、`password`（`minLength=8`，空白也算）；延長 `days` 為正整數；轉正式 `planSlug` 寫死 4 個；政策 `trial.enabled` 布林、天數 `parseInt`、提醒檔位為整數陣列。
+**前端實際送出的值**：申請 `email`（瀏覽器 `type=email` 去頭尾空白）、`siteName`（無 `maxLength`，後端 trim 後 1–100 字）；驗證頁 `token`、`password`（`minLength=8`，前端另比對兩次輸入）、`siteName`（trim、`maxLength=100`）；延長 `days` 為正整數；轉正式 `planSlug` 寫死 4 個；政策 `trial.enabled` 布林、天數 `parseInt`、提醒檔位為整數陣列。
 
 ## 不可破壞的規則
-- 開通必須在同一交易：`trialSignup.updateMany`（pending→provisioning）→ `provisionTenant(tx, …)` → provisioned。任何一步失敗整體回滾，token 不算用掉。不要把寄信放進交易。
+- 申請時不可收或存密碼（TRIAL-05）：管理員密碼只能由打開驗證連結的人在 `POST /trial/verify` 設定。`GET /trial/verify` 必須保持只讀。
+- 開通必須在同一交易：`trialSignup.updateMany`（pending→provisioning，條件含 token 雜湊）→ `provisionTenant(tx, …)` → provisioned。任何一步失敗整體回滾，token 不算用掉。不要把寄信放進交易。
 - 防枚舉：`/signups`、`/resend` 對已開通、已是 Agent、不存在的 email 都回相同的 202。只有 `TRIAL_CLOSED` 可以不同。新增分支時不要讓回應、狀態碼或明顯的時間差洩漏 email 狀態。
 - `trialEndsAt` 不是 null 就是試用租戶，排程只掃它。脫離試用只有兩條路：`convertToPaid` 與核准 `upgrade` 申請（`plan-change.service.ts`），兩者都寫 `TRIAL_EXIT_DATA`。改方案（`updateTenant`）、核准加購都**不**脫離試用。
 - 試用方案（以 `trial.planSlug` 判斷，不寫死）不能當轉正式或升級的目標（`assertNotTrialPlan`）。
@@ -71,7 +73,7 @@ description: >
 - 平台稽核由路由寫（`writePlatformAudit`），服務不寫；排程用 `writeSystemAudit`（`platformUserId` 為 null）。新增平台異動路由要加進 `apps/api/tests/unit/modules/platform/platform-audit-routes.test.ts` 的清單。
 - 試用信的變數一律經 `escapeHtml`（`siteName` 是申請人自填）。既有試用信的 emoji 保留，新信不要加 emoji。
 - 速率限制靠 `trial.routes.ts` 內註冊的 `@fastify/rate-limit`（`global: false`）。把路由搬到別的檔案，`config.rateLimit` 會被靜默忽略（SEC-03）。測試時用 `X-Forwarded-For` 帶不同 IP（本機 loopback 是受信任代理，`apps/api/src/lib/trust-proxy.ts`）。
-- 修 HC-PLATFORM-TRIALS-01、02 時：pending 的申請再送一次不可覆寫密碼與站台名稱，重寄要走與 `/resend` 相同的節流。
+- pending 的申請再送一次不可改任何欄位，重寄要走與 `/resend` 相同的節流（TRIAL-06）。
 
 ## 跨功能牽連
 執行 `node scripts/feature-impact.mjs --domain platform-trials` 看最新版本。重點：
@@ -81,20 +83,20 @@ description: >
 
 ## 回歸清單
 改到本領域時，至少重走（用 `hc-` 前綴的 email 與租戶，**不要對 Demo 或其他租戶做到期與清除**；`trial.enabled` 測完要恢復）：
-1. `trial.enabled=false` → 申請 403、不建記錄 → 開啟 → `/trial` 申請 → API log 有驗證信（`EMAIL_DELIVERY_MODE=log` 會印 `verifyUrl`）→ 開 `/trial/verify?token=` → 站台已開通 → 以申請密碼登入，`/marketing/campaigns` 403（trial 天花板）。
-2. 錯誤：過期 token（SQL 把 `verifyTokenExpiresAt` 改到過去）410、無效 410、重按冪等、email 已被手動開通建走 409、gmail 別名同一筆、已是 Agent 的 email 靜默 202。
-3. 同一 email 用不同 IP 再送申請：確認密碼不被覆寫、不能繞過節流（HC-PLATFORM-TRIALS-01、02 修好之後）。
+1. `trial.enabled=false` → 申請 403、不建記錄 → 開啟 → `/trial` 申請 → API log 有驗證信（`EMAIL_DELIVERY_MODE=log` 會印 `verifyUrl`）→ 開 `/trial/verify?token=` → 設定密碼表單（重新整理不會開通）→ 送出 → 站台已開通 → 以驗證頁設定的密碼登入，`/marketing/campaigns` 403（trial 天花板）。
+2. 錯誤：過期 token（SQL 把 `verifyTokenExpiresAt` 改到過去）410、無效 410、密碼 7 碼 400、重按冪等且密碼不變、email 已被手動開通建走 409、gmail 別名同一筆、已是 Agent 的 email 靜默 202。
+3. 同一 email 用不同 IP 再送申請：站台名稱不變、60 秒內不寄新信、寄滿 5 封後不再寄（TRIAL-05、TRIAL-06）。
 4. 排程：把自建試用租戶的 `trialEndsAt` 改成過去 / 6.5 天後 / 31 天前，手動執行 `runTrialLifecycle`（腳本要先呼叫 `apps/api/src/config/env.ts` 的 `loadEnvConfig()`，否則寄信全部失敗）→ 停用＋到期信、7 天提醒、停用＋軟刪；確認執行前資料庫沒有別人的試用租戶會被波及。
 5. `/admin/trial`：延長已到期停用的租戶 → 試用中；復原已清除 → 已停用；轉正式 → 從清單消失；試用方案 400；重寄、作廢。
 6. TRIAL-04：租戶頁啟用已到期試用租戶 → 下一輪排程又停用。
-- 自動測試：`pnpm --filter @open333crm/api test -- platform-audit-routes plan-change tenant-plan schedule-registrations`；`pnpm --filter @open333crm/web test -- trial-page`；feature（先搶鎖、**不要加 `--`**）：`pnpm --filter @open333crm/api test:feature modules/trial modules/platform/plan-change-trial-exit modules/platform/tenant-contract-dates`。
-- `trial-application` 的 9 個 scenario 沒有任何測試；提醒的三個 scenario 沒有同名測試。
+- 自動測試：`pnpm --filter @open333crm/api test -- platform-audit-routes plan-change tenant-plan schedule-registrations`；`pnpm --filter @open333crm/web test -- trial-page verify-page`；`pnpm --filter @open333crm/api test -- trial-routes`；feature（先搶鎖、**不要加 `--`**）：`pnpm --filter @open333crm/api test:feature modules/trial modules/platform/plan-change-trial-exit modules/platform/tenant-contract-dates`。
+- `trial-application` 的 scenario 由 `apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts` 涵蓋（2026-11-02 起）；提醒的三個 scenario 沒有同名測試。
 - E2E：`apps/web/tests/e2e-uat/platform-smoke.spec.ts`（只開 `/admin/trial` 頁）。UAT 是正式環境，不要在 UAT 送試用申請。
 
 ## 常見 bug 從哪裡查
 - 「收不到驗證信」：先看 `trial.enabled`（預設關閉，畫面會顯示「目前暫不開放」）；再看是否已是 Agent 或已開通（靜默不寄）；再看節流（`verifySentCount` ≥ 5 或 60 秒內）；最後查 API log 的 `[TrialEmail] send failed`。平台可在申請記錄按「重寄」（繞過節流）。
-- 「驗證連結失效」：同一 email 後來又申請或重寄過，舊連結就失效，用最新那封；平台作廢過也會失效。
-- 「登入密碼不對」：同一 email 在驗證前被再送過申請，密碼被覆寫成後送的值（HC-PLATFORM-TRIALS-01）。
+- 「驗證連結失效」：同一 email 後來又申請（冷卻過後會重寄）或重寄過，舊連結就失效，用最新那封；平台作廢過也會失效。
+- 「登入密碼不對」：密碼是在驗證頁設定的，不是申請時（2026-11-02 起申請不收密碼）；同一連結送第二次不會改密碼，要用第一次送出的。2026-11-02 之前開通的站台，密碼可能被他人覆寫過（TRIAL-05）。
 - 「試用租戶被停用了」：`trialEndsAt` 已過，排程停用；要繼續用請「延長」或「轉正式」，不要在租戶頁按「啟用」（TRIAL-04，最多撐一小時）。
 - 「試用租戶沒有到期／不在 /admin/trial」：手動開通的租戶沒有 `trialEndsAt`（HC-PLATFORM-TENANTS-05）；或曾被轉正式、核准升級。
 - 「改了方案還是被停用」：在租戶詳細頁改方案不脫離試用，要用「轉正式」。

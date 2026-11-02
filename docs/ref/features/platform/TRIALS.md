@@ -3,7 +3,7 @@
 試用租戶從申請到期滿的完整生命週期，以及平台可以做的介入。
 
 - **資料來源**：`apps/api/src/modules/platform/trial-admin.service.ts`、`apps/api/src/modules/trial/*`
-- **核對日期**：2026-09-23
+- **核對日期**：2026-11-02（申請與驗證一節；其餘 2026-09-23）
 
 ## 誰能做什麼
 
@@ -20,10 +20,10 @@
 ## 生命週期
 
 ```text
-申請        外部填表 → trial_signups（pending_verification）→ 寄驗證信
+申請        外部填 email、站台名稱 → trial_signups（pending_verification）→ 寄驗證信
   ↓
-驗證        點信中連結 → provisionTenant 建租戶
-            trialEndsAt = 現在 + durationDays
+驗證        點信中連結 → 驗證頁確認連結（不開通）→ 本人設定密碼、確認站台名稱
+            → 送出後 provisionTenant 建租戶，trialEndsAt = 現在 + durationDays
   ↓
 提醒        剩餘天數到達設定的檔位 → 寄信給該租戶的所有 ADMIN
             寄過的檔位記在 trialRemindersSent，同一檔位不重寄
@@ -34,6 +34,32 @@
 軟刪        已停用，且距 trialEndsAt 超過 dataRetentionDays
             → purgedAt = 現在。只標記，業務資料不真刪，可復原
 ```
+
+## 申請與驗證
+
+申請時不收密碼。管理員密碼只能由打開驗證信連結的人設定，所以知道別人 email 的人無法替對方決定密碼（AUDIT TRIAL-05 已修正）。
+
+| 端點 | 做什麼 |
+| --- | --- |
+| `POST /api/v1/trial/signups`（email、siteName） | 防枚舉：一律回 202 同文案，`trial.enabled=false` 時回 403 `TRIAL_CLOSED`。請求帶 `password` 時忽略、不儲存（相容舊頁面）。每個 IP 每 10 分鐘 5 次 |
+| `POST /api/v1/trial/resend`（email） | 重寄驗證信，一律 202。每個 IP 每 10 分鐘 3 次 |
+| `GET /api/v1/trial/verify?token=` | 驗證頁確認連結：回 email、站台名稱、`pending` 或 `provisioned`。只讀，不消耗 token、不開通 |
+| `POST /api/v1/trial/verify`（token、password、siteName） | 設定密碼並開通。密碼至少 8 碼、站台名稱 1–100 字（未送沿用申請的名稱），不合規回 400 且 token 仍可用 |
+
+`requestTrial()` 依 email 的狀態分流：
+
+| 狀態 | 行為 |
+| --- | --- |
+| 全新 | 建立申請、寄驗證信 |
+| 待驗證 | **不改任何申請資料**，交給 `resendTrial()`：距上次寄出不到 60 秒、或已寄滿 5 封時不寄；否則換新 token 寄到原申請的 email，舊連結失效 |
+| `failed`（email 衝突或平台作廢） | 視同重新申請：換站台名稱與 token，寄送次數重算為 1 |
+| 已開通，或 email 已是任一租戶的 Agent | 靜默，不寄信 |
+
+`verifyAndProvision()` 在同一個交易內以條件式更新搶佔申請（仍是 `pending_verification`、且 token 未被重寄換掉），再建立租戶、system roles 與 ADMIN，最後標記 `provisioned` 並寫入最終的站台名稱。任一步失敗整個回滾，token 仍可重試。同一 token 再送一次（雙擊或兩個分頁同時送出）只開通一次，回 `alreadyProvisioned: true`，不改第一次設定的密碼。開通信在交易外寄出。
+
+`trial_signups` 不存密碼。`passwordHash` 欄位由 migration `20261102100000_drop_trial_signup_password_hash` 移除；改版前寄出、仍在效期內的連結照常可用，打開後進入設定密碼頁。
+
+## 排程
 
 排程是 `apps/api/src/modules/trial/trial.scheduler.ts` 的 `runTrialLifecycle()`，由 BullMQ Job Scheduler 每小時觸發一次。API 重啟不會額外執行。註冊時設定 `withoutOverlapping`（鎖的存活時間 30 分鐘），上一期還在跑時，這一期略過。逐租戶 try/catch，單一租戶失敗不影響其他租戶。
 
@@ -103,7 +129,7 @@
 
 `restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。保留期滿時沒有任何資料被刪除，見 `../../system/AUDIT.md` 的 TRIAL-03。復原是讓平台人員接著延長或轉正式。復原後沒有這樣做，租戶仍符合標記的條件，下一輪排程會再標記，這是預期的行為。
 
-`resendVerification(signupId)` 重寄驗證信，而且**刻意繞過使用者端的重寄節流**，避免平台人員的操作靜默失敗。只有 `pending_verification` 的申請能重寄，其餘回 400。
+`resendVerification(signupId)` 重寄驗證信，而且**刻意繞過使用者端的重寄節流**（使用者寄滿 5 封之後，只能由平台人員重寄），避免平台人員的操作靜默失敗。只有 `pending_verification` 的申請能重寄，其餘回 400。
 
 `markSignupFailed(signupId, reason)` 手動把申請標記為 `failed` 並清掉驗證 token，供排查或作廢使用。已開通的申請不能標記，回 400。
 
