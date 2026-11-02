@@ -255,3 +255,12 @@ test('Other schemes stay text：javascript: 不產生連結，HTML 標籤以文�
   assert.equal(el.querySelectorAll('b, img').length, 0);
   assert.equal(el.textContent, '<b>粗體</b> <img src=x>');
 });
+
+test("Visitor's own address stays text：訪客自己送出的網址不變成連結", async () => {
+  const { messages, input, sendBtn } = await loadWidget();
+  input.value = 'https://example.com/a';
+  sendBtn.click();
+  const el = messages.lastElementChild!;
+  assert.equal(el.textContent, 'https://example.com/a');
+  assert.equal(el.querySelectorAll('a').length, 0);
+});

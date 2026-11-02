@@ -1,6 +1,6 @@
 import { getBrowserFingerprint, initSession } from './session.js';
 import { connectVisitorSocket } from './socket.js';
-import { injectStyles, createLauncher, createPanel, applyPanelTheme, appendMessage } from './ui.js';
+import { injectStyles, createLauncher, createPanel, applyPanelTheme, appendMessage, appendVisitorText } from './ui.js';
 import type { Message } from './session.js';
 import { getRealtimeOrigin } from '@open333crm/shared';
 
@@ -75,14 +75,9 @@ async function boot(): Promise<void> {
     const text = input.value.trim();
     if (!text) return;
 
-    // Optimistic UI
-    const outMsg: Message = {
-      direction: 'INBOUND',
-      contentType: 'text',
-      content: { text },
-    };
-    appendMessage(messagesEl, outMsg, true);
-    // appendMessage is synchronous, so the last child is the message just sent
+    // Optimistic UI：訪客自己的文字以純文字顯示，不轉連結
+    appendVisitorText(messagesEl, text);
+    // appendVisitorText is synchronous, so the last child is the message just sent
     const outEl = messagesEl.lastElementChild;
     input.value = '';
     const markFailed = () => {

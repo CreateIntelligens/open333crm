@@ -146,11 +146,25 @@ export function appendMessage(container: HTMLElement, msg: Message, fromVisitor:
   } else if (msg.contentType === 'text' || !msg.contentType) {
     const text = msg.content?.text ?? '';
     if (!text) return;
-    appendTextWithLinks(el, text);
+    // 訪客自己送出的文字維持純文字：訪客的輸入不當成連結目標（規格 webchat-widget）
+    if (fromVisitor) el.textContent = text;
+    else appendTextWithLinks(el, text);
   } else {
     el.textContent = '[unsupported]';
   }
 
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * 訪客自己送出的文字：靠右、純文字。訪客的輸入不經過 appendTextWithLinks()，
+ * 不會變成連結目標（規格 webchat-widget「Web addresses in text messages are links」）。
+ */
+export function appendVisitorText(container: HTMLElement, text: string): void {
+  const el = document.createElement('div');
+  el.className = 'o333-msg o333-msg-out';
+  el.textContent = text;
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
@@ -162,12 +176,28 @@ function appendTextWithLinks(el: HTMLElement, text: string): void {
       el.appendChild(document.createTextNode(part.value));
       continue;
     }
+    // 第二道防線：splitTextLinks() 只產出 http(s) 網址，這裡再以 URL 解析確認協定
+    const href = safeHttpUrl(part.value);
+    if (!href) {
+      el.appendChild(document.createTextNode(part.value));
+      continue;
+    }
     const a = document.createElement('a');
-    a.href = part.value;
+    a.href = href;
     a.textContent = part.value;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     el.appendChild(a);
+  }
+}
+
+/** 只接受 http: 與 https:，回傳正規化後的網址；其他協定或解析失敗回 null */
+function safeHttpUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
   }
 }
 
