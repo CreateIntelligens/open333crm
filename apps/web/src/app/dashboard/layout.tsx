@@ -37,7 +37,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     <SocketProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-hidden">{children}</main>
+        <a href="#main-content" className="skip-link">跳到主要內容</a>
+        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-hidden">{children}</main>
       </div>
       <SimulatorPanel />
       <WebTalkGlobal />

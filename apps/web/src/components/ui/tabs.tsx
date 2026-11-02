@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 
 type TabsVariant = 'pill' | 'underline';
 
-const TabsCtx = React.createContext<{ variant: TabsVariant }>({ variant: 'pill' });
+const TabsCtx = React.createContext<{ variant: TabsVariant; idPrefix: string }>({ variant: 'pill', idPrefix: 'tabs' });
 
 interface TabsProps {
   value: string;
@@ -22,8 +22,9 @@ interface TabsProps {
 }
 
 function Tabs({ value, onValueChange, children, className, variant = 'pill' }: TabsProps) {
+  const idPrefix = React.useId().replace(/:/g, '');
   return (
-    <TabsCtx.Provider value={{ variant }}>
+    <TabsCtx.Provider value={{ variant, idPrefix }}>
       <div className={cn('w-full', className)} data-value={value}>
         {React.Children.map(children, (child) => {
           if (React.isValidElement<{ value?: string; activeValue?: string; onValueChange?: (v: string) => void }>(child)) {
@@ -42,14 +43,20 @@ function Tabs({ value, onValueChange, children, className, variant = 'pill' }: T
 interface TabsListProps {
   children: React.ReactNode;
   className?: string;
+  'aria-label'?: string;
+  'aria-labelledby'?: string;
   activeValue?: string;
   onValueChange?: (value: string) => void;
 }
 
-function TabsList({ children, className, activeValue, onValueChange }: TabsListProps) {
+function TabsList({ children, className, activeValue, onValueChange, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledBy }: TabsListProps) {
   const { variant } = React.useContext(TabsCtx);
   return (
     <div
+      role="tablist"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+      aria-orientation="horizontal"
       className={cn(
         'inline-flex items-center justify-start text-muted-foreground',
         variant === 'pill'
@@ -80,10 +87,19 @@ interface TabsTriggerProps {
 }
 
 function TabsTrigger({ value, children, className, activeValue, onValueChange }: TabsTriggerProps) {
-  const { variant } = React.useContext(TabsCtx);
+  const { variant, idPrefix } = React.useContext(TabsCtx);
   const isActive = activeValue === value;
+  const suffix = value.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const tabId = `${idPrefix}-tab-${suffix}`;
+  const panelId = `${idPrefix}-panel-${suffix}`;
   return (
     <button
+      type="button"
+      id={tabId}
+      role="tab"
+      aria-selected={isActive}
+      aria-controls={panelId}
+      tabIndex={isActive ? 0 : -1}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50',
         variant === 'pill'
@@ -109,9 +125,17 @@ interface TabsContentProps {
 }
 
 function TabsContent({ value, children, className, activeValue }: TabsContentProps) {
+  const { idPrefix } = React.useContext(TabsCtx);
   if (activeValue !== value) return null;
+  const suffix = value.replace(/[^a-zA-Z0-9_-]/g, '-');
   return (
-    <div className={cn('mt-3 focus-visible:outline-none', className)}>
+    <div
+      id={`${idPrefix}-panel-${suffix}`}
+      role="tabpanel"
+      aria-labelledby={`${idPrefix}-tab-${suffix}`}
+      tabIndex={0}
+      className={cn('mt-3 focus-visible:outline-none', className)}
+    >
       {children}
     </div>
   );

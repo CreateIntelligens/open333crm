@@ -24,6 +24,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **Web CRM 全面提升 WCAG 與中文可讀性**（change `harden-web-wcag-typography`）— 全域色彩 token 調整為 light/dark theme 的 WCAG AA 對比，中文介面字級底線提升至 13.5pt（18px CSS），共用按鈕、輸入框、核取方塊、Tabs、側欄與 Topbar 控制項提升至 44px 觸控尺寸，新增高對比鍵盤 focus、skip link、reduced-motion 與 Tabs ARIA 語義，並同步更新 Web unit/UAT selector。
 - **Web 的 ESLint 錯誤清為 0，建置時恢復檢查 lint**（issue #253）— `apps/web/src` 原有 80 個 ESLint 錯誤，因此 `next.config.ts` 設了 `eslint.ignoreDuringBuilds`。現在全部修正並移除這個設定，`next build` 遇到 lint 錯誤會失敗（警告不影響）。
   - 73 個 `any` 改成實際型別：行銷活動、分群、廣播列表的 hook 回傳型別（`useMarketing.ts`）、知識庫文章、素材預覽、圖表標籤、WebChat 的 socket 訊息等。
   - 13 個檔案的錯誤處理改用 `getApiErrorMessage()`：後端有訊息時照舊顯示；沒有訊息時（網路斷線、逾時、5xx），改顯示對應的說明，不再只顯示「儲存失敗」等固定文字。

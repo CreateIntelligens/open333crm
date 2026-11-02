@@ -44,7 +44,7 @@ export class FlowRunner {
     };
 
     const nodeMap = new Map<string, FlowNode>(
-      execution.flow.nodes.map((n) => [n.id, n as FlowNode]),
+      execution.flow.nodes.map((n: { id: string }): [string, FlowNode] => [n.id, n as FlowNode]),
     );
 
     // Determine starting node

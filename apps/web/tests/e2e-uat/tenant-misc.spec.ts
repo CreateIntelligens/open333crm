@@ -7,9 +7,8 @@ import { E2E_PREFIX, newApiContext, gotoAndCheck, acceptNextDialog } from './hel
  *
  * 讀碼盤點（與任務描述不同處，以實際程式碼為準）：
  * - 三個頁面（通知/短連結/粉絲門戶）的 Tab 都是自製元件（src/components/ui/tabs.tsx），
- *   TabsTrigger 渲染為普通 `<button>`，**未加 `role="tab"`**（與 tenant-marketing.spec.ts
- *   記錄的踩坑一致）。故本檔全面改用 `getByRole('button', { exact: true })` 定位 tab，
- *   不用 `getByRole('tab')`，也沒有 aria-selected 可斷言，改用「該 tab 內容區的標題/按鈕
+ *   TabsTrigger 使用 `role="tab"`，本檔用 `getByRole('tab', { exact: true })` 定位 tab，
+ *   並以「該 tab 內容區的標題/按鈕
  *   是否出現」來驗證切換成功。
  * - 通知頁（src/app/dashboard/notifications/page.tsx）：點擊單則通知會呼叫 markAsRead
  *   再依 clickUrl router.push；已讀樣式差異是移除 `bg-accent/20 border-accent` 與已讀
@@ -70,23 +69,23 @@ test.describe('@notifications 通知功能層', () => {
 
   test('@notifications 頁面載入：全部/未讀/已讀三個 tab 皆可切換並渲染', async ({ page }) => {
     await gotoNotifications(page);
-    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('tab', { name: '全部', exact: true })).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole('button', { name: '未讀', exact: true }).click();
+    await page.getByRole('tab', { name: '未讀', exact: true }).click();
     // 未讀 tab 下，空狀態或列表其中一種會出現；用「已讀」按鈕仍可見來確認頁面未壞
-    await expect(page.getByRole('button', { name: '已讀', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('tab', { name: '已讀', exact: true })).toBeVisible({ timeout: 10_000 });
 
-    await page.getByRole('button', { name: '已讀', exact: true }).click();
-    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('tab', { name: '已讀', exact: true }).click();
+    await expect(page.getByRole('tab', { name: '全部', exact: true })).toBeVisible({ timeout: 10_000 });
 
     // 切回全部確認可逆
-    await page.getByRole('button', { name: '全部', exact: true }).click();
-    await expect(page.getByRole('button', { name: '未讀', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('tab', { name: '全部', exact: true }).click();
+    await expect(page.getByRole('tab', { name: '未讀', exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('@notifications 點擊單則未讀通知：應標記已讀（API 反查驗證）', async ({ page }) => {
     await gotoNotifications(page);
-    await page.getByRole('button', { name: '未讀', exact: true }).click();
+    await page.getByRole('tab', { name: '未讀', exact: true }).click();
     await page.waitForTimeout(1000);
 
     const emptyText = page.getByText('沒有未讀通知');
@@ -108,7 +107,7 @@ test.describe('@notifications 通知功能層', () => {
 
   test('@notifications 全部已讀：點擊後未讀數變 0', async ({ page }) => {
     await gotoNotifications(page);
-    await page.getByRole('button', { name: '未讀', exact: true }).click();
+    await page.getByRole('tab', { name: '未讀', exact: true }).click();
     await page.waitForTimeout(1000);
 
     const emptyText = page.getByText('沒有未讀通知');
@@ -129,7 +128,7 @@ test.describe('@notifications 通知功能層', () => {
 
   test('@notifications 分頁：通知數量夠多時分頁按鈕可用，否則略過', async ({ page }) => {
     await gotoNotifications(page);
-    await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('tab', { name: '全部', exact: true })).toBeVisible({ timeout: 15_000 });
 
     const pager = page.getByText(/第 \d+ \/ \d+ 頁/);
     if (!(await pager.isVisible().catch(() => false))) {

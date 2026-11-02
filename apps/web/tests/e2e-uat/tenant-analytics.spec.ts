@@ -8,7 +8,7 @@ import { gotoAndCheck } from './helpers';
  * - src/app/dashboard/analytics/page.tsx（主頁：DateRangePicker + 匯出 CSV + 4 個 tab）
  * - src/app/dashboard/analytics/my/page.tsx（我的績效，唯讀個人指標）
  * - src/components/analytics/DateRangePicker.tsx（「今天/7 天/30 天/90 天」四個 preset 按鈕 + 自訂 from/to 日期輸入）
- * - src/components/ui/tabs.tsx（TabsTrigger 是自製 `<button>`，非 role="tab"；用 getByRole('button', { name }) 定位）
+ * - src/components/ui/tabs.tsx（TabsTrigger 使用原生 button 搭配 role="tab"；用 getByRole('tab', { name }) 定位）
  * - src/hooks/useAnalytics.ts（各 tab 對應 API：/analytics/overview、/analytics/message-trend、
  *   /analytics/cases、/analytics/agents、/analytics/channels、/analytics/my）
  * - apps/api/src/modules/analytics/analytics.routes.ts（POST /analytics/export 帶
@@ -39,9 +39,9 @@ async function gotoAnalytics(page: import('@playwright/test').Page) {
   });
 }
 
-/** 切換分析頁 tab（TabsTrigger 是自製 button，非 role=tab） */
+/** 切換分析頁 tab（TabsTrigger 使用 role=tab） */
 async function switchTab(page: import('@playwright/test').Page, label: string) {
-  await page.getByRole('button', { name: label, exact: true }).click();
+  await page.getByRole('tab', { name: label, exact: true }).click();
 }
 
 test.describe('數據分析頁 @analytics', () => {
@@ -60,7 +60,7 @@ test.describe('數據分析頁 @analytics', () => {
 
     // 4 個 tab 按鈕皆可見
     for (const label of ['概覽', '案件報表', '客服績效', '渠道分析']) {
-      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+      await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
     }
 
     // 預設在「概覽」tab：KPI 卡（訊息總量/開啟中案件/SLA 達成率/CSAT 分數）與趨勢圖存在

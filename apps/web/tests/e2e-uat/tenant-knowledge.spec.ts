@@ -7,8 +7,8 @@ import { E2E_PREFIX, newApiContext, gotoAndCheck, acceptNextDialog } from './hel
  *
  * 讀碼盤點（與任務描述路徑不同/需注意處，以實際程式碼為準）：
  * - 頁面五個 tab（含狀態子 tab）都是自製 Tabs 元件（src/components/ui/tabs.tsx），
- *   內部是純 `<button onClick>`，**沒有** role="tab"/"tabpanel"（非 radix），
- *   一律用 getByRole('button', { name }) 定位切換，不能用 getByRole('tab'/'tabpanel')
+ *   使用 role="tab"/"tabpanel" 與 aria-selected/aria-controls，
+ *   一律用 getByRole('tab', { name }) 定位切換
  * - 新增/編輯文章走同一顆 ArticleFormDialog（src/components/knowledge/ArticleFormDialog.tsx），
  *   是 shadcn 風格 Dialog（非原生 <dialog>），getByRole('dialog') 仍可抓到（radix 有 role=dialog）
  * - 表單欄位：標題(Input, required)、分類(Input 自由輸入文字，非下拉選單！placeholder「例：常見問題、產品說明」，
@@ -20,7 +20,7 @@ import { E2E_PREFIX, newApiContext, gotoAndCheck, acceptNextDialog } from './hel
  *   → 任務描述「或依 API 驗證是否為軟刪」已讀碼確認：非軟刪，afterAll 清理不必再額外刪除已在測試中刪除的文章
  * - 發布/封存按鈕在列表操作欄是 icon-only button，title 分別為「發布」「封存」「編輯」「刪除」
  *   （ArticleList.tsx，用 getByTitle 定位比 getByRole name 精確，因為都是 icon button 無文字）
- * - 狀態子 tab（全部/草稿/已發布/已封存）用 Tabs value=DRAFT/PUBLISHED/ARCHIVED/all，同上用 getByRole('button', {name}) 定位
+ * - 狀態子 tab（全部/草稿/已發布/已封存）用 Tabs value=DRAFT/PUBLISHED/ARCHIVED/all，同上用 getByRole('tab', {name}) 定位
  * - 建立/更新文章一律觸發背景 embedding（fire-and-forget，依賴 Ollama），發布時若尚無 embedding 也會背景補嵌入；
  *   這些不會擋住 HTTP 回應，UI 操作可正常斷言，只有「語義搜尋」（POST /knowledge/search）是同步等待 LLM 回應，
  *   對它加寬容處理
@@ -88,10 +88,10 @@ test.describe('@knowledge 知識庫功能', () => {
     await expect(page.getByRole('button', { name: '新增文章' })).toBeVisible();
 
     // 狀態子 tab：全部/草稿/已發布/已封存
-    await expect(page.getByRole('button', { name: '全部' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '草稿' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '已發布' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '已封存' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: '全部' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: '草稿' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: '已發布' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: '已封存' })).toBeVisible();
   });
 
   // ── 2. 新增文章 ────────────────────────────────────────────────────────
@@ -170,12 +170,12 @@ test.describe('@knowledge 知識庫功能', () => {
     expect(res.ok(), `發布文章失敗：${await res.text()}`).toBeTruthy();
 
     // 已發布子 tab 應可見該文章
-    await page.getByRole('button', { name: '已發布' }).click();
+    await page.getByRole('tab', { name: '已發布' }).click();
     await page.getByPlaceholder('搜尋文章...').fill(articleTitleEdited);
     await expect(page.getByText(articleTitleEdited, { exact: true })).toBeVisible({ timeout: 10_000 });
 
     // 草稿子 tab 應不再出現
-    await page.getByRole('button', { name: '草稿' }).click();
+    await page.getByRole('tab', { name: '草稿' }).click();
     await page.getByPlaceholder('搜尋文章...').fill(articleTitleEdited);
     await expect(page.getByText(articleTitleEdited, { exact: true })).toBeHidden({ timeout: 10_000 });
 
@@ -191,7 +191,7 @@ test.describe('@knowledge 知識庫功能', () => {
     expect(articleId, '前置測試 2 應已建立 articleId').toBeTruthy();
     await gotoKnowledgePage(page);
     // 目前在「已發布」狀態，切回全部確保找得到列
-    await page.getByRole('button', { name: '全部' }).click();
+    await page.getByRole('tab', { name: '全部' }).click();
     await page.getByPlaceholder('搜尋文章...').fill(articleTitleEdited);
     const row = page.locator('tbody tr', { hasText: articleTitleEdited }).first();
     await expect(row).toBeVisible({ timeout: 10_000 });
@@ -203,7 +203,7 @@ test.describe('@knowledge 知識庫功能', () => {
     const res = await archiveRes;
     expect(res.ok(), `封存文章失敗：${await res.text()}`).toBeTruthy();
 
-    await page.getByRole('button', { name: '已封存' }).click();
+    await page.getByRole('tab', { name: '已封存' }).click();
     await page.getByPlaceholder('搜尋文章...').fill(articleTitleEdited);
     await expect(page.getByText(articleTitleEdited, { exact: true })).toBeVisible({ timeout: 10_000 });
 
@@ -274,7 +274,7 @@ test.describe('@knowledge 知識庫功能', () => {
   test('@knowledge 刪除文章：confirm 後從列表消失（硬刪除）', async ({ page }) => {
     expect(articleId, '前置測試 2 應已建立 articleId').toBeTruthy();
     await gotoKnowledgePage(page);
-    await page.getByRole('button', { name: '已封存' }).click();
+    await page.getByRole('tab', { name: '已封存' }).click();
     await page.getByPlaceholder('搜尋文章...').fill(articleTitleEdited);
     const row = page.locator('tbody tr', { hasText: articleTitleEdited }).first();
     await expect(row).toBeVisible({ timeout: 10_000 });
@@ -301,7 +301,7 @@ test.describe('@knowledge 知識庫功能', () => {
   // ── 9. 匯入文章（JSON） ──────────────────────────────────────────────
   test('@knowledge 匯入文章：JSON 匯入一篇簡單文章後出現在列表', async ({ page }) => {
     await gotoKnowledgePage(page);
-    await page.getByRole('button', { name: '全部' }).click();
+    await page.getByRole('tab', { name: '全部' }).click();
     await page.getByRole('button', { name: '匯入文章' }).click();
 
     const dialog = page.getByRole('dialog');

@@ -18,7 +18,7 @@ export function Topbar({ title, children }: TopbarProps) {
   const { isConnected, connectionLost } = useSocket();
 
   return (
-    <header className="flex h-14 items-center justify-between border-b bg-background px-6">
+    <header className="flex min-h-16 items-center justify-between gap-4 border-b bg-background px-6">
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-semibold">{title}</h1>
         {children}
@@ -36,13 +36,13 @@ export function Topbar({ title, children }: TopbarProps) {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="text-xs text-destructive underline-offset-2 hover:underline"
+              className="min-h-11 text-base text-destructive underline-offset-2 hover:underline"
               title="即時訊息連線中斷，重新整理頁面以恢復"
             >
               即時連線中斷，請重新整理
             </button>
           ) : (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-base text-muted-foreground">
               {isConnected ? "已連線" : "未連線"}
             </span>
           )}
@@ -53,7 +53,7 @@ export function Topbar({ title, children }: TopbarProps) {
           href="/manual/index.html"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="flex min-h-11 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-base text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           title="操作說明：開啟系統使用手冊"
         >
           <BookOpen className="h-3.5 w-3.5" />
@@ -65,7 +65,7 @@ export function Topbar({ title, children }: TopbarProps) {
           href="/skill.md"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          className="flex min-h-11 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-base text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           title="LLM Skill 文件：可直接用 CLI 或 LLM 操作本系統"
         >
           <Bot className="h-3.5 w-3.5" />
@@ -81,7 +81,7 @@ export function Topbar({ title, children }: TopbarProps) {
           trigger={
             <span className="flex items-center gap-2">
               <Avatar alt={agent?.name || "使用者"} size="sm" />
-              <span className="text-sm font-medium hidden sm:inline">
+              <span className="text-base font-medium hidden sm:inline">
                 {agent?.name}
               </span>
             </span>
@@ -89,7 +89,7 @@ export function Topbar({ title, children }: TopbarProps) {
         >
           <div
             role="presentation"
-            className="px-2 py-2 text-xs text-muted-foreground"
+            className="px-2 py-2 text-base text-muted-foreground"
           >
             {agent?.email}
           </div>

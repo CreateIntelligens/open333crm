@@ -55,6 +55,6 @@ test('優惠券成效分頁沒有對應的匯出，不顯示匯出按鈕', async
   auth.perms = new Set(['analytics.view', 'analytics.export']);
   render(<AnalyticsPage />);
   assert.equal(screen.queryAllByText('匯出 CSV').length, 1);
-  fireEvent.click(screen.getByRole('button', { name: '優惠券成效' }));
+  fireEvent.click(screen.getByRole('tab', { name: '優惠券成效' }));
   await waitFor(() => assert.equal(screen.queryAllByText('匯出 CSV').length, 0));
 });

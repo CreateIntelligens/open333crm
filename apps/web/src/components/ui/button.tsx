@@ -8,11 +8,11 @@ import { cn } from '@/lib/utils';
 /**
  * Button — 對齊 Figma「Button」元件集 (429:8357)
  * Type: Primary / Secondary / Outline / Subtle / Ghost / Destructive / AI / Link
- * Size: xs(h32) / sm(h36) / default(h40) / lg(h44) / icon
+ * Size: xs(h44) / sm(h44) / default(h44) / lg(h48) / icon
  * 圓角 8px (md)，含 loading 狀態。
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -34,12 +34,12 @@ const buttonVariants = cva(
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
-        xs: 'h-8 px-3 text-xs',        // XS 32px
-        sm: 'h-9 px-3.5',               // S 36px
-        default: 'h-10 px-4',           // M 40px
-        lg: 'h-11 px-5 text-base',      // L 44px
-        icon: 'h-10 w-10',
-        'icon-sm': 'h-9 w-9',
+        xs: 'h-11 px-3',                // XS 44px touch target
+        sm: 'h-11 px-3.5',              // S 44px touch target
+        default: 'h-11 px-4',            // M 44px touch target
+        lg: 'h-12 px-5 text-lg',         // L 48px touch target
+        icon: 'h-11 w-11',
+        'icon-sm': 'h-11 w-11',
       },
     },
     defaultVariants: {

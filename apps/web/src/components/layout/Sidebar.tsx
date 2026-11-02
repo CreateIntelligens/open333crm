@@ -171,7 +171,7 @@ function TreeNode({ node, pathname, depth, expanded, onToggle, onNavigate }: {
     <li>
       <div className="flex items-center gap-1">
         {hasChildren ? (
-          <button type="button" aria-label={`${isExpanded ? '收合' : '展開'}${node.label}`} aria-expanded={isExpanded} onClick={() => onToggle(node.id)} className="flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" aria-label={`${isExpanded ? '收合' : '展開'}${node.label}`} aria-expanded={isExpanded} onClick={() => onToggle(node.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
         ) : <span className="w-8 shrink-0" aria-hidden="true" />}
@@ -181,7 +181,7 @@ function TreeNode({ node, pathname, depth, expanded, onToggle, onNavigate }: {
             onClick={onNavigate}
             aria-current={isDirectActive ? 'page' : undefined}
             className={cn(
-              'flex min-w-0 flex-1 items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md py-2 text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               padding,
               isDirectActive
                 ? 'bg-primary text-primary-foreground'
@@ -199,7 +199,7 @@ function TreeNode({ node, pathname, depth, expanded, onToggle, onNavigate }: {
             aria-expanded={isExpanded}
             onClick={() => onToggle(node.id)}
             className={cn(
-              'flex min-w-0 flex-1 items-center gap-3 rounded-md py-2 text-left text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md py-2 text-left text-base font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               padding,
               isAncestorActive ? 'text-foreground font-semibold' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
@@ -238,13 +238,13 @@ export function Sidebar() {
 
   return (
     <>
-      <button type="button" aria-label="開啟導覽選單" onClick={() => setMobileOpen(true)} className="fixed left-3 top-3 z-40 inline-flex h-10 w-10 items-center justify-center rounded-md border bg-background shadow-sm lg:hidden"><Menu className="h-5 w-5" /></button>
+      <button type="button" aria-label="開啟導覽選單" onClick={() => setMobileOpen(true)} className="fixed left-3 top-3 z-40 inline-flex h-11 w-11 items-center justify-center rounded-md border bg-background shadow-sm lg:hidden"><Menu className="h-5 w-5" /></button>
       {mobileOpen && <button type="button" aria-label="關閉導覽選單" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-40 bg-black/30 lg:hidden" />}
-      <aside className={cn('fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r bg-background py-4 shadow-xl transition-transform lg:relative lg:z-auto lg:w-64 lg:shadow-none', mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0', collapsed && 'lg:w-20')}>
+      <aside id="primary-navigation" className={cn('fixed inset-y-0 left-0 z-50 flex w-72 min-w-0 flex-col border-r bg-background py-4 shadow-xl transition-transform lg:relative lg:z-auto lg:w-64 lg:shadow-none', mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0', collapsed && 'lg:w-20')}>
         <div className="flex items-center justify-between px-4 pb-4">
           <Link href="/dashboard/inbox" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">O3</div>{!collapsed && <span className="text-lg font-bold">open333CRM</span>}</Link>
-          <button type="button" aria-label="關閉導覽選單" onClick={() => setMobileOpen(false)} className="rounded-md p-2 text-muted-foreground hover:bg-accent lg:hidden"><X className="h-4 w-4" /></button>
-          <button type="button" aria-label={collapsed ? '展開側欄' : '收合側欄'} onClick={() => setCollapsed((value) => !value)} className="hidden rounded-md p-2 text-muted-foreground hover:bg-accent lg:block">{collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}</button>
+          <button type="button" aria-label="關閉導覽選單" onClick={() => setMobileOpen(false)} className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent lg:hidden"><X className="h-4 w-4" /></button>
+          <button type="button" aria-label={collapsed ? '展開側欄' : '收合側欄'} onClick={() => setCollapsed((value) => !value)} className="hidden h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent lg:inline-flex">{collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}</button>
         </div>
         <Separator />
         <nav aria-label="主要導覽" className="flex-1 overflow-y-auto px-2 py-4">
@@ -252,14 +252,14 @@ export function Sidebar() {
           {permissionsError && (collapsed ? (
             <button type="button" onClick={() => void reloadPermissions()} aria-label="無法載入你的權限，重試" title="無法載入你的權限，按此重試" className="mb-2 flex h-10 w-full items-center justify-center rounded-md text-destructive hover:bg-destructive/10"><AlertTriangle className="h-4 w-4" /></button>
           ) : (
-            <div role="alert" className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"><p>無法載入你的權限，部分選單沒有顯示。</p><button type="button" onClick={() => void reloadPermissions()} className="mt-1 font-semibold underline">重試</button></div>
+            <div role="alert" className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-base text-destructive"><p>無法載入你的權限，部分選單沒有顯示。</p><button type="button" onClick={() => void reloadPermissions()} className="mt-1 min-h-11 font-semibold underline">重試</button></div>
           ))}
           {collapsed ? (
-            <ul className="space-y-1">{navTree.map((node) => { const Icon = node.icon; const active = nodeContainsPath(node, pathname); const href = node.href ?? node.children?.find((child) => child.href)?.href ?? '/dashboard/inbox'; return <li key={node.id}><Link href={href} aria-label={node.label} title={node.label} className={cn('flex h-10 items-center justify-center rounded-md', active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent')}><Icon className="h-4 w-4" /></Link></li>; })}</ul>
+            <ul className="space-y-1">{navTree.map((node) => { const Icon = node.icon; const active = nodeContainsPath(node, pathname); const href = node.href ?? node.children?.find((child) => child.href)?.href ?? '/dashboard/inbox'; return <li key={node.id}><Link href={href} aria-label={node.label} title={node.label} className={cn('flex h-11 w-11 items-center justify-center rounded-md', active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent')}><Icon className="h-4 w-4" /></Link></li>; })}</ul>
           ) : <ul className="space-y-1">{navTree.map((node) => <TreeNode key={node.id} node={node} pathname={pathname} depth={0} expanded={expanded} onToggle={toggle} onNavigate={() => setMobileOpen(false)} />)}</ul>}
         </nav>
         <Separator />
-        <div className="px-2 py-4"><div className="flex items-center gap-3 rounded-md px-3 py-2"><Avatar alt={agent?.name || '使用者'} size="sm" />{!collapsed && <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{agent?.name}</p><p className="truncate text-xs text-muted-foreground">{agent?.role}</p></div>}<button onClick={logout} className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground" title="登出" aria-label="登出"><LogOut className="h-4 w-4" /></button></div></div>
+        <div className="px-2 py-4"><div className="flex items-center gap-3 rounded-md px-3 py-2"><Avatar alt={agent?.name || '使用者'} size="sm" />{!collapsed && <div className="min-w-0 flex-1"><p className="truncate text-base font-medium">{agent?.name}</p><p className="truncate text-base text-muted-foreground">{agent?.role}</p></div>}<button onClick={logout} className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground" title="登出" aria-label="登出"><LogOut className="h-4 w-4" /></button></div></div>
       </aside>
     </>
   );
