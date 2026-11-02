@@ -19,6 +19,7 @@ import { findOrCreateMaterialShortLink, saveShortLinkOg } from '../shortlink/sho
 import { snapshotOgInBackground } from '../shortlink/og-snapshot.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
+import { assertCampaignWritable, readableCampaignWhere } from './campaign.service.js';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
 import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
@@ -240,6 +241,8 @@ export async function createBroadcast(
     /** 批次發放的操作者名稱快照 */
     couponIssuedByName?: string;
   },
+  /** 指定活動時檢查活動的可見範圍（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
   if (data.couponId) {
     // 附券廣播：素材可選（沒選只送預設發券文字），不支援舊版型
@@ -309,14 +312,16 @@ export async function createBroadcast(
     throw new AppError(message, 'MATERIAL_CHANNEL_MISMATCH', 400, { issues: [{ path: 'materialId', message }] });
   }
 
-  // Validate campaign if provided
+  // Validate campaign if provided：看不到的活動回 404，有其他分店群發的活動回 403（channel-scoped-visibility）
   if (data.campaignId) {
     const campaign = await prisma.campaign.findFirst({
-      where: { id: data.campaignId, tenantId },
+      where: { id: data.campaignId, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
+      include: { broadcasts: { select: { channelId: true } } },
     });
     if (!campaign) {
       throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
     }
+    assertCampaignWritable(campaign, accessibleChannels);
   }
 
   // Validate segment if provided

@@ -712,7 +712,7 @@ export function createMcpServer(
           targetType: input.targetType,
           targetConfig: input.targetConfig,
           scheduledAt: input.scheduledAt,
-        });
+        }, await accessible());
       }
       const channel = await prisma.channel.findFirst({
         where: { id: broadcast.channelId, tenantId: agent.tenantId, isActive: true },

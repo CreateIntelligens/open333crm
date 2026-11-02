@@ -233,8 +233,9 @@ async function isContactVisible(ctx: TenantCtx, contactId: string, accessibleCha
 }
 
 /**
- * 合併、合併預覽與解除合併前的檢查：任一位聯絡人在不可見渠道還有身分時回 403。
+ * 合併、合併預覽與解除合併前的檢查：任一位聯絡人在不可見渠道還有身分、對話或工單時回 403。
  * 合併會搬動兩位聯絡人在所有渠道的資料，包括其他分店的，所以只能由總店處理。
+ * 身分被移走或解除綁定後，對話與工單可能還留在其他分店的渠道，所以三者都要檢查。
  */
 export async function assertNoOtherChannelIdentities(
   ctx: TenantCtx,
@@ -243,11 +244,22 @@ export async function assertNoOtherChannelIdentities(
 ): Promise<void> {
   const channelId = channelIdWhereFilter(accessibleChannels);
   if (!channelId) return;
-  const other = await ctx.tx.channelIdentity.findFirst({
-    where: { contactId: { in: contactIds }, contact: { tenantId: ctx.tenantId }, channelId: { notIn: channelId.in } },
-    select: { id: true },
-  });
-  if (other) {
+  const otherChannel = { notIn: channelId.in };
+  const [identity, conversation, caseRow] = await Promise.all([
+    ctx.tx.channelIdentity.findFirst({
+      where: { contactId: { in: contactIds }, contact: { tenantId: ctx.tenantId }, channelId: otherChannel },
+      select: { id: true },
+    }),
+    ctx.tx.conversation.findFirst({
+      where: { contactId: { in: contactIds }, tenantId: ctx.tenantId, channelId: otherChannel },
+      select: { id: true },
+    }),
+    ctx.tx.case.findFirst({
+      where: { contactId: { in: contactIds }, tenantId: ctx.tenantId, channelId: otherChannel },
+      select: { id: true },
+    }),
+  ]);
+  if (identity || conversation || caseRow) {
     throw new AppError('這位聯絡人在其他分店的渠道也有資料，合併或解除合併請由總店處理', 'CONTACT_HAS_OTHER_CHANNELS', 403);
   }
 }
@@ -739,6 +751,21 @@ export async function getMergePreview(
 }
 
 /**
+ * 鎖住要合併的聯絡人列（SELECT … FOR UPDATE，依 id 排序避免死結），到交易結束為止。
+ * 新增或搬入渠道身分、對話時，外鍵會對聯絡人列取 KEY SHARE 鎖，與 FOR UPDATE 衝突而等待，
+ * 所以 assertNoOtherChannelIdentities() 檢查之後，其他分店的資料不會在合併前掛上來。
+ * 合併引擎自己的條件式更新取的是 NO KEY UPDATE 鎖，擋不住這種新增。
+ */
+export async function lockContactsForMerge(ctx: TenantCtx, contactIds: string[]): Promise<void> {
+  const ids = [...new Set(contactIds)].sort();
+  await ctx.tx.$queryRaw`
+    SELECT id FROM contacts
+    WHERE id = ANY(${ids}::uuid[]) AND "tenantId" = ${ctx.tenantId}::uuid
+    ORDER BY id
+    FOR UPDATE`;
+}
+
+/**
  * 解除合併前的檢查（在 revertMerge 的同一個交易內）：兩方任一看不到回 404，
  * 任一在其他分店的渠道還有資料回 403。找不到紀錄時不處理，讓 revertMerge 回 404。
  */
@@ -753,6 +780,7 @@ export async function assertMergeLogVisible(
     select: { survivorId: true, mergedId: true },
   });
   if (!log) return;
+  await lockContactsForMerge(ctx, [log.survivorId, log.mergedId]);
   await assertContactsVisible(ctx, [log.survivorId, log.mergedId], accessibleChannels);
   await assertNoOtherChannelIdentities(ctx, [log.survivorId, log.mergedId], accessibleChannels);
 }

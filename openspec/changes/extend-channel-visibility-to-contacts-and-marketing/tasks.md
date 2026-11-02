@@ -37,12 +37,20 @@
 - [x] 6.7 抽出 `channelIdWhere()`（`services/channel-visibility.ts`），取代三處重複的渠道過濾寫法
 - [x] 6.8 `contact.flow.test.ts`、`campaign-dates.test.ts` 補上新參數 `ALL_CHANNELS`（它們不測可見範圍）
 
-## 7. 完成檢查
+## 7. 第三輪 code review 修正
 
-- [x] 7.1 `pnpm test`、`pnpm test:feature` 通過
-- [x] 7.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
-- [x] 7.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
-- [x] 7.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
+- [x] 7.1 先寫測試，都先在斷言上失敗：「合併有其他渠道資料的聯絡人須由總店處理」的「只剩其他分店的對話」、「其他成員還沒有群發的活動」、「修改含其他分店群發的活動被拒」
+- [x] 7.2 合併前的檢查加入對話與工單；分店成員合併與解除合併先以 `lockContactsForMerge()`（`SELECT … FOR UPDATE`）鎖住雙方再檢查。測試「合併前的列鎖擋住同時新增的渠道身份」，突變：拿掉 `FOR UPDATE` 後測試失敗
+- [x] 7.3 行銷活動改為「行銷活動的可見範圍」：自己建立的或有可見群發的才看得到；修改、刪除、建立群發指定活動時，活動有其他分店群發回 403。前一輪「沒有群發的活動照常看得到」的測試改為「自己建立的空活動」：其他成員的空活動會外流名稱，也可能被其他分店修改
+- [x] 7.4 分群列表的人數改回逐筆計算：並行時每個查詢各開交易，會佔滿連線池
+- 不修改：被合併的聯絡人只看一層保留方，是刻意的 fail-closed 規則（規格已寫明），合併鏈較長時分店看不到舊的聯絡人，由總店處理。報表 `contactSql()` 的相關子查詢只在非總店成員時加上，`channel_identities` 有 `contactId` 索引；資料量大時再改成一次算出可見聯絡人的 CTE
+
+## 8. 完成檢查
+
+- [x] 8.1 `pnpm test`、`pnpm test:feature` 通過
+- [x] 8.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
+- [x] 8.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
+- [x] 8.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
 
 ## 突變驗證與既有測試的調整
 

@@ -14,6 +14,8 @@ import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import contactRoutes from '#src/modules/contact/contact.routes.js';
+import { lockContactsForMerge } from '#src/modules/contact/contact.service.js';
+import type { TenantCtx } from '#src/lib/tenant-ctx.js';
 
 loadEnvConfig();
 const prisma = new PrismaClient();
@@ -202,4 +204,41 @@ test('合併有其他渠道資料的聯絡人須由總店處理：預覽與合�
   const merge = await app.inject({ method: 'POST', url: '/api/v1/contacts/merge', payload: { primaryContactId: R.id, secondaryContactId: Q.id } });
   assert.equal(merge.statusCode, 403, merge.body);
   assert.equal((await prisma.contact.findUniqueOrThrow({ where: { id: Q.id } })).mergedIntoId, null, 'Q 不可被合併');
+});
+
+test('合併有其他渠道資料的聯絡人須由總店處理：只剩其他分店的對話（沒有身份）也擋下', async () => {
+  const X = await mkContact('X');
+  await identity(X.id, chA.id, 'X-A');
+  const conv = await prisma.conversation.create({ data: { tenantId: T, contactId: X.id, channelId: chB.id, channelType: 'WEBCHAT' } });
+  try {
+    const preview = await app.inject({ method: 'GET', url: `/api/v1/contacts/merge-preview?primaryId=${X.id}&secondaryId=${R.id}` });
+    assert.equal(preview.statusCode, 403, preview.body);
+    const merge = await app.inject({ method: 'POST', url: '/api/v1/contacts/merge', payload: { primaryContactId: R.id, secondaryContactId: X.id } });
+    assert.equal(merge.statusCode, 403, merge.body);
+  } finally {
+    await prisma.conversation.deleteMany({ where: { id: conv.id, tenantId: T } });
+    await prisma.channelIdentity.deleteMany({ where: { contactId: X.id } });
+    await prisma.contact.deleteMany({ where: { id: X.id, tenantId: T } });
+  }
+});
+
+test('合併前的列鎖擋住同時新增的渠道身份：鎖住期間另一個交易新增身份會等不到鎖', async () => {
+  const L = await mkContact('L');
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockContactsForMerge({ tx, tenantId: T } as unknown as TenantCtx, [L.id]);
+      await assert.rejects(
+        prisma.$transaction(async (other) => {
+          await other.$executeRaw`SET LOCAL lock_timeout = '300ms'`;
+          await other.channelIdentity.create({
+            data: { contactId: L.id, channelId: chB.id, channelType: 'WEBCHAT', uid: `ci-vis-L-B-${stamp}` },
+          });
+        }),
+        /lock/i,
+      );
+    }, { timeout: 10_000 });
+  } finally {
+    await prisma.channelIdentity.deleteMany({ where: { contactId: L.id } });
+    await prisma.contact.deleteMany({ where: { id: L.id, tenantId: T } });
+  }
 });

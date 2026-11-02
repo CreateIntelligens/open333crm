@@ -498,18 +498,18 @@ test('分眾預覽只算看得到的聯絡人：舊資料 rules 為空的分眾�
   assert.equal(row?.contactCount, 0);
 });
 
-test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 404；沒有群發的活動照常看得到', async () => {
+test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 404；自己建立、沒有群發的活動照常看得到', async () => {
   const hiddenOnly = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-hidden`, createdById: other.id } });
   await owner.broadcast.create({
     data: { tenantId: A, channelId: hidden.id, campaignId: hiddenOnly.id, name: `${MARK}-campaign-hidden-bc`, createdById: other.id },
   });
-  const empty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-empty`, createdById: other.id } });
+  const empty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-empty`, createdById: marketer.id } });
 
   const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
   assert.equal(list.statusCode, 200, list.body);
   const ids = (list.json().data as Array<{ id: string }>).map((c) => c.id);
   assert.ok(!ids.includes(hiddenOnly.id), '不可列出只有其他分店群發的活動');
-  assert.ok(ids.includes(empty.id), '沒有群發的活動照常列出');
+  assert.ok(ids.includes(empty.id), '自己建立、沒有群發的活動照常列出');
 
   const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}` });
   assert.equal(detail.statusCode, 404, detail.body);
@@ -519,4 +519,43 @@ test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 
   const del = await marketerApp.inject({ method: 'DELETE', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}` });
   assert.equal(del.statusCode, 404, del.body);
   assert.equal((await owner.campaign.findUniqueOrThrow({ where: { id: hiddenOnly.id } })).name, `${MARK}-campaign-hidden`);
+});
+
+test('其他成員還沒有群發的活動：列表不含、讀取 404；自己建立的空活動照常看得到', async () => {
+  const othersEmpty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-others-empty`, createdById: other.id } });
+  const mine = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-mine`, createdById: marketer.id } });
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
+  const ids = (list.json().data as Array<{ id: string }>).map((c) => c.id);
+  assert.ok(!ids.includes(othersEmpty.id), '不可列出其他成員的空活動');
+  assert.ok(ids.includes(mine.id), '自己的空活動照常列出');
+  const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${othersEmpty.id}` });
+  assert.equal(detail.statusCode, 404, detail.body);
+});
+
+test('修改含其他分店群發的活動被拒：修改、刪除、建立群發指定這個活動都回 403', async () => {
+  const mixed = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-mixed`, createdById: other.id } });
+  for (const ch of [visible, hidden]) {
+    await owner.broadcast.create({
+      data: { tenantId: A, channelId: ch.id, campaignId: mixed.id, name: `${MARK}-campaign-mixed-bc-${ch.id}`, createdById: other.id },
+    });
+  }
+  const code = (res: { json: () => { error?: { code?: string } } }) => res.json().error?.code;
+  const patch = await marketerApp.inject({ method: 'PATCH', url: `/api/v1/marketing/campaigns/${mixed.id}`, payload: { status: 'cancelled' } });
+  assert.equal(patch.statusCode, 403, patch.body);
+  assert.equal(code(patch), 'CAMPAIGN_HAS_OTHER_CHANNELS');
+  const del = await marketerApp.inject({ method: 'DELETE', url: `/api/v1/marketing/campaigns/${mixed.id}` });
+  assert.equal(del.statusCode, 403, del.body);
+  assert.equal((await owner.campaign.findUniqueOrThrow({ where: { id: mixed.id } })).status, 'draft');
+
+  const material = await owner.material.create({
+    data: { tenantId: A, name: `${MARK}-campaign-material`, channelType: 'WEBCHAT', contentType: 'text', body: { text: 'hi' } },
+  });
+  const created = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts',
+    payload: { name: `${MARK}-bc-into-mixed`, channelId: visible.id, materialId: material.id, targetType: 'all', campaignId: mixed.id },
+  });
+  assert.equal(created.statusCode, 403, created.body);
+  assert.equal(code(created), 'CAMPAIGN_HAS_OTHER_CHANNELS');
+  assert.equal(await owner.broadcast.count({ where: { name: `${MARK}-bc-into-mixed` } }), 0);
 });

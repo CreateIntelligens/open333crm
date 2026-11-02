@@ -80,13 +80,15 @@ export async function listSegments(
     }),
     prisma.segment.count({ where }),
   ]);
-  const visible = await Promise.all(
-    segments.map((segment) =>
-      withVisibleContactCount(segment, accessibleChannels, (rules) =>
+  // 逐筆計算：路由傳入的 client 每個查詢各開一個交易，並行 50 筆會佔滿連線池
+  const visible = [];
+  for (const segment of segments) {
+    visible.push(
+      await withVisibleContactCount(segment, accessibleChannels, (rules) =>
         calculateSegmentContacts(prisma, tenantId, rules, accessibleChannels, { countOnly: true }),
       ),
-    ),
-  );
+    );
+  }
   return { segments: visible, total, page, limit };
 }
 

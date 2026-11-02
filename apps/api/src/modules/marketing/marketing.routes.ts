@@ -238,7 +238,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       status: query.status || undefined,
       page,
       limit,
-    }, await resolveChannelVisibility(request));
+    }, await resolveChannelVisibility(request), request.agent.id);
     return reply.send(paginated(result.campaigns, result.total, result.page, result.limit));
   });
 
@@ -259,6 +259,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(campaign));
   });
@@ -271,6 +272,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       data,
       await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(campaign));
   });
@@ -281,6 +283,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(result));
   });
@@ -310,6 +313,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       request.agent.id,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.status(201).send(success(broadcast));
   });

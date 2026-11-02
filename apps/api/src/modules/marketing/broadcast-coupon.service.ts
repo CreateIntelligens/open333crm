@@ -34,6 +34,7 @@ import {
   filterByMessagingWindow,
   resolveAudience,
 } from './marketing.service.js';
+import { ALL_CHANNELS } from '../../services/channel-visibility.js';
 
 /** 發送中超過這個時間沒有進度，視為中斷（程式在發送途中結束），可以重新發送 */
 export const STALE_SENDING_MS = 5 * 60 * 1000;
@@ -668,7 +669,8 @@ export async function createBatchIssue(
     couponIssuedVia: COUPON_ISSUED_VIA.BATCH,
     couponMessage: input.message,
     couponIssuedByName: agent?.name ?? undefined,
-  });
+    // 券詳情頁的批次發放不指定行銷活動；渠道已由路由以 assertChannelVisible 檢查
+  }, ALL_CHANNELS);
   const queued = await queueCouponBroadcast(ctx, broadcast.id, now);
   return { broadcastId: broadcast.id, name: broadcast.name, status: queued.status, job: queued.job };
 }
