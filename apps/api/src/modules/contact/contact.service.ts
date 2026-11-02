@@ -666,6 +666,8 @@ export async function getMergePreview(
   accessibleChannels: AccessibleChannels,
 ) {
   const { tx: prisma, tenantId } = ctx;
+  // 看不到的聯絡人先回 404，與不存在相同，不以 403 透露它在其他分店有資料
+  await assertContactsVisible(ctx, [primaryId, secondaryId], accessibleChannels);
   // 預覽要與實際合併一致：其他分店渠道還有資料時不預覽（合併也會擋），兩位的資料因此都在可見範圍內
   await assertNoOtherChannelIdentities(ctx, [primaryId, secondaryId], accessibleChannels);
   const [primary, secondary] = await Promise.all([

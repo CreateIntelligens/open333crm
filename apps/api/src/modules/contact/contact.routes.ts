@@ -141,7 +141,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // Must be before /:id to avoid being captured as a param
   fastify.get('/merge-preview', { preHandler: [perm.merge] }, async (request, reply) => {
     const query = mergePreviewQuerySchema.parse(request.query);
-    const accessible = await visibleContacts(request, query.primaryId, query.secondaryId);
+    // getMergePreview() 在同一個交易內檢查可見範圍
+    const accessible = await resolveChannelVisibility(request);
 
     const preview = await getMergePreviewFlow(
       fastify,
@@ -315,8 +316,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // GET /api/v1/contacts/:id/merge-logs — 此聯絡人相關的合併紀錄（新到舊）
   fastify.get<{ Params: { id: string } }>('/:id/merge-logs', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = contactIdParamsSchema.parse(request.params);
-    await visibleContacts(request, id);
-    const logs = await listMergeLogsFlow(fastify, actorOf(request).tenantId, id);
+    const logs = await listMergeLogsFlow(fastify, actorOf(request).tenantId, id, await visibleContacts(request, id));
     return reply.send(success(logs));
   });
 
