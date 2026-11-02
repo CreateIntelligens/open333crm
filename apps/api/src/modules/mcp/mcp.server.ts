@@ -7,7 +7,9 @@ import { z } from "zod/v3";
 import { getAgentById } from "../auth/auth.service.js";
 import { getContactFlow, listContactsFlow } from "../contact/contact.flow.js";
 import {
+  agentVisibilityResolverOf,
   isChannelAccessible,
+  type AdminClientHolder,
   type AccessibleChannels,
   type ChannelAccessLevel,
 } from "../../services/channel-visibility.js";
@@ -103,7 +105,8 @@ export function createMcpServer(
   channelAccess: McpChannelAccess,
   _io: SocketIOServer | undefined,
   /** 已搬到 flow 的工具（#337）以這個 client 開租戶交易 */
-  flowDeps: { prisma: PrismaClient },
+  /** 也帶 BYPASSRLS 連線：群發依建立者的可見範圍判斷分群條件（agentVisibilityResolverOf） */
+  flowDeps: { prisma: PrismaClient } & AdminClientHolder,
 ): McpServer {
   const server = new McpServer({
     name: "open333crm",
@@ -666,7 +669,7 @@ export function createMcpServer(
           broadcastId,
         });
         try {
-          const result = await executeBroadcast(prisma, _io, broadcastId);
+          const result = await executeBroadcast(prisma, _io, broadcastId, agentVisibilityResolverOf(flowDeps));
           await writeLineMcpAudit(prisma, {
             tenantId: agent.tenantId,
             agentId: agent.id,

@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-02：分群群發依建立者的可見範圍判斷（RBAC-04）
+
+#430 合併後的 code review，change `segment-broadcast-creator-visibility`。以 feature 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-04 的分群群發 | 已修正 | #430 讓群發只限可見渠道、分群預覽只算看得到的聯絡人，但送出時 `resolveAudience()` 以 `ALL_CHANNELS` 計算分群，「有 FB 帳號」這類條件會用到其他分店渠道的身分。現在依群發建立者的可見範圍計算（`resolveAgentChannelVisibility()`），總店不受影響。`channel-scoped-visibility.test.ts` 的「分店建立的分群群發只以可見渠道判斷條件」「總店建立的分群群發以所有渠道判斷條件」 |
+| 建立群發時檢查活動與新增群發的競態 | 不修改 | 已記錄於 change `extend-channel-visibility-to-contacts-and-marketing` 的 tasks 8.3：只有總店剛好同時把其他分店的群發加進同一個活動才會發生 |
+
 ## 2026-11-02：聯絡人、群發、行銷活動與報表套用渠道可見範圍（RBAC-04、MKT-04）
 
 #430，change `extend-channel-visibility-to-contacts-and-marketing`，issue #253。以 feature 測試確認，沒有連 UAT。

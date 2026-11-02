@@ -17,6 +17,9 @@ import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { createBroadcast, executeBroadcast } from '#src/modules/marketing/marketing.service.js';
 import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
+/** 建立者是總店：分群條件不受渠道限制（依建立者判斷的行為見 channel-scoped-visibility 的 feature 測試） */
+const allChannels = async () => ALL_CHANNELS;
+
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 
 const T = 'tenant-a';
@@ -223,7 +226,7 @@ const io = { to: () => ({ emit() {} }) } as never;
 test('Segment deleted before a scheduled send：分群已刪除，不發送、標 failed、INVALID_AUDIENCE', async () => {
   const sends = makePlugin();
   const { db, state, identityQueries } = sendDb({ status: 'scheduled', targetType: 'segment', segmentId: SEGMENT_ID }, { segment: null });
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), (e: AppErr) => {
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), (e: AppErr) => {
     assert.equal(e.code, 'INVALID_AUDIENCE');
     return true;
   });
@@ -235,7 +238,7 @@ test('Segment deleted before a scheduled send：分群已刪除，不發送、�
 test('Legacy broadcast with an empty tag list：舊草稿標籤名單為空，不發送、標 failed', async () => {
   const sends = makePlugin();
   const { db, state } = sendDb({ status: 'draft', targetType: 'tags', targetConfig: {} });
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), (e: AppErr) => e.code === 'INVALID_AUDIENCE');
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), (e: AppErr) => e.code === 'INVALID_AUDIENCE');
   assert.equal(sends.length, 0);
   assert.equal(state.status, 'failed');
 });
@@ -243,7 +246,7 @@ test('Legacy broadcast with an empty tag list：舊草稿標籤名單為空，�
 test('Legacy broadcast with an empty contact list：舊草稿聯絡人名單為空，不發送', async () => {
   const sends = makePlugin();
   const { db, state } = sendDb({ status: 'draft', targetType: 'contacts', targetConfig: { contactIds: [] } });
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), (e: AppErr) => e.code === 'INVALID_AUDIENCE');
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), (e: AppErr) => e.code === 'INVALID_AUDIENCE');
   assert.equal(sends.length, 0);
   assert.equal(state.status, 'failed');
 });
@@ -254,7 +257,7 @@ test('Segment without conditions at send time：分群條件全為空值，不�
     { status: 'draft', targetType: 'segment', segmentId: SEGMENT_ID },
     { segment: { id: SEGMENT_ID, tenantId: T, rules: { logic: 'AND', conditions: [{ field: 'tag', operator: 'eq', value: '' }] } } },
   );
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), (e: AppErr) => e.code === 'INVALID_AUDIENCE');
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), (e: AppErr) => e.code === 'INVALID_AUDIENCE');
   assert.equal(sends.length, 0);
   assert.equal(state.status, 'failed');
 });
@@ -262,7 +265,7 @@ test('Segment without conditions at send time：分群條件全為空值，不�
 test('Send a broadcast that is sending：發送中的廣播再發回 409 BROADCAST_ALREADY_SENDING', async () => {
   const sends = makePlugin();
   const { db, state } = sendDb({ status: 'sending', targetType: 'all' });
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), (e: AppErr) => {
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), (e: AppErr) => {
     assert.equal(e.statusCode, 409);
     assert.equal(e.code, 'BROADCAST_ALREADY_SENDING');
     return true;
@@ -274,7 +277,7 @@ test('Send a broadcast that is sending：發送中的廣播再發回 409 BROADCA
 test('Two send requests at the same time：條件更新搶不到時回 409 且不發送', async () => {
   const sends = makePlugin();
   const { db, state } = sendDb({ status: 'draft', targetType: 'all' }, { claimFails: true });
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), (e: AppErr) => e.statusCode === 409 && e.code === 'BROADCAST_ALREADY_SENDING');
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), (e: AppErr) => e.statusCode === 409 && e.code === 'BROADCAST_ALREADY_SENDING');
   assert.equal(sends.length, 0);
   assert.equal(state.status, 'draft');
 });
@@ -282,7 +285,7 @@ test('Two send requests at the same time：條件更新搶不到時回 409 且�
 test('Retry a failed broadcast：失敗的廣播可以重新發送', async () => {
   const sends = makePlugin();
   const { db, state } = sendDb({ status: 'failed', targetType: 'all' });
-  const result = await executeBroadcast(db, io, 'bc-1');
+  const result = await executeBroadcast(db, io, 'bc-1', allChannels);
   assert.equal(result.total, 2);
   assert.equal(sends.length, 1);
   assert.equal(state.status, 'completed');
@@ -291,7 +294,7 @@ test('Retry a failed broadcast：失敗的廣播可以重新發送', async () =>
 test('依標籤篩選：只查有該標籤的聯絡人', async () => {
   makePlugin();
   const { db, identityQueries } = sendDb({ status: 'draft', targetType: 'tags', targetConfig: { tagIds: [TAG_ID] } });
-  await executeBroadcast(db, io, 'bc-1');
+  await executeBroadcast(db, io, 'bc-1', allChannels);
   const where = (identityQueries[0] as { where: { contact: { tags?: unknown } } }).where;
   assert.deepEqual(where.contact.tags, { some: { tagId: { in: [TAG_ID] } } });
 });
@@ -313,7 +316,7 @@ test('Resolved audience is empty：標籤底下沒有任何聯絡人，不發送
     { status: 'draft', targetType: 'tags', targetConfig: { tagIds: [TAG_ID] } },
     { identities: [] },
   );
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), assertNoRecipients);
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), assertNoRecipients);
   assert.equal(sends.length, 0);
   assert.equal(state.status, 'failed');
   assert.equal(identityQueries.length, 1, '只查一次，且不可退回查全渠道');
@@ -327,7 +330,7 @@ test('Resolved audience is empty：手動選的聯絡人都已刪除，不發送
     { status: 'draft', targetType: 'contacts', targetConfig: { contactIds: ['gone-1'] } },
     { identities: [] },
   );
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), assertNoRecipients);
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), assertNoRecipients);
   assert.equal(sends.length, 0);
   assert.equal(state.status, 'failed');
   assert.equal(identityQueries.length, 1);
@@ -344,7 +347,7 @@ test('Resolved audience is empty：分群條件查不到任何人，不發送、
       segmentContacts: [],
     },
   );
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), assertNoRecipients);
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), assertNoRecipients);
   assert.equal(sends.length, 0);
   assert.equal(identityQueries.length, 0, '分群 0 人時不可查渠道全部身分');
   assert.equal(state.status, 'failed');

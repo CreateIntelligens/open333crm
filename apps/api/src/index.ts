@@ -108,6 +108,7 @@ import { processUsageAlertEmail } from './modules/notification/usage-alert-email
 import { closeOpsAlertQueue, OPS_ALERT_QUEUE, sendOpsAlert } from './modules/ops-alert/ops-alert.service.js';
 import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
+import { agentVisibilityResolver } from './services/channel-visibility.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
@@ -269,7 +270,7 @@ export async function bootstrap() {
       [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
       // 附券廣播「立即發送」與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
       [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor((tenantId, broadcastId) =>
-        runCouponBroadcast({ prisma: app.prisma, io: app.io, store: getBindingStore() }, tenantId, broadcastId)) as JobProcessor,
+        runCouponBroadcast({ prisma: app.prisma, io: app.io, store: getBindingStore(), visibilityOf: agentVisibilityResolver(app.prismaAdmin) }, tenantId, broadcastId)) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
@@ -294,7 +295,11 @@ export async function bootstrap() {
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
   setupAnalyticsScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
-  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, { prisma: app.prisma, store: getBindingStore() });
+  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, {
+    prisma: app.prisma,
+    store: getBindingStore(),
+    visibilityOf: agentVisibilityResolver(app.prismaAdmin),
+  });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);

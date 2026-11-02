@@ -8,6 +8,9 @@ import { test } from 'vitest';
 import { registerChannelPlugin, type ChannelPlugin, type OutboundPayload } from '@open333crm/channel-plugins';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { executeBroadcast, previewBroadcastAudience } from '#src/modules/marketing/marketing.service.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
+
+const allChannels = async () => ALL_CHANNELS;
 
 process.env.CREDENTIAL_ENCRYPTION_KEY ||= 'test-credential-encryption-key-32-bytes!!';
 
@@ -89,7 +92,7 @@ const io = { to: () => ({ emit() {} }) } as never;
 test('FB 群發略過超過 24 小時沒互動的人', async () => {
   const sends = plugin('FB', 24);
   const f = fixture('FB', [2, 30, null]);
-  await executeBroadcast(f.prisma, io, 'bc-1');
+  await executeBroadcast(f.prisma, io, 'bc-1', allChannels);
   assert.deepEqual(sends, ['uid-0']);
   assert.equal(f.state.totalCount, 3);
   assert.equal(f.state.successCount, 1);
@@ -106,7 +109,7 @@ test('FB 群發略過超過 24 小時沒互動的人', async () => {
 test('全部在視窗外時群發失敗', async () => {
   const sends = plugin('FB', 24);
   const f = fixture('FB', [25, null]);
-  await assert.rejects(executeBroadcast(f.prisma, io, 'bc-1'));
+  await assert.rejects(executeBroadcast(f.prisma, io, 'bc-1', allChannels));
   assert.deepEqual(sends, []);
   assert.equal(f.state.status, 'failed');
   assert.equal(f.state.skippedCount, 2);
@@ -117,7 +120,7 @@ test('全部在視窗外時群發失敗', async () => {
 test('沒有訊息視窗的渠道不略過', async () => {
   const sends = plugin('LINE_TEST');
   const f = fixture('LINE_TEST', [48, null]);
-  await executeBroadcast(f.prisma, io, 'bc-1');
+  await executeBroadcast(f.prisma, io, 'bc-1', allChannels);
   assert.deepEqual(sends, ['uid-0', 'uid-1']);
   assert.equal(f.state.skippedCount, 0);
   assert.equal(f.conversationQueries.length, 0, '沒有視窗就不查互動時間');
@@ -126,14 +129,14 @@ test('沒有訊息視窗的渠道不略過', async () => {
 test('預估 FB 群發的可送達人數', async () => {
   plugin('FB', 24);
   const f = fixture('FB', [1, 30, null]);
-  const result = await previewBroadcastAudience(f.prisma, TENANT, { channelId: CHANNEL, targetType: 'all' });
+  const result = await previewBroadcastAudience(f.prisma, TENANT, ALL_CHANNELS, { channelId: CHANNEL, targetType: 'all' });
   assert.deepEqual(result, { matched: 3, reachable: 1, messagingWindowHours: 24 });
 });
 
 test('預估 LINE 群發', async () => {
   plugin('LINE_TEST');
   const f = fixture('LINE_TEST', [48, null]);
-  const result = await previewBroadcastAudience(f.prisma, TENANT, { channelId: CHANNEL, targetType: 'all' });
+  const result = await previewBroadcastAudience(f.prisma, TENANT, ALL_CHANNELS, { channelId: CHANNEL, targetType: 'all' });
   assert.deepEqual(result, { matched: 2, reachable: 2, messagingWindowHours: null });
 });
 
@@ -141,7 +144,7 @@ test('受眾設定不完整', async () => {
   plugin('FB', 24);
   const f = fixture('FB', [1]);
   await assert.rejects(
-    previewBroadcastAudience(f.prisma, TENANT, { channelId: CHANNEL, targetType: 'tags', targetConfig: {} }),
+    previewBroadcastAudience(f.prisma, TENANT, ALL_CHANNELS, { channelId: CHANNEL, targetType: 'tags', targetConfig: {} }),
     (err: any) => err.code === 'INVALID_AUDIENCE' && err.statusCode === 400,
   );
 });
@@ -150,7 +153,7 @@ test('預估別的租戶的渠道回 404', async () => {
   plugin('FB', 24);
   const f = fixture('FB', [1]);
   await assert.rejects(
-    previewBroadcastAudience(f.prisma, 'tenant-other', { channelId: CHANNEL, targetType: 'all' }),
+    previewBroadcastAudience(f.prisma, 'tenant-other', ALL_CHANNELS, { channelId: CHANNEL, targetType: 'all' }),
     (err: any) => err.statusCode === 404,
   );
 });

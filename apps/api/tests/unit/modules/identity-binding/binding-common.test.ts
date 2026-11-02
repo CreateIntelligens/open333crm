@@ -3,17 +3,19 @@
  * tenantPrisma 的 $transaction 不帶租戶、每個查詢各自開交易：合併與解除合併會失去原子性，也會被 RLS 擋下。
  */
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { inTransaction } from '#src/modules/identity-binding/binding-common.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import type { TenantDb } from '#src/lib/tenant-db.js';
 
 const T = 'a0000000-0000-0000-0000-000000000001';
+// 只建立 client、不送查詢，不會連線資料庫；仍在結束時釋放，避免留下 handle
+const client = new PrismaClient();
+afterAll(() => client.$disconnect());
 
 test('傳入 request.tenantPrisma（tenantScopedClient）：丟出錯誤，不執行 fn', async () => {
-  // 只建立 client、不送查詢，不會連線資料庫
-  const scoped = tenantScopedClient(new PrismaClient(), T);
+  const scoped = tenantScopedClient(client, T);
   let ran = false;
   await assert.rejects(
     inTransaction(scoped as unknown as TenantDb, async () => {

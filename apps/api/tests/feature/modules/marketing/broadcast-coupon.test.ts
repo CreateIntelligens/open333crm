@@ -38,6 +38,7 @@ import { runCouponBroadcast, type CouponBroadcastDeps } from '#src/modules/marke
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 // 素材短連結的 OG 快照：不連外部網站
 vi.mock('#src/modules/shortlink/og-scraper.js', () => ({
@@ -100,7 +101,8 @@ registerChannelPlugin(mockPlugin('LINE', {
 registerChannelPlugin(mockPlugin('FB', { messagingWindowHours: 24 } as Partial<ChannelPlugin>));
 
 const store = memBindingStore();
-const deps: CouponBroadcastDeps = { prisma, io: testIo, store, webBaseUrl: WEB };
+// 建立者視為總店：依建立者判斷分群條件的行為由 channel-scoped-visibility 的 feature 測試負責
+const deps: CouponBroadcastDeps = { prisma, io: testIo, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS };
 
 /** 訊息裡的票券連結權杖 */
 function tokensIn(payloads: Array<{ content: Record<string, unknown> }>): string[] {
@@ -473,7 +475,7 @@ describe('附券廣播發送前檢查名額與訊息額度', () => {
     await runInTenant(prisma, T, (ctx) => issueCoupons(ctx, couponId, { contactIds: [held.contactId], issuedVia: 'api' }));
     const others = [await person('preview-a'), await person('preview-b'), await person('preview-c')];
     const result = await runInTenant(prisma, T, (ctx) =>
-      previewBroadcastAudience(ctx.tx, T, {
+      previewBroadcastAudience(ctx.tx, T, ALL_CHANNELS, {
         channelId: lineChannel,
         targetType: 'contacts',
         targetConfig: { contactIds: [held, ...others].map((p) => p.contactId) },
@@ -489,7 +491,7 @@ describe('附券廣播發送前檢查名額與訊息額度', () => {
     const p = await person('preview-check');
     const preview = (couponId: string, couponIssuedVia?: string) =>
       runInTenant(prisma, T, (ctx) =>
-        previewBroadcastAudience(ctx.tx, T, {
+        previewBroadcastAudience(ctx.tx, T, ALL_CHANNELS, {
           channelId: lineChannel, targetType: 'contacts', targetConfig: { contactIds: [p.contactId] }, couponId,
           ...(couponIssuedVia ? { couponIssuedVia } : {}),
         }));
@@ -684,7 +686,7 @@ describe('附券廣播在背景執行且重送不重複發券', () => {
       broadcast: { ...row, couponIssuedVia: 'broadcast' },
       coupon: { id: couponId, name: '', status: 'ACTIVE', claimTagId: null, claimTagTtlDays: null },
     } as unknown as CouponBroadcastPlan;
-    const prepared = await runInTenant(prisma, T, (ctx) => prepareRecipients(ctx, plan, undefined));
+    const prepared = await runInTenant(prisma, T, (ctx) => prepareRecipients(ctx, plan, undefined, ALL_CHANNELS));
     assert.deepEqual(prepared.pending, [], '已處理的人不在這次的名單');
     const again = await runInTenant(prisma, T, (ctx) =>
       reserveRecipient(ctx, plan, { contactId: a.contactId, uid: a.uid, channelIdentityId: randomUUID() }));
@@ -770,7 +772,7 @@ describe('排程的附券廣播到時間由排程發送', () => {
       },
     }) as PrismaClient;
     let poll: (() => Promise<void>) | null = null;
-    setupBroadcastScheduler({ registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never, scoped, testIo as never, { prisma, store, webBaseUrl: WEB });
+    setupBroadcastScheduler({ registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never, scoped, testIo as never, { prisma, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS });
     assert.ok(poll);
     await poll!();
 

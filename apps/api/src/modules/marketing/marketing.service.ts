@@ -22,7 +22,7 @@ import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules
 import { campaignHasOtherChannelsError, readableCampaignWhere, writableCampaignWhere } from './campaign.service.js';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
-import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { channelIdWhereFilter, type AccessibleChannels, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
 
 // --- Broadcast audience ---
 
@@ -471,6 +471,8 @@ export async function executeBroadcast(
   prisma: TenantDb,
   io: SocketIOServer,
   broadcastId: string,
+  /** 解析建立者的可見範圍（agentVisibilityResolver()）：分群條件依建立者判斷，見 resolveAudience() */
+  visibilityOf: AgentVisibilityResolver,
 ) {
   const broadcast = await prisma.broadcast.findFirst({
     where: { id: broadcastId },
@@ -588,7 +590,9 @@ export async function executeBroadcast(
     }
 
     // Resolve audience
-    const matched = await resolveAudience(prisma, broadcast);
+    // 分群條件依建立者的可見範圍判斷，與建立時的預估一致；排程送出時沒有當下操作的人
+    const audienceChannels = await visibilityOf(broadcast.tenantId, broadcast.createdById);
+    const matched = await resolveAudience(prisma, broadcast, audienceChannels);
     // FB／IG 只能發給視窗內互動過的人：視窗外的人送了也會被平台擋下，不送出
     const windowHours = plugin.messagingWindowHours;
     const identities = await filterByMessagingWindow(prisma, broadcast.tenantId, broadcast.channelId, matched, windowHours);
@@ -855,6 +859,8 @@ export async function filterByMessagingWindow<T extends { contactId: string }>(
 export async function previewBroadcastAudience(
   prisma: TenantDb,
   tenantId: string,
+  /** 預估的人（之後的建立者）的可見範圍，見 resolveAudience() */
+  accessibleChannels: AccessibleChannels,
   input: {
     channelId: string;
     targetType: string;
@@ -879,7 +885,7 @@ export async function previewBroadcastAudience(
     targetType: input.targetType,
     segmentId: input.segmentId ?? null,
     targetConfig: input.targetConfig ?? {},
-  });
+  }, accessibleChannels);
   const windowHours = getChannelPlugin(channel.channelType)?.messagingWindowHours;
   const reachable = await filterByMessagingWindow(prisma, tenantId, channel.id, matched, windowHours);
   let coupon: { remaining: number | null; limitReached: number } | null = null;
@@ -934,6 +940,12 @@ export async function resolveAudience(
     segmentId: string | null;
     targetConfig: unknown;
   },
+  /**
+   * 群發建立者的可見範圍。分群條件（例如「有 FB 帳號」）只以這些渠道的身分判斷：
+   * 否則分店建立的群發會依其他分店渠道的身分選人，收件人數也就透露客人在其他分店有沒有帳號。
+   * 總店（ALL_CHANNELS）照舊以所有渠道判斷。收件人另以群發渠道的身分限定。
+   */
+  accessibleChannels: AccessibleChannels,
 ) {
   const config = (broadcast.targetConfig || {}) as BroadcastTargetConfig;
 
@@ -956,8 +968,7 @@ export async function resolveAudience(
       prisma,
       broadcast.tenantId,
       segment!.rules as unknown as SegmentRules,
-      // 收件人另以群發渠道的身份限定；群發渠道在建立與送出時已檢查可見
-      ALL_CHANNELS,
+      accessibleChannels,
     );
     if (contactIds.length > 0) {
       identityWhere.contactId = { in: contactIds };
