@@ -15,6 +15,7 @@
 import type { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { addPointTransaction, getLatestPointEntry, lockPointLedgers } from '../portal/points.service.js';
 
 export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL' | 'PHONE';
@@ -716,10 +717,29 @@ export async function recordStitchedIdentity(
   }
 }
 
-export async function listMergeLogs(ctx: TenantCtx, contactId: string) {
-  return ctx.tx.contactMergeLog.findMany({
+/**
+ * 聯絡人的合併紀錄（新到舊）。分店帳號的 movedRecords 只含可見渠道的身分 id：
+ * 其他搬移紀錄（對話、工單等）的 id 可能屬於其他分店，前端只用身分數顯示「帶入 N 個渠道帳號」。
+ */
+export async function listMergeLogs(ctx: TenantCtx, contactId: string, accessibleChannels: AccessibleChannels) {
+  const logs = await ctx.tx.contactMergeLog.findMany({
     where: { tenantId: ctx.tenantId, OR: [{ survivorId: contactId }, { mergedId: contactId }] },
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  if (!channelId) return logs;
+
+  const identityIds = (log: (typeof logs)[number]) =>
+    ((log.movedRecords as Partial<MovedRecords> | null)?.channelIdentity ?? []).filter((id) => typeof id === 'string');
+  const allIds = [...new Set(logs.flatMap(identityIds))];
+  const visible = allIds.length === 0
+    ? new Set<string>()
+    : new Set(
+        (await ctx.tx.channelIdentity.findMany({
+          where: { id: { in: allIds }, channelId, contact: { tenantId: ctx.tenantId } },
+          select: { id: true },
+        })).map((row) => row.id),
+      );
+  return logs.map((log) => ({ ...log, movedRecords: { channelIdentity: identityIds(log).filter((id) => visible.has(id)) } }));
 }

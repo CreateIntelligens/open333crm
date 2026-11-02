@@ -15,6 +15,7 @@ import { getCouponAnalyticsFlow } from '../coupon/coupon-stats.flow.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission, requireAnyPermission } from '../../guards/rbac.guard.js';
 import { actorOf } from '../../lib/request-actor.js';
+import { resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { dateRangeFields, dateRangeSchema, messageTrendSchema, ordered } from './analytics-query.js';
 
 const caseStatsSchema = ordered(
@@ -48,46 +49,47 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   // GET /analytics/overview
   fastify.get('/overview', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getOverviewStatsFlow(fastify, actorOf(request).tenantId, from, to);
+    const data = await getOverviewStatsFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/message-trend
   fastify.get('/message-trend', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to, groupBy } = messageTrendSchema.parse(request.query);
-    const data = await getMessageTrendFlow(fastify, actorOf(request).tenantId, from, to, groupBy);
+    const data = await getMessageTrendFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to, groupBy);
     return reply.send(success(data));
   });
 
   // GET /analytics/cases
   fastify.get('/cases', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = caseStatsSchema.parse(request.query);
-    const data = await getCaseStatsFlow(fastify, actorOf(request).tenantId, from, to);
+    const data = await getCaseStatsFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/agents
   fastify.get('/agents', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to, agentId } = agentSchema.parse(request.query);
-    const data = await getAgentPerformanceFlow(fastify, actorOf(request).tenantId, from, to, agentId);
+    const data = await getAgentPerformanceFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to, agentId);
     return reply.send(success(data));
   });
 
   // GET /analytics/channels
   fastify.get('/channels', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getChannelAnalyticsFlow(fastify, actorOf(request).tenantId, from, to);
+    const data = await getChannelAnalyticsFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/contacts
   fastify.get('/contacts', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getContactAnalyticsFlow(fastify, actorOf(request).tenantId, from, to);
+    const data = await getContactAnalyticsFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/coupons — 優惠券成效（add-coupon-system 12.16）
+  // 不依渠道過濾：優惠券不屬於任何渠道（channel-scoped-visibility「報表只統計可見渠道」）
   fastify.get('/coupons', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
     return reply.send(success(await getCouponAnalyticsFlow(fastify, actorOf(request).tenantId, from, to)));
@@ -104,13 +106,13 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   // GET /analytics/csat — CSAT report statistics
   fastify.get('/csat', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    return reply.send(success(await getCsatReportFlow(fastify, actorOf(request).tenantId, from, to)));
+    return reply.send(success(await getCsatReportFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to)));
   });
 
   // POST /analytics/export
   fastify.post('/export', { preHandler: requirePermission('analytics.export') }, async (request, reply) => {
     const { reportType, from, to } = exportSchema.parse(request.body);
-    const csv = await exportCsvFlow(fastify, actorOf(request).tenantId, reportType, from, to);
+    const csv = await exportCsvFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), reportType, from, to);
     return reply
       .header('Content-Type', 'text/csv; charset=utf-8')
       .header('Content-Disposition', `attachment; filename="${reportType}_report.csv"`)

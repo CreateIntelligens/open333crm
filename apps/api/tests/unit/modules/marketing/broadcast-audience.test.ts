@@ -15,6 +15,7 @@ import {
 } from '@open333crm/channel-plugins';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { createBroadcast, executeBroadcast } from '#src/modules/marketing/marketing.service.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 
@@ -57,7 +58,7 @@ const base = { name: 'x', materialId: 'mat-1', channelId: 'ch-1' };
 test('Tags target without tags：沒有 tagIds 回 400 INVALID_AUDIENCE，不建立', async () => {
   const { db, created } = createDb();
   await assert.rejects(
-    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'tags' }),
+    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'tags' }, ALL_CHANNELS),
     (e: AppErr) => {
       assert.equal(e.statusCode, 400);
       assert.equal(e.code, 'INVALID_AUDIENCE');
@@ -71,7 +72,7 @@ test('Tags target without tags：沒有 tagIds 回 400 INVALID_AUDIENCE，不建
 test('Contacts target without contacts：contactIds 為空陣列回 400 INVALID_AUDIENCE', async () => {
   const { db, created } = createDb();
   await assert.rejects(
-    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'contacts', targetConfig: { contactIds: [] } }),
+    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'contacts', targetConfig: { contactIds: [] } }, ALL_CHANNELS),
     (e: AppErr) => {
       assert.equal(e.code, 'INVALID_AUDIENCE');
       assert.ok(hasIssue(e, 'targetConfig.contactIds'));
@@ -84,7 +85,7 @@ test('Contacts target without contacts：contactIds 為空陣列回 400 INVALID_
 test('Segment target without segment：沒有 segmentId 回 400 INVALID_AUDIENCE', async () => {
   const { db, created } = createDb();
   await assert.rejects(
-    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'segment' }),
+    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'segment' }, ALL_CHANNELS),
     (e: AppErr) => {
       assert.equal(e.code, 'INVALID_AUDIENCE');
       assert.ok(hasIssue(e, 'segmentId'));
@@ -99,7 +100,7 @@ test('Segment without conditions：分群沒有有值的條件回 400 INVALID_AU
     segment: { id: SEGMENT_ID, tenantId: T, rules: { logic: 'AND', conditions: [{ field: 'channelType', operator: 'eq', value: '' }] } },
   });
   await assert.rejects(
-    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'segment', segmentId: SEGMENT_ID }),
+    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'segment', segmentId: SEGMENT_ID }, ALL_CHANNELS),
     (e: AppErr) => {
       assert.equal(e.code, 'INVALID_AUDIENCE');
       assert.ok(hasIssue(e, 'segmentId'));
@@ -111,7 +112,7 @@ test('Segment without conditions：分群沒有有值的條件回 400 INVALID_AU
 
 test('Tags target with tags：有一個標籤時建立成功', async () => {
   const { db, created } = createDb();
-  await createBroadcast(db, T, 'agent-1', { ...base, targetType: 'tags', targetConfig: { tagIds: [TAG_ID] } });
+  await createBroadcast(db, T, 'agent-1', { ...base, targetType: 'tags', targetConfig: { tagIds: [TAG_ID] } }, ALL_CHANNELS);
   assert.equal(created.length, 1);
   assert.deepEqual(created[0].targetConfig, { tagIds: [TAG_ID] });
 });
@@ -119,7 +120,7 @@ test('Tags target with tags：有一個標籤時建立成功', async () => {
 test('FB material on a LINE channel：素材渠道不符回 400 MATERIAL_CHANNEL_MISMATCH', async () => {
   const { db, created } = createDb({ materialChannelType: 'fb', channelType: 'LINE' });
   await assert.rejects(
-    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'all' }),
+    createBroadcast(db, T, 'agent-1', { ...base, targetType: 'all' }, ALL_CHANNELS),
     (e: AppErr) => {
       assert.equal(e.statusCode, 400);
       assert.equal(e.code, 'MATERIAL_CHANNEL_MISMATCH');

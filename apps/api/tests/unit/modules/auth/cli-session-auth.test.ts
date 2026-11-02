@@ -24,6 +24,13 @@ import { memBindingStore } from '#tests/support/mem-binding-store.js';
 // 這個檔案的 test 實際以 bcryptjs 雜湊與比對密碼，很吃 CPU。turbo 同時執行其他套件時，
 // 單一 test 可能超過預設的 5 秒（#299）
 vi.setConfig({ testTimeout: 20_000 });
+
+// 這裡測 CLI token 的 scope，不測渠道可見範圍：報表以總店（ALL_CHANNELS）計算。
+// 分店只看可見渠道的情境見 tests/feature/modules/analytics/analytics-channel-visibility.test.ts
+vi.mock('#src/services/channel-visibility.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('#src/services/channel-visibility.js')>();
+  return { ...original, resolveChannelVisibility: async () => original.ALL_CHANNELS };
+});
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {

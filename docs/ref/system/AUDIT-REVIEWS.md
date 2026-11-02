@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-02：聯絡人、群發、行銷活動與報表套用渠道可見範圍（RBAC-04、MKT-04）
+
+#430，change `extend-channel-visibility-to-contacts-and-marketing`，issue #253。以 feature 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-04 的聯絡人清單、詳情與合併 | 已修正 | 聯絡人可見：有可見渠道的身分，或沒有身分且沒有被合併；被合併者依直接保留方判斷。看不到的聯絡人不列出，以 ID 讀取、修改、貼標、合併、解除合併回 404；任一方在其他分店渠道還有身分、對話或工單時，合併與解除合併回 403 `CONTACT_HAS_OTHER_CHANNELS`，檢查前先 `SELECT … FOR UPDATE` 鎖住雙方。`contact-channel-visibility.test.ts` |
+| RBAC-04 的工單與對話詳情、聯絡人修改與合併預覽的渠道身分（HC-CASES-08、HC-INBOX-05、HC-CONTACTS-10） | 已修正 | `getConversation()`、`getCase()`、`updateContact()` 的 `channelIdentities` 只含可見渠道；工單詳情的 `conversations` 也只含可見渠道。`channel-scoped-visibility.test.ts`、`mcp-channel-visibility.test.ts` |
+| RBAC-04 的報表與匯出、CLI 報表（HC-ANALYTICS-03） | 已修正 | 報表頁、匯出、CLI、MCP 只統計可見渠道；客服績效列出被授權可見渠道或有可見工單的客服。「SLA 違規案件」與工單匯出只含可見渠道的工單。`analytics-channel-visibility.test.ts` |
+| MKT-04（HC-MARKETING-03） | 已修正，從 `AUDIT.md` 移除 | 群發的列表、讀取、收件人、送出、取消、建立、受眾預估只限可見渠道（不檢查層級）；分群人數只算看得到的聯絡人；行銷活動依「行銷活動的可見範圍」。`channel-scoped-visibility.test.ts` |
+| RBAC-04 的 socket 租戶房間、`GET /cases/stats`、資料匯出與刪除、新訊息通知 | 未處理 | 不在這次範圍 |
+
 ## 2026-11-02：AUTO-09 由 main 修正
 
 #426（`8899e280`）替 `POST /automation/rules/:id/test` 與 `GET /automation/logs` 加上 `requirePermission('automation.view')`，AUTO-09（健檢 HC-AUTOMATION-04）改為已修正。依據：讀程式（rebase 後的 `automation.routes.ts`），本次沒有重跑健檢。

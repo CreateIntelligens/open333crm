@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod/v3';
 import {
   listTemplates,
@@ -24,7 +24,10 @@ import {
   updateCampaign,
   deleteCampaign,
 } from './campaign.service.js';
-import { success, paginated } from '../../shared/utils/response.js';
+import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { getBroadcastChannelIdFlow } from './marketing.flow.js';
+import { notFound } from '../../shared/messages/resource.js';
+import { assertChannelVisible, isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import {
   getCouponBroadcastSummaryFlow,
   listBroadcastRecipientsFlow,
@@ -118,6 +121,23 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
   fastify.addHook('preHandler', requirePermission('marketing.view'));
 
+  /**
+   * 以 ID 讀取或操作群發：群發的渠道不可見時回 404，與群發不存在相同（channel-scoped-visibility）。
+   * 只檢查可見，不檢查渠道存取層級：群發由 marketing.broadcast 控管。
+   */
+  async function assertBroadcastVisible(request: FastifyRequest, id: string): Promise<void> {
+    const channelId = await getBroadcastChannelIdFlow(fastify, request.agent.tenantId, id);
+    if (!isChannelAccessible(await resolveChannelVisibility(request), channelId)) {
+      throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
+    }
+  }
+
+  /** 讀取或送出群發：先檢查渠道可見，再讀完整的群發（含收件人統計） */
+  async function visibleBroadcast(request: FastifyRequest, id: string) {
+    await assertBroadcastVisible(request, id);
+    return getBroadcast(request.tenantPrisma, id, request.agent.tenantId);
+  }
+
   // ─── Templates (read-only) ────────────────────────────────────────────────
   //   範本管理 UI 與 QuickBroadcast 已下線（改用 Material 系統 + 統一的 Broadcast）。
   //   GET /templates 唯一保留：給 Inbox 客服在對話視窗插入快速回覆範本用。
@@ -147,7 +167,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const page = clampPage(parseInt(query.page || '1', 10));
     const limit = clampLimit(parseInt(query.limit || '50', 10), 50);
 
-    const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit);
+    const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit, await resolveChannelVisibility(request));
     return reply.send(paginated(result.segments, result.total, result.page, result.limit));
   });
 
@@ -158,6 +178,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       request.agent.id,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.status(201).send(success(segment));
   });
@@ -167,6 +188,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(segment));
   });
@@ -178,6 +200,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(segment));
   });
@@ -198,6 +221,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success({ count: result.count }));
   });
@@ -214,7 +238,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       status: query.status || undefined,
       page,
       limit,
-    });
+    }, await resolveChannelVisibility(request), request.agent.id);
     return reply.send(paginated(result.campaigns, result.total, result.page, result.limit));
   });
 
@@ -234,6 +258,8 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(campaign));
   });
@@ -245,6 +271,8 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(campaign));
   });
@@ -254,6 +282,8 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(result));
   });
@@ -271,17 +301,19 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       status: query.status || undefined,
       page,
       limit,
-    });
+    }, await resolveChannelVisibility(request));
     return reply.send(paginated(result.broadcasts, result.total, result.page, result.limit));
   });
 
   fastify.post('/broadcasts', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createBroadcastSchema.parse(request.body);
+    await assertChannelVisible(request, data.channelId, 'read_only');
     const broadcast = await createBroadcast(
       request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.status(201).send(success(broadcast));
   });
@@ -289,16 +321,13 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   // POST /broadcasts/audience-preview — 預估符合條件與可送達人數（FB／IG 只算 24 小時內互動過的人），不建立群發
   fastify.post('/broadcasts/audience-preview', async (request, reply) => {
     const data = broadcastAudiencePreviewSchema.parse(request.body);
+    await assertChannelVisible(request, data.channelId, 'read_only');
     const result = await previewBroadcastAudience(request.tenantPrisma, request.agent.tenantId, data);
     return reply.send(success(result));
   });
 
   fastify.get<{ Params: { id: string } }>('/broadcasts/:id', async (request, reply) => {
-    const broadcast = await getBroadcast(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+    const broadcast = await visibleBroadcast(request, request.params.id);
     // 附券廣播的結果：發券張數、依原因分列的跳過與失敗人數（design D29）
     const couponSummary = broadcast.couponId
       ? await getCouponBroadcastSummaryFlow(fastify, request.agent.tenantId, broadcast.id)
@@ -314,6 +343,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       page: z.coerce.number().int().positive().default(1),
       limit: z.coerce.number().int().positive().max(100).default(50),
     }).parse(request.query);
+    await assertBroadcastVisible(request, id);
     const result = await listBroadcastRecipientsFlow(fastify, request.agent.tenantId, id, query);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到這則廣播' } });
     return reply.send(paginated(result.items, result.total, result.page, result.limit));
@@ -321,11 +351,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   // POST /broadcasts/:id/send — manually trigger broadcast execution
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/send', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
-    const broadcast = await getBroadcast(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+    const broadcast = await visibleBroadcast(request, request.params.id);
     // 附券廣播：排入排程立即執行，不在 HTTP 請求內發送（design D29）；結果在廣播列表查看
     if (broadcast.couponId) {
       const queued = await queueCouponBroadcastFlow(fastify, request.agent.tenantId, broadcast.id);
@@ -337,6 +363,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   // POST /broadcasts/:id/cancel — cancel a draft/scheduled broadcast
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/cancel', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
+    await assertBroadcastVisible(request, request.params.id);
     const result = await cancelBroadcast(
       request.tenantPrisma,
       request.params.id,

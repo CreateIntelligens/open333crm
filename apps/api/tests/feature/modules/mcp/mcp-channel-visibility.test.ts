@@ -14,14 +14,14 @@ import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import mcpRoutes from '#src/modules/mcp/mcp.routes.js';
-import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from '#src/modules/mcp/mcp.constants.js';
+import { MCP_LINE_BROADCAST_SCOPE, MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from '#src/modules/mcp/mcp.constants.js';
 import { notFound } from '#src/shared/messages/resource.js';
 
 loadEnvConfig();
 const prisma = new PrismaClient();
 const T = process.env.RLS_TEST_TENANT_A ?? 'a0000000-0000-0000-0000-000000000001';
 const stamp = Date.now();
-const SCOPES = [MCP_READ_SCOPE, MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE];
+const SCOPES = [MCP_READ_SCOPE, MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_LINE_BROADCAST_SCOPE];
 const MISSING_ID = '00000000-0000-4000-8000-00000000dead';
 
 async function buildApp(agentId: string) {
@@ -200,4 +200,53 @@ afterAll(async () => {
   for (const fn of cleanup) await fn().catch((err) => console.error('清理失敗', err));
   if (roles.length) await prisma.role.deleteMany({ where: { id: { in: roles } } });
   await prisma.$disconnect();
+});
+
+// ── change extend-channel-visibility-to-contacts-and-marketing ──
+
+test('分店讀單筆對話：聯絡人的渠道身份只列可見渠道', async () => {
+  const a = await callTool(address, 'crm_line_get_conversation', { id: conv.get('A') });
+  assert.equal(a.isError, false, a.text);
+  assert.ok(a.text.includes(`ci-mcp-uid-${chA.id}`), '應保留渠道 A 的身份');
+  assert.ok(!a.text.includes(`ci-mcp-uid-${chB.id}`), '不可出現渠道 B 的 uid');
+  assert.ok(!a.text.includes('CI MCP 暱稱 B'), '不可出現渠道 B 的暱稱');
+});
+
+const mkBroadcast = async (label: string, channelId: string) => {
+  const b = await prisma.broadcast.create({
+    data: { tenantId: T, channelId, name: `CI MCP 群發 ${label} ${stamp}`, createdById: other.id },
+  });
+  cleanup.unshift(() => prisma.broadcast.deleteMany({ where: { id: b.id, tenantId: T } }));
+  return b;
+};
+
+test('分店讀他店群發：與不存在的群發回應相同，自己渠道的群發可讀', async () => {
+  const bcA = await mkBroadcast('A', chA.id);
+  const bcB = await mkBroadcast('B', chB.id);
+  const b = await callTool(address, 'crm_line_get_broadcast', { id: bcB.id });
+  const missing = await callTool(address, 'crm_line_get_broadcast', { id: MISSING_ID });
+  assert.equal(b.isError, true);
+  assert.deepEqual(b, missing, '他店群發與不存在的群發回應要一致');
+  assert.equal(b.text, notFound('broadcast'));
+  const a = await callTool(address, 'crm_line_get_broadcast', { id: bcA.id });
+  assert.equal(a.isError, false, a.text);
+});
+
+test('分店發起群發：他店群發與不存在的回應相同；以看不到的渠道建立回「找不到渠道」且不建立', async () => {
+  const bcB = await mkBroadcast('B-initiate', chB.id);
+  const b = await callTool(address, 'crm_line_broadcast_initiate', { broadcastId: bcB.id });
+  const missing = await callTool(address, 'crm_line_broadcast_initiate', { broadcastId: MISSING_ID });
+  assert.equal(b.isError, true);
+  assert.deepEqual(b, missing, '他店群發與不存在的群發回應要一致');
+
+  const name = `CI MCP 建立他店群發 ${stamp}`;
+  const created = await callTool(address, 'crm_line_broadcast_initiate', {
+    name,
+    materialId: MISSING_ID,
+    channelId: chB.id,
+    targetType: 'all',
+  });
+  assert.equal(created.isError, true);
+  assert.equal(created.text, notFound('channel'));
+  assert.equal(await prisma.broadcast.count({ where: { tenantId: T, name } }), 0);
 });

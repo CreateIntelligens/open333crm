@@ -28,7 +28,11 @@ function mockDb(
   };
   const db = {
     contact: {
-      findFirst: async ({ where }: { where: Record<string, any> }) => contacts.find((c) => matches(c, where)) ?? null,
+      findFirst: async ({ where }: { where: Record<string, any> }) => {
+        const c = contacts.find((row) => matches(row, where));
+        // isContactVisible() 從聯絡人一次讀出渠道身分與 mergedIntoId
+        return c ? { ...c, mergedIntoId: null, channelIdentities: identities.filter((i) => i.contactId === c.id) } : null;
+      },
       updateMany: async () => ({ count: 1 }),
       update: async (args: { where: unknown; data: Record<string, unknown> }) => {
         updates.push(args);
@@ -110,4 +114,18 @@ test('對方只在看不到的渠道有身分時，409 不帶對方的資料', a
     () => updateContact({ tx: all.db, tenantId: TENANT }, 'a', { email: 'amy@example.com' }, ALL_CHANNELS),
     (err: unknown) => (err as AppError).details?.contactId === 'b',
   );
+});
+
+test('修改看不到的聯絡人回 404，不更改資料', async () => {
+  const { db, updates } = mockDb(people(), [{ contactId: 'a', channelId: 'ch-hidden' }]);
+  await assert.rejects(
+    () => updateContact({ tx: db, tenantId: TENANT }, 'a', { displayName: '改名' }, new Set(['ch-visible'])),
+    (err: unknown) => {
+      assert.ok(err instanceof AppError);
+      assert.equal(err.statusCode, 404);
+      assert.equal(err.code, 'NOT_FOUND');
+      return true;
+    },
+  );
+  assert.equal(updates.length, 0, '不更改資料');
 });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import IORedis from 'ioredis';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
+import { getSharedRedis } from '../../lib/redis-client.js';
 
 const PASSKEY_CHALLENGE_PREFIX = 'webauthn:challenge';
 
@@ -34,11 +34,8 @@ export interface PasskeyConfig {
   challengeTtlSeconds: number;
 }
 
-let redisClient: IORedis | null = null;
-
 function getPasskeyRedis(): PasskeyChallengeRedis {
-  redisClient ??= new IORedis(getConfig().REDIS_URL, { maxRetriesPerRequest: 2 });
-  return redisClient;
+  return getSharedRedis();
 }
 
 export function getPasskeyChallengeKey(challengeId: string): string {

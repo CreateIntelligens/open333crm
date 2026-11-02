@@ -2,8 +2,7 @@
  * 跨渠道綁定代碼：常數、代碼產生／擷取、Redis 儲存介面（change add-cross-channel-one-id，design D1 / D2 / D9）。
  */
 import { randomBytes } from 'node:crypto';
-import IORedis from 'ioredis';
-import { getConfig } from '../../config/env.js';
+import { getSharedRedis } from '../../lib/redis-client.js';
 
 /** 代碼有效期（design D1） */
 export const BINDING_CODE_TTL_MS = 30 * 60 * 1000;
@@ -95,10 +94,7 @@ export async function readCounter(store: BindingStore, key: string): Promise<num
   return Number((await store.get(key)) ?? 0);
 }
 
-let redisClient: IORedis | null = null;
-
-/** 正式環境的 Redis 實作（延遲建立連線） */
+/** 正式環境的 Redis 實作（共用連線，延遲建立） */
 export function getBindingStore(): BindingStore {
-  redisClient ??= new IORedis(getConfig().REDIS_URL, { maxRetriesPerRequest: 2 });
-  return redisClient as unknown as BindingStore;
+  return getSharedRedis() as unknown as BindingStore;
 }

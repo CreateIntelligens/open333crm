@@ -12,6 +12,7 @@ import {
   createSegment,
   updateSegment,
 } from '#src/modules/marketing/segment.service.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 const T = 'tenant-a';
 
@@ -45,7 +46,7 @@ test('Create a segment with an empty condition value：條件值空白回 400 IN
     createSegment(db, T, 'agent-1', {
       name: 'LINE 會員',
       rules: { logic: 'AND', conditions: [{ field: 'channelType', operator: 'eq', value: '' }] },
-    }),
+    }, ALL_CHANNELS),
     (e: AppErr) => {
       assert.equal(e.statusCode, 400);
       assert.equal(e.code, 'INVALID_SEGMENT_RULES');
@@ -58,7 +59,7 @@ test('Create a segment with an empty condition value：條件值空白回 400 IN
 test('Create a segment with no conditions：沒有條件回 400 INVALID_SEGMENT_RULES', async () => {
   const { db, created } = fakeDb();
   await assert.rejects(
-    createSegment(db, T, 'agent-1', { name: '全部', rules: { logic: 'AND', conditions: [] } }),
+    createSegment(db, T, 'agent-1', { name: '全部', rules: { logic: 'AND', conditions: [] } }, ALL_CHANNELS),
     (e: AppErr) => e.statusCode === 400 && e.code === 'INVALID_SEGMENT_RULES',
   );
   assert.equal(created.length, 0);
@@ -76,7 +77,7 @@ test('一條有值、一條空值也拒絕（空值條件會讓 AND 變寬鬆）
           { field: 'tag', operator: 'eq', value: '' },
         ],
       },
-    }),
+    }, ALL_CHANNELS),
     (e: AppErr) => e.code === 'INVALID_SEGMENT_RULES',
   );
 });
@@ -84,19 +85,19 @@ test('一條有值、一條空值也拒絕（空值條件會讓 AND 變寬鬆）
 test('修改分群規則為空條件也拒絕', async () => {
   const { db } = fakeDb();
   await assert.rejects(
-    updateSegment(db, 's-1', T, { rules: { logic: 'OR', conditions: [] } }),
+    updateSegment(db, 's-1', T, { rules: { logic: 'OR', conditions: [] } }, ALL_CHANNELS),
     (e: AppErr) => e.code === 'INVALID_SEGMENT_RULES',
   );
 });
 
 test('Preview rules without conditions：沒有有效條件的人數是 0，不查全部聯絡人', async () => {
   const { db, contactQueries } = fakeDb();
-  const empty = await calculateSegmentContacts(db, T, { logic: 'AND', conditions: [] });
+  const empty = await calculateSegmentContacts(db, T, { logic: 'AND', conditions: [] }, ALL_CHANNELS);
   assert.equal(empty.count, 0);
   const blank = await calculateSegmentContacts(db, T, {
     logic: 'AND',
     conditions: [{ field: 'channelType', operator: 'eq', value: '' }],
-  });
+  }, ALL_CHANNELS);
   assert.equal(blank.count, 0);
   assert.equal(contactQueries.length, 0);
 });
@@ -106,7 +107,7 @@ test('有值的條件照常建立', async () => {
   await createSegment(db, T, 'agent-1', {
     name: 'LINE 會員',
     rules: { logic: 'AND', conditions: [{ field: 'channelType', operator: 'eq', value: 'LINE' }] },
-  });
+  }, ALL_CHANNELS);
   assert.equal(created.length, 1);
   assert.equal(created[0].contactCount, 3);
 });

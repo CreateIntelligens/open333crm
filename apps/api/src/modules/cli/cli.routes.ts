@@ -8,6 +8,7 @@ import {
   getOverviewStatsFlow,
 } from '../analytics/analytics.flow.js';
 import { dateRangeSchema, messageTrendSchema } from '../analytics/analytics-query.js';
+import { resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { actorOf } from '../../lib/request-actor.js';
 import { success } from '../../shared/utils/response.js';
 import {
@@ -86,7 +87,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getOverviewStatsFlow(fastify, actorOf(request).tenantId, from, to);
+    const data = await getOverviewStatsFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to);
     return reply.send(success(data));
   });
 
@@ -98,7 +99,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to, groupBy } = messageTrendSchema.parse(request.query);
-    const data = await getMessageTrendFlow(fastify, actorOf(request).tenantId, from, to, groupBy);
+    const data = await getMessageTrendFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to, groupBy);
     return reply.send(success(data));
   });
 
@@ -110,7 +111,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getCaseStatsFlow(fastify, actorOf(request).tenantId, from, to);
+    const data = await getCaseStatsFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to);
     return reply.send(success(summarizeCaseStats(data)));
   });
 
@@ -122,7 +123,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getChannelAnalyticsFlow(fastify, actorOf(request).tenantId, from, to);
+    const data = await getChannelAnalyticsFlow(fastify, actorOf(request).tenantId, await resolveChannelVisibility(request), from, to);
     return reply.send(success(data));
   });
 

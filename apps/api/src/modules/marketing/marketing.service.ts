@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
@@ -18,8 +19,10 @@ import { findOrCreateMaterialShortLink, saveShortLinkOg } from '../shortlink/sho
 import { snapshotOgInBackground } from '../shortlink/og-snapshot.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
+import { campaignHasOtherChannelsError, readableCampaignWhere, writableCampaignWhere } from './campaign.service.js';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
+import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 // --- Broadcast audience ---
 
@@ -115,12 +118,16 @@ export async function listTemplates(
 export async function listBroadcasts(
   prisma: TenantDb,
   tenantId: string,
-  filters: { campaignId?: string; status?: string; page?: number; limit?: number } = {},
+  filters: { campaignId?: string; status?: string; page?: number; limit?: number },
+  /** 只列出可見渠道的群發（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
   const { campaignId, status, page = 1, limit = 50 } = filters;
   const where: Record<string, unknown> = { tenantId };
   if (campaignId) where.campaignId = campaignId;
   if (status) where.status = status;
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  if (channelId) where.channelId = channelId;
 
   const [broadcasts, total] = await Promise.all([
     prisma.broadcast.findMany({
@@ -136,6 +143,15 @@ export async function listBroadcasts(
   ]);
 
   return { broadcasts, total, page, limit };
+}
+
+/** 群發的渠道（可見範圍守門用，不算收件人統計）；找不到回 404 */
+export async function getBroadcastChannelId(ctx: TenantCtx, id: string): Promise<string> {
+  const broadcast = await ctx.tx.broadcast.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { channelId: true } });
+  if (!broadcast) {
+    throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
+  }
+  return broadcast.channelId;
 }
 
 export async function getBroadcast(prisma: TenantDb, id: string, tenantId: string) {
@@ -225,6 +241,8 @@ export async function createBroadcast(
     /** 批次發放的操作者名稱快照 */
     couponIssuedByName?: string;
   },
+  /** 指定活動時檢查活動的可見範圍（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
   if (data.couponId) {
     // 附券廣播：素材可選（沒選只送預設發券文字），不支援舊版型
@@ -294,14 +312,20 @@ export async function createBroadcast(
     throw new AppError(message, 'MATERIAL_CHANNEL_MISMATCH', 400, { issues: [{ path: 'materialId', message }] });
   }
 
-  // Validate campaign if provided
+  // Validate campaign if provided：看不到的活動回 404，有其他分店群發的活動回 403（channel-scoped-visibility）
   if (data.campaignId) {
     const campaign = await prisma.campaign.findFirst({
-      where: { id: data.campaignId, tenantId },
+      where: { id: data.campaignId, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
+      select: { id: true },
     });
     if (!campaign) {
       throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
     }
+    const writable = await prisma.campaign.findFirst({
+      where: { id: data.campaignId, tenantId, ...writableCampaignWhere(accessibleChannels, agentId) },
+      select: { id: true },
+    });
+    if (!writable) throw campaignHasOtherChannelsError();
   }
 
   // Validate segment if provided
@@ -932,6 +956,8 @@ export async function resolveAudience(
       prisma,
       broadcast.tenantId,
       segment!.rules as unknown as SegmentRules,
+      // 收件人另以群發渠道的身份限定；群發渠道在建立與送出時已檢查可見
+      ALL_CHANNELS,
     );
     if (contactIds.length > 0) {
       identityWhere.contactId = { in: contactIds };

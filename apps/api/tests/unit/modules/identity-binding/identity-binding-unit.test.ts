@@ -51,6 +51,11 @@ test('LINE 連結：先加好友、再以 oaMessage 預填代碼，Basic ID 與�
   assert.equal(extractBindingCode(prefill), 'BIND-7K2M9QH4TX');
 });
 
+test('LINE 預填文字是短句：解碼後等於「綁定 {代碼}」，不加說明文字', () => {
+  const link = buildBindingLink({ channelType: 'LINE', displayName: '總店', handle: '@abc1234' }, 'BIND-7K2M9QH4TX');
+  assert.equal(decodeURIComponent(link.sendCodeUrl.split('/?')[1]), '綁定 BIND-7K2M9QH4TX');
+});
+
 test('FB / IG 連結：ref 帶代碼', () => {
   assert.equal(
     buildBindingLink({ channelType: 'FB', displayName: '粉專', handle: '123456789' }, 'BIND-7K2M9QH4TX').sendCodeUrl,

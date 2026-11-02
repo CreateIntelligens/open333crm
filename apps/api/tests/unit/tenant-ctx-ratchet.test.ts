@@ -127,10 +127,15 @@ test('service 檔直接 import Redis client：算增加', { timeout: 30_000 }, a
   await put('modules/r1/r1.service.ts', ["import { logger, redis } from '@open333crm/core';"]);
   await put('modules/r2/r2.service.ts', ["import IORedis from 'ioredis';"]);
   await put('modules/r3/r3.service.ts', ["import { Redis } from 'ioredis';"]);
+  // 共用的連線（lib/redis-client.ts）一樣是 Redis client，不可藉此繞過計數
+  await put('modules/r4/r4.service.ts', ["import { getSharedRedis } from '../../lib/redis-client.js';"]);
+  // 沒寫副檔名或寫 .ts 也是同一個檔案
+  await put('modules/r5/r5.service.ts', ["import { getSharedRedis } from '../../lib/redis-client';"]);
+  await put('modules/r6/r6.service.ts', ["import { getSharedRedis } from '../../lib/redis-client.ts';"]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 1, output);
   assert.match(output, /Redis client/);
-  for (const f of ['r1', 'r2', 'r3']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+  for (const f of ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
 });
 
 test('service 檔直接 import LLM 入口：算增加', { timeout: 30_000 }, async () => {

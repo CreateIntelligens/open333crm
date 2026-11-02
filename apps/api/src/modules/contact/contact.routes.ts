@@ -1,6 +1,7 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod/v3';
 import {
+  assertContactsVisibleFlow,
   getContactCasesFlow,
   getContactConversationsFlow,
   getContactFlow,
@@ -24,7 +25,7 @@ import {
 import { issueEmailRegistrationLink } from '../identity-binding/email-registration.service.js';
 import { issuePhoneRegistrationLink } from '../identity-binding/phone-registration.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, assertConversationChannelVisible, resolveChannelVisibility, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -107,6 +108,19 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
+  /**
+   * 以 ID 讀取或操作聯絡人之前：任一位看不到就回 404（channel-scoped-visibility）。
+   * 回傳可見渠道，後面的查詢沿用，不再解析一次。
+   */
+  async function visibleContacts(request: FastifyRequest, ...contactIds: string[]): Promise<AccessibleChannels> {
+    const accessible = await resolveChannelVisibility(request);
+    // 總店看得到全部，不必為了檢查另開交易
+    if (accessible !== ALL_CHANNELS) {
+      await assertContactsVisibleFlow(fastify, actorOf(request).tenantId, contactIds, accessible);
+    }
+    return accessible;
+  }
+
   // GET /api/v1/contacts
   fastify.get('/', { preHandler: [perm.view] }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
@@ -127,12 +141,15 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // Must be before /:id to avoid being captured as a param
   fastify.get('/merge-preview', { preHandler: [perm.merge] }, async (request, reply) => {
     const query = mergePreviewQuerySchema.parse(request.query);
+    // getMergePreview() 在同一個交易內檢查可見範圍
+    const accessible = await resolveChannelVisibility(request);
 
     const preview = await getMergePreviewFlow(
       fastify,
       actorOf(request).tenantId,
       query.primaryId,
       query.secondaryId,
+      accessible,
     );
 
     return reply.send(success(preview));
@@ -141,8 +158,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // POST /api/v1/contacts/merge
   fastify.post('/merge', { preHandler: [perm.merge] }, async (request, reply) => {
     const body = mergeBodySchema.parse(request.body);
-
-    const result = await mergeContactsFlow(fastify, actorOf(request), body);
+    // 可見範圍在合併的同一個交易內檢查（見 mergeContactsFlow）
+    const result = await mergeContactsFlow(fastify, actorOf(request), body, await resolveChannelVisibility(request));
     return reply.send(success(result));
   });
 
@@ -152,7 +169,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     { preHandler: [perm.merge] },
     async (request, reply) => {
       const { logId } = mergeLogParamsSchema.parse(request.params);
-      const result = await revertMergeFlow(fastify, actorOf(request), logId);
+      // 可見範圍在解除合併的同一個交易內檢查（見 revertMergeFlow）
+      const result = await revertMergeFlow(fastify, actorOf(request), logId, await resolveChannelVisibility(request));
       return reply.send(success(result));
     },
   );
@@ -298,7 +316,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // GET /api/v1/contacts/:id/merge-logs — 此聯絡人相關的合併紀錄（新到舊）
   fastify.get<{ Params: { id: string } }>('/:id/merge-logs', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = contactIdParamsSchema.parse(request.params);
-    const logs = await listMergeLogsFlow(fastify, actorOf(request).tenantId, id);
+    const logs = await listMergeLogsFlow(fastify, actorOf(request).tenantId, id, await visibleContacts(request, id));
     return reply.send(success(logs));
   });
 
@@ -323,6 +341,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       actorOf(request).tenantId,
       request.params.id,
       data,
+      // updateContact() 在同一個交易內檢查可見範圍
       await resolveChannelVisibility(request),
     );
 
@@ -340,7 +359,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       query.page,
       query.limit,
       // CM-173：與收件匣一致，分店帳號只看得到可見渠道的對話
-      await resolveChannelVisibility(request),
+      await visibleContacts(request, request.params.id),
     );
 
     return reply.send(
@@ -362,7 +381,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       fastify,
       actorOf(request).tenantId,
       id,
-      await resolveChannelVisibility(request),
+      await visibleContacts(request, id),
       query,
     );
     return reply.send(success(result));
@@ -379,7 +398,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       query.page,
       query.limit,
       // CM-173：與案件列表一致，分店帳號只看得到可見渠道的案件
-      await resolveChannelVisibility(request),
+      await visibleContacts(request, request.params.id),
     );
 
     return reply.send(paginated(cases, total, query.page, query.limit));
@@ -388,6 +407,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // POST /api/v1/contacts/:id/tags
   fastify.post<{ Params: { id: string } }>('/:id/tags', { preHandler: [perm.update] }, async (request, reply) => {
     const body = addTagSchema.parse(request.body);
+    await visibleContacts(request, request.params.id);
 
     const actor = actorOf(request);
     const contactTag = await addTagToTargetFlow(fastify, actor.tenantId, {
@@ -405,6 +425,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     '/:id/tags/:tagId',
     { preHandler: [perm.update] },
     async (request, reply) => {
+      await visibleContacts(request, request.params.id);
       await removeTagFromTargetFlow(fastify, actorOf(request).tenantId, {
         targetType: 'CONTACT',
         targetId: request.params.id,
@@ -422,7 +443,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       actorOf(request).tenantId,
       request.params.id,
       // CM-173：時間軸的對話與案件只列可見渠道
-      await resolveChannelVisibility(request),
+      await visibleContacts(request, request.params.id),
     );
 
     return reply.send(success(timeline));

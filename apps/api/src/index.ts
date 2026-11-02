@@ -117,7 +117,7 @@ import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
 import { setupInactivityCloseWorker } from './modules/conversation/inactivity-close.worker.js';
-import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin, threadsPlugin } from '@open333crm/channel-plugins';
+import { registerChannelPlugin, getAllChannelPlugins, linePlugin, fbPlugin, webchatPlugin, threadsPlugin } from '@open333crm/channel-plugins';
 import { preloadUploadContentDetector } from './modules/upload/upload-content-detector.js';
 
 export async function bootstrap() {
@@ -327,7 +327,8 @@ export async function bootstrap() {
     await app.listen({ port: config.API_PORT, host: '0.0.0.0' });
     app.log.info(`open333CRM API running on port ${config.API_PORT}`);
     app.log.info('WebSocket server attached');
-    app.log.info('Registered channel plugins: LINE, FB, WEBCHAT');
+    // 從註冊表讀出，不寫死：原本的字串漏了 THREADS（issue #253）
+    app.log.info(`Registered channel plugins: ${getAllChannelPlugins().map((p) => p.channelType).join(', ')}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

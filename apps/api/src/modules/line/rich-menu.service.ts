@@ -14,6 +14,7 @@ import { isValidRichMenuSize } from './rich-menu.layouts.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { calculateSegmentContacts } from '../marketing/segment.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { ALL_CHANNELS } from '../../services/channel-visibility.js';
 
 /** Rich Menu 分眾綁定的背景 queue（與 apps/workers 端消費者一致）。 */
 export const RICH_MENU_BIND_QUEUE = 'rich-menu-bind';
@@ -599,7 +600,7 @@ async function resolveAudienceLineUids(
     });
     if (!segment) throw new AppError('受眾分群不存在', 'SEGMENT_NOT_FOUND', 404);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = await calculateSegmentContacts(prisma, tenantId, segment.rules as any);
+    const res = await calculateSegmentContacts(prisma, tenantId, segment.rules as any, ALL_CHANNELS);
     contactIds = res.contactIds;
   } else if (audience.tagId) {
     const rows = await prisma.contactTag.findMany({
