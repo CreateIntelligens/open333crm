@@ -8,8 +8,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        // 由 next/font 注入的 CSS 變數；英數走 Inter、中文走 Noto Sans TC
-        sans: ['var(--font-sans)', 'var(--font-zh)', 'system-ui', 'sans-serif'],
+        // 不依賴建置期 Google Font fetch；執行環境可用時優先使用 Noto Sans TC / Inter。
+        sans: ['Noto Sans TC', 'Inter', 'PingFang TC', 'Microsoft JhengHei', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',

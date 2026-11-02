@@ -130,7 +130,7 @@
     @apply bg-background text-foreground;
     min-width: 0;
     overflow-x: hidden;
-    font-family: var(--font-sans), var(--font-zh), sans-serif;
+    font-family: 'Noto Sans TC', Inter, 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
     font-size: 1.125rem;
     line-height: 1.55;
     font-feature-settings: 'cv11', 'ss01';
