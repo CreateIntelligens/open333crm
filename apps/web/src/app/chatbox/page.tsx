@@ -52,14 +52,20 @@ function newClientMessageId(): string {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function normalizeSocketMessage(raw: any): ChatboxMessageOutput {
+/** `agent:message` 的內容：新格式同 ChatboxMessageOutput，舊格式用 contentType／content */
+type SocketMessage = Partial<ChatboxMessageOutput> & {
+  contentType?: ChatboxMessageType;
+  content?: ChatboxMessageOutput['payload'];
+};
+
+function normalizeSocketMessage(raw: SocketMessage): ChatboxMessageOutput {
   return {
     id: raw.id ?? newClientMessageId(),
     direction: raw.direction ?? 'OUTBOUND',
     senderType: raw.senderType ?? 'AGENT',
     senderId: raw.senderId ?? null,
-    type: (raw.type ?? raw.contentType ?? 'text') as ChatboxMessageType,
-    payload: raw.payload ?? raw.content ?? {},
+    type: raw.type ?? raw.contentType ?? 'text',
+    payload: (raw.payload ?? raw.content ?? {}) as ChatboxMessageOutput['payload'],
     createdAt: raw.createdAt ?? new Date().toISOString(),
     sequence: raw.sequence ?? null,
     deliveryStatus: raw.deliveryStatus ?? 'sent',
@@ -163,7 +169,7 @@ export default function ChatboxPage() {
         transports: ['websocket', 'polling'],
       });
       socketRef.current = socket;
-      socket.on('agent:message', (message) => {
+      socket.on('agent:message', (message: SocketMessage) => {
         setMessages((current) => [...current, normalizeSocketMessage(message)]);
       });
       socket.on('connect_error', () => {

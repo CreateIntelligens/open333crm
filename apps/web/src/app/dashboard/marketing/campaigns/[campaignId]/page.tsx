@@ -11,11 +11,12 @@ import {
   Send,
   BarChart3,
 } from 'lucide-react';
-import { useCampaign, useBroadcasts } from '@/hooks/useMarketing';
+import { useCampaign, useBroadcasts, type BroadcastSummary } from '@/hooks/useMarketing';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 const campaignStatusMap: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: '#94a3b8' },
@@ -50,8 +51,8 @@ export default function CampaignDetailPage() {
     try {
       await api.patch(`/marketing/campaigns/${campaignId}`, { status: newStatus });
       mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '操作失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '操作失敗'));
     }
   };
 
@@ -204,7 +205,7 @@ export default function CampaignDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {campaign.broadcasts.map((b: any) => {
+                    {campaign.broadcasts.map((b: BroadcastSummary) => {
                       const bStatus = broadcastStatusMap[b.status] || {
                         label: b.status,
                         color: '#6b7280',

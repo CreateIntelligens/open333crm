@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/EmptyState';
 
-interface Article {
+export interface Article {
   id: string;
   title: string;
   summary: string;

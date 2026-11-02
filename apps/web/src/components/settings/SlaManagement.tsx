@@ -130,8 +130,8 @@ export function SlaManagement() {
       }
       setShowDialog(false);
       fetchPolicies();
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || '儲存失敗');
+    } catch (err) {
+      setError(getApiErrorMessage(err, '儲存失敗'));
     } finally {
       setSaving(false);
     }

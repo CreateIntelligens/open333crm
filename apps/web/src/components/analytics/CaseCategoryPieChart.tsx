@@ -8,6 +8,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  type PieLabelRenderProps,
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -45,7 +46,7 @@ export function CaseCategoryPieChart({ data, title = '案件分類分布', isLoa
                 outerRadius={90}
                 dataKey="value"
                 nameKey="name"
-                label={(props: any) =>
+                label={(props: PieLabelRenderProps) =>
                   `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`
                 }
                 labelLine={false}

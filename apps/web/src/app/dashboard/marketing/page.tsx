@@ -44,6 +44,10 @@ import { couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketi
 import { BroadcastCouponField } from '@/components/marketing/BroadcastCouponField';
 import { COUPON_URL_NEEDS_COUPON_MESSAGE } from '@/lib/marketing/coupon-url';
 import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
+import { getApiErrorMessage } from '@/lib/api-error';
+
+/** 渠道列表（`GET /channels`）在本頁用到的欄位 */
+type ChannelRow = { id: string; displayName: string; channelType: string; isActive: boolean };
 
 // ─── Status badge helpers ──────────────────────────────────────────────────
 
@@ -90,8 +94,8 @@ function CampaignTab() {
       setDialogOpen(false);
       setFormData({ name: '', description: '', startDate: '', endDate: '' });
       mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '建立失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '建立失敗'));
     } finally {
       setSaving(false);
     }
@@ -102,8 +106,8 @@ function CampaignTab() {
     try {
       await api.delete(`/marketing/campaigns/${id}`);
       mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '刪除失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '刪除失敗'));
     }
   };
 
@@ -125,7 +129,7 @@ function CampaignTab() {
         <p className="py-12 text-center text-muted-foreground">尚無行銷活動</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {campaigns.map((c: any) => (
+          {campaigns.map((c) => (
             <div
               key={c.id}
               className="cursor-pointer rounded-lg border p-4 transition hover:shadow-md"
@@ -279,13 +283,13 @@ function BroadcastTab() {
         setTags(res.data.data || []);
         setTagsError(null);
       })
-      .catch((err: any) => setTagsError(err.response?.data?.error?.message || '標籤清單載入失敗'));
+      .catch((err) => setTagsError(getApiErrorMessage(err, '標籤清單載入失敗')));
   }, [dialogOpen]);
 
-  const activeChannels = channels.filter((c: any) => c.isActive);
+  const activeChannels = (channels as ChannelRow[]).filter((c) => c.isActive);
 
   // 依目前選擇的渠道過濾出對應的素材：渠道列舉是 LINE / FB，素材是 line / fb
-  const selectedChannel = activeChannels.find((c: any) => c.id === formData.channelId);
+  const selectedChannel = activeChannels.find((c) => c.id === formData.channelId);
   const channelKey = materialChannelKey(selectedChannel?.channelType);
   const { materials: fetchedMaterials } = useMaterials({
     channelType: channelKey || undefined,
@@ -317,8 +321,8 @@ function BroadcastTab() {
       .then((res) => {
         if (!cancelled) setAudiencePreview(res.data.data);
       })
-      .catch((err: any) => {
-        if (!cancelled) setAudiencePreviewError(err.response?.data?.error?.message || '無法預估發送人數');
+      .catch((err) => {
+        if (!cancelled) setAudiencePreviewError(getApiErrorMessage(err, '無法預估發送人數'));
       });
     return () => {
       cancelled = true;
@@ -353,7 +357,7 @@ function BroadcastTab() {
     }
     setSaving(true);
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         name: formData.name,
         channelId: formData.channelId,
         targetType: formData.targetType,
@@ -373,8 +377,8 @@ function BroadcastTab() {
       setDialogOpen(false);
       setFormData(emptyForm);
       mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '建立失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '建立失敗'));
     } finally {
       setSaving(false);
     }
@@ -385,8 +389,8 @@ function BroadcastTab() {
     const base = resend
       ? '確定要重新發送嗎？請先確認失敗原因已排除。訊息會馬上送給所選受眾，送出後無法收回。'
       : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
-    const broadcast = broadcasts.find((b: any) => b.id === id);
-    const channel = channels.find((c: any) => c.id === broadcast?.channelId);
+    const broadcast = broadcasts.find((b) => b.id === id);
+    const channel = (channels as ChannelRow[]).find((c) => c.id === broadcast?.channelId);
     const withWindow = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
     // 附券廣播在背景發送；重送時已處理的人不會再收到（design D29）
     const question = broadcast?.couponId
@@ -397,8 +401,8 @@ function BroadcastTab() {
     try {
       const res = await api.post(`/marketing/broadcasts/${id}/send`);
       if (res.status === 202) alert('已開始在背景發送，廣播列表會自動更新進度與結果');
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '發送失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '發送失敗'));
     } finally {
       setSendingId(null);
       mutate();
@@ -412,8 +416,8 @@ function BroadcastTab() {
     try {
       await api.post(`/marketing/broadcasts/${id}/cancel`);
       mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '取消失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '取消失敗'));
     } finally {
       setCancellingId(null);
     }
@@ -454,7 +458,7 @@ function BroadcastTab() {
               </tr>
             </thead>
             <tbody>
-              {broadcasts.map((b: any) => (
+              {broadcasts.map((b) => (
                 <tr key={b.id} className="border-b">
                   <td className="py-3 font-medium">
                     {b.name}
@@ -599,14 +603,14 @@ function BroadcastTab() {
                     channelId: e.target.value,
                     materialId: '',
                     // FB／IG 不提供分群與標籤（只能發給 24 小時內互動過的人），切過去時改回全部
-                    ...(hasMessagingWindow(activeChannels.find((c: any) => c.id === e.target.value)?.channelType)
+                    ...(hasMessagingWindow(activeChannels.find((c) => c.id === e.target.value)?.channelType)
                       ? { targetType: 'all', segmentId: '', tagIds: [] }
                       : {}),
                   })
                 }
                 options={[
                   { value: '', label: '請選擇渠道' },
-                  ...activeChannels.map((c: any) => ({
+                  ...activeChannels.map((c) => ({
                     value: c.id,
                     label: channelOptionLabel(c),
                   })),
@@ -673,7 +677,7 @@ function BroadcastTab() {
                 onChange={(e) => setFormData({ ...formData, campaignId: e.target.value })}
                 options={[
                   { value: '', label: '無（獨立廣播）' },
-                  ...campaigns.map((c: any) => ({ value: c.id, label: c.name })),
+                  ...campaigns.map((c) => ({ value: c.id, label: c.name })),
                 ]}
               />
             </div>
@@ -716,7 +720,7 @@ function BroadcastTab() {
                   onChange={(e) => setFormData({ ...formData, segmentId: e.target.value })}
                   options={[
                     { value: '', label: '請選擇分群' },
-                    ...segments.map((s: any) => ({
+                    ...segments.map((s) => ({
                       value: s.id,
                       label: `${s.name} (${s.contactCount} 人)`,
                     })),
@@ -815,7 +819,7 @@ function SegmentTab() {
   const [saving, setSaving] = useState(false);
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  const [tags, setTags] = useState<any[]>([]);
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -846,8 +850,7 @@ function SegmentTab() {
   };
 
   const updateCondition = (idx: number, key: string, value: string) => {
-    const updated = [...formData.conditions];
-    (updated[idx] as any)[key] = value;
+    const updated = formData.conditions.map((cond, i) => (i === idx ? { ...cond, [key]: value } : cond));
     setFormData({ ...formData, conditions: updated });
   };
 
@@ -864,8 +867,8 @@ function SegmentTab() {
     try {
       const res = await api.post('/marketing/segments/preview', buildRules());
       setPreviewCount(res.data.data.count);
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '預覽失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '預覽失敗'));
     } finally {
       setPreviewing(false);
     }
@@ -889,8 +892,8 @@ function SegmentTab() {
       });
       setPreviewCount(null);
       mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '建立失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '建立失敗'));
     } finally {
       setSaving(false);
     }
@@ -901,8 +904,8 @@ function SegmentTab() {
     try {
       await api.delete(`/marketing/segments/${id}`);
       mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '刪除失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '刪除失敗'));
     }
   };
 
@@ -949,7 +952,7 @@ function SegmentTab() {
               </tr>
             </thead>
             <tbody>
-              {segments.map((s: any) => (
+              {segments.map((s) => (
                 <tr key={s.id} className="border-b">
                   <td className="py-3 font-medium">{s.name}</td>
                   <td className="py-3 text-muted-foreground">{s.description || '-'}</td>
@@ -1031,7 +1034,7 @@ function SegmentTab() {
                       onChange={(e) => updateCondition(idx, 'value', e.target.value)}
                       options={[
                         { value: '', label: '選擇標籤' },
-                        ...tags.map((t: any) => ({ value: t.id, label: t.name })),
+                        ...tags.map((t) => ({ value: t.id, label: t.name })),
                       ]}
                       className="flex-1"
                     />

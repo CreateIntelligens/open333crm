@@ -154,13 +154,13 @@ export function ChannelManagement() {
         [channelId]: { success: true },
       }));
       mutate();
-    } catch (err: any) {
+    } catch (err) {
       setVerifyResult((prev) => ({
         ...prev,
         [channelId]: {
           success: false,
           message:
-            err.response?.data?.error?.message || '連線失敗',
+            getApiErrorMessage(err, '連線失敗'),
         },
       }));
     } finally {

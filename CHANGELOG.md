@@ -21,6 +21,14 @@ All notable changes to **open333CRM** will be documented in this file.
   - 驗證頁 `/trial/verify` 改成設定密碼的表單，可修改站台名稱，錯誤顯示在表單上；申請頁拿掉密碼欄位；驗證信與開通信的文案跟著改。
   - migration `20261102100000_drop_trial_signup_password_hash` 移除 `trial_signups.passwordHash`。改版前寄出、仍在效期內的驗證連結照常可用，打開後改成設定密碼。
 
+### Changed
+
+- **Web 的 ESLint 錯誤清為 0，建置時恢復檢查 lint**（issue #253）— `apps/web/src` 原有 80 個 ESLint 錯誤，因此 `next.config.ts` 設了 `eslint.ignoreDuringBuilds`。現在全部修正並移除這個設定，`next build` 遇到 lint 錯誤會失敗（警告不影響）。
+  - 73 個 `any` 改成實際型別：行銷活動、分群、廣播列表的 hook 回傳型別（`useMarketing.ts`）、知識庫文章、素材預覽、圖表標籤、WebChat 的 socket 訊息等。
+  - 13 個檔案的錯誤處理改用 `getApiErrorMessage()`：後端有訊息時照舊顯示；沒有訊息時（網路斷線、逾時、5xx），改顯示對應的說明，不再只顯示「儲存失敗」等固定文字。
+  - 站內連結（關鍵字回覆說明、優惠券表單麵包屑、素材的優惠券連結說明）改用 Next.js `Link`，切頁不再整頁重新載入。
+  - `InputProps`、`TextareaProps` 改為 type alias。
+
 ## [2026-10-30]
 
 ### Added

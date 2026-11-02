@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  type PieLabelRenderProps,
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -75,7 +76,7 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
                   outerRadius={80}
                   dataKey="value"
                   nameKey="name"
-                  label={(props: any) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
+                  label={(props: PieLabelRenderProps) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
                   {data.messagesByChannel.map((entry) => (
@@ -107,7 +108,7 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
                   outerRadius={80}
                   dataKey="value"
                   nameKey="name"
-                  label={(props: any) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
+                  label={(props: PieLabelRenderProps) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
                   {data.botVsHuman.map((_, i) => (

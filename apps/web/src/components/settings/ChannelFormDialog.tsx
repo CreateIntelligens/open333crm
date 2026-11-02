@@ -19,6 +19,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ChannelFormDialogProps {
   open: boolean;
@@ -198,9 +199,9 @@ export function ChannelFormDialog({
       }
 
       onSaved();
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err.response?.data?.error?.message || '儲存失敗，請檢查輸入資料'
+        getApiErrorMessage(err, '儲存失敗，請檢查輸入資料')
       );
     } finally {
       setSaving(false);

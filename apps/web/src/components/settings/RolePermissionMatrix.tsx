@@ -276,8 +276,8 @@ export function RolePermissionMatrix() {
       // 更新左欄權限數
       setRoles((rs) => rs.map((r) => (r.id === selectedId ? { ...r, permissionCount: draft.size } : r)));
       setTimeout(() => setOkMsg(null), 2500);
-    } catch (e: any) {
-      setError(e?.response?.data?.message ?? e?.response?.data?.error?.message ?? '儲存失敗');
+    } catch (e) {
+      setError(getApiErrorMessage(e, '儲存失敗'));
     } finally {
       setSaving(false);
     }

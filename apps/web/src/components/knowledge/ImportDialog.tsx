@@ -92,7 +92,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
             updateStatus(f.name, 'error', r?.error || '匯入失敗，原因不明');
           }
         });
-      } catch (err: any) {
+      } catch (err) {
         const msg = getApiErrorMessage(err, '上傳失敗，請稍後重試');
         otherFiles.forEach((f) => updateStatus(f.name, 'error', msg));
       }
@@ -115,7 +115,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
           data.failed > 0 && data.imported === 0 ? 'error' : 'success',
           data.failed > 0 ? `成功 ${data.imported} 筆，失敗 ${data.failed} 筆` : undefined,
         );
-      } catch (err: any) {
+      } catch (err) {
         const msg = getApiErrorMessage(err, '匯入失敗，請稍後重試');
         updateStatus(file.name, 'error', msg);
       }

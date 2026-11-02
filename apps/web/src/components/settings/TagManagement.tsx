@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface Tag {
   id: string;
@@ -124,8 +125,8 @@ export function TagManagement() {
       }
       setShowDialog(false);
       fetchTags();
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || '儲存失敗');
+    } catch (err) {
+      setError(getApiErrorMessage(err, '儲存失敗'));
     } finally {
       setSaving(false);
     }

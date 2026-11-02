@@ -12,6 +12,7 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { CouponToast, useCouponToast } from '@/components/coupons/CouponToast';
@@ -500,9 +501,9 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
         <nav aria-label="麵包屑" className="mb-2 text-xs text-muted-foreground">
           <ol className="flex flex-wrap items-center gap-1.5">
             <li>
-              <a href="/dashboard/marketing" className="hover:text-foreground" onClick={(e) => { e.preventDefault(); guard.navigate('/dashboard/marketing'); }}>
+              <Link href="/dashboard/marketing" className="hover:text-foreground" onClick={(e) => { e.preventDefault(); guard.navigate('/dashboard/marketing'); }}>
                 行銷
-              </a>
+              </Link>
             </li>
             <li aria-hidden="true">›</li>
             <li>
