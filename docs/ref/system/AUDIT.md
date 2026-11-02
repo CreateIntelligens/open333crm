@@ -143,7 +143,7 @@
 | [AUTO-06](#auto-06) | 對話、工單與自動化 | P1 | 未處理 | 規則編輯器把純數字的條件值存成數字，「訊息內容 包含 8888」這類條件永遠不成立 | 執行時確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
-| [AUTO-09](#auto-09) | 對話、工單與自動化 | P2 | 未處理 | 自動化的試跑與執行紀錄只驗登入，沒有 `automation.view` 的成員可以讀到規則的條件與動作全文 | 執行時確認 |
+| [AUTO-09](#auto-09) | 對話、工單與自動化 | P2 | 已修正 | 自動化的試跑與執行紀錄只驗登入，沒有 `automation.view` 的成員可以讀到規則的條件與動作全文 | 執行時確認 |
 | [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 未處理 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫 `resolvedAt` 與工單事件、不通知被指派的人，查詢也不帶 `tenantId` | 執行時確認 |
 | [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 未處理 | Canvas 用 API 建不出串接的節點，草稿也能觸發；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網 | 執行時確認 |
 | [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 未處理 | 自動化動作的參數只檢查有填，不檢查值：狀態可存 `"FOO"`，負責人可存其他租戶的成員 | 執行時確認 |
@@ -1164,7 +1164,7 @@ PlatformSetting（KV，不知道型別）
 
 | feature | 路由層的覆蓋情況 | 關掉這個 feature |
 | --- | --- | --- |
-| `automation` | `canvas` 11 條全有、`automation` 7 條中 5 條（沒有檢查的是試跑與執行紀錄，見 AUTO-09） | 大致擋得住 |
+| `automation` | `canvas` 11 條全有、`automation` 7 條中 5 條（沒有檢查的試跑與執行紀錄已由 `8899e280` 補上，見 AUTO-09） | 大致擋得住 |
 | `analytics` | 9 條路由、10 處檢查 | 擋得住 |
 | `channels` | `channel` 19 條中 17 條 | 大致擋得住 |
 | `marketing` | 36 條中 21 條 | 大部分擋得住，仍有未檢查的路由 |
@@ -1922,6 +1922,8 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 ### AUTO-09：自動化的試跑與執行紀錄只驗登入
 
 `automation.routes.ts` 的 `POST /automation/rules/:id/test` 與 `GET /automation/logs` 只掛 `fastify.authenticate`。沒有 `automation.view` 的成員（例如 seed 的 agent）可以用規則 ID 呼叫試跑，拿到規則的名稱、條件與動作全文（含通知文字、素材 ID、客服 ID）。權限註冊表寫 `automation.view` 涵蓋「logs、test」。方案不含 `automation` 時，這兩條路由同樣不受天花板限制（PLAN-04 的「7 條中 5 條」）。
+
+**已修正**（`8899e280`，#426）：兩條路由都改為 `requirePermission('automation.view')`。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-04（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/api/src/modules/automation/automation.routes.ts:196,210`、`packages/shared/src/rbac/permissions.ts:70`；agent 的 `GET /automation/rules` 回 403，但 `/rules/<id>/test` 回 200 並含 `rule.conditions`、`rule.actions`（健檢實測）。
 

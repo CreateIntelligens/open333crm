@@ -4,6 +4,10 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-02：AUTO-09 由 main 修正
+
+#426（`8899e280`）替 `POST /automation/rules/:id/test` 與 `GET /automation/logs` 加上 `requirePermission('automation.view')`，AUTO-09（健檢 HC-AUTOMATION-04）改為已修正。依據：讀程式（rebase 後的 `automation.routes.ts`），本次沒有重跑健檢。
+
 ## 2026-11-02：TRIAL-05、TRIAL-06、CI-04 修正
 
 使用者決定修法：申請時不收密碼，點驗證連結之後在頁面上設定密碼，系統才開通。修正在 `e90e9849`（change `trial-set-password-after-verify`）。以 feature 測試驗證（本機測試資料庫），沒有在 UAT 實測；部署前 UAT（即正式環境）仍可被利用。
