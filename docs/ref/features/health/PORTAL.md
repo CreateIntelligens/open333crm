@@ -2,6 +2,7 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e（本機 API、web 與自動測試都是這個版本）。`origin/main`（0a49a1dc）在當天 09:16–11:54 另有 10 個 portal 修正 commit，UAT 已部署；每個問題另標「main 狀態」
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認）
 - 範圍：`docs/ref/features/feature-map.json` 的 `portal`；功能文件 `docs/ref/features/tenant/PORTAL.md`；手冊 `apps/web/public/manual/ch11-portal.html`
 

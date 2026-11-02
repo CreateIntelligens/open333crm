@@ -31,12 +31,22 @@ description: >
 | # | 流程 | 入口 | API → 後端 | 副作用 | 權限（後端 / 前端隱藏） |
 | - | ---- | ---- | ---------- | ------ | ---- |
 | 1 | 租戶看申請記錄 | 側欄「分析與管理 → 方案／帳務」→ `/dashboard/plan` | `GET /plan-change` → `listTenantPlanChangeRequests`（自己租戶、新到舊、50 筆） | 無 | `settings.manage` / 側欄隱藏；**直接開網址仍看到完整表單**，讀取 403 時顯示「尚無申請記錄。」 |
-| 2 | 申請升級方案 | 「升級方案」→ 目標方案下拉（寫死 `standard`／`professional`／`enterprise`，不看目前方案）→ 備註 → 「送出申請」 | `POST /plan-change {type:'upgrade', targetPlanSlug, note?}` → `createPlanChangeRequest`：已有 pending 回 409、slug 不存在 404、試用方案 400 | 建一筆 `pending`；不通知平台、不寫任何稽核 | `settings.manage` |
+| 2 | 申請升級方案 | 「升級方案」→ 目標方案下拉（寫死 `standard`／`professional`／`enterprise`，不看目前方案）→ 備註 → 「送出申請」 | `POST /plan-change {type:'upgrade', targetPlanSlug, note?}` → `createPlanChangeRequest`：已有 pending 回 409、slug 不存在 404、**目標**是試用方案 400（見下方「試用與升級」） | 建一筆 `pending`；不通知平台、不寫任何稽核 | `settings.manage` |
 | 3 | 申請加購 token | 「加購 Token」→ `+20 萬`／`+50 萬`／`+100 萬` → 「送出申請」 | `POST /plan-change {type:'token_topup', topupTokens, note?}` | 同上 | `settings.manage` |
 | 4 | 平台看待審 | 平台後台側欄「升級申請」→ `/admin/plan-changes` | `GET /platform/plan-change-requests` → `listPendingRequests`（只有 pending，舊到新） | 無 | 平台 superuser |
 | 5 | 平台核准 | 列上「核准」→ `window.confirm` | `PATCH /platform/plan-change-requests/:id/approve`（body `{note?}`，**UI 不送 note**）→ `approveRequest` | upgrade：改 `planId`（試用租戶套 `TRIAL_EXIT_DATA`）、`invalidatePlanPermissions(新 planId)`、`invalidateTenantPlan`；token_topup：`limitOverrides.monthlyTokens = 現有有效額度 + 加購量`、`invalidateTenantPlan`、`clearTokenQuotaCache`、`clearQuotaAlertFlags`；寫平台稽核 `plan_change.approve` | 平台 superuser；**失敗沒有任何畫面提示**（`act()` 沒有 catch） |
 | 6 | 平台駁回 | 列上「駁回」→ `window.confirm` | `PATCH /platform/plan-change-requests/:id/reject` → `rejectRequest` | 只改申請狀態；寫平台稽核 `plan_change.reject`（payload 空） | 同上 |
 | 7 | 租戶看結果 | 回 `/dashboard/plan` 重新整理 | 同 1 | 只看得到「已核准／已駁回」，看不到 `reviewNote`、申請日期 | — |
+
+**試用與升級**（`apps/api/src/modules/platform/plan-change.service.ts:27-31, 93-102`、`apps/api/src/modules/platform/trial-admin.service.ts:18-27`）。「試用方案 400」只看**目標**方案，不看租戶目前是不是試用：
+
+| 情況 | 建立申請（`POST /plan-change`） | 平台核准（`/approve`） |
+| ---- | ------------------------------ | --------------------- |
+| 目標是試用方案（slug 等於試用政策的 `trial.planSlug`），不論目前方案 | 400 `BAD_REQUEST`「不能轉成試用方案」 | 再檢查一次，同樣 400（防止申請建立後平台把試用 slug 改掉） |
+| 目前是試用租戶，目標是付費方案 | 允許，建一筆 `pending` | 改 `planId`，並套 `TRIAL_EXIT_DATA`（`trialEndsAt: null`、`purgedAt: null`、`isActive: true`）脫離試用 |
+| 目前不是試用，目標是付費方案 | 允許 | 只改 `planId` |
+
+「目前是試用」以 `tenant.trialEndsAt != null` 判斷，不是看目前方案的 slug。
 
 **有後端、沒有前端入口**：審核備註 `note`（API 接受，UI 不送，租戶頁也不顯示 `reviewNote`）。
 **前後端都沒有**：租戶撤回申請、申請逾期、平台查已處理的申請（PLAN-11）、核准／駁回通知租戶（沒有站內通知也沒有 email）、`downgrade` 型別（降級要嘛走 `upgrade` 選較小的方案，要嘛平台在租戶編輯頁直接改）。
@@ -73,7 +83,7 @@ description: >
 5. 企業版（無上限）租戶送加購 → 平台核准 → 400 `TOPUP_UNLIMITED`，畫面必須顯示原因。
 6. 已處理的申請再核准／駁回 → 400；不存在的 id → 404。
 7. 用沒有 `settings.manage` 的帳號（seed agent）：側欄沒有「方案／帳務」，API 回 403 `details.requiredPermission = settings.manage`。
-8. 試用租戶送 upgrade → 核准 → `trialEndsAt` 清空（feature 測試涵蓋）。
+8. 試用租戶送 upgrade（目標是付費方案）→ 核准 → `trialEndsAt` 清空（feature 測試涵蓋）；目標選試用方案 → 建立時 400。
 - 自動測試：`pnpm --filter @open333crm/api test -- plan-change`（unit 20 個）；feature 測試搶鎖後 `pnpm --filter @open333crm/api test:feature modules/platform/plan-change`（10 個）。相關：`-- platform-audit-routes`、`-- platform-auth-guard`。
 - E2E：`apps/web/tests/e2e-uat/cross-plan-request.spec.ts`（申請 → 平台駁回 → 方案不變）。注意它等待的文字還帶 ✓，UI 已拿掉，要先修 spec；UAT Demo 有一筆 2026-09-16 起的待審加購，spec 遇到 pending 會中止。
 

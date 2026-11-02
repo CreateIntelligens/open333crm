@@ -27,7 +27,7 @@ description: >
 | # | 流程 | 入口 | API → 後端 | 副作用 | 權限 |
 | - | ---- | ---- | ---------- | ------ | ---- |
 | 1 | 開啟監控 | 平台後台側邊欄「佇列監控」（`QueueMonitorLink.tsx`），點擊當下先開空白分頁 | `POST /api/v1/platform/queues/session`（平台 JWT，`withCredentials`）→ 設 `queue_dashboard_session` cookie（HttpOnly、SameSite=Strict、Path=`/api/v1/platform/queues`、1 小時）→ 新分頁導到 `/api/v1/platform/queues` | 無 | 先檢查來源 IP（`QUEUE_DASHBOARD_ALLOWED_CIDRS`），再 `authenticatePlatformSuperuser` + 不可須改密碼。失敗時關掉分頁、側邊欄顯示後端訊息（例如「此來源 IP 不能使用佇列監控」） |
-| 2 | 看佇列清單與數量 | bull-board 左欄 18 個佇列（API 8、workers 9，以 `monitored-queues.ts` 為準） | `GET .../api/queues`、`/api/redis/stats`、`/api/queues/has-workers` | 無 | 每個請求：IP → Origin 同源 → cookie 簽章與到期 → 即時查 PlatformUser（停用 401、須改密碼 403） |
+| 2 | 看佇列清單與數量 | bull-board 左欄 17 個佇列（以 `apps/api/src/modules/queue-monitoring/monitored-queues.ts:20-43` 為準）。API 行程 8 個：`event-notification`、`event-automation`、`event-webhook`、`webhook-delivery`、`usage-alert-email`、`api-scheduler`、`ops-alert`、`coupon-broadcast`；workers 行程 9 個：`notification`、`automation`、`rich-menu-bind`、`data-erasure`、`data-export`、`sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup` | `GET .../api/queues`、`/api/redis/stats`、`/api/queues/has-workers` | 無 | 每個請求：IP → Origin 同源 → cookie 簽章與到期 → 即時查 PlatformUser（停用 401、須改密碼 403） |
 | 3 | 看失敗原因 | 佇列頁 FAILED 分頁，job 卡片的 Error 分頁 | `GET .../api/queues/:q/:jobId` | 無 | 失敗原因與 stack 原樣顯示，**可能含對方伺服器回應的個資** |
 | 4 | 看 job 資料 | job 卡片 Data 分頁 | 同上，資料經 `maskJobData` | 無 | 只顯示 `name`、`type`（最上層）與 `id`／`*Id`，其他 `[已遮蔽]` |
 | 5 | 看 log | job 卡片 Logs 分頁 | `GET .../:jobId/logs` | 無 | 一律 403，畫面跳英文「Forbidden」 |
@@ -60,7 +60,7 @@ description: >
 
 ## 回歸清單
 改到本領域時，至少重走：
-1. 在允許的網段：平台後台點「佇列監控」→ 新分頁開出 bull-board，18 個佇列都在。不在網段：側邊欄顯示「此來源 IP 不能使用佇列監控」、分頁關閉。
+1. 在允許的網段：平台後台點「佇列監控」→ 新分頁開出 bull-board，上面 17 個佇列都在。不在網段：側邊欄顯示「此來源 IP 不能使用佇列監控」、分頁關閉。
 2. 造一個必定失敗的 job（例如對 `api-scheduler` 加一個沒有註冊的 job 名稱 `hc-...`，processor 會丟「沒有註冊的排程」），確認 FAILED 分頁看得到原因、Data 已遮蔽、Logs 403。
 3. 重送 failed job → 204、PlatformAuditLog 多一筆；重送 completed 或同一筆第二次 → 403、不寫稽核。
 4. Retry all、Clean all、修改、刪除 → 403；帶他站 `Origin` 的 PUT → 403。

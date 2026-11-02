@@ -50,10 +50,21 @@ description: >
 
 | # | 流程 | API → 後端 | 備註 |
 | - | ---- | ---------- | ---- |
-| 11 | 粉絲瀏覽與送出活動 | `GET /fan/activities`、`GET /fan/activities/:id`、`POST /fan/activities/:id/submit {optionIds?, fields?}` → `submitActivity` | 送積分（`pointsPerSubmit`）、發 `portal.activity.submitted`。錯誤一律 400（PORTAL-02） |
+| 11 | 粉絲瀏覽與送出活動 | `GET /fan/activities`、`GET /fan/activities/:id`、`POST /fan/activities/:id/submit {optionIds?, fields?}` → `submitActivity` | 送積分（`pointsPerSubmit`）、發 `portal.activity.submitted`。送出的業務錯誤都變成 400（PORTAL-02），狀態碼對照見表下 |
 | 12 | 粉絲看結果與自己的紀錄 | `GET /fan/activities/:id/result`、`/fan/me/activities`、`/fan/me/points` | 結果端點回傳 `isCorrect`、草稿也讀得到（PORTAL-01） |
 | 13 | 會員綁定設定 | `GET/PUT /member-binding`、`POST /member-binding/test` | 憑證加密入庫、讀回遮蔽成 `••••••••`；外呼經 `apps/api/src/modules/member-binding/upstream-guard.ts` 擋私有位址 |
 | 14 | 顧客綁定會員 | `GET /fan/member-binding/fields`、`GET /fan/member-binding`、`POST /fan/member-binding`；後台代綁 `POST/DELETE /member-binding/contacts/:contactId` | 綁定寫 `ContactAttribute`，可依 `bindTagId` 貼標 |
+
+**粉絲端 API 狀態碼對照**（`apps/api/src/modules/portal/portal-public.routes.ts:29-40, 76-104`；本 worktree 版本，輸入解析已移出 `try`）：
+
+| 情況 | 適用端點 | 狀態碼與代碼 |
+| ---- | -------- | ------------ |
+| 沒有 `Authorization: Bearer`、token 驗簽失敗或過期、不是 `sub: 'fan'` | 全部 `/fan/*`（`authenticateFan`） | 401 `UNAUTHORIZED` |
+| `:id` 不是 uuid、body 不符 Zod（選項 id 格式、超過 100 個、欄位超過 5000 字） | 有 `:id` 的端點、`submit` | 400 `VALIDATION_ERROR`（全域錯誤處理，`apps/api/src/plugins/error-handler.plugin.ts:43-55`） |
+| 活動不存在或不開放 | `GET /fan/activities/:id`、`/result` | 404 `NOT_FOUND` |
+| 活動不存在或未開放（服務拋 404 `ACTIVITY_NOT_AVAILABLE`）、未開始／已結束（409 `ACTIVITY_NOT_STARTED`／`ACTIVITY_ENDED`）、已參加過（409 `ALREADY_SUBMITTED`）、Prisma 等非預期錯誤 | `POST /fan/activities/:id/submit` | **全部** 400 `BAD_REQUEST`，`message` 是原始錯誤訊息（PORTAL-02，已知問題；`apps/api/src/modules/portal/portal.service.ts:301-306, 319` 原本的狀態碼被 `portal-public.routes.ts:88-93` 的 `catch` 蓋掉） |
+
+所以「token 不正確」是 401，不會進到 400 的 `catch`；「錯誤一律 400」只指送出活動時 token 驗過之後的業務錯誤。
 
 **有後端、沒有前端入口**：粉絲端整組 `/fan/*`（活動、結果、我的積分）；會員綁定設定頁與顧客綁定頁（行銷健檢 HC-MARKETING-13 已記錄）；活動的 `coverImage`、選項 `imageUrl`、`settings.allowMultiple`、表單「選單」型態的 `options`；提交的實際答案內容（只顯示數量）；`portal.activity.submitted` 不在自動化規則編輯器（AUTO-05）。
 

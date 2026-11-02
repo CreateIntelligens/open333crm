@@ -10,7 +10,7 @@
 
 ## 各領域問題數
 
-數字是報告「問題清單」的列數，包含引用 AUDIT 既有項目的列，以及和其他領域重複的列。
+數字是報告「問題清單」裡嚴重度欄以 P0～P3 開頭的列數，包含引用 AUDIT 既有項目的列、和其他領域重複的列，以及 main 之後已修好的列（例如 HC-ANALYTICS-01）。嚴重度欄寫「依 AUDIT」的列不計。
 
 | 領域 | 報告 | P0 | P1 | P2 | P3 |
 | --- | --- | --- | --- | --- | --- |
@@ -20,23 +20,23 @@
 | 工單 | [CASES](CASES.md) | 0 | 0 | 14 | 15 |
 | 通知 | [NOTIFICATIONS](NOTIFICATIONS.md) | 0 | 0 | 7 | 9 |
 | 自動化規則 | [AUTOMATION](AUTOMATION.md) | 0 | 1 | 8 | 6 |
-| 知識庫與 AI 回覆 | [KNOWLEDGE](KNOWLEDGE.md) | 0 | 3 | 3 | 8 |
+| 知識庫與 AI 回覆 | [KNOWLEDGE](KNOWLEDGE.md) | 0 | 3 | 3 | 10 |
 | LINE 專屬功能 | [LINE](LINE.md) | 0 | 1 | 7 | 10 |
-| 會員入口 | [PORTAL](PORTAL.md) | 0 | 1 | 5 | 9 |
-| 短連結 | [SHORTLINKS](SHORTLINKS.md) | 0 | 0 | 3 | 10 |
+| 會員入口 | [PORTAL](PORTAL.md) | 0 | 1 | 7 | 10 |
+| 短連結 | [SHORTLINKS](SHORTLINKS.md) | 0 | 0 | 3 | 11 |
 | 數據分析與報表 | [ANALYTICS](ANALYTICS.md) | 0 | 3 | 2 | 11 |
 | 渠道管理 | [CHANNELS](CHANNELS.md) | 0 | 1 | 6 | 19 |
 | 成員、角色與權限 | [MEMBERS](MEMBERS.md) | 0 | 1 | 6 | 9 |
-| 租戶設定 | [SETTINGS](SETTINGS.md) | 0 | 1 | 5 | 11 |
+| 租戶設定 | [SETTINGS](SETTINGS.md) | 0 | 2 | 5 | 11 |
 | 治理：稽核、匯出與資料刪除 | [GOVERNANCE](GOVERNANCE.md) | 0 | 1 | 9 | 7 |
 | SLA 與營業時間 | [SLA](SLA.md) | 0 | 0 | 6 | 11 |
-| 登入與身分驗證 | [PLATFORM-AUTH](PLATFORM-AUTH.md) | 0 | 0 | 5 | 8 |
+| 登入與身分驗證 | [PLATFORM-AUTH](PLATFORM-AUTH.md) | 0 | 0 | 6 | 9 |
 | 平台：租戶管理 | [PLATFORM-TENANTS](PLATFORM-TENANTS.md) | 0 | 1 | 6 | 12 |
 | 方案與上限 | [PLATFORM-PLANS](PLATFORM-PLANS.md) | 0 | 1 | 2 | 10 |
 | 方案異動申請與審核 | [PLATFORM-PLAN-CHANGES](PLATFORM-PLAN-CHANGES.md) | 0 | 0 | 6 | 8 |
-| 用量統計與 AI 成本 | [PLATFORM-USAGE](PLATFORM-USAGE.md) | 0 | 0 | 4 | 7 |
-| 平台帳號管理 | [PLATFORM-USERS](PLATFORM-USERS.md) | 0 | 0 | 3 | 7 |
-| 平台設定 | [PLATFORM-SETTINGS](PLATFORM-SETTINGS.md) | 0 | 1 | 2 | 4 |
+| 用量統計與 AI 成本 | [PLATFORM-USAGE](PLATFORM-USAGE.md) | 0 | 0 | 8 | 8 |
+| 平台帳號管理 | [PLATFORM-USERS](PLATFORM-USERS.md) | 0 | 0 | 3 | 8 |
+| 平台設定 | [PLATFORM-SETTINGS](PLATFORM-SETTINGS.md) | 0 | 1 | 3 | 6 |
 | 試用申請與到期處理 | [PLATFORM-TRIALS](PLATFORM-TRIALS.md) | 0 | 2 | 5 | 13 |
 | 佇列監控 | [PLATFORM-QUEUE-MONITORING](PLATFORM-QUEUE-MONITORING.md) | 0 | 0 | 3 | 6 |
 
@@ -44,30 +44,32 @@
 
 沒有 P0。以下 22 個是新發現的 P1，HC-ANALYTICS-01 已在 main 修正，其餘 21 個未修（試用報告引用的 HC-PLATFORM-TENANTS-01 只算一次）。最後 4 個原列 P2，2026-10-30 經使用者決定升為 P1。「驗證」欄寫明是實際操作重現，還是只讀程式。
 
-| 編號 | AUDIT | 問題 | 驗證 |
-| --- | --- | --- | --- |
-| HC-MARKETING-01 | [MKT-02](../../system/AUDIT.md#mkt-02) | 沒有 `marketing.broadcast` 的人，建立帶排程時間的群發，到期照樣送出 | 本機實測 |
-| HC-MARKETING-02 | [MKT-03](../../system/AUDIT.md#mkt-03) | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 本機實測（發出 3 張） |
-| HC-MARKETING-03 | [MKT-04](../../system/AUDIT.md#mkt-04) | 群發不套用渠道可見範圍，分店帳號可對看不到的渠道群發 | 本機實測 |
-| HC-MARKETING-04 | [CHAN-02](../../system/AUDIT.md#chan-02) | WebChat 群發與批次發券顯示成功，顧客實際收不到 | 本機實測 |
-| HC-CHANNELS-01 | [RBAC-07](../../system/AUDIT.md#rbac-07) | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
-| HC-MEMBERS-01 | [RBAC-08](../../system/AUDIT.md#rbac-08) | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式 |
-| HC-GOVERNANCE-01 | [AUD-03](../../system/AUDIT.md#aud-03) | 永久刪除成員後，他的稽核紀錄全部變成沒有操作者（`onDelete: SetNull`） | 本機實測 |
-| HC-PLATFORM-TENANTS-01 | [AUTH-11](../../system/AUDIT.md#auth-11) | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
-| HC-PLATFORM-TRIALS-01 | [TRIAL-05](../../system/AUDIT.md#trial-05) | 同一 email 待驗證時再申請一次，會覆寫密碼，申請人點信後站台以他人密碼開通 | 本機實測；UAT 的 `trial.enabled` 為 true，正式環境可被利用 |
-| HC-PLATFORM-PLANS-01 | [PLAN-14](../../system/AUDIT.md#plan-14) | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容相同（2026-10-30 平台 API 唯讀確認） |
-| HC-LINE-01 | [CASE-03](../../system/AUDIT.md#case-03) | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗 |
-| HC-KNOWLEDGE-01 | [KB-01](../../system/AUDIT.md#kb-01) | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
-| HC-KNOWLEDGE-02 | [KB-02](../../system/AUDIT.md#kb-02) | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
-| HC-KNOWLEDGE-03 | [KB-03](../../system/AUDIT.md#kb-03) | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |
-| HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測 |
-| HC-ANALYTICS-01 | 未收錄 | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測；main 的 `093b7e75` 已修正 |
-| HC-PORTAL-01 | [PORTAL-03](../../system/AUDIT.md#portal-03) | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測；main 仍存在 |
-| HC-SETTINGS-01 | [HOURS-01](../../system/AUDIT.md#hours-01) | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測 |
-| HC-PLATFORM-SETTINGS-02 | [RLS-10](../../system/AUDIT.md#rls-10) | `rls_roles_and_grants` migration 把整個 schema 授權給 `app_tenant`：租戶連線能讀平台帳號的密碼雜湊、改價目表與其他租戶的平台設定。要先有注入點才能利用，但 RLS 少了一道防線 | 本機實測（交易內，已 ROLLBACK） |
-| HC-INBOX-01 | [CONV-04](../../system/AUDIT.md#conv-04) | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 本機與 UAT 實測 |
-| HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值 |
-| HC-ANALYTICS-04 | [ANA-03](../../system/AUDIT.md#ana-03) | 匯出 CSV 沒有跳脫，顧客暱稱含逗號會錯位、以 `=` 開頭會被 Excel 當公式 | 本機實測 |
+| 編號 | AUDIT | Issue | 問題 | 驗證 |
+| --- | --- | --- | --- | --- |
+| HC-MARKETING-01 | [MKT-02](../../system/AUDIT.md#mkt-02) | #409 | 沒有 `marketing.broadcast` 的人，建立帶排程時間的群發，到期照樣送出 | 本機實測 |
+| HC-MARKETING-02 | [MKT-03](../../system/AUDIT.md#mkt-03) | #409 | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 本機實測（發出 3 張） |
+| HC-MARKETING-03 | [MKT-04](../../system/AUDIT.md#mkt-04) | #409 | 群發不套用渠道可見範圍，分店帳號可對看不到的渠道群發 | 本機實測 |
+| HC-MARKETING-04 | [CHAN-02](../../system/AUDIT.md#chan-02) | #415 | WebChat 群發與批次發券顯示成功，顧客實際收不到 | 本機實測 |
+| HC-CHANNELS-01 | [RBAC-07](../../system/AUDIT.md#rbac-07) | #408 | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
+| HC-MEMBERS-01 | [RBAC-08](../../system/AUDIT.md#rbac-08) | #413 | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式 |
+| HC-GOVERNANCE-01 | [AUD-03](../../system/AUDIT.md#aud-03) | #414 | 永久刪除成員後，他的稽核紀錄全部變成沒有操作者（`onDelete: SetNull`） | 本機實測 |
+| HC-PLATFORM-TENANTS-01 | [AUTH-11](../../system/AUDIT.md#auth-11) | #410 | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
+| HC-PLATFORM-TRIALS-01 | [TRIAL-05](../../system/AUDIT.md#trial-05) | 暫不公開 | 同一 email 待驗證時再申請一次，會覆寫密碼，申請人點信後站台以他人密碼開通 | 本機實測；UAT 的 `trial.enabled` 為 true，正式環境可被利用 |
+| HC-PLATFORM-PLANS-01 | [PLAN-14](../../system/AUDIT.md#plan-14) | #411 | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容相同（2026-10-30 平台 API 唯讀確認） |
+| HC-LINE-01 | [CASE-03](../../system/AUDIT.md#case-03) | #416 | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗 |
+| HC-KNOWLEDGE-01 | [KB-01](../../system/AUDIT.md#kb-01) | #419 | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
+| HC-KNOWLEDGE-02 | [KB-02](../../system/AUDIT.md#kb-02) | #420 | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
+| HC-KNOWLEDGE-03 | [KB-03](../../system/AUDIT.md#kb-03) | #421 | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |
+| HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | #418 | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測 |
+| HC-ANALYTICS-01 | 未收錄 | — | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測；main 的 `093b7e75` 已修正 |
+| HC-PORTAL-01 | [PORTAL-03](../../system/AUDIT.md#portal-03) | #424 | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測；main 仍存在 |
+| HC-SETTINGS-01 | [HOURS-01](../../system/AUDIT.md#hours-01) | #425 | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測 |
+| HC-PLATFORM-SETTINGS-02 | [RLS-10](../../system/AUDIT.md#rls-10) | #412 | `rls_roles_and_grants` migration 把整個 schema 授權給 `app_tenant`：租戶連線能讀平台帳號的密碼雜湊、改價目表與其他租戶的平台設定。要先有注入點才能利用，但 RLS 少了一道防線 | 本機實測（交易內，已 ROLLBACK） |
+| HC-INBOX-01 | [CONV-04](../../system/AUDIT.md#conv-04) | #422 | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 本機與 UAT 實測 |
+| HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | #417 | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值 |
+| HC-ANALYTICS-04 | [ANA-03](../../system/AUDIT.md#ana-03) | #423 | 匯出 CSV 沒有跳脫，顧客暱稱含逗號會錯位、以 `=` 開頭會被 Excel 當公式 | 本機實測 |
+
+Issue 欄的 #408～#425 是 2026-10-30 依「同根因合成一張」開的單；TRIAL-05 的重現步驟可直接用來攻擊正式環境，暫不開公開 issue。
 
 另外，AUDIT 既有的 P1 RBAC-02（agent 用 CLI 登入就能讀全租戶報表）在本機實測重現。
 

@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build，`EMAIL_DELIVERY_MODE=log`）。UAT 未操作，原因見[UAT 操作紀錄](#uat-操作紀錄)
 - 規格：`docs/ref/features/feature-map.json` 的 `platform-tenants`；功能文件 `docs/ref/features/platform/TENANTS.md`、`docs/ref/features/platform/README.md`
 

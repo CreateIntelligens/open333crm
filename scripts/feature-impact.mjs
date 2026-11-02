@@ -22,7 +22,8 @@
  *   node scripts/feature-impact.mjs --files a.ts b.tsx   # 只看指定檔案（不讀 diff 內容）
  *   node scripts/feature-impact.mjs --range A..B         # 只看兩個 commit 之間的改動，例如回頭檢查已合併的 PR
  *   node scripts/feature-impact.mjs --domain contacts    # 列出某領域被誰依賴、依賴誰
- *   node scripts/feature-impact.mjs --json               # 輸出 JSON
+ *   node scripts/feature-impact.mjs --json               # 輸出 JSON：{ results: [{ id, title, level, reasons }], pending: [] }
+ *                                                        # level 是 direct、data、indirect 或 weak（其他可能相關）
  *   node scripts/feature-impact.mjs --check              # 驗證功能地圖與 Skill 引用的路徑都存在，有錯 exit 1
  */
 import { execFileSync } from 'node:child_process';
@@ -244,18 +245,30 @@ function check(map) {
   const audit = readFileSync(join(ROOT, 'docs/ref/system/AUDIT.md'), 'utf8');
   // plannedDomains：尚未建好 Skill 的領域，可以被依賴關係引用
   const ids = new Set([...map.domains.map((d) => d.id), ...(map.plannedDomains ?? [])]);
-  const exists = (p) => tracked.some((f) => globToRegExp(p).test(f)) || existsSync(join(ROOT, p));
+  const trackedSet = new Set(tracked);
+  // 支援的語法只有 `**`、`*`、`?`。沒有萬用字元的路徑必須是追蹤中的檔案，或底下有追蹤檔案的目錄。
+  const exists = (p) => {
+    if (/[{}[\]!]/.test(p)) return false;
+    if (/[*?]/.test(p)) return tracked.some((f) => globToRegExp(p).test(f));
+    const dir = p.replace(/\/$/, '');
+    return trackedSet.has(dir) || tracked.some((f) => f.startsWith(`${dir}/`));
+  };
 
   for (const d of map.domains) {
     const where = `[${d.id}]`;
     for (const field of ['paths', 'pages', 'tests', 'e2e', 'manual']) {
-      for (const g of d[field] ?? []) if (!exists(g)) errors.push(`${where} ${field} 沒有符合的檔案：${g}`);
+      for (const g of d[field] ?? []) {
+        if (/[{}[\]!]/.test(g)) errors.push(`${where} ${field} 用了不支援的語法（只支援 **、*、?）：${g}`);
+        else if (!exists(g)) errors.push(`${where} ${field} 沒有符合的檔案：${g}`);
+      }
     }
     for (const f of [d.doc, d.health].filter(Boolean)) if (!existsSync(join(ROOT, f))) errors.push(`${where} 檔案不存在：${f}`);
     for (const s of d.specs ?? []) {
       if (!existsSync(join(ROOT, 'openspec/specs', s, 'spec.md'))) errors.push(`${where} 規格不存在：openspec/specs/${s}`);
     }
-    for (const a of d.audit ?? []) if (!audit.includes(a)) errors.push(`${where} AUDIT.md 沒有 ${a}`);
+    for (const a of d.audit ?? []) {
+      if (!audit.includes(`<a id="${a.toLowerCase()}"></a>`)) errors.push(`${where} AUDIT.md 沒有 ${a} 這一項（找不到 <a id="${a.toLowerCase()}">）`);
+    }
     for (const t of d.tables ?? []) {
       if (!new RegExp(`^model ${t} \\{`, 'm').test(schema)) errors.push(`${where} schema.prisma 沒有 model ${t}`);
     }
@@ -292,13 +305,12 @@ else {
   const files = listed ?? (range ? rangeFiles(range) : changedFiles(base));
   const results = analyze(map, files, listed ? '' : range ? rangeLines(range) : changedLines(base));
   if (args.includes('--json')) {
-    console.log(
-      JSON.stringify(
-        results.map(({ domain: d, level, reasons }) => ({ id: d.id, title: d.title, level, reasons })),
-        null,
-        2,
-      ),
-    );
+    // pending：被依賴關係引用、但還沒有建地圖的領域（文字報告的「尚未建立 Skill 的相關領域」）
+    const out = {
+      results: results.map(({ domain: d, level, reasons }) => ({ id: d.id, title: d.title, level, reasons })),
+      pending: results.pending ?? [],
+    };
+    console.log(JSON.stringify(out, null, 2));
   } else {
     console.log(`# 跨功能影響分析\n\n比對 ${files.length} 個檔案${listed ? '' : range ? `（${range}）` : `（基準 ${base}）`}。`);
     printReport(results);

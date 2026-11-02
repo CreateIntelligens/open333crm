@@ -2,7 +2,9 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e（本機 worktree 比 origin/main 落後 14 個 commit，都是粉絲門戶相關，與本領域無關）
-- 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build，`EMAIL_DELIVERY_MODE=log`，夾娃娃機關閉，Passkey 未設定）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認 tenantId；只讀）
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
+- 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build，`EMAIL_DELIVERY_MODE=log`，夾娃娃機關閉，Passkey 未設定）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認 tenantId；沒有建立持久資料，有 2 次請求會產生約 2 分鐘的暫存 challenge，見「UAT 操作紀錄」）
 - 範圍：`docs/ref/features/feature-map.json` 的 `platform-auth`；功能文件 `docs/ref/features/platform/AUTH.md`、`docs/ref/modules/AUTHENTICATION.md`。租戶登入的後端程式歸「人員與權限」領域（`docs/ref/features/health/MEMBERS.md`），本次仍逐條實際操作租戶登入流程，那邊已報的問題只引用
 
 ## 摘要
@@ -19,7 +21,7 @@ P0：無。P1：無（RBAC-02 依 AUDIT 的嚴重度另列，見下表）。
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-PLATFORM-AUTH-01 | P2 | 平台「修改密碼」打錯目前密碼，後端回 401 `UNAUTHORIZED`「舊密碼不正確」，前端攔截器把所有 401 當成 token 失效：清掉 `platformToken`、整頁導回 `/admin/login`，錯誤訊息看不到。強制改密碼（`?forced=1`）時打錯臨時密碼也一樣被登出，要重新登入再來一次 | **實測（本機瀏覽器）**：自建平台帳號登入 → `/admin/change-password` → 目前密碼填錯、新密碼 `HcPlat-Pass-5` → 按「更新密碼」→ 網址變成 `/admin/login`，localStorage 沒有 `platformToken` | `apps/api/src/modules/platform/platform-password-recovery.service.ts:35`（業務錯誤用 401）；`apps/web/src/app/admin/lib/platform-api.ts:51-55` | AUTH-12 |
+| HC-PLATFORM-AUTH-01 | P2 | 平台「修改密碼」打錯目前密碼，後端回 401 `UNAUTHORIZED`「舊密碼不正確」，前端攔截器把所有 401 當成 token 失效：清掉 `platformToken`、整頁導回 `/admin/login`，錯誤訊息看不到。強制改密碼（`?forced=1`）時打錯臨時密碼也一樣被登出，要重新登入再來一次 | **實測（本機瀏覽器）**：自建平台帳號登入 → `/admin/change-password` → 目前密碼填錯、任一符合規則的新密碼 → 按「更新密碼」→ 網址變成 `/admin/login`，localStorage 沒有 `platformToken` | `apps/api/src/modules/platform/platform-password-recovery.service.ts:35`（業務錯誤用 401）；`apps/web/src/app/admin/lib/platform-api.ts:51-55` | AUTH-12 |
 | RBAC-02 | 依 AUDIT | 任何成員用帳密 `POST /auth/cli/login` 拿到 `cli:analytics:read`，讀全租戶報表 | **實測（本機）**：自建 AGENT 角色成員，網頁 `GET /analytics/overview` 403，CLI token `GET /cli/analytics/overview` 200 | `apps/api/src/modules/auth/cli-session.service.ts:16` | RBAC-02（仍存在） |
 | AUTH-02 | P2 | 停用租戶後，該租戶成員手上的 CLI token 仍可呼叫 API | **實測（本機）**：自建租戶 → 管理員 CLI 登入 → 平台停用租戶 → 密碼登入 403 `TENANT_DISABLED`、refresh 401，但 CLI token 打 `/auth/me` 與 `/cli/analytics/overview` 都 200 | `cli-session.service.ts:125-145`（沒檢查 `tenant.isActive`） | AUTH-02（仍存在） |
 | AUTH-03 | P2 | 平台帳號改密碼、忘記密碼重設後，舊平台 JWT 仍可用 | **實測（本機）**：取得 token → 自助改密碼 → token 打 `/platform/plans` 200 → 走忘記密碼重設 → 仍 200 | `apps/api/src/plugins/auth.plugin.ts:157-180` | AUTH-03（仍存在） |
@@ -27,7 +29,7 @@ P0：無。P1：無（RBAC-02 依 AUDIT 的嚴重度另列，見下表）。
 | SEC-02 | P2 | 平台登入、忘記密碼、重設密碼不寫 `platform_audit_logs`；重設違反主規格 | **實測（本機）**：自建平台帳號走完忘記密碼與重設 2 次、登入多次，稽核只有 `platform_user.provision`、`platform_user.change_password`、`platform_user.disable` | `apps/api/src/modules/platform/platform.routes.ts:115-152` | SEC-02（仍存在） |
 | AUTH-10 | P3（AUDIT） | 租戶 email 區分大小寫 | **實測（本機瀏覽器）**：`/login` 以 `HC-platform-auth-tadmin@…` 加正確密碼登入，顯示「電子郵件或密碼不正確」。手機鍵盤常把第一個字母自動轉大寫，實際影響比 P3 大 | `auth.service.ts:44` | AUTH-10（仍存在；MEMBERS.md 已報） |
 | HC-PLATFORM-AUTH-02 | P3 | 租戶登入頁預填 `admin@demo.com`／`admin123`，正式環境也一樣。這組是已作廢的舊示範帳號，使用者每次都要先清掉兩欄；密碼欄預先有 8 個點，看起來像瀏覽器記住了密碼 | **實測（UAT 只讀、本機）**：開 `/login`，email 欄為 `admin@demo.com`，密碼欄長度 8 | `apps/web/src/app/login/page.tsx:24-25`（`161f7c69` 加入） | 新 |
-| HC-PLATFORM-AUTH-03 | P3 | Passkey 登入選項 `POST /auth/passkeys/authentication/options {email}` 對「啟用中且有 Passkey 的成員」回傳 `allowCredentials`（credential id 清單），不存在的 email 回空清單。不需登入就能確認某個 email 是不是有 Passkey 的成員、有幾把，與密碼登入的防枚舉設計不一致 | **實測（UAT，只讀，2 次請求）**：`admin@open333crm.dev` 回 2 筆，`hc-nobody-20261030@example.test` 回 0 筆 | `apps/api/src/modules/auth/auth.routes.ts:322-346` | 新（檔案歸 members） |
+| HC-PLATFORM-AUTH-03 | P3 | Passkey 登入選項 `POST /auth/passkeys/authentication/options {email}` 對「啟用中且有 Passkey 的成員」回傳 `allowCredentials`（credential id 清單），不存在的 email 回空清單。不需登入就能確認某個 email 是不是有 Passkey 的成員、有幾把，與密碼登入的防枚舉設計不一致 | **實測（UAT，2 次請求，各在 Redis 產生約 2 分鐘的暫存 challenge）**：`admin@open333crm.dev` 回 2 筆，`hc-nobody-20261030@example.test` 回 0 筆 | `apps/api/src/modules/auth/auth.routes.ts:322-346` | 新（檔案歸 members） |
 | HC-PLATFORM-AUTH-04 | P3 | 平台忘記密碼對存在的帳號多做「寫 token＋等寄信完成」，回應時間可以分辨帳號是否存在。另外每次申請都覆寫前一個 token，知道 email 的人可以一直讓對方手上的重設連結失效（受每 IP 每 10 分鐘 5 次限制） | **實測（本機，log 模式）**：存在的帳號 3.5–19 ms，不存在 1.6–2.1 ms（5 組都是 2 倍以上）。`resend` 模式要等 Resend 的 HTTP 回應，差距會更大（讀程式） | `platform-password-recovery.service.ts:45-63` | 新 |
 | HC-PLATFORM-AUTH-05 | P3 | 平台忘記密碼頁不論結果都顯示「若此 Email 存在，重設信已寄出」：被速率限制擋下（429）或 email 格式錯（400）時，使用者以為信已寄出 | **實測（本機 API）**：同一 IP 第 6 次回 429；頁面程式在 `catch` 也設 `submitted=true` | `apps/web/src/app/admin/forgot-password/page.tsx:13-23` | 新 |
 | HC-PLATFORM-AUTH-06 | P3 | 平台帳號被停用時，手上的 token 回 401 `PLATFORM_USER_DISABLED`，前端直接導回登入頁、不顯示原因；再登入只看到「帳號或密碼不正確」。被停用的人無從得知是帳號被停用 | **實測（本機瀏覽器）**：登入後在 DB 停用自建帳號 → 開 `/admin/tenants` → 回到登入頁，畫面沒有任何訊息 | `platform-api.ts:51-55` | 新 |
@@ -94,7 +96,7 @@ P0：無。P1：無（RBAC-02 依 AUDIT 的嚴重度另列，見下表）。
 
 ## UAT 操作紀錄
 
-只讀，沒有建立任何資料。以 `admin@open333crm.dev` 登入 1 次（`/auth/me` 確認 Demo 租戶），讀 `/auth/me/permissions`、`/settings/cli-sessions`、`/auth/passkeys`、`/auth/passkeys/capability`，換發 1 次 refresh；對 `/auth/passkeys/authentication/options` 送 2 次請求（只會在 Redis 建 2 分鐘到期的 challenge）；開 `/login`、`/admin/login`、`/admin/plans` 三頁，沒有送出表單。沒有登入平台後台、沒有觸發忘記密碼。
+沒有建立持久資料；有 2 次請求會產生約 2 分鐘的暫存 challenge（Redis，`WEBAUTHN_CHALLENGE_TTL_SECONDS` 預設 120 秒，`apps/api/src/config/env.ts:17`），到期自動消失。以 `admin@open333crm.dev` 登入 1 次（`/auth/me` 確認 Demo 租戶），讀 `/auth/me/permissions`、`/settings/cli-sessions`、`/auth/passkeys`、`/auth/passkeys/capability`，換發 1 次 refresh；對 `/auth/passkeys/authentication/options` 送 2 次請求（就是上面那 2 個暫存 challenge）；開 `/login`、`/admin/login`、`/admin/plans` 三頁，沒有送出表單。沒有登入平台後台、沒有觸發忘記密碼。
 
 本機建立的資料（都帶 `hc-platform-auth-` 前綴，結束時已處理）：平台帳號 1 個（已停用）、租戶 1 個與其 2 位成員（租戶已停用，AGENT 成員已停用）、CLI session 3 筆（已撤銷）。seed 平台帳號 `platform@open333crm.dev` 沒有被修改。
 

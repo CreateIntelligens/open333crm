@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build；自建假憑證 LINE 渠道，以自己計算簽章的假 webhook 驗後端）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只讀）
 - 範圍：`docs/ref/features/feature-map.json` 的 `line`；功能文件 `docs/ref/features/tenant/LINE.md`；Skill `.claude/skills/feature-line/SKILL.md`
 
@@ -9,7 +11,7 @@
 
 | 層 | 結果 |
 | --- | --- |
-| 完備度 | 6 份 spec、89 個 scenario。缺實作 13 個、部分實作或行為不同 9 個（見[完備度對照](#完備度對照)）。71 個 scenario 找不到同名測試（`line-rich-menu` 39、`line-downstream-webhook` 14、`line-webhook-events` 7、`line-messaging` 6、`line-safe-reply` 5），多數行為有測試，只是名稱沒對齊 scenario。缺前端入口 4 項 |
+| 完備度 | 6 份 spec、89 個 scenario。缺實作 12 個、部分實作或行為不同 9 個（見[完備度對照](#完備度對照)）。71 個 scenario 找不到同名測試（`line-rich-menu` 39、`line-downstream-webhook` 14、`line-webhook-events` 7、`line-messaging` 6、`line-safe-reply` 5），多數行為有測試，只是名稱沒對齊 scenario。缺前端入口 4 項 |
 | 自動測試 | unit：channel-plugins 12 檔 63 通過、api 15 檔 74 通過、workers 2 檔 6 通過、shared 2 檔 6 通過、web 5 檔 31 通過。feature：6 檔 46 通過（`modules/line`、`modules/webhook/`、`channel-liff-id`、`coupon-line-login`）。無失敗、無 skip、無 `test.fail` |
 | 實際操作 | 11 條流程。正常 4，異常 5，待真機驗 2（另有多條的真機部分待驗） |
 

@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build，`EMAIL_DELIVERY_MODE=log`）。UAT 只做未登入的唯讀檢查，見[UAT 操作紀錄](#uat-操作紀錄)
 - 規格：`docs/ref/features/feature-map.json` 的 `platform-trials`；功能文件 `docs/ref/features/platform/TRIALS.md`
 - 相關報告：租戶管理 `docs/ref/features/health/PLATFORM-TENANTS.md`。合約起訖日、復原的 API 錯誤案例，以及「手動開通選試用方案卻不設 `trialEndsAt`」（HC-PLATFORM-TENANTS-05），都記在那份報告，這裡只引用
@@ -18,8 +20,8 @@
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-PLATFORM-TRIALS-01 | P1 | **任何人都能改寫別人「待驗證」申請的密碼，取得對方的試用站台。** 同一 email 再送一次申請時，`requestTrial` 直接用新送的值覆寫 `passwordHash` 與 `siteName`，並寄一封新驗證信給該 email（舊連結失效）。申請人點最新那封信，租戶就以攻擊者的密碼開通。攻擊者知道 email 與密碼，可以登入這個站台的 ADMIN 帳號，看到申請人之後放進去的所有客戶資料；申請人自己的密碼反而登不進去。攻擊者也可以對從未申請的 email 先送申請，對方點信就落入同一個情況（搶先註冊） | **實測**（本機）：IP-1 以 `hc-platform-trials-a@example.test` / `Passw0rd!` 申請 → IP-2 用同一 email、密碼 `Attacker99!`、站台名稱 `…-attacker` 再申請（202）→ 第一封信的連結回 410 → 點第二封信開通成功 → `POST /auth/login`：`Passw0rd!` 401、`Attacker99!` 200。第二封信的主旨會帶攻擊者填的站台名稱，這是申請人唯一看得出異狀的地方 | `apps/api/src/modules/trial/trial.service.ts:87-101`（`existing` 分支覆寫 `siteName`、`passwordHash`）；`:200`（開通沿用 `signupRow.passwordHash`） | TRIAL-05 |
-| HC-PLATFORM-TRIALS-02 | P2 | 再送一次申請會繞過重寄節流。`/resend` 有「間隔 60 秒、最多 5 次」，`/signups` 遇到 pending 的申請卻每次都換 token 寄信，只受「每個 IP 每 10 分鐘 5 次」限制。換 IP 就能對任意信箱無限寄驗證信（以平台名義寄信轟炸，也會耗掉寄信額度與網域信譽）。違反主規格 `trial-application`「防枚舉統一回應」：pending 未過期 → 依節流規則重寄 | **實測**：7 個不同的 `X-Forwarded-For`，對 `hc-platform-trials-b@example.test` 連送 7 次申請，幾秒內 API log 有 7 封驗證信、`verifySentCount=7`；接著 `/resend` 兩次都沒有寄（節流正確）。同一 IP 第 6 次申請 429，正確 | `apps/api/src/modules/trial/trial.service.ts:87-118`；節流只在 `resendTrial`（`:131-135`） | TRIAL-06 |
+| HC-PLATFORM-TRIALS-01 | P1 | **任何人都能改寫別人「待驗證」申請的密碼，取得對方的試用站台。** 同一 email 再送一次申請時，`requestTrial` 直接用新送的值覆寫 `passwordHash` 與 `siteName`，並寄一封新驗證信給該 email（舊連結失效）。申請人點最新那封信，租戶就以攻擊者的密碼開通。攻擊者知道 email 與密碼，可以登入這個站台的 ADMIN 帳號，看到申請人之後放進去的所有客戶資料；申請人自己的密碼反而登不進去。攻擊者也可以對從未申請的 email 先送申請，對方點信就落入同一個情況（搶先註冊） | **實測**（本機）：IP-1 以 測試 email 與密碼 A 申請 → IP-2 用同一 email、密碼 B、站台名稱 `…-attacker` 再申請（202）→ 第一封信的連結回 410 → 點第二封信開通成功 → `POST /auth/login`：密碼 A 401、密碼 B 200。第二封信的主旨會帶攻擊者填的站台名稱，這是申請人唯一看得出異狀的地方 | `apps/api/src/modules/trial/trial.service.ts:87-101`（`existing` 分支覆寫 `siteName`、`passwordHash`）；`:200`（開通沿用 `signupRow.passwordHash`） | TRIAL-05 |
+| HC-PLATFORM-TRIALS-02 | P2 | 再送一次申請會繞過重寄節流。`/resend` 對每筆申請有「間隔 60 秒、驗證信總共最多 5 封（含第一封）」的節流，`/signups` 遇到 pending 的申請卻每次都換 token 寄信，只受「每個 IP 每 10 分鐘 5 次」的速率限制。換 IP 就能對任意信箱無限寄驗證信（以平台名義寄信轟炸，也會耗掉寄信額度與網域信譽）。違反主規格 `trial-application`「防枚舉統一回應」：pending 未過期 → 依節流規則重寄 | **實測**：7 個不同的 `X-Forwarded-For`，對 `hc-platform-trials-b@example.test` 連送 7 次申請，幾秒內 API log 有 7 封驗證信、`verifySentCount=7`；接著 `/resend` 兩次都沒有寄（節流正確）。同一 IP 第 6 次申請 429，正確 | `apps/api/src/modules/trial/trial.service.ts:87-118`；節流只在 `resendTrial`（`:131-135`） | TRIAL-06 |
 | HC-PLATFORM-TRIALS-03 | P2 | `/admin/trial` 的操作都沒有錯誤處理：延長、轉正式、復原、重寄、作廢，失敗時畫面沒有任何訊息，錯誤成為未處理的 rejection。操作者會以為按了沒反應，或以為已經處理（例如以為已延長，客戶隔天仍被停用） | **實測**：Playwright 攔截 `PATCH /trial-tenants/*/extend` 回 500 → 按「延長」輸入 3 → 畫面無訊息，console 只有 `Request failed with status code 500`。其他操作讀程式，寫法相同 | `apps/web/src/app/admin/trial/page.tsx:88-123`；初始載入 `:59-75` 也沒有 catch | APP-11（`saveSetting` 部分在 TRIAL-02） |
 | HC-PLATFORM-TRIALS-04 | P2 | 申請與開通完全沒有自動測試。`trial-application` 的 9 個 scenario（總開關、關閉後仍可開通、防枚舉、gmail 別名、過期 token、重寄後舊連結失效、開通成功、中途失敗可重試、email 已被建走）都找不到測試，`trial.service.ts`、`email-normalizer.ts`、`trial.routes.ts` 沒有任何測試引用。HC-01、HC-02 就是在沒有測試的地方 | 讀程式：`git ls-files apps/*/tests` 搜尋 `requestTrial`、`verifyAndProvision`、`normalizeEmail`、`trial/signups` 都沒有結果 | `apps/api/src/modules/trial/trial.service.ts`、`apps/api/src/modules/trial/email-normalizer.ts` | CI-04 |
 | TRIAL-04 | P3 | 租戶頁「啟用」已到期的試用租戶，下一輪排程又停用並重寄到期信 | **實測**：`hc-platform-trials-A-attacker` 到期停用 → `PATCH /tenants/:id/active {isActive:true}` → 執行 `runTrialLifecycle` → 又變停用，API log 多一封「試用已到期」，稽核多一筆 `tenant.trial.expire` | 見 AUDIT | TRIAL-04（仍存在） |
@@ -45,18 +47,28 @@
 - 防枚舉：已是 Agent 的 email（`admin@open333crm.dev`、`ADMIN@open333crm.dev`）、已開通過的 email 都回相同的 202，不建記錄、不寄信。
 - 驗證：過期 410 `TRIAL_TOKEN_EXPIRED`、無效 410 `TRIAL_TOKEN_INVALID`、缺 token 400、重按回冪等成功（`alreadyProvisioned:true`）、email 已被其他租戶建走 409 `EMAIL_IN_USE` 並把申請標成 `failed`。
 - 開通：`trialEndsAt` 為開通時間加 14 天，方案為 `trial`，開通信寄到申請 email。以申請密碼登入後，試用方案天花板生效：`/marketing/campaigns`、`/analytics/overview` 403，`/contacts` 200。
-- 速率限制：`/signups` 同一 IP 第 6 次 429，`/resend` 第 4 次 429，換 `X-Forwarded-For` 會分開計算（本機連線來自 loopback，屬於受信任的代理）。
+- 節流與速率限制分兩層，數字不同是因為對象不同（常數在 `apps/api/src/modules/trial/trial.service.ts:16-17`、`apps/api/src/modules/trial/trial.routes.ts:19-23, 29, 54, 69`）：
+
+  | 層級 | 對象 | 限制 | 超過時 |
+  | ---- | ---- | ---- | ------ |
+  | 每筆申請的重寄節流（`resendTrial`） | 同一 email 的申請 | 距上一封至少 60 秒（`RESEND_COOLDOWN_MS`）；驗證信總數 `verifySentCount` 達 5 封（`RESEND_MAX`，含申請時的第一封，所以 `/resend` 最多再寄 4 封）就不再寄 | 仍回 202，靜默不寄 |
+  | `/signups` 速率限制 | 每個 IP | 10 分鐘 5 次 | 第 6 次 429 |
+  | `/resend` 速率限制 | 每個 IP | 10 分鐘 3 次 | 第 4 次 429 |
+  | `/verify` 速率限制 | 每個 IP | 1 分鐘 10 次 | 第 11 次 429 |
+  | 其他試用路由 | 每個 IP | 10 分鐘 20 次（外掛預設） | 429 |
+
+  實測：`/signups` 同一 IP 第 6 次 429，`/resend` 第 4 次 429，換 `X-Forwarded-For` 會分開計算（本機連線來自 loopback，屬於受信任的代理）。`/signups` 遇到 pending 的申請不經過重寄節流（HC-PLATFORM-TRIALS-02）。
 - 排程（以 `runTrialLifecycle` 手動執行一輪）：到期 → 停用、到期信、`tenant.trial.expire` 稽核；剩 7 天與剩 1 天各寄一次提醒，`trialRemindersSent` 依序為 `[7]`、`[7,1]`；早已過保留期但仍啟用的租戶，同一輪先停用再標記 `purgedAt`。到期後登入回 403 `TENANT_DISABLED`。
 - 延長：已到期停用的租戶從今天起算、恢復啟用；已清除的租戶在清單上只有「復原」。轉正式到試用方案 400、方案不存在 404；轉正式後租戶從清單消失，稽核 `tenant.trial.convert`。
 - 復原：清除標記後狀態變「已停用」，按鈕變回「延長」「轉正式」，稽核 `tenant.trial.restore`。
-- 平台重寄驗證信會繞過申請人的節流（寄信次數已到 5 仍會寄），只限待驗證的申請（其他回 400）；作廢已開通的申請回 400；作廢後舊連結 410。
+- 平台重寄驗證信會繞過每筆申請的重寄節流（`bypassThrottle`，`verifySentCount` 已到 5 仍會寄），只限待驗證的申請（其他回 400）；作廢已開通的申請回 400；作廢後舊連結 410。
 
 ## 流程逐條結果
 
 | 流程 | 環境 | 正向 | 錯誤案例 | 權限 | 備註 |
 | --- | --- | --- | --- | --- | --- |
 | 1 公開申請 `/trial` | 本機（UI、API） | 正常：送出後顯示「請至信箱完成驗證」，API log 有驗證信 | **異常**：重送會覆寫密碼（HC-01）、繞過節流（HC-02）；空白值被接受、超長顯示通用錯誤（HC-06） | 公開，無 | 速率限制正確 |
-| 2 申請頁重寄 | 本機（UI、API） | 正常：節流 60 秒、5 次 | — | 公開 | **異常**：沒有回饋（HC-07） |
+| 2 申請頁重寄 | 本機（UI、API） | 正常：每筆申請間隔 60 秒、總共 5 封（含第一封）；同一 IP 10 分鐘第 4 次 429 | — | 公開 | **異常**：沒有回饋（HC-07） |
 | 3 驗證開通 `/trial/verify` | 本機（UI、API） | 正常：開通、重按冪等 | 過期、無效、無 token、已作廢、email 已被使用都正確 | 公開 | 其他錯誤顯示不準（HC-12，讀程式） |
 | 4 防枚舉與別名 | 本機（API） | 正常：Agent email、已開通 email 都靜默 202 | **異常**：別名重送覆寫站台名稱並寄到新別名（HC-14） | — | |
 | 5 總開關 | 本機（API） | 正常：關閉 403、關閉後仍能開通 | — | — | 測完已刪除 `trial.enabled`（恢復為程式預設關閉） |
@@ -137,4 +149,4 @@
 - `openspec/specs/trial-application/spec.md`「驗證即開通」寫消耗 token 時「設為 null」。程式刻意保留雜湊、以 `status` 當消耗閘，讓重按能回冪等成功（`trial.service.ts:165-167`）。規格應改成描述目前的做法。
 - `openspec/specs/trial-application/spec.md`「一個 email 只能申請一次」寫 gmail 才移除 `+tag`，程式對所有網域都移除（HC-14）。兩邊要決定以哪個為準。
 - `docs/ref/features/platform/TRIALS.md` 的核對日期是 2026-09-23。內容與程式一致，但沒有寫出：同一 email 再送申請會覆寫密碼與站台名稱並繞過節流（HC-01、HC-02）、平台「作廢」可被申請人重送推翻（HC-13）、轉正式 API 不限試用租戶（HC-08）。
-- `docs/ref/features/platform/TRIALS.md`「誰能做什麼」沒有列出公開頁面 `/trial`、`/trial/verify`，也沒有寫速率限制（申請每 IP 10 分鐘 5 次、重寄 3 次、驗證每分鐘 10 次）。
+- `docs/ref/features/platform/TRIALS.md`「誰能做什麼」沒有列出公開頁面 `/trial`、`/trial/verify`，也沒有寫速率限制（每個 IP：申請 10 分鐘 5 次、重寄 10 分鐘 3 次、驗證每分鐘 10 次）與每筆申請的重寄節流（間隔 60 秒、總共 5 封）。

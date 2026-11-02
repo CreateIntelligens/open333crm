@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認），UAT 只讀
 - 規格：`docs/ref/features/feature-map.json` 的 `cases`；功能文件 `docs/ref/features/tenant/CASES.md`
 - SLA 的計時、預警與逾時處置屬於 `sla` 領域，這裡只記與工單的牽連
@@ -112,7 +114,7 @@ P0、P1：無。
 
 只讀：以 `admin@open333crm.dev` 登入，`/auth/me` 確認 Demo 租戶；讀 `/cases`、`/cases/stats`、`/cases/categories`、`/agents`，開列表頁與一張已關閉工單的詳情頁。沒有建立、修改或刪除任何資料。
 
-本機建立的資料（名稱前綴 `hc-cases-`）：工單 10 張（已全部刪除，連結的對話已解除關聯，問卷與追蹤訊息已刪除）、CASE 標籤 1 個（已刪除）、團隊 1 個（已刪除）、SLA 政策 1 個（已刪除）、暫時租戶與停用成員各 1 筆（已刪除）。保留：自訂角色「hc-cases-唯讀」「hc-cases-編輯」與 5 位成員 `hc-cases-{ro,ed,rr1,rr2,noch}@example.com`（密碼 `HcCases1234!`），沒有改任何租戶設定。
+本機建立的資料（名稱前綴 `hc-cases-`）：工單 10 張（已全部刪除，連結的對話已解除關聯，問卷與追蹤訊息已刪除）、CASE 標籤 1 個（已刪除）、團隊 1 個（已刪除）、SLA 政策 1 個（已刪除）、暫時租戶與停用成員各 1 筆（已刪除）。保留：自訂角色「hc-cases-唯讀」「hc-cases-編輯」與 5 位成員 `hc-cases-{ro,ed,rr1,rr2,noch}@example.com`（測試用密碼不記錄在文件中），沒有改任何租戶設定。
 
 ## 建議新增到 AUDIT.md 的項目
 

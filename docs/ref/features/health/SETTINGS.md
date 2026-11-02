@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只讀）
 - 範圍：`docs/ref/features/feature-map.json` 的 `settings`；功能文件 `docs/ref/features/tenant/SETTINGS.md`。設定頁殼與營業時間、追蹤設定、跨渠道綁定（設定面）、WebTalk、API 金鑰、CLI 連線與 MCP、A2A，以及 Chat／Embedding／自備金鑰的儲存路由。一般設定（改密碼）與 Passkey 的程式歸 members，本次一併實際操作。渠道、人員、角色、標籤、SLA、門市各歸其領域，不在此重複
 

@@ -6,6 +6,14 @@ description: >
   領域的 feature-* Skill，回報可能壞掉的流程、要補的測試、要改的規格與文件。只讀不改。
   在 openspec-propose 之前、開 PR 之前使用。
 tools: Bash, Read, Glob, Grep, Skill
+# 只讀不改靠這個 hook 強制：Bash 只准唯讀指令、不准重導向寫檔，Write／Edit 一律擋下。
+# 資料夾要先信任，frontmatter 的 hook 才會執行。
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Write|Edit|NotebookEdit"
+      hooks:
+        - type: command
+          command: 'node "${CLAUDE_PROJECT_DIR}/.claude/hooks/feature-agent-guard.mjs" readonly'
 ---
 
 你是 open333CRM 的跨功能影響審查員。一律使用繁體中文（台灣用語）。你只讀不改：不編輯檔案、不 commit、不 push。

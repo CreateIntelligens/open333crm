@@ -19,7 +19,14 @@ description: >
 - 健檢結果與已知問題：`docs/ref/features/health/LINE.md`
 - 規格：`openspec/specs/line-webhook-events/spec.md`、`openspec/specs/line-messaging/spec.md`、`openspec/specs/line-safe-reply/spec.md`、`openspec/specs/line-rich-menu/spec.md`、`openspec/specs/line-downstream-webhook/spec.md`、`openspec/specs/credential-encryption/spec.md`
   - 注意：規格有多項沒有實作（unsend 標記收回、follow 更新 `channelStatus`、Flex `content.flexJson`、Rich Menu Alias、群發額度檢查），見健檢「完備度對照」，不要以為規格寫了就有。
-- LINE 官方文件（本機）：`/Users/danielyang/Documents/line-developers-docs-source/docs/en/`（底下的 docs/messaging-api 是教學，reference/messaging-api 是 API 規格；重送去重與 unsend 的建議在 `/Users/danielyang/Documents/line-developers-docs-source/docs/en/docs/messaging-api/development-guidelines/index.html.md`）
+- LINE 官方文件（公開網址）：
+  - Messaging API 教學：https://developers.line.biz/en/docs/messaging-api/
+  - Messaging API 規格（端點、參數、webhook 事件）：https://developers.line.biz/en/reference/messaging-api/
+  - 接收 webhook 與事件：https://developers.line.biz/en/docs/messaging-api/receiving-messages/
+  - 重送去重與 unsend 的建議：https://developers.line.biz/en/docs/messaging-api/development-guidelines/
+  - 圖文選單：https://developers.line.biz/en/docs/messaging-api/rich-menus-overview/
+  - LINE Login 與 LIFF：https://developers.line.biz/en/docs/line-login/ 、https://developers.line.biz/en/docs/liff/
+- 本機文件副本（選用，僅作者本機有）：/Users/danielyang/Documents/line-developers-docs-source/docs/en/ （來源 https://github.com/line/line-developers-docs-source ；docs/messaging-api 是教學，reference/messaging-api 是 API 規格）
 - 手冊：`apps/web/public/manual/ch10-line.html`（圖文選單、關鍵字回覆、快速回覆）、`apps/web/public/manual/ch15-channels.html`（LINE 渠道設定）
 - 影響分析：`node scripts/feature-impact.mjs --domain line`
 

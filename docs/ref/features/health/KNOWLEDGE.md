@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只做唯讀 API 查詢）
 - 規格：`docs/ref/features/feature-map.json` 的 `knowledge`；功能文件 `docs/ref/features/tenant/KNOWLEDGE.md`
 
@@ -9,7 +11,7 @@
 
 | 層 | 結果 |
 | --- | --- |
-| 完備度 | 7 份 spec、90 個 scenario。以 scenario 名稱比對測試名稱，56 個找不到同名測試（`km-ingestion` 15、`knowledge-base-information-architecture` 9、`ai-usage-recording` 8、`agentic-llm-orchestration` 11、`bot-handoff-config` 13）。確定缺實作 4 個（`km-ingestion` 的 2md、語音、LanceDB 三條需求，規格已與程式脫節）。KB 自動回覆、型號守門、KB 回報三大功能**沒有主規格**，也幾乎沒有測試（只有 `kb-autoreply-history.test.ts`）。缺前端入口 6 項 |
+| 完備度 | 7 份 spec、90 個 scenario。以 scenario 名稱比對測試名稱，56 個找不到同名測試（`km-ingestion` 15、`knowledge-base-information-architecture` 9、`ai-usage-recording` 8、`agentic-llm-orchestration` 11、`bot-handoff-config` 13）。確定缺實作 4 個 scenario，都在 `km-ingestion` 的前兩條需求（多模態匯入、自動向量化）：「Document ingestion via 2md AnyDoc API」「Audio file ingestion」「Fallback on API unavailability」「Successful vectorization」。規格寫 2md、語音、LanceDB，已與程式脫節。KB 自動回覆、型號守門、KB 回報三大功能**沒有主規格**，也幾乎沒有測試（只有 `kb-autoreply-history.test.ts`）。缺前端入口 6 項 |
 | 自動測試 | unit：api 24 檔 91 通過、web 2 檔 8 通過，無失敗、無 skip。feature：`token-quota-alert`、`other-channel-context`、`platform-usage` 3 檔 19 通過 |
 | 實際操作 | 13 條流程。正常 4，異常 6，部分驗證或待真機驗 3 |
 

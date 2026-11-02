@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（web 3000 production build、API 3001、workers；資料庫 open333crm_advisor，API 以 superuser `crm` 連線、不套 RLS）／UAT Demo 租戶（a0000000-0000-0000-0000-000000000001，只做唯讀：列表、統計、QR 網址、以 curl 取公開轉址頁）
 - 測試角色：admin（seed）；本機另建兩個自訂角色：
   - hc-shortlinks-唯讀（`shortlink.view`、`tag.view`、`channel.view`、`inbox.view`），帳號 hc-shortlinks-ro@example.test

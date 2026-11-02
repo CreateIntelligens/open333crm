@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e（本機 worktree 比 origin/main 落後 14 個 commit，都是粉絲門戶相關，與本領域無關）
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，API 在主機以 tsx 執行，`EMAIL_DELIVERY_MODE=log`，本機 Ollama 不通）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認 tenantId；只讀，沒有登入平台後台）
 - 範圍：`docs/ref/features/feature-map.json` 的 `platform-usage`；功能文件 `docs/ref/features/platform/USAGE.md`。告警通知的投遞歸通知領域（`docs/ref/features/health/NOTIFICATIONS.md`），本次只驗告警有沒有產生、內容是否正確
 - 測試方法：自建租戶 `hc-platform-usage-A`（方案 `light`，月額度 1,500,000），把它的 AI 設定指到本機一支假的 Ollama（回固定的 `prompt_eval_count`／`eval_count`），再打 `POST /ai/rewrite` 等端點，讓真實的 `generateReply()` → `recordAiUsage()` → Redis 計數器 → 告警整條跑一遍。時區與成本另以 psql 直接寫入 5 筆合成的 `ai_usages`（測完已刪除）

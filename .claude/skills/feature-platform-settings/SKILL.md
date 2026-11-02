@@ -42,7 +42,7 @@ description: >
 | - | ---- | ---- | ---------- | ------ | ---- |
 | 1 | 看試用政策 | `/admin/trial` →「政策設定」分頁（`apps/web/src/app/admin/trial/page.tsx`） | 頁面載入時對 5 個鍵各打一次 `GET /settings/:key` → `getPlatformSetting()` | 沒有列的鍵回 `data: null`，畫面以前端寫死的 `def` 顯示（與後端 `DEFAULTS` 是兩份） | 平台 JWT；平台帳號沒有角色分級 |
 | 2 | 改開關「開放試用申請」 | 勾選框 `onChange` 立即存 | `PUT /settings/trial.enabled {value:boolean}` → `setPlatformSetting()` upsert | 寫 `setting.update` 稽核（只有鍵名）；立即生效（沒有快取），公開試用申請頁跟著開關 | 同上 |
-| 3 | 改數字（試用天數、驗證連結小時、保留天數） | 數字欄 `onBlur` 就存，**沒有改值也會存** | `PUT /settings/<key> {value: parseInt(...)}` | 清空欄位會送 `{value:null}`，後端 200 存成 JSON null，讀取端退回預設；只影響之後新開通或下一輪排程 | 同上 |
+| 3 | 改數字（試用天數、驗證連結小時、保留天數） | 數字欄 `onBlur` 就存，**沒有改值也會存** | `PUT /settings/<key> {value: parseInt(...)}` | 清空欄位：`parseInt('')` 是 `NaN`，JSON 序列化成 `{value:null}`，後端 200 存成 JSON null，畫面顯示「已更新」。之後 `getTrialPolicy()` 因值不是 number 改用程式預設（`durationDays` 14、`verifyTokenTtlHours` 24、`dataRetentionDays` 30，`apps/api/src/modules/trial/trial-policy.service.ts:17-24, 41-48`），**不是清空前的值**；重新整理後畫面以前端 `def` 顯示同樣的數字（`apps/web/src/app/admin/trial/page.tsx:30-32, 63`）。只影響之後新開通或下一輪排程 | 同上 |
 | 4 | 改提醒天數 | 文字欄「到期前提醒天數（逗號分隔）」`onBlur` | `PUT /settings/trial.reminderDaysBefore {value:number[]}` | 非數字會被濾掉：輸入 `abc` 送出 `[]`，畫面顯示「已更新」，之後**不再寄任何提醒信** | 同上 |
 | 5 | 看方案的功能清單與渠道白名單 | `/admin/plans` | `GET /registry` | 不讀資料庫；`channelTypes` 是 enum 全部值（含沒有外掛的 `WHATSAPP`、`TELEGRAM`，以及代表 IG 私訊的 `THREADS`） | 同上 |
 | 6 | 個資遮罩開關 | `/admin/tenants/[id]` 的 `AiPrivacyControl` | `GET/PATCH /tenants/:id/ai-privacy` | 寫 `ai.privacy.<tenantId>` 與 `tenant.ai_privacy.update` 稽核（同交易） | 屬租戶管理領域，見其 Skill |

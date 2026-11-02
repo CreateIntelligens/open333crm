@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-29
 - 程式版本：5fa12f0f
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5fa12f0f` 上執行（`5c81102e` 的前一個 commit，兩者只差功能顧問文件），之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入前後都以 `/auth/me` 確認）
 - 規格：`docs/ref/features/feature-map.json` 的 `contacts`；功能文件 `docs/ref/features/tenant/CONTACTS.md`
 

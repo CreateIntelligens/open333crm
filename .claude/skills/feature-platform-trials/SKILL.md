@@ -44,7 +44,7 @@ description: >
 | 8 | 申請記錄 | 「申請記錄」分頁（最近 100 筆，狀態顯示英文代碼） | `GET /trial-signups` | 無 | 看不到 `requestIp`、寄信次數 |
 | 9 | 重寄驗證信 | 申請記錄列「重寄」 | `POST /trial-signups/:id/resend` → `resendVerification` | 繞過申請人的節流 | 只限 pending（其他 400）；**沒有稽核**（SEC-02） |
 | 10 | 作廢 | 申請記錄列「作廢」→ confirm | `PATCH /trial-signups/:id/fail {reason}` → `markSignupFailed` | `failed`、清 `verifyTokenHash`；稽核 `trial.signup.fail` | 已開通 400；申請人再送一次申請就恢復為 pending（HC-PLATFORM-TRIALS-13） |
-| 11 | 政策設定 | 「政策設定」分頁：勾選框即存、數字欄位 `onBlur` 即存 | `PUT /settings/:key {value}` → `setPlatformSetting` | 稽核 `setting.update`（無 payload） | 沒改值也寫入；清空欄位存成 NaN→null 失敗且無訊息；沒有 `trial.planSlug` 欄位（TRIAL-02）；勾「開放試用申請」就對外開放，沒有確認 |
+| 11 | 政策設定 | 「政策設定」分頁：勾選框即存、數字欄位 `onBlur` 即存 | `PUT /settings/:key {value}` → `setPlatformSetting` | 稽核 `setting.update`（無 payload） | 沒改值也寫入；清空數字欄位會送 `{value:null}`（`parseInt` 得 `NaN`，JSON 序列化成 `null`），後端 200 存成 JSON null、畫面顯示「已更新」，之後 `getTrialPolicy()` 退回程式預設（天數 14、驗證連結 24 小時、保留 30 天，`apps/api/src/modules/trial/trial-policy.service.ts:17-24, 41-48`），不是清空前的值；清空提醒天數則存成 `[]`，之後不寄提醒；API 失敗時 `saveSetting()` 沒有訊息；沒有 `trial.planSlug` 欄位（TRIAL-02）；勾「開放試用申請」就對外開放，沒有確認 |
 | 12 | 合約起訖日 | **不在本頁**：`/admin/tenants` 列表「合約」與詳細頁 | `PATCH /tenants/:id/contract` → `updateTenantContract`（`trial-admin.service.ts`） | 稽核 `tenant.contract.update` | 只是紀錄，不觸發任何生命週期；迄日早於起日 422 `CONTRACT_DATE_INVALID` |
 
 ### 系統排程 `trial-lifecycle`（每小時，`withoutOverlapping` 鎖 30 分鐘）

@@ -33,12 +33,14 @@ description: >
 | 1 | 查詢稽核 | `GET /tenant/audit-logs?action&actorId&from&to&page&pageSize(≤100)` → `apps/api/src/modules/tenant-audit/tenant-audit.flow.ts` `listTenantAuditFlow` | 無。`action` 只能完全比對 | `audit.view`（系統角色只有 admin 有） |
 | 2 | 寫稽核（各模組） | 交易內 `recordTenantAudit(ctx, …)`；舊寫法交易外 `writeTenantAudit(prisma, …)` | 交易內的寫入失敗會讓主操作 rollback；舊寫法失敗只記 log | — |
 | 3 | 發起匯出 | `POST /tenant/data-export {scope?}` → `apps/api/src/modules/data-export/data-export.flow.ts` `requestExportFlow` | 同一交易：建 `pending` 請求、寫 `data.export.request`、匯出工作寫 outbox → `data-export` 佇列 → `apps/workers/src/handlers/data-export.handler.ts` 打包 zip 上傳 MinIO、通知發起人 | `data.export` |
-| 4 | 查狀態、下載 | `GET /tenant/data-export/:id`、`GET /:id/download` → 15 分鐘 presigned URL | `downloadCount++`；**不寫稽核** | `data.export`（任何持有者都能下載別人發起的匯出） |
+| 4 | 查狀態、下載 | `GET /tenant/data-export/:id`、`GET /:id/download` → 15 分鐘 presigned URL | `downloadCount++`；**不寫稽核**（已知問題，見下） | `data.export` |
 | 5 | 匯出清理 | workers 每小時 `data-export-cleanup` | 過期（7 天）刪 MinIO 物件、請求改 `expired` | — |
 | 6 | 發起刪除 | `POST /tenant/data-erasure {contactId, mode: anonymize\|hard_delete, reason?}` → `apps/api/src/modules/data-erasure/data-erasure.flow.ts` `requestErasureFlow` | 同一交易：驗聯絡人同租戶、建請求、寫 `data.erasure.request`（payload 不含 reason）、工作寫 outbox → `apps/workers/src/handlers/data-erasure.handler.ts`；完成寫 `data.erasure.complete`、通知發起人 | `data.erase`（依賴 `contact.view`）；**不檢查渠道可見範圍** |
 | 7 | 查刪除狀態 | `GET /tenant/data-erasure/:id` | 無。沒有列表端點 | `data.erase` |
 | 8 | Webhook 訂閱 | `GET/POST /webhook-subscriptions`、`GET/PATCH/DELETE /:id`、`GET /:id/deliveries?limit`、`POST /:id/test` | 建立與修改時檢查網址（`isBlockedUrl`，要公開 HTTPS）；刪除是硬刪除；**全部不寫稽核** | 讀 `webhook.view`（supervisor 預設有，讀得到 `secret`）、寫 `webhook.manage` |
 | 9 | 對外轉送（系統） | `event-webhook` 佇列 → `apps/api/src/modules/webhook-subscriptions/webhook-dispatcher.ts` | 每個訂閱一筆 `WebhookDelivery`（存事件原文），重試 3 次 | — |
+
+**已知問題（不是既定契約）：匯出檔的存取只限同租戶，不限發起者。** `apps/api/src/modules/data-export/data-export.service.ts:57-59, 82-84` 查單筆與下載只以 `{ id, tenantId }` 查詢，沒有比對 `requestedBy`；路由只檢查 `data.export`（`apps/api/src/modules/data-export/data-export.routes.ts:36, 43-45`）。所以同租戶任何持 `data.export` 的成員，只要知道請求 id，就能查詢並下載別人發起的匯出，而且下載不寫稽核。追蹤編號：HC-GOVERNANCE-03（`docs/ref/features/health/GOVERNANCE.md`）、AUD-01（`docs/ref/system/AUDIT.md`，下載匯出檔沒有稽核）。修正前不要把「同租戶都能下載」當成規格依據，也不要在新程式沿用這個行為。
 
 **有後端、沒有前端入口**：本領域全部。匯出完成通知的連結 `/dashboard/settings/data-export/<id>` 是 404（EXPORT-01）。
 

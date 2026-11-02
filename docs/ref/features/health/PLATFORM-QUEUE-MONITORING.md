@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，Redis 與 API、workers 為多個代理共用）／ UAT（只以未登入的 HTTP 請求探測，沒有登入平台後台）
 - 規格：`docs/ref/features/feature-map.json` 的 `platform-queue-monitoring`；功能文件 `docs/ref/features/platform/QUEUE-MONITORING.md`
 
@@ -46,7 +48,7 @@ P0：無。P1：無。
 | 流程 | 環境 | 正向 | 錯誤案例 | 權限 | 備註 |
 | --- | --- | --- | --- | --- | --- |
 | 1 開啟監控 | 本機真實 API、監控程式、UAT | 監控程式：換發 200，cookie `HttpOnly; SameSite=Strict; Path=/api/v1/platform/queues; Max-Age=3600`，畫面標題「open333CRM 佇列監控」 | 真實 API 網段外：側邊欄顯示訊息、分頁關閉；空白前綴 403 | 租戶 JWT 401；無 token 401 | UAT：見下方 UAT 段落 |
-| 2 佇列清單與數量 | 監控程式 | 18 個佇列（API 8、workers 9 與自建 1）與各狀態數量正確 | — | — | `has-workers`、`workers`、`redis/stats`、`job-schedulers` 200 |
+| 2 佇列清單與數量 | 監控程式 | 18 個佇列與各狀態數量正確：`monitored-queues.ts` 的 17 個（API 8、workers 9），加上監控程式為測試自建的 1 個。正式環境只有 17 個 | — | — | `has-workers`、`workers`、`redis/stats`、`job-schedulers` 200 |
 | 3 失敗原因 | 監控程式 | 正常：Error 分頁顯示原因與兩次嘗試的 stack | — | — | 原因含個資（HC-…-07） |
 | 4 job 資料遮蔽 | 監控程式 | 正常：只露出識別欄位 | — | — | 排程範本的 data 也遮蔽（`job-schedulers` 回傳） |
 | 5 log | 監控程式 | — | 403，畫面「Forbidden」，log 內容沒有出現 | — | |
@@ -81,7 +83,7 @@ P0：無。P1：無。
 沒有建立、修改任何資料，沒有登入。持 UAT 鎖以未帶憑證的 HTTP 請求探測（`https://uat.open333crm.create360.ai`）：
 
 - `POST /api/v1/platform/queues/session`（不帶 JWT）→ 401「平台登入已過期，請重新登入」；`GET /api/v1/platform/queues`、`/api/queues` → 401「請從平台後台重新開啟佇列監控」；`/api/v1/platform/zz-nonexistent` → 404。
-- 結論：UAT 已部署佇列監控，而且本次的出口 IP（`60.248.142.124`，公司網段）**通過**網段檢查（網段檢查在登入之前，不通過會回 403）。網段外的來源是否被拒絕無法從單一出口驗證，建議由維運確認 `.env.api` 的值不是 `.env.api.example` 的 `172.16.0.0/12`。
+- 結論：UAT 已部署佇列監控，而且本次的出口 IP（公司網段）**通過**網段檢查（網段檢查在登入之前，不通過會回 403）。網段外的來源是否被拒絕無法從單一出口驗證，建議由維運確認 `.env.api` 的值不是 `.env.api.example` 的 `172.16.0.0/12`。
 
 ## 本機操作紀錄（共用環境）
 

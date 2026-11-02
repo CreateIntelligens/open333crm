@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e（本機 worktree，比 origin/main 落後 14 個 portal 相關 commit，與本領域無關）
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build，workers 以 `tsx watch` 執行，每 300 秒一輪 `sla:poll`）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，以 `/auth/me` 確認，只讀）
 - 規格：`docs/ref/features/feature-map.json` 的 `sla`；功能文件 `docs/ref/features/SLA.md`
 - 範圍：SLA 政策 CRUD、工單套用政策、首次回應與解決期限的計時、客戶枯等、逾時處置與通知、SLA 事件觸發的自動化規則、`sla:poll` 排程、報表中的 SLA 數字、營業時間對 SLA 計時的效果。營業時間設定頁本身的儲存屬 settings 領域；工單倒數元件的顯示屬 cases 領域，這裡只引用
@@ -10,7 +12,7 @@
 
 | 層 | 結果 |
 | --- | --- |
-| 完備度 | 本領域相關 4 份 spec、41 個 scenario（`sla-policy-selection` 5；`standalone-worker-runtime` 的 SLA 相關 17；`automation-engine` 的 SLA 相關 14；`core-inbox` 的建單選政策 3；另有 `automation-contract-composer` 1、`office-hours-settings` 2 不計）。缺實作 0 個，但 2 個 scenario 的實作與規格要求不一致（「SLA rule action runs after match」、「Web displays SLA countdown」，見下方）。以 scenario 名稱找同名測試，`sla-policy-selection` 5／5 有、`standalone-worker-runtime` 3／17 有（其餘只有讀原始碼字串的測試）、`automation-engine` 0／14。缺前端入口 0 |
+| 完備度 | 本領域相關 4 份 spec、40 個 scenario（`sla-policy-selection` 6；`standalone-worker-runtime` 的 SLA 相關 17；`automation-engine` 的 SLA 相關 14；`core-inbox` 的建單選政策 3；另有 `automation-contract-composer` 1、`office-hours-settings` 2 不計）。缺實作 0 個，但 2 個 scenario 的實作與規格要求不一致（「SLA rule action runs after match」、「Web displays SLA countdown」，見下方）。以 scenario 名稱找同名測試，`sla-policy-selection` 6／6 有、`standalone-worker-runtime` 3／17 有（其餘只有讀原始碼字串的測試）、`automation-engine` 0／14。缺前端入口 0 |
 | 自動測試 | unit：api 3 檔 16 通過、workers 1 檔 5 通過、web 4 檔 9 通過。feature：`modules/sla` 1 檔 1 通過。無失敗、無 skip、無 `test.fail` |
 | 實際操作 | 12 條流程。正常 5，異常 6，待真機驗 1 |
 

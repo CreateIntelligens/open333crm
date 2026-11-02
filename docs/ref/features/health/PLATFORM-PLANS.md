@@ -2,6 +2,8 @@
 
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
+- 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（web 3000 production build、API 3001、workers；資料庫 `open333crm_advisor`）／UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，以 `/auth/me` 確認，只讀 `/dashboard/plan`）
 - 本機測試資料（全部自建，未改 seed 方案與 Demo 租戶的方案）：
   - 方案 `hc-platform-plans-a`（以 SQL 建立，因為沒有新增方案的 API）：`features` 依測試切換，`limits {maxAgents:2, maxChannels:1, maxTags:1, monthlyTokens:100}`、`allowedChannelTypes ["WEBCHAT"]`
