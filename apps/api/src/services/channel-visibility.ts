@@ -18,6 +18,7 @@
  *     既有渠道由 migration 20261005120000 回填給所有啟用中的成員，新渠道與新成員在建立時指定。
  */
 import type { FastifyRequest } from 'fastify';
+import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../lib/tenant-db.js';
 import { getEffectiveTenantPermissions } from './permission.service.js';
 import { getTenantPlanId } from './tenant-plan.cache.js';
@@ -186,6 +187,39 @@ export async function resolveChannelVisibility(
   request: FastifyRequest,
 ): Promise<AccessibleChannels> {
   return getAccessibleChannelIds(request.tenantPrisma, await visibilityCtxFromRequest(request));
+}
+
+/**
+ * 指定成員的可見渠道，不經過 request（排程器等背景工作沒有當下操作的人）。
+ * 權限比照 request 版本：角色權限 ∩ 方案天花板。成員不存在時回空集合（fail-closed）。
+ * `admin` 是 BYPASSRLS 的連線：角色與方案的查詢與 guard 相同；渠道查詢自帶 tenantId。
+ */
+export async function resolveAgentChannelVisibility(
+  admin: PrismaClient,
+  tenantId: string,
+  agentId: string,
+): Promise<AccessibleChannels> {
+  const agent = await admin.agent.findFirst({ where: { id: agentId, tenantId }, select: { roleId: true } });
+  if (!agent) return new Set();
+  const planId = await getTenantPlanId(admin, tenantId);
+  const eff = await getEffectiveTenantPermissions(admin, agent.roleId, planId);
+  return getAccessibleChannelIds(admin, { tenantId, agentId, hasViewAll: eff.has('channel.view_all') });
+}
+
+/** 依成員 ID 解析可見渠道的函式；背景發送（群發、附券廣播）以此依建立者判斷 */
+export type AgentVisibilityResolver = (tenantId: string, agentId: string) => Promise<AccessibleChannels>;
+
+export function agentVisibilityResolver(admin: PrismaClient): AgentVisibilityResolver {
+  return (tenantId, agentId) => resolveAgentChannelVisibility(admin, tenantId, agentId);
+}
+
+/** 帶著 BYPASSRLS 連線的物件（Fastify 實例）：route 與 MCP 不直接碰 prismaAdmin（check-prisma-admin-usage） */
+export interface AdminClientHolder {
+  prismaAdmin: PrismaClient;
+}
+
+export function agentVisibilityResolverOf(app: AdminClientHolder): AgentVisibilityResolver {
+  return agentVisibilityResolver(app.prismaAdmin);
 }
 
 /** 指派範圍：全部渠道（ALL_CHANNELS），或「渠道 → 指派者自己的層級」 */

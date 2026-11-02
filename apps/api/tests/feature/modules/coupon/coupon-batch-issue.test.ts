@@ -23,6 +23,7 @@ import { runCouponBroadcast } from '#src/modules/marketing/broadcast-coupon.flow
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -140,7 +141,7 @@ describe('從券詳情頁批次發券', () => {
     const broadcastId = res.json().data.broadcastId as string;
     assert.equal(await broadcastCount(), before + 1, '廣播列表多一則附券廣播');
 
-    await runCouponBroadcast({ prisma, io: testIo, store, webBaseUrl: 'https://crm.example.com' }, T, broadcastId);
+    await runCouponBroadcast({ prisma, io: testIo, store, webBaseUrl: 'https://crm.example.com', visibilityOf: async () => ALL_CHANNELS }, T, broadcastId);
     for (const p of people) {
       assert.equal(sent.filter((s) => s.to === p.uid).length, 1, '各收到一則帶自己票券連結的訊息');
       const [instance] = await owner.couponInstance.findMany({ where: { tenantId: T, couponId, contactId: p.contactId } });
@@ -167,7 +168,7 @@ describe('從券詳情頁批次發券', () => {
     const res = await post({ channelId: lineChannel, targetType: 'contacts', contactIds: [withId.contactId, without.contactId] });
     assert.equal(res.statusCode, 202, res.body);
     const broadcastId = res.json().data.broadcastId as string;
-    await runCouponBroadcast({ prisma, io: testIo, store, webBaseUrl: 'https://crm.example.com' }, T, broadcastId);
+    await runCouponBroadcast({ prisma, io: testIo, store, webBaseUrl: 'https://crm.example.com', visibilityOf: async () => ALL_CHANNELS }, T, broadcastId);
     assert.equal(await owner.couponInstance.count({ where: { tenantId: T, couponId, contactId: without.contactId } }), 0);
     const summary = await runInTenant(prisma, T, (ctx) => getCouponBroadcastSummary(ctx, broadcastId));
     assert.deepEqual(summary.skipped, { NO_CHANNEL_IDENTITY: 1 }, '結果顯示因沒有渠道身分跳過 1 人');
@@ -187,7 +188,7 @@ describe('從券詳情頁批次發券', () => {
     const before = await broadcastCount();
     const contactIds = Array.from({ length: 1001 }, () => randomUUID());
     await assert.rejects(
-      runInTenant(prisma, T, (ctx) => createBatchIssue(ctx, agent.id, couponId, { channelId: lineChannel, targetType: 'contacts', contactIds })),
+      runInTenant(prisma, T, (ctx) => createBatchIssue(ctx, agent.id, couponId, { channelId: lineChannel, targetType: 'contacts', contactIds }, ALL_CHANNELS)),
       (err: { code?: string }) => err.code === 'BATCH_TOO_LARGE',
     );
     assert.equal(await broadcastCount(), before, '不建立廣播');

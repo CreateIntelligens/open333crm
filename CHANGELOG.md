@@ -10,6 +10,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **分店建立的分群群發不再依其他分店渠道的身分選人**（PR #430 審查，change `segment-broadcast-creator-visibility`）— 送出分群群發時，分群條件原本以所有渠道的身分判斷：分店成員以「有 FB 帳號」對自己的渠道發群發，會選到只在其他分店 FB 渠道有帳號的客人，收件人數也就透露客人在其他分店有沒有帳號，與預估人數也不一致。現在分群條件依群發建立者的可見範圍判斷：總店照舊以所有渠道判斷，分店只以自己看得到的渠道判斷。立即發送、排程與附券廣播都依建立者判斷；預估與券詳情頁的批次發放依操作的人。
+- **WebChat 網址連結不含緊接的破折號、刪節號與彎引號**（PR #430 審查）— 「https://example.com/a—下一步」原本把「—」算進連結。`splitTextLinks()` 的網址不含一般標點區（U+2000–206F）。
 - **測試 LIFF 設定：LIFF SDK 拋錯時後台不再停在等待結果**（PR #429 審查）— 手機端在 `liff.init` 之後呼叫 `isLoggedIn`、`login`、`getIDToken` 拋錯時，原本沒有回報，後台要等 10 分鐘連結過期才看到結果。現在回報 `init_failed`，手機與後台都顯示「LIFF 無法啟動」的說明。
 
 - **試用站台的管理員密碼改在驗證 email 之後設定**（AUDIT TRIAL-05、TRIAL-06，change `trial-set-password-after-verify`）— 原本申請時就收密碼，同一 email 待驗證時再送一次申請，會覆寫密碼與站台名稱並寄新信：知道別人 email 的人可以覆寫對方的申請，或搶先替對方申請，對方點信後站台以攻擊者的密碼開通。現在：

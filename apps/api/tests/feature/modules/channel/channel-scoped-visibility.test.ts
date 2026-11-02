@@ -583,3 +583,77 @@ test('工單連結的對話：只含可見渠道的對話', async () => {
   const ids = (res.json().data.conversations as Array<{ id: string }>).map((c) => c.id);
   assert.deepEqual(ids, [convs[0]!.id]);
 });
+
+// ── change segment-broadcast-creator-visibility：分群條件依群發建立者的可見範圍判斷 ──
+
+const hqRole = await createRole('hq-marketer', ['marketing.view', 'marketing.manage', 'marketing.broadcast', 'channel.view_all']);
+const hqMarketer = await createAgent('hq-marketer', hqRole.id);
+const hqApp = await buildApp(hqMarketer.id, hqRole.id);
+afterAll(() => hqApp.close());
+
+/** 聯絡人在可見的 WebChat 渠道有身分，在其他分店的 FB 渠道也有身分；分群條件是「有 FB 帳號」 */
+async function crossBranchSegment(slug: string) {
+  const branchFb = await createChannel(`${slug}-fb`, { channelType: 'FB' });
+  await bind(branchFb.id, other.id);
+  const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-${slug}` } });
+  await owner.channelIdentity.create({
+    data: { contactId: contact.id, channelId: visible.id, channelType: 'WEBCHAT', uid: `${MARK}-${slug}-webchat` },
+  });
+  await owner.channelIdentity.create({
+    data: { contactId: contact.id, channelId: branchFb.id, channelType: 'FB', uid: `${MARK}-${slug}-fb` },
+  });
+  const rules = { conditions: [{ field: 'channelType', operator: 'eq', value: 'FB' }], logic: 'AND' };
+  const segment = await owner.segment.create({
+    data: { tenantId: A, name: `${MARK}-${slug}-segment`, rules, conditions: rules.conditions, contactCount: 0 },
+  });
+  const material = await owner.material.create({
+    data: { tenantId: A, name: `${MARK}-${slug}-material`, channelType: 'WEBCHAT', contentType: 'text', body: { text: 'hi' } },
+  });
+  return { segment, material };
+}
+
+test('分店建立的分群群發只以可見渠道判斷條件：預估與送出都不算只在其他分店渠道符合條件的人', async () => {
+  const { segment, material } = await crossBranchSegment('branch-seg');
+  const preview = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts/audience-preview',
+    payload: { channelId: visible.id, targetType: 'segment', segmentId: segment.id },
+  });
+  assert.equal(preview.statusCode, 200, preview.body);
+  assert.equal(preview.json().data.matched, 0, '預估不算只在其他分店渠道符合條件的人');
+
+  const broadcast = await owner.broadcast.create({
+    data: {
+      tenantId: A, channelId: visible.id, name: `${MARK}-branch-seg-bc`, createdById: marketer.id,
+      materialId: material.id, targetType: 'segment', segmentId: segment.id,
+    },
+  });
+  sendMessage.mockClear();
+  const res = await marketerApp.inject({ method: 'POST', url: `/api/v1/marketing/broadcasts/${broadcast.id}/send` });
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error.code, 'BROADCAST_NO_RECIPIENTS');
+  assert.equal(sendMessage.mock.calls.length, 0);
+});
+
+test('總店建立的分群群發以所有渠道判斷條件：分店成員按下送出也依建立者判斷', async () => {
+  const { segment, material } = await crossBranchSegment('hq-seg');
+  const preview = await hqApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts/audience-preview',
+    payload: { channelId: visible.id, targetType: 'segment', segmentId: segment.id },
+  });
+  assert.equal(preview.statusCode, 200, preview.body);
+  assert.ok(preview.json().data.matched >= 1, preview.body);
+
+  const broadcast = await owner.broadcast.create({
+    data: {
+      tenantId: A, channelId: visible.id, name: `${MARK}-hq-seg-bc`, createdById: hqMarketer.id,
+      materialId: material.id, targetType: 'segment', segmentId: segment.id,
+    },
+  });
+  sendMessage.mockClear();
+  // 由分店成員按下送出：條件仍依建立者（總店）判斷，與排程器背景送出相同
+  const res = await marketerApp.inject({ method: 'POST', url: `/api/v1/marketing/broadcasts/${broadcast.id}/send` });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.ok(sendMessage.mock.calls.length >= 1);
+});

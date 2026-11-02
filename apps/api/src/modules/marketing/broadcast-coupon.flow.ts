@@ -21,6 +21,7 @@ import { publishCouponTag } from '../coupon/coupon-effects.js';
 import { snapshotOgInBackground, writeOgInTenant } from '../shortlink/og-snapshot.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
+import type { AccessibleChannels, AgentVisibilityResolver } from '../../services/channel-visibility.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { UNEXPECTED_FAILURE_REASON, convertBodyUrlsToShortLinks } from './marketing.service.js';
 import { buildVariableMap, renderTemplateBody } from './template-renderer.js';
@@ -96,9 +97,10 @@ export function createBatchIssueFlow(
   agentId: string,
   couponId: string,
   input: BatchIssueInput,
+  accessibleChannels: AccessibleChannels,
 ) {
   return inTenant(deps.prisma, tenantId, async (scope) => {
-    const { job, ...created } = await createBatchIssue(scope, agentId, couponId, input);
+    const { job, ...created } = await createBatchIssue(scope, agentId, couponId, input, accessibleChannels);
     await enqueueBroadcastRun(scope, deps, job);
     return created;
   });
@@ -110,6 +112,8 @@ export interface CouponBroadcastDeps {
   io?: Server;
   /** 票券連結的儲存（Redis） */
   store: WalletTokenStore;
+  /** 廣播建立者的可見範圍（agentVisibilityResolver()）：分群條件依建立者判斷 */
+  visibilityOf: AgentVisibilityResolver;
   /** 票券連結的網址前綴；預設為 WEB_BASE_URL */
   webBaseUrl?: string;
   now?: () => number;
@@ -249,7 +253,8 @@ export async function runCouponBroadcast(
       }
     }
 
-    const prepared = await step(deps, tenantId, (ctx) => prepareRecipients(ctx, plan, plugin.messagingWindowHours));
+    const audienceChannels = await deps.visibilityOf(tenantId, plan.broadcast.createdById);
+    const prepared = await step(deps, tenantId, (ctx) => prepareRecipients(ctx, plan, plugin.messagingWindowHours, audienceChannels));
     if (prepared.total === 0) return fail('BROADCAST_NO_RECIPIENTS', noRecipientReason(plan.broadcast.targetType));
 
     // 訊息額度：剩餘額度小於這次要送的人數就整則不送、不建任何券（同一次推送多則只算一次）

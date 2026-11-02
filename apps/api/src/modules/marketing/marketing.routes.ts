@@ -27,7 +27,7 @@ import {
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { getBroadcastChannelIdFlow } from './marketing.flow.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { assertChannelVisible, isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { agentVisibilityResolverOf, assertChannelVisible, isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import {
   getCouponBroadcastSummaryFlow,
   listBroadcastRecipientsFlow,
@@ -322,7 +322,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   fastify.post('/broadcasts/audience-preview', async (request, reply) => {
     const data = broadcastAudiencePreviewSchema.parse(request.body);
     await assertChannelVisible(request, data.channelId, 'read_only');
-    const result = await previewBroadcastAudience(request.tenantPrisma, request.agent.tenantId, data);
+    const result = await previewBroadcastAudience(request.tenantPrisma, request.agent.tenantId, await resolveChannelVisibility(request), data);
     return reply.send(success(result));
   });
 
@@ -357,7 +357,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       const queued = await queueCouponBroadcastFlow(fastify, request.agent.tenantId, broadcast.id);
       return reply.status(202).send(success(queued));
     }
-    const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id);
+    const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id, agentVisibilityResolverOf(fastify));
     return reply.send(success(result));
   });
 

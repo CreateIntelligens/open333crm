@@ -28,7 +28,7 @@ import {
   updateCouponFlow,
 } from './coupon.flow.js';
 import { redeemAtConsole } from './coupon-redeem.flow.js';
-import { assertChannelVisible } from '../../services/channel-visibility.js';
+import { assertChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { BATCH_ISSUE_MAX_RECIPIENTS } from '../marketing/broadcast-coupon.service.js';
 import { createBatchIssueFlow } from '../marketing/broadcast-coupon.flow.js';
 
@@ -260,7 +260,7 @@ export default async function couponRoutes(app: FastifyInstance) {
     const body = batchAudienceSchema.parse(request.body ?? {});
     await assertChannelVisible(request, body.channelId, 'reply_only');
     const result = await couponErrors(
-      previewBatchAudienceFlow(app, request.agent.tenantId, {
+      previewBatchAudienceFlow(app, request.agent.tenantId, await resolveChannelVisibility(request), {
         channelId: body.channelId,
         targetType: body.targetType,
         segmentId: body.segmentId,
@@ -278,7 +278,7 @@ export default async function couponRoutes(app: FastifyInstance) {
     const { id } = idParams.parse(request.params);
     const body = batchIssueSchema.parse(request.body ?? {});
     await assertChannelVisible(request, body.channelId, 'reply_only');
-    const result = await couponErrors(createBatchIssueFlow(app, request.agent.tenantId, request.agent.id, id, body));
+    const result = await couponErrors(createBatchIssueFlow(app, request.agent.tenantId, request.agent.id, id, body, await resolveChannelVisibility(request)));
     return reply.code(202).send({ success: true, data: result });
   });
 

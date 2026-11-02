@@ -13,6 +13,10 @@ import {
 } from '@open333crm/channel-plugins';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { executeBroadcast } from '#src/modules/marketing/marketing.service.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
+
+/** 建立者是總店：分群條件不受渠道限制（依建立者判斷的行為見 channel-scoped-visibility 的 feature 測試） */
+const allChannels = async () => ALL_CHANNELS;
 
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 
@@ -108,7 +112,7 @@ test('Scheduled broadcast with an empty audience：標籤底下沒人，failureR
     { identities: [] },
   );
   let message = '';
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'), (e: { code?: string; message: string }) => {
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), (e: { code?: string; message: string }) => {
     assert.equal(e.code, 'BROADCAST_NO_RECIPIENTS');
     message = e.message;
     return true;
@@ -124,7 +128,7 @@ test('Unexpected error during a send：非 AppError 寫通用中文原因，不�
     { status: 'scheduled', targetType: 'all' },
     { channelError: new Error('connect ECONNREFUSED 10.0.3.7:5432 secret-db-host') },
   );
-  await assert.rejects(executeBroadcast(db, io, 'bc-1'));
+  await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels));
   assert.equal(state.status, 'failed');
   assert.ok(typeof state.failureReason === 'string' && state.failureReason.length > 0, 'failureReason 應有值');
   assert.match(String(state.failureReason), /[一-鿿]/);
@@ -134,7 +138,7 @@ test('Unexpected error during a send：非 AppError 寫通用中文原因，不�
 test('Every recipient fails：LINE 整批被拒，failureReason 含失敗人數與渠道錯誤', async () => {
   registerPlugin('LINE', () => ({ success: false, error: 'Authentication failed. Confirm that the access token is valid.' }));
   const { db, state } = sendDb({ status: 'scheduled', targetType: 'all' });
-  await executeBroadcast(db, io, 'bc-1');
+  await executeBroadcast(db, io, 'bc-1', allChannels);
   assert.equal(state.status, 'failed');
   assert.match(String(state.failureReason), /2/);
   assert.match(String(state.failureReason), /access token is valid/);
@@ -143,7 +147,7 @@ test('Every recipient fails：LINE 整批被拒，failureReason 含失敗人數�
 test('Every recipient fails：逐人發送全部失敗，failureReason 含失敗人數與第一個渠道錯誤', async () => {
   registerPlugin('FB', (to) => ({ success: false, error: `(#551) This person isn't available right now (${to})` }));
   const { db, state } = sendDb({ status: 'scheduled', targetType: 'all' }, { channelType: 'FB' });
-  await executeBroadcast(db, io, 'bc-1');
+  await executeBroadcast(db, io, 'bc-1', allChannels);
   assert.equal(state.status, 'failed');
   assert.match(String(state.failureReason), /2/);
   assert.match(String(state.failureReason), /\(#551\).*u-1/);
@@ -152,7 +156,7 @@ test('Every recipient fails：逐人發送全部失敗，failureReason 含失敗
 test('Some recipients fail：部分成功為 completed，failureReason 為 null', async () => {
   registerPlugin('FB', (to) => (to === 'u-1' ? { success: true, channelMsgId: 'm' } : { success: false, error: 'blocked' }));
   const { db, state } = sendDb({ status: 'scheduled', targetType: 'all' }, { channelType: 'FB' });
-  const result = await executeBroadcast(db, io, 'bc-1');
+  const result = await executeBroadcast(db, io, 'bc-1', allChannels);
   assert.equal(result.failed, 1);
   assert.equal(state.status, 'completed');
   assert.equal(state.failureReason, null);
@@ -161,7 +165,7 @@ test('Some recipients fail：部分成功為 completed，failureReason 為 null'
 test('Resend a failed broadcast successfully：重送成功後不留舊原因', async () => {
   registerPlugin('LINE', () => ({ success: true, channelMsgId: 'm' }));
   const { db, state } = sendDb({ status: 'failed', targetType: 'all', failureReason: '此渠道的憑證無法解密' });
-  await executeBroadcast(db, io, 'bc-1');
+  await executeBroadcast(db, io, 'bc-1', allChannels);
   assert.equal(state.status, 'completed');
   assert.equal(state.failureReason, null);
 });

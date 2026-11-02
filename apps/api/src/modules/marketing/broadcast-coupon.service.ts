@@ -34,7 +34,7 @@ import {
   filterByMessagingWindow,
   resolveAudience,
 } from './marketing.service.js';
-import { ALL_CHANNELS } from '../../services/channel-visibility.js';
+import type { AccessibleChannels } from '../../services/channel-visibility.js';
 
 /** 發送中超過這個時間沒有進度，視為中斷（程式在發送途中結束），可以重新發送 */
 export const STALE_SENDING_MS = 5 * 60 * 1000;
@@ -269,10 +269,12 @@ export async function prepareRecipients(
   ctx: TenantCtx,
   plan: CouponBroadcastPlan,
   windowHours: number | undefined,
+  /** 廣播建立者的可見範圍，分群條件依此判斷（resolveAudience()） */
+  accessibleChannels: AccessibleChannels,
 ): Promise<PreparedRecipients> {
   const { tx, tenantId } = ctx;
   const b = plan.broadcast;
-  const matched = await resolveAudience(tx, { tenantId, ...b });
+  const matched = await resolveAudience(tx, { tenantId, ...b }, accessibleChannels);
 
   // 一位聯絡人在同一個渠道只取一個身分；手動挑選依勾選的順序
   const seen = new Set<string>();
@@ -631,6 +633,8 @@ export async function createBatchIssue(
   agentId: string,
   couponId: string,
   input: BatchIssueInput,
+  /** 發放者的可見範圍，分群條件依此判斷（resolveAudience()） */
+  accessibleChannels: AccessibleChannels,
   now: number = Date.now(),
 ) {
   const { tx, tenantId } = ctx;
@@ -652,7 +656,7 @@ export async function createBatchIssue(
       targetType: input.targetType,
       segmentId: input.segmentId ?? null,
       targetConfig,
-    });
+    }, accessibleChannels);
     if (new Set(matched.map((m) => m.contactId)).size > BATCH_ISSUE_MAX_RECIPIENTS) {
       const message = `單次最多發給 ${BATCH_ISSUE_MAX_RECIPIENTS} 人，請縮小對象範圍`;
       throw new AppError(message, 'BATCH_TOO_LARGE', 400, { issues: [{ path: 'targetType', message }] });
@@ -670,7 +674,7 @@ export async function createBatchIssue(
     couponMessage: input.message,
     couponIssuedByName: agent?.name ?? undefined,
     // 券詳情頁的批次發放不指定行銷活動；渠道已由路由以 assertChannelVisible 檢查
-  }, ALL_CHANNELS);
+  }, accessibleChannels);
   const queued = await queueCouponBroadcast(ctx, broadcast.id, now);
   return { broadcastId: broadcast.id, name: broadcast.name, status: queued.status, job: queued.job };
 }

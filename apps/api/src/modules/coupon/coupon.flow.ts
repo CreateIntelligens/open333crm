@@ -19,6 +19,7 @@ import { changeStatus } from './coupon-lifecycle.service.js';
 import { ISSUE_BATCH_SIZE, issueCoupons, type IssueResult } from './coupon-issue.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
 import { previewBroadcastAudience } from '../marketing/marketing.service.js';
+import type { AccessibleChannels } from '../../services/channel-visibility.js';
 import { listCouponBroadcasts } from '../marketing/broadcast-coupon.service.js';
 
 export const listCouponsFlow = flowOf(listCoupons);
@@ -39,9 +40,10 @@ export const removeAvailableCodeFlow = flowOf(removeAvailableCode);
 export function previewBatchAudienceFlow(
   deps: { prisma: PrismaClient },
   tenantId: string,
-  input: Parameters<typeof previewBroadcastAudience>[2],
+  accessibleChannels: AccessibleChannels,
+  input: Parameters<typeof previewBroadcastAudience>[3],
 ) {
-  return inTenant(deps.prisma, tenantId, (scope) => previewBroadcastAudience(scope.tx, scope.tenantId, input));
+  return inTenant(deps.prisma, tenantId, (scope) => previewBroadcastAudience(scope.tx, scope.tenantId, accessibleChannels, input));
 }
 
 /**
