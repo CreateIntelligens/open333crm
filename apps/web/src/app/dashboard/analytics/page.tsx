@@ -40,6 +40,16 @@ async function exportErrorMessage(err: unknown): Promise<string> {
   return getApiErrorMessage(err, '請稍後重試');
 }
 
+/** 案件報表的 SLA 逾期清單一列（`GET /analytics/cases` 的 slaViolations） */
+interface SlaViolationRow {
+  id: string;
+  title: string;
+  status: string;
+  slaDueAt: string | null;
+  assignee?: { name: string } | null;
+  contact?: { displayName: string } | null;
+}
+
 export default function AnalyticsPage() {
   const [tab, setTab] = useState('overview');
   const [from, setFrom] = useState(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
@@ -193,7 +203,7 @@ export default function AnalyticsPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {(caseData.data?.slaViolations || []).map((v: any) => (
+                        {(caseData.data?.slaViolations || []).map((v: SlaViolationRow) => (
                           <tr key={v.id} className="hover:bg-muted/30">
                             <td className="px-4 py-2 font-medium">{v.title}</td>
                             <td className="px-4 py-2">{v.status}</td>

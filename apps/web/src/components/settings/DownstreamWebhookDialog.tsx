@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 type ForwardMode = 'immediate' | 'after';
 
@@ -75,8 +76,8 @@ export function DownstreamWebhookDialog({
       await api.patch(`/channels/${channel.id}`, { settings: settingsPayload });
       onSaved();
       onOpenChange(false);
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || '儲存失敗');
+    } catch (err) {
+      setError(getApiErrorMessage(err, '儲存失敗'));
     } finally {
       setSaving(false);
     }

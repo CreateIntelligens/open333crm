@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ChannelWizardProps {
   open: boolean;
@@ -153,10 +154,10 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       try {
         await api.post(`/channels/${newId}/verify`);
         setVerify({ status: 'success', message: '渠道驗證成功' });
-      } catch (verifyErr: any) {
+      } catch (verifyErr) {
         setVerify({
           status: 'error',
-          message: verifyErr.response?.data?.error?.message || '驗證失敗，但渠道已建立',
+          message: getApiErrorMessage(verifyErr, '驗證失敗，但渠道已建立'),
         });
       }
 
@@ -196,8 +197,8 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       }
 
       setStep('done');
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || '建立渠道失敗，請檢查輸入資料');
+    } catch (err) {
+      setError(getApiErrorMessage(err, '建立渠道失敗，請檢查輸入資料'));
     } finally {
       setCreating(false);
     }

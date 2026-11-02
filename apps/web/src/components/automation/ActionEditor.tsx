@@ -433,7 +433,7 @@ export function ActionEditor({
   onRemove,
 }: ActionEditorProps) {
   // Normalize: backend may use "params" instead of "payload"
-  const payload = action.payload || (action as any).params || {};
+  const payload = action.payload || (action as { params?: Record<string, unknown> }).params || {};
   const definition = actionDefinitions?.find((item) => item.type === action.type);
   // 隱藏的動作（發送優惠券）不列在動作選單，只能在專用頁設定
   const actionTypeOptions =

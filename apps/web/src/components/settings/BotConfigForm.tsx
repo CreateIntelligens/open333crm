@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 type HandoffPromptStyle = 'text' | 'button' | 'both' | 'none';
 
@@ -171,8 +172,8 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
 
       onSaved();
       onOpenChange(false);
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || '儲存失敗');
+    } catch (err) {
+      setError(getApiErrorMessage(err, '儲存失敗'));
     } finally {
       setSaving(false);
     }

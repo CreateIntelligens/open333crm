@@ -10,6 +10,7 @@
  */
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { Plus, Edit, Trash2, Power, PowerOff, Info } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
@@ -121,7 +122,7 @@ export default function KeywordRepliesPage() {
               怎麼用？
             </div>
             <ol className="ml-1 mt-2 list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
-              <li>先到「<a href="/dashboard/marketing/materials" className="text-primary underline">行銷 → 素材庫</a>」建立你要回覆的內容（純文字、圖片、Flex、輪播都行）</li>
+              <li>先到「<Link href="/dashboard/marketing/materials" className="text-primary underline">行銷 → 素材庫</Link>」建立你要回覆的內容（純文字、圖片、Flex、輪播都行）</li>
               <li>回來這頁按「建立關鍵字回覆」，選渠道（LINE、Facebook、Instagram），輸入規則名稱、關鍵字（一個或多個），選素材或要發送的優惠券（至少一個）。Instagram 目前沒有素材，只能發券</li>
               <li>顧客在所選渠道傳訊息含關鍵字 → 自動回覆對應素材、發送優惠券；券沒有發出時，原因會記在該對話中</li>
             </ol>

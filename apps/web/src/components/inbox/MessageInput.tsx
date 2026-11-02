@@ -169,7 +169,7 @@ export function MessageInput({
 
     setSending(true);
     try {
-      if ([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT].includes(channelType as any)) {
+      if (([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT] as string[]).includes(channelType)) {
         const formData = new FormData();
         formData.append('file', file);
 
@@ -179,7 +179,7 @@ export function MessageInput({
       } else {
         alert('目前僅支援 LINE / FB / Webchat 聊天室傳送圖片');
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to send image:', err);
       setSendError(getApiErrorMessage(err, '圖片傳送失敗，請稍後重試'));
     } finally {
@@ -222,7 +222,7 @@ export function MessageInput({
   React.useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      (textarea as any).__setMessage = setMessageFromTemplate;
+      (textarea as unknown as { __setMessage?: typeof setMessageFromTemplate }).__setMessage = setMessageFromTemplate;
     }
   });
 

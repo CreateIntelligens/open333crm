@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
  * Input — 對齊 Figma「Input / Bar」「Form / Input Row」
  * 圓角 8px、focus 藍色 ring。
  */
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
+export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {

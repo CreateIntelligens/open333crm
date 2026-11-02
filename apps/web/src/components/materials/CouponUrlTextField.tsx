@@ -10,6 +10,7 @@
  */
 
 import React, { useId, useLayoutEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Link2, Ticket } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -194,7 +195,7 @@ function ClaimLinkPicker({ id, channelType, onPick, onClose }: {
       ) : links.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {`還沒有可用的 ${channelLabel} 領券連結（連結要啟用中、券要進行中）。請到`}
-          <a href="/dashboard/marketing/coupons" className="mx-1 font-medium text-primary underline underline-offset-2">優惠券</a>
+          <Link href="/dashboard/marketing/coupons" className="mx-1 font-medium text-primary underline underline-offset-2">優惠券</Link>
           {`頁打開一張券，在「領券連結」分頁建立，渠道選 ${channelLabel}。`}
         </p>
       ) : (
