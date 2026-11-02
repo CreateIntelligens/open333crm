@@ -80,6 +80,17 @@ Each requirement in a spec has `#### Scenario:` blocks. Write each scenario as *
 
 `openspec/config.yaml` gives these rules to the OpenSpec skills.
 
+Before you write the proposal, find the existing features that the change touches. One change
+often breaks a feature in a different module, and nobody notices until a user reports it.
+
+- `docs/ref/features/feature-map.json` lists each feature area: its files, pages, tables, events,
+  specs and the other areas that depend on it.
+- `node scripts/feature-impact.mjs --files <files you plan to change>` lists the affected areas.
+  On a branch with commits, run it without arguments. It compares with `origin/main`.
+- Each area has a Claude Code skill `.claude/skills/feature-<id>/`. The skill describes the
+  frontend flows, the rules that must not break and a regression list.
+  The `feature-impact-reviewer` subagent runs these steps and writes a report.
+
 ### Step 2 — Write the failing test first (TDD)
 
 1. Write a test for the scenario or for the bug.
@@ -430,6 +441,10 @@ No CI workflow runs these checks (see CI gates below). Run them yourself before 
 request:
 
 - [ ] `pnpm test` passes.
+- [ ] `node scripts/feature-impact.mjs` lists the areas that your change affects. You walked
+      through the regression list in the skill of each directly affected area. If you changed a
+      path, table, event or dependency of an area, update `docs/ref/features/feature-map.json`,
+      and `node scripts/feature-impact.mjs --check` passes.
 - [ ] `pnpm build` passes, if you changed a file in `packages/*`, a dependency, or a file that
       `apps/web` imports. Tests and `tsc` do not find a module that the browser bundle cannot
       load. Only the Next.js build finds it.
@@ -834,7 +849,9 @@ These paths contain tool-specific instructions and skills. Project-wide rules be
 | `.codex/skills/` | Codex: OpenSpec skills and the `open333crm-cli` skill |
 | `openspec/config.yaml` | OpenSpec context and per-artifact rules |
 | `.claude/agents/` | Claude Code subagent definitions |
+| `.claude/skills/` | Claude Code skills: one `feature-<id>` skill for each feature area, and symlinks to `.agents/skills/` |
+| `docs/ref/features/health/` | Health check of each feature area: gaps between spec, code and UI, test results, and manual test results |
 
-The repository has no `CLAUDE.md`. Thus, by default, Claude Code reads neither `AGENTS.md` nor
-`.agents/skills/`. To use them, create a `CLAUDE.md` that imports `@AGENTS.md`. Then symlink each
-skill directory into `.claude/skills/`.
+`CLAUDE.md` imports this file (`@AGENTS.md`), so that Claude Code reads it. Each directory in
+`.agents/skills/` has a symlink in `.claude/skills/`. When you add a skill to `.agents/skills/`,
+add its symlink too.

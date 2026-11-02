@@ -8,6 +8,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **測試 LIFF 設定**（issue #401，change `add-liff-config-test`）— LINE 渠道的 Bot 設定新增「測試 LIFF 設定」。按下後產生 10 分鐘有效的測試連結與 QR code，管理者用手機 LINE 開啟，走跟顧客開優惠券相同的 LIFF 登入，後端以 LINE Login Channel ID 驗證 ID token，結果同時顯示在手機與後台。原本設定錯誤時，顧客開券只會改成要求登記 email，管理者看不出原因。失敗時寫出原因：LIFF 無法啟動、Scope 沒有 openid、ID token 跟 Login Channel ID 不符、連不上 LINE，以及 LINE 帳號不在這個官方帳號的聯絡人裡（還沒加好友，或 Login channel 跟官方帳號不在同一個 Provider）。測試成功的時間記在渠道 `settings.liffTest`，設定改過後不再顯示。新增 `POST /api/v1/channels/:id/liff-test`、`GET /api/v1/channels/:id/liff-test/:testId`（`channel.update`）與公開端點 `POST /api/v1/fan/liff-test`。
 
+### Fixed
+
+- **試用站台的管理員密碼改在驗證 email 之後設定**（AUDIT TRIAL-05、TRIAL-06，change `trial-set-password-after-verify`）— 原本申請時就收密碼，同一 email 待驗證時再送一次申請，會覆寫密碼與站台名稱並寄新信：知道別人 email 的人可以覆寫對方的申請，或搶先替對方申請，對方點信後站台以攻擊者的密碼開通。現在：
+  - `POST /api/v1/trial/signups` 只收 email 與站台名稱。舊頁面送來的 `password` 忽略、不儲存。
+  - 待驗證的申請再送一次時不改任何申請資料，依重寄節流（間隔 60 秒、最多 5 封）重寄驗證信，寄到原申請的 email。原本每送一次就寄一封，換 IP 可以無限寄信。
+  - `GET /api/v1/trial/verify?token=` 改為只確認連結，不消耗 token、不開通。新增 `POST /api/v1/trial/verify`（token、密碼、站台名稱）：驗證頁送出密碼後，才在同一個交易內消耗 token、建立租戶與管理員帳號，管理員密碼用這次送出的密碼。同一 token 只開通一次，再送一次不會改密碼。
+  - 驗證頁 `/trial/verify` 改成設定密碼的表單，可修改站台名稱，錯誤顯示在表單上；申請頁拿掉密碼欄位；驗證信與開通信的文案跟著改。
+  - migration `20261102100000_drop_trial_signup_password_hash` 移除 `trial_signups.passwordHash`。改版前寄出、仍在效期內的驗證連結照常可用，打開後改成設定密碼。
+
 ## [2026-10-30]
 
 ### Fixed

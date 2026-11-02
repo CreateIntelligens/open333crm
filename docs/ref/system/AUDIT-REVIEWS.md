@@ -4,6 +4,69 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-02：AUTO-09 由 main 修正
+
+#426（`8899e280`）替 `POST /automation/rules/:id/test` 與 `GET /automation/logs` 加上 `requirePermission('automation.view')`，AUTO-09（健檢 HC-AUTOMATION-04）改為已修正。依據：讀程式（rebase 後的 `automation.routes.ts`），本次沒有重跑健檢。
+
+## 2026-11-02：TRIAL-05、TRIAL-06、CI-04 修正
+
+使用者決定修法：申請時不收密碼，點驗證連結之後在頁面上設定密碼，系統才開通。修正在 #407（change `trial-set-password-after-verify`）。以 feature 測試驗證（本機測試資料庫），沒有在 UAT 實測；部署前 UAT（即正式環境）仍可被利用。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| TRIAL-05 | 已修正 | `POST /trial/signups` 不收密碼；`GET /trial/verify` 只確認連結；`POST /trial/verify` 送出密碼後才在同一交易內開通。migration `20261102100000_drop_trial_signup_password_hash` 移除 `trial_signups.passwordHash`。改程式前，`trial-signup-verify.test.ts`「待驗證時以不同站台名稱再申請」（`'乙' !== '甲'`）與「申請時送出的密碼被忽略」（申請記錄有 `passwordHash`）以 assertion 失敗 |
+| TRIAL-06 | 已修正 | 待驗證的申請再送一次改走 `resendTrial()` 的節流。改程式前，「待驗證時連續再申請受重寄節流」以 assertion 失敗（60 秒內 5 次申請寄出 5 封，預期 1 封） |
+| CI-04 | 已修正 | 主規格 `trial-application` 的每個 scenario 都有同名測試（feature 19 個、路由 unit 6 個、驗證頁 jsdom 5 個） |
+| HC-PLATFORM-TRIALS-06、14 | 部分改善，仍留在健檢報告 | 申請不再收密碼，站台名稱 trim 後檢查；別名再申請不再覆寫站台名稱、重寄到原申請的 email。超長站台名稱的通用錯誤、非 gmail 去 `+tag` 未處理 |
+
+修正前已開通的試用站台，管理員密碼可能已被他人覆寫過。這次沒有清查既有站台。
+
+## 2026-10-30：功能健檢寫入（25 個領域）
+
+功能健檢（2026-10-29～2026-10-30）逐領域對照規格、程式與前端入口，並實際操作前端流程。報告在 [`docs/ref/features/health/`](../features/health/README.md)，環境是本機獨立資料庫 `open333crm_advisor` 與 UAT Demo 租戶（以唯讀為主），程式版本 `5c81102e`。本次只寫入 `AUDIT.md`，沒有改程式。
+
+**收錄規則。**
+
+- 健檢的 P1、P2 寫入本文件，健檢的 P3 留在健檢報告。嚴重度依健檢總表；HC-PLATFORM-SETTINGS-02、HC-INBOX-01、HC-ANALYTICS-02、HC-ANALYTICS-04 原列 P2，使用者決定升為 P1。
+- 多個領域回報同一個根因的合成一項，列出所有健檢編號。例如 HC-ANALYTICS-02 與 HC-CASES-02 合為 CASE-04；各頁按鈕不依權限隱藏合為 RBAC-11；後台操作失敗沒有訊息合為 APP-11。
+- 與既有項目同根因的，更新既有項目，不另開。
+- 每份健檢報告問題清單的「AUDIT」欄，已改成對應的正式編號。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 新增 20 項 P1 | RLS-10、RBAC-07、RBAC-08、AUTH-11、TRIAL-05、PLAN-14、HOURS-01、CONV-04、CASE-03、CASE-04、AUTO-06、MKT-02、MKT-03、MKT-04、ANA-03、PORTAL-03、AUD-03、KB-01、KB-02、KB-03 | 各項內文的「健檢來源」 |
+| 新增 69 項 P2 | RBAC-09～11、A2A-02、AUTH-12～16、SEC-07、SEC-08、TRIAL-06、TRIAL-07、PLAN-15～19、USAGE-04、SLA-06、SLA-07、HOURS-02、CONV-05、CONV-06、CASE-05～10、AUTO-07～13、IDENT-07、CONTACT-02～04、MKT-05～12、SHORT-02～04、PORTAL-04、CHAN-06～11、AUD-04、ERASE-02、APP-11～14、LLM-05、KB-04、KB-05、CI-04 | 同上 |
+| CHAN-02 | P2 改 P1，補上群發與發券 | HC-MARKETING-04：WebChat 的群發與發券顯示成功，顧客收不到。與 workers 送不到網站聊天室同一個根因（`webchatPlugin.sendMessage()` 只寫 log） |
+| TRIAL-02 | P3 改 P2，補上個資遮罩；更正一句描述 | HC-PLATFORM-SETTINGS-01：通用 `PUT /settings/:key` 能寫壞租戶的 `ai.privacy.*`，讓該租戶的訊息全部寫入失敗。更正：清空數字欄位的寫入會成功（存成 JSON `null`），不是失敗 |
+| PORTAL-01、PORTAL-02 | P3 改 P2 | 原本以「fanToken 沒有簽發端、端點無法進入」標 P3。優惠券票券夾（`5234b9b6`）起會簽發 fanToken，前提不成立（HC-PORTAL-02） |
+| RBAC-03、RBAC-04、MKT-01、AUD-01、ERASE-01、USAGE-02、ANA-01 | 補上健檢發現的路徑、證據與健檢編號 | RBAC-03：HC-MEMBERS-03、HC-CHANNELS-04。RBAC-04：HC-ANALYTICS-03、HC-CASES-08、HC-INBOX-05、HC-CONTACTS-10、HC-GOVERNANCE-02、HC-GOVERNANCE-05、HC-NOTIFICATIONS-01，socket 那一項實測重現。MKT-01：HC-MARKETING-08。AUD-01：HC-MARKETING-14、HC-GOVERNANCE-03、HC-GOVERNANCE-04、HC-GOVERNANCE-09。ERASE-01：HC-GOVERNANCE-06、HC-GOVERNANCE-08。USAGE-02：HC-PLATFORM-SETTINGS-03、HC-PLATFORM-USAGE-01。ANA-01：ANALYTICS 報告的補充 |
+| RBAC-01 | 更正權限碼數量 | 註冊表現在是 62 個碼，不是 56 個（MEMBERS 健檢，本機與 UAT 的 `/roles/matrix`）；`knowledge.view` 的缺口實測重現（KNOWLEDGE 健檢） |
+| CASE-02 | 更正 LINE 那一列 | LINE 的問卷實際上送不出去（HC-LINE-01，另列 CASE-03），目前沒有任何渠道的客人能自己回覆滿意度 |
+| ARCH-01 | 註記表格過時 | `line-login/line-login.routes.ts` 已不存在（LINE 健檢）；`settings.routes.ts` 剩 2 處查詢（SETTINGS 健檢） |
+| LLM-04 | 影響描述改成條件式 | UAT Demo 的 embedding 狀態正常、抽查 200 篇文章都有向量；UAT 靠 Compose 內的 Ollama（LLM-02）運作（KNOWLEDGE 健檢） |
+| SLA-05 | 更正去重描述 | 「每 24 小時再發一次」已過時，`fix-sla-outcome-repeat`（2026-10-15）起同一個期限只記一次，本機與 UAT 確認（SLA 健檢） |
+| PLAN-01 | 更正 | `/admin/plans` 沒有停售開關，只能直接呼叫 API（PLATFORM-PLANS 健檢） |
+| PLAN-04 | 更正 `portal` 列 | 後台 `portal.routes.ts` 的 14 條路由都經過 `requirePermission()`，不是「17 條中 8 條」（PORTAL 健檢，讀程式）；`automation` 沒有檢查的 2 條是試跑與執行紀錄（AUTO-09） |
+
+**健檢確認已修好、本文件已沒有的項目。** 這幾項先前已移除，健檢再次確認修正有效，本文件不需要改：
+
+| 項目 | 健檢結論 |
+| --- | --- |
+| AUTH-09（停用的成員無法重新啟用） | 已修好，本機實測重新啟用後原密碼登入成功、角色不變（MEMBERS 健檢）。`agent.routes.ts:36` 與 `AgentManagement.tsx` 的註解仍引用 AUTH-09 |
+| SLA-01（首次回應沒有寫入端） | 已修好，從對話建單後客服回覆，`firstResponseAt` 立即寫入（SLA 健檢實測） |
+| SLA-03（SLA 政策的 `isDefault` 沒有讀取端） | 已修好，建單不指定政策時套用預設政策（SLA 健檢實測） |
+| CHAN-03（LINE webhook 簽章） | 已修好，本機與 UAT 錯簽章、無簽章都回 403（LINE 健檢） |
+
+**健檢回報、但目前的程式已修好而沒有收錄的項目。** HC-PORTAL-03（積分並行寫入遺失）、HC-PORTAL-04（不可重複參加的活動並行送出成功多次）、HC-PORTAL-05（活動 `settings` 不驗證）在健檢版本 `5c81102e` 存在，main 的 `ac945b86`、`0a49a1dc`、`0a78fad5` 已修正（PORTAL 健檢的「main 狀態」欄），所以沒有寫入本文件。
+
+**UAT 唯讀確認（主控 2026-10-30，平台 API GET）。** UAT 的 `trial.enabled` 是 `true`，TRIAL-05、TRIAL-06 在正式環境可以被利用；UAT 的 `trial` 方案是 `["inbox","knowledge","core"]`、`light` 是 `["inbox","core"]`，與 seed 相同，PLAN-14 在 UAT 存在。
+
+**UAT Demo 租戶的待審加購申請。** PLAN-19 提到的 2026-09-16 起待審的加購申請（`21676e0e-…`）是 BD 在測試使用的，不是殘留資料，不要處理。
+
+**沒有收錄、但依本文件的規則可能要再看的 P3。** 本文件規定違反主規格的項目至少是 P2。下列健檢 P3 的報告寫明違反主規格，這次依「P3 不收錄」沒有寫入：HC-ANALYTICS-09（CLI 報表沒有日期順序檢查，`analytics-reports`）、HC-CHANNELS-13（非 UUID 的渠道 ID 回 400／500，`threads-channel`）、HC-NOTIFICATIONS-09（CSAT 低分與權杖失效在 API 行程直接寫通知，「Notification Job Consumer」）、HC-PLATFORM-TRIALS-14（email 正規化與規格不一致，`trial-application`）、HC-PLATFORM-USERS-10（開通信沒有帳號 email）、HC-CASES-15（「即將到期」門檻三處不同，`automation-engine`）。
+
+**與 main 同日的修正。** 健檢的 HC-ANALYTICS-01（訊息趨勢的日期全部是 0）原本寫成 ANA-02。同一天 main 的 `093b7e75` 已修正這個問題，ANA-02 這個編號也給了下一筆紀錄的「analytics 的長讀取」。所以 HC-ANALYTICS-01 不收錄，健檢報告的 AUDIT 欄註明 main 已修。HC-ANALYTICS-09（CLI 報表沒有日期順序檢查）由 `554ad70b` 修正。
+
 ## 2026-10-30：analytics 的長讀取（ANA-02）
 
 #337 階段 3 第七批，分支 `refactor/migrate-analytics-tenant-ctx`。在 UAT 量測 analytics 的所有端點，再閱讀查詢的寫法。

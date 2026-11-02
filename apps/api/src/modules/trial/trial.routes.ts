@@ -3,12 +3,18 @@ import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
-import { requestTrial, resendTrial, verifyAndProvision } from './trial.service.js';
+import { getVerifyStatus, requestTrial, resendTrial, verifyAndProvision } from './trial.service.js';
 
+// 申請不收密碼（AUDIT TRIAL-05）。舊頁面仍可能送 password：z.object 預設丟掉未定義的欄位，不會進到 service。
 const signupSchema = z.object({
   email: z.string().email(),
-  siteName: z.string().min(1).max(100),
-  password: z.string().min(8),
+  siteName: z.string().trim().min(1).max(100),
+});
+// 密碼在點驗證連結之後設定；規則與成員密碼相同（至少 8 碼）
+const completeSchema = z.object({
+  token: z.string().min(1, '缺少驗證連結的 token'),
+  password: z.string().min(8, '密碼至少需要 8 個字元'),
+  siteName: z.string().trim().min(1, '請輸入站台名稱').max(100, '站台名稱最多 100 個字').optional(),
 });
 const resendSchema = z.object({ email: z.string().email() });
 
@@ -33,7 +39,6 @@ export default async function trialRoutes(fastify: FastifyInstance) {
         await requestTrial(fastify.prismaAdmin, {
           email: body.email,
           siteName: body.siteName,
-          password: body.password,
           requestIp: request.ip,
         });
       } catch (err) {
@@ -63,14 +68,25 @@ export default async function trialRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // GET /api/v1/trial/verify?token= — 驗證即開通
+  // GET /api/v1/trial/verify?token= — 驗證頁查詢連結（只讀，不消耗 token、不開通）
   fastify.get<{ Querystring: { token?: string } }>(
     '/verify',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const token = request.query.token;
       if (!token) throw new AppError('缺少 token', 'BAD_REQUEST', 400);
-      const result = await verifyAndProvision(fastify.prismaAdmin, token);
+      const result = await getVerifyStatus(fastify.prismaAdmin, token);
+      return reply.send(success(result));
+    },
+  );
+
+  // POST /api/v1/trial/verify — 設定密碼並開通（原子消耗 token）
+  fastify.post(
+    '/verify',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const body = completeSchema.parse(request.body);
+      const result = await verifyAndProvision(fastify.prismaAdmin, body);
       return reply.send(success(result));
     },
   );
