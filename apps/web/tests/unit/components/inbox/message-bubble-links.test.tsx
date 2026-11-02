@@ -44,7 +44,8 @@ test('Other schemes and HTML stay text', () => {
     <MessageBubble message={{ ...base, direction: 'INBOUND', senderType: 'CONTACT', content: { text } }} />,
   );
   for (const a of container.querySelectorAll('a')) {
-    assert.ok(!a.getAttribute('href')?.startsWith('javascript:'), 'javascript: 不建立連結');
+    // 只有 http(s) 網址會變成連結：javascript: 等其他協定都不會
+    assert.equal(new URL(a.getAttribute('href') ?? '').protocol, 'https:');
     assert.ok(a.textContent !== 'x', 'HTML 標籤不會被解析成元素');
   }
   assert.ok(container.textContent?.includes('<a href="https://x.test">x</a>'), 'HTML 標籤以文字顯示');
