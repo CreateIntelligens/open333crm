@@ -115,3 +115,17 @@ test('對方只在看不到的渠道有身分時，409 不帶對方的資料', a
     (err: unknown) => (err as AppError).details?.contactId === 'b',
   );
 });
+
+test('修改看不到的聯絡人回 404，不更改資料', async () => {
+  const { db, updates } = mockDb(people(), [{ contactId: 'a', channelId: 'ch-hidden' }]);
+  await assert.rejects(
+    () => updateContact({ tx: db, tenantId: TENANT }, 'a', { displayName: '改名' }, new Set(['ch-visible'])),
+    (err: unknown) => {
+      assert.ok(err instanceof AppError);
+      assert.equal(err.statusCode, 404);
+      assert.equal(err.code, 'NOT_FOUND');
+      return true;
+    },
+  );
+  assert.equal(updates.length, 0, '不更改資料');
+});

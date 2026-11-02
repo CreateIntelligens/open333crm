@@ -290,7 +290,7 @@ export async function updateContact(
     /** email 與其他聯絡人重複時，客服確認仍要儲存（不合併） */
     allowDuplicateEmail?: boolean;
   },
-  /** CM-173：email 撞到的聯絡人只在看不到的渠道有身分時，409 不帶對方的 id 與名稱 */
+  /** 看不到這位聯絡人時回 404；CM-173：email 撞到的聯絡人只在看不到的渠道有身分時，409 不帶對方的 id 與名稱 */
   accessibleChannels: AccessibleChannels = ALL_CHANNELS,
 ) {
   const { tx: prisma, tenantId } = ctx;
@@ -299,7 +299,7 @@ export async function updateContact(
     where: { id, tenantId },
   });
 
-  if (!contact) {
+  if (!contact || !(await isContactVisible(ctx, id, accessibleChannels))) {
     throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
   }
 

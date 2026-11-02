@@ -1852,6 +1852,7 @@ packages:
   '@lancedb/lancedb@0.11.0':
     resolution: {integrity: sha512-oZSoKgaAoZIo5Oz4yhO7Z0kFzXRbXRgBK7zoNnA4/4m74T5KRRWovKSgHUwGNw18sBP2lnT2hT5WV3r20PKfzQ==}
     engines: {node: '>= 18'}
+    cpu: [x64, arm64]
     os: [darwin, linux, win32]
     peerDependencies:
       apache-arrow: '>=13.0.0 <=17.0.0'

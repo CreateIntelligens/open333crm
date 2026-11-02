@@ -341,7 +341,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       actorOf(request).tenantId,
       request.params.id,
       data,
-      await visibleContacts(request, request.params.id),
+      // updateContact() 在同一個交易內檢查可見範圍
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(success(contact));
