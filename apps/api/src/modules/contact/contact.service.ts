@@ -152,13 +152,12 @@ export async function getContact(
   accessibleChannels: AccessibleChannels,
 ) {
   const { tx: prisma, tenantId } = ctx;
-  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
     include: {
       channelIdentities: {
         // 只回傳可見渠道的身份（CM-173），避免分店看到其他渠道的名稱、uid 與暱稱
-        ...(visibleChannelId ? { where: { channelId: visibleChannelId } } : {}),
+        ...visibleIdentityInclude(accessibleChannels),
         include: {
           channel: {
             select: {
