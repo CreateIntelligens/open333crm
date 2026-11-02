@@ -245,20 +245,19 @@ export async function assertNoOtherChannelIdentities(
   const channelId = channelIdWhereFilter(accessibleChannels);
   if (!channelId) return;
   const otherChannel = { notIn: channelId.in };
-  const [identity, conversation, caseRow] = await Promise.all([
-    ctx.tx.channelIdentity.findFirst({
-      where: { contactId: { in: contactIds }, contact: { tenantId: ctx.tenantId }, channelId: otherChannel },
-      select: { id: true },
-    }),
-    ctx.tx.conversation.findFirst({
-      where: { contactId: { in: contactIds }, tenantId: ctx.tenantId, channelId: otherChannel },
-      select: { id: true },
-    }),
-    ctx.tx.case.findFirst({
-      where: { contactId: { in: contactIds }, tenantId: ctx.tenantId, channelId: otherChannel },
-      select: { id: true },
-    }),
-  ]);
+  // 同一個交易的查詢依序執行（互動式交易只有一條連線）
+  const identity = await ctx.tx.channelIdentity.findFirst({
+    where: { contactId: { in: contactIds }, contact: { tenantId: ctx.tenantId }, channelId: otherChannel },
+    select: { id: true },
+  });
+  const conversation = identity ? null : await ctx.tx.conversation.findFirst({
+    where: { contactId: { in: contactIds }, tenantId: ctx.tenantId, channelId: otherChannel },
+    select: { id: true },
+  });
+  const caseRow = identity || conversation ? null : await ctx.tx.case.findFirst({
+    where: { contactId: { in: contactIds }, tenantId: ctx.tenantId, channelId: otherChannel },
+    select: { id: true },
+  });
   if (identity || conversation || caseRow) {
     throw new AppError('這位聯絡人在其他分店的渠道也有資料，合併或解除合併請由總店處理', 'CONTACT_HAS_OTHER_CHANNELS', 403);
   }
@@ -780,7 +779,21 @@ export async function assertMergeLogVisible(
     select: { survivorId: true, mergedId: true },
   });
   if (!log) return;
-  await lockContactsForMerge(ctx, [log.survivorId, log.mergedId]);
-  await assertContactsVisible(ctx, [log.survivorId, log.mergedId], accessibleChannels);
-  await assertNoOtherChannelIdentities(ctx, [log.survivorId, log.mergedId], accessibleChannels);
+  await assertMergeAllowed(ctx, [log.survivorId, log.mergedId], accessibleChannels);
+}
+
+/**
+ * 分店成員合併或解除合併前的完整檢查，要在合併的同一個交易內呼叫：先鎖住雙方（lockContactsForMerge），
+ * 再檢查看得到（否則 404）、沒有其他分店渠道的資料（否則 403）。總店不檢查也不加鎖。
+ * 新的合併入口一律呼叫這個函式，不要分開呼叫各項檢查而漏掉鎖。
+ */
+export async function assertMergeAllowed(
+  ctx: TenantCtx,
+  contactIds: string[],
+  accessibleChannels: AccessibleChannels,
+): Promise<void> {
+  if (accessibleChannels === ALL_CHANNELS) return;
+  await lockContactsForMerge(ctx, contactIds);
+  await assertContactsVisible(ctx, contactIds, accessibleChannels);
+  await assertNoOtherChannelIdentities(ctx, contactIds, accessibleChannels);
 }

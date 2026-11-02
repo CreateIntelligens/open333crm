@@ -2,29 +2,33 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { ALL_CHANNELS, channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 /**
- * 非總店看得到的行銷活動（channel-scoped-visibility「行銷活動的可見範圍」）：自己建立的，
- * 或至少有一則可見渠道群發的。其他成員還沒有群發的活動與只有其他分店群發的活動都不列出。總店回空物件。
+ * 非總店看得到的行銷活動（channel-scoped-visibility「行銷活動的可見範圍」）：自己建立的、還沒有任何群發的
+ * （總店規劃、讓各分店加入群發的活動），或至少有一則可見渠道群發的。只有其他分店群發的活動不列出。總店回空物件。
  */
 export function readableCampaignWhere(accessibleChannels: AccessibleChannels, agentId: string) {
   const channelId = channelIdWhereFilter(accessibleChannels);
-  return channelId ? { OR: [{ createdById: agentId }, { broadcasts: { some: { channelId } } }] } : {};
+  return channelId
+    ? { OR: [{ createdById: agentId }, { broadcasts: { none: {} } }, { broadcasts: { some: { channelId } } }] }
+    : {};
 }
 
 /**
- * 修改、刪除活動，或把群發加進活動之前：活動還有不可見渠道的群發時回 403，
- * 這些操作會影響其他分店的群發。campaign 以 readableCampaignWhere() 讀出，含群發的 channelId。
+ * 可以修改、刪除，或把群發加進去的活動：看得到，而且沒有其他分店渠道的群發（會影響其他分店的群發）。
+ * 條件寫在 where：以 updateMany／deleteMany 帶這個條件，檢查與寫入在同一個語句，中間不會有其他分店的群發掛進來。
  */
-export function assertCampaignWritable(
-  campaign: { broadcasts: Array<{ channelId: string }> },
-  accessibleChannels: AccessibleChannels,
-): void {
-  if (accessibleChannels === ALL_CHANNELS) return;
-  if (campaign.broadcasts.some((b) => !accessibleChannels.has(b.channelId))) {
-    throw new AppError('這個行銷活動有其他分店渠道的群發，修改請由總店處理', 'CAMPAIGN_HAS_OTHER_CHANNELS', 403);
-  }
+export function writableCampaignWhere(accessibleChannels: AccessibleChannels, agentId: string) {
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  return channelId
+    ? { ...readableCampaignWhere(accessibleChannels, agentId), broadcasts: { none: { channelId: { notIn: channelId.in } } } }
+    : {};
+}
+
+/** 看得到但不能修改時的錯誤（readable 找得到、writable 找不到） */
+export function campaignHasOtherChannelsError(): AppError {
+  return new AppError('這個行銷活動有其他分店渠道的群發，修改請由總店處理', 'CAMPAIGN_HAS_OTHER_CHANNELS', 403);
 }
 
 export async function listCampaigns(
@@ -170,12 +174,10 @@ export async function updateCampaign(
 ) {
   const existing = await prisma.campaign.findFirst({
     where: { id, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
-    include: { broadcasts: { select: { channelId: true } } },
   });
   if (!existing) {
     throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
   }
-  assertCampaignWritable(existing, accessibleChannels);
 
   // Validate status transitions
   if (data.status) {
@@ -212,11 +214,12 @@ export async function updateCampaign(
   if (startDate !== undefined) updateData.startDate = startDate;
   if (endDate !== undefined) updateData.endDate = endDate;
 
-  const campaign = await prisma.campaign.update({
-    where: { id },
+  const updated = await prisma.campaign.updateMany({
+    where: { id, tenantId, ...writableCampaignWhere(accessibleChannels, agentId) },
     data: updateData,
   });
-  return campaign;
+  if (updated.count === 0) throw campaignHasOtherChannelsError();
+  return { ...existing, ...updateData };
 }
 
 export async function deleteCampaign(
@@ -229,16 +232,17 @@ export async function deleteCampaign(
 ) {
   const existing = await prisma.campaign.findFirst({
     where: { id, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
-    include: { broadcasts: { select: { channelId: true } } },
   });
   if (!existing) {
     throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
   }
-  assertCampaignWritable(existing, accessibleChannels);
   if (existing.status !== 'draft') {
     throw new AppError('僅草稿狀態的行銷活動可以刪除', 'FORBIDDEN', 403);
   }
-  await prisma.campaign.delete({ where: { id } });
+  const deleted = await prisma.campaign.deleteMany({
+    where: { id, tenantId, status: 'draft', ...writableCampaignWhere(accessibleChannels, agentId) },
+  });
+  if (deleted.count === 0) throw campaignHasOtherChannelsError();
   return { deleted: true };
 }
 

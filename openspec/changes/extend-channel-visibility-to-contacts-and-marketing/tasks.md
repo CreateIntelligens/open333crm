@@ -45,12 +45,19 @@
 - [x] 7.4 分群列表的人數改回逐筆計算：並行時每個查詢各開交易，會佔滿連線池
 - 不修改：被合併的聯絡人只看一層保留方，是刻意的 fail-closed 規則（規格已寫明），合併鏈較長時分店看不到舊的聯絡人，由總店處理。報表 `contactSql()` 的相關子查詢只在非總店成員時加上，`channel_identities` 有 `contactId` 索引；資料量大時再改成一次算出可見聯絡人的 CTE
 
-## 8. 完成檢查
+## 8. 第四輪 code review 修正
 
-- [x] 8.1 `pnpm test`、`pnpm test:feature` 通過
-- [x] 8.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
-- [x] 8.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
-- [x] 8.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
+- [x] 8.1 2026-11-02 決定：還沒有任何群發的行銷活動所有成員都看得到，可以加入自己渠道的群發（總店規劃、分店執行）。規格與測試「總店規劃的空活動」依此修改
+- [x] 8.2 活動的修改與刪除改以 `writableCampaignWhere()` 帶進 `updateMany`／`deleteMany`，檢查與寫入同一個語句；檢查改為 where 條件，不再載入活動的全部群發
+- [x] 8.3 `assertMergeAllowed()`：鎖定、可見檢查、其他分店資料檢查收成一個函式，合併與解除合併都呼叫它；同一個交易內的三個查詢改為依序執行
+- 不修改：建立群發時檢查活動與新增群發仍是兩個查詢，總店剛好同時把其他分店的群發加進同一個活動才會發生；分店合併時的列鎖可能與進站訊息的寫入互相等待，PostgreSQL 會偵測死結並讓其中一方失敗，合併是少見的手動操作；分群列表逐筆計算人數，延遲隨分群數增加；MCP 的 `accessible()` 已在 `mcp.routes.ts` 快取，呼叫兩次不會重算
+
+## 9. 完成檢查
+
+- [x] 9.1 `pnpm test`、`pnpm test:feature` 通過
+- [x] 9.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
+- [x] 9.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
+- [x] 9.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
 
 ## 突變驗證與既有測試的調整
 

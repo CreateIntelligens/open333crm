@@ -19,7 +19,7 @@ import { findOrCreateMaterialShortLink, saveShortLinkOg } from '../shortlink/sho
 import { snapshotOgInBackground } from '../shortlink/og-snapshot.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
-import { assertCampaignWritable, readableCampaignWhere } from './campaign.service.js';
+import { campaignHasOtherChannelsError, readableCampaignWhere, writableCampaignWhere } from './campaign.service.js';
 import { COUPON_ISSUED_VIA } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
 import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
@@ -316,12 +316,16 @@ export async function createBroadcast(
   if (data.campaignId) {
     const campaign = await prisma.campaign.findFirst({
       where: { id: data.campaignId, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
-      include: { broadcasts: { select: { channelId: true } } },
+      select: { id: true },
     });
     if (!campaign) {
       throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
     }
-    assertCampaignWritable(campaign, accessibleChannels);
+    const writable = await prisma.campaign.findFirst({
+      where: { id: data.campaignId, tenantId, ...writableCampaignWhere(accessibleChannels, agentId) },
+      select: { id: true },
+    });
+    if (!writable) throw campaignHasOtherChannelsError();
   }
 
   // Validate segment if provided

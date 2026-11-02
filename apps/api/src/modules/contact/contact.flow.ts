@@ -9,7 +9,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { flowOf, inTenant } from '../../lib/tenant-ctx.js';
 import type { RequestActor } from '../../lib/request-actor.js';
-import { ALL_CHANNELS, type AccessibleChannels } from '../../services/channel-visibility.js';
+import type { AccessibleChannels } from '../../services/channel-visibility.js';
 import { notifyTenant } from '../../events/socket-push.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import {
@@ -20,8 +20,7 @@ import {
   getContactMessages,
   getContactTimeline,
   assertMergeLogVisible,
-  assertNoOtherChannelIdentities,
-  lockContactsForMerge,
+  assertMergeAllowed,
   getMergePreview,
   listContacts,
   updateContact,
@@ -53,12 +52,7 @@ export function mergeContactsFlow(
 ) {
   const { primaryContactId, secondaryContactId } = input;
   return inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    if (accessibleChannels !== ALL_CHANNELS) {
-      // 先鎖住雙方再檢查，檢查之後其他分店的資料掛不上來（見 lockContactsForMerge）
-      await lockContactsForMerge(scope, [primaryContactId, secondaryContactId]);
-    }
-    await assertContactsVisible(scope, [primaryContactId, secondaryContactId], accessibleChannels);
-    await assertNoOtherChannelIdentities(scope, [primaryContactId, secondaryContactId], accessibleChannels);
+    await assertMergeAllowed(scope, [primaryContactId, secondaryContactId], accessibleChannels);
     const result = await mergeContacts(scope, {
       survivorId: primaryContactId,
       mergedId: secondaryContactId,

@@ -18,9 +18,10 @@ function fakeDb(existing?: { id: string; status: string; startDate: Date | null;
         return { id: 'new', ...data };
       },
       findFirst: async () => (existing ? { tenantId: T, ...existing } : null),
-      update: async ({ data }: { data: Record<string, unknown> }) => {
+      // updateCampaign 以 updateMany 帶可修改的條件寫入（channel-scoped-visibility）
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
         writes.push(data);
-        return { ...existing, ...data };
+        return { count: 1 };
       },
     },
   };

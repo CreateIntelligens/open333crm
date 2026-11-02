@@ -498,18 +498,18 @@ test('分眾預覽只算看得到的聯絡人：舊資料 rules 為空的分眾�
   assert.equal(row?.contactCount, 0);
 });
 
-test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 404；自己建立、沒有群發的活動照常看得到', async () => {
+test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 404；沒有群發的活動照常看得到', async () => {
   const hiddenOnly = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-hidden`, createdById: other.id } });
   await owner.broadcast.create({
     data: { tenantId: A, channelId: hidden.id, campaignId: hiddenOnly.id, name: `${MARK}-campaign-hidden-bc`, createdById: other.id },
   });
-  const empty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-empty`, createdById: marketer.id } });
+  const empty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-empty`, createdById: other.id } });
 
   const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
   assert.equal(list.statusCode, 200, list.body);
   const ids = (list.json().data as Array<{ id: string }>).map((c) => c.id);
   assert.ok(!ids.includes(hiddenOnly.id), '不可列出只有其他分店群發的活動');
-  assert.ok(ids.includes(empty.id), '自己建立、沒有群發的活動照常列出');
+  assert.ok(ids.includes(empty.id), '沒有群發的活動照常列出');
 
   const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}` });
   assert.equal(detail.statusCode, 404, detail.body);
@@ -521,15 +521,20 @@ test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 
   assert.equal((await owner.campaign.findUniqueOrThrow({ where: { id: hiddenOnly.id } })).name, `${MARK}-campaign-hidden`);
 });
 
-test('其他成員還沒有群發的活動：列表不含、讀取 404；自己建立的空活動照常看得到', async () => {
-  const othersEmpty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-others-empty`, createdById: other.id } });
-  const mine = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-mine`, createdById: marketer.id } });
+test('總店規劃的空活動：分店看得到，並能以自己的渠道建立群發加入', async () => {
+  const planned = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-planned`, createdById: other.id } });
   const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
-  const ids = (list.json().data as Array<{ id: string }>).map((c) => c.id);
-  assert.ok(!ids.includes(othersEmpty.id), '不可列出其他成員的空活動');
-  assert.ok(ids.includes(mine.id), '自己的空活動照常列出');
-  const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${othersEmpty.id}` });
-  assert.equal(detail.statusCode, 404, detail.body);
+  assert.ok((list.json().data as Array<{ id: string }>).some((c) => c.id === planned.id), '空活動照常列出');
+
+  const material = await owner.material.create({
+    data: { tenantId: A, name: `${MARK}-planned-material`, channelType: 'WEBCHAT', contentType: 'text', body: { text: 'hi' } },
+  });
+  const created = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts',
+    payload: { name: `${MARK}-bc-into-planned`, channelId: visible.id, materialId: material.id, targetType: 'all', campaignId: planned.id },
+  });
+  assert.equal(created.statusCode, 201, created.body);
 });
 
 test('修改含其他分店群發的活動被拒：修改、刪除、建立群發指定這個活動都回 403', async () => {
