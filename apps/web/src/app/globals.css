@@ -131,7 +131,7 @@
     min-width: 0;
     overflow-x: hidden;
     font-family: 'Noto Sans TC', Inter, 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
-    font-size: 1.125rem;
+    font-size: 1rem;
     line-height: 1.55;
     font-feature-settings: 'cv11', 'ss01';
     text-rendering: optimizeLegibility;
@@ -142,17 +142,8 @@
   }
 }
 
-/* 中文優先介面：13.5pt = 18px CSS，所有常見小字 utility 維持可讀底線。 */
-:where(html[lang^='zh']) .text-xs,
-:where(html[lang^='zh']) .text-sm,
-:where(html[lang^='zh']) .text-base,
-:where(html[lang^='zh']) .text-\[9px\],
-:where(html[lang^='zh']) .text-\[10px\],
-:where(html[lang^='zh']) .text-\[11px\],
-:where(html[lang^='zh']) .text-\[12px\],
-:where(html[lang^='zh']) .text-\[13px\],
-:where(html[lang^='zh']) .text-\[15px\],
-:where(html[lang^='zh']) .text-\[17px\] {
+/* 主要中文標題/操作 copy 可明確套用此 class；英數、代碼、日期保留元件自己的密度。 */
+.cjk-readable {
   font-size: 1.125rem !important;
   line-height: 1.5 !important;
 }
