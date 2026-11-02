@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **後台收件匣的網址可以點**（change `inbox-message-links`）— 收件匣的文字訊息（顧客、客服、Bot）把 `http://`、`https://` 網址顯示成另開分頁的連結，規則與 WebChat 訪客端相同（`splitTextLinks()`）：網址後面緊接的標點不算進連結，其他協定與 HTML 維持文字。系統提示訊息不變。
 - **測試 LIFF 設定**（issue #401，change `add-liff-config-test`）— LINE 渠道的 Bot 設定新增「測試 LIFF 設定」。按下後產生 10 分鐘有效的測試連結與 QR code，管理者用手機 LINE 開啟，走跟顧客開優惠券相同的 LIFF 登入，後端以 LINE Login Channel ID 驗證 ID token，結果同時顯示在手機與後台。原本設定錯誤時，顧客開券只會改成要求登記 email，管理者看不出原因。失敗時寫出原因：LIFF 無法啟動、Scope 沒有 openid、ID token 跟 Login Channel ID 不符、連不上 LINE，以及 LINE 帳號不在這個官方帳號的聯絡人裡（還沒加好友，或 Login channel 跟官方帳號不在同一個 Provider）。測試成功的時間記在渠道 `settings.liffTest`，設定改過後不再顯示。新增 `POST /api/v1/channels/:id/liff-test`、`GET /api/v1/channels/:id/liff-test/:testId`（`channel.update`）與公開端點 `POST /api/v1/fan/liff-test`。
 
 ### Fixed

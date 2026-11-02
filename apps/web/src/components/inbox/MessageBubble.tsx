@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { AlertCircle, Bot, ExternalLink, FileText, Settings2 } from 'lucide-react';
 import { describeMessageMedia } from '@/lib/inbox/message-media';
+import { LinkifiedText } from '@/components/chatbox/LinkifiedText';
 
 /** 把 contentType 講成人話，用在送出失敗的提示裡（「這則影片沒有送出」）。 */
 function describeContentType(contentType: string): string {
@@ -212,7 +213,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             default:
               return (
                 <>
-                  <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
+                  <LinkifiedText text={textContent} className="text-sm whitespace-pre-wrap break-words" />
                   {/* 媒體下載失敗要看得到，否則客服以為還在下載 */}
                   {media.error && <p className="mt-1 text-xs text-destructive">{media.error}</p>}
                 </>
