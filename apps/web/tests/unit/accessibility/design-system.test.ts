@@ -55,7 +55,7 @@ describe('Web accessibility design system contract', () => {
 
   test('Chinese-first typography and interaction contracts are explicit in CSS', () => {
     assert.match(css, /body\s*\{[\s\S]*font-size:\s*1rem/);
-    assert.match(css, /\.cjk-readable\s*\{[\s\S]*font-size:\s*1\.125rem/);
+    assert.match(css, /\.text-xs[^{]*\{[\s\S]*font-size:\s*0\.84375rem/);
     assert.match(css, /min-height:\s*44px/);
     assert.match(css, /:focus-visible[^{]*\{[\s\S]*outline:/);
     assert.match(css, /prefers-reduced-motion:\s*reduce/);

@@ -142,9 +142,14 @@
   }
 }
 
-/* 主要中文標題/操作 copy 可明確套用此 class；英數、代碼、日期保留元件自己的密度。 */
-.cjk-readable {
-  font-size: 1.125rem !important;
+/* 中文/一般 UI 最小字級：13.5px；避免 text-xs 與任意 9–13px 值低於可讀底線。 */
+:where(html[lang^='zh']) .text-xs,
+:where(html[lang^='zh']) .text-\[9px\],
+:where(html[lang^='zh']) .text-\[10px\],
+:where(html[lang^='zh']) .text-\[11px\],
+:where(html[lang^='zh']) .text-\[12px\],
+:where(html[lang^='zh']) .text-\[13px\] {
+  font-size: 0.84375rem !important;
   line-height: 1.5 !important;
 }
 
