@@ -52,12 +52,17 @@
 - [x] 8.3 `assertMergeAllowed()`：鎖定、可見檢查、其他分店資料檢查收成一個函式，合併與解除合併都呼叫它；同一個交易內的三個查詢改為依序執行
 - 不修改：建立群發時檢查活動與新增群發仍是兩個查詢，總店剛好同時把其他分店的群發加進同一個活動才會發生；分店合併時的列鎖可能與進站訊息的寫入互相等待，PostgreSQL 會偵測死結並讓其中一方失敗，合併是少見的手動操作；分群列表逐筆計算人數，延遲隨分群數增加；MCP 的 `accessible()` 已在 `mcp.routes.ts` 快取，呼叫兩次不會重算
 
-## 9. 完成檢查
+## 9. rebase 到 main 之後（2026-11-02）
 
-- [x] 9.1 `pnpm test`、`pnpm test:feature` 通過
-- [x] 9.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
-- [x] 9.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
-- [x] 9.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
+- [x] 9.1 main 的功能健檢（#407）在 RBAC-04 新增 HC-CASES-08：工單詳情的 `conversations` 也列出看不到的渠道的對話。先寫測試「工單連結的對話」（`channel-scoped-visibility.test.ts`），在斷言上失敗後，`getCase()` 的 `conversations` 改為只含可見渠道
+- [x] 9.2 `AUDIT.md`：RBAC-04 移除這次修正的四列，MKT-04（群發）已修正並移除；`AUDIT-REVIEWS.md` 新增 2026-11-02 紀錄；健檢總表與 MARKETING 報告註明 #430 已修正
+
+## 10. 完成檢查
+
+- [x] 10.1 `pnpm test`、`pnpm test:feature` 通過
+- [x] 10.2 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 以 `--strict` 通過
+- [x] 10.3 `CHANGELOG.md` 加條目；更新 `docs/ref/` 描述渠道可見性的文件
+- [x] 10.4 `node scripts/validate-openspec.mjs extend-channel-visibility-to-contacts-and-marketing` 通過
 
 ## 突變驗證與既有測試的調整
 

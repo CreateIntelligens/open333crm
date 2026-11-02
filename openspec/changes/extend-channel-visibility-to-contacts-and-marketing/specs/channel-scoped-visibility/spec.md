@@ -110,7 +110,7 @@
 
 ### Requirement: 單筆對話與工單只回傳可見渠道的身份
 
-成員讀取單筆對話或工單時，回傳的 `contact.channelIdentities` SHALL 只含可見渠道的身份。對話與工單本身的渠道一定可見，其他渠道的身份 MUST NOT 出現。
+成員讀取單筆對話或工單時，回傳的 `contact.channelIdentities` SHALL 只含可見渠道的身份；工單回傳的 `conversations` SHALL 只含可見渠道的對話。對話與工單本身的渠道一定可見，其他渠道的身份 MUST NOT 出現。
 
 #### Scenario: 對話的聯絡人身份
 - **WHEN** 成員的可見渠道集合為 {CH-A}，讀取 CH-A 的對話，對話的聯絡人在 CH-B 也有身份
@@ -119,6 +119,10 @@
 #### Scenario: 工單的聯絡人身份
 - **WHEN** 成員的可見渠道集合為 {CH-A}，讀取關聯 CH-A 的工單，工單的聯絡人在 CH-B 也有身份
 - **THEN** 回傳的 `contact.channelIdentities` 只含 CH-A 的身份
+
+#### Scenario: 工單連結的對話
+- **WHEN** 成員的可見渠道集合為 {CH-A}，讀取關聯 CH-A 的工單，工單連結了 CH-A 與 CH-B 的對話各一段
+- **THEN** 回傳的 `conversations` 只含 CH-A 的對話
 
 ### Requirement: 群發只能使用可見渠道
 

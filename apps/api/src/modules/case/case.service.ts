@@ -217,6 +217,8 @@ export async function getCase(
         orderBy: { createdAt: 'desc' },
       },
       conversations: {
+        // 連結的對話只列可見渠道（channel-scoped-visibility）：工單可以連結其他渠道的對話
+        ...(visibleChannelId ? { where: { channelId: visibleChannelId } } : {}),
         select: {
           id: true,
           channelType: true,

@@ -564,3 +564,22 @@ test('修改含其他分店群發的活動被拒：修改、刪除、建立群�
   assert.equal(code(created), 'CAMPAIGN_HAS_OTHER_CHANNELS');
   assert.equal(await owner.broadcast.count({ where: { name: `${MARK}-bc-into-mixed` } }), 0);
 });
+
+test('工單連結的對話：只含可見渠道的對話', async () => {
+  const contact = await crossChannelContact('case-conversations');
+  const caseRecord = await owner.case.create({
+    data: { tenantId: A, contactId: contact.id, channelId: visible.id, title: `${MARK}-case-conversations` },
+  });
+  const convs = [];
+  for (const ch of [visible, hidden]) {
+    convs.push(
+      await owner.conversation.create({
+        data: { tenantId: A, contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT', caseId: caseRecord.id },
+      }),
+    );
+  }
+  const res = await memberApp.inject({ method: 'GET', url: `/api/v1/cases/${caseRecord.id}` });
+  assert.equal(res.statusCode, 200, res.body);
+  const ids = (res.json().data.conversations as Array<{ id: string }>).map((c) => c.id);
+  assert.deepEqual(ids, [convs[0]!.id]);
+});

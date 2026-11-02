@@ -30,7 +30,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **自動化規則與快速回覆預設組的路徑 id 先檢查格式**（#337 第八批發現）— `/api/v1/automation/rules/:id`（查詢、修改、刪除、試跑）與 `/api/v1/line/quick-reply-presets/:id`（修改、刪除）原本不檢查 `:id`。`:id` 不是 UUID 時，查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位，伺服器也每次記一筆錯誤。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
 - **分店帳號看不到其他分店的聯絡人、群發與報表**（issue #253，change `extend-channel-visibility-to-contacts-and-marketing`）— 渠道可見範圍原本只套在對話與工單：
   - 聯絡人只過濾渠道身份，聯絡人本身照樣列出，分店看得到其他分店客人的姓名、電話與 email。現在只在不可見渠道有身份的聯絡人不出現在清單；以 ID 讀取、修改、貼標、移除標籤，讀取它的對話、訊息、工單、時間軸與合併紀錄，以及合併與合併預覽都回 404。沒有任何渠道身份的聯絡人（客服手動建立）照常看得到。合併的 409 訊息原本會帶出另一個渠道的名稱，現在看不到的聯絡人先回 404。
-  - 單筆對話與工單回傳的 `contact.channelIdentities` 原本含其他渠道的身份（uid、暱稱），現在只含可見渠道。
+  - 單筆對話與工單回傳的 `contact.channelIdentities` 原本含其他渠道的身份（uid、暱稱），工單的 `conversations` 也列出其他渠道的對話，現在都只含可見渠道。
   - 群發原本不依渠道限制。現在群發列表只列可見渠道的群發；讀取、收件人、送出、取消不可見渠道的群發回 404；建立群發與預估受眾時指定不可見的渠道回 404；分群預覽只算看得到的聯絡人。群發仍不檢查渠道存取層級。MCP 的 `crm_line_get_broadcast`、`crm_line_broadcast_initiate` 一樣。
   - 報表原本統計全租戶。現在報表頁、匯出、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的報表工具只統計可見渠道。優惠券成效與「我的績效」不另外過濾；每日彙總照舊是全租戶的數字。
   - 解除合併、依渠道類型篩選聯絡人、合併預覽與修改聯絡人的回應、分群的人數（列表、單筆、預覽）、行銷活動的群發數與清單，也都只依可見範圍。已被合併的聯絡人依它直接併入的保留方判斷可見。任一方在其他分店渠道還有身分、對話或工單時，合併與解除合併回 403 `CONTACT_HAS_OTHER_CHANNELS`，由總店處理。行銷活動只看得到自己建立的、還沒有群發的，或有可見群發的；活動有其他分店群發時，修改、刪除或把群發加進去回 403 `CAMPAIGN_HAS_OTHER_CHANNELS`。客服績效只列出被授權可見渠道或有可見工單的客服。
