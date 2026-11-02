@@ -66,3 +66,21 @@ test('網址緊接日文假名或韓文時在文字前結束', () => {
   assert.equal(link('https://x.jp/aカタカナ'), 'https://x.jp/a');
   assert.equal(link('https://x.kr/a여기'), 'https://x.kr/a');
 });
+
+test('網址緊接破折號、刪節號或彎引號時在符號前結束', () => {
+  assert.deepEqual(splitTextLinks('請開啟 https://example.com/a—下一步'), [
+    { type: 'text', value: '請開啟 ' },
+    { type: 'link', value: 'https://example.com/a' },
+    { type: 'text', value: '—下一步' },
+  ]);
+  assert.deepEqual(splitTextLinks('看這裡 https://example.com/b…'), [
+    { type: 'text', value: '看這裡 ' },
+    { type: 'link', value: 'https://example.com/b' },
+    { type: 'text', value: '…' },
+  ]);
+  assert.deepEqual(splitTextLinks('“https://example.com/c”'), [
+    { type: 'text', value: '“' },
+    { type: 'link', value: 'https://example.com/c' },
+    { type: 'text', value: '”' },
+  ]);
+});

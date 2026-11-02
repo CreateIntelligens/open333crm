@@ -23,7 +23,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
-- **WebChat 文字訊息中的網址可以點**（issue #253，change `improve-binding-prefill-and-webchat-links`）— 嵌入式 widget 與 `/chatbox` 頁面原本把網址顯示成純文字，綁定邀請送出的連結訪客點不了。現在客服、Bot 與問候語訊息中的 `http://`、`https://` 網址顯示成另開分頁的連結（`rel="noopener noreferrer"`），訪客自己送出的文字維持純文字，結尾的標點不算進網址（網址內成對的括號保留）；其他 scheme（例如 `javascript:`）維持純文字，訊息也不當 HTML 解析。拆分規則在 `@open333crm/shared` 的 `splitTextLinks()`，兩邊共用。
+- **WebChat 文字訊息中的網址可以點**（issue #253，change `improve-binding-prefill-and-webchat-links`）— 嵌入式 widget 與 `/chatbox` 頁面原本把網址顯示成純文字，綁定邀請送出的連結訪客點不了。現在客服、Bot 與問候語訊息中的 `http://`、`https://` 網址顯示成另開分頁的連結（`rel="noopener noreferrer"`），訪客自己送出的文字維持純文字，結尾的標點、緊接的破折號、刪節號與彎引號不算進網址（網址內成對的括號保留）；其他 scheme（例如 `javascript:`）維持純文字，訊息也不當 HTML 解析。拆分規則在 `@open333crm/shared` 的 `splitTextLinks()`，兩邊共用。
 
 ### Fixed
 
