@@ -169,12 +169,12 @@ function TreeNode({ node, pathname, depth, expanded, onToggle, onNavigate }: {
 
   return (
     <li>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0">
         {hasChildren ? (
           <button type="button" aria-label={`${isExpanded ? '收合' : '展開'}${node.label}`} aria-expanded={isExpanded} onClick={() => onToggle(node.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
-        ) : <span className="w-8 shrink-0" aria-hidden="true" />}
+        ) : <span className="w-0 shrink-0" aria-hidden="true" />}
         {node.href ? (
           <Link
             href={node.href}
