@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, X } from 'lucide-react';
 import api from '@/lib/api';
+import { LiffTestPanel, type LiffTestRecord } from './LiffTestPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -129,6 +130,11 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
   const handleRemoveKeyword = (kw: string) => {
     setHandoffKeywords(handoffKeywords.filter((k) => k !== kw));
   };
+
+  // 已存檔的 LIFF 設定：測試的是存檔的值（change add-liff-config-test）
+  const savedLiff = (channel?.settings as Record<string, unknown> | undefined)?.liffConfig as
+    | { liffId?: string; loginChannelId?: string }
+    | undefined;
 
   const handleSave = async () => {
     if (!channel) return;
@@ -388,6 +394,14 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
                 <li>把 LIFF ID 填到上一欄，Login channel 的 Channel ID 填到這一欄。</li>
               </ol>
             </div>
+            {channel && (
+              <LiffTestPanel
+                channelId={channel.id}
+                saved={{ liffId: savedLiff?.liffId ?? '', loginChannelId: savedLiff?.loginChannelId ?? '' }}
+                draft={{ liffId, loginChannelId }}
+                lastTest={(channel.settings as { liffTest?: LiffTestRecord } | undefined)?.liffTest ?? null}
+              />
+            )}
           </div>
 
           {error && (

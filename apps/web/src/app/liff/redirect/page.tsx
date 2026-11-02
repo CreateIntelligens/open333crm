@@ -16,6 +16,7 @@ import { REALTIME_ORIGIN } from '@/lib/constants';
 import fanApi from '@/lib/fan-api';
 import { openCouponViaLiff } from '@/lib/coupon/liff-coupon';
 import { rememberFanDeviceToken } from '@/lib/fan-device';
+import { runLiffTest } from '@/lib/liff-test';
 
 const TIMEOUT_MS = 8000;
 
@@ -24,7 +25,17 @@ export default function LiffEndpointPage() {
 
   useEffect(() => {
     (async () => {
-      const { s, ct, cid, lid } = resolveLiffParams(window.location.search);
+      const { s, ct, lt, cid, lid } = resolveLiffParams(window.location.search);
+      // 後台的 LIFF 設定測試（change add-liff-config-test）：結果顯示在手機上，同時回報給後台
+      if (lt && lid) {
+        const outcome = await runLiffTest(lt, lid, {
+          initLiff: (id) => withTimeout(initLiff(id), TIMEOUT_MS, 'liff.init'),
+          post: (url, body) => fanApi.post(url, body),
+          currentUrl: window.location.href,
+        });
+        if (outcome.kind === 'message') setError(outcome.text);
+        return;
+      }
       // 票券連結：以 LINE 帳號驗證顧客身分後開啟票券（add-coupon-system design D20）
       if (ct && lid) {
         const outcome = await openCouponViaLiff(ct, lid, {

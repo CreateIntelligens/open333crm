@@ -30,7 +30,7 @@ declare global {
  */
 export function getLiffParams(search: string): URLSearchParams {
   const direct = new URLSearchParams(search);
-  if (direct.has('s') || direct.has('ct') || direct.has('lid')) return direct;
+  if (direct.has('s') || direct.has('ct') || direct.has('lt') || direct.has('lid')) return direct;
   const state = direct.get('liff.state');
   if (state) return new URLSearchParams(state.replace(/^\?/, ''));
   return direct;
@@ -43,35 +43,45 @@ export function getLiffParams(search: string): URLSearchParams {
  * we persist the params to sessionStorage on the first load that has them, and
  * restore them on any later load that lost them (init reload, login round-trip).
  */
-const SS = { s: 'liff_s', ct: 'liff_ct', cid: 'liff_cid', lid: 'liff_lid' } as const;
+const SS = { s: 'liff_s', ct: 'liff_ct', lt: 'liff_lt', cid: 'liff_cid', lid: 'liff_lid' } as const;
 
 /**
- * s：短連結代碼；ct：票券權杖（優惠券以 LIFF 驗證身分，add-coupon-system design D20）。兩者擇一。
+ * s：短連結代碼；ct：票券權杖（優惠券以 LIFF 驗證身分，add-coupon-system design D20）；
+ * lt：LIFF 設定的測試（change add-liff-config-test）。三者擇一。
  */
-export function resolveLiffParams(search: string): { s: string | null; ct: string | null; cid: string | null; lid: string | null } {
+export function resolveLiffParams(search: string): {
+  s: string | null;
+  ct: string | null;
+  lt: string | null;
+  cid: string | null;
+  lid: string | null;
+} {
   const p = getLiffParams(search);
   let s = p.get('s');
   let ct = p.get('ct');
+  let lt = p.get('lt');
   let cid = p.get('cid');
   let lid = p.get('lid');
   try {
-    if (s || ct) {
+    if (s || ct || lt) {
       // Fresh load with params → persist this flow.
       sessionStorage.setItem(SS.s, s ?? '');
       sessionStorage.setItem(SS.ct, ct ?? '');
+      sessionStorage.setItem(SS.lt, lt ?? '');
       sessionStorage.setItem(SS.lid, lid ?? '');
       sessionStorage.setItem(SS.cid, cid ?? '');
     } else {
       // Params lost mid-flow → restore.
       s = sessionStorage.getItem(SS.s);
       ct = sessionStorage.getItem(SS.ct);
+      lt = sessionStorage.getItem(SS.lt);
       lid = lid ?? sessionStorage.getItem(SS.lid);
       cid = cid ?? sessionStorage.getItem(SS.cid);
     }
   } catch {
     /* sessionStorage unavailable — fall back to whatever the URL gave us */
   }
-  return { s: s || null, ct: ct || null, cid: cid || null, lid: lid || null };
+  return { s: s || null, ct: ct || null, lt: lt || null, cid: cid || null, lid: lid || null };
 }
 
 let loading: Promise<LiffSdk> | null = null;

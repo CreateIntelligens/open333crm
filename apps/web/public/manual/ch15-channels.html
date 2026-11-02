@@ -307,6 +307,8 @@
           <tr><td>首次進站招呼語</td><td>客戶第一次加好友或第一次傳訊息時自動送出，每人每個渠道只送一次。可以放 <code>{{contact.name}}</code> 帶入客戶名字。留空就不送</td></tr>
           <tr><td>非營業時間問候語</td><td>在營業時間以外收到訊息時的自動回覆。留空會用系統預設的內容。營業時間在「設定 &gt; 營業時間」設定</td></tr>
           <tr><td>LIFF App ID（短連結身份收集）</td><td>LINE 渠道才需要。填了之後，短連結在 LINE 裡被點擊時能認出是哪位客戶（見「<a href="ch12-shortlinks.html#p3">12 · 短連結</a>」）。格式像 <code>1660000000-AbCdEfGh</code>，請找負責 LINE 的工程師或管理員提供</td></tr>
+          <tr><td>LINE Login Channel ID（優惠券身分驗證）</td><td>LINE 渠道才需要。和 LIFF App ID 都填好後，LINE 客戶開優惠券時用 LINE 帳號自動驗證身分，不必登記 email（見「<a href="ch18-coupons.html">18 · 優惠券</a>」）。是 10 位數字，欄位下方有三個設定步驟</td></tr>
+          <tr><td>測試 LIFF 設定</td><td>確認上面兩個欄位和 LINE Developers 的設定都正確。做法見下方</td></tr>
         </tbody>
       </table>
       <ol class="steps">
@@ -314,6 +316,24 @@
         <li>調整需要的欄位，視窗可以往下捲。</li>
         <li>按「儲存」。視窗關閉就是存好了，馬上生效。</li>
       </ol>
+      <h3>測試 LIFF 設定</h3>
+      <p>LIFF 設定錯了，客戶開優惠券時不會出現錯誤，只會改成要求登記 email，所以填好後先測一次。</p>
+      <ol class="steps">
+        <li>填好 LIFF App ID 與 LINE Login Channel ID，按「儲存」，再重新打開「Bot 設定」。設定改過還沒儲存時，不能測。</li>
+        <li>按「測試 LIFF 設定」，畫面出現 QR code 與測試連結，10 分鐘內有效。</li>
+        <li>用<b>已經加這個官方帳號好友</b>的 LINE 帳號，以手機掃描 QR code。第一次會出現 LINE 的授權畫面，按「許可」。</li>
+        <li>手機和後台都會顯示結果。出現「設定正確」就完成了，後台之後會顯示「上次測試成功」與時間。</li>
+      </ol>
+      <table>
+        <thead><tr><th>結果</th><th>怎麼處理</th></tr></thead>
+        <tbody>
+          <tr><td>LINE 帳號不在這個官方帳號的聯絡人裡</td><td>先用這個 LINE 帳號加官方帳號好友、傳一則訊息，再測一次。已經是好友還是這個結果，代表 LINE Login channel 和官方帳號不在同一個 Provider，要在官方帳號的 Provider 底下重建 LINE Login channel 與 LIFF App</td></tr>
+          <tr><td>LINE 不接受這次登入的 ID token</td><td>LINE Login Channel ID 填錯了，要填建立這個 LIFF App 的那個 LINE Login channel 的 Channel ID</td></tr>
+          <tr><td>LIFF 沒有提供 ID token</td><td>到 LINE Developers 的 LIFF App 設定，Scope 勾選 openid</td></tr>
+          <tr><td>LIFF 無法啟動</td><td>確認 LIFF App ID，以及 LIFF App 的 Endpoint URL 是欄位說明寫的網址</td></tr>
+          <tr><td>測試連結已過期，沒有收到手機的測試結果</td><td>手機的 LINE 顯示錯誤頁，通常是 LIFF App ID 錯誤；手機開到其他網頁，是 Endpoint URL 設錯</td></tr>
+        </tbody>
+      </table>
       <div class="info"><span>ℹ️</span><div>「關鍵字回覆」的規則在「LINE 渠道工具」設定（見「<a href="ch10-line.html">10 · LINE 渠道工具</a>」），AI 怎麼回答在「AI 設定」與知識庫調整（見「<a href="ch07-ai-settings.html">07 · AI 設定</a>」）。</div></div>
     </section>
 

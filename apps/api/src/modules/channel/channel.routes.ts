@@ -35,6 +35,10 @@ import { ALL_CHANNELS, resolveChannelVisibility, assertChannelVisible } from '..
 import { notFound } from '../../shared/messages/resource.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { resolveBindingHandle } from '../identity-binding/binding-links.js';
+import { getBindingStore } from '../identity-binding/binding-code.js';
+import { checkLineIdToken } from '../coupon/line-id-token.js';
+import { getLiffTestResultFlow, startLiffTestFlow, type LiffTestDeps } from './liff-test.flow.js';
+import { liffTestIdSchema } from './liff-test-public.routes.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -272,7 +276,19 @@ function bindingHandleView(channel: { id: string; channelType: string; settings:
   };
 }
 
-export default async function channelRoutes(fastify: FastifyInstance) {
+export interface ChannelRoutesOptions {
+  /** 測試注入 LIFF 測試用的 Redis 替身、向 LINE 驗證的替身與時鐘（change add-liff-config-test） */
+  liffTest?: Partial<LiffTestDeps>;
+}
+
+export default async function channelRoutes(fastify: FastifyInstance, opts: ChannelRoutesOptions = {}) {
+  const liffTestDeps = (): LiffTestDeps => ({
+    prisma: fastify.prisma,
+    checkIdToken: checkLineIdToken,
+    ...opts.liffTest,
+    store: opts.liffTest?.store ?? getBindingStore(),
+  });
+
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
@@ -389,6 +405,22 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
     return reply.send(success(result));
   });
+
+  // POST /api/v1/channels/:id/liff-test — 產生 LIFF 設定的測試連結（change add-liff-config-test）
+  fastify.post<{ Params: { id: string } }>('/:id/liff-test', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    return reply.send(success(await startLiffTestFlow(liffTestDeps(), request.agent.tenantId, id)));
+  });
+
+  // GET /api/v1/channels/:id/liff-test/:testId — 查詢手機回報的測試結果
+  fastify.get<{ Params: { id: string; testId: string } }>(
+    '/:id/liff-test/:testId',
+    { preHandler: requirePermission('channel.update') },
+    async (request, reply) => {
+      const { id, testId } = z.object({ id: z.string().uuid(), testId: liffTestIdSchema }).parse(request.params);
+      return reply.send(success(await getLiffTestResultFlow(liffTestDeps(), request.agent.tenantId, id, testId)));
+    },
+  );
 
   // POST /api/v1/channels/webhook-base-url — 批次更新所有渠道的 Webhook URL
   fastify.post('/webhook-base-url', { preHandler: requirePermission('channel.update') }, async (request, reply) => {

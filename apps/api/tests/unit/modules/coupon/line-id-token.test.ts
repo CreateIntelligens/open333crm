@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { verifyLineIdToken } from '#src/modules/coupon/line-id-token.js';
+import { checkLineIdToken, verifyLineIdToken } from '#src/modules/coupon/line-id-token.js';
 
 function fakeFetch(status: number, body: unknown, calls: Array<{ url: string; init: RequestInit }> = []) {
   return (async (url: string, init: RequestInit) => {
@@ -36,4 +36,34 @@ test('連不上 LINE 時視為驗證失敗，不拋錯', async () => {
     throw new Error('ECONNRESET');
   }) as unknown as typeof fetch;
   assert.equal(await verifyLineIdToken('tok', '1660000001', failing), null);
+});
+
+// ── checkLineIdToken：測試 LIFF 設定時分辨「LINE 不接受」與「連不上 LINE」（change add-liff-config-test D4）──
+
+test('checkLineIdToken：驗證通過回 ok 與 sub', async () => {
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(200, { sub: 'U123', aud: '1660000001' })), { result: 'ok', sub: 'U123' });
+});
+
+test('checkLineIdToken：LINE 回 400 是 rejected', async () => {
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(400, { error: 'invalid_request' })), { result: 'rejected' });
+});
+
+test('checkLineIdToken：aud 與 client_id 不同是 rejected', async () => {
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(200, { sub: 'U123', aud: '9999999999' })), { result: 'rejected' });
+});
+
+test('checkLineIdToken：LINE 回 5xx 是 unreachable', async () => {
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(503, {})), { result: 'unreachable' });
+});
+
+test('checkLineIdToken：LINE 限流（429）或逾時（408）是 unreachable，不是設定錯誤', async () => {
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(429, {})), { result: 'unreachable' });
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(408, {})), { result: 'unreachable' });
+});
+
+test('checkLineIdToken：連線失敗是 unreachable', async () => {
+  const failing = (async () => {
+    throw new Error('ECONNRESET');
+  }) as unknown as typeof fetch;
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', failing), { result: 'unreachable' });
 });
