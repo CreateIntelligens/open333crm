@@ -89,8 +89,8 @@
 | [TRIAL-02](#trial-02) | 試用 | P2 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效；通用端點也能寫壞租戶的個資遮罩設定，讓該租戶所有訊息寫入失敗 | 執行時確認 |
 | [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
 | [TRIAL-04](#trial-04) | 試用 | P3 | 部分修正 | 租戶頁啟用已過期的試用租戶，只維持到下一輪排程，並重寄到期信；啟用不清除軟刪標記。延長試用已改為清除標記（`9f3c6c1a`） | 執行時確認 |
-| [TRIAL-05](#trial-05) | 試用 | P1 | 已修正 | 同一 email 待驗證時再申請一次會覆寫密碼，申請人點信後站台以他人密碼開通；`e90e9849` 改為申請不收密碼、驗證後才設定 | 執行時確認 |
-| [TRIAL-06](#trial-06) | 試用 | P2 | 已修正 | 再送一次試用申請會繞過重寄節流，換 IP 就能對任意信箱無限寄驗證信；`e90e9849` 改為待驗證時走重寄節流 | 執行時確認 |
+| [TRIAL-05](#trial-05) | 試用 | P1 | 已修正 | 同一 email 待驗證時再申請一次會覆寫密碼，申請人點信後站台以他人密碼開通；#407 改為申請不收密碼、驗證後才設定 | 執行時確認 |
+| [TRIAL-06](#trial-06) | 試用 | P2 | 已修正 | 再送一次試用申請會繞過重寄節流，換 IP 就能對任意信箱無限寄驗證信；#407 改為待驗證時走重寄節流 | 執行時確認 |
 | [TRIAL-07](#trial-07) | 試用 | P2 | 未處理 | 手動開通表單預設「免費試用」方案但不設試用到期日，這類租戶永遠停在試用方案，也不出現在試用管理頁 | 執行時確認 |
 | [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | [PLAN-02](#plan-02) | 方案與額度 | P3 | 未處理 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
@@ -231,7 +231,7 @@
 | [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
 | [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
-| [CI-04](#ci-04) | CI 與測試 | P2 | 已修正 | 試用申請與開通完全沒有自動測試，主規格 `trial-application` 的 9 個 scenario 都沒有測試；`e90e9849` 為每個 scenario 補上同名測試 | 靜態確認 |
+| [CI-04](#ci-04) | CI 與測試 | P2 | 已修正 | 試用申請與開通完全沒有自動測試，主規格 `trial-application` 的 9 個 scenario 都沒有測試；#407 為每個 scenario 補上同名測試 | 靜態確認 |
 
 ## 租戶隔離與權限
 
@@ -1050,7 +1050,7 @@ PlatformSetting（KV，不知道型別）
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-01（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`apps/api/src/modules/trial/trial.service.ts:87-101`、`:200`；兩個 IP 以同一 email、不同密碼申請，點第二封信開通後，第一個密碼登入 401、第二個密碼 200（健檢實測）。
 
-**已修正**（`e90e9849`，change `trial-set-password-after-verify`）：申請時不收密碼，`POST /trial/signups` 帶來的 `password` 忽略不存，`trial_signups.passwordHash` 已由 migration 移除。`GET /trial/verify` 只確認連結、不開通；驗證頁送出密碼（`POST /trial/verify`）後，才在同一個交易內消耗 token、以這次送出的密碼建立管理員。待驗證的申請再送一次不改站台名稱，驗證頁也可以修改站台名稱。測試：`apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`「搶先申請的人無法決定管理員密碼」「待驗證時以不同站台名稱再申請」「申請時送出的密碼被忽略」。
+**已修正**（#407，change `trial-set-password-after-verify`）：申請時不收密碼，`POST /trial/signups` 帶來的 `password` 忽略不存，`trial_signups.passwordHash` 已由 migration 移除。`GET /trial/verify` 只確認連結、不開通；驗證頁送出密碼（`POST /trial/verify`）後，才在同一個交易內消耗 token、以這次送出的密碼建立管理員。待驗證的申請再送一次不改站台名稱，驗證頁也可以修改站台名稱。測試：`apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`「搶先申請的人無法決定管理員密碼」「待驗證時以不同站台名稱再申請」「申請時送出的密碼被忽略」。
 
 修正前已開通的試用站台，管理員密碼可能已被他人覆寫過。這次修正沒有清查既有站台。
 
@@ -1063,7 +1063,7 @@ PlatformSetting（KV，不知道型別）
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-02（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`apps/api/src/modules/trial/trial.service.ts:87-118`（節流只在 `:131-135` 的 `resendTrial`）；7 個不同的 `X-Forwarded-For` 對同一信箱送申請，幾秒內寄出 7 封驗證信（健檢實測）。
 
-**已修正**（`e90e9849`，change `trial-set-password-after-verify`）：`requestTrial()` 遇到待驗證的申請時改呼叫 `resendTrial()`，與 `/resend` 共用「間隔 60 秒、最多 5 封」的節流，並寄到原申請的 email。測試：`trial-signup-verify.test.ts`「待驗證時連續再申請受重寄節流」。
+**已修正**（#407，change `trial-set-password-after-verify`）：`requestTrial()` 遇到待驗證的申請時改呼叫 `resendTrial()`，與 `/resend` 共用「間隔 60 秒、最多 5 封」的節流，並寄到原申請的 email。測試：`trial-signup-verify.test.ts`「待驗證時連續再申請受重寄節流」。
 
 <a id="trial-07"></a>
 ### TRIAL-07：手動開通預設試用方案，卻不設到期日
@@ -2933,7 +2933,7 @@ grep -cE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-04（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`git ls-files apps/*/tests` 搜尋 `requestTrial`、`verifyAndProvision`、`normalizeEmail`、`trial/signups` 都沒有結果（讀程式）。
 
-**已修正**（`e90e9849`，與 TRIAL-05 同一個 change）：主規格 `trial-application` 的每個 scenario（含這次新增的）都有同名測試，在 `apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`；路由的輸入驗證在 `apps/api/tests/unit/modules/trial/trial-routes.test.ts`，驗證頁在 `apps/web/tests/unit/app/trial/verify-page.test.tsx`。`email-normalizer.ts` 的非 gmail 網域行為（HC-PLATFORM-TRIALS-14）仍沒有測試。
+**已修正**（#407，與 TRIAL-05 同一個 change）：主規格 `trial-application` 的每個 scenario（含這次新增的）都有同名測試，在 `apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`；路由的輸入驗證在 `apps/api/tests/unit/modules/trial/trial-routes.test.ts`，驗證頁在 `apps/web/tests/unit/app/trial/verify-page.test.tsx`。`email-normalizer.ts` 的非 gmail 網域行為（HC-PLATFORM-TRIALS-14）仍沒有測試。
 
 ## 已查證後排除的項目
 
