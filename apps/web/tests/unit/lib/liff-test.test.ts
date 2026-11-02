@@ -52,6 +52,16 @@ test('LIFF 啟動失敗：回報 init_failed，顯示回傳的說明', async () 
   assert.deepEqual(post.mock.calls[0], ['/fan/liff-test', { testId: TEST_ID, failure: 'init_failed' }]);
 });
 
+test('LIFF 啟動後的 SDK 呼叫拋錯：回報 init_failed，不讓後台停在等待結果', async () => {
+  for (const broken of ['isLoggedIn', 'getIDToken'] as const) {
+    const { d, post } = deps({ reply: { status: 'init_failed', message: 'LIFF 無法啟動' } });
+    const init = d.initLiff;
+    d.initLiff = async (id) => ({ ...(await init(id)), [broken]: () => { throw new Error(`${broken} failed`); } });
+    assert.deepEqual(await runLiffTest(TEST_ID, 'L', d), { kind: 'message', text: 'LIFF 無法啟動', ok: false }, broken);
+    assert.deepEqual(post.mock.calls[0], ['/fan/liff-test', { testId: TEST_ID, failure: 'init_failed' }], broken);
+  }
+});
+
 test('測試連結過期：顯示請回後台重新產生', async () => {
   const expired = Object.assign(new Error('Request failed with status code 410'), { response: { status: 410 } });
   const { d } = deps({ reply: expired });

@@ -23,7 +23,7 @@
 
 ## 3. LIFF 入口頁的測試流程（Web）
 
-- [x] 3.1 測試 `apps/web/tests/unit/lib/liff-test.test.ts`，涵蓋「LIFF 入口頁的測試流程」：取得 ID token 後回報、沒有 ID token、LIFF 啟動失敗、測試連結過期；`resolveLiffParams` 保留 `lt`
+- [x] 3.1 測試 `apps/web/tests/unit/lib/liff-test.test.ts`，涵蓋「LIFF 入口頁的測試流程」：取得 ID token 後回報、沒有 ID token、LIFF 啟動失敗（含啟動後 SDK 呼叫拋錯，依 PR #429 審查補上，先失敗）、測試連結過期；`resolveLiffParams` 保留 `lt`
 - [x] 3.2 實作 `apps/web/src/lib/liff-test.ts`，`/liff/redirect` 看到 `lt` 時呼叫它；`resolveLiffParams` 處理 `lt`
 
 ## 4. 後台顯示測試狀態（Web）

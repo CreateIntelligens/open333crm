@@ -10,6 +10,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **測試 LIFF 設定：LIFF SDK 拋錯時後台不再停在等待結果**（PR #429 審查）— 手機端在 `liff.init` 之後呼叫 `isLoggedIn`、`login`、`getIDToken` 拋錯時，原本沒有回報，後台要等 10 分鐘連結過期才看到結果。現在回報 `init_failed`，手機與後台都顯示「LIFF 無法啟動」的說明。
+
 - **試用站台的管理員密碼改在驗證 email 之後設定**（AUDIT TRIAL-05、TRIAL-06，change `trial-set-password-after-verify`）— 原本申請時就收密碼，同一 email 待驗證時再送一次申請，會覆寫密碼與站台名稱並寄新信：知道別人 email 的人可以覆寫對方的申請，或搶先替對方申請，對方點信後站台以攻擊者的密碼開通。現在：
   - `POST /api/v1/trial/signups` 只收 email 與站台名稱。舊頁面送來的 `password` 忽略、不儲存。
   - 待驗證的申請再送一次時不改任何申請資料，依重寄節流（間隔 60 秒、最多 5 封）重寄驗證信，寄到原申請的 email。原本每送一次就寄一封，換 IP 可以無限寄信。
