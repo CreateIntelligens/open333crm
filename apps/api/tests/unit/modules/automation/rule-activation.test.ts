@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { updateRule } from '#src/modules/automation/automation.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const TENANT = 't1';
 
@@ -52,7 +53,7 @@ const legacySentiment = {
 
 test('開啟含未知動作的規則', async () => {
   const { prisma, updates } = db(legacyAutoAssign);
-  await assert.rejects(updateRule(prisma, 'r1', TENANT, { isActive: true }), (err: Error & { statusCode?: number }) => {
+  await assert.rejects(updateRule(createMockTenantCtx(prisma, TENANT).ctx, 'r1', { isActive: true }), (err: Error & { statusCode?: number }) => {
     assert.equal(err.statusCode, 400);
     assert.match(err.message, /第 2 個動作「auto_assign」不是系統提供的動作/);
     return true;
@@ -62,7 +63,7 @@ test('開啟含未知動作的規則', async () => {
 
 test('停用不合契約的規則', async () => {
   const { prisma, updates } = db(legacySentiment);
-  await updateRule(prisma, 'r2', TENANT, { isActive: false });
+  await updateRule(createMockTenantCtx(prisma, TENANT).ctx, 'r2', { isActive: false });
   assert.deepEqual(updates, [{ isActive: false }]);
 });
 
@@ -71,6 +72,6 @@ test('開啟合法的規則', async () => {
     ...legacyAutoAssign,
     actions: [{ type: 'create_case', params: { title: '客戶諮詢' } }],
   });
-  await updateRule(prisma, 'r1', TENANT, { isActive: true });
+  await updateRule(createMockTenantCtx(prisma, TENANT).ctx, 'r1', { isActive: true });
   assert.deepEqual(updates, [{ isActive: true }]);
 });

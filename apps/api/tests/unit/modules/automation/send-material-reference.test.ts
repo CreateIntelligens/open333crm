@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createRule, updateRule } from '#src/modules/automation/automation.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const T = 'tenant-a';
 const MAT_OK = '11111111-1111-4111-8111-111111111111';
@@ -65,42 +66,42 @@ const is400 = (e: { statusCode?: number }) => e.statusCode === 400;
 
 test('Material ID is not a UUID：回 400，不建立規則', async () => {
   const { db, writes } = fakeDb();
-  await assert.rejects(createRule(db, T, rule('not-a-uuid')), is400);
+  await assert.rejects(createRule(createMockTenantCtx(db, T).ctx, rule('not-a-uuid')), is400);
   assert.equal(writes.length, 0);
 });
 
 test('Material does not exist：回 400，不建立規則', async () => {
   const { db, writes } = fakeDb();
-  await assert.rejects(createRule(db, T, rule(MAT_MISSING)), is400);
+  await assert.rejects(createRule(createMockTenantCtx(db, T).ctx, rule(MAT_MISSING)), is400);
   assert.equal(writes.length, 0);
 });
 
 test('Material of another tenant：回 400', async () => {
   const { db } = fakeDb();
-  await assert.rejects(createRule(db, T, rule(MAT_OTHER_TENANT)), is400);
+  await assert.rejects(createRule(createMockTenantCtx(db, T).ctx, rule(MAT_OTHER_TENANT)), is400);
 });
 
 test('停用中的素材：回 400', async () => {
   const { db } = fakeDb();
-  await assert.rejects(createRule(db, T, rule(MAT_OFF)), is400);
+  await assert.rejects(createRule(createMockTenantCtx(db, T).ctx, rule(MAT_OFF)), is400);
 });
 
 test('Existing active material：建立成功', async () => {
   const { db, writes } = fakeDb();
-  await createRule(db, T, rule(MAT_OK));
+  await createRule(createMockTenantCtx(db, T).ctx, rule(MAT_OK));
   assert.equal(writes.length, 1);
 });
 
 test('更新動作時同樣檢查', async () => {
   const { db, writes } = fakeDb();
-  await assert.rejects(updateRule(db, 'r1', T, { actions: rule(MAT_MISSING).actions }), is400);
+  await assert.rejects(updateRule(createMockTenantCtx(db, T).ctx, 'r1', { actions: rule(MAT_MISSING).actions }), is400);
   assert.equal(writes.length, 0);
 });
 
 test('沒有送 actions 時不檢查：既有規則指向已停用的素材，只改名稱或啟用狀態仍可成功', async () => {
   // 管理員要能停用或改名一條指向已停用素材的規則（關鍵字回覆頁編輯時會送完整 actions，會被檢查）
   const { db, writes } = fakeDb(MAT_OFF);
-  await updateRule(db, 'r1', T, { name: '改名' });
-  await updateRule(db, 'r1', T, { isActive: false });
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', { name: '改名' });
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', { isActive: false });
   assert.equal(writes.length, 2);
 });

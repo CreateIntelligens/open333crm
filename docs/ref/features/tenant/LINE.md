@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | LINE Rich Menu | `line` 的 `rich-menu.routes.ts`、`rich-menu.service.ts`；分眾綁定由 workers 的 `rich-menu-bind.handler.ts` 執行 | `richmenu.manage`（整個 plugin） |
 | 關鍵字回覆（LINE、Facebook、Instagram；2026-10-27 之前名為「LINE 關鍵字回覆」） | `automation` 模組，見[自動化](./AUTOMATION.md#關鍵字回覆) | `automation.view`、`automation.manage` |
-| LINE 快速回覆 | `line` 的 `quick-reply-preset.routes.ts`、`quick-reply-preset.service.ts` | 讀取只驗登入；新增、修改、刪除需要 `quickreply.manage` |
+| LINE 快速回覆 | `line` 的 `quick-reply-preset.routes.ts`、`quick-reply-preset.flow.ts`、`quick-reply-preset.service.ts` | 讀取只驗登入；新增、修改、刪除需要 `quickreply.manage` |
 
 側欄的「渠道」選單要求 `richmenu.manage` 才顯示。因此只有 `automation.manage` 或 `quickreply.manage`、沒有 `richmenu.manage` 的成員，在側欄找不到關鍵字回覆與快速回覆的入口。
 

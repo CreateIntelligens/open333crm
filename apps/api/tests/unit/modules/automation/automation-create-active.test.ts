@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createRule } from '#src/modules/automation/automation.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 function mockPrisma() {
   const created: Array<Record<string, unknown>> = [];
@@ -31,12 +32,12 @@ const base = {
 
 test('Create an inactive rule：送 isActive false 就建立停用的規則', async () => {
   const { prisma, created } = mockPrisma();
-  await createRule(prisma, 'tenant-1', { ...base, isActive: false });
+  await createRule(createMockTenantCtx(prisma, 'tenant-1').ctx, { ...base, isActive: false });
   assert.equal(created[0]!.isActive, false);
 });
 
 test('Client that does not send the active state：沒送 isActive 時維持啟用', async () => {
   const { prisma, created } = mockPrisma();
-  await createRule(prisma, 'tenant-1', base);
+  await createRule(createMockTenantCtx(prisma, 'tenant-1').ctx, base);
   assert.equal(created[0]!.isActive, true);
 });

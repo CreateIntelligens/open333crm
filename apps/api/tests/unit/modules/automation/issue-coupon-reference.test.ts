@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createRule, updateRule } from '#src/modules/automation/automation.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const T = 'tenant-a';
 const COUPON_OK = '11111111-1111-4111-8111-111111111111';
@@ -89,27 +90,27 @@ for (const [label, couponId] of [
 ] as const) {
   test(`存檔時券不存在或屬於其他租戶（${label}）：回 400，不儲存規則`, async () => {
     const { db, writes } = fakeDb();
-    await assert.rejects(createRule(db, T, rule(couponId)), is400);
+    await assert.rejects(createRule(createMockTenantCtx(db, T).ctx, rule(couponId)), is400);
     assert.equal(writes.length, 0);
   });
 }
 
 test('進行中的券：建立成功', async () => {
   const { db, writes } = fakeDb();
-  await createRule(db, T, rule(COUPON_OK));
+  await createRule(createMockTenantCtx(db, T).ctx, rule(COUPON_OK));
   assert.equal(writes.length, 1);
 });
 
 test('更新動作時同樣檢查', async () => {
   const { db, writes } = fakeDb();
-  await assert.rejects(updateRule(db, 'r1', T, { actions: rule(COUPON_MISSING).actions }), is400);
+  await assert.rejects(updateRule(createMockTenantCtx(db, T).ctx, 'r1', { actions: rule(COUPON_MISSING).actions }), is400);
   assert.equal(writes.length, 0);
 });
 
 test('沒有送 actions 時不檢查：既有規則的券已暫停，仍可停用或改名', async () => {
   const { db, writes } = fakeDb();
-  await updateRule(db, 'r1', T, { name: '改名' });
-  await updateRule(db, 'r1', T, { isActive: false });
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', { name: '改名' });
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', { isActive: false });
   assert.equal(writes.length, 2);
 });
 
@@ -117,7 +118,7 @@ test('沒有送 actions 時不檢查：既有規則的券已暫停，仍可停�
 
 test('規則上的券已暫停，只修改關鍵字可以存檔', async () => {
   const { db, writes } = fakeDb(COUPON_PAUSED);
-  await updateRule(db, 'r1', T, {
+  await updateRule(createMockTenantCtx(db, T).ctx, 'r1', {
     trigger: { type: 'keyword.matched', keywords: ['領券', '優惠'], match_mode: 'any' },
     actions: [{ type: 'issue_coupon', params: { couponId: COUPON_PAUSED, failureText: '您已經領過這張券囉' } }],
   });
@@ -126,19 +127,19 @@ test('規則上的券已暫停，只修改關鍵字可以存檔', async () => {
 
 test('更換成暫停的券會被擋', async () => {
   const { db, writes } = fakeDb(COUPON_OK);
-  await assert.rejects(updateRule(db, 'r1', T, { actions: rule(COUPON_PAUSED).actions }), is400);
+  await assert.rejects(updateRule(createMockTenantCtx(db, T).ctx, 'r1', { actions: rule(COUPON_PAUSED).actions }), is400);
   assert.equal(writes.length, 0);
 });
 
 test('更換成其他租戶的券會被擋', async () => {
   const { db } = fakeDb(COUPON_PAUSED);
-  await assert.rejects(updateRule(db, 'r1', T, { actions: rule(COUPON_OTHER_TENANT).actions }), is400);
+  await assert.rejects(updateRule(createMockTenantCtx(db, T).ctx, 'r1', { actions: rule(COUPON_OTHER_TENANT).actions }), is400);
 });
 
 test('新增第二個發券動作指向暫停的券會被擋', async () => {
   const { db } = fakeDb(COUPON_OK);
   await assert.rejects(
-    updateRule(db, 'r1', T, { actions: [...rule(COUPON_OK).actions, ...rule(COUPON_PAUSED).actions] }),
+    updateRule(createMockTenantCtx(db, T).ctx, 'r1', { actions: [...rule(COUPON_OK).actions, ...rule(COUPON_PAUSED).actions] }),
     is400,
   );
 });

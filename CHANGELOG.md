@@ -6,6 +6,9 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **同時建立加好友禮時只留一條**（PR #426 審查發現）— 主規格 `coupon-management`「加好友禮」規定每個租戶只有一條加好友禮，已經有一條時，再建立或把另一條「加入好友」規則改成發券要回 409。檢查是先查再寫，原本沒有鎖，同時送出的請求都會通過檢查，留下兩條加好友禮，兩條都會執行。現在檢查前以租戶取得交易級 advisory lock，同一租戶的加好友禮寫入依序執行。
+- **試跑規則與讀取執行紀錄要求檢視權限**（change `guard-automation-test-and-logs`）— `POST /api/v1/automation/rules/:id/test` 與 `GET /api/v1/automation/logs` 原本只檢查登入。權限註冊表登記 `automation.view` 涵蓋這兩項，但沒有這個權限碼的成員（例如預設的「客服」角色）仍然可以試跑任何規則、讀取整個租戶的執行紀錄。現在缺少 `automation.view` 時回 403，`error.details.requiredPermission` 是 `automation.view`。前端不受影響：規則頁與側欄本來就要求這個權限碼。
+- **自動化規則與快速回覆預設組的路徑 id 先檢查格式**（#337 第八批發現）— `/api/v1/automation/rules/:id`（查詢、修改、刪除、試跑）與 `/api/v1/line/quick-reply-presets/:id`（修改、刪除）原本不檢查 `:id`。`:id` 不是 UUID 時，查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位，伺服器也每次記一筆錯誤。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
 - **CLI 報表也擋下起始日晚於結束日的區間**（#337 review-loop 發現）— 主規格 `analytics-reports` 規定每一個接受 `from`、`to` 的報表端點，在 `from` 晚於 `to` 時回 400 並指出 `from`。`/api/v1/cli/analytics/*` 原本用自己的參數定義，沒有這項檢查，回 200 與看似正常的空報表。現在報表頁與 CLI 共用 `analytics/analytics-query.ts` 的參數定義。
 - **報表的訊息趨勢回傳日期**（#337 補測試時發現）— `GET /api/v1/analytics/message-trend` 與 `GET /api/v1/cli/analytics/message-trend` 每一列的 `date` 原本都是 `0`：初始化的欄位蓋掉了分組的日期。報表頁訊息趨勢圖的 X 軸因此全部顯示 0，`open333 stats` 顯示「Latest period: 0」。現在 `date` 是分組的日期（`YYYY-MM-DD`）。
 - **粉絲活動與積分不再寫錯資料**（change `portal-activity-guarantees`）— 前四項是同時操作的問題：這些操作原本都是先讀、再寫，沒有鎖，同時進來的請求都會通過檢查。後四項是讀取與輸入檢查的問題：
@@ -20,6 +23,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **自動化規則與快速回覆預設組改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `automation.service.ts` 與 `quick-reply-preset.service.ts` 改收 `TenantCtx`，新增 `automation.flow.ts` 與 `quick-reply-preset.flow.ts`。`/api/v1/automation/*` 與 `/api/v1/line/quick-reply-presets` 的路由都呼叫 flow。每個請求在一個交易內完成。原本每個查詢各自一個交易，例如儲存規則時，檢查素材、優惠券、加好友禮與寫入規則分屬不同的交易。回應內容與狀態碼不變。
 - **報表改為入口開交易**（#337 階段 3，AGENTS.md 結構規則 2）— `analytics.service.ts` 改收 `TenantCtx`，新增 `analytics.flow.ts`。報表頁、CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 都呼叫 flow。`GET /analytics/csat` 的查詢從路由移到 service，計算方式不變。回應內容不變。
   - 每個報表在一個交易內查詢。原本報表頁的每個查詢各自一個交易。
   - CLI 的報表原本以 `prismaAdmin`（BYPASSRLS）查詢，只靠查詢條件的 `tenantId` 隔離租戶。現在也受 RLS 限制。
