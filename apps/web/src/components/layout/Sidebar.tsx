@@ -5,13 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   AlertTriangle, BarChart3, Bell, BookOpen, Briefcase, ChevronDown, ChevronRight, CreditCard,
-  FileText, FlaskConical, Gauge, Link2, LogOut, Menu, MessageSquare, MessagesSquare,
+  FileText, FlaskConical, Gauge, Link2, Menu, MessageSquare, MessagesSquare,
   Network, PanelLeftClose, PanelLeftOpen, PieChart, Send, Settings,
   Smartphone, Store, Tags, Ticket, Trophy, Users, X, Zap, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
-import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 
 interface NavNode {
@@ -216,7 +215,7 @@ function TreeNode({ node, pathname, depth, expanded, onToggle, onNavigate }: {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { agent, logout, hasPermission, permissionsError, reloadPermissions } = useAuth();
+  const { hasPermission, permissionsError, reloadPermissions } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const navTree = useMemo(() => filterTree(NAV_TREE, hasPermission), [hasPermission]);
@@ -258,8 +257,6 @@ export function Sidebar() {
             <ul className="space-y-1">{navTree.map((node) => { const Icon = node.icon; const active = nodeContainsPath(node, pathname); const href = node.href ?? node.children?.find((child) => child.href)?.href ?? '/dashboard/inbox'; return <li key={node.id}><Link href={href} aria-label={node.label} title={node.label} className={cn('flex h-11 w-11 items-center justify-center rounded-md', active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent')}><Icon className="h-4 w-4" /></Link></li>; })}</ul>
           ) : <ul className="space-y-1">{navTree.map((node) => <TreeNode key={node.id} node={node} pathname={pathname} depth={0} expanded={expanded} onToggle={toggle} onNavigate={() => setMobileOpen(false)} />)}</ul>}
         </nav>
-        <Separator />
-        <div className="px-2 py-4"><div className="flex items-center gap-3 rounded-md px-3 py-2"><Avatar alt={agent?.name || '使用者'} size="sm" />{!collapsed && <div className="min-w-0 flex-1"><p className="truncate text-base font-medium">{agent?.name}</p><p className="truncate text-base text-muted-foreground">{agent?.role}</p></div>}<button onClick={logout} className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground" title="登出" aria-label="登出"><LogOut className="h-4 w-4" /></button></div></div>
       </aside>
     </>
   );
