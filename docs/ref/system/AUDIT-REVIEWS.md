@@ -4,6 +4,19 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-02：TRIAL-05、TRIAL-06、CI-04 修正
+
+使用者決定修法：申請時不收密碼，點驗證連結之後在頁面上設定密碼，系統才開通。修正在 `e90e9849`（change `trial-set-password-after-verify`）。以 feature 測試驗證（本機測試資料庫），沒有在 UAT 實測；部署前 UAT（即正式環境）仍可被利用。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| TRIAL-05 | 已修正 | `POST /trial/signups` 不收密碼；`GET /trial/verify` 只確認連結；`POST /trial/verify` 送出密碼後才在同一交易內開通。migration `20261102100000_drop_trial_signup_password_hash` 移除 `trial_signups.passwordHash`。改程式前，`trial-signup-verify.test.ts`「待驗證時以不同站台名稱再申請」（`'乙' !== '甲'`）與「申請時送出的密碼被忽略」（申請記錄有 `passwordHash`）以 assertion 失敗 |
+| TRIAL-06 | 已修正 | 待驗證的申請再送一次改走 `resendTrial()` 的節流。改程式前，「待驗證時連續再申請受重寄節流」以 assertion 失敗（60 秒內 5 次申請寄出 5 封，預期 1 封） |
+| CI-04 | 已修正 | 主規格 `trial-application` 的每個 scenario 都有同名測試（feature 19 個、路由 unit 6 個、驗證頁 jsdom 5 個） |
+| HC-PLATFORM-TRIALS-06、14 | 部分改善，仍留在健檢報告 | 申請不再收密碼，站台名稱 trim 後檢查；別名再申請不再覆寫站台名稱、重寄到原申請的 email。超長站台名稱的通用錯誤、非 gmail 去 `+tag` 未處理 |
+
+修正前已開通的試用站台，管理員密碼可能已被他人覆寫過。這次沒有清查既有站台。
+
 ## 2026-10-30：功能健檢寫入（25 個領域）
 
 功能健檢（2026-10-29～2026-10-30）逐領域對照規格、程式與前端入口，並實際操作前端流程。報告在 [`docs/ref/features/health/`](../features/health/README.md)，環境是本機獨立資料庫 `open333crm_advisor` 與 UAT Demo 租戶（以唯讀為主），程式版本 `5c81102e`。本次只寫入 `AUDIT.md`，沒有改程式。

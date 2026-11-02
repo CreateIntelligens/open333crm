@@ -22,8 +22,8 @@
 - [x] 3.2 `pnpm --filter @open333crm/api test:feature modules/trial` 通過
 - [x] 3.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict`、`node scripts/feature-impact.mjs --check` 沒有新增違規
 - [x] 3.4 `CHANGELOG.md` 加 `Fixed` 條目
-- [ ] 3.5 更新 `docs/ref/system/AUDIT.md`（TRIAL-05、TRIAL-06）、`docs/ref/system/AUDIT-REVIEWS.md`、`docs/ref/features/platform/TRIALS.md`、`.claude/skills/feature-platform-trials/SKILL.md`、`docs/ref/features/health/PLATFORM-TRIALS.md`、`docs/ref/features/health/README.md`
-- [ ] 3.6 `node scripts/validate-openspec.mjs trial-set-password-after-verify` 通過
+- [x] 3.5 更新 `docs/ref/system/AUDIT.md`（TRIAL-05、TRIAL-06）、`docs/ref/system/AUDIT-REVIEWS.md`、`docs/ref/features/platform/TRIALS.md`、`.claude/skills/feature-platform-trials/SKILL.md`、`docs/ref/features/health/PLATFORM-TRIALS.md`、`docs/ref/features/health/README.md`
+- [x] 3.6 `node scripts/validate-openspec.mjs trial-set-password-after-verify` 通過
 
 ## Workflow follow-up
 
