@@ -29,5 +29,5 @@ test('Chatbox message with an address：客服的訊息網址變成連結', () =
 test("Visitor's own address stays text：訪客自己送出的網址不變成連結", () => {
   const { container } = render(<MessageBubble message={message('INBOUND')} />);
   assert.equal(container.querySelectorAll('a').length, 0);
-  assert.ok(container.textContent?.includes('https://example.com/a'));
+  assert.equal(container.querySelector('p')?.textContent, '網址：https://example.com/a');
 });
