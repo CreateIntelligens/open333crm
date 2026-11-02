@@ -120,7 +120,7 @@ LIFF 入口頁 `/liff/redirect` 的網址帶 `lt` 時，系統 SHALL 跑測試�
 
 #### Scenario: LIFF 啟動失敗
 
-- **WHEN** `liff.init` 失敗或逾時
+- **WHEN** `liff.init` 失敗或逾時，或啟動後呼叫 `isLoggedIn`、`login`、`getIDToken` 拋錯
 - **THEN** 入口頁送出 `failure: 'init_failed'`，並顯示回傳的說明
 
 #### Scenario: 測試連結過期

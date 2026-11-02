@@ -41,10 +41,16 @@ export async function runLiffTest(testId: string, liffId: string, deps: LiffTest
   } catch {
     return report(testId, { failure: 'init_failed' }, deps);
   }
-  if (!liff.isLoggedIn()) {
-    liff.login({ redirectUri: deps.currentUrl });
-    return { kind: 'login' };
+  let idToken: string | null;
+  try {
+    if (!liff.isLoggedIn()) {
+      liff.login({ redirectUri: deps.currentUrl });
+      return { kind: 'login' };
+    }
+    idToken = liff.getIDToken();
+  } catch {
+    // 啟動後的 SDK 呼叫拋錯也要回報，否則後台會一直等到連結過期
+    return report(testId, { failure: 'init_failed' }, deps);
   }
-  const idToken = liff.getIDToken();
   return report(testId, idToken ? { idToken } : { failure: 'no_id_token' }, deps);
 }
