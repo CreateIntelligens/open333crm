@@ -33,7 +33,7 @@
 
 ## 5. 手冊
 
-- [x] 5.1 手冊第 15 章 Bot 設定補上 LINE Login Channel ID 與「測試 LIFF 設定」的步驟、結果對照表（第 18 章已連到第 15 章）；截圖待 UAT 上線後補拍
+- [x] 5.1 手冊第 15 章 Bot 設定補上 LINE Login Channel ID 與「測試 LIFF 設定」的步驟、結果對照表（第 18 章已連到第 15 章）；截圖於 2026-11-02 UAT 上線後補拍（`ch15-liff-fields.png`、`ch15-liff-test-qr.png`）
 
 ## 6. 完成檢查
 
@@ -42,5 +42,5 @@
 - [x] 6.3 api、web 的 tsc
 - [x] 6.4 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 加 `--strict`
 - [x] 6.5 `node scripts/validate-openspec.mjs add-liff-config-test` 與 `--specs`
-- [x] 6.6 `CHANGELOG.md` 的 `## [2026-10-29]` 加條目
-- [ ] 6.7 UAT 真機驗收後歸檔
+- [x] 6.6 `CHANGELOG.md` 的 `## [2026-11-02]` 加條目（rebase 後從 2026-10-29 移過來）
+- [x] 6.7 UAT 真機驗收後歸檔（2026-11-02 使用者以手機驗收通過）
