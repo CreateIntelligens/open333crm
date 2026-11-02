@@ -56,6 +56,11 @@ test('checkLineIdToken：LINE 回 5xx 是 unreachable', async () => {
   assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(503, {})), { result: 'unreachable' });
 });
 
+test('checkLineIdToken：LINE 限流（429）或逾時（408）是 unreachable，不是設定錯誤', async () => {
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(429, {})), { result: 'unreachable' });
+  assert.deepEqual(await checkLineIdToken('tok', '1660000001', fakeFetch(408, {})), { result: 'unreachable' });
+});
+
 test('checkLineIdToken：連線失敗是 unreachable', async () => {
   const failing = (async () => {
     throw new Error('ECONNRESET');

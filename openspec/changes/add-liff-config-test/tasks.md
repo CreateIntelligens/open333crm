@@ -1,6 +1,6 @@
 ## 1. 驗證 ID token 分辨「不接受」與「連不上」（design D4）
 
-- [x] 1.1 測試 `apps/api/tests/unit/modules/coupon/line-id-token.test.ts`：`checkLineIdToken` 在 LINE 回 400 時回 `rejected`、連線失敗時回 `unreachable`、通過時回 `ok` 與 `sub`；`verifyLineIdToken` 的既有測試不變
+- [x] 1.1 測試 `apps/api/tests/unit/modules/coupon/line-id-token.test.ts`：`checkLineIdToken` 在 LINE 回 400 時回 `rejected`、連線失敗與 LINE 回 5xx、408、429 時回 `unreachable`（408、429 依 PR #429 審查補上，先失敗於斷言）、通過時回 `ok` 與 `sub`；`verifyLineIdToken` 的既有測試不變
 - [x] 1.2 實作 `checkLineIdToken`，`verifyLineIdToken` 改為包裝它
 
 ## 2. 產生測試連結、回報與查詢（API）

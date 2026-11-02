@@ -54,7 +54,7 @@
 
 #### Scenario: 連不上 LINE
 
-- **WHEN** 向 LINE 驗證 ID token 時連線失敗或逾時
+- **WHEN** 向 LINE 驗證 ID token 時連線失敗、逾時，或 LINE 回 5xx、408、429
 - **THEN** 結果是 `line_unreachable`，`settings.liffTest` 不變
 
 #### Scenario: 手機回報 LIFF 端的失敗

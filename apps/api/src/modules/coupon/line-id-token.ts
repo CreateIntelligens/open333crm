@@ -7,7 +7,7 @@ import { logger } from '@open333crm/core';
 const VERIFY_URL = 'https://api.line.me/oauth2/v2.1/verify';
 const TIMEOUT_MS = 8000;
 
-/** ok：LINE 接受；rejected：LINE 不接受（過期、竄改、client_id 不符）；unreachable：連不上 LINE 或 LINE 端錯誤 */
+/** ok：LINE 接受；rejected：LINE 不接受（過期、竄改、client_id 不符）；unreachable：連不上 LINE、LINE 端錯誤、限流或逾時 */
 export type LineIdTokenCheck = { result: 'ok'; sub: string } | { result: 'rejected' } | { result: 'unreachable' };
 
 /**
@@ -26,7 +26,8 @@ export async function checkLineIdToken(
       body: new URLSearchParams({ id_token: idToken, client_id: clientId }).toString(),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (res.status >= 500) return { result: 'unreachable' };
+    // 限流與逾時是 LINE 端暫時的狀態，稍後重試即可，不能當成設定錯誤
+    if (res.status >= 500 || res.status === 408 || res.status === 429) return { result: 'unreachable' };
     if (!res.ok) return { result: 'rejected' };
     const data = (await res.json()) as { sub?: unknown; aud?: unknown };
     // LINE 已檢查 aud，這裡再確認一次，避免回應格式改變時誤用別人的 token

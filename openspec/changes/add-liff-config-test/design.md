@@ -24,7 +24,7 @@ ID token 驗證通過，只代表 LIFF 與 Login Channel ID 是同一組。顧�
 
 ### D4：驗證 ID token 分辨「不接受」和「連不上」
 
-現有的 `verifyLineIdToken` 兩種情況都回 null（給票券流程用，兩者都改走登記）。測試要給出不同的說明，所以新增 `checkLineIdToken`，回傳 `ok`／`rejected`／`unreachable`。`verifyLineIdToken` 改成包裝它，票券流程的行為不變。
+現有的 `verifyLineIdToken` 兩種情況都回 null（給票券流程用，兩者都改走登記）。測試要給出不同的說明，所以新增 `checkLineIdToken`，回傳 `ok`／`rejected`／`unreachable`。`verifyLineIdToken` 改成包裝它，票券流程的行為不變。LINE 回 5xx、408（逾時）或 429（限流）是暫時的狀態，歸為 `unreachable`；其他非 2xx（例如 400）才是 `rejected`。
 
 ### D5：前端回報 LIFF 端的失敗
 
