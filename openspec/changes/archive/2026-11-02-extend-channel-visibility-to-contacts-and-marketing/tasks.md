@@ -57,6 +57,17 @@
 - [x] 9.1 main 的功能健檢（#407）在 RBAC-04 新增 HC-CASES-08：工單詳情的 `conversations` 也列出看不到的渠道的對話。先寫測試「工單連結的對話」（`channel-scoped-visibility.test.ts`），在斷言上失敗後，`getCase()` 的 `conversations` 改為只含可見渠道
 - [x] 9.2 `AUDIT.md`：RBAC-04 移除這次修正的四列，MKT-04（群發）已修正並移除；`AUDIT-REVIEWS.md` 新增 2026-11-02 紀錄；健檢總表與 MARKETING 報告註明 #430 已修正
 
+## 11. 第五、六輪 code review 修正（隨 PR #430 合併）
+
+- [x] 11.1 `updateContact()` 在同一個交易內檢查聯絡人可見範圍，看不到回 404，不再只靠 route 先檢查
+- [x] 11.2 合併預覽在同一個交易內先檢查兩位聯絡人是否可見，看不到回 404（與不存在相同），再檢查其他分店的資料（403）。測試 `contact-merge-visibility.test.ts`，以突變驗證：拿掉可見檢查時失敗
+- [x] 11.3 合併紀錄的 `movedRecords` 對分店帳號只含可見渠道的身分 id，不回傳對話、工單等其他搬移紀錄的 id；前端只用身分數。突變：拿掉過濾時失敗
+- 不修改：被合併的聯絡人已封存，列表與分群本來就不列；MCP 群發權限只管 `crm_line_broadcast_initiate`，拒絕案例在 unit 測試
+
+## 12. 合併後的審查（PR #432）
+
+- [x] 12.1 分群群發送出時依群發建立者的可見範圍計算分群（原本以 `ALL_CHANNELS` 計算，收件人數會透露客人在其他分店有沒有帳號）。另開 change `segment-broadcast-creator-visibility`，已隨 #432 歸檔
+
 ## 10. 完成檢查
 
 - [x] 10.1 `pnpm test`、`pnpm test:feature` 通過

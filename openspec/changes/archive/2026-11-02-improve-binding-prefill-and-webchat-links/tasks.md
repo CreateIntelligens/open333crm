@@ -21,6 +21,10 @@ CodeQL 回報 `apps/widget/src/ui.ts`「DOM text reinterpreted as HTML」：訪�
 - [x] 3.2 widget 的訪客文字改由 `appendVisitorText()` 以 `textContent` 顯示，不經過連結轉換；建立連結前再以 `new URL()` 確認協定是 http/https。突變：讓 `appendVisitorText()` 改走連結轉換，測試失敗
 - [x] 3.3 `/chatbox` 的訊息泡泡移到 `components/chatbox/MessageBubble.tsx`，訪客自己的訊息（`INBOUND`）維持純文字
 
+## 3a. 合併後的審查（PR #432）
+
+- [x] 3a.1 `splitTextLinks()` 的網址不含一般標點區（U+2000–206F），網址緊接破折號、刪節號或彎引號時在符號前結束
+
 ## 4. 完成檢查
 
 - [x] 4.1 `pnpm test` 通過
