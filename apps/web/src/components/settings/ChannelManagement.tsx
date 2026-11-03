@@ -39,6 +39,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { SettingsLoadError } from '@/components/knowledge/SettingsLoadError';
 import { usePermission } from '@/providers/AuthProvider';
 import { ChannelAccountRouting } from './ChannelAccountRouting';
 import { META_CONNECT_ERROR_TEXT, MetaConnectButton, MetaConnectDialog, useMetaConnectConfigured } from './MetaConnect';
@@ -59,8 +60,24 @@ interface Channel {
   createdAt: string;
 }
 
+/**
+ * 渠道列表讀取失敗時的說明（issue #411，RBAC-11）。
+ * 403 不可顯示成「沒有渠道」：租戶可能有啟用中的渠道，只是角色或方案擋下了檢視權限。
+ */
+export function describeChannelListError(err: unknown): { forbidden: boolean; message: string } {
+  const status = (err as { response?: { status?: number } } | null)?.response?.status;
+  if (status === 403) {
+    return {
+      forbidden: true,
+      message: '你沒有權限檢視渠道。需要「檢視渠道」權限，且目前的方案要包含渠道功能，請洽管理員。',
+    };
+  }
+  return { forbidden: false, message: getApiErrorMessage(err, '無法讀取渠道列表，請稍後重試') };
+}
+
 export function ChannelManagement() {
-  const { channels, isLoading, mutate } = useChannels();
+  const { channels, isLoading, error: channelsError, mutate } = useChannels();
+  const canCreateChannels = usePermission('channel.create');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const metaConnectConfigured = useMetaConnectConfigured();
   // Facebook 授權導回時帶 ?metaConnect=（選擇粉專）或 ?metaConnectError=（失敗原因）
@@ -387,14 +404,18 @@ export function ChannelManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
-          <Button size="sm" variant="outline" onClick={() => setShowWizard(true)}>
-            設定精靈
-          </Button>
-          <Button size="sm" onClick={() => setShowAddDialog(true)}>
-            <Plus className="mr-1 h-4 w-4" />
-            新增渠道
-          </Button>
+          {canCreateChannels && (
+            <>
+              {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
+              <Button size="sm" variant="outline" onClick={() => setShowWizard(true)}>
+                設定精靈
+              </Button>
+              <Button size="sm" onClick={() => setShowAddDialog(true)}>
+                <Plus className="mr-1 h-4 w-4" />
+                新增渠道
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -418,15 +439,22 @@ export function ChannelManagement() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : channelsError ? (
+        <SettingsLoadError
+          {...describeChannelListError(channelsError)}
+          onRetry={() => mutate()}
+        />
       ) : channels.length === 0 ? (
         <EmptyState
           icon={<Settings className="h-12 w-12" />}
           title="沒有渠道"
-          description="新增您的第一個渠道以開始接收訊息"
+          description={canCreateChannels ? '新增您的第一個渠道以開始接收訊息' : '目前沒有你看得到的渠道'}
           action={
-            <Button onClick={() => setShowAddDialog(true)}>
-              <Plus className="mr-1 h-4 w-4" /> 新增渠道
-            </Button>
+            canCreateChannels ? (
+              <Button onClick={() => setShowAddDialog(true)}>
+                <Plus className="mr-1 h-4 w-4" /> 新增渠道
+              </Button>
+            ) : undefined
           }
         />
       ) : (

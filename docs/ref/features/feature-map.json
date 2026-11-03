@@ -2756,7 +2756,7 @@
         },
         {
           "domain": "platform-trials",
-          "why": "試用開通綁定 trial 方案；試用方案的 features 不含 channels（HC-PLATFORM-PLANS-01）"
+          "why": "試用開通綁定 trial 方案；試用方案的 features 天花板決定試用租戶能用哪些功能（含 channels，issue #411）"
         },
         {
           "domain": "notifications",

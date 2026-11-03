@@ -98,7 +98,7 @@ description: >
 ## 常見 bug 從哪裡查
 - 「升級／換方案後還是 403」：先看 `getTenantPlanId` 的 60 秒行程快取（`apps/api/src/services/tenant-plan.cache.ts`）；直接改資料庫或多行程時要等 60 秒。Redis `perms:tenant:{roleId}:{planId}` 是第二層，`FLUSHDB` 清不到第一層。
 - 「角色頁明明有勾，成員卻 403」：方案天花板擋掉（PLAN-08）；看 403 的 `details.requiredPermission` 屬於哪個 feature，再查租戶方案的 `features` 與 `permissionOverrides.deny`。
-- 「渠道頁顯示沒有渠道、但收件匣有訊息」：方案不含 `channels`，`GET /channels` 403 被顯示成空狀態。seed 的 `trial`、`light` 都不含 `channels`（HC-PLATFORM-PLANS-01）。
+- 「渠道頁顯示沒有權限」：`GET /channels` 回 403。看 `details.requiredPermission`，再查角色有沒有 `channel.view`、方案 `features` 有沒有 `channels`。seed 的五個方案都含 `channels`；`trial`、`light` 原本沒有，issue #411 以 seed 與 migration `20261103120000_enable_channels_on_trial_light` 補上。平台改了方案的 `features` 之後，seed 在 API 每次啟動時會把五個 seed 方案的 `name`、`features`、`limits`、`priceMonthly` 寫回 `packages/database/prisma/seed-data/plans.ts` 的值。
 - 「平台改了上限卻沒生效」：同時編輯兩張方案卡片時，先存的那張會重載資料，另一張輸入框顯示新值、送出的卻是舊值（HC-PLATFORM-PLANS-02）；也檢查租戶有沒有 `limitOverrides`（覆寫優先）。
 - 「方案人數上限擋不住」：看是不是從停用改回啟用的渠道（成員已檢查）；`maxTags` 本來就不擋。
 - 「AI 額度用完卻還能用」：該租戶是 BYOK（不計不擋），或 `monthlyTokens` 是 null；BYOK 解密失敗會退回平台金鑰開始計數（AI-01）。
