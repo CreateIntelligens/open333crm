@@ -36,6 +36,7 @@ import {
 } from './passkey.service.js';
 import { parseCliScopes } from './cli-session.service.js';
 import { issueCliLoginSessionFlow, revokeCurrentCliSessionFlow } from './cli-session.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { notFound } from '../../shared/messages/resource.js';
 
 type TokenPayload = FastifyJWT['payload'];
@@ -553,6 +554,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
       fastify,
       agent,
       body.name ?? body.profile ?? 'Open333 CLI',
+      request.ip,
     );
 
     return reply.send(
@@ -585,7 +587,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
   }, async (request, reply) => {
     const session = request.agent.cliSession;
     if (session) {
-      await revokeCurrentCliSessionFlow(fastify, request.agent.tenantId, session.id);
+      await revokeCurrentCliSessionFlow(fastify, actorOf(request), session.id);
     }
     return reply.send(success({ loggedOut: true }));
   });

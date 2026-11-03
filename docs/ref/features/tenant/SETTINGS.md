@@ -56,6 +56,15 @@
 
 `office-hours.service.ts` 的 `isWithinOfficeHours()` 依租戶時區換算現在時間後比對。
 
+`PUT /settings/office-hours` 依 `settings/office-hours-settings.ts` 的 schema 檢查輸入，不合法時回 400 `VALIDATION_ERROR`，已存的設定不變：
+
+- 時段是 `HH:mm`，範圍 00:00～23:59，結束時間必須晚於開始時間。不支援跨過午夜的時段。
+- 假日是存在的日期，最多 366 筆。
+- 時區是 Node 可以換算的 IANA 時區。
+- 非營業時間的訊息是 1～1000 字。
+
+讀取時以同一份 schema 解析已存的設定。設定不合法時（例如其他設定建立 `TenantSettings` 時留下的 `{}`，或加上檢查之前存入的不合法時區），整份當作沒有設定：回傳預設值，`enabled` 是 `false`，收訊時不自動回覆。讀取不改寫資料庫，成員下一次儲存時覆蓋。
+
 客人在非營業時間傳訊息時，進站管線最後一步 `sendOutsideHoursAutoReply()` 送出自動回覆：
 
 - 渠道的 `botConfig.offlineGreeting` 有值時，優先用它，而不是營業時間設定的訊息。
@@ -78,7 +87,7 @@ API 金鑰讓外部夥伴系統把文件推送到知識庫（`POST /knowledge/pa
 | 動作 | 端點 |
 | --- | --- |
 | 列出 | `GET /settings/api-keys` |
-| 建立 | `POST /settings/api-keys`，可以指定有效天數；不指定就不會過期 |
+| 建立 | `POST /settings/api-keys`，可以指定 1～365 天的有效天數；不指定就不會過期 |
 | 撤銷 | `DELETE /settings/api-keys/:id`，把金鑰設為停用 |
 
 金鑰的格式是 `pk_` 開頭加一串隨機字元。完整金鑰只在建立時回傳一次；資料庫只存雜湊值，清單只顯示前綴與最後幾碼。
@@ -92,7 +101,7 @@ CLI 連線頁列出租戶內所有未撤銷的 CLI token，也能在這裡建立
 | 動作 | 端點 |
 | --- | --- |
 | 列出 | `GET /settings/cli-sessions`：租戶內所有成員的 token，不只自己的 |
-| 建立 | `POST /settings/cli-sessions`：為自己建立一個 token，可以指定 scope 與有效天數，也可以加上 MCP 讀取的 scope |
+| 建立 | `POST /settings/cli-sessions`：為自己建立一個 token，可以指定 scope 與 1～365 天的有效天數（不指定就是 30 天），也可以加上 MCP 讀取的 scope |
 | 撤銷 | `DELETE /settings/cli-sessions/:id` |
 
 成員也可以不經過這一頁，用 `POST /auth/cli/login` 直接換一個 CLI token。CLI token 的授權只看 scope，不看角色與方案，而且這一頁建立 token 時不限制可以填哪些 scope，見 `../../system/AUDIT.md` 的 RBAC-02。
@@ -113,7 +122,15 @@ A2A 橋接讓本系統的 AI agent 接收其他 agent 從 A2A Hub 送來的任�
 
 營業時間與追蹤設定的稽核和修改在同一個交易寫入：稽核寫入失敗時，修改也不寫入。
 
-API 金鑰與 CLI token 的建立和撤銷**沒有**寫入稽核。這兩種都是長效憑證，事後無法查出是誰、在什麼時候建立或撤銷的，見 `../../system/AUDIT.md` 的 AUD-01。
+API 金鑰與 CLI token 的建立和撤銷也寫稽核，稽核與憑證在同一個交易寫入，紀錄不含金鑰或 token 的明文：
+
+| 操作 | `action` | 內容 |
+| --- | --- | --- |
+| 設定頁建立、撤銷 API 金鑰 | `settings.update` | `payload.section` 是 `api-keys`，`operation` 是 `create` 或 `revoke`，`apiKeyId` 是金鑰的 id |
+| 設定頁建立、撤銷 CLI token | `settings.update` | `payload.section` 是 `cli-sessions`，`operation` 是 `create` 或 `revoke`，`sessionId` 是 token 的 id |
+| `POST /auth/cli/login`、`/auth/cli/logout` | `cli_session.login`、`cli_session.logout` | `targetType` 是 `cli_session`，`targetId` 是 token 的 id |
+
+撤銷的對象不存在、屬於另一個租戶或已經撤銷時，不寫稽核。
 
 ## 目前的限制
 
@@ -122,7 +139,6 @@ API 金鑰與 CLI token 的建立和撤銷**沒有**寫入稽核。這兩種都�
 | CLI token 不受角色與方案限制 | 詳見 `../../system/AUDIT.md` 的 RBAC-02 |
 | API 金鑰不受租戶停用與建立者清除影響 | 詳見 `../../system/AUDIT.md` 的 AUTH-02 |
 | A2A 以最早建立的租戶執行任務 | 詳見 `../../system/AUDIT.md` 的 A2A-01 |
-| 長效憑證的建立與撤銷沒有稽核 | 詳見 `../../system/AUDIT.md` 的 AUD-01 |
 | 閒置自動關閉的時限沒有頁面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |
 | 非營業時間自動回覆的去重存在記憶體 | API 重新啟動後重算，多行程時各算各的 |
 | 營業時間不影響 SLA 計時 | SLA 以自然時間計算 |

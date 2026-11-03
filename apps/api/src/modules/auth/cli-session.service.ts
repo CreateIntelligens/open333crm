@@ -170,9 +170,12 @@ export function touchCliSessionLastUsedAt(prisma: PrismaClient, id: string): voi
     );
 }
 
-export async function revokeCliSession(ctx: TenantCtx, id: string): Promise<void> {
-  await ctx.tx.cliSession.updateMany({
-    where: { id, tenantId: ctx.tenantId },
+/** 回傳撤銷的筆數：0 代表 token 不存在、屬於另一個租戶，或已經撤銷 */
+export async function revokeCliSession(ctx: TenantCtx, id: string): Promise<number> {
+  // 已經撤銷的不再更新：保留原本的撤銷時間，也不重複寫稽核
+  const { count } = await ctx.tx.cliSession.updateMany({
+    where: { id, tenantId: ctx.tenantId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+  return count;
 }

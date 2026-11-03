@@ -52,7 +52,7 @@
 
 - 建立：flow 在交易外產生並雜湊，再在 `inTenant()` 內寫入憑證，接著呼叫 `recordTenantAudit()`。
 - 撤銷 API 金鑰：service 用 `update`，找不到時拋出 P2025，回 404，不會寫到稽核。
-- 撤銷 CLI token：service 改成回傳更新的筆數（`updateMany` 的 `count`）。筆數是 0 時，flow 不寫稽核。回應維持 200 `{ revoked: true }`（Non-Goals）。
+- 撤銷 CLI token：service 改成回傳更新的筆數（`updateMany` 的 `count`），條件加上 `revokedAt: null`。已經撤銷的 token 不再更新，保留原本的撤銷時間。筆數是 0 時（不存在、另一個租戶、已經撤銷），flow 不寫稽核。回應維持 200 `{ revoked: true }`（Non-Goals）。
 - CLI 登入與登出：`actorId` 是登入的成員，`ip` 是請求的 IP。登入的 flow 沒有 `RequestActor`，所以 route 另外傳入 IP。登出時撤銷的筆數是 0（兩次登出同時送出），不寫稽核。
 
 `payload` 不放金鑰、token 的明文，也不放雜湊。

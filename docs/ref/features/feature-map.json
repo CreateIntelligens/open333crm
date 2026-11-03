@@ -1776,6 +1776,7 @@
         "apps/api/src/modules/settings/cli-session.routes.ts",
         "apps/api/src/modules/settings/office-hours.flow.ts",
         "apps/api/src/modules/settings/tracking-settings.flow.ts",
+        "apps/api/src/modules/settings/office-hours-settings.ts",
         "apps/api/src/modules/settings/office-hours.service.ts",
         "apps/api/src/modules/settings/tracking-settings.service.ts",
         "apps/api/src/modules/settings/a2a-status.service.ts",

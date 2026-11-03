@@ -72,9 +72,21 @@ export default async function cliSessionRoutes(fastify: FastifyInstance) {
 
 const idParams = z.object({ id: z.string().uuid('CLI 連線識別格式不正確') });
 
+/** 有效天數 1～365（主規格 partner-api-key、open333-cli-auth）。前端的選項最長也是 365 天 */
+const MAX_EXPIRES_IN_DAYS = 365;
+const expiresInDaysMessage = `有效天數須為 1～${MAX_EXPIRES_IN_DAYS} 的整數`;
+const expiresInDaysSchema = z
+  .number()
+  .int(expiresInDaysMessage)
+  .min(1, expiresInDaysMessage)
+  .max(MAX_EXPIRES_IN_DAYS, expiresInDaysMessage)
+  .nullable()
+  .optional();
+
 const createCliSessionSchema = z.object({
   name: z.string().min(1).max(100),
   scopes: z.array(z.string()).optional(),
   mcpRead: z.boolean().default(false),
-  expiresInDays: z.number().int().positive().nullable().optional(),
+  // 不送或送 null：30 天（cli-session.service.ts 的 DEFAULT_EXPIRES_DAYS）
+  expiresInDays: expiresInDaysSchema,
 });

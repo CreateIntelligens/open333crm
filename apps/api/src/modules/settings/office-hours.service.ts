@@ -7,41 +7,14 @@
 
 import { createOrFindExisting } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import {
+  DEFAULT_OUTSIDE_HOURS_MESSAGE,
+  defaultOfficeHoursSettings,
+  readOfficeHoursSettings,
+  type OfficeHoursConfig,
+} from './office-hours-settings.js';
 
-export interface DaySchedule {
-  start: string; // "HH:mm"
-  end: string;   // "HH:mm"
-}
-
-export interface OfficeHoursConfig {
-  enabled: boolean;
-  schedule: {
-    mon?: DaySchedule | null;
-    tue?: DaySchedule | null;
-    wed?: DaySchedule | null;
-    thu?: DaySchedule | null;
-    fri?: DaySchedule | null;
-    sat?: DaySchedule | null;
-    sun?: DaySchedule | null;
-  };
-  holidays: string[]; // ISO date strings "YYYY-MM-DD"
-  outsideHoursMessage: string;
-}
-
-const DEFAULT_OFFICE_HOURS: OfficeHoursConfig = {
-  enabled: false,
-  schedule: {
-    mon: { start: '09:00', end: '18:00' },
-    tue: { start: '09:00', end: '18:00' },
-    wed: { start: '09:00', end: '18:00' },
-    thu: { start: '09:00', end: '18:00' },
-    fri: { start: '09:00', end: '18:00' },
-    sat: null,
-    sun: null,
-  },
-  holidays: [],
-  outsideHoursMessage: '您好！目前為非營業時間，我們將在營業時間內盡速回覆您。',
-};
+export type { OfficeHoursConfig } from './office-hours-settings.js';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
@@ -56,22 +29,18 @@ export async function getOfficeHours(
   let settings = await find();
 
   if (!settings) {
+    const defaults = defaultOfficeHoursSettings();
     ({ row: settings } = await createOrFindExisting(
       () =>
         ctx.tx.tenantSettings.createManyAndReturn({
-          data: [{ tenantId: ctx.tenantId, timezone: 'Asia/Taipei', officeHours: DEFAULT_OFFICE_HOURS as any }],
+          data: [{ tenantId: ctx.tenantId, timezone: defaults.timezone, officeHours: defaults.officeHours as any }],
           skipDuplicates: true,
         }),
       find,
     ));
   }
 
-  const officeHours = (settings.officeHours as unknown as OfficeHoursConfig) || DEFAULT_OFFICE_HOURS;
-
-  return {
-    timezone: settings.timezone,
-    officeHours,
-  };
+  return readOfficeHoursSettings(settings);
 }
 
 /**
@@ -95,10 +64,7 @@ export async function updateOfficeHours(
     },
   });
 
-  return {
-    timezone: settings.timezone,
-    officeHours: settings.officeHours as unknown as OfficeHoursConfig,
-  };
+  return readOfficeHoursSettings(settings);
 }
 
 /**
@@ -159,5 +125,5 @@ export async function getOutsideHoursMessage(ctx: TenantCtx): Promise<string | n
   const withinHours = await isWithinOfficeHours(ctx);
   if (withinHours) return null;
 
-  return officeHours.outsideHoursMessage || DEFAULT_OFFICE_HOURS.outsideHoursMessage;
+  return officeHours.outsideHoursMessage || DEFAULT_OUTSIDE_HOURS_MESSAGE;
 }

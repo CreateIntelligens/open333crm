@@ -56,7 +56,7 @@ export default async function partnerApiKeyRoutes(fastify: FastifyInstance) {
     "/api-keys/:id",
     async (request, reply) => {
       const { id } = idParams.parse(request.params);
-      await revokePartnerApiKeyFlow(fastify, actorOf(request).tenantId, id);
+      await revokePartnerApiKeyFlow(fastify, actorOf(request), id);
       return reply.send(success({ revoked: true }));
     },
   );
@@ -64,8 +64,19 @@ export default async function partnerApiKeyRoutes(fastify: FastifyInstance) {
 
 const idParams = z.object({ id: z.string().uuid('金鑰識別格式不正確') });
 
+/** 有效天數 1～365（主規格 partner-api-key、open333-cli-auth）。前端的選項最長也是 365 天 */
+const MAX_EXPIRES_IN_DAYS = 365;
+const expiresInDaysMessage = `有效天數須為 1～${MAX_EXPIRES_IN_DAYS} 的整數`;
+const expiresInDaysSchema = z
+  .number()
+  .int(expiresInDaysMessage)
+  .min(1, expiresInDaysMessage)
+  .max(MAX_EXPIRES_IN_DAYS, expiresInDaysMessage)
+  .nullable()
+  .optional();
+
 const createApiKeySchema = z.object({
   name: z.string().min(1).max(100),
-  // null / undefined / 0 → never expires
-  expiresInDays: z.number().int().positive().nullable().optional(),
+  // 不送或送 null：永不過期
+  expiresInDays: expiresInDaysSchema,
 });

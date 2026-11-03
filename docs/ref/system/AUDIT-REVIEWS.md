@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-03：營業時間的輸入檢查、憑證的有效天數與稽核（HOURS-01、HOURS-02、SEC-07、AUD-01）
+
+#337 階段 3 第九批，change `settings-input-validation-and-credential-audit`。以 feature 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| HOURS-01（HC-SETTINGS-01，issue #425） | 已修正，從 `AUDIT.md` 移除 | `getOfficeHours()` 以 `readOfficeHoursSettings()` 解析已存的設定，`{}` 與不合法的設定回傳預設值（`enabled: false`），營業時間頁拿到完整的 `schedule`。`office-hours-validation.test.ts` 的「設定是空物件時回傳預設值」 |
+| HOURS-02（HC-SETTINGS-03、04） | 已修正，從 `AUDIT.md` 移除 | `PUT /settings/office-hours` 以 `officeHoursSettingsSchema` 檢查時段、假日、時區與訊息長度，跨午夜的時段回 400。已存的不合法時區當作沒有設定，收訊時不再拋 `RangeError`。`office-hours-settings.test.ts`、`office-hours-validation.test.ts` |
+| SEC-07（HC-SETTINGS-06、12） | 已修正，從 `AUDIT.md` 移除 | `expiresInDays` 只收 1～365 的整數，`0`、`366`、`3650000` 與小數回 400 `VALIDATION_ERROR`。`credential-expiry.test.ts` |
+| AUD-01 的長效憑證 | 已修正，AUD-01 仍為部分修正 | 設定頁建立與撤銷 API 金鑰、CLI token 寫 `settings.update`（`section` 是 `api-keys`、`cli-sessions`）；CLI 登入與登出寫 `cli_session.login`、`cli_session.logout`。稽核與憑證在同一個交易寫入。`credential-audit.test.ts` |
+| RBAC-02（CLI token 的 scope 不受限）、HC-SETTINGS-08（前端不顯示欄位的錯誤）、HC-SETTINGS-11 的後半（撤銷不存在的 CLI token 回 200） | 未處理 | 不在這次範圍 |
+
 ## 2026-11-02：分群群發依建立者的可見範圍判斷（RBAC-04）
 
 #430 合併後的 code review，change `segment-broadcast-creator-visibility`。以 feature 測試確認，沒有連 UAT。

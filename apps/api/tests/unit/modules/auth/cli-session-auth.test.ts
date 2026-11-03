@@ -157,6 +157,8 @@ function createPrismaMock(agent: ReturnType<typeof createAgent>) {
       updateMany: mockFn(async ({ where, data }) => {
         let count = 0;
         for (const session of sessions) {
+          // revokeCliSession() 只撤銷還沒撤銷的 token（where.revokedAt 是 null）
+          if (where.revokedAt === null && session.revokedAt) continue;
           if (session.id === where.id && session.tenantId === where.tenantId) {
             Object.assign(session, data);
             count++;
@@ -164,6 +166,10 @@ function createPrismaMock(agent: ReturnType<typeof createAgent>) {
         }
         return { count };
       }),
+    },
+    // CLI 登入與登出在同一個交易寫稽核（change settings-input-validation-and-credential-audit）
+    tenantAuditLog: {
+      create: mockFn(async ({ data }) => data),
     },
   };
   return prisma;

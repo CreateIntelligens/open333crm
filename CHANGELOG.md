@@ -6,9 +6,22 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **營業時間檢查輸入，已存的設定不合法時當作沒有設定**（#337 階段 3 第九批，change `settings-input-validation-and-credential-audit`，issue #425，健檢 HC-SETTINGS-01、03、04）— `PUT /api/v1/settings/office-hours` 原本只檢查時間的形狀：跨午夜的時段、`99:99`、不存在的日期與不合法的時區都存得進去。存入不合法的時區之後，非營業時間的自動回覆整個失效，後台沒有提示。現在回 400 `VALIDATION_ERROR`，`error.details.issues` 指出欄位：
+  - 時段是 `HH:mm`（00:00～23:59），結束時間必須晚於開始時間，不支援跨過午夜。
+  - 假日是存在的日期（`YYYY-MM-DD`），最多 366 筆。
+  - 時區是有效的 IANA 時區；非營業時間的訊息是 1～1000 字。
+  - 讀取時以同一份規則解析已存的設定。設定是 `{}`（由其他設定建立 `TenantSettings` 時留下）或不合法時，回傳預設值，`enabled` 是 `false`，收訊時不自動回覆。原本 `{}` 的租戶在營業時間頁按「啟用」整頁崩潰。
+- **API 金鑰與 CLI token 的有效天數只收 1～365 天**（change `settings-input-validation-and-credential-audit`，健檢 HC-SETTINGS-06、12）— `expiresInDays` 原本沒有上限：100000 天建立到期日在 2300 年的憑證，3650000 天讓日期溢位、回 500。現在其他值回 400 `VALIDATION_ERROR`，錯誤訊息寫明範圍。API 金鑰不送有效天數時仍然永不過期，CLI token 仍然是 30 天。
 - **API 文件列出路由檔內註冊的子 plugin**（#337 階段 3 第九批）— 部署時產生 `openapi.json` 的 `openapi-inventory.mjs` 原本只讀 `index.ts` 註冊的路由檔。路由檔內以 `fastify.register()` 掛上的子 plugin 不在文件中，例如平台的 `GET`、`PATCH /api/v1/platform/tenants/:id/ai-privacy`。現在產生器也讀子 plugin：路徑接在外層的前綴後面。外層以 `addHook` 驗證登入，或註冊時傳入含驗證的 guard 時，子 plugin 的路由標示需要登入。
 - **撤銷 API 金鑰與 CLI token 時，路徑的 id 先檢查是不是 UUID**（#337 階段 3 第九批，健檢 HC-SETTINGS-11）— `DELETE /api/v1/settings/api-keys/:id`、`DELETE /api/v1/settings/cli-sessions/:id` 的 id 不是 UUID 時，原本查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出欄位。現在回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
 - **同時第一次讀取營業時間或追蹤設定時不再回 409**（#337 階段 3 第九批）— 租戶還沒有 `TenantSettings` 時，`GET /api/v1/settings/office-hours` 與 `GET /api/v1/settings/tracking` 會建立一列。兩個請求同時第一次讀取時，後寫入的請求原本撞到 `tenantId` 的唯一約束，回 409 `CONFLICT`「資料重複」。現在改用 `createOrFindExisting()`，後到的請求讀取對方建立的那一列。
+
+### Added
+
+- **建立與撤銷 API 金鑰、CLI token 時寫租戶稽核**（change `settings-input-validation-and-credential-audit`，AUDIT AUD-01）— 原本這兩種長效憑證的建立與撤銷都沒有稽核，事後查不出是誰建立的。現在稽核與憑證在同一個交易寫入，不含明文：
+  - 設定頁的操作寫 `settings.update`，`payload.section` 是 `api-keys` 或 `cli-sessions`，`payload.operation` 是 `create` 或 `revoke`。
+  - `POST /api/v1/auth/cli/login` 與 `/auth/cli/logout` 寫 `cli_session.login`、`cli_session.logout`，`targetId` 是 token 的 id。
+  - 撤銷不存在、屬於另一個租戶或已經撤銷的 CLI token 時，不寫稽核。已經撤銷的 token 再撤銷一次，不再覆寫原本的撤銷時間。
 
 ### Changed
 
