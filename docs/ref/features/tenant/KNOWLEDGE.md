@@ -89,6 +89,8 @@
 
 `0.80` 是 `kb-autoreply.service.ts` 裡的常數；`clarifyThreshold` 與 `clarifyMaxAttempts` 是 Chat 設定的欄位。追問次數記在對話的 `metadata`，成功回答一次就歸零。
 
+追問次數用完，或追問的 LLM 呼叫失敗（包含月額度用完的 `PLAN_LIMIT_EXCEEDED`）時，機器人回「不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。」，並在同一個交易真的轉真人：對話改成 `AGENT_HANDLED`、`handoffReason` 寫原因（追問次數已達上限、AI 月額度已用完、AI 回覆失敗）、寫一則系統訊息、發出 `conversation.handoff`（客服收到「轉接真人」通知），追問次數歸零。轉接用的是與自動轉真人相同的 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`），見[收件匣的轉真人](./INBOX.md#轉真人)。之後客人的訊息不再由知識庫或 agent 回覆；命中關鍵字規則的訊息照樣由關鍵字規則回覆。命中關鍵字規則的訊息本來就由關鍵字規則處理，不算追問，也不會觸發這個轉接（issue #419）。
+
 依文章回答的訊息會附上「👎 沒幫到我」快速回覆按鈕；追問與型號守門的回覆沒有這個按鈕。客人按下後，進站攔截器把回饋記到 `KbArticleFeedback`，並回一則感謝訊息。管理員在「知識庫 → 回報調教」查看各文章的回報，並標記為已處理。
 
 **AI agent 優先。** 環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，機器人先交給 AI agent 回覆；AI agent 沒有處理時，才走上面的知識庫流程。AI agent 可以呼叫外部工具，執行紀錄存在 `AgentRun`，可以用 `GET /ai/agent/runs/:id` 查看；紀錄關聯的對話所在渠道看不到時回 404。

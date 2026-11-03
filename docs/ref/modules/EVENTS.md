@@ -81,7 +81,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `conversation.updated` | `conversation.service.ts` | 無 |
 | `conversation.assigned` | **無** | 通知。見 CONV-02 |
 | `conversation.closed` | `conversation.service.ts` | 無 |
-| `conversation.handoff` | `automation.worker.ts`（outbox）、`webhook/inbound-postback-interceptors.ts` | 無 |
+| `conversation.handoff` | `automation/handoff.flow.ts`（outbox；自動轉真人與知識庫追問用完）、`webhook/inbound-postback-interceptors.ts` | 通知 |
 | `case.created` | `case.flow.ts`（outbox）；workers 的 `create_case`（outbox） | 自動化 |
 | `case.updated` | **無** | 無 |
 | `case.assigned` | `case.flow.ts`（outbox，手動指派與自動派案） | 通知 |

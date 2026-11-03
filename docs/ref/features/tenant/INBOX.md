@@ -70,11 +70,14 @@
 | --- | --- | --- | --- |
 | 客人要求 | 客人點「轉接客服」按鈕，或傳送 `handoff_request` | `inbound-postback-interceptors.ts` 的 `handleHandoffRequest()` | 不指派 |
 | 自動轉真人 | 機器人回覆次數達到 `maxBotReplies`、訊息含 `handoffKeywords`，或客人傳圖片、檔案或影片 | `automation.worker.ts` 的 `checkAutoHandoff()` | 不指派 |
+| 知識庫追問用完 | 知識庫自動回覆的追問次數達到 `clarifyMaxAttempts`，或追問的 LLM 呼叫失敗（含月額度用完） | `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` | 不指派 |
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
-每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求與自動轉真人送的是渠道設定的 `handoffMessage`；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求與自動轉真人會發布 `conversation.handoff` 事件。
+每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求與自動轉真人送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人與知識庫追問用完會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派時通知負責的客服，沒有指派時通知所有 `ADMIN` 與 `SUPERVISOR`。
 
-自動轉真人以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理，才寫系統訊息、發出 `conversation.handoff`（經 outbox），commit 之後送出轉接訊息。所以同一則訊息處理兩次、或兩次處理同時進行時，只轉接一次。摘要與系統訊息的遮罩在交易之前完成。
+自動轉真人與知識庫追問用完共用 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`）：以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理，才寫系統訊息、發出 `conversation.handoff`（經 outbox），commit 之後推播 `conversation.updated` 與系統訊息到渠道房間，再送出轉接訊息。所以同一則訊息處理兩次、或兩次處理同時進行時，只轉接一次。摘要與系統訊息的遮罩在交易之前完成。知識庫追問用完時，轉接與「已為您轉接」回覆寫在同一個交易；轉接的條件不成立時，這則回覆不寫入也不送出。
+
+轉接之後，關鍵字規則照樣回覆（workers 執行關鍵字規則時不看對話狀態），知識庫自動回覆與 agent 只回覆 `BOT_HANDLED` 的對話。
 
 客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知租戶內所有 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 

@@ -50,7 +50,7 @@ description: >
 | FB/IG 權杖失效 | `meta-token-health.ts` 每 6 小時；持續失效每 3 天再提醒 | 所有 `ADMIN` | API 行程 `createAndDispatch` + `sendEmail` | `channel_token_invalid` / `/dashboard/settings/channels` |
 | 資料匯出／刪除完成 | workers `data-export.handler.ts`、`data-erasure.handler.ts` | 發起人 | `enqueueNotification` | `data_export_ready`、`data_export_failed`（連到不存在的頁面，EXPORT-01）、`data_erasure_done`（無連結） |
 
-**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 沒有訂閱（CONV-03）。
+**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 已訂閱（#419，CONV-03 已修正）：類型 `conversation_handoff`，已指派通知負責人，未指派通知所有主管與管理員。
 
 **有後端、沒有前端入口**：無。**前端有、後端沒有**：無。**兩邊都沒有**：通知偏好／靜音、刪除通知、保留期限、Web Push、工單事件寄信（`docs/20_NOTIFICATION.md` 的設計未實作）。
 
