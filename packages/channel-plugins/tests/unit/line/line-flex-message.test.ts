@@ -124,3 +124,29 @@ test('Text message sent：text 與 quick_reply 照常送出', async () => {
   assert.equal(bodies[1].messages[0].text, '請選擇');
   assert.ok(bodies[1].messages[0].quickReply, '快速回覆按鈕保留');
 });
+
+for (const contentType of ['text', 'quick_reply']) {
+  for (const [label, content] of [
+    ['缺少文字', {}],
+    ['空白文字', { text: '   ' }],
+    ['文字不是字串', { text: 123 }],
+  ] as const) {
+    test(`文字訊息缺少內容（${contentType}，${label}）：不呼叫 LINE，回失敗並帶原因（PR #440 審查）`, async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls += 1;
+        return new Response('{}', { status: 200 });
+      }) as typeof fetch;
+
+      const result = await linePlugin.sendMessage(
+        'line-user-1',
+        { contentType, content: content as Record<string, unknown> },
+        { channelAccessToken: 'token' },
+      );
+
+      assert.equal(result.success, false);
+      assert.match(result.error ?? '', /文字/);
+      assert.equal(calls, 0);
+    });
+  }
+}

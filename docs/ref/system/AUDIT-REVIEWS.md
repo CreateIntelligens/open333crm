@@ -18,7 +18,7 @@ issue #410、#411、#415、#416、#419，同一個 PR。以本機測試資料庫
 | PLAN-14（HC-PLATFORM-PLANS-01） | 已修正，從 `AUDIT.md` 移除 | seed 的 `trial`、`light` 加入 `channels`；migration `20261103120000_enable_channels_on_trial_light` 只對這兩個方案補 `channels`，不動其他欄位，重複執行不再改。部署後 Redis `perms:tenant:*` 最多 10 分鐘生效。change `enable-channels-on-trial-light-411`。`plans.test.ts`、`channel-trial-light-plans.test.ts` 修正前失敗；migration 測試以突變驗證 |
 | RBAC-11 的渠道管理頁 | 部分修正 | 列表 403 顯示「沒有權限」，新增渠道、設定精靈、Facebook 連結依 `channel.create` 顯示。`channel-management.test.tsx` 3 項修正前失敗。停用、測試連線、編輯、刪除仍未依權限隱藏 |
 
-另外發現：API 容器每次啟動都跑 seed，會把五個方案的名稱、功能、上限、價格寫回原始碼的值，與主規格「平台改 plan features 即時生效」衝突，記為 PLAN-20。
+另外發現：API 容器每次啟動都跑 seed，會把五個方案的名稱、功能、上限、價格寫回原始碼的值，與主規格「平台改 plan features 即時生效」衝突，記為 PLAN-20（issue #441）。
 
 ## 2026-11-03：第一優先的權限與隔離修正（RBAC-07、RBAC-08、RBAC-09、MKT-02、MKT-03、RLS-10、RBAC-04、RBAC-03）
 

@@ -227,7 +227,11 @@ export function buildLineMessage(contentType: string, content: Record<string, un
     // 非 LINE 的滿意度問卷送 `quick_reply`（文字＋快速回覆），以前都靠 default 送成文字。
     case 'text':
     case 'quick_reply':
-      return { type: 'text', text: (content.text as string) ?? '', ...base };
+      // 沒有文字時 LINE 會拒收，在本地擋下並帶原因（PR #440 審查）
+      if (typeof content.text !== 'string' || !content.text.trim()) {
+        throw new LineMessageBuildError('文字訊息沒有內容，LINE 不接受');
+      }
+      return { type: 'text', text: content.text, ...base };
     // 滿意度問卷等系統產生的 Flex message（issue #416：這個分支在 3a19c457 被刪掉）
     case 'flex':
       return buildFlexMessage(content, base);
