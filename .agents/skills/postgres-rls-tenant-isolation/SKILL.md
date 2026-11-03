@@ -85,7 +85,7 @@ index.ts 白名單接線清單見該檔 `// RLS 白名單基礎設施` 註解區
 
 ## 資料表權限（GRANT）：app_tenant 能碰哪些表
 
-RLS 只過濾「有權限碰的表」裡的列；表層權限由 GRANT 決定。`20261103100000_revoke_app_tenant_platform_tables`（#412、AUDIT RLS-10）之後：
+RLS 只過濾「有權限碰的表」裡的列；表層權限由 GRANT 決定。`20261103110000_revoke_app_tenant_platform_tables`（#412、AUDIT RLS-10）之後：
 
 | 表 | app_tenant | 依據 |
 |---|---|---|
