@@ -11,7 +11,7 @@
 - 聯絡人：合併、撤銷合併。
 - 工單：刪除。
 - 資料權利：發起資料匯出、發起與完成資料刪除。
-- 長效憑證：建立與撤銷 Partner API 金鑰與 CLI token，包括 CLI 登入建立的 token 與登出撤銷的 token。這些紀錄的 `action` 是 `settings.update`，SHALL NOT 包含金鑰或 token 的明文。撤銷的對象不存在時，系統不寫稽核。
+- 長效憑證：在設定頁建立與撤銷 Partner API 金鑰與 CLI token（`action` 是 `settings.update`），以及 CLI 登入建立 token、登出撤銷 token（`action` 是 `cli_session.login`、`cli_session.logout`）。這些紀錄 SHALL NOT 包含金鑰或 token 的明文。撤銷的對象不存在時，系統不寫稽核。
 
 其他敏感操作（例如登入、修改渠道憑證）目前不寫稽核，記在 `docs/ref/system/AUDIT.md` 的 AUD-01。
 
@@ -41,15 +41,15 @@
 
 #### Scenario: 在設定頁建立 CLI token 時寫稽核
 - **WHEN** 有 `settings.manage` 的成員以 `POST /api/v1/settings/cli-sessions` 建立 token
-- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`actorId` 是操作的成員，`payload` 是 `{ section: "cli-sessions", operation: "create", source: "settings", sessionId, name, scopes, expiresAt }`，不含 token 的明文
+- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`actorId` 是操作的成員，`payload` 是 `{ section: "cli-sessions", operation: "create", sessionId, name, scopes, expiresAt }`，不含 token 的明文
 
 #### Scenario: 在設定頁撤銷 CLI token 時寫稽核
 - **WHEN** 有 `settings.manage` 的成員以 `DELETE /api/v1/settings/cli-sessions/:id` 撤銷租戶內的 token
-- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`payload` 是 `{ section: "cli-sessions", operation: "revoke", source: "settings", sessionId }`
+- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`payload` 是 `{ section: "cli-sessions", operation: "revoke", sessionId }`
 
 #### Scenario: CLI 登入與登出時寫稽核
 - **WHEN** 成員以 `POST /api/v1/auth/cli/login` 登入，再以 `POST /api/v1/auth/cli/logout` 登出
-- **THEN** 系統寫兩筆稽核，`actorId` 都是這位成員：登入的 `payload` 是 `{ section: "cli-sessions", operation: "create", source: "login", sessionId, name, scopes, expiresAt }`，登出的 `payload` 是 `{ section: "cli-sessions", operation: "revoke", source: "login", sessionId }`
+- **THEN** 系統寫兩筆稽核，`actorId` 都是這位成員，`targetType` 都是 `cli_session`，`targetId` 都是這把 token 的 ID：登入的 `action` 是 `cli_session.login`，`payload` 是 `{ name, scopes, expiresAt }`，不含 token 的明文；登出的 `action` 是 `cli_session.logout`
 
 #### Scenario: 撤銷不存在的憑證時不寫稽核
 - **WHEN** 成員撤銷不存在的 API 金鑰或 CLI token，或另一個租戶的 API 金鑰或 CLI token

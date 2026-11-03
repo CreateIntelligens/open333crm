@@ -53,9 +53,20 @@
 - 建立：flow 在交易外產生並雜湊，再在 `inTenant()` 內寫入憑證，接著呼叫 `recordTenantAudit()`。
 - 撤銷 API 金鑰：service 用 `update`，找不到時拋出 P2025，回 404，不會寫到稽核。
 - 撤銷 CLI token：service 改成回傳更新的筆數（`updateMany` 的 `count`）。筆數是 0 時，flow 不寫稽核。回應維持 200 `{ revoked: true }`（Non-Goals）。
-- CLI 登入：`actorId` 是登入的成員，`ip` 是請求的 IP。登入的 flow 沒有 `RequestActor`，所以 route 另外傳入 IP。
+- CLI 登入與登出：`actorId` 是登入的成員，`ip` 是請求的 IP。登入的 flow 沒有 `RequestActor`，所以 route 另外傳入 IP。登出時撤銷的筆數是 0（兩次登出同時送出），不寫稽核。
 
-`payload` 不放金鑰、token 的明文，也不放雜湊。`apiKeyId` 與 `sessionId` 放在 `payload`，`targetId` 不填，與其他 `settings.update` 一致。
+`payload` 不放金鑰、token 的明文，也不放雜湊。
+
+### 4. 設定頁與 CLI 登入用不同的 action
+
+| 入口 | action | targetType | targetId |
+| --- | --- | --- | --- |
+| 設定頁建立、撤銷 API 金鑰與 CLI token | `settings.update`，`payload.section` 是 `api-keys` 或 `cli-sessions`，`payload.operation` 是 `create` 或 `revoke` | `settings` | 不填，id 放在 `payload` |
+| CLI 登入、登出 | `cli_session.login`、`cli_session.logout` | `cli_session` | token 的 id |
+
+- 設定頁的操作沿用 `settings.update`，與設定頁的其他稽核一致。
+- CLI 登入與登出不是修改設定，所以另外命名，命名方式比照 `role.create` 這類「對象.動作」。`GET /tenant/audit-logs` 的 `action` 是完全相等的篩選，分開命名後，CLI 登入可以單獨查出。
+- 不在 payload 記入口（例如 `source`）。登出撤銷的 token 可能是設定頁建立的，入口不能代表 token 的來源；要查 token 怎麼建立，用 token 的 id 找它的建立稽核。
 
 ## Risks / Trade-offs
 

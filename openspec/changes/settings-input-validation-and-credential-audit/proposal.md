@@ -19,7 +19,7 @@
   - 非營業時間的訊息長度是 1～1000 字。
 - 讀取營業時間時，已存的設定不合法（例如 `{}`、不合法的時區），系統當作沒有設定：`GET` 回傳預設值，`enabled` 是 `false`。收訊時不送非營業時間的自動回覆，也不記錯誤。
 - `POST /api/v1/settings/api-keys` 與 `POST /api/v1/settings/cli-sessions` 的 `expiresInDays` 只收 1～365 的整數，其他值回 400 `VALIDATION_ERROR`。API 金鑰不送或送 `null` 時仍然永不過期。CLI token 不送或送 `null` 時仍然是 30 天。
-- 建立與撤銷 API 金鑰、CLI token 時寫一筆 `settings.update` 租戶稽核，與修改在同一個交易。CLI 登入（`POST /auth/cli/login`）建立的 token 與登出撤銷的 token 也寫稽核。
+- 在設定頁建立與撤銷 API 金鑰、CLI token 時，寫一筆 `settings.update` 租戶稽核。CLI 登入（`POST /auth/cli/login`）與登出（`POST /auth/cli/logout`）寫 `cli_session.login`、`cli_session.logout` 稽核。稽核與憑證的寫入在同一個交易。
 
 ## Capabilities
 
@@ -41,5 +41,5 @@
   - 回應的格式不變。
 - 前端：營業時間頁送出的值都在新的範圍內，只有跨午夜的時段會被拒。被拒時頁面只顯示通用的錯誤訊息（HC-SETTINGS-08），這次不改。`officeHours` 為 `{}` 的租戶改由後端回傳預設值，頁面不再崩潰。
 - 資料：沒有 migration。已存的不合法設定不改寫，下一次儲存時覆蓋。
-- 稽核：`tenant_audit_logs` 多出 `section` 為 `api-keys`、`cli-sessions` 的 `settings.update` 紀錄。
+- 稽核：`tenant_audit_logs` 多出 `section` 為 `api-keys`、`cli-sessions` 的 `settings.update` 紀錄，以及 `cli_session.login`、`cli_session.logout` 紀錄。
 - 程式：`apps/api/src/modules/settings/` 的營業時間檔案、`apps/api/src/modules/auth/partner-api-key.flow.ts`、`cli-session.flow.ts`，以及兩個憑證的路由檔。
