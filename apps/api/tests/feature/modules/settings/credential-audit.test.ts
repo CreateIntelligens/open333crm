@@ -228,6 +228,21 @@ describe('CLI 登入與登出', () => {
 });
 
 describe('撤銷不存在的憑證時不寫稽核', () => {
+  // review-loop 第 1 輪：已經撤銷的 CLI token 不再寫稽核，API 金鑰原本仍會再寫一筆
+  test('已經撤銷的 API 金鑰與 CLI token 再撤銷一次', async () => {
+    const key = (await call(appA, 'POST', 'api-keys', { name: `${MARK}-twice` })).body.data;
+    const { session } = (await call(appA, 'POST', 'cli-sessions', { name: `${MARK}-twice` })).body.data;
+    assert.equal((await call(appA, 'DELETE', `api-keys/${key.id}`)).status, 200);
+    assert.equal((await call(appA, 'DELETE', `cli-sessions/${session.id}`)).status, 200);
+    await owner.tenantAuditLog.deleteMany({ where: { tenantId: A } });
+
+    const again = await call(appA, 'DELETE', `api-keys/${key.id}`);
+    assert.equal(again.status, 200, '已停用的金鑰再撤銷仍回 200');
+    assert.deepEqual(again.body.data, { revoked: true });
+    assert.equal((await call(appA, 'DELETE', `cli-sessions/${session.id}`)).status, 200);
+    assert.deepEqual(await audits(), []);
+  });
+
   test('不存在的 API 金鑰與 CLI token', async () => {
     assert.equal((await call(appA, 'DELETE', `api-keys/${MISSING}`)).status, 404);
     await call(appA, 'DELETE', `cli-sessions/${MISSING}`);

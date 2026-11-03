@@ -11,6 +11,7 @@ import type { PrismaClient, PartnerApiKey } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { logger } from '@open333crm/core';
+import { AppError } from '../../shared/utils/response.js';
 
 const KEY_PREFIX = 'pk_';
 const KEY_RANDOM_BYTES = 32; // → 64 hex chars
@@ -70,11 +71,20 @@ export async function listPartnerApiKeys(ctx: TenantCtx): Promise<PartnerApiKey[
   });
 }
 
-export async function revokePartnerApiKey(ctx: TenantCtx, id: string): Promise<void> {
-  await ctx.tx.partnerApiKey.update({
-    where: { id, tenantId: ctx.tenantId },
+/**
+ * 停用金鑰。回傳 true 代表這次停用；金鑰已經停用時回傳 false，不再更新，呼叫端也不寫稽核。
+ * 金鑰不存在或屬於另一個租戶時回 404。
+ */
+export async function revokePartnerApiKey(ctx: TenantCtx, id: string): Promise<boolean> {
+  const { count } = await ctx.tx.partnerApiKey.updateMany({
+    where: { id, tenantId: ctx.tenantId, isActive: true },
     data: { isActive: false },
   });
+  if (count === 1) return true;
+  const exists = await ctx.tx.partnerApiKey.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { id: true } });
+  // 與原本 update() 找不到時 P2025 的回應相同（error-handler.plugin.ts）
+  if (!exists) throw new AppError('找不到指定的資料，可能已被刪除', 'NOT_FOUND', 404);
+  return false;
 }
 
 export type VerifyResult =

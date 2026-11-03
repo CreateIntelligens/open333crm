@@ -21,7 +21,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **建立與撤銷 API 金鑰、CLI token 時寫租戶稽核**（change `settings-input-validation-and-credential-audit`，AUDIT AUD-01）— 原本這兩種長效憑證的建立與撤銷都沒有稽核，事後查不出是誰建立的。現在稽核與憑證在同一個交易寫入，不含明文：
   - 設定頁的操作寫 `settings.update`，`payload.section` 是 `api-keys` 或 `cli-sessions`，`payload.operation` 是 `create` 或 `revoke`。
   - `POST /api/v1/auth/cli/login` 與 `/auth/cli/logout` 寫 `cli_session.login`、`cli_session.logout`，`targetId` 是 token 的 id。
-  - 撤銷不存在、屬於另一個租戶或已經撤銷的 CLI token 時，不寫稽核。已經撤銷的 token 再撤銷一次，不再覆寫原本的撤銷時間。
+  - 撤銷不存在、屬於另一個租戶或已經撤銷的憑證時，不寫稽核。已經撤銷的 CLI token 再撤銷一次，不再覆寫原本的撤銷時間；已經停用的 API 金鑰再撤銷一次，仍回 200。
 
 ### Changed
 

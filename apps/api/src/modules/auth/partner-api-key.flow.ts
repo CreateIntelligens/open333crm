@@ -18,10 +18,10 @@ import {
 
 export const listPartnerApiKeysFlow = flowOf(listPartnerApiKeys);
 
-/** 金鑰不存在或屬於另一個租戶時，revokePartnerApiKey() 拋出 P2025（回 404），不會寫到稽核 */
+/** 金鑰不存在或屬於另一個租戶時，revokePartnerApiKey() 回 404；金鑰已經停用時不寫稽核 */
 export function revokePartnerApiKeyFlow(deps: { prisma: PrismaClient }, actor: RequestActor, id: string) {
   return inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await revokePartnerApiKey(scope, id);
+    if (!(await revokePartnerApiKey(scope, id))) return;
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'settings.update',
