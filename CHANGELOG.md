@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-03]
+
+### Fixed
+
+- **IG 綁定說明改成請顧客送出代碼**（change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
+
 ## [2026-11-02]
 
 ### Added
