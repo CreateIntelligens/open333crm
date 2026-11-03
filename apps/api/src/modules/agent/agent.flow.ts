@@ -81,7 +81,10 @@ export async function changeOwnPasswordFlow(
     changeOwnPassword(scope, actor.agentId, currentPassword, newPasswordHash));
 }
 
-/** 指派角色。越權防護（ROLE_ESCALATION 403）與自我降級守門（SELF_LOCK 422）在 service */
+/**
+ * 指派角色。守門都在 service：新角色越權（ROLE_ESCALATION 403）、自我降級（SELF_LOCK 422）、
+ * 最後一位管理員（LAST_ADMIN_PROTECTED 422）、目標權限高於操作者（TARGET_OUTRANKS_ACTOR 403）
+ */
 export function updateAgentRoleFlow(
   deps: AgentFlowDeps,
   actor: RequestActor,
@@ -102,11 +105,11 @@ export function updateAgentRoleFlow(
   });
 }
 
-/** 重設別人的密碼。稽核只記操作事實，不記密碼 */
+/** 重設別人的密碼。目標權限高於操作者時 service 回 403 TARGET_OUTRANKS_ACTOR。稽核只記操作事實，不記密碼 */
 export async function resetAgentPasswordFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string, newPassword: string) {
   const passwordHash = await hashPassword(newPassword);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await resetAgentPassword(scope, agentId, passwordHash);
+    await resetAgentPassword(scope, agentId, passwordHash, actor.roleId);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'agent.password.reset',
@@ -121,7 +124,7 @@ export async function resetAgentPasswordFlow(deps: AgentFlowDeps, actor: Request
 export async function deactivateAgentFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
   if (actor.agentId === agentId) throw new AppError('不可停用自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await deactivateAgent(scope, agentId);
+    await deactivateAgent(scope, agentId, actor.roleId);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'agent.deactivate',
@@ -150,7 +153,7 @@ export async function reactivateAgentFlow(deps: AgentFlowDeps, actor: RequestAct
 export async function purgeAgentFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
   if (actor.agentId === agentId) throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await purgeAgent(scope, agentId);
+    await purgeAgent(scope, agentId, actor.roleId);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'agent.purge',

@@ -1,6 +1,6 @@
 # 權限計算
 
-本文件說明租戶後台怎麼決定一個成員能做什麼：權限碼從哪裡來、有效權限怎麼算、快取什麼時候失效、渠道可見範圍怎麼判斷，以及新增權限碼時要做哪些事。呼叫者的身分怎麼確認，見[認證與憑證](./AUTHENTICATION.md)；角色與權限頁的操作規則（防越權、管理員鎖定、防自鎖），見[人員與角色](../features/tenant/MEMBERS.md#角色與權限)。
+本文件說明租戶後台怎麼決定一個成員能做什麼：權限碼從哪裡來、有效權限怎麼算、快取什麼時候失效、渠道可見範圍怎麼判斷，以及新增權限碼時要做哪些事。呼叫者的身分怎麼確認，見[認證與憑證](./AUTHENTICATION.md)；角色與權限頁的操作規則（防越權、管理員鎖定、防自鎖），以及對其他成員操作時「對方權限不可比自己高」、最後一位管理員保護，見[人員與角色](../features/tenant/MEMBERS.md#角色與權限)。
 
 - **資料來源**：`packages/core/src/rbac/*`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/services/permission.service.ts`、`apps/api/src/services/tenant-plan.cache.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/socket/socket-room-authorization.ts`、`apps/api/src/modules/role/role.service.ts`、`apps/api/src/modules/role/role.flow.ts`、`apps/api/src/index.ts`、`scripts/reconcile-system-role-permissions.mjs`、`packages/database/prisma/seed-data/rbac-roles.ts`、`apps/web/src/providers/AuthProvider.tsx`、`apps/web/src/components/layout/Sidebar.tsx`
 - **核對日期**：2026-09-30
