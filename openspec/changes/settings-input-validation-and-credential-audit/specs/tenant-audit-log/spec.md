@@ -11,9 +11,8 @@
 - 聯絡人：合併、撤銷合併。
 - 工單：刪除。
 - 資料權利：發起資料匯出、發起與完成資料刪除。
-- 長效憑證：在設定頁建立與撤銷 Partner API 金鑰與 CLI token（`action` 是 `settings.update`），以及 CLI 登入建立 token、登出撤銷 token（`action` 是 `cli_session.login`、`cli_session.logout`）。這些紀錄 SHALL NOT 包含金鑰或 token 的明文。撤銷的對象不存在時，系統不寫稽核。
 
-其他敏感操作（例如登入、修改渠道憑證）目前不寫稽核，記在 `docs/ref/system/AUDIT.md` 的 AUD-01。
+長效憑證的稽核見「建立與撤銷長效憑證時寫稽核」。其他敏感操作（例如登入、修改渠道憑證）目前不寫稽核，記在 `docs/ref/system/AUDIT.md` 的 AUD-01。
 
 #### Scenario: 設定角色權限時寫稽核
 - **WHEN** 有 `role.manage` 的成員以 `PUT /api/v1/roles/:id/permissions` 設定角色的權限
@@ -30,6 +29,17 @@
 #### Scenario: 刪除角色時寫稽核
 - **WHEN** 有 `role.manage` 的成員以 `DELETE /api/v1/roles/:id` 刪除自訂角色
 - **THEN** 系統寫一筆稽核，`action` 是 `role.delete`，`targetType` 是 `role`，`targetId` 是被刪角色的 ID，`actorId` 是操作的成員，`payload.name` 是被刪角色的名稱；回應內容仍是 `{ deleted: true }`
+
+## ADDED Requirements
+
+### Requirement: 建立與撤銷長效憑證時寫稽核
+
+建立或撤銷 Partner API 金鑰與 CLI token 成功後，系統 SHALL 在同一個交易寫一筆 `TenantAuditLog`：
+
+- 設定頁的建立與撤銷：`action` 是 `settings.update`，`targetType` 是 `settings`，`payload.section` 是 `api-keys` 或 `cli-sessions`。
+- CLI 登入建立 token、登出撤銷 token：`action` 是 `cli_session.login`、`cli_session.logout`，`targetType` 是 `cli_session`，`targetId` 是 token 的 ID。
+
+稽核 SHALL NOT 包含金鑰或 token 的明文。撤銷的對象不存在、屬於另一個租戶或已經撤銷時，系統不寫稽核。
 
 #### Scenario: 建立 API 金鑰時寫稽核
 - **WHEN** 有 `settings.manage` 的成員以 `POST /api/v1/settings/api-keys` 建立金鑰
