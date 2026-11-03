@@ -35,7 +35,7 @@ Prisma 單一共享連線池跨請求複用連線。若用 session 級 `SET app.
   - `fastify.prisma`（app_tenant，受 RLS）／`fastify.prismaAdmin`（app_admin，BYPASSRLS）
   - `request.tenantPrisma`（getter，依 `request.agent.tenantId` 綁定當前租戶）
   - env：`DATABASE_URL_TENANT`／`DATABASE_URL_ADMIN`；未設時 fallback 到 `DATABASE_URL`（階段 0 相容，RLS 未 FORCE 時行為不變）
-- **migrations**：`*_rls_roles_and_grants`（雙 role + GRANT）、`*_rls_enable_core_tables`（policy）
+- **migrations**：`*_rls_roles_and_grants`（雙 role + GRANT）、`*_rls_enable_core_tables`（policy）、`*_revoke_app_tenant_platform_tables`（收回平台表權限與預設權限，見下方「資料表權限」）
 
 ## $extends 全域綁定的正確寫法（易錯！）
 
@@ -82,6 +82,27 @@ index.ts 白名單接線清單見該檔 `// RLS 白名單基礎設施` 註解區
 12. **$extends 每 op 開獨立交易**：tenantScopedClient 的每個 model 操作各開 BEGIN→set_config→op→COMMIT。`Promise.all` 扇出（如 analytics 多個 count 並發）會同時佔多條連線——注意連線池上限（Prisma 預設 connection_limit）。效能敏感的並發查詢考慮改用單一 `withTenant` 包整組。
 13. **逃逸口**：TenantScopedClient 仍暴露 `$transaction`（其內 tx 不經 $extends 覆寫、不 set_config）與 `$queryRawTyped`（未覆寫）——直接用它們會落未綁定連線。碰租戶表的這類操作要明確 withTenant。
 14. **migration / seed 必須用 owner 連線，不能用 app_tenant（RLS 上線後最容易炸的部署陷阱）**：RLS 啟用後 app runtime 的 `DATABASE_URL` 指向受 RLS 的 `app_tenant`（NOBYPASSRLS、**非 table owner**）。若 entrypoint 的 `prisma migrate deploy` 沿用同一連線跑 DDL（`ALTER TABLE` 等），Postgres 以 **`must be owner of table X`（42501 / Prisma `P3018`）** 擋下——**RLS 切 role 後的第一個新 migration 就會卡死、API 啟動失敗、部署中斷**。（注意：`app_admin` 雖 BYPASSRLS 但**仍非 owner**，DDL 一樣被擋；要的是 owner 如 `crm`/superuser。）seed 同理——`INSERT` 受 RLS WITH CHECK 擋（`new row violates row-level security policy`）。正解：entrypoint migrate/seed 走**專用 `MIGRATE_DATABASE_URL`（指向 table owner）**，未設 fallback `DATABASE_URL`（相容未啟用 RLS 環境）；見 `apps/api/docker-entrypoint.sh`（PR #158）。⚠️ 之前的 RLS migration 之所以「成功」，是因為當時 `DATABASE_URL` 還是 owner（切 app_tenant 前跑的）——**切 role 那刻起，未走 owner 的 migrate 全會炸**。手動救援：用 owner 補跑該 migration 的 DDL + `UPDATE _prisma_migrations SET finished_at=now(), logs=NULL WHERE migration_name=... AND finished_at IS NULL` 標記成功，再重啟。
+
+## 資料表權限（GRANT）：app_tenant 能碰哪些表
+
+RLS 只過濾「有權限碰的表」裡的列；表層權限由 GRANT 決定。`20261103100000_revoke_app_tenant_platform_tables`（#412、AUDIT RLS-10）之後：
+
+| 表 | app_tenant | 依據 |
+|---|---|---|
+| FORCE RLS 的租戶表 | `SELECT, INSERT, UPDATE, DELETE` | policy 過濾列 |
+| `tenants`、`plans` | 只有 `SELECT` | 停用檢查、租戶名稱、方案上限（`getEffectiveLimit`、`channel.service`、identity-binding 寄信、coupon-wallet）|
+| `platform_settings` | 只有 `SELECT` | `readAiPrivacyPolicy()`（仍讀得到所有鍵）|
+| `model_pricings` | 只有 `SELECT` | `recordAiUsage()` → `getPricing()` |
+| `platform_users`、`platform_audit_logs`、`trial_signups`、`_prisma_migrations` | 無 | 只有 `prismaAdmin` 路徑使用 |
+
+app_admin 對所有表維持讀寫。寫平台層表一律走 `prismaAdmin`。
+
+**`ALTER DEFAULT PRIVILEGES` 不再授權新表給 app_tenant**（app_admin 仍自動授權）。預設權限無法只排除平台表，所以改成白名單：
+
+- **新租戶表**：在開 RLS 的同一個 migration 明確寫 `GRANT SELECT, INSERT, UPDATE, DELETE ON <table> TO app_tenant;`。漏寫時租戶路徑回 `permission denied for table <table>`（42501）。
+- **新平台層表**（無 tenantId、不開 RLS）：預設 app_tenant 無權限。租戶路徑確實要讀時才 `GRANT SELECT`，並把表加進 AGENTS.md 的平台表清單與 `apps/api/tests/feature/platform-table-grants.test.ts` 的 `READ_ONLY_TABLES`/`NO_ACCESS_TABLES`。
+- `platform-table-grants.test.ts` 檢查：每張 FORCE RLS 的表都授權 app_tenant 四種權限、沒有 RLS 的表 app_tenant 不能寫且只能讀白名單、預設權限不含 app_tenant。
+- 序列（sequence）的預設權限不變。
 
 ## RLS 相關的除錯：「查詢突然回空 / 403」
 

@@ -509,7 +509,10 @@ request:
 platform-layer tables. These tables are `tenants`, `plans`, `platform_users`, `platform_audit_logs`,
 `platform_settings`, `model_pricings` and `trial_signups`. The `tenant_isolation` policy reads the
 session variable `app.current_tenant`. A new tenant table needs its own migration that enables
-RLS. The skill named below gives the steps.
+RLS and grants `SELECT, INSERT, UPDATE, DELETE` on the table to `app_tenant`. New tables get no
+privileges for `app_tenant` by default (#412). `app_tenant` can only read `tenants`, `plans`,
+`platform_settings` and `model_pricings`, and cannot use the other platform-layer tables. Write
+platform-layer tables through `prismaAdmin`. The skill named below gives the steps.
 
 ### Which Prisma client to use
 
