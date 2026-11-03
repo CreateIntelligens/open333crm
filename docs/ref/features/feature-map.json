@@ -405,7 +405,6 @@
       "audit": [
         "RBAC-03",
         "CONV-02",
-        "CONV-03",
         "PLAN-13",
         "EXPORT-01",
         "APP-04",
@@ -1182,7 +1181,6 @@
         "RBAC-04",
         "CONV-01",
         "CONV-02",
-        "CONV-03",
         "TEAM-01",
         "PLAN-12",
         "RLS-09",
@@ -1254,7 +1252,7 @@
         },
         {
           "domain": "notifications",
-          "why": "新訊息通知負責人或主管；轉真人與指派的通知缺口（CONV-02、CONV-03）"
+          "why": "新訊息通知負責人或主管；轉真人通知（#419）與指派的通知缺口（CONV-02）"
         },
         {
           "domain": "settings",
