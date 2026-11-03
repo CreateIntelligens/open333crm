@@ -90,7 +90,8 @@ async function socketPlugin(fastify: FastifyInstance) {
 
     const authorize = async (input: unknown) => authorizeSocketRoom(
       fastify.prismaAdmin,
-      { agentId, tenantId, role: socket.data.role, roleId: socket.data.roleId ?? null },
+      // 不用 token 裡的 roleId：連線後角色可能被改（降級），給 null 讓授權每次從資料庫讀目前的角色
+      { agentId, tenantId, role: socket.data.role, roleId: null },
       input,
     );
     registerRoomHandlers(

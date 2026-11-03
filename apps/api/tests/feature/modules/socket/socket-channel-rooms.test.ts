@@ -262,3 +262,18 @@ test('永久刪除的成員：重新計算時斷開他已連線的 socket（PR #
   await settle();
   assert.equal(client!.connected, false, '刪除的成員被斷線');
 });
+
+test('角色被改成看不到全部渠道後，已連線的 socket 不能再用 token 裡的舊角色訂閱看不到的對話（PR #438 審查）', async () => {
+  const demoted = await createAgent('demoted', hqRole.id);
+  let client: ClientSocket | undefined;
+  await connectAs(demoted, (c) => { client = c; });
+  const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-demoted-sub` } });
+  const conv = await owner.conversation.create({ data: { tenantId: A, contactId: contact.id, channelId: chB.id, channelType: 'WEBCHAT' } });
+
+  await owner.agent.update({ where: { id: demoted.id }, data: { roleId: inboxRole.id } });
+  await app.syncSocketChannelRooms(A, demoted.id);
+
+  const ack = await client!.emitWithAck('subscribe', `conversation:${conv.id}`);
+  assert.deepEqual(ack, { ok: false, code: 'FORBIDDEN' }, '降級後訂閱看不到的對話被拒');
+  assert.equal((await app.io.in(`conversation:${conv.id}`).fetchSockets()).length, 0);
+});
