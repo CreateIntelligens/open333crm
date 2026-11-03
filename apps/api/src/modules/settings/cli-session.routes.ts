@@ -60,14 +60,17 @@ export default async function cliSessionRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/v1/settings/cli-sessions/:id — revoke a CLI session
-  fastify.delete<{ Params: { id: string } }>(
+  fastify.delete(
     "/cli-sessions/:id",
     async (request, reply) => {
-      await revokeCliSessionFlow(fastify, actorOf(request), request.params.id);
+      const { id } = idParams.parse(request.params);
+      await revokeCliSessionFlow(fastify, actorOf(request), id);
       return reply.send(success({ revoked: true }));
     },
   );
 }
+
+const idParams = z.object({ id: z.string().uuid('CLI 連線識別格式不正確') });
 
 const createCliSessionSchema = z.object({
   name: z.string().min(1).max(100),

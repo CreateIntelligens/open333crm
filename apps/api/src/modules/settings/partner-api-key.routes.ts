@@ -52,14 +52,17 @@ export default async function partnerApiKeyRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/v1/settings/api-keys/:id — revoke (soft-delete; isActive=false)
-  fastify.delete<{ Params: { id: string } }>(
+  fastify.delete(
     "/api-keys/:id",
     async (request, reply) => {
-      await revokePartnerApiKeyFlow(fastify, actorOf(request).tenantId, request.params.id);
+      const { id } = idParams.parse(request.params);
+      await revokePartnerApiKeyFlow(fastify, actorOf(request).tenantId, id);
       return reply.send(success({ revoked: true }));
     },
   );
 }
+
+const idParams = z.object({ id: z.string().uuid('金鑰識別格式不正確') });
 
 const createApiKeySchema = z.object({
   name: z.string().min(1).max(100),

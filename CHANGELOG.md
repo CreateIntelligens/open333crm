@@ -7,6 +7,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **API 文件列出路由檔內註冊的子 plugin**（#337 階段 3 第九批）— 部署時產生 `openapi.json` 的 `openapi-inventory.mjs` 原本只讀 `index.ts` 註冊的路由檔。路由檔內以 `fastify.register()` 掛上的子 plugin 不在文件中，例如平台的 `GET`、`PATCH /api/v1/platform/tenants/:id/ai-privacy`。現在產生器也讀子 plugin：路徑接在外層的前綴後面。外層以 `addHook` 驗證登入，或註冊時傳入含驗證的 guard 時，子 plugin 的路由標示需要登入。
+- **撤銷 API 金鑰與 CLI token 時，路徑的 id 先檢查是不是 UUID**（#337 階段 3 第九批，健檢 HC-SETTINGS-11）— `DELETE /api/v1/settings/api-keys/:id`、`DELETE /api/v1/settings/cli-sessions/:id` 的 id 不是 UUID 時，原本查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出欄位。現在回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
 
 ### Changed
 

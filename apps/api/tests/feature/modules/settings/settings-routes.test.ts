@@ -408,3 +408,16 @@ describe('稽核寫入失敗時，修改一起 rollback', () => {
     assert.deepEqual((await call(appA, 'GET', `${S}/tracking`)).body.data, { gaId: 'G-ROLLBACK1', metaPixelId: null });
   });
 });
+
+// HC-SETTINGS-11：路徑的 id 不是 UUID 時，原本送到資料庫才失敗，回 400 DATABASE_ERROR
+describe('撤銷時 id 不是 UUID', () => {
+  test.each([`${S}/api-keys/abc`, `${S}/cli-sessions/abc`])('DELETE %s：回 400 VALIDATION_ERROR，指出 id', async (url) => {
+    const res = await call(appA, 'DELETE', url);
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error?.code, 'VALIDATION_ERROR');
+    assert.deepEqual(
+      (res.body.error?.details.issues as Array<{ path: string }>).map((i) => i.path),
+      ['id'],
+    );
+  });
+});
