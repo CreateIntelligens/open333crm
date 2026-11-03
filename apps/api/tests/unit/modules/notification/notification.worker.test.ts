@@ -38,6 +38,7 @@ vi.mock('#src/modules/email/email.service.js', () => ({
 import { EVENT_NOTIFICATION_QUEUE, subscriberQueuesOf, USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { setupNotificationWorker } from '#src/modules/notification/notification.worker.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 loadEnvConfig();
 
@@ -53,9 +54,9 @@ const handle = setupNotificationWorker({
   },
   tenant: { findUnique: async () => ({ name: '測試站台' }) },
   conversation: {
-    findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', contact: { displayName: '客人' } }),
+    findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '客人' } }),
   },
-} as never);
+} as never, { visibility: async () => ALL_CHANNELS });
 
 beforeEach(() => {
   sent.jobs = [];
@@ -112,9 +113,31 @@ test('未指派的對話轉接：conversation.handoff 送進通知訂閱者，�
 test('已指派的對話轉接：只通知負責的客服', async () => {
   const assignedHandle = setupNotificationWorker({
     agent: { findMany: async () => [{ id: 'supervisor-a' }, { id: 'admin-b' }] },
-    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', contact: { displayName: '客人' } }) },
-  } as never);
+    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', channelId: 'ch-a', contact: { displayName: '客人' } }) },
+  } as never, { visibility: async () => ALL_CHANNELS });
   await assignedHandle(event('conversation.handoff', { conversationId: 'conv-1', reason: 'AI 月額度已用完，無法自動回覆' }));
   const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
   assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__agent-x`]);
+});
+
+// 分店主管只看得到渠道 ch-b：未指派對話的通知只發給看得到該渠道的主管與管理員（PR #440 審查，RBAC-04 HC-NOTIFICATIONS-01）
+function branchScopedHandle() {
+  return setupNotificationWorker({
+    agent: { findMany: async () => [{ id: 'hq-admin' }, { id: 'branch-supervisor' }] },
+    conversation: { findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '他店客人' } }) },
+  } as never, {
+    visibility: async (_tenantId: string, agentId: string) => (agentId === 'hq-admin' ? ALL_CHANNELS : new Set(['ch-b'])),
+  });
+}
+
+test('未指派的對話轉接：看不到該渠道的主管不會收到轉接通知（PR #440 審查）', async () => {
+  await branchScopedHandle()(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('未指派對話的新訊息：看不到該渠道的主管不會收到新訊息通知（PR #440 審查）', async () => {
+  await branchScopedHandle()(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
 });

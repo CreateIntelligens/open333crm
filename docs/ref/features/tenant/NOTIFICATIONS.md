@@ -37,8 +37,8 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 
 | 事件 | 通知類型 | 收件人 | 來源 |
 | --- | --- | --- | --- |
-| 客人傳訊息 | `new_message` | 對話已指派時通知負責人；未指派時通知所有 `ADMIN` 與 `SUPERVISOR` | `message.received` |
-| 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派時通知負責人；未指派時通知所有 `ADMIN` 與 `SUPERVISOR`。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
+| 客人傳訊息 | `new_message` | 對話已指派時通知負責人；未指派時通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道） | `message.received` |
+| 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派時通知負責人；未指派時通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
 | 工單被指派 | `case_assigned` | 被指派的成員 | `case.assigned` |
 | 工單升級 | `case_escalated` | 依升級對話框的勾選：所有 `ADMIN` 與 `SUPERVISOR`、升級前的負責人，見[工單](./CASES.md#升級) | `case.escalated` |
 | CSAT 兩分以下 | `csat_low_score` | 所有 `SUPERVISOR`，不含 `ADMIN` | `recordCsatScore()` |
@@ -50,7 +50,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 
 要知道的事：
 
-- **未指派對話的每一則訊息都通知全部主管。** 機器人負責的對話也一樣。客人連傳十則，每位 `ADMIN` 與 `SUPERVISOR` 各收到十筆通知。
+- **未指派對話的每一則訊息都通知全部主管。** 機器人負責的對話也一樣。客人連傳十則，每位看得到該渠道的 `ADMIN` 與 `SUPERVISOR` 各收到十筆通知。
 - **指派對話不會通知。** 通知模組訂閱了 `conversation.assigned`，但 API 行程沒有任何地方發布這個事件，見 `../../system/AUDIT.md` 的 CONV-02。
 - **建立工單時直接指定負責人不會通知。** 只有 `POST /cases/:id/assign` 發布 `case.assigned`，見[工單](./CASES.md#指派)。
 - **SLA 的兩個訂閱者不會觸發。** 通知模組也訂閱了 `sla.warning` 與 `sla.breached`，但這兩個事件在 API 行程沒有發布端，SLA 通知實際由 workers 直接送出，見 `../../system/AUDIT.md` 的 APP-05。

@@ -100,9 +100,10 @@ export async function sendCsatSurvey(
 
   const now = new Date();
 
-  // 先以條件更新認領工單再寄出：job 重跑、兩期重疊，或讀取後工單被重開時，只有認領成功的一次會寄
+  // 先以條件更新認領工單再寄出：job 重跑、兩期重疊，或讀取後工單被重開時，只有認領成功的一次會寄。
+  // 租戶在排程查詢之後才被停用時也認領不到（issue #410，PR #440 審查）
   const { count } = await prisma.case.updateMany({
-    where: { id: caseId, tenantId: caseRecord.tenantId, status: 'RESOLVED', csatSentAt: null },
+    where: { id: caseId, tenantId: caseRecord.tenantId, status: 'RESOLVED', csatSentAt: null, tenant: { isActive: true } },
     data: { csatSentAt: now },
   });
   if (count === 0) {
@@ -223,10 +224,13 @@ export async function recordCsatDeliveryFailure(
     ? (input.messageMetadata as Record<string, unknown>)
     : {};
   const metadata = { ...base, deliveryFailed: true, deliveryError: input.reason };
-  await ctx.tx.message.update({
-    where: { id: input.messageId },
+  // 只動這個租戶的資料：舊入口傳進來的 tx 不一定綁定租戶（PR #440 審查）
+  await ctx.tx.message.updateMany({
+    where: { id: input.messageId, conversation: { tenantId: ctx.tenantId } },
     data: { metadata: metadata as Prisma.InputJsonValue },
   });
+  const caseInTenant = await ctx.tx.case.count({ where: { id: input.caseId, tenantId: ctx.tenantId } });
+  if (caseInTenant === 0) return metadata;
   await ctx.tx.caseEvent.create({
     data: {
       caseId: input.caseId,

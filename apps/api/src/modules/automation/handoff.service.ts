@@ -26,10 +26,12 @@ export interface MarkHandedOffInput {
  */
 export async function markConversationHandedOff(ctx: TenantCtx, input: MarkHandedOffInput) {
   const { conversationId, reason, now } = input;
+  // 系統訊息是這個交易最後寫的一則，對話的最後訊息時間與它一致
+  const systemCreatedAt = input.systemCreatedAt ?? now;
   const claimed = await claimOne(() =>
     ctx.tx.conversation.updateMany({
       where: { id: conversationId, tenantId: ctx.tenantId, status: 'BOT_HANDLED' },
-      data: { status: 'AGENT_HANDLED', handoffReason: reason, lastMessageAt: now },
+      data: { status: 'AGENT_HANDLED', handoffReason: reason, lastMessageAt: systemCreatedAt },
     }),
   );
   if (!claimed) return null;
@@ -43,7 +45,7 @@ export async function markConversationHandedOff(ctx: TenantCtx, input: MarkHande
       content: input.systemContent,
       metadata: input.systemMetadata,
       isRead: true,
-      createdAt: input.systemCreatedAt ?? now,
+      createdAt: systemCreatedAt,
     },
   });
   const conversation = await ctx.tx.conversation.findFirst({ where: { id: conversationId, tenantId: ctx.tenantId } });

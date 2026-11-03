@@ -288,8 +288,15 @@ export function buildLineMessage(contentType: string, content: Record<string, un
         longitude: content.longitude ?? 0,
         ...base,
       };
-    case 'sticker':
-      return { type: 'sticker', packageId: content.packageId ?? '1', stickerId: content.stickerId ?? '1', ...base };
+    case 'sticker': {
+      // 以前缺欄位時補成 '1' 送出（送出錯的貼圖）；缺少時不送並帶原因（PR #440 審查）
+      const packageId = String(content.packageId ?? '').trim();
+      const stickerId = String(content.stickerId ?? '').trim();
+      if (!packageId || !stickerId) {
+        throw new LineMessageBuildError('貼圖缺少 packageId 或 stickerId，LINE 不接受');
+      }
+      return { type: 'sticker', packageId, stickerId, ...base };
+    }
 
     // ─── default：不認得的類型不送 ────────────────────────────────
     // 以前當成文字送出，內容取 content.text ?? ''，多半是空白訊息被 LINE 拒收（issue #416）

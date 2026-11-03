@@ -150,3 +150,32 @@ for (const contentType of ['text', 'quick_reply']) {
     });
   }
 }
+
+for (const [label, content] of [
+  ['缺少 packageId', { stickerId: '52002734' }],
+  ['缺少 stickerId', { packageId: '11537' }],
+  ['空白 stickerId', { packageId: '11537', stickerId: ' ' }],
+] as const) {
+  test(`貼圖缺少必要欄位（${label}）：不呼叫 LINE，回失敗並帶原因（PR #440 審查）`, async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+
+    const result = await linePlugin.sendMessage(
+      'line-user-1',
+      { contentType: 'sticker', content: content as Record<string, unknown> },
+      { channelAccessToken: 'token' },
+    );
+
+    assert.equal(result.success, false);
+    assert.match(result.error ?? '', /貼圖/);
+    assert.equal(calls, 0);
+  });
+}
+
+test('貼圖有 packageId 與 stickerId：照常送出', () => {
+  const msg = buildLineMessage('sticker', { packageId: '11537', stickerId: '52002734' }) as Record<string, unknown>;
+  assert.deepEqual({ type: msg.type, packageId: msg.packageId, stickerId: msg.stickerId }, { type: 'sticker', packageId: '11537', stickerId: '52002734' });
+});

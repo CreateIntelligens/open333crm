@@ -48,7 +48,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean } = {}) {
+function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean; tenantActive?: boolean } = {}) {
   const emits: Array<{ event: string; data: { message: { metadata?: Record<string, unknown> } } }> = [];
   const io = {
     to: () => ({ emit: (event: string, data: never) => emits.push({ event, data }) }),
@@ -56,6 +56,7 @@ function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean } 
   const messageUpdates: Array<{ where: Record<string, unknown>; data: { metadata: Record<string, unknown> } }> = [];
   const caseEvents: Array<{ data: Record<string, unknown> }> = [];
   const caseUpdates: unknown[] = [];
+  const messagesCreated: Array<Record<string, unknown>> = [];
   const db = {
     case: {
       findUnique: async () => ({
@@ -68,7 +69,11 @@ function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean } 
           { id: 'conv-1', channelId: 'channel-1', channelType, channel: { id: 'channel-1', isActive: true, credentialsEncrypted: 'x' } },
         ],
       }),
-      updateMany: async () => ({ count: 1 }),
+      // 模擬資料庫的條件：租戶已停用時，帶 tenant.isActive 條件的認領更新不到任何一列
+      updateMany: async ({ where }: { where: { tenant?: { isActive?: boolean } } }) =>
+        ({ count: opts.tenantActive === false && where.tenant?.isActive === true ? 0 : 1 }),
+      count: async ({ where }: { where: { id: string; tenantId: string } }) =>
+        (where.id === CASE_ID && where.tenantId === TENANT_ID ? 1 : 0),
       update: async (args: unknown) => {
         caseUpdates.push(args);
         return {};
@@ -78,10 +83,13 @@ function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean } 
       findFirst: async () => (opts.identity === false ? null : { uid: 'U-line-user' }),
     },
     message: {
-      create: async (args: { data: Record<string, unknown> }) => ({ id: 'msg-csat', ...args.data }),
-      update: async (args: never) => {
+      create: async (args: { data: Record<string, unknown> }) => {
+        messagesCreated.push(args.data);
+        return { id: 'msg-csat', ...args.data };
+      },
+      updateMany: async (args: never) => {
         messageUpdates.push(args);
-        return {};
+        return { count: 1 };
       },
     },
     caseEvent: {
@@ -92,7 +100,7 @@ function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean } 
     },
     conversation: { update: async () => ({}) },
   };
-  return { db: db as unknown as TenantDb, io, emits, messageUpdates, caseEvents, caseUpdates };
+  return { db: db as unknown as TenantDb, io, emits, messageUpdates, caseEvents, caseUpdates, messagesCreated };
 }
 
 test('LINE 客人收到的問卷是 Flex 訊息', async () => {
@@ -155,4 +163,22 @@ test('問卷送出失敗時客服看得到：其他渠道送不出', async () =>
 
   assert.equal(h.messageUpdates[0]?.data.metadata.deliveryFailed, true);
   assert.equal(h.caseEvents[0]?.data.eventType, 'csat_send_failed');
+});
+
+test('認領之前租戶被停用：不建立問卷訊息、不送給客人（PR #440 審查）', async () => {
+  const h = createHarness('LINE', { tenantActive: false });
+
+  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), false);
+
+  assert.equal(h.messagesCreated.length, 0);
+  assert.equal(lineBodies.length, 0);
+});
+
+test('失敗紀錄只更新這個租戶的問卷訊息（PR #440 審查）', async () => {
+  lineStatus = 400;
+  const h = createHarness('LINE');
+
+  await sendCsatSurvey(h.db, h.io, CASE_ID);
+
+  assert.deepEqual(h.messageUpdates[0].where, { id: 'msg-csat', conversation: { tenantId: TENANT_ID } });
 });

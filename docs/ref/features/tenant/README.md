@@ -92,7 +92,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 訂閱者 | 做什麼 |
 | --- | --- |
 | `automation.worker.ts` 的 `setupAutomationWorker()` | 機器人回覆、情緒分析與規則評估，細節見[收件匣與對話](./INBOX.md#機器人什麼時候回覆)與[自動化](./AUTOMATION.md) |
-| `notification.worker.ts` 的 `setupNotificationWorker()` | 發出「收到新訊息」通知。對話已指派時只通知負責人；未指派時通知所有 `ADMIN` 與 `SUPERVISOR` |
+| `notification.worker.ts` 的 `setupNotificationWorker()` | 發出「收到新訊息」通知。對話已指派時只通知負責人；未指派時通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道） |
 | `webhook-dispatcher.ts` 的 `setupWebhookDispatcher()` | 轉發給租戶訂閱了這個事件的外部 URL |
 
 

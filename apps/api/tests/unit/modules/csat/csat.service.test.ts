@@ -56,6 +56,7 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
         order.push('case.update');
         return {};
       },
+      count: async () => 1,
     },
     message: {
       create: async (args: { data: Record<string, unknown> }) => {
@@ -64,9 +65,9 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
         if (messageCreateError) throw messageCreateError;
         return { id: 'msg-1', ...args.data };
       },
-      update: async () => {
-        failureRecords.push('message.update');
-        return {};
+      updateMany: async () => {
+        failureRecords.push('message.updateMany');
+        return { count: 1 };
       },
     },
     caseEvent: {
@@ -147,7 +148,7 @@ test('送到客人的渠道失敗', async () => {
     assert.equal(updateManyCalls.length, 1);
     assert.equal(delivered.length, 1);
     // issue #416：問卷訊息標示沒有送出，工單時間軸留一筆紀錄（詳見 csat-delivery.test.ts）
-    assert.deepEqual(failureRecords, ['message.update', 'caseEvent:csat_send_failed']);
+    assert.deepEqual(failureRecords, ['message.updateMany', 'caseEvent:csat_send_failed']);
   } finally {
     delivery.error = undefined;
   }

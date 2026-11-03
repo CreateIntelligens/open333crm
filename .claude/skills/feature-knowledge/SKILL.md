@@ -73,7 +73,7 @@ description: >
 
 ## 常見 bug 從哪裡查
 - 「AI 都不回」：依序查 `KB_AUTO_REPLY_ENABLED`、對話是否 `BOT_HANDLED`、渠道 `botMode`、是否命中關鍵字規則（`apps/api/src/modules/automation/keyword-yield.ts`）、embedding 是否連得上（`generateEmbedding` 失敗時直接不回、不轉接，只有 error log）、`PLAN_LIMIT_EXCEEDED`。
-- 「AI 說已轉接但沒人接」：`clarify_handoff` 後對話應為 `AGENT_HANDLED` 且有 `handoffReason` 與 `auto_handoff` 系統訊息（#419）；未指派的對話會通知所有主管與管理員（`conversation_handoff`）。若仍是 `BOT_HANDLED`，查 job 是否失敗（轉接交易失敗時整則回覆不送出、由佇列重試）。
+- 「AI 說已轉接但沒人接」：`clarify_handoff` 後對話應為 `AGENT_HANDLED` 且有 `handoffReason` 與 `auto_handoff` 系統訊息（#419）；未指派的對話會通知看得到該渠道的主管與管理員（`conversation_handoff`）。若仍是 `BOT_HANDLED`，查 job 是否失敗（轉接交易失敗時整則回覆不送出、由佇列重試）。
 - 「AI 說型號查不到」：訊息 `metadata.modelGuard.unknownModel`；`GET /knowledge/models` 看白名單；`apps/api/src/modules/ai/model-matcher.ts`。
 - 「文章發布了卻搜不到」：`hasEmbedding`、Embedding 頁「未嵌入」數、`POST /knowledge/bulk-embed`；維度不符見 DB-01。
 - 「匯入後中文亂碼」：CSV 沒有 UTF-8 BOM（`apps/api/src/modules/knowledge/file-parser.service.ts` 的 `XLSX.read`）。
