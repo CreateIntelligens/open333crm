@@ -220,7 +220,7 @@ export function ChannelFormDialog({
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook' },
     { value: 'THREADS', label: 'Instagram (私訊)' },
-    { value: 'WEBCHAT', label: 'WebChat' },
+    { value: 'WEBCHAT', label: '網站聊天室' },
   ];
 
   const effectiveType = isEditing ? channel!.channelType : channelType;

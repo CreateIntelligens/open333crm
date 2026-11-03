@@ -50,7 +50,7 @@ export const RESOURCE_LABELS = {
   template: '版型',
   tenant: '租戶',
   version: '版本',
-  webchatChannel: '網頁聊天渠道',
+  webchatChannel: '網站聊天室渠道',
   webhookSubscription: 'Webhook 訂閱',
 } as const;
 

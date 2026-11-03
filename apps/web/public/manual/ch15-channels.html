@@ -29,7 +29,7 @@
     <a href="#p4"><span class="n">4</span> 串接 LINE</a>
     <a href="#p5"><span class="n">5</span> 串接 Facebook</a>
     <a href="#p6"><span class="n">6</span> 串接 Instagram</a>
-    <a href="#p7"><span class="n">7</span> 官網聊天（WebChat）</a>
+    <a href="#p7"><span class="n">7</span> 網站聊天室</a>
     <a href="#p8"><span class="n">8</span> Bot 設定</a>
     <a href="#p9"><span class="n">9</span> 誰看得到這個渠道</a>
     <a href="#p10"><span class="n">10</span> 權杖失效與重新連結</a>
@@ -54,7 +54,7 @@
         <a href="#p4"><b>串接 LINE</b>兩組金鑰去哪裡拿</a>
         <a href="#p5"><b>串接 Facebook</b>用 Facebook 登入或自備應用程式</a>
         <a href="#p6"><b>串接 Instagram</b>三個欄位與 Webhook 設定</a>
-        <a href="#p7"><b>官網聊天（WebChat）</b>嵌入碼、網頁版連結、背景</a>
+        <a href="#p7"><b>網站聊天室</b>嵌入碼、網頁版連結、背景</a>
         <a href="#p8"><b>Bot 設定</b>自動回覆、轉真人、招呼語</a>
         <a href="#p9"><b>誰看得到這個渠道</b>控制同事能看哪些對話</a>
         <a href="#p10"><b>權杖失效與重新連結</b>收不到訊息時怎麼辦</a>
@@ -93,11 +93,11 @@
           <tr><td>紅色垃圾桶</td><td>刪除渠道，見第 11 節</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: LINE 測試連線只驗 Access Token，不驗 Channel Secret；WebChat 按測試連線必定失敗「不支援的渠道類型：網站聊天室」。 -->
+      <!-- KNOWN-ISSUE: LINE 測試連線只驗 Access Token，不驗 Channel Secret；網站聊天室按測試連線必定失敗「不支援的渠道類型：網站聊天室」。 -->
       <div class="info"><span>ℹ️</span><div>
         「測試連線」不會改到客戶看到的任何東西，可以放心按。但有兩點要知道：<br>
         1. LINE 的測試連線只檢查 Channel Access Token。就算 Channel Secret 填錯也會顯示成功，但之後會收不到訊息，所以貼 Secret 時要特別仔細。<br>
-        2. 官網聊天（WebChat）渠道不需要測試連線，按了一定會顯示失敗，不用理會。
+        2. 網站聊天室渠道不需要測試連線，按了一定會顯示失敗，不用理會。
       </div></div>
     </section>
 
@@ -107,7 +107,7 @@
       <table>
         <thead><tr><th>按鈕</th><th>適合</th><th>特色</th></tr></thead>
         <tbody>
-          <tr><td><b>「設定精靈」</b>（推薦）</td><td>第一次接 LINE、Facebook、Instagram 或官網聊天</td><td>分 4 步帶你填，建立後自動測試連線；LINE 會自動幫你把 Webhook 設好，FB／IG 會直接給你要貼到 Meta 的網址與驗證權杖</td></tr>
+          <tr><td><b>「設定精靈」</b>（推薦）</td><td>第一次接 LINE、Facebook、Instagram 或網站聊天室</td><td>分 4 步帶你填，建立後自動測試連線；LINE 會自動幫你把 Webhook 設好，FB／IG 會直接給你要貼到 Meta 的網址與驗證權杖</td></tr>
           <tr><td><b>「新增渠道」</b></td><td>熟悉流程、只想快速填完</td><td>一個視窗填完；LINE、Facebook 有「欄位說明」告訴你去哪裡拿</td></tr>
           <tr><td><b>「用 Facebook 連結粉專」</b></td><td>接 Facebook 粉專最簡單的方式</td><td>用 Facebook 帳號登入、勾選粉專就完成，不用自己準備應用程式和金鑰。只有平台有開放這個功能時才會出現</td></tr>
         </tbody>
@@ -124,7 +124,7 @@
         <li>步驟 1：選「渠道類型」，填「顯示名稱」（例如「門市 LINE 官方帳號」），按「下一步」。</li>
         <li>步驟 2：貼上金鑰（各渠道要填什麼見第 4～7 節），在「誰看得到這個渠道」勾選同事（見第 9 節），按「建立並驗證」。</li>
         <li>步驟 3：系統自動建立並測試連線，稍等幾秒。</li>
-        <li>步驟 4：看結果。LINE 會顯示 Webhook 已自動設定；Facebook、Instagram 會顯示「回呼網址」和「驗證權杖」，照著貼到 Meta 後台；官網聊天會直接給你嵌入碼。按「完成」。</li>
+        <li>步驟 4：看結果。LINE 會顯示 Webhook 已自動設定；Facebook、Instagram 會顯示「回呼網址」和「驗證權杖」，照著貼到 Meta 後台；網站聊天室會直接給你嵌入碼。按「完成」。</li>
       </ol>
       <!-- KNOWN-ISSUE: 在步驟 4 用 X、Esc 或點背景關閉不會刷新列表。 -->
       <div class="warn"><span>⚠️</span><div>最後一步請按「<b>完成</b>」關閉精靈。如果按 Esc 或點旁邊空白處關掉，列表不會更新，看起來像沒建成功。這時請重新整理頁面確認，<b>不要再建一次</b>。</div></div>
@@ -241,7 +241,7 @@
     </section>
 
     <section class="doc" id="p7">
-      <h2><span class="idx">7</span> 官網聊天（WebChat）</h2>
+      <h2><span class="idx">7</span> 網站聊天室</h2>
       <p>在你的官網右下角放一個聊天視窗，客戶的訊息會跟 LINE、FB 一樣進到收件匣。</p>
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch15-webchat.jpg">
@@ -251,19 +251,19 @@
       </figure>
       <h3>建立</h3>
       <ol class="steps">
-        <li>建議用「設定精靈」，渠道類型選「WebChat (網頁聊天)」。WebChat 不需要任何外部金鑰，系統會自動產生，完成後直接給你嵌入碼。</li>
+        <li>建議用「設定精靈」，渠道類型選「網站聊天室」。網站聊天室不需要任何外部金鑰，系統會自動產生，完成後直接給你嵌入碼。</li>
         <li>如果用「新增渠道」，畫面會要你填「Channel Secret」和「Channel Access Token」，這兩格隨便填一串英文數字就可以（例如 <code>webchat-key-001</code>），它們不會用在別的地方。</li>
       </ol>
-      <!-- KNOWN-ISSUE: WebChat 在「新增渠道」要求填兩個任意字串，精靈卻說不需要。 -->
+      <!-- KNOWN-ISSUE: 網站聊天室在「新增渠道」要求填兩個任意字串，精靈卻說不需要。 -->
       <h3>放到官網上</h3>
       <ol class="steps">
-        <li>在 WebChat 卡片按「取得嵌入碼」。</li>
+        <li>在網站聊天室卡片按「取得嵌入碼」。</li>
         <li>按「複製」，把整段程式碼交給網站管理員，請他貼到網頁的 <code>&lt;body&gt;</code> 裡。</li>
         <li>這個視窗沒有關閉按鈕，按鍵盤 <b>Esc</b> 關掉。</li>
       </ol>
       <figure class="shot shot-narrow">
-        <img src="uploads/shots/ch15-embed.png" alt="WebChat 嵌入碼視窗（程式碼已模糊）" loading="lazy">
-        <figcaption>WebChat 嵌入碼（程式碼已模糊）。</figcaption>
+        <img src="uploads/shots/ch15-embed.png" alt="網站聊天室嵌入碼視窗（程式碼已模糊）" loading="lazy">
+        <figcaption>網站聊天室嵌入碼（程式碼已模糊）。</figcaption>
       </figure>
       <h3>其他功能</h3>
       <table>
@@ -271,7 +271,7 @@
         <tbody>
           <tr><td>卡片上的「預覽」</td><td>在這個頁面右下角先試開聊天視窗，看看長什麼樣子，再按「關閉預覽」收起來</td></tr>
           <tr><td>卡片上的「背景」</td><td>換聊天頁的背景圖：選「尺寸」（Cover 填滿、Contain 完整顯示）、「位置」（一般用 <code>center</code>），再「上傳背景圖片」（png、jpeg、webp），按「儲存」</td></tr>
-          <tr><td>頁面上方「WebChat 網頁版連結」</td><td>不用放到官網也能聊的獨立聊天頁。按「複製連結」，可以貼在 Email、社群貼文或做成 QR Code</td></tr>
+          <tr><td>頁面上方「網站聊天室網頁版連結」</td><td>不用放到官網也能聊的獨立聊天頁。按「複製連結」，可以貼在 Email、社群貼文或做成 QR Code</td></tr>
         </tbody>
       </table>
       <!-- KNOWN-ISSUE: 背景上傳／儲存失敗時沒有任何畫面提示。 -->
@@ -437,7 +437,7 @@
       <div class="warn"><span>⚠️</span><div>「轉發模式」如果選「立即轉發（下游接手，本系統不再處理）」，這個渠道的訊息<b>就不會進收件匣</b>，Bot 也不會回。不確定的話請保持「最後轉發」或不要開啟。</div></div>
       <h3>Webhook 公開網址（一般不用改）</h3>
       <figure class="shot">
-        <img src="uploads/shots/ch15-webhook-base.png" alt="頁面上方的 Webhook 公開網址設定卡片與 WebChat 網頁版連結" loading="lazy">
+        <img src="uploads/shots/ch15-webhook-base.png" alt="頁面上方的 Webhook 公開網址設定卡片與 網站聊天室網頁版連結" loading="lazy">
         <figcaption>頁面最上方的「Webhook 公開網址」卡片，一般保持原樣即可。</figcaption>
       </figure>
       <p>這裡填的是本系統對外的正式網域，系統會依它改寫<b>所有渠道</b>的 Webhook 網址。平常不需要修改，只有公司換網域時才用得到。</p>

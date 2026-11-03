@@ -364,7 +364,7 @@ export function ChannelManagement() {
               )}
               {hasWebchatChannel && (
                 <div className="mt-3 space-y-2 border-t pt-3">
-                  <p className="text-xs font-medium text-muted-foreground">WebChat 網頁版連結</p>
+                  <p className="text-xs font-medium text-muted-foreground">網站聊天室網頁版連結</p>
                   {(channels as Channel[])
                     .filter((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT)
                     .map((ch) => (
@@ -679,7 +679,7 @@ export function ChannelManagement() {
       <Dialog open={embedCodeDialog.open} onOpenChange={(v) => setEmbedCodeDialog({ ...embedCodeDialog, open: v })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>WebChat 嵌入碼</DialogTitle>
+            <DialogTitle>網站聊天室嵌入碼</DialogTitle>
           </DialogHeader>
           <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
             {embedCodeDialog.code}
@@ -704,7 +704,7 @@ export function ChannelManagement() {
       <Dialog open={chatboxLinkDialog.open} onOpenChange={(v) => setChatboxLinkDialog({ ...chatboxLinkDialog, open: v })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>WebChat 網頁版連結</DialogTitle>
+            <DialogTitle>網站聊天室網頁版連結</DialogTitle>
           </DialogHeader>
           <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
             {chatboxLinkDialog.url}

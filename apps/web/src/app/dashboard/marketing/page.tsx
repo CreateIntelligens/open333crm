@@ -937,7 +937,7 @@ function SegmentTab() {
   const channelTypeValues = [
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook' },
-    { value: 'WEBCHAT', label: 'WebChat' },
+    { value: 'WEBCHAT', label: '網站聊天室' },
     { value: 'WHATSAPP', label: 'WhatsApp' },
   ];
 

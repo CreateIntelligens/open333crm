@@ -567,7 +567,7 @@ export async function adaptChatboxMessageToWebchatParsed(
 ): Promise<ParsedWebhookMessage> {
   const plugin = getChannelPlugin(CHANNEL_TYPE.WEBCHAT);
   if (!plugin) {
-    throw new AppError('網頁聊天渠道模組未註冊，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
+    throw new AppError('網站聊天室渠道模組未註冊，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
   }
 
   const channelMsgId = `chatbox-${input.clientMessageId}`;
@@ -606,7 +606,7 @@ export async function handleChatboxMessage(
   claimRedis?: ChatboxClaimRedis,
 ): Promise<{ message: ChatboxMessageOutput; duplicate: boolean }> {
   if (VISITOR_MEDIA_MESSAGE_TYPES.has(input.type)) {
-    throw new AppError('網頁聊天不開放傳送圖片、影片或檔案', 'BAD_REQUEST', 400);
+    throw new AppError('網站聊天室不開放傳送圖片、影片或檔案', 'BAD_REQUEST', 400);
   }
   const session = await verifyClaimedChatboxSession(prisma, input, claimRedis);
   const existing = await prisma.message.findUnique({

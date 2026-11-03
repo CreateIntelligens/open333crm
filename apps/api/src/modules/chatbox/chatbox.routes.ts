@@ -142,6 +142,6 @@ export default async function chatboxRoutes(app: FastifyInstance) {
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (_req, reply) => reply.status(410).send({
     code: 'WEBCHAT_VISITOR_MEDIA_DISABLED',
-    message: '網頁聊天不開放傳送圖片、影片或檔案',
+    message: '網站聊天室不開放傳送圖片、影片或檔案',
   }));
 }

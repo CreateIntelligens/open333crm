@@ -216,7 +216,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook Messenger' },
     { value: 'THREADS', label: 'Instagram (私訊)' },
-    { value: 'WEBCHAT', label: 'WebChat (網頁聊天)' },
+    { value: 'WEBCHAT', label: '網站聊天室' },
   ];
 
   const stepLabels: Record<WizardStep, string> = {
@@ -357,7 +357,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
               {channelType === CHANNEL_TYPE.WEBCHAT && (
                 <div className="rounded-md bg-primary-subtle p-4">
                   <p className="text-sm text-primary">
-                    WebChat 渠道不需要外部憑證，系統會自動產生。建立後即可取得嵌入碼。
+                    網站聊天室不需要外部憑證，系統會自動產生。建立後即可取得嵌入碼。
                   </p>
                 </div>
               )}
