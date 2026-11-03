@@ -4,6 +4,22 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-03：第一優先的權限與隔離修正（RBAC-07、RBAC-08、RBAC-09、MKT-02、MKT-03、RLS-10、RBAC-04、RBAC-03）
+
+issue #408、#409、#412、#413、#427、#428，同一個 PR。以本機測試資料庫的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-07（HC-CHANNELS-01） | 已修正，從 `AUDIT.md` 移除 | 帶渠道 ID 的路由都經過 `requireVisibleChannel()`（`assertChannelVisible`），看不到的渠道回 404；讀取要 `read_only`，管理操作要 `full`。`/webhook-base-url` 改寫全租戶渠道，限 `channel.view_all`；`/embed-code` 補上 `channel.view`。團隊指派路由刻意只看 `channel.assign_team`。change `scope-single-channel-routes-408`。`channel-single-route-visibility.test.ts` 修正前 10 項以 assertion 失敗 |
+| RBAC-08（HC-MEMBERS-01） | 已修正，從 `AUDIT.md` 移除 | `updateAgentRole()` 比對對方目前的權限（`TARGET_OUTRANKS_ACTOR`），新角色不含 `role.manage` 且對方是最後一位啟用中的管理員時回 `LAST_ADMIN_PROTECTED`。change `guard-agent-target-rank-last-admin`。`agent-management.test.ts` 新增 7 項，6 項修正前失敗，另做 4 種 mutation |
+| RBAC-09（HC-MEMBERS-02） | 已修正，從 `AUDIT.md` 移除 | 重設密碼、停用、刪除都呼叫 `assertTargetNotAboveActor()` |
+| RBAC-03 的最後一位管理員保護 | 部分修正 | 改依角色權限有沒有 `role.manage` 判斷；自動指派、通知收件人等其餘列未處理 |
+| MKT-02（HC-MARKETING-01） | 已修正，從 `AUDIT.md` 移除 | 建立帶 `scheduledAt` 的群發要 `marketing.broadcast`；`broadcast.scheduler.ts` 送出前以 `scheduledById`（舊資料看建立者）當下的有效權限重驗，不過時標 `failed` 並寫 `SCHEDULED_SENDER_*` 與原因。change `require-broadcast-send-permissions`，migration `20261103100000_broadcast_scheduled_by` |
+| MKT-03（HC-MARKETING-02） | 已修正，從 `AUDIT.md` 移除 | 建立與立即發送附券群發要 `coupon.issue`，`audience-preview` 帶券要 `coupon.view`。`broadcast-send-permissions.test.ts` 15 項，8 項修正前失敗 |
+| RLS-10（HC-PLATFORM-SETTINGS-02） | 部分修正，由 P1 降為 P3 | migration `20261103110000_revoke_app_tenant_platform_tables`：4 張平台表只留 `SELECT`，`platform_users`、`platform_audit_logs`、`trial_signups`、`_prisma_migrations` 全部收回，預設權限不再授權 `app_tenant`。`platform-table-grants.test.ts` 修正前 14 項失敗；完整 feature 測試通過。`platform_settings` 仍整表可讀 |
+| RBAC-04 的 socket 租戶房間 | 已修正 | 渠道房間加總店房間，`message.new`、`conversation.*` 改送渠道房間，授權變更時重新計算。change `fix-socket-channel-rooms-427`。`socket-channel-rooms.test.ts` 三個情境修正前失敗，「離開已訂閱的對話房間」做過 mutation。`case.*`、`sla.event`、`contact.merged` 仍送租戶房間 |
+| RBAC-04 的資料匯出（HC-GOVERNANCE-02） | 已修正 | 發起、查詢、下載要求 `data.export` 加 `channel.view_all`。change `restrict-data-export-to-tenant-wide-roles`。`data-export-flow.test.ts` 2 項修正前失敗 |
+
 ## 2026-11-02：分群群發依建立者的可見範圍判斷（RBAC-04）
 
 #430 合併後的 code review，change `segment-broadcast-creator-visibility`。以 feature 測試確認，沒有連 UAT。

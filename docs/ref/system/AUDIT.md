@@ -51,15 +51,12 @@
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-08](#rls-08) | 租戶隔離與權限 | P2 | 已定方向 | service 收到的 client 決定了它的 RLS 與交易保證；背景工作多半傳 `prismaAdmin`，沒有 RLS | 靜態確認 |
 | [RLS-09](#rls-09) | 租戶隔離與權限 | P3 | 已定方向 | Socket 房間只有 `tenant:` 帶租戶 ID，推播端無法檢查 `conversation:`、`agent:` 等房間屬於哪個租戶 | 靜態確認 |
-| [RLS-10](#rls-10) | 租戶隔離與權限 | P1 | 未處理 | 租戶連線 `app_tenant` 對平台層資料表有完整讀寫權限：讀得到平台帳號的密碼雜湊，改得了其他租戶的平台設定與價目表 | 執行時確認 |
+| [RLS-10](#rls-10) | 租戶隔離與權限 | P3 | 部分修正 | 租戶連線 `app_tenant` 對平台層資料表的寫入權限與 `platform_users` 等表的讀取已收回（#412）；仍讀得到 `platform_settings` 全部的鍵，包含其他租戶的 `ai.privacy.*` 開關 | 執行時確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 執行時確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
-| [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人（含權杖失效通知）與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色；持 `agent.manage` 的非管理員可以建立列舉為 `ADMIN` 的成員 | 執行時確認 |
-| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、`GET /cases/stats`、資料匯出與刪除、新訊息通知沒有套用；聯絡人的對話、工單、時間軸（`481452a`）、AI 輔助端點、`POST /cases`（#281）、`POST /cases/from-conversation/:id`，以及聯絡人清單與合併、報表與匯出、工單與對話詳情（#430）已修正 | 執行時確認 |
+| [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 部分修正 | 工單自動指派、通知收件人（含權杖失效通知）看舊的角色列舉，不看細粒度角色；持 `agent.manage` 的非管理員可以建立列舉為 `ADMIN` 的成員 | 執行時確認 |
+| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 `GET /cases/stats`、資料刪除、新訊息通知沒有套用；聯絡人的對話、工單、時間軸（`481452a`）、AI 輔助端點、`POST /cases`（#281）、`POST /cases/from-conversation/:id`，以及聯絡人清單與合併、報表與匯出、工單與對話詳情（#430）、socket 推播（#427）與資料匯出（#428）已修正 | 執行時確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
-| [RBAC-07](#rbac-07) | 租戶隔離與權限 | P1 | 未處理 | 單筆渠道的讀取、修改、停用、換憑證、刪除都不檢查渠道可見範圍，分店成員知道渠道 ID 就能操作看不到的渠道 | 執行時確認 |
-| [RBAC-08](#rbac-08) | 租戶隔離與權限 | P1 | 未處理 | 改成員角色不比較目標的權限，也沒有最後一位管理員保護：主管可以把唯一的管理員降級，之後無人能改回 | 執行時確認 |
-| [RBAC-09](#rbac-09) | 租戶隔離與權限 | P2 | 未處理 | 重設他人密碼、停用、刪除成員都不比較目標的權限；持 `agent.password.reset` 的自訂角色可以接管管理員帳號 | 執行時確認 |
 | [RBAC-10](#rbac-10) | 租戶隔離與權限 | P2 | 未處理 | 編輯成員可使用的渠道時一律寫 `full`，原本 `read_only`、`reply_only` 的成員被編輯一次就升成完整權限 | 執行時確認 |
 | [RBAC-11](#rbac-11) | 租戶隔離與權限 | P2 | 未處理 | 後台多數頁面不依權限隱藏操作，按下才 403；沒有權限時頁面顯示成「沒有資料」 | 執行時確認 |
 | [TEAM-01](#team-01) | 租戶隔離與權限 | P2 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用；進站訊息不依團隊分流 | 靜態確認 |
@@ -155,8 +152,6 @@
 | [CONTACT-03](#contact-03) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併完成後「合併紀錄」卡不更新，看不到剛才的合併，也找不到「解除合併」 | 執行時確認 |
 | [CONTACT-04](#contact-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 聯絡人時間軸一次取出全部對話、工單與事件，沒有上限；資料多的聯絡人詳情頁要 60 秒以上 | 執行時確認 |
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 部分修正 | 群發失敗後重試，逐人送出的群發會對全部對象重送；連按兩次與排程重疊已擋下 | 靜態確認 |
-| [MKT-02](#mkt-02) | 聯絡人、行銷與報表 | P1 | 未處理 | 沒有 `marketing.broadcast` 的成員，建立帶排程時間的群發，到期照樣送出 | 執行時確認 |
-| [MKT-03](#mkt-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 執行時確認 |
 | [MKT-05](#mkt-05) | 聯絡人、行銷與報表 | P2 | 未處理 | 分群的「建立日期」條件以 UTC 午夜切日，台灣 00:00–07:59 建立的聯絡人算到前一天 | 執行時確認 |
 | [MKT-06](#mkt-06) | 聯絡人、行銷與報表 | P2 | 未處理 | 群發的素材選單要 200 筆但後端上限 100，分群下拉只拿第一頁 50 筆 | 執行時確認 |
 | [MKT-07](#mkt-07) | 聯絡人、行銷與報表 | P2 | 未處理 | 刪除分群不檢查是否被排程群發引用，群發到期失敗時的原因看不出是分群被刪 | 執行時確認 |
@@ -327,6 +322,10 @@ Socket.IO 房間只有 `tenant:<tenantId>` 帶租戶 ID。`conversation:<id>`、
 
 RLS 是租戶隔離的第二道防線；對這幾張表，第二道防線不存在。修正方向：收回 `app_tenant` 對平台層資料表的寫入權限，`platform_users` 連讀取一併收回；租戶路徑需要的兩張表只給 `SELECT`。
 
+**部分修正（#412，2026-11-03）。** migration `20261103110000_revoke_app_tenant_platform_tables` 讓 `app_tenant` 對 `tenants`、`plans`、`platform_settings`、`model_pricings` 只剩 `SELECT`（租戶路徑讀方案上限、租戶停用狀態、個資遮罩政策與價目表），完全收回 `platform_users`、`platform_audit_logs`、`trial_signups` 與 `_prisma_migrations`。`ALTER DEFAULT PRIVILEGES` 不再把新表授權給 `app_tenant`，新的租戶表要在開啟 RLS 的 migration 明確 `GRANT`。`apps/api/tests/feature/platform-table-grants.test.ts` 檢查寫入與讀取被拒、必要的讀取仍可用，並檢查每張 FORCE RLS 的表都有授權。
+
+**仍未修正**：`platform_settings` 仍是整表 `SELECT`，租戶連線讀得到其他租戶的 `ai.privacy.*` 開關值（布林，不是個資）。要收窄得改成由 `app_admin` 讀出後傳入，因此由 P1 降為 P3。
+
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-SETTINGS-02（[PLATFORM-SETTINGS 健檢](../features/health/PLATFORM-SETTINGS.md)）。證據：本機 psql 在交易內 `SET LOCAL ROLE app_tenant` 並設定 `app.current_tenant`，看得到全部 `platform_settings`、`UPDATE` 其他租戶的 `ai.privacy.*` 成功、`INSERT` 新鍵成功、`UPDATE model_pricings` 成功、`platform_users.passwordHash` 可讀，最後 ROLLBACK（健檢實測）。子代理原列 P2，2026-10-30 使用者決定升為 P1。
 
 <a id="rbac-01"></a>
@@ -423,7 +422,6 @@ CLI token 的停用問題另見 AUTH-02。
 | `apps/workers/src/lib/automation-actions.ts` 的 `getSupervisorAndAdminAgentIds()` | 自動化的「通知主管」動作 |
 | `trial/trial.scheduler.ts` 的 `adminEmails()` | 試用到期的通知信只寄給 `ADMIN` |
 | `csat/csat.service.ts` 的 `recordCsatScore()` | CSAT 兩分以下只通知 `SUPERVISOR`，不含 `ADMIN` |
-| `agent/agent.service.ts` 的 `assertNotLastActiveAdmin()` | 停用與刪除成員時，「最後一位啟用中的管理員」把 `role` 為 `ADMIN` 的成員也算成管理員 |
 
 2026-10-30 功能健檢補上兩點：
 
@@ -432,7 +430,7 @@ CLI token 的停用問題另見 AUTH-02。
 
 指派自訂角色時，`agent.service.ts` 的 `resolveRoleAssignment()` 讓 `role` 沿用成員原本的值。因此兩個同屬一個自訂角色的成員，行為可能正好相反：原本是 `ADMIN` 的人會收到所有主管通知，也永遠不會被自動指派工單；原本是 `AGENT` 的人則相反。「人員管理」頁只顯示細粒度角色，管理員看不到這個差異。
 
-**規格依據。** 主規格 `agent-lifecycle` 的「停用成員」與「永久刪除成員」規定：目標是租戶最後一位啟用中、角色為 `admin` 系統角色的成員時，系統 SHALL 拒絕。`assertNotLastActiveAdmin()` 把 `role` 為 `ADMIN`、但角色已改成自訂角色的成員也算進去。例如：租戶只剩一位 `admin` 系統角色的成員 M，另一位成員的角色列舉仍是 `ADMIN`。系統因此認為有兩位管理員，允許停用或刪除 M，租戶可能從此沒有人能管理角色。現況違反這兩條需求，因此由 P3 調為 P2。表中其他規則沒有主規格規定。
+**部分修正（#413，2026-11-03）。** 「最後一位啟用中的管理員」改依角色權限有沒有 `role.manage`（含 implies）判斷，不再看 `role` 列舉；停用、刪除與改角色共用同一個判斷（change `guard-agent-target-rank-last-admin`）。原本違反主規格 `agent-lifecycle` 的部分已消除，表中其餘規則沒有主規格規定，仍未處理。
 
 <a id="rbac-04"></a>
 ### RBAC-04：渠道可見範圍有多處沒有套用
@@ -441,19 +439,19 @@ CLI token 的停用問題另見 AUTH-02。
 
 | 路徑 | 沒有套用的結果 |
 | --- | --- |
-| `plugins/socket.plugin.ts` 在連線時讓每條 socket 自動加入 `tenant:<租戶 ID>` | `conversation.service.ts` 的 `sendMessage()` 與 `webhook/inbound-socket-presenter.ts` 的 `emitToConversationAndTenant()` 都把含訊息內容的 `message.new` 發到租戶房間。受限的客服即時收到所有渠道的訊息 |
 | `case.routes.ts` 的 `GET /stats` | 統計全租戶的工單 |
-| 資料匯出（`data-export.handler.ts`） | 只以 `tenantId` 篩選。持 `data.export` 的成員即使沒有任何渠道授權、沒有 `inbox.view` 與 `case.view`，也能匯出全租戶的聯絡人（含各渠道 uid）、對話、訊息與工單（HC-GOVERNANCE-02） |
 | 資料刪除（`data-erasure.service.ts`） | 持 `data.erase` 但看不到某渠道的成員，可以匿名化或硬刪除只在那個渠道出現的聯絡人（HC-GOVERNANCE-05） |
 | `notification.worker.ts` 的未指派對話新訊息通知 | 通知所有 `ADMIN`、`SUPERVISOR`，不看渠道。只看得到分店渠道的主管仍收到其他渠道客人的名稱，點進去是 404（HC-NOTIFICATIONS-01） |
 
-第一項影響最大：只要受限客服的畫面連著 socket，渠道可見範圍在即時事件上等於不存在。2026-10-30 功能健檢實測重現：沒有任何渠道授權的成員訂閱對話房間被拒，但仍從租戶房間收到 WebChat 的 `message.new`，含訊息全文（[INBOX 健檢](../features/health/INBOX.md)）。
+**socket 推播已修正（#427，2026-11-03）。** 連線時依可見渠道加入 `tenant:<租戶>:channel:<渠道>`，總店加入 `tenant:<租戶>:channels:all`；`message.new`、`conversation.*` 改送渠道房間，不再送到租戶房間；成員可用渠道、角色、角色權限、渠道與團隊授權變更後重新計算已連線成員的房間（change `fix-socket-channel-rooms-427`，`socket-channel-rooms.test.ts`）。仍送到租戶房間的有 `case.*`（`case.created`、`case.deleted` 帶工單標題）、`sla.event`、`contact.merged`（帶聯絡人名稱）；方案異動拿掉 `channel.view_all` 時要重新連線才生效。
 
-**2026-10-30 功能健檢新增的路徑。** 健檢實測發現七條路徑；報表與匯出（HC-ANALYTICS-03）、工單詳情（HC-CASES-08）、對話詳情（HC-INBOX-05）、聯絡人修改與合併預覽（HC-CONTACTS-10）已由 #430 修正並從上表移除，上表 `GET /stats` 之後剩下的三列是其餘的健檢發現。影響較大或修法不同的另列一項：單筆渠道的路由（RBAC-07，P1）、連結對話到工單（CASE-06）、指派給看不到渠道的成員（CONV-06）；群發（原 MKT-04，P1）已由 #430 修正並移除。**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-03（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-08（[CASES 健檢](../features/health/CASES.md)）、HC-INBOX-05（[INBOX 健檢](../features/health/INBOX.md)）、HC-CONTACTS-10（[CONTACTS 健檢](../features/health/CONTACTS.md)）、HC-GOVERNANCE-02（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-05（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-NOTIFICATIONS-01（[NOTIFICATIONS 健檢](../features/health/NOTIFICATIONS.md)）。證據：各報告以只綁一個渠道或沒有渠道授權的自訂角色實測，例如 `apps/api/src/modules/analytics/analytics.service.ts:282-294`、`apps/api/src/modules/case/case.service.ts:150-157`、`apps/api/src/modules/conversation/conversation.service.ts:184-206`、`apps/api/src/modules/contact/contact.service.ts:236-244`、`apps/workers/src/handlers/data-export.handler.ts:56-112`、`apps/api/src/modules/data-erasure/data-erasure.service.ts:45-56`、`apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236`。
+**資料匯出已修正（#428，2026-11-03）。** 匯出定位為全租戶的資料可攜權，內容不依渠道篩選；發起、查詢與下載改為要求 `data.export` 加 `channel.view_all`（change `restrict-data-export-to-tenant-wide-roles`）。
+
+**2026-10-30 功能健檢新增的路徑。** 健檢實測發現七條路徑；報表與匯出（HC-ANALYTICS-03）、工單詳情（HC-CASES-08）、對話詳情（HC-INBOX-05）、聯絡人修改與合併預覽（HC-CONTACTS-10）已由 #430 修正並從上表移除，資料匯出（HC-GOVERNANCE-02）已由 #428 修正並移除，上表 `GET /stats` 之後剩下的兩列是其餘的健檢發現。影響較大或修法不同的另列一項：單筆渠道的路由（原 RBAC-07，P1，已由 #408 修正並移除）、連結對話到工單（CASE-06）、指派給看不到渠道的成員（CONV-06）；群發（原 MKT-04，P1）已由 #430 修正並移除。**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-03（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-08（[CASES 健檢](../features/health/CASES.md)）、HC-INBOX-05（[INBOX 健檢](../features/health/INBOX.md)）、HC-CONTACTS-10（[CONTACTS 健檢](../features/health/CONTACTS.md)）、HC-GOVERNANCE-02（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-05（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-NOTIFICATIONS-01（[NOTIFICATIONS 健檢](../features/health/NOTIFICATIONS.md)）。證據：各報告以只綁一個渠道或沒有渠道授權的自訂角色實測，例如 `apps/api/src/modules/analytics/analytics.service.ts:282-294`、`apps/api/src/modules/case/case.service.ts:150-157`、`apps/api/src/modules/conversation/conversation.service.ts:184-206`、`apps/api/src/modules/contact/contact.service.ts:236-244`、`apps/workers/src/handlers/data-export.handler.ts:56-112`、`apps/api/src/modules/data-erasure/data-erasure.service.ts:45-56`、`apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236`。
 
 **規格依據。** 主規格 `channel-scoped-visibility` 的「與即時推播一致」，現況沒有做到：
 
-- 「與即時推播一致」：不可見渠道的訊息事件 MUST NOT 送達成員，包括送到租戶房間的事件。第一項違反這條需求。
+- 「與即時推播一致」：不可見渠道的訊息事件 MUST NOT 送達成員，包括送到租戶房間的事件。#427 修正前違反這條需求。
 
 `GET /cases/stats` 不在這份規格的範圍內。
 
@@ -490,44 +488,6 @@ CLI token 的停用問題另見 AUTH-02。
 **修正方向**：reconcile 只補上「預設有、但租戶從未設定過」的新權限碼，不刪除也不重加既有的碼；這需要記錄每個角色已經同步到哪一版註冊表。腳本結束前清除 `perms:*` 快取，並納入部署流程。
 
 **部分緩解（2026-10-21，add-coupon-system）**：新增 `scripts/grant-new-role-permissions.mjs`。它只把「指定的權限碼 ∩ 該角色的預設權限」補到各租戶的系統角色，已存在的略過，不刪除也不重建，所以不會覆蓋租戶的修改。新增權限碼時改用這支腳本，例如優惠券上線：`node scripts/grant-new-role-permissions.mjs coupon.view coupon.manage coupon.issue coupon.redeem store.view store.manage`。仍未解決：要由部署的人指定這次新增的碼、腳本不清除 `perms:*` 快取（只印出提醒）、沒有納入部署流程；reconcile 腳本本身沒有改。
-
-<a id="rbac-07"></a>
-### RBAC-07：單筆渠道的路由不檢查渠道可見範圍
-
-`GET /channels` 與 `GET /channels/:id/status` 依渠道可見範圍過濾，單筆渠道的其他路由沒有。持有 `channel.update` 或 `channel.delete`、沒有 `channel.view_all` 的成員，可以對看不到的渠道：
-
-- 讀取渠道設定（含遮罩憑證與明文 `verifyToken`）、嵌入碼與導流識別。
-- 改名、停用、更換憑證（例如換掉 FB 的 `pageAccessToken`）、測試連線、設定 webhook、改聊天室外觀。
-- 刪除渠道。
-
-換憑證不寫稽核（AUD-01），事後查不到是誰做的。
-
-**規格依據。** 主規格 `channel-visibility-defaults` 的「Unbound Channel Is Not Visible」規定：沒有綁定的渠道在列表與單筆存取檢查中都不可見。現況違反這條需求。其他沒有套用可見範圍的路徑見 RBAC-04。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-CHANNELS-01（[CHANNELS 健檢](../features/health/CHANNELS.md)）。證據：`apps/api/src/modules/channel/channel.routes.ts:326-414`、`:450`、`:460`、`:499-567`、`:570`，`channel.service.ts:687`；自訂角色只綁 LINE-A，`GET /channels/<FB>` 200，`PATCH` 改名、停用、換權杖都 200，admin 讀回權杖已換（健檢實測）。
-
-<a id="rbac-08"></a>
-### RBAC-08：改成員角色沒有越權與最後一位管理員保護
-
-`agent.service.ts` 的 `updateAgentRole()` 只檢查「新角色」是否超出操作者的權限，不檢查「目標成員目前的角色」是否比操作者高，也不呼叫 `assertNotLastActiveAdmin()`（只有停用與刪除呼叫）。
-
-`supervisor` 系統角色預設有 `agent.role.assign`，因此主管可以把管理員改成 Supervisor 或 Agent。租戶只有一位管理員時（多數租戶的情況），一個操作之後就沒有人持有 `role.manage`、`agent.deactivate`、`agent.purge`；主管也不能把人改回 Admin（`ROLE_ESCALATION`），只能直接改資料庫。
-
-**規格依據。** 主規格 `agent-lifecycle` 只規定停用與刪除要有最後一位管理員保護；`role-management` 的越權防護只比對目標角色。這一項沒有直接違反主規格，依影響判定為 P1。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MEMBERS-01（[MEMBERS 健檢](../features/health/MEMBERS.md)）。證據：`apps/api/src/modules/agent/agent.service.ts:240-287`；以 seed supervisor `PATCH /agents/<admin2>/role {"role":"SUPERVISOR"}` 回 200（健檢實測）；「最後一位管理員」情況為讀程式，沒有對 seed 帳號實測。
-
-<a id="rbac-09"></a>
-### RBAC-09：重設密碼、停用、刪除成員不比較目標的權限
-
-`resetAgentPassword()`、`deactivateAgent()`、`purgeAgent()` 只檢查操作者有沒有對應的權限碼，不檢查目標成員的權限是否比操作者高：
-
-- 持 `agent.password.reset` 的自訂角色可以重設管理員的密碼，再以管理員身分登入，等於繞過 `ROLE_ESCALATION` 取得全部權限。
-- 持 `agent.deactivate`、`agent.purge` 的自訂角色可以停用或刪除管理員（不是最後一位時）。
-
-這三個碼預設只有 `admin` 持有，要管理員先把它們授予自訂角色才會發生，因此列為 P2。角色權限頁沒有任何提示說明這三個碼等同管理員。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MEMBERS-02（[MEMBERS 健檢](../features/health/MEMBERS.md)）。證據：`agent.service.ts:317-334`、`:376-396`、`:408-425`；自訂角色只有 `agent.view, agent.password.reset`，重設 admin2 的密碼後以新密碼登入成功；另一個自訂角色停用 admin2 回 204（健檢實測）。
 
 <a id="rbac-10"></a>
 ### RBAC-10：編輯成員的渠道一律寫成 `full`
@@ -2064,20 +2024,6 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 
 **修正方向**：送出改成背景工作；重試時跳過已有成功收件紀錄的聯絡人；為停在 `sending` 的群發提供逾時或復原的途徑。
 
-<a id="mkt-02"></a>
-### MKT-02：排程群發不檢查發送權限
-
-建立群發（`POST /marketing/broadcasts`）只要求 `marketing.manage`，「立即發送」才要求 `marketing.broadcast`。建立時帶 `scheduledAt`，`broadcast.scheduler.ts` 到期直接執行，不檢查建立者有沒有發送權限。只有 `marketing.manage` 的成員因此可以對顧客群發。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-01（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`apps/api/src/modules/marketing/marketing.routes.ts:278`、`apps/api/src/modules/marketing/broadcast.scheduler.ts:24-45`；只有 `marketing.view`、`marketing.manage` 的成員建立 75 秒後的附券群發，「立即發送」回 403，約 80 秒後排程器送出：送達 3、發券 3（健檢實測）。
-
-<a id="mkt-03"></a>
-### MKT-03：附券群發繞過發券權限
-
-`marketing.service.ts` 的 `assertBroadcastCoupon()` 只檢查券的狀態，不檢查操作者有沒有 `coupon.issue`。沒有任何優惠券權限的成員可以建立並送出附券群發。前端附券選單因 `GET /coupons` 403 顯示載入失敗，但 API 照收。`audience-preview` 也把券的剩餘名額回給沒有 `coupon.view` 的成員。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-02（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`apps/api/src/modules/marketing/marketing.service.ts:227-228`、`marketing.routes.ts:290-294`；沒有 `coupon.view`、`coupon.issue` 的成員帶 `couponId` 建立群發 201、送出 202，結果發券 3 張（健檢實測）。
-
 <a id="mkt-05"></a>
 ### MKT-05：分群的建立日期條件以 UTC 切日
 
@@ -2358,10 +2304,10 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 | 渠道 | 修改渠道，包括更換憑證（`PATCH /channels/:id`） |
 | 業務 | 送出群發、自動化規則的增刪改、刪除知識庫文章、刪除標籤 |
 | 行銷與優惠券（2026-10-30 健檢） | 優惠券的建立、發布、暫停、恢復、複製、刪除；群發與分群的建立。`coupon`、`marketing` 模組都沒有呼叫稽核函式 |
-| 匯出與對外 Webhook（2026-10-30 健檢） | 下載匯出檔（只把 `downloadCount` 加一，同租戶任何持 `data.export` 的成員都能下載別人發起的匯出）；對外 Webhook 訂閱的建立、修改、刪除與測試送出。訂閱 `message.received` 就能把客人訊息持續送到外部網址（HOOK-01），刪除又是硬刪除，連 `WebhookDelivery` 一起刪掉，事後查不到曾送到哪個網址 |
+| 匯出與對外 Webhook（2026-10-30 健檢） | 下載匯出檔（只把 `downloadCount` 加一，同租戶持 `data.export` 與 `channel.view_all` 的成員都能下載別人發起的匯出，規格明定）；對外 Webhook 訂閱的建立、修改、刪除與測試送出。訂閱 `message.received` 就能把客人訊息持續送到外部網址（HOOK-01），刪除又是硬刪除，連 `WebhookDelivery` 一起刪掉，事後查不到曾送到哪個網址 |
 | 其他敏感操作（2026-10-30 健檢） | 修改聯絡人的 email、電話；門市帳號的建立、重設密碼、強制登出、刪除（`store.manage`）；會員綁定設定與手動綁定、解除；SLA 政策的增刪改 |
 
-長效憑證與渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候建立了一把能長期存取租戶資料的金鑰。渠道憑證可以被看不到該渠道的成員更換，見 RBAC-07。稽核紀錄失去操作者的問題見 AUD-03、AUD-04。
+長效憑證與渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候建立了一把能長期存取租戶資料的金鑰。#408 之前渠道憑證可以被看不到該渠道的成員更換，現在要對該渠道有 `full` 層級。稽核紀錄失去操作者的問題見 AUD-03、AUD-04。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-14（[MARKETING 健檢](../features/health/MARKETING.md)）、HC-GOVERNANCE-03（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-04（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-09（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）。證據：優惠券與行銷操作、下載匯出檔、Webhook 訂閱的建立修改刪除、修改聯絡人 email 與電話之後 `tenant_audit_logs` 沒有新紀錄（健檢實測）；門市帳號、會員綁定、SLA 政策為讀程式，例如 `apps/api/src/modules/webhook-subscriptions/webhook-subscription.routes.ts:48, 58, 68, 86`、`apps/api/src/modules/data-export/data-export.flow.ts:62-69`、`apps/api/src/modules/store/store.routes.ts:56-100`。
 
