@@ -102,11 +102,11 @@
       </table>
       <h3>訊息趨勢</h3>
       <p>每天各渠道的訊息量折線圖，可以看出哪幾天特別忙。</p>
-      <!-- KNOWN-ISSUE: 訊息趨勢只畫 LINE／Facebook／WebChat 三條線，Instagram 私訊與 WhatsApp 沒有線。 -->
+      <!-- KNOWN-ISSUE: 訊息趨勢沒有 WhatsApp 的線（目前沒有 WhatsApp 渠道）。 -->
       <!-- KNOWN-ISSUE: 每日分組用資料庫時區（UTC），台灣凌晨 0-8 點的訊息會算到前一天。 -->
       <div class="info"><span>ℹ️</span><div>
         <ul>
-          <li>圖上目前只有 LINE、Facebook、WebChat 三條線。Instagram 私訊有算進「訊息總量」，但圖上沒有自己的線。</li>
+          <li>圖上有 LINE、Facebook、網站聊天室、Instagram 四條線，滑鼠移到線上會顯示當天各渠道的訊息數。</li>
           <li>每日圖表目前以國際標準時間切日，台灣凌晨 0 點到 8 點的訊息會算在前一天。</li>
         </ul>
       </div></div>
@@ -168,17 +168,8 @@
           <tr><td>各渠道對話數</td><td>各渠道有幾段對話</td></tr>
         </tbody>
       </table>
-      <p>圖上的渠道名稱目前是系統代號，對照如下：</p>
-      <table>
-        <thead><tr><th>圖上顯示</th><th>實際渠道</th></tr></thead>
-        <tbody>
-          <tr><td>LINE</td><td>LINE 官方帳號</td></tr>
-          <tr><td>FB</td><td>Facebook Messenger</td></tr>
-          <tr><td>THREADS</td><td>Instagram 私訊</td></tr>
-          <tr><td>WEBCHAT</td><td>網站聊天視窗</td></tr>
-        </tbody>
-      </table>
-      <!-- KNOWN-ISSUE: 圓餅圖的文字標籤在卡片邊緣被切掉（例如「WEBCHAT 77%」只剩「3CHAT 77%」、Bot 與人工只剩「理 100%」）。 -->
+      <p>圖上直接顯示渠道名稱：LINE（LINE 官方帳號）、Facebook（Facebook Messenger）、Instagram（Instagram 私訊）、網站聊天室（官網上的聊天視窗）。匯出的渠道 CSV 也用同樣的名稱。</p>
+      <!-- KNOWN-ISSUE: 圓餅圖的文字標籤在卡片邊緣被切掉（例如「網站聊天室 77%」只剩後半段、Bot 與人工只剩「理 100%」）。 -->
       <div class="info"><span>ℹ️</span><div>圓餅圖旁的文字有時會被切掉一半，看不清楚時，把滑鼠移到色塊上，就會顯示完整名稱和數字。</div></div>
     </section>
 

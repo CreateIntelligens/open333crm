@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
-import { CASE_CATEGORIES } from '@open333crm/shared';
+import { CASE_CATEGORIES, channelDisplayName } from '@open333crm/shared';
 import { getApiErrorMessage } from '@/lib/api-error';
 
 interface CaseCreateModalProps {
@@ -256,7 +256,7 @@ export function CaseCreateModal({
 
   // Source conversation label for inbox mode
   const sourceLabel = isFromInbox
-    ? `${contactName || '未知'} · ${channelType || '未知'} · ${conversationTime || ''}`
+    ? `${contactName || '未知'} · ${channelDisplayName(channelType) || '未知'} · ${conversationTime || ''}`
     : null;
 
   return (

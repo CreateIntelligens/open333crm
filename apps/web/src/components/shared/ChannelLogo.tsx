@@ -3,6 +3,7 @@
 import React from 'react';
 import { Instagram, Mail, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { channelDisplayName } from '@open333crm/shared';
 
 /** LINE 官方品牌 logo（simple-icons, 24×24） */
 const LINE_PATH =
@@ -12,21 +13,12 @@ const LINE_PATH =
 const MESSENGER_PATH =
   'M.001 11.639C.001 4.949 5.241 0 12.001 0S24 4.95 24 11.639c0 6.689-5.24 11.638-12 11.638-1.21 0-2.371-.16-3.462-.46a.956.956 0 0 0-.641.05l-2.381 1.05a.96.96 0 0 1-1.35-.85l-.061-2.141a.958.958 0 0 0-.322-.68C1.021 17.66.001 14.809.001 11.639zm8.311-2.16l-3.525 5.591c-.331.53.111 1.16.653.85l3.79-2.87a.717.717 0 0 1 .862 0l2.809 2.09c.85.63 2.049.4 2.6-.5l3.525-5.581c.331-.53-.111-1.16-.653-.85l-3.79 2.87a.717.717 0 0 1-.862 0l-2.809-2.1c-.85-.63-2.049-.4-2.6.5z';
 
-const CHANNEL_NAMES: Record<string, string> = {
-  LINE: 'LINE',
-  FB: 'Facebook',
-  THREADS: 'Instagram',
-  WEBCHAT: 'WebChat',
-  WHATSAPP: 'WhatsApp',
-  EMAIL: 'Email',
-};
-
 /**
  * 渠道官方 logo（圓形小圖示），用在頭像右下角等空間很小的地方。
  * 只表達「哪一種渠道」；同類型多個帳號要靠渠道名稱區分。
  */
 export function ChannelLogo({ channelType, className }: { channelType: string; className?: string }) {
-  const label = CHANNEL_NAMES[channelType] ?? channelType;
+  const label = channelDisplayName(channelType);
   const base = cn('inline-flex items-center justify-center rounded-full text-white', className);
 
   switch (channelType) {
@@ -85,5 +77,5 @@ export function ChannelLogo({ channelType, className }: { channelType: string; c
 
 /** 渠道類型的顯示名稱（LINE／Facebook／Instagram…），給 title／aria 用 */
 export function channelTypeName(channelType: string): string {
-  return CHANNEL_NAMES[channelType] ?? channelType;
+  return channelDisplayName(channelType);
 }

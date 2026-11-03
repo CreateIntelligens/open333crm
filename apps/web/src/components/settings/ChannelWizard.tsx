@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, channelDisplayName } from '@open333crm/shared';
 import {
   Dialog,
   DialogContent,
@@ -132,7 +132,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       // Create channel
       const payload: Record<string, unknown> = {
         channelType,
-        displayName: displayName || `My ${channelType} Channel`,
+        displayName: displayName || `My ${channelDisplayName(channelType)} Channel`,
         credentials,
       };
       if (webhookBaseUrl?.trim()) payload.webhookBaseUrl = webhookBaseUrl.trim();

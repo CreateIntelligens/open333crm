@@ -85,7 +85,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 建立群發時要選一個渠道、一個素材與一種發送對象。帶了 `scheduledAt` 就建立為 `scheduled`，否則為 `draft`。`scheduledAt` 必須是晚於現在的時間，排到過去回 400：排程器取「時間已到」的群發執行，排到過去等於立即發送。表單的排程欄位也只能選一分鐘後以後的時間。這個檢查在 `createBroadcast()`，MCP 建立群發也會套用。沒有附券、而素材含 `{{coupon.url}}` 時也回 400（`MATERIAL_NEEDS_COUPON`）：一般廣播不會代入，顧客會看到原字。只在建立時檢查，已建立的群發發送時不擋。附上的券是固定效期且已過到期日時，建立回 400（`INVALID_COUPON`）；建立後才到期的附券廣播在發送時標為失敗（`failureCode` `COUPON_EXPIRED`），不建立券。固定效期到期後券的狀態仍是進行中，所有發券入口都以 `isCouponPastFixedEnd`（`@open333crm/core`）另外擋下。
 
-**只能用能主動推送的渠道。** 群發、附券廣播與券詳情的批次發券只能用 LINE、Facebook 或 Instagram 渠道（`@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`）。網站聊天室的外掛 `sendMessage()` 只寫 log 就回成功，訪客房間的推送只有收件匣回覆路徑會做，所以群發與發券送不到訪客。建立（含 MCP 與批次發券）與送出（`/send`）回 400 `CHANNEL_PUSH_NOT_SUPPORTED`；修正前建立的網站聊天室群發被排程或 `coupon-broadcast` job 執行時標為 `failed`，寫入 `failureReason`（附券廣播另寫 `failureCode`），不呼叫渠道、不發券。群發頁與券詳情「發送給…」的渠道選單只列這些渠道（change `reject-webchat-push-415`，issue #415，AUDIT CHAN-02 的群發與發券部分）。
+**只能用能主動推送的渠道。** 群發、附券廣播與券詳情的批次發券只能用 LINE、Facebook（內部代號 `FB`）或 Instagram（內部代號 `THREADS`）渠道（`@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`）。網站聊天室的外掛 `sendMessage()` 只寫 log 就回成功，訪客房間的推送只有收件匣回覆路徑會做，所以群發與發券送不到訪客。建立（含 MCP 與批次發券）與送出（`/send`）回 400 `CHANNEL_PUSH_NOT_SUPPORTED`；修正前建立的網站聊天室群發被排程或 `coupon-broadcast` job 執行時標為 `failed`，寫入 `failureReason`（附券廣播另寫 `failureCode`），不呼叫渠道、不發券。群發頁與券詳情「發送給…」的渠道選單只列這些渠道（change `reject-webchat-push-415`，issue #415，AUDIT CHAN-02 的群發與發券部分）。
 
 | 動作 | 端點 | 權限 |
 | --- | --- | --- |

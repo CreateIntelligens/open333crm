@@ -20,7 +20,7 @@ import { CaseStatusBadge } from './CaseStatusBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { TagManager } from '@/components/contact/TagManager';
 import { getApiErrorMessage } from '@/lib/api-error';
-import { CASE_CATEGORY_OPTIONS, VALID_CASE_TRANSITIONS, type CaseStatus } from '@open333crm/shared';
+import { CASE_CATEGORY_OPTIONS, VALID_CASE_TRANSITIONS, channelDisplayName, type CaseStatus } from '@open333crm/shared';
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: '開啟',
@@ -74,16 +74,6 @@ interface CaseDetailProps {
   /** 狀態下拉選「已升級」時改開升級對話框，和頂部「升級」按鈕相同（要填原因與通知對象） */
   onRequestEscalate?: () => void;
 }
-
-const CHANNEL_TYPE_LABELS: Record<string, string> = {
-  LINE: 'LINE',
-  FB: 'Facebook',
-  WEBCHAT: 'WebChat',
-  EMAIL: 'Email',
-  WHATSAPP: 'WhatsApp',
-  THREADS: 'Instagram',
-  API: 'API',
-};
 
 export function CaseDetail({ caseData, onRefresh, onRequestEscalate }: CaseDetailProps) {
   const [agents, setAgents] = useState<Array<{ id: string; name: string; team?: { id: string; name: string } | null }>>([]);
@@ -396,7 +386,7 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate }: CaseDetai
                 <div className="mt-2 flex flex-wrap gap-1">
                   {caseData.contact.channelIdentities.map((ci) => (
                     <Badge key={ci.id} className="text-xs bg-primary-subtle text-primary hover:bg-primary-subtle">
-                      {CHANNEL_TYPE_LABELS[ci.channelType] || ci.channelType}
+                      {channelDisplayName(ci.channelType)}
                     </Badge>
                   ))}
                 </div>

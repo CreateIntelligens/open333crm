@@ -20,7 +20,7 @@ import { snapshotOgInBackground } from '../shortlink/og-snapshot.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
 import { campaignHasOtherChannelsError, readableCampaignWhere, writableCampaignWhere } from './campaign.service.js';
-import { COUPON_ISSUED_VIA, supportsProactivePush } from '@open333crm/shared';
+import { COUPON_ISSUED_VIA, channelDisplayName, supportsProactivePush } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
 import { channelIdWhereFilter, type AccessibleChannels, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
 
@@ -596,7 +596,7 @@ export async function executeBroadcast(
 
     const plugin = getChannelPlugin(channel.channelType);
     if (!plugin) {
-      throw new AppError(`此渠道類型（${channel.channelType}）不支援發送廣播`, 'UNSUPPORTED_CHANNEL', 400);
+      throw new AppError(`此渠道類型（${channelDisplayName(channel.channelType)}）不支援發送廣播`, 'UNSUPPORTED_CHANNEL', 400);
     }
     // 憑證解密：金鑰不符（如從其他環境 sync 來的 token）會拋原生錯，
     // 包成友善 AppError 避免冒成裸 500「An unexpected error occurred」。

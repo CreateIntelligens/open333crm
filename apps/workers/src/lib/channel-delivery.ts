@@ -12,7 +12,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
-import { selectSafeLineStrategy } from '@open333crm/shared';
+import { channelDisplayName, selectSafeLineStrategy } from '@open333crm/shared';
 import { decryptCredentials } from './credentials.js';
 import { publishChannelSocketEvent } from './socket-bridge.js';
 
@@ -193,7 +193,7 @@ export async function sendToChannelFromWorker(
   const plugin = pluginRegistry.get(conv.channel.channelType);
   if (!plugin) {
     logger.error('[worker:deliver] No plugin for channelType:', conv.channel.channelType);
-    const error = `系統未載入 ${conv.channel.channelType} 渠道外掛，無法送出`;
+    const error = `系統未載入 ${channelDisplayName(conv.channel.channelType)} 渠道外掛，無法送出`;
     await recordDeliveryFailure(prisma, redis, conv, payload, new Error(error), new Date(), record);
     return { ok: false, error, recorded: true };
   }

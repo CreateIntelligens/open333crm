@@ -1,6 +1,6 @@
 # 渠道外掛
 
-本文件說明各訊息渠道（LINE、Facebook、Instagram 私訊、網站聊天室）的差異怎麼收在外掛裡：外掛的介面、各渠道的實作、訊息進站與送出時怎麼經過外掛，以及哪些渠道專屬的功能沒有走外掛。渠道怎麼建立、怎麼設定 webhook，見[渠道管理](../features/tenant/CHANNELS.md)；一則訊息進站後經過哪些模組，見[租戶後台](../features/tenant/README.md#一則訊息進來之後)。
+本文件說明各訊息渠道（LINE、Facebook（內部代號 `FB`）、Instagram 私訊（內部代號 `THREADS`）、網站聊天室（內部代號 `WEBCHAT`））的差異怎麼收在外掛裡：外掛的介面、各渠道的實作、訊息進站與送出時怎麼經過外掛，以及哪些渠道專屬的功能沒有走外掛。渠道怎麼建立、怎麼設定 webhook，見[渠道管理](../features/tenant/CHANNELS.md)；一則訊息進站後經過哪些模組，見[租戶後台](../features/tenant/README.md#一則訊息進來之後)。
 
 - **資料來源**：`packages/channel-plugins/src/*`、`apps/api/src/index.ts`、`apps/api/src/modules/webhook/*`、`apps/api/src/modules/conversation/conversation.service.ts`、`apps/api/src/modules/channel/*`、`apps/workers/src/index.ts`、`apps/workers/src/lib/channel-delivery.ts`、`apps/workers/src/lib/credentials.ts`、`apps/web/src/hooks/useKeywordReplies.ts`
 - **核對日期**：2026-09-30
@@ -56,7 +56,7 @@
 
 各渠道要注意的地方：
 
-- **`THREADS` 其實是 Instagram 私訊。** 外掛呼叫的是 `graph.instagram.com`，憑證格式與 Facebook 相同。名稱沿用早期的規劃。
+- **`THREADS` 其實是 Instagram 私訊。** 外掛呼叫的是 `graph.instagram.com`，憑證格式與 Facebook 相同。名稱沿用早期的規劃。代號維持不改，但畫面、匯出檔與給使用者看的錯誤訊息不顯示代號：一律經 `@open333crm/shared` 的 `channelDisplayName()` 顯示 Instagram（`FB` 顯示 Facebook、`WEBCHAT` 顯示網站聊天室）。
 - **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。群發與發券沒有這一步，所以群發、附券廣播與批次發券只接受 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`（LINE、FB、THREADS），網站聊天室回 400 `CHANNEL_PUSH_NOT_SUPPORTED`（issue #415）。`sendMessage()` 沒有改成回失敗：收件匣回覆與 `deliverToChannel()` 呼叫它之後才推訪客房間，回失敗會讓這兩條路徑把已送達的訊息標為失敗或不推送。
 - **`TELEGRAM` 只有 `telegram.ts` 的類別**，沒有匯出實例，也沒有註冊，見 APP-02。
 - **`WHATSAPP` 可以建立渠道**，但沒有外掛也沒有路由，見 APP-02。

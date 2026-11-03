@@ -10,6 +10,7 @@ import {
   User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { channelDisplayName } from '@open333crm/shared';
 
 interface TimelineEvent {
   type: string;
@@ -20,16 +21,6 @@ interface TimelineEvent {
 interface ContactTimelineProps {
   events: TimelineEvent[];
 }
-
-const CHANNEL_LABELS: Record<string, string> = {
-  LINE: 'LINE',
-  FB: 'Facebook',
-  WEBCHAT: 'WebChat',
-  EMAIL: 'Email',
-  WHATSAPP: 'WhatsApp',
-  THREADS: 'Instagram',
-  API: 'API',
-};
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: '開啟',
@@ -44,7 +35,7 @@ function formatTimelineDescription(event: TimelineEvent): string {
   const d = event.data;
   switch (event.type) {
     case 'conversation':
-      return `新對話 · ${CHANNEL_LABELS[d.channelType as string] || d.channelType} · ${d.channelName || ''}`;
+      return `新對話 · ${channelDisplayName(d.channelType as string)} · ${d.channelName || ''}`;
     case 'case':
       return `建立案件「${d.title || ''}」· ${STATUS_LABELS[d.status as string] || d.status}`;
     case 'case_event': {
