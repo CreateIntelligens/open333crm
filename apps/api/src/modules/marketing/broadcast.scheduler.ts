@@ -6,6 +6,7 @@ import { runCouponBroadcast, type CouponBroadcastDeps } from './broadcast-coupon
 import { logger } from '@open333crm/core';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
 import { rejectUnauthorizedScheduledSend } from './broadcast-send-authority.js';
+import { rejectDisabledTenantSend } from './broadcast-tenant-active.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 
@@ -18,6 +19,8 @@ const POLL_INTERVAL_MS = 60_000; // 60 seconds
  *
  * 送出前以排定送出的成員「當下」的有效權限重新檢查（change require-broadcast-send-permissions；佇列 job 也檢查）：
  * 成員不存在、已停用或少了需要的權限時不送出，廣播標為失敗並寫 failureCode／failureReason。
+ *
+ * 租戶停用（含試用到期）時也不送出，廣播標為失敗（failureCode = TENANT_DISABLED，issue #410；broadcast-tenant-active.ts）。
  */
 export function setupBroadcastScheduler(
   scheduler: JobScheduler,
@@ -39,6 +42,8 @@ export function setupBroadcastScheduler(
 
       for (const broadcast of due) {
         try {
+          // 租戶已停用時標為失敗、不送出（broadcast-tenant-active.ts，issue #410）
+          if (await rejectDisabledTenantSend(couponDeps, broadcast.tenantId, broadcast.id)) continue;
           // 排定的成員當下沒有發送權限時標為失敗、不送出（broadcast-send-authority.ts）
           if (await rejectUnauthorizedScheduledSend(authorityDeps, broadcast.tenantId, broadcast)) continue;
           if (broadcast.couponId) {

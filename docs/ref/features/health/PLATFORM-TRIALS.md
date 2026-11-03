@@ -40,7 +40,7 @@
 | HC-PLATFORM-TRIALS-14 | P3 | email 正規化與主規格不一致：規格寫 gmail 才移除 `+tag`，程式對所有網域都移除。`a+x@corp.com` 申請過之後，`a@corp.com` 會被靜默擋下（202 但不寄信）。gmail 別名再送申請時，驗證信寄到新寫的別名，站台名稱被覆寫（同 HC-01） | **實測**：`hc.platform.trials.g@gmail.com` 申請後，`hcplatformtrialsg+demo@googlemail.com` 申請 → 同一筆記錄、`siteName` 變成第二次填的值，驗證信寄到 `…+demo@googlemail.com`。非 gmail 網域讀程式 | `apps/api/src/modules/trial/email-normalizer.ts:17-19`；規格 `openspec/specs/trial-application/spec.md`「一個 email 只能申請一次」 | 新（#407 起別名再申請不覆寫站台名稱、重寄到原申請的 email；非 gmail 去 `+tag` 未處理） |
 | HC-PLATFORM-TRIALS-15 | P3 | 轉正式的方案選單寫死 4 個 slug（`light`、`standard`、`professional`、`enterprise`），不讀 `/plans`。平台新增的方案選不到，停售的方案仍可選，改了 slug 會 404 | 讀程式（與 HC-PLATFORM-TENANTS-10 相同問題） | `apps/web/src/app/admin/trial/page.tsx:36-42` | 新（與 PLAN-01 相關） |
 | HC-PLATFORM-TENANTS-05 | P2 | 手動開通預設「免費試用」方案但不設 `trialEndsAt`，這類租戶不會出現在 `/admin/trial` | 本次在 `/admin/trial` 確認：手動開通的租戶都不在清單上 | 見租戶管理報告 | TRIAL-07（引用） |
-| HC-PLATFORM-TENANTS-01 | P1 | 停用的租戶仍收得到 WebChat 訊息。試用到期停用的租戶也一樣，違反 `trial-lifecycle`「到期停用」的「inbound 訊息被丟棄」 | 見租戶管理報告（實測） | 見租戶管理報告 | AUTH-11（引用） |
+| HC-PLATFORM-TENANTS-01 | P1 | （健檢當時，#410 已修正）停用的租戶仍收得到 WebChat 訊息。試用到期停用的租戶也一樣，違反 `trial-lifecycle`「到期停用」的「inbound 訊息被丟棄」 | 見租戶管理報告（實測） | 見租戶管理報告 | AUTH-11（引用） |
 
 ### 已確認正常（與文件一致）
 
@@ -80,7 +80,7 @@
 | 10 申請記錄：重寄、作廢 | 本機（UI、API） | 正常：重寄繞過節流、作廢有 confirm 與稽核 | 非待驗證 400、已開通 400、不存在 404 | — | **異常**：英文狀態、無時間（HC-11）；重寄無稽核（SEC-02）；作廢可被申請人推翻（HC-13） |
 | 11 政策設定 | 本機（UI） | 正常：讀出 14 / 24 / 30 / `7, 1` / 開放 | 清空欄位存 NaN 已在 TRIAL-02，未重測（同時有其他代理在改這些鍵） | — | **異常**：沒改值也寫入（HC-10） |
 | 12 到期前提醒（排程） | 本機（手動執行排程） | 正常：7 天、1 天各一封，不重寄 | — | — | 只寄 ADMIN（RBAC-03）；寄失敗不補寄（HC-05） |
-| 13 到期停用（排程） | 本機（手動執行排程） | 正常：停用、到期信、稽核、登入 403 | 租戶頁啟用後又被停用（TRIAL-04） | — | WebChat 仍收訊息（HC-PLATFORM-TENANTS-01） |
+| 13 到期停用（排程） | 本機（手動執行排程） | 正常：停用、到期信、稽核、登入 403 | 租戶頁啟用後又被停用（TRIAL-04） | — | WebChat 仍收訊息（HC-PLATFORM-TENANTS-01，#410 已修正） |
 | 14 保留期滿軟刪（排程） | 本機（手動執行排程） | 正常：標記 `purgedAt`、稽核 | — | — | 不刪資料（TRIAL-03） |
 | （參考）合約起訖日 | — | — | — | — | 見租戶管理報告流程 4、8 |
 

@@ -11,7 +11,7 @@
 
 | 層 | 結果 |
 | --- | --- |
-| 完備度 | 3 份 spec、21 個 scenario。缺實作 0；缺同名測試 4（`tenant-provisioning` 全部 4 個）；缺前端入口 0（復原在 `/admin/trial`）。另外，`inbound-message-processing` 的「停用租戶的進站事件直接丟棄」在 WebChat 入口沒有實作（HC-PLATFORM-TENANTS-01） |
+| 完備度 | 3 份 spec、21 個 scenario。缺實作 0；缺同名測試 4（`tenant-provisioning` 全部 4 個）；缺前端入口 0（復原在 `/admin/trial`）。另外，`inbound-message-processing` 的「停用租戶的進站事件直接丟棄」在 WebChat 入口沒有實作（HC-PLATFORM-TENANTS-01；健檢當時，#410 已修正） |
 | 自動測試 | unit：api 7 檔 54 通過、web 4 檔 9 通過。feature：8 檔 52 通過（`modules/platform`、`modules/trial`、`modules/auth/tenant-disabled-access`）。無失敗、無 skip |
 | 實際操作 | 13 條流程。正常 6，異常 6，只讀程式 1（試用排程清除，以 feature 測試為準） |
 
@@ -19,10 +19,10 @@
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-PLATFORM-TENANTS-01 | P1 | **停用的租戶仍收得到 WebChat 訊息**。LINE/FB/IG 的 webhook 會檢查 `tenant.isActive`，WebChat（Chatbox）不檢查：停用後既有的訪客工作階段可以繼續送訊息，新訪客也能建立工作階段，系統照常建立聯絡人、對話與訊息，後續的自動化與 AI 回覆流程也照常進入。違反主規格 `inbound-message-processing`「停用租戶的進站事件直接丟棄」 | **實測**（本機）：開通 `hc-platform-tenants-A` → 建 WEBCHAT 渠道 → 訪客送一則 → `PATCH /platform/tenants/:id/active {isActive:false}` → 同一工作階段再送一則、另開新工作階段送一則 → 三則都回 200，DB 該租戶有 3 則 INBOUND 訊息、2 位聯絡人。AI 回覆是否被觸發未實測（測試租戶沒有設定模型），依程式判斷會進入 | `apps/api/src/modules/chatbox/chatbox.service.ts:354-366`（`resolveChatboxChannel` 只看渠道 `isActive`）、`:598-640`（`handleChatboxMessage` 直接呼叫 `processInboundMessage`）；對照 `apps/api/src/modules/webhook/webhook.service.ts:86` | AUTH-11（AUTH-02 未涵蓋） |
+| HC-PLATFORM-TENANTS-01 | P1 | （健檢當時，#410 已修正：`processInboundMessage()` 共用入口與網站聊天室入口都檢查租戶，停用時回 404、不寫入訊息）**停用的租戶仍收得到 WebChat 訊息**。LINE/FB/IG 的 webhook 會檢查 `tenant.isActive`，WebChat（Chatbox）不檢查：停用後既有的訪客工作階段可以繼續送訊息，新訪客也能建立工作階段，系統照常建立聯絡人、對話與訊息，後續的自動化與 AI 回覆流程也照常進入。違反主規格 `inbound-message-processing`「停用租戶的進站事件直接丟棄」 | **實測**（本機）：開通 `hc-platform-tenants-A` → 建 WEBCHAT 渠道 → 訪客送一則 → `PATCH /platform/tenants/:id/active {isActive:false}` → 同一工作階段再送一則、另開新工作階段送一則 → 三則都回 200，DB 該租戶有 3 則 INBOUND 訊息、2 位聯絡人。AI 回覆是否被觸發未實測（測試租戶沒有設定模型），依程式判斷會進入 | `apps/api/src/modules/chatbox/chatbox.service.ts:354-366`（`resolveChatboxChannel` 只看渠道 `isActive`）、`:598-640`（`handleChatboxMessage` 直接呼叫 `processInboundMessage`）；對照 `apps/api/src/modules/webhook/webhook.service.ts:86` | AUTH-11（AUTH-02 未涵蓋）；#410 已修正，feature 測試 `chatbox-disabled-tenant` |
 | HC-PLATFORM-TENANTS-02 | P2 | 停用租戶沒有確認步驟。列表每列「合約」旁就是「停用」，按一下立即停用（客戶全員登不進去、LINE/FB 訊息被丟棄）；詳細頁「停用租戶」與「儲存」並排，也沒有確認。UAT 即正式環境，列表上有真實客戶 | **實測**：列表與詳細頁各按一次「停用」，`dialog` 事件 0 次，租戶立即變「停用」 | `apps/web/src/app/admin/tenants/page.tsx:37-40, 152-154`；`apps/web/src/app/admin/tenants/[id]/page.tsx:152-166, 251-257` | AUTH-16 |
 | HC-PLATFORM-TENANTS-03 | P2 | 列表頁停用/啟用失敗時畫面沒有任何訊息，`toggleActive` 沒有 try/catch，錯誤成為未處理的 rejection。操作者會以為按了沒反應 | **實測**：Playwright 攔截 `PATCH /tenants/*/active` 回 500 → 按「啟用」→ 畫面無訊息、狀態不變，console 只有 `Request failed with status code 500` | `apps/web/src/app/admin/tenants/page.tsx:37-40`；`load()` 同樣沒有錯誤處理（`:29-32`） | APP-11 |
-| HC-PLATFORM-TENANTS-04 | P2 | 停用租戶的排程群發仍會執行。`broadcast.scheduler` 只依 `status='scheduled'`、`scheduledAt` 撈全部租戶的群發，不看 `tenant.isActive`；停用（含試用到期自動停用）的租戶預約的群發照樣送給顧客 | **只讀程式**。實測需要能投遞的渠道 | `apps/api/src/modules/marketing/broadcast.scheduler.ts:25-31` | AUTH-11 |
+| HC-PLATFORM-TENANTS-04 | P2 | （健檢當時，#410 已修正：到期時不送出，群發標 `failed`、`failureCode` 為 `TENANT_DISABLED`；附券群發的佇列 job 與滿意度問卷排程也一併檢查）停用租戶的排程群發仍會執行。`broadcast.scheduler` 只依 `status='scheduled'`、`scheduledAt` 撈全部租戶的群發，不看 `tenant.isActive`；停用（含試用到期自動停用）的租戶預約的群發照樣送給顧客 | **只讀程式**。實測需要能投遞的渠道 | `apps/api/src/modules/marketing/broadcast.scheduler.ts:25-31` | AUTH-11；#410 已修正，feature 測試 `broadcast-disabled-tenant` |
 | HC-PLATFORM-TENANTS-05 | P2 | 手動開通表單的方案預設「免費試用」，但手動開通不設 `trialEndsAt`。用預設值開通的租戶永遠停在試用方案（功能受限），不會到期、不出現在 `/admin/trial`，也無法用「轉正式」處理，只能從詳細頁改方案 | **實測**：預設方案開通 `hc-platform-tenants-B試用` → `GET /trial-tenants` 不含它；DB `trialEndsAt` 為 null、`planId` 為 trial | `apps/web/src/app/admin/tenants/page.tsx:26, 80, 168-174`；`apps/api/src/modules/platform/platform-tenant.service.ts:178-206`（文件已說明手動開通不設 `trialEndsAt`，問題在預設值） | TRIAL-07 |
 | HC-PLATFORM-TENANTS-06 | P2 | 重寄開通信寄送失敗時仍回 `{ok:true}`，畫面顯示「開通信已重寄至 …」。`resendWelcomeEmail` 雖然 `await`，但 `sendManualProvisionedEmail` 內的 `safeSend` 把錯誤吞掉只寫 log；稽核也照寫 | **只讀程式**（本機 log 模式不會失敗）。成功路徑實測正常 | `apps/api/src/modules/platform/platform-tenant.service.ts:113-129`；`apps/api/src/modules/trial/trial-emails.ts:145-151, 175-181` | AUTH-14 |
 | AUTH-10 | P3 | 改成員 email 與開通都以原字串查重：已有 `admin@open333crm.dev` 時，可把另一位成員改成 `ADMIN@open333crm.dev` | **實測**：`PATCH /tenants/A/agents/:id {email:"ADMIN@open333crm.dev"}` 回 200（已改回） | `platform-tenant.service.ts:106, 186` | AUTH-10（已記錄，本次再確認） |
@@ -88,8 +88,8 @@
 
 ## 待真機驗
 
-- HC-PLATFORM-TENANTS-04：停用租戶的排程群發是否真的送到 LINE/FB（需要能投遞的渠道）。
-- HC-PLATFORM-TENANTS-01：停用租戶的 WebChat 訊息是否觸發 AI 自動回覆與用量計費（需要設定模型的租戶）。
+- HC-PLATFORM-TENANTS-04：（#410 已修正，feature 測試以替身外掛確認不送出）真機確認停用租戶的排程群發沒有送到 LINE/FB，後台顯示失敗原因。
+- HC-PLATFORM-TENANTS-01：（#410 已修正，訊息在入口被擋，不再進入 AI 回覆）真機確認停用租戶的聊天室顯示無法使用。
 - 開通信與重寄開通信的實際內容與寄送失敗時的行為（需要 SMTP/Resend，且不能寄到真實地址）。
 - UAT 唯讀檢查：列表頁能載入、Demo 租戶詳細頁統計正確。
 
@@ -111,7 +111,7 @@ Demo 租戶與其他代理的租戶沒有任何寫入。
 ## 建議新增到 AUDIT.md 的項目
 
 - HC-PLATFORM-TENANTS-01：WebChat 進站不檢查租戶停用（違反 `inbound-message-processing` 主規格，建議 P1，可併入 AUTH-02 的「停用租戶」一節）。
-- HC-PLATFORM-TENANTS-04：停用租戶的排程群發仍執行（建議一併盤點其他排程：SLA、CSAT、優惠券、自動化排程是否都該跳過停用租戶）。
+- HC-PLATFORM-TENANTS-04：停用租戶的排程群發仍執行（建議一併盤點其他排程：SLA、CSAT、優惠券、自動化排程是否都該跳過停用租戶）。#410 已修正群發、附券群發佇列 job 與滿意度問卷排程；Canvas 等待節點恢復等其餘路徑見 #410 的回報。
 - HC-PLATFORM-TENANTS-02、03：停用沒有確認、列表頁失敗無訊息。
 - HC-PLATFORM-TENANTS-05：手動開通預設試用方案卻不設試用期。
 - HC-PLATFORM-TENANTS-06：重寄開通信失敗仍顯示成功。

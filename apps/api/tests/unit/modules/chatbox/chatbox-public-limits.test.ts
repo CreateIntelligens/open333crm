@@ -87,6 +87,7 @@ async function claimedSession() {
       displayName: 'Support',
       isActive: true,
       settings: {},
+      tenant: { isActive: true },
     },
   };
   const store = new Map<string, string>();

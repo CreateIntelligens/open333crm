@@ -74,6 +74,8 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 5. 渠道設定了下游轉發時，把原始內容轉發出去，見[渠道管理](../features/tenant/CHANNELS.md#webhook)。
 6. 呼叫外掛的 `parseWebhook()`，對每一則訊息執行 `processInboundMessage()`。建立新聯絡人時呼叫 `getProfile()`；訊息寫入後，若外掛有 `resolveInboundMedia()`，就在背景下載媒體。
 
+`processInboundMessage()` 是所有渠道（含網站聊天室）共用的入口。它先查租戶是否啟用，停用（含試用到期）時丟棄事件、不建立任何資料（issue #410）。webhook 在步驟 1 已經提早丟棄，這裡另外擋住網站聊天室與其他直接呼叫的路徑。網站聊天室在更前面的入口就擋下：建立工作階段與驗證工作階段（送訊息、bootstrap、訪客 socket）在租戶停用時比照渠道停用回 404。
+
 ## 送出
 
 | 送出路徑 | 行程 | 外掛來源 | 渠道專屬的分支 |

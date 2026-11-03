@@ -15,10 +15,10 @@ description: >
 
 ## 先讀
 - 功能現況：`docs/ref/features/platform/TENANTS.md`，共通機制（稽核、快取連鎖、資料模型）在 `docs/ref/features/platform/README.md`
-  - 注意：TENANTS.md「停用租戶多久生效」的表只列 REST、Socket、CLI，漏了 WebChat 進站（實測沒擋，HC-PLATFORM-TENANTS-01）、Partner API 金鑰（AUTH-02）與排程群發（HC-PLATFORM-TENANTS-04）。
+  - 注意：TENANTS.md「停用租戶多久生效」的表沒有列 Partner API 金鑰（AUTH-02）。進站訊息（含 WebChat）、排程群發與滿意度問卷已在 #410 修正並列入表中（HC-PLATFORM-TENANTS-01、04）。
   - 注意：README「目前的限制」寫「沒有任何測試」已過時，見下方回歸清單。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-TENANTS.md`
-- 規格：`openspec/specs/tenant-provisioning/spec.md`、`openspec/specs/tenant-contract-dates/spec.md`、`openspec/specs/trial-data-purge/spec.md`；停用租戶的行為在 `openspec/specs/auth-session/spec.md`（「停用租戶的成員不能登入或換發 token」「停用租戶的長效憑證與既有連線失效」）與 `openspec/specs/inbound-message-processing/spec.md`（「停用租戶的進站事件直接丟棄」）
+- 規格：`openspec/specs/tenant-provisioning/spec.md`、`openspec/specs/tenant-contract-dates/spec.md`、`openspec/specs/trial-data-purge/spec.md`；停用租戶的行為在 `openspec/specs/auth-session/spec.md`（「停用租戶的成員不能登入或換發 token」「停用租戶的長效憑證與既有連線失效」）與 `openspec/specs/inbound-message-processing/spec.md`（「停用租戶的進站事件直接丟棄」「停用租戶的網站聊天室入口回 404」）、`openspec/specs/marketing-scheduling/spec.md`（「The Scheduler Does Not Send Broadcasts Of A Disabled Tenant」）、`openspec/specs/csat-survey/spec.md`（「停用租戶不寄出滿意度問卷」）
 - 影響分析：`node scripts/feature-impact.mjs --domain platform-tenants`
 
 路由前綴 `/api/v1/platform`，全部在 `apps/api/src/modules/platform/platform.routes.ts`（個資遮罩在 `apps/api/src/modules/platform/ai-privacy.routes.ts`）。服務：`apps/api/src/modules/platform/platform-tenant.service.ts`；合約與復原的服務在 `apps/api/src/modules/platform/trial-admin.service.ts`。全程用 `fastify.prismaAdmin`（BYPASSRLS）。
@@ -70,11 +70,11 @@ description: >
 ## 回歸清單
 改到本領域時，至少重走（用 `hc-` 前綴的自建租戶，**不要停用 Demo 或任何既有租戶**）：
 1. 手動開通 → DB 有 Tenant、三個系統角色、ADMIN → 以該帳號租戶登入成功 → API log 有開通信（`EMAIL_DELIVERY_MODE=log` 只印主旨與 `loginUrl`）→ 稽核 `tenant.provision`。重複 email 409、密碼不足 8 字 400、方案不存在 404。
-2. 停用 → 正確密碼登入 403 `TENANT_DISABLED`、錯誤密碼 401、refresh 401、既有 access token 仍可用到過期 → LINE/FB webhook 不建資料 → 啟用後恢復。
+2. 停用 → 正確密碼登入 403 `TENANT_DISABLED`、錯誤密碼 401、refresh 401、既有 access token 仍可用到過期 → LINE/FB webhook 不建資料 → WebChat 既有工作階段送訊息與新開工作階段都回 404、不建資料 → 到期的排程群發標 `failed`（`TENANT_DISABLED`）不送出 → 啟用後恢復。
 3. 合約：設起訖、只送一個、送 null 清除、迄日早於起日 422；列表與詳細頁讀回一致。
 4. 詳細頁改成員 email（成功、409、格式錯）、重寄開通信、改名稱與方案。
 5. `/admin/trial` 復原已清除租戶（422 `NOT_PURGED`、404）。
-- 自動測試：`pnpm --filter @open333crm/api test -- platform tenant-plan`；`pnpm --filter @open333crm/web test -- admin`；feature（先搶鎖、**不要加 `--`**）：`pnpm --filter @open333crm/api test:feature modules/platform modules/trial modules/auth/tenant-disabled-access`。
+- 自動測試：`pnpm --filter @open333crm/api test -- platform tenant-plan`；`pnpm --filter @open333crm/web test -- admin`；feature（先搶鎖、**不要加 `--`**）：`pnpm --filter @open333crm/api test:feature modules/platform modules/trial modules/auth/tenant-disabled-access modules/chatbox/chatbox-disabled-tenant modules/marketing/broadcast-disabled-tenant modules/csat/csat-disabled-tenant`。
 - `tenant-provisioning` 的 4 個 scenario 沒有任何測試。
 - E2E：`apps/web/tests/e2e-uat/cross-tenant-lifecycle.spec.ts`（會在目標環境開通並停用 `[E2E]` 租戶，**UAT 是正式環境，不要跑**；其中「✓ 已開通」斷言已過時）、`apps/web/tests/e2e-uat/platform-smoke.spec.ts`。
 

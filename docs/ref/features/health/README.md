@@ -53,7 +53,7 @@
 | HC-CHANNELS-01 | RBAC-07（已修正並從 AUDIT 移除） | #408，已修正（change `scope-single-channel-routes-408`） | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
 | HC-MEMBERS-01 | RBAC-08（已修正並從 AUDIT 移除） | #413，已修正 | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式。修正（#413，change `guard-agent-target-rank-last-admin`）：改角色、重設密碼、停用、刪除都比對對方權限（同修 RBAC-09），改角色套用最後一位管理員保護，管理員依 `role.manage` 判斷。feature 測試涵蓋 |
 | HC-GOVERNANCE-01 | [AUD-03](../../system/AUDIT.md#aud-03) | #414 | 永久刪除成員後，他的稽核紀錄全部變成沒有操作者（`onDelete: SetNull`） | 本機實測 |
-| HC-PLATFORM-TENANTS-01 | [AUTH-11](../../system/AUDIT.md#auth-11) | #410 | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
+| HC-PLATFORM-TENANTS-01 | [AUTH-11](../../system/AUDIT.md#auth-11) | #410（已修正） | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
 | HC-PLATFORM-TRIALS-01 | [TRIAL-05](../../system/AUDIT.md#trial-05) | 已修正（本 PR） | 同一 email 待驗證時再申請一次，會覆寫密碼，申請人點信後站台以他人密碼開通 | 本機實測；UAT 的 `trial.enabled` 為 true，正式環境可被利用。修正（#407，change `trial-set-password-after-verify`）：申請不收密碼，點驗證連結後在驗證頁設定密碼才開通；待驗證再申請不改資料、走重寄節流（同修 TRIAL-06）。feature 測試涵蓋搶先申請與覆寫 |
 | HC-PLATFORM-PLANS-01 | [PLAN-14](../../system/AUDIT.md#plan-14) | #411 | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容相同（2026-10-30 平台 API 唯讀確認） |
 | HC-LINE-01 | [CASE-03](../../system/AUDIT.md#case-03) | #416 | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗 |

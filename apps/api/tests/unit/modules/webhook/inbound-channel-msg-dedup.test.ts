@@ -22,6 +22,8 @@ function setup(message: Record<string, unknown>) {
     status: 'BOT_HANDLED', assignedToId: null, unreadCount: 0, lastMessageAt: null, updatedAt: new Date(),
   };
   const prisma = {
+    // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
+    tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: { findUnique: async () => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } }) },
     conversation: {
       findFirst: async () => conversation,

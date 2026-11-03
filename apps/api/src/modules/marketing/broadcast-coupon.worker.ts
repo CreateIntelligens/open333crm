@@ -13,6 +13,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { CouponBroadcastJobData } from './broadcast-coupon.service.js';
 import { runCouponBroadcast, type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
 import { rejectUnauthorizedScheduledSend } from './broadcast-send-authority.js';
+import { rejectDisabledTenantSend, TENANT_DISABLED_FAILURE } from './broadcast-tenant-active.js';
 
 export type RunCouponBroadcast = (tenantId: string, broadcastId: string) => Promise<unknown>;
 
@@ -29,10 +30,14 @@ export function createCouponBroadcastProcessor(run: RunCouponBroadcast) {
 /**
  * coupon-broadcast 佇列的執行函式（index.ts）。發送前與排程器相同，以排定送出的成員當下的權限重新檢查：
  * job 重試或 outbox 延後送出時，成員可能已經被停用或降權（PR #438 審查）。不能送時群發標為失敗，job 正常結束。
+ * 租戶已停用（含試用到期）時也不送出，群發標為失敗（issue #410）。
  */
 export function createCouponBroadcastJobRunner(deps: CouponBroadcastDeps & { adminPrisma: PrismaClient }): RunCouponBroadcast {
   const { adminPrisma, ...couponDeps } = deps;
   return async (tenantId, broadcastId) => {
+    if (await rejectDisabledTenantSend(couponDeps, tenantId, broadcastId)) {
+      return { status: 'denied', failureCode: TENANT_DISABLED_FAILURE.code };
+    }
     const denial = await rejectUnauthorizedScheduledSend({ prisma: couponDeps.prisma, adminPrisma }, tenantId, broadcastId);
     if (denial) return { status: 'denied', failureCode: denial.code };
     return runCouponBroadcast(couponDeps, tenantId, broadcastId);

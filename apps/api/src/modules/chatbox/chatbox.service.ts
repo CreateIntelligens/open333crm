@@ -360,8 +360,9 @@ export async function resolveChatboxChannel(prisma: PrismaClient, publicKey: str
   const identifiers: Array<{ publicKey: string } | { id: string }> = [{ publicKey }];
   if (UUID_RE.test(publicKey)) identifiers.push({ id: publicKey });
 
+  // 租戶停用（含試用到期）時比照渠道停用回 404，不建立工作階段（issue #410）
   const channel = await prisma.channel.findFirst({
-    where: { OR: identifiers, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
+    where: { OR: identifiers, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true, tenant: { isActive: true } },
   });
   if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   return channel;
@@ -481,7 +482,7 @@ export async function verifyChatboxSession(
   const session = await prisma.chatboxSession.findUnique({
     where: { tokenDigest },
     include: {
-      channel: true,
+      channel: { include: { tenant: { select: { isActive: true } } } },
     },
   });
 
@@ -492,7 +493,8 @@ export async function verifyChatboxSession(
   if (session.expiresAt.getTime() <= now.getTime()) {
     throw new AppError('聊天連線已逾時，請重新整理頁面', 'UNAUTHORIZED', 401);
   }
-  if (!session.channel.isActive || session.channel.channelType !== CHANNEL_TYPE.WEBCHAT) {
+  // 租戶停用（含試用到期）時比照渠道停用回 404：送訊息、bootstrap 與訪客 socket 都經過這裡（issue #410）
+  if (!session.channel.isActive || !session.channel.tenant?.isActive || session.channel.channelType !== CHANNEL_TYPE.WEBCHAT) {
     throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
