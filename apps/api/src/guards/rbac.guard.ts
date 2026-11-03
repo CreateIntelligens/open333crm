@@ -49,13 +49,19 @@ function sendForbidden(
 
 const PERMISSION_DENIED = '權限不足，無法執行此操作。如需使用請聯繫管理員。';
 
-export const requirePermission = (code: string) => {
+export interface RequirePermissionOptions {
+  /** 權限不足時顯示給使用者的原因；未給時用通用訊息 */
+  message?: string;
+}
+
+export const requirePermission = (code: string, options: RequirePermissionOptions = {}) => {
   usedPermissionCodes.add(code);
+  const deniedMessage = options.message ?? PERMISSION_DENIED;
   return async (request: FastifyRequest, reply: FastifyReply) => {
     // Partner API key：只對白名單權限碼放行，其餘一律擋（避免無條件繞過）
     if (request.agent?.isPartnerKey) {
       if (PARTNER_KEY_ALLOWED.has(code)) return;
-      return sendForbidden(reply, PERMISSION_DENIED, { requiredPermission: code });
+      return sendForbidden(reply, deniedMessage, { requiredPermission: code });
     }
     // CLI session 走自身 scope 機制（cli.routes），不經 requirePermission 路由；防禦性放行
     if (request.agent?.isCliSession) {
@@ -66,7 +72,7 @@ export const requirePermission = (code: string) => {
     const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
     const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
     if (!eff.has(code)) {
-      return sendForbidden(reply, PERMISSION_DENIED, { requiredPermission: code });
+      return sendForbidden(reply, deniedMessage, { requiredPermission: code });
     }
   };
 };

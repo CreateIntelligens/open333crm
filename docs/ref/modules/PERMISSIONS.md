@@ -167,6 +167,8 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 聯絡人清單與合併、AI 輔助與租戶房間的即時事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。聯絡人的對話、工單與時間軸有套用。
 
+資料匯出不依可見範圍篩選，匯出的是全租戶資料。所以匯出路由除了 `data.export`，還要求 `channel.view_all`，只缺後者時回 403、`requiredPermission` 是 `channel.view_all`。`channel.view_all` 本身有 `dependsOn`，不能當 `data.export` 的前置權限，角色與權限頁不會連動勾選。見[稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md#資料匯出)。
+
 ## Socket 房間
 
 客服的 socket 連線建立時自動加入 `tenant:<tenantId>` 與 `agent:<agentId>`，這兩個房間不經過授權。其他房間要送出 `subscribe`，由 `authorizeSocketRoom()` 判斷：
