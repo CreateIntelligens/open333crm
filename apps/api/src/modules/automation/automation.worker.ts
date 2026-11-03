@@ -18,6 +18,7 @@ import { hasMatchingKeywordRule } from './keyword-yield.js';
 import { createEventRouter, type EventHandler, type SubscribedEvent } from '../../events/subscriber-workers.js';
 import { createOutboxPublisher, publishEvent, type EventPublisher } from '../../events/outbox-publisher.js';
 import { inTenant } from '../../lib/tenant-ctx.js';
+import { emitToChannel } from '../../events/socket-push.js';
 
 /** 認領與寫入結果的交易：tenantPrisma 是 inTenant() 的基礎連線（受 RLS 約束），events 寫 outbox */
 interface TenantDeps {
@@ -200,11 +201,11 @@ async function checkAutoHandoff(
         updatedAt: updatedConversation.updatedAt.toISOString(),
         handoffReason: reason,
       };
-      io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-      io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+      emitToChannel(io, tenantId, { channelId: updatedConversation.channelId, conversationId }, 'conversation.updated', wsPayload);
     }
 
-    io.to(`conversation:${conversationId}`).emit('message.new', {
+    // 與其他 message.new 相同送到渠道房間：列表與總店也收得到，沒有渠道授權的成員收不到（PR #438 審查）
+    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', {
       conversationId,
       message: {
         id: systemMessage.id,

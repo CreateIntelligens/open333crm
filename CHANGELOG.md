@@ -2,6 +2,17 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-03]
+
+### Fixed
+
+- **單筆渠道路由套用渠道可見範圍**（#408，change `scope-single-channel-routes-408`）— 沒有 `channel.view_all` 的成員對看不到的渠道讀取、修改、換憑證、測試連線、刪除、讀嵌入碼或導流識別、改 WebChat 外觀，現在都回 404。讀取要 `read_only`，管理操作要 `full`，不足回 403 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`。`GET /channels/:id/embed-code` 改為需要 `channel.view`；`POST /channels/webhook-base-url` 會改寫全租戶渠道，改為另需 `channel.view_all`，渠道管理頁對其他成員不顯示套用欄位。
+- **群發的發送權限**（#409 MKT-02、MKT-03，change `require-broadcast-send-permissions`）— 建立帶排程時間的群發要 `marketing.broadcast`，附上優惠券要 `coupon.issue`，附券群發的立即發送也要 `coupon.issue`；預估附券群發人數要 `coupon.view`。排程器到期前與附券群發的佇列 job 執行前，都以排定送出的成員當下的權限重新檢查，成員停用或失去權限時不送出，群發標為失敗並顯示原因。新增 `broadcasts.scheduledById` 欄位。建立群發的表單在沒有權限時停用排程與附券欄位並說明，表單開著時失去權限也不送出先前填的券與排程時間。
+- **租戶連線收回平台層資料表權限**（#412）— migration `20261103110000_revoke_app_tenant_platform_tables` 讓 `app_tenant` 對 `tenants`、`plans`、`platform_settings`、`model_pricings` 只剩 `SELECT`，完全收回 `platform_users`、`platform_audit_logs`、`trial_signups`、`_prisma_migrations`。租戶路徑不能再讀平台帳號的密碼雜湊，也不能改個資遮罩、試用政策或價目表。新表不再自動授權給 `app_tenant`，新的租戶表要在 migration 明確 `GRANT`（AGENTS.md 與 RLS skill 已寫明）。部署時 migration 必須以 owner（`MIGRATE_DATABASE_URL`）執行。
+- **成員操作不能用在權限比自己高的人**（#413，change `guard-agent-target-rank-last-admin`）— 改角色、重設他人密碼、停用、刪除成員時比對對方目前的權限，對方多出操作者沒有的權限時回 403 `TARGET_OUTRANKS_ACTOR`，主管不能再把管理員降級。租戶最後一位啟用中的管理員不能被改成沒有管理權限的角色（422 `LAST_ADMIN_PROTECTED`）。「管理員」改依 `role.manage` 權限判斷，不再看舊的角色列舉。人員管理頁被拒時顯示中文原因。
+- **收件匣即時推播依渠道可見範圍送出**（#427，change `fix-socket-channel-rooms-427`）— `message.new`、`conversation.updated`、`conversation.created` 改送到渠道房間（`tenant:<租戶>:channel:<渠道>`，總店 `tenant:<租戶>:channels:all`），沒有渠道授權的成員不會再從 socket 收到其他渠道的訊息內容；workers 經 `socket:emit` 的推播同步改用渠道房間，`automation.executed` 改為只帶 ID。轉接真人（客人按按鈕或自動轉接）的系統訊息也改送渠道房間。成員可用渠道、角色、角色權限、渠道與團隊授權變更，以及方案異動（平台改方案、核准升級、試用轉正式、方案功能或權限設定改變）後，已連線的成員自動重新計算房間；成員被停用或刪除時斷開他的連線，停用的成員也不能再連線。訂閱房間時改從資料庫讀成員目前的角色，角色被降級後不能再用登入時 token 裡的舊角色訂閱看不到的對話。`socket:emit` 訊息同時給 `room` 與 `rooms`，或房間名稱是空字串時視為格式錯誤並丟棄。
+- **資料匯出限定可查看所有渠道的成員**（#428，change `restrict-data-export-to-tenant-wide-roles`）— 發起、查詢、下載資料匯出除了 `data.export`，還要 `channel.view_all`；只看得到部分渠道的自訂角色不能再匯出全租戶的客戶資料，被拒時回 403，`requiredPermission` 是 `channel.view_all`。`data.export` 的權限說明寫明會匯出全租戶。
+
 ## [2026-11-02]
 
 ### Added

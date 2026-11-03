@@ -128,7 +128,7 @@ export const PERMISSIONS: readonly PermissionDef[] = [
 
   // ── 稽核與合規（feature: core）──
   { code: 'audit.view', group: '稽核與合規', feature: 'core', label: '檢視操作稽核', description: '租戶操作稽核日誌查詢' },
-  { code: 'data.export', group: '稽核與合規', feature: 'core', label: '匯出租戶資料', description: 'GDPR 可攜權：匯出聯絡人/案件/對話等' },
+  { code: 'data.export', group: '稽核與合規', feature: 'core', label: '匯出租戶資料', description: 'GDPR 可攜權：匯出全租戶（所有渠道）的聯絡人、對話、訊息與工單，不受渠道可見範圍限制。需同時持有「檢視所有渠道（總店）」才能發起、查詢與下載' },
   { code: 'data.erase', group: '稽核與合規', feature: 'core', label: '刪除聯絡人資料', description: 'GDPR 被遺忘權：匿名化或硬刪聯絡人', dependsOn: ['contact.view'] },
 ] as const;
 

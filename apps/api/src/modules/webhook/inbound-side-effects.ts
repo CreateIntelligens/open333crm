@@ -12,7 +12,7 @@ import { renderTemplateBody } from '../marketing/template-renderer.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
-  emitToConversationAndTenant,
+  emitToConversationChannel,
 } from './inbound-socket-presenter.js';
 
 const outsideHoursReplyCache = new Map<string, number>();
@@ -34,10 +34,10 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
       where: { id: message.id },
       data: { content: updatedContent as any },
     });
-    emitToConversationAndTenant(
+    emitToConversationChannel(
       io,
-      message.conversationId,
       tenantId,
+      conversation,
       'message.new',
       buildMessageNewPayload(message, {
         content: updatedContent,
@@ -102,7 +102,7 @@ export async function emitInboundSocketEvents(ctx: InboundMessageContext): Promi
     conversationId: ctx.conversation.id,
     contentType: ctx.contentType,
   });
-  emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', wsPayload);
+  emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', wsPayload);
 
   const updatedConv = await ctx.prisma.conversation.findUnique({
     where: { id: ctx.conversation.id },
@@ -110,7 +110,7 @@ export async function emitInboundSocketEvents(ctx: InboundMessageContext): Promi
 
   if (updatedConv) {
     const convPayload = buildConversationUpdatedPayload(updatedConv);
-    emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'conversation.updated', convPayload);
+    emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'conversation.updated', convPayload);
   }
 }
 
@@ -208,7 +208,7 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
           includeTypePayload: true,
         });
 
-        emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', autoReplyPayload);
+        emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', autoReplyPayload);
 
         await deliverToChannel(ctx.prisma, ctx.conversation.id, storedContent.content.text as string);
       }
@@ -300,7 +300,7 @@ export async function sendFirstContactGreeting(
       content: storedContent.content,
       includeTypePayload: true,
     });
-    emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', payload);
+    emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', payload);
 
     await deliver(ctx.prisma, ctx.conversation.id, storedContent.content.text as string);
 

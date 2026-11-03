@@ -143,7 +143,8 @@ test('收件匣顯示自動化發出的券卡：對話訊息帶 content.coupon �
   assert.equal(message.content.coupon.discountPercent, 10);
   assert.deepEqual(message.metadata, { source: 'automation', ruleId: RULE.id, ruleName: '秋季領券' });
   const newMessage = events.filter((e) => e.event === 'message.new');
-  assert.deepEqual(newMessage.map((e) => e.room).sort(), ['conversation:conv-1', `tenant:${TENANT}`]);
+  // 只推給看得到該渠道的成員：對話、渠道與總店房間，不推到全租戶房間（issue #427）
+  assert.deepEqual(newMessage.map((e) => e.room).sort(), ['conversation:conv-1', `tenant:${TENANT}:channel:channel-1`, `tenant:${TENANT}:channels:all`]);
   assert.equal(newMessage[0].data.message.content.coupon.instanceId, state.instances[0].id);
 });
 

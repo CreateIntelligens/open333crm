@@ -94,7 +94,16 @@ const nowDate = (now?: number) => new Date(now ?? Date.now());
  * 草稿、已排程、失敗可以排入；發送中但超過 5 分鐘沒有進度的（程式中途結束）也可以重新排入，
  * 已有收件紀錄的人不會再拿到券。job 與排程誰先搶占（claimCouponBroadcast）誰發送，另一個不做事。
  */
-export async function queueCouponBroadcast(ctx: TenantCtx, broadcastId: string, now: number = Date.now()) {
+export async function queueCouponBroadcast(
+  ctx: TenantCtx,
+  broadcastId: string,
+  now: number = Date.now(),
+  /**
+   * 按下發送的人：寫進 scheduledById，排程器後備送出時以此人當下的權限重新檢查
+   * （change require-broadcast-send-permissions design D3）。沒給時保留原值（null 時排程器看建立者）
+   */
+  actorId?: string,
+) {
   const { tx, tenantId } = ctx;
   const broadcast = await tx.broadcast.findFirst({
     where: { id: broadcastId, tenantId },
@@ -112,7 +121,7 @@ export async function queueCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
         { status: 'sending', updatedAt: { lt: new Date(now - STALE_SENDING_MS) } },
       ],
     },
-    data: { status: 'scheduled', scheduledAt, failureReason: null, failureCode: null },
+    data: { status: 'scheduled', scheduledAt, failureReason: null, failureCode: null, ...(actorId ? { scheduledById: actorId } : {}) },
   });
   if (queued.count === 0) {
     if (broadcast.status === 'sending') throw alreadySendingError();
@@ -675,7 +684,7 @@ export async function createBatchIssue(
     couponIssuedByName: agent?.name ?? undefined,
     // 券詳情頁的批次發放不指定行銷活動；渠道已由路由以 assertChannelVisible 檢查
   }, accessibleChannels);
-  const queued = await queueCouponBroadcast(ctx, broadcast.id, now);
+  const queued = await queueCouponBroadcast(ctx, broadcast.id, now, agentId);
   return { broadcastId: broadcast.id, name: broadcast.name, status: queued.status, job: queued.job };
 }
 

@@ -10,7 +10,7 @@
 | 功能 | 模組 | 路由前綴 | 權限 |
 | --- | --- | --- | --- |
 | 租戶稽核日誌 | `tenant-audit` | `/api/v1/tenant/audit-logs` | `audit.view` |
-| 資料匯出 | `data-export` | `/api/v1/tenant/data-export` | `data.export` |
+| 資料匯出 | `data-export` | `/api/v1/tenant/data-export` | `data.export` 加 `channel.view_all` |
 | 資料刪除 | `data-erasure` | `/api/v1/tenant/data-erasure` | `data.erase` |
 | 對外 Webhook | `webhook-subscriptions` | `/api/v1/webhook-subscriptions` | `webhook.view`、`webhook.manage` |
 | MCP | `mcp` | `/mcp` | 帶 `mcp:read` scope 的 CLI token，再依工具檢查 scope |
@@ -38,6 +38,8 @@
 ## 資料匯出
 
 匯出整個租戶的聯絡人、對話、訊息與工單，用於資料可攜或備份。
+
+**誰能匯出。** 匯出內容是全租戶、所有渠道的資料，不依成員的渠道可見範圍篩選。所以發起、查詢與下載都要同時有 `data.export` 與 `channel.view_all`（檢視所有渠道）。只缺 `channel.view_all` 時回 403，`error.details.requiredPermission` 是 `channel.view_all`，訊息寫明需要「檢視所有渠道」。兩個權限都有的成員可以查詢與下載同租戶其他成員發起的匯出。`channel.view_all` 不是 `data.export` 的 `dependsOn`（註冊表只允許一層前置權限），角色與權限頁不會自動連動勾選，只在 `data.export` 的說明寫明。規格：`openspec/specs/tenant-data-export/spec.md`「匯出只限可查看所有渠道的成員」。
 
 1. `POST /tenant/data-export` 建立一筆 `pending` 的申請，寫稽核，把工作送進 `data-export` queue，立刻回應。
 2. workers 的 `data-export.handler.ts` 分頁讀出資料，打包成 zip：每種資料一份 JSON（保留關聯）與一份 CSV（攤平的主表），加上一份 `manifest.json`。

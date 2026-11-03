@@ -66,7 +66,8 @@ test('顧客已達每人上限：不建立新券，對話多一則系統訊息',
     ruleId: RULE.id, ruleName: '秋季領券', couponId: COUPON_ID, reason: 'PER_CONTACT_LIMIT_REACHED',
   });
   assert.notEqual(notice.metadata.deliveryFailed, true, '沒有呼叫渠道就決定不發，是灰色提示不是紅色的送出失敗');
-  assert.ok(env.events.some((e) => e.event === 'message.new' && e.room === `tenant:${TENANT}`), '即時推送到收件匣');
+  assert.ok(env.events.some((e) => e.event === 'message.new' && e.room === `tenant:${TENANT}:channel:channel-1`), '即時推送到看得到該渠道的收件匣');
+  assert.ok(!env.events.some((e) => e.event === 'message.new' && e.room === `tenant:${TENANT}`), '不推到全租戶房間');
 });
 
 test('券已暫停：不建立新券，原因代碼為 COUPON_INACTIVE', async () => {

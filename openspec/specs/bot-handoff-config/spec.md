@@ -52,6 +52,11 @@ The system SHALL intercept LINE postback events with data `handoff_request` in `
 - **AND** the system SHALL publish a `conversation.handoff` eventBus event so SUPERVISOR/ADMIN are notified
 - **AND** the system SHALL NOT publish `message.received`
 
+#### Scenario: Handoff socket events go to the channel rooms
+- **WHEN** a conversation of channel C is handed off, by the `handoff_request` postback or by automatic handoff
+- **THEN** the system SHALL emit the system message as `message.new` and the status as `conversation.updated` to `tenant:<tenantId>:channel:<C>`, `tenant:<tenantId>:channels:all` and `conversation:<conversationId>`, as for other channel events (`tenant-transaction-context`)
+- **AND** a member who cannot see channel C SHALL NOT receive these events
+
 #### Scenario: handoff_request on already AGENT_HANDLED conversation
 - **WHEN** the webhook receives `handoff_request` on a conversation already in `AGENT_HANDLED` status
 - **THEN** the system SHALL idempotently respond with the handoffMessage without a DB status change

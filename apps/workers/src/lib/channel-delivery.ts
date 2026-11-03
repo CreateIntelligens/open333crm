@@ -14,7 +14,7 @@ import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { selectSafeLineStrategy } from '@open333crm/shared';
 import { decryptCredentials } from './credentials.js';
-import { publishSocketEvent } from './socket-bridge.js';
+import { publishChannelSocketEvent } from './socket-bridge.js';
 
 export interface DeliverPayload {
   contentType: string;
@@ -59,7 +59,7 @@ function describeDeliveryError(err: unknown): string {
 async function recordDeliveryFailure(
   prisma: PrismaClient,
   redis: IORedis,
-  conv: { id: string; tenantId: string; channel: { channelType: string } },
+  conv: { id: string; tenantId: string; channel: { id: string; channelType: string } },
   payload: DeliverPayload,
   err: unknown,
   now: Date,
@@ -101,8 +101,7 @@ async function recordDeliveryFailure(
         sender: null,
       },
     };
-    await publishSocketEvent(redis, `conversation:${conv.id}`, 'message.new', wsPayload);
-    await publishSocketEvent(redis, `tenant:${conv.tenantId}`, 'message.new', wsPayload);
+    await publishChannelSocketEvent(redis, { tenantId: conv.tenantId, channelId: conv.channel.id, conversationId: conv.id }, 'message.new', wsPayload);
     logger.warn(`[worker:deliver] 已記錄送出失敗 conv=${conv.id}: ${reason}`);
   } catch (recordErr) {
     logger.error('[worker:deliver] 連失敗紀錄都寫不進去', recordErr);
@@ -113,7 +112,7 @@ async function recordDeliveryFailure(
 export async function recordSkippedDelivery(
   prisma: PrismaClient,
   redis: IORedis,
-  conv: { id: string; tenantId: string; channel: { channelType: string } },
+  conv: { id: string; tenantId: string; channel: { id: string; channelType: string } },
   payload: DeliverPayload,
   reason: string,
 ): Promise<void> {
@@ -293,8 +292,7 @@ export async function sendToChannelFromWorker(
       sender: null,
     },
   };
-  await publishSocketEvent(redis, `conversation:${conversationId}`, 'message.new', wsPayload);
-  await publishSocketEvent(redis, `tenant:${conv.tenantId}`, 'message.new', wsPayload);
+  await publishChannelSocketEvent(redis, { tenantId: conv.tenantId, channelId: conv.channel.id, conversationId }, 'message.new', wsPayload);
 
   logger.info(`[worker:deliver] sent ${payload.contentType} to conv=${conversationId} uid=${identity.uid}`);
   return { ok: true, channelMsgId: channelMsgId ?? null, sentAt: now };

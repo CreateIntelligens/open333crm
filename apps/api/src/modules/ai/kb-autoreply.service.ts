@@ -34,6 +34,7 @@ import {
 } from '@open333crm/automation';
 import { hasMatchingKeywordRule } from '../automation/keyword-yield.js';
 import { logger } from '@open333crm/core';
+import { emitToChannel } from '../../events/socket-push.js';
 import type { BotReplyGuard } from '../automation/bot-reply-guard.js';
 
 const CLARIFY_HANDOFF_FALLBACK =
@@ -365,7 +366,7 @@ async function persistAndDeliver(input: {
   io: Server;
   tenantId: string;
   conversationId: string;
-  conversation: { metadata: Prisma.JsonValue };
+  conversation: { metadata: Prisma.JsonValue; channelId: string };
   botConfig: BotConfig;
   replyText: string;
   replyKind: ReplyKind;
@@ -458,8 +459,7 @@ async function persistAndDeliver(input: {
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', wsPayload);
 
   // Deliver to actual channel
   // 命中 KB 的回答附「👎 沒幫到我」回報按鈕（quick reply postback），供調教 KB。

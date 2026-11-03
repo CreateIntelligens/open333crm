@@ -26,7 +26,8 @@ const role = await prisma.role.create({
     tenantId: T,
     slug: `ci-liff-${stamp}`,
     name: 'CI LIFF ID',
-    permissions: { create: ['channel.view', 'channel.update'].map((permissionCode) => ({ permissionCode })) },
+    // channel.view_all：測的是 LIFF ID 驗證，不是渠道可見範圍（#408 起單筆渠道路由檢查可見範圍）
+    permissions: { create: ['channel.view', 'channel.update', 'channel.view_all'].map((permissionCode) => ({ permissionCode })) },
   },
 });
 const channel = await withTenant(prisma, T, (tx) =>
