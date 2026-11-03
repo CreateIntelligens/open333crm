@@ -69,7 +69,7 @@ beforeEach(() => {
 let seq = 0;
 async function receive(uid: string, text: string) {
   const sockets: Array<{ room: string; event: string }> = [];
-  const io = { to: (room: string) => ({ emit: (event: string) => sockets.push({ room, event }) }) };
+  const io = { to: (room: string | string[]) => ({ emit: (event: string) => { for (const r of [room].flat()) sockets.push({ room: r, event }); } }) };
   const events: AppEvent[] = [];
   const handler = (event: AppEvent) => events.push(event);
   eventBus.subscribe('*', handler);
@@ -116,9 +116,11 @@ test('一般進站訊息', async () => {
   assert.equal(messages[0]!.direction, 'INBOUND');
 
   for (const event of ['message.new', 'conversation.updated']) {
-    for (const room of [`conversation:${conversation.id}`, `tenant:${tenant.id}`]) {
+    // 推到對話、渠道與總店房間；不推到全租戶房間（issue #427）
+    for (const room of [`conversation:${conversation.id}`, `tenant:${tenant.id}:channel:${channel.id}`, `tenant:${tenant.id}:channels:all`]) {
       assert.ok(sockets.some((s) => s.event === event && s.room === room), `${event} 推送到 ${room}`);
     }
+    assert.ok(!sockets.some((s) => s.event === event && s.room === `tenant:${tenant.id}`), `${event} 不推到全租戶房間`);
   }
   const received = events.filter((e) => e.name === 'message.received');
   assert.equal(received.length, 1);

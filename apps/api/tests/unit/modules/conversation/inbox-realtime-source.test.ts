@@ -21,8 +21,8 @@ async function testMarkReadContract() {
   assert.equal(serviceSource.includes('export async function markConversationRead'), true);
   assert.equal(serviceSource.includes('where: { id, tenantId }'), true);
   assert.equal(serviceSource.includes('data: { unreadCount: 0 }'), true);
-  assert.equal(serviceSource.includes('io.to(`conversation:${id}`).emit(\'conversation.updated\''), true);
-  assert.equal(serviceSource.includes('io.to(`tenant:${tenantId}`).emit(\'conversation.updated\''), true);
+  // 推到對話與渠道房間，不推到全租戶房間（issue #427；收到與否由 feature 測試 socket-channel-rooms 驗證）
+  assert.equal(serviceSource.includes("emitToChannel(io, tenantId, { channelId: updated.channelId, conversationId: id }, 'conversation.updated'"), true);
   assert.equal(serviceSource.includes('updatedAt: updated.updatedAt.toISOString()'), true);
 
   assert.equal(routesSource.includes('markConversationRead'), true);

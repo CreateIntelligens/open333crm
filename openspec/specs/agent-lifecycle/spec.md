@@ -17,7 +17,9 @@
 系統 SHALL 拒絕下列停用，回 HTTP 422，成員維持啟用：
 
 - 成員停用自己：`SELF_ACTION_FORBIDDEN`。
-- 目標是租戶最後一位啟用中、角色為 `admin` 系統角色的成員：`LAST_ADMIN_PROTECTED`。
+- 目標是租戶最後一位啟用中的管理員：`LAST_ADMIN_PROTECTED`。管理員的定義見「改角色的最後一位管理員保護」。
+
+目標的權限比操作者高時，系統 SHALL 回 HTTP 403（`TARGET_OUTRANKS_ACTOR`），見 `role-management` 的「對其他成員的操作不能用在權限比自己高的成員」。
 
 成員不存在或屬於其他租戶時，系統 SHALL 回 HTTP 404。
 
@@ -38,7 +40,7 @@
 - **THEN** 系統回 HTTP 422，`error.code` 是 `SELF_ACTION_FORBIDDEN`，成員維持啟用
 
 #### Scenario: 不能停用最後一位管理員
-- **WHEN** 租戶只有一位啟用中、角色為 `admin` 系統角色的成員 M，另一位有 `agent.deactivate` 的成員停用 M
+- **WHEN** 租戶只有一位啟用中的管理員 M，另一位有 `agent.deactivate` 的成員停用 M
 - **THEN** 系統回 HTTP 422，`error.code` 是 `LAST_ADMIN_PROTECTED`，M 維持啟用
 
 ### Requirement: 重新啟用成員
@@ -77,7 +79,9 @@
 系統 SHALL 拒絕下列刪除，回 HTTP 422，成員不被刪除：
 
 - 成員刪除自己：`SELF_ACTION_FORBIDDEN`。
-- 目標是租戶最後一位啟用中、角色為 `admin` 系統角色的成員：`LAST_ADMIN_PROTECTED`。
+- 目標是租戶最後一位啟用中的管理員：`LAST_ADMIN_PROTECTED`。管理員的定義見「改角色的最後一位管理員保護」。
+
+目標的權限比操作者高時，系統 SHALL 回 HTTP 403（`TARGET_OUTRANKS_ACTOR`），見 `role-management` 的「對其他成員的操作不能用在權限比自己高的成員」。
 
 成員不存在或屬於其他租戶時，系統 SHALL 回 HTTP 404。
 
@@ -102,5 +106,19 @@
 - **THEN** 系統回 HTTP 422，`error.code` 是 `SELF_ACTION_FORBIDDEN`，成員仍然存在
 
 #### Scenario: 不能刪除最後一位管理員
-- **WHEN** 租戶只有一位啟用中、角色為 `admin` 系統角色的成員 M，另一位有 `agent.purge` 的成員刪除 M
+- **WHEN** 租戶只有一位啟用中的管理員 M，另一位有 `agent.purge` 的成員刪除 M
 - **THEN** 系統回 HTTP 422，`error.code` 是 `LAST_ADMIN_PROTECTED`，M 仍然存在
+
+### Requirement: 改角色的最後一位管理員保護
+
+管理員是角色的權限集合（含 `implies` 的閉包）含標記 `selfLock` 的權限碼（`role.manage`）的成員。系統 SHALL 依這個定義判斷，不看角色列舉 `role`。
+
+以 `PATCH /api/v1/agents/:id/role` 把租戶最後一位啟用中的管理員改成不含 `selfLock` 權限碼的角色時，系統 SHALL 回 HTTP 422（`LAST_ADMIN_PROTECTED`），成員的角色不變。這個檢查排在「對其他成員的操作不能用在權限比自己高的成員」之前。
+
+#### Scenario: 不能降級最後一位管理員
+- **WHEN** 租戶只有一位啟用中的管理員 M，`supervisor` 系統角色的成員把 M 改成 `{ role: "AGENT" }`
+- **THEN** 系統回 HTTP 422，`error.code` 是 `LAST_ADMIN_PROTECTED`，M 的角色不變
+
+#### Scenario: 角色列舉是 ADMIN 但沒有 role.manage 的成員不算管理員
+- **WHEN** 租戶只有一位啟用中的管理員 M，另一位成員的角色列舉是 `ADMIN`、角色沒有 `role.manage`；有 `agent.deactivate` 的成員停用 M
+- **THEN** 系統回 HTTP 422，`error.code` 是 `LAST_ADMIN_PROTECTED`，M 維持啟用

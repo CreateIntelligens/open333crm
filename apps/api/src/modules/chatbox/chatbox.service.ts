@@ -22,6 +22,7 @@ import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { AppError } from '../../shared/utils/response.js';
 import { processInboundMessage } from '../webhook/webhook.service.js';
 import type { ChatboxMessageRegistry } from './chatbox.registry.js';
@@ -446,7 +447,7 @@ export async function createChatboxSession(
     },
   });
 
-  io.to(`tenant:${channel.tenantId}`).emit('conversation.created', {
+  emitToChannel(io, channel.tenantId, { channelId: channel.id }, 'conversation.created', {
     id: result.conversation.id,
     status: result.conversation.status,
     assignedToId: null,

@@ -64,7 +64,7 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 | 端點 | 作用 |
 | --- | --- |
 | `POST /channels/:id/setup-webhook` | 呼叫 LINE API，自動把 webhook 網址設到 LINE 官方帳號 |
-| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
+| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`，需 `channel.update` 與 `channel.view_all`（總店；#408）。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
 | `POST /channels/:id/verify` | 以目前的憑證呼叫渠道平台，確認憑證有效 |
 | `GET /channels/:id/status` | 渠道的連線狀態。Facebook 會另外檢查 token 是否過期。需要 `channel.view`，看不到的渠道回 404。只讀不寫，「最後驗證」只由 `verify` 更新；渠道管理頁只對啟用中的 FB 渠道呼叫 |
 
@@ -92,7 +92,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 
 | 端點 | 作用 |
 | --- | --- |
-| `GET /channels/:id/embed-code` | 產生嵌入碼 |
+| `GET /channels/:id/embed-code` | 產生嵌入碼（`channel.view`，#408 起） |
 | `POST /channels/:id/chatbox-link` | 產生給指定網域使用的聊天連結 |
 | `PATCH /channels/:id/chatbox-theme`、`POST /channels/:id/chatbox-theme/background` | 聊天視窗的外觀與背景圖 |
 
@@ -148,3 +148,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 | Facebook token 沒有定期檢查 | 只有查詢狀態時才檢查，token 過期前不會通知 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
+
+## 單筆渠道路由的可見範圍（#408）
+
+每條帶渠道 ID 的路由（`/:id` GET／PATCH／DELETE、`/verify`、`/liff-test`、`/setup-webhook`、`/status`、`/embed-code`、`/chatbox-link`、`/binding-handle`、`/chatbox-theme`、`/chatbox-theme/background`）都先以 `assertChannelVisible()` 檢查：看不到（含不存在、已停用）回 404。`channel.view` 的讀取要 `read_only`；`channel.update`／`channel.delete` 的管理操作要 `full`，不足回 403 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`。總店（`channel.view_all`）不受限制。渠道與團隊的指派路由只看 `channel.assign_team`（全租戶指派權），不看操作者的可見範圍。主規格：`channel-scoped-visibility`「單筆渠道路由的可見範圍」。

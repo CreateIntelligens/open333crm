@@ -33,7 +33,7 @@ import {
   listBroadcastRecipientsFlow,
   queueCouponBroadcastFlow,
 } from './broadcast-coupon.flow.js';
-import { requirePermission } from '../../guards/rbac.guard.js';
+import { assertPermission, requirePermission, requirePermissionWhen } from '../../guards/rbac.guard.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 
 // --- Schemas ---
@@ -114,6 +114,26 @@ const broadcastAudiencePreviewSchema = z.object({
     })
     .optional(),
 });
+
+// ─── 群發的額外權限（change require-broadcast-send-permissions，issue #409 MKT-02、MKT-03）──
+// 403 的 details.requiredPermission 是缺少的權限碼；訊息說明是哪個操作需要權限
+
+/** body 某欄位為非空字串：空的 scheduledAt 視為草稿，與 createBroadcast() 相同 */
+const hasBodyString = (field: string) => (request: FastifyRequest) => {
+  const value = (request.body as Record<string, unknown> | undefined)?.[field];
+  return typeof value === 'string' && value.trim() !== '';
+};
+
+const SCHEDULE_NEEDS_BROADCAST = '排程發送需要「執行群發」權限。請清空排程時間存成草稿，再請有權限的成員發送';
+const COUPON_NEEDS_ISSUE = '附上優惠券需要「發放優惠券」權限，請改為不附券或請管理員開通';
+const COUPON_PREVIEW_NEEDS_VIEW = '查看優惠券的剩餘名額需要「檢視優惠券」權限';
+
+/** 建立帶排程時間的群發：到期由排程器送出，等同發送，需要 marketing.broadcast（MKT-02） */
+const broadcastIfScheduling = requirePermissionWhen('marketing.broadcast', hasBodyString('scheduledAt'), SCHEDULE_NEEDS_BROADCAST);
+/** 建立附券群發：每位收件人各發一張券，需要 coupon.issue（MKT-03） */
+const issueIfAttachingCoupon = requirePermissionWhen('coupon.issue', hasBodyString('couponId'), COUPON_NEEDS_ISSUE);
+/** 預覽附券群發：回應含券的剩餘名額，需要 coupon.view（MKT-03） */
+const viewCouponIfPreviewingCoupon = requirePermissionWhen('coupon.view', hasBodyString('couponId'), COUPON_PREVIEW_NEEDS_VIEW);
 
 export default async function marketingRoutes(fastify: FastifyInstance) {
 
@@ -305,7 +325,9 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(paginated(result.broadcasts, result.total, result.page, result.limit));
   });
 
-  fastify.post('/broadcasts', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
+  fastify.post('/broadcasts', {
+    preHandler: [requirePermission('marketing.manage'), broadcastIfScheduling, issueIfAttachingCoupon],
+  }, async (request, reply) => {
     const data = createBroadcastSchema.parse(request.body);
     await assertChannelVisible(request, data.channelId, 'read_only');
     const broadcast = await createBroadcast(
@@ -319,7 +341,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   });
 
   // POST /broadcasts/audience-preview — 預估符合條件與可送達人數（FB／IG 只算 24 小時內互動過的人），不建立群發
-  fastify.post('/broadcasts/audience-preview', async (request, reply) => {
+  fastify.post('/broadcasts/audience-preview', { preHandler: viewCouponIfPreviewingCoupon }, async (request, reply) => {
     const data = broadcastAudiencePreviewSchema.parse(request.body);
     await assertChannelVisible(request, data.channelId, 'read_only');
     const result = await previewBroadcastAudience(request.tenantPrisma, request.agent.tenantId, await resolveChannelVisibility(request), data);
@@ -354,7 +376,10 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const broadcast = await visibleBroadcast(request, request.params.id);
     // 附券廣播：排入排程立即執行，不在 HTTP 請求內發送（design D29）；結果在廣播列表查看
     if (broadcast.couponId) {
-      const queued = await queueCouponBroadcastFlow(fastify, request.agent.tenantId, broadcast.id);
+      // 附券群發每位收件人各發一張券：發送的人也要有 coupon.issue（MKT-03）
+      await assertPermission(request, 'coupon.issue', COUPON_NEEDS_ISSUE);
+      // 排程器後備送出時，以按下發送的人當下的權限重新檢查（scheduledById）
+      const queued = await queueCouponBroadcastFlow(fastify, request.agent.tenantId, broadcast.id, undefined, request.agent.id);
       return reply.status(202).send(success(queued));
     }
     const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id, agentVisibilityResolverOf(fastify));

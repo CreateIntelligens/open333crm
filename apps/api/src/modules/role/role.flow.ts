@@ -10,10 +10,13 @@ import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
 import type { RequestActor } from '../../lib/request-actor.js';
 import { invalidateRolePermissions } from '../../services/permission.service.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { resyncChannelRooms, type SocketChannelRoomSync } from '../../events/socket-push.js';
 import { createRole, deleteRole, getRolePermissions, listRoles, renameRole, setRolePermissions } from './role.service.js';
 
 export interface RoleFlowDeps {
   prisma: PrismaClient;
+  /** 角色權限改變後重新計算已連線 socket 的渠道房間（channel.view_all 可能增減，issue #427） */
+  syncSocketChannelRooms?: SocketChannelRoomSync;
 }
 
 function clearPermissionCache(scope: TenantScope, roleId: string) {
@@ -73,6 +76,8 @@ export function setRolePermissionsFlow(deps: RoleFlowDeps, actor: RequestActor, 
       ip: actor.ip,
     });
     clearPermissionCache(scope, roleId);
+    // 在清快取之後：重新計算時讀到新的權限
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms);
     return result;
   });
 }

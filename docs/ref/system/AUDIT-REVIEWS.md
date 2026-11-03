@@ -16,6 +16,31 @@
 | AUD-01 的長效憑證 | 已修正，AUD-01 仍為部分修正 | 設定頁建立與撤銷 API 金鑰、CLI token 寫 `settings.update`（`section` 是 `api-keys`、`cli-sessions`）；CLI 登入與登出寫 `cli_session.login`、`cli_session.logout`。稽核與憑證在同一個交易寫入。`credential-audit.test.ts` |
 | RBAC-02（CLI token 的 scope 不受限）、HC-SETTINGS-08（前端不顯示欄位的錯誤）、HC-SETTINGS-11 的後半（撤銷不存在的 CLI token 回 200） | 未處理 | 不在這次範圍 |
 
+## 2026-11-03：第一優先的權限與隔離修正（RBAC-07、RBAC-08、RBAC-09、MKT-02、MKT-03、RLS-10、RBAC-04、RBAC-03）
+
+PR #438 的 bot 審查之後補修（同一天）：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-04 的 socket：停用或刪除的成員 | 已修正 | 停用、刪除成員後重新計算該成員的連線，停用或不存在的成員直接斷線；連線時也拒絕停用的成員。`socket-channel-rooms.test.ts` 兩項、`agent.flow.test.ts` 兩項修正前失敗 |
+| RBAC-04 的 socket：轉接訊息 | 已修正 | 自動轉接與 `handoff_request` 的 `message.new` 原本只送對話房間，改走渠道推播。`auto-handoff.test.ts`、`handoff-request-push.test.ts` 修正前失敗 |
+| RBAC-04 的 socket：方案異動 | 已修正 | 平台改方案、核准升級、試用轉正式、方案功能或權限設定改變後重新計算受影響租戶的連線。`platform-plan-socket-resync.test.ts` 4 項修正前失敗 |
+| MKT-02、MKT-03 的佇列 job | 已修正 | 附券群發的 `coupon-broadcast` job 執行前也以排定送出的成員當下的權限檢查（job 重試、outbox 延後時成員可能已被降權）。`broadcast-send-permissions.test.ts` 新增一項修正前失敗。檢查與搶占不在同一個交易，之間毫秒內被降權仍會送出，不處理 |
+
+issue #408、#409、#412、#413、#427、#428，同一個 PR。以本機測試資料庫的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-07（HC-CHANNELS-01） | 已修正，從 `AUDIT.md` 移除 | 帶渠道 ID 的路由都經過 `requireVisibleChannel()`（`assertChannelVisible`），看不到的渠道回 404；讀取要 `read_only`，管理操作要 `full`。`/webhook-base-url` 改寫全租戶渠道，限 `channel.view_all`；`/embed-code` 補上 `channel.view`。團隊指派路由刻意只看 `channel.assign_team`。change `scope-single-channel-routes-408`。`channel-single-route-visibility.test.ts` 修正前 10 項以 assertion 失敗 |
+| RBAC-08（HC-MEMBERS-01） | 已修正，從 `AUDIT.md` 移除 | `updateAgentRole()` 比對對方目前的權限（`TARGET_OUTRANKS_ACTOR`），新角色不含 `role.manage` 且對方是最後一位啟用中的管理員時回 `LAST_ADMIN_PROTECTED`。change `guard-agent-target-rank-last-admin`。`agent-management.test.ts` 新增 7 項，6 項修正前失敗，另做 4 種 mutation |
+| RBAC-09（HC-MEMBERS-02） | 已修正，從 `AUDIT.md` 移除 | 重設密碼、停用、刪除都呼叫 `assertTargetNotAboveActor()` |
+| RBAC-03 的最後一位管理員保護 | 部分修正 | 改依角色權限有沒有 `role.manage` 判斷；自動指派、通知收件人等其餘列未處理 |
+| MKT-02（HC-MARKETING-01） | 已修正，從 `AUDIT.md` 移除 | 建立帶 `scheduledAt` 的群發要 `marketing.broadcast`；`broadcast.scheduler.ts` 送出前以 `scheduledById`（舊資料看建立者）當下的有效權限重驗，不過時標 `failed` 並寫 `SCHEDULED_SENDER_*` 與原因。change `require-broadcast-send-permissions`，migration `20261103100000_broadcast_scheduled_by` |
+| MKT-03（HC-MARKETING-02） | 已修正，從 `AUDIT.md` 移除 | 建立與立即發送附券群發要 `coupon.issue`，`audience-preview` 帶券要 `coupon.view`。`broadcast-send-permissions.test.ts` 15 項，8 項修正前失敗 |
+| RLS-10（HC-PLATFORM-SETTINGS-02） | 部分修正，由 P1 降為 P3 | migration `20261103110000_revoke_app_tenant_platform_tables`：4 張平台表只留 `SELECT`，`platform_users`、`platform_audit_logs`、`trial_signups`、`_prisma_migrations` 全部收回，預設權限不再授權 `app_tenant`。`platform-table-grants.test.ts` 修正前 14 項失敗；完整 feature 測試通過。`platform_settings` 仍整表可讀 |
+| RBAC-04 的 socket 租戶房間 | 已修正 | 渠道房間加總店房間，`message.new`、`conversation.*` 改送渠道房間，授權變更時重新計算。change `fix-socket-channel-rooms-427`。`socket-channel-rooms.test.ts` 三個情境修正前失敗，「離開已訂閱的對話房間」做過 mutation。`case.*`、`sla.event`、`contact.merged` 仍送租戶房間 |
+| RBAC-04 的資料匯出（HC-GOVERNANCE-02） | 已修正 | 發起、查詢、下載要求 `data.export` 加 `channel.view_all`。change `restrict-data-export-to-tenant-wide-roles`。`data-export-flow.test.ts` 2 項修正前失敗 |
+
 ## 2026-11-02：分群群發依建立者的可見範圍判斷（RBAC-04）
 
 #430 合併後的 code review，change `segment-broadcast-creator-visibility`。以 feature 測試確認，沒有連 UAT。

@@ -299,6 +299,8 @@ export interface Reserved {
   code: string;
   contactId: string;
   conversationId: string;
+  /** 對話的渠道：推播只送給看得到這個渠道的成員（issue #427） */
+  channelId: string;
   text: string;
   coupon: {
     id: string; name: string; couponType: string | null; discountAmount: number | null; discountPercent: number | null;
@@ -392,6 +394,7 @@ export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
     code: instance.code,
     contactId,
     conversationId: conv.id,
+    channelId: conv.channelId,
     text,
     coupon,
     expiresAt: created.expiresAt,

@@ -46,7 +46,7 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({
 }));
 
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
-const { createHarness, messageReceived } = await import('./automation-harness.js');
+const { createHarness, messageReceived, TENANT, CHANNEL } = await import('./automation-harness.js');
 
 const HANDOFF_MESSAGE = '稍等，正在為您轉接客服人員';
 
@@ -105,4 +105,19 @@ test('Delivery fails after handoff commit：轉接已 commit，送出轉接訊�
 
   assert.equal(h.state.conversation.status, 'AGENT_HANDLED');
   assert.equal(h.state.outbox.filter((o) => o.name === 'conversation.handoff').length, 1);
+});
+
+test('轉接的 message.new 送到渠道房間（與其他 message.new 相同），不只送到對話房間（PR #438 審查）', async () => {
+  const { h } = setup();
+  const emitted: Array<{ rooms: string[]; event: string }> = [];
+  h.io.to = ((rooms: string | string[]) => ({
+    emit: (event: string) => { emitted.push({ rooms: ([] as string[]).concat(rooms), event }); },
+  })) as never;
+  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never);
+  await handle(messageReceived());
+
+  const messageNew = emitted.find((e) => e.event === 'message.new');
+  assert.ok(messageNew, '送出 message.new');
+  assert.ok(messageNew.rooms.includes(`tenant:${TENANT}:channel:${CHANNEL}`), `送到渠道房間：${messageNew.rooms.join(',')}`);
+  assert.ok(messageNew.rooms.includes(`tenant:${TENANT}:channels:all`), '送到總店房間');
 });

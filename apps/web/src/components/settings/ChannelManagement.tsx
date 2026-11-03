@@ -39,6 +39,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { usePermission } from '@/providers/AuthProvider';
 import { ChannelAccountRouting } from './ChannelAccountRouting';
 import { META_CONNECT_ERROR_TEXT, MetaConnectButton, MetaConnectDialog, useMetaConnectConfigured } from './MetaConnect';
 
@@ -93,6 +94,11 @@ export function ChannelManagement() {
   const [savingTheme, setSavingTheme] = useState(false);
 
   const { load: loadWidget, unload: unloadWidget } = useWebchat();
+  // Webhook 公開網址會改寫全租戶每個渠道（含分店看不到的），後端只允許總店（issue #408）
+  const canViewAllChannels = usePermission('channel.view_all');
+  const canUpdateChannels = usePermission('channel.update');
+  const canSetWebhookBaseUrl = canViewAllChannels && canUpdateChannels;
+  const hasWebchatChannel = (channels as Channel[]).some((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT);
 
   // Webhook base URL state
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
@@ -293,11 +299,14 @@ export function ChannelManagement() {
   return (
     <div className="mt-4 space-y-6">
       {/* Webhook Base URL Setting */}
+      {(canSetWebhookBaseUrl || hasWebchatChannel) && (
       <Card>
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <Globe className="mt-0.5 h-5 w-5 text-muted-foreground shrink-0" />
             <div className="flex-1 space-y-2">
+              {canSetWebhookBaseUrl && (
+              <>
               <div>
                 <p className="font-medium text-sm">Webhook 公開網址</p>
                 <p className="text-xs text-muted-foreground">
@@ -334,7 +343,9 @@ export function ChannelManagement() {
                   目前使用：{webhookBaseUrl}
                 </p>
               )}
-              {(channels as Channel[]).some((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT) && (
+              </>
+              )}
+              {hasWebchatChannel && (
                 <div className="mt-3 space-y-2 border-t pt-3">
                   <p className="text-xs font-medium text-muted-foreground">WebChat 網頁版連結</p>
                   {(channels as Channel[])
@@ -365,6 +376,7 @@ export function ChannelManagement() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Channel List Header */}
       <div className="flex items-center justify-between">

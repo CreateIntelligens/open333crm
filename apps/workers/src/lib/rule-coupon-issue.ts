@@ -37,7 +37,7 @@ import {
 } from '@open333crm/core';
 import { COUPON_ISSUED_VIA, type CouponIssuedVia } from '@open333crm/shared';
 import { deliverToChannelFromWorker, sendToChannelFromWorker, type DeliverPayload } from './channel-delivery.js';
-import { publishSocketEvent } from './socket-bridge.js';
+import { publishChannelSocketEvent, publishSocketEvent } from './socket-bridge.js';
 
 /** 沒有發出券的原因代碼（design D25） */
 export type RuleCouponFailureReason =
@@ -389,7 +389,7 @@ async function recordFailureNotice(
 
 async function publishMessageNew(
   redis: IORedis,
-  conv: { id: string; tenantId: string },
+  conv: { id: string; tenantId: string; channelId: string },
   m: { id: string; contentType: string; content: unknown; metadata: unknown; createdAt: Date },
 ) {
   const payload = {
@@ -406,6 +406,5 @@ async function publishMessageNew(
       sender: null,
     },
   };
-  await publishSocketEvent(redis, `conversation:${conv.id}`, 'message.new', payload);
-  await publishSocketEvent(redis, `tenant:${conv.tenantId}`, 'message.new', payload);
+  await publishChannelSocketEvent(redis, { tenantId: conv.tenantId, channelId: conv.channelId, conversationId: conv.id }, 'message.new', payload);
 }

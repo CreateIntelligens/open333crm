@@ -150,7 +150,7 @@
 | `mcp` | `/mcp` | 無頁面 | 帶 `mcp:read` scope 的 CLI session，再依工具檢查 scope | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
 | `webhook-subscriptions` | `/api/v1/webhook-subscriptions` | 無頁面 | `webhook.view`、`webhook.manage` | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
 | `tenant-audit` | `/api/v1/tenant/audit-logs` | 無頁面 | `audit.view` | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
-| `data-export` | `/api/v1/tenant/data-export` | 無頁面 | `data.export` | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
+| `data-export` | `/api/v1/tenant/data-export` | 無頁面 | `data.export`、`channel.view_all` | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
 | `data-erasure` | `/api/v1/tenant/data-erasure` | 無頁面 | `data.erase` | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
 | `platform`（plan-change 部分） | `/api/v1/plan-change` | `/dashboard/plan` | `settings.manage` | [方案異動審核](../features/platform/PLAN-CHANGES.md) |
 

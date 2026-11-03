@@ -7,7 +7,7 @@ import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { platformLogin } from './platform-auth.service.js';
 import { writePlatformAudit } from './platform-audit.service.js';
-import { listPlans, updatePlan } from './plan.service.js';
+import { listPlans, listTenantIdsOnPlan, updatePlan } from './plan.service.js';
 import {
   listPlatformUsers,
   getPlatformUser,
@@ -104,6 +104,14 @@ const forgotPasswordSchema = z.object({ email: platformEmail });
 const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(8) });
 
 export default async function platformRoutes(fastify: FastifyInstance) {
+  /**
+   * 方案異動 commit 之後重新計算租戶已連線 socket 的渠道房間（PR #438 審查，主規格 socket-room-authorization）。
+   * 呼叫前服務已失效權限與租戶方案快取。syncSocketChannelRooms 失敗只記 log，不影響回應；沒有 socket 時不做事
+   */
+  async function resyncTenantsSocketRooms(tenantIds: string[]): Promise<void> {
+    for (const tenantId of tenantIds) await fastify.syncSocketChannelRooms?.(tenantId);
+  }
+
   await fastify.register(rateLimit, {
     global: false,
     max: 30,
@@ -257,6 +265,11 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: plan.id,
       payload: body,
     });
+    // 功能或權限設定改變 → 方案天花板變動：重新計算使用這個方案的租戶已連線 socket 的渠道房間
+    // （例如拿掉 channel.view_all 時離開總店房間，PR #438 審查）
+    if (body.features !== undefined || body.permissionOverrides !== undefined) {
+      await resyncTenantsSocketRooms(await listTenantIdsOnPlan(fastify.prismaAdmin, plan.id));
+    }
     return success(plan);
   });
 
@@ -281,6 +294,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: tenant.id,
       payload: body,
     });
+    if (body.planSlug !== undefined) await resyncTenantsSocketRooms([tenant.id]);
     return success(tenant);
   });
   fastify.patch<{ Params: { id: string; agentId: string } }>(
@@ -385,6 +399,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: result.id,
       payload: { planSlug },
     });
+    await resyncTenantsSocketRooms([result.id]);
     return success(result);
   });
 
@@ -475,6 +490,8 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: result.id,
       payload: { type: result.type, trialExited: result.trialExited },
     });
+    // 升級換了方案；加購 token 不改權限
+    if (result.type === 'upgrade') await resyncTenantsSocketRooms([result.tenantId]);
     return success(result);
   });
   fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/reject', guard, async (request) => {

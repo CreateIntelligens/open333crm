@@ -110,6 +110,8 @@ export default async function metaConnectRoutes(fastify: FastifyInstance, opts: 
           ip: request.ip,
         });
       }
+      // 新建的渠道直綁給啟用中的成員：已連線成員的渠道房間重新計算（issue #427）
+      if (results.some((r) => r.status === 'connected')) await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
       return reply.send(success(results));
     },
   );

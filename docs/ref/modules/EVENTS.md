@@ -286,10 +286,10 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 ## 新增事件或背景工作時
 
-1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。
+1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()`、`notifyChannel()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。帶渠道的訊息或對話資料的推播用 `notifyChannel()`，只送給看得到該渠道的成員；`notifyTenant()` 不可帶這類內容（issue #427）。還沒搬到 `inTenant()` 的舊入口用 `emitToChannel()`。
 2. **其他模組要跟著做事**：flow 在交易內用 `publishEvent()`。先在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES` 加上名稱，再在 `queues.ts` 的 `EVENT_SUBSCRIBERS` 決定哪些訂閱者收到。訂閱者要承受同一個事件處理兩次。
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：flow 在交易內用 `enqueueJob()`，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。job 可能送兩次，handler 要承受重複。
-4. **workers 要推送即時事件**：用 `publishSocketEvent()`。
+4. **workers 要推送即時事件**：帶渠道資料的用 `publishChannelSocketEvent()`（送到對話、渠道與總店房間，`socket:emit` 訊息帶 `rooms`）；其他用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：在寫入業務資料的交易內用 `writeOutbox()`，帶入租戶 ID；commit 之後呼叫 `dispatchOutboxRows()`。
 6. **不能重複的副作用**：執行前在交易內用 `claimSideEffect()` 認領，或以條件更新認領資料列。認領的交易失敗時丟錯讓 job 重試；認領之後的失敗只記 log。
 7. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時，每一期都只產生一筆 job；但 job 可能在行程被強制結束後重跑，所以都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
@@ -309,7 +309,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 | API 行程假設只有一份，無法水平擴充 | APP-09 |
 | 對外 Webhook 轉送所有事件，`message.received` 帶 `replyToken` | HOOK-01 |
 | `packages/core` 有未使用的服務 | PKG-05 |
-| 租戶房間的 `message.new` 不套用渠道可見範圍 | RBAC-04 |
+| 租戶房間的工單（`case.*`）與聯絡人合併事件不套用渠道可見範圍；`case.created`、`case.deleted` 帶工單標題 | RBAC-04 |
 | 還沒搬遷的發布端仍是最多一次（`eventBus.publish()`） | 搬遷進度見 issue #337 |
 
 ## 自己驗證的方法

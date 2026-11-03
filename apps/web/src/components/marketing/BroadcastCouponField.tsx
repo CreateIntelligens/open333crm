@@ -28,13 +28,19 @@ export interface BroadcastCouponFieldProps {
   preview: Pick<CouponAudiencePreview, 'reachable' | 'coupon'> | null;
   acknowledged: boolean;
   onAcknowledge: (value: boolean) => void;
+  /**
+   * 沒有附券權限（coupon.issue）時的說明：欄位停用、不載入券清單（會 403），
+   * 讓使用者送出前就知道，不是送出後才失敗（change require-broadcast-send-permissions）
+   */
+  disabledReason?: string | null;
 }
 
-export function BroadcastCouponField({ value, onChange, preview, acknowledged, onAcknowledge }: BroadcastCouponFieldProps) {
+export function BroadcastCouponField({ value, onChange, preview, acknowledged, onAcknowledge, disabledReason }: BroadcastCouponFieldProps) {
   const [coupons, setCoupons] = useState<CouponOption[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (disabledReason) return;
     let cancelled = false;
     // 逐頁取回全部進行中的行銷券（API 單頁上限 100 張，只取一頁時第 101 張之後選不到）
     fetchAllPages<CouponOption>((url, config) => api.get(url, config), '/coupons?status=ACTIVE&purpose=MARKETING')
@@ -51,7 +57,7 @@ export function BroadcastCouponField({ value, onChange, preview, acknowledged, o
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [disabledReason]);
 
   const warning = value ? couponCapacityWarning(preview) : null;
 
@@ -60,15 +66,17 @@ export function BroadcastCouponField({ value, onChange, preview, acknowledged, o
       <label htmlFor="broadcast-coupon" className="mb-1 block text-sm font-medium">附上優惠券（選填）</label>
       <Select
         id="broadcast-coupon"
-        value={value}
+        value={disabledReason ? '' : value}
+        disabled={Boolean(disabledReason)}
         onChange={(e) => onChange(e.target.value)}
         options={[
           { value: '', label: '不附券' },
           ...coupons.map((c) => ({ value: c.id, label: c.displayCode ? `${c.name}（${c.displayCode}）` : c.name })),
         ]}
       />
+      {disabledReason && <p className="mt-1 text-xs text-muted-foreground">{disabledReason}</p>}
       {loadError && <p className="mt-1 text-xs text-destructive">優惠券清單載入失敗：{loadError}</p>}
-      {value && (
+      {value && !disabledReason && (
         <div className="mt-1 space-y-1 text-xs text-muted-foreground">
           <p>每位收件人各得一張券與自己的票券連結，會一則一則送出（不使用一次群發）。</p>
           <p>

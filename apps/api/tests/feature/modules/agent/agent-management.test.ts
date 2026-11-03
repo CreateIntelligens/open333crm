@@ -188,6 +188,96 @@ test('沒有 agent.role.assign 時被拒：回 403，角色不變', async () => 
   assert.equal((await reload(target.id))!.roleId, plainRole.id);
 });
 
+// ── 目標成員的權限不可高於操作者、改角色的最後一位管理員保護（AUDIT RBAC-08、RBAC-09、RBAC-03）──
+
+/** 另建一位 admin 系統角色的成員；fn 結束後刪除，讓其他測試的「唯一管理員」前提不變 */
+async function withSecondAdmin(fn: (admin2: { id: string; roleId: string | null }) => Promise<void>) {
+  const admin2 = await createAgent(system.admin!, { role: 'ADMIN' });
+  try {
+    await fn(admin2);
+  } finally {
+    await owner.tenantAuditLog.deleteMany({ where: { tenantId: T, targetId: admin2.id } });
+    await owner.agent.deleteMany({ where: { id: admin2.id } });
+  }
+}
+
+test('主管不能降級管理員：回 403 TARGET_OUTRANKS_ACTOR，管理員的角色不變', async () => {
+  const supervisor = await createAgent(system.supervisor!);
+  const supervisorApp = await buildApp(supervisor);
+  try {
+    await withSecondAdmin(async (admin2) => {
+      const res = await supervisorApp.inject({ method: 'PATCH', url: `/api/v1/agents/${admin2.id}/role`, payload: { role: 'SUPERVISOR' } });
+      assert.equal(res.statusCode, 403, res.body);
+      assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+      assert.ok(res.json().error.details.exceededPermissions.includes('role.manage'));
+      assert.equal((await reload(admin2.id))!.roleId, system.admin);
+    });
+  } finally {
+    await supervisorApp.close();
+  }
+});
+
+test('不能降級最後一位管理員：回 422 LAST_ADMIN_PROTECTED，管理員的角色不變', async () => {
+  const supervisor = await createAgent(system.supervisor!);
+  const supervisorApp = await buildApp(supervisor);
+  const res = await supervisorApp.inject({ method: 'PATCH', url: `/api/v1/agents/${admin.id}/role`, payload: { role: 'AGENT' } });
+  await supervisorApp.close();
+  assert.equal(res.statusCode, 422, res.body);
+  assert.equal(res.json().error.code, 'LAST_ADMIN_PROTECTED');
+  assert.equal((await reload(admin.id))!.roleId, system.admin);
+});
+
+test('管理員可以降級另一位管理員：仍有其他管理員時回 200，角色是 supervisor', async () => {
+  const adminApp = await buildApp(admin);
+  try {
+    await withSecondAdmin(async (admin2) => {
+      const res = await adminApp.inject({ method: 'PATCH', url: `/api/v1/agents/${admin2.id}/role`, payload: { role: 'SUPERVISOR' } });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal((await reload(admin2.id))!.roleId, system.supervisor);
+    });
+  } finally {
+    await adminApp.close();
+  }
+});
+
+test('角色列舉是 ADMIN 但沒有 role.manage 的成員不算管理員：唯一管理員仍不能被停用', async () => {
+  // RBAC-03：最後一位管理員依權限判斷，不看舊的角色列舉
+  const fakeAdmin = await createAgent(plainRole.id, { role: 'ADMIN' });
+  try {
+    const res = await deactivate(managerApp, admin.id);
+    assert.equal(res.statusCode, 422, res.body);
+    assert.equal(res.json().error.code, 'LAST_ADMIN_PROTECTED');
+    assert.equal((await reload(admin.id))!.isActive, true);
+  } finally {
+    await owner.agent.deleteMany({ where: { id: fakeAdmin.id } });
+  }
+});
+
+test('不能重設權限比自己高的成員的密碼：回 403 TARGET_OUTRANKS_ACTOR，密碼不變', async () => {
+  const res = await resetPassword(managerApp, admin.id);
+  assert.equal(res.statusCode, 403, res.body);
+  assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+  assert.ok(await verifyPassword(PASSWORD, (await reload(admin.id))!.passwordHash));
+});
+
+test('不能停用權限比自己高的成員：回 403 TARGET_OUTRANKS_ACTOR，成員維持啟用', async () => {
+  await withSecondAdmin(async (admin2) => {
+    const res = await deactivate(managerApp, admin2.id);
+    assert.equal(res.statusCode, 403, res.body);
+    assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+    assert.equal((await reload(admin2.id))!.isActive, true);
+  });
+});
+
+test('不能刪除權限比自己高的成員：回 403 TARGET_OUTRANKS_ACTOR，成員仍然存在', async () => {
+  await withSecondAdmin(async (admin2) => {
+    const res = await purge(managerApp, admin2.id);
+    assert.equal(res.statusCode, 403, res.body);
+    assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+    assert.ok(await reload(admin2.id));
+  });
+});
+
 // ── agent-management：重設其他成員的密碼 ──
 
 const resetPassword = (app: typeof managerApp, id: string) =>

@@ -3,6 +3,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { prepareStoredMessageContent } from '../../modules/ai/deidentification.service.js';
@@ -160,11 +161,8 @@ export async function simulateInboundMessage(
     },
   };
 
-  // Emit to the specific conversation room
-  io.to(`conversation:${conversation.id}`).emit('message.new', wsPayload);
-
-  // Emit to tenant-level inbox
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
+  // 對話房間與渠道房間：只有看得到這個渠道的成員收到（issue #427）
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'message.new', wsPayload);
 
   // Also emit a conversation.updated event for the unread count change
   const updatedConv = await prisma.conversation.findUnique({
@@ -181,8 +179,7 @@ export async function simulateInboundMessage(
       updatedAt: updatedConv.updatedAt.toISOString(),
     };
 
-    io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
-    io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
+    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'conversation.updated', convPayload);
   }
 
   // 8. Publish to EventBus for automation (KB auto-reply, etc.)

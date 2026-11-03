@@ -8,7 +8,7 @@ import { logger } from '@open333crm/core';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { emitInboundSocketEvents, sendFirstContactGreeting } from './inbound-side-effects.js';
-import { buildMessageNewPayload, emitToConversationAndTenant } from './inbound-socket-presenter.js';
+import { buildMessageNewPayload, emitToConversationChannel } from './inbound-socket-presenter.js';
 import { extractBindingCode, getBindingStore, pendingConfirmKey, type BindingStore } from '../identity-binding/binding-code.js';
 import {
   detectBindingIntent,
@@ -168,10 +168,10 @@ async function runBindingIntent(
           isRead: false,
         },
       });
-      emitToConversationAndTenant(
+      emitToConversationChannel(
         ctx.io,
-        conversation.id,
         ctx.tenantId,
+        { id: conversation.id, channelId: ctx.channel.id },
         'message.new',
         buildMessageNewPayload(note, { includeTypePayload: true }),
       );

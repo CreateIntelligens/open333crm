@@ -11,6 +11,7 @@ export * from './constants/line-media-limits.js';
 export * from './constants/message-content.js';
 export * from './constants/sla-defaults.js';
 export * from './constants/tenant.js';
+export * from './constants/socket-rooms.js';
 export * from './sla/index.js';
 export * from './utils/runtime-endpoints.js';
 export * from './line-flex-template.js';

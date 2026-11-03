@@ -56,7 +56,7 @@ description: >
 - `ai.privacy.<tenantId>` 的值必須是嚴格的 `{enabled:boolean}`（`.strict()`），否則該租戶所有訊息寫入回 503 `AI_PRIVACY_POLICY_UNAVAILABLE`。只能透過專用路由寫；在 TRIAL-02 的「殼層」做出來之前，不要用通用 `PUT /settings/:key` 碰 `ai.` 開頭的鍵。
 - 讀取端各自做型別檢查，不符就靜默退回預設值（`getTrialPolicy()`），或直接拋錯（`readAiPrivacyPolicy()`）。新增設定鍵時要決定是哪一種，並在寫入端驗證。
 - 稽核：主規格 `platform-auth` 規定 `setting.update` 的 payload **不可**含設定值（`platform-audit-routes.test.ts` 有測）。TRIAL-02 的修正方向寫「稽核 `{before, after}`」，兩者衝突，改之前先決定並同步規格。
-- 這張表存的是明文 JSON，`GET` 原樣回傳，`app_tenant` 連線也能讀寫（HC-PLATFORM-SETTINGS-02）。**不要把密碼、API key 放進 `platform_settings`**；需要密鑰就用環境變數，或比照 BYOK 以 `CREDENTIAL_ENCRYPTION_KEY` 加密。
+- 這張表存的是明文 JSON，`GET` 原樣回傳，`app_tenant` 連線只能讀、不能寫（#412 起，migration `20261103110000_revoke_app_tenant_platform_tables`），但仍讀得到所有鍵，包含其他租戶的 `ai.privacy.*`（HC-PLATFORM-SETTINGS-02）。**不要把密碼、API key 放進 `platform_settings`**；需要密鑰就用環境變數，或比照 BYOK 以 `CREDENTIAL_ENCRYPTION_KEY` 加密。
 - 價目改動只能新增一列新的 `effectiveFrom`，不可修改既有列（主規格 `model-pricing`）。成本在寫入 `AiUsage` 當下算定，不會重算；補價目之前用掉的呼叫成本永久是 0。
 - `/registry` 是功能與渠道選項的單一來源；在 `ChannelType` enum 加值會立刻出現在方案頁，不論有沒有註冊渠道外掛。
 - 平台路由的 rate-limit 與 guard 都在 `platform.routes.ts` 的函式內註冊，把 `/settings` 拆到新檔要一起帶走（SEC-03）。

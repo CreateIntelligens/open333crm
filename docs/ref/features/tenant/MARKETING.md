@@ -87,14 +87,16 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 | 動作 | 端點 | 權限 |
 | --- | --- | --- |
-| 建立 | `POST /marketing/broadcasts` | `marketing.manage` |
-| 立即發送 | `POST /marketing/broadcasts/:id/send` | `marketing.broadcast` |
+| 建立 | `POST /marketing/broadcasts` | `marketing.manage`；帶 `scheduledAt` 另要 `marketing.broadcast`，帶 `couponId` 另要 `coupon.issue` |
+| 立即發送 | `POST /marketing/broadcasts/:id/send` | `marketing.broadcast`；附券群發另要 `coupon.issue` |
 | 取消 | `POST /marketing/broadcasts/:id/cancel` | `marketing.broadcast` |
-| 預估人數 | `POST /marketing/broadcasts/audience-preview` | `marketing.view` |
+| 預估人數 | `POST /marketing/broadcasts/audience-preview` | `marketing.view`；帶 `couponId` 另要 `coupon.view` |
+
+缺少額外的權限時回 403，`error.details.requiredPermission` 是缺少的那個權限碼，訊息說明是排程或附券需要的權限（change `require-broadcast-send-permissions`，issue #409 MKT-02、MKT-03）。建立群發的表單在沒有 `marketing.broadcast` 時停用排程欄位、沒有 `coupon.issue` 時停用附券欄位，並說明原因。
 
 預估人數用和發送相同的受眾解析與訊息視窗，回傳 `{ matched, reachable, messagingWindowHours }`，不建立群發。建立群發的表單選好渠道與受眾後顯示這兩個數字。排程群發在執行時重新計算，人數可能和建立時不同。
 
-排程的群發由 `broadcast.scheduler.ts` 在 API 行程定期檢查，時間到了就執行。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
+排程的群發由 `broadcast.scheduler.ts` 在 API 行程定期檢查，時間到了就執行。送出前以「排定送出的成員」當下的有效權限（角色權限 ∩ 方案天花板）重新檢查：`broadcasts.scheduledById` 記錄這個人，建立排程時是建立者，附券群發「立即發送」與券詳情批次發券是按下的人；舊資料為 null 時看建立者。一般群發要 `marketing.broadcast`，群發頁的附券群發要 `marketing.broadcast` 與 `coupon.issue`，批次發券只要 `coupon.issue`。成員已不存在、已停用，或少了需要的權限時不送出，群發標為 `failed`，`failureCode` 為 `SCHEDULED_SENDER_NOT_FOUND`、`SCHEDULED_SENDER_INACTIVE` 或 `SCHEDULED_SENDER_FORBIDDEN`，`failureReason` 寫明成員與缺少的權限，列表看得到；有權限的成員可以按「重新發送」。檢查在 `broadcast-send-authority.ts`。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
 
 ### 發送時做什麼
 
@@ -146,7 +148,9 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 | --- | --- |
 | 讀取活動、群發、分群、素材 | `marketing.view` |
 | 建立、修改、刪除活動、分群、素材與分類；建立群發 | `marketing.manage` |
-| 送出與取消群發 | `marketing.broadcast` |
+| 送出與取消群發；建立帶排程時間的群發 | `marketing.broadcast` |
+| 建立或立即發送附券群發（另外要） | `coupon.issue` |
+| 預估附券群發的人數（另外要） | `coupon.view` |
 
 `GET /marketing/templates` 在同一個 plugin 內，因此收件匣插入範本也需要 `marketing.view`。沒有這個權限的客服在收件匣載入不到範本。
 

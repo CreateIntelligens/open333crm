@@ -11,7 +11,9 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
-const { api, nav, materialCalls, data } = vi.hoisted(() => ({
+const { api, nav, materialCalls, data, perms } = vi.hoisted(() => ({
+  // 目前成員的權限：預設全部都有，個別測試拿掉某個權限
+  perms: { denied: new Set<string>() },
   api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
   nav: { pathname: '/dashboard/marketing/broadcasts' },
   materialCalls: [] as Array<Record<string, unknown>>,
@@ -22,6 +24,7 @@ const { api, nav, materialCalls, data } = vi.hoisted(() => ({
 }));
 
 vi.mock('#src/lib/api.js', () => ({ default: api }));
+vi.mock('#src/providers/AuthProvider.js', () => ({ usePermission: (code: string) => !perms.denied.has(code) }));
 vi.mock('next/navigation', () => ({
   usePathname: () => nav.pathname,
   useSearchParams: () => null,
@@ -67,6 +70,7 @@ beforeEach(() => {
   materialCalls.length = 0;
   data.broadcasts = [];
   data.segments = [];
+  perms.denied.clear();
   api.get.mockReset();
   api.post.mockReset();
   api.get.mockResolvedValue({ data: { data: TAGS } });
@@ -410,4 +414,52 @@ test('Instagram 廣播只能附券：素材欄位改為說明，沒附券不能�
   assert.equal(creates()[0][1].channelId, 'ch-ig');
   assert.equal(creates()[0][1].couponId, 'cp-1');
   assert.equal(creates()[0][1].materialId, undefined);
+});
+
+// ─── 群發的發送權限（change require-broadcast-send-permissions） ─────────────────
+
+test('Create form without the broadcast permission：沒有執行群發權限時排程欄位停用並說明', () => {
+  perms.denied.add('marketing.broadcast');
+  const { dialog } = openCreateDialog();
+  const schedule = dialog.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+  assert.equal(schedule.disabled, true);
+  within(dialog).getByText(/排程發送需要「執行群發」權限/);
+});
+
+test('有執行群發權限時排程欄位可以填', () => {
+  const { dialog } = openCreateDialog();
+  const schedule = dialog.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+  assert.equal(schedule.disabled, false);
+  assert.ok(within(dialog).queryByText(/排程發送需要「執行群發」權限/) === null);
+});
+
+test('表單停用附券欄位：沒有發放優惠券權限時附券欄位停用並說明，不載入券清單', () => {
+  perms.denied.add('coupon.issue');
+  const { dialog } = openCreateDialog();
+  const coupon = within(dialog).getByLabelText('附上優惠券（選填）') as HTMLSelectElement;
+  assert.equal(coupon.disabled, true);
+  within(dialog).getByText(/附上優惠券需要「發放優惠券」權限/);
+  assert.ok(!api.get.mock.calls.some(([u]) => String(u).startsWith('/coupons')), '沒有權限不載入券清單（會 403）');
+});
+
+test('表單開著時失去權限：送出時不帶先前選的券與排程時間（PR #438 審查）', async () => {
+  api.get.mockImplementation(async (url: string) =>
+    String(url).startsWith('/coupons') ? { data: { data: [{ id: 'cp-1', name: '秋季九折' }] } } : { data: { data: TAGS } });
+  const { dialog } = openCreateDialog();
+  await within(dialog).findByRole('option', { name: '秋季九折' });
+  fireEvent.change(within(dialog).getByLabelText('附上優惠券（選填）'), { target: { value: 'cp-1' } });
+  const schedule = dialog.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+  fireEvent.change(schedule, { target: { value: '2099-12-31T23:59' } });
+
+  // 權限在表單開著時被拿掉（例如權限重新載入）；改名稱讓表單重新渲染
+  perms.denied.add('coupon.issue');
+  perms.denied.add('marketing.broadcast');
+  fireEvent.change(within(dialog).getByPlaceholderText('廣播名稱'), { target: { value: '週年慶 2' } });
+
+  fireEvent.click(createButton(dialog));
+  const creates = () => api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts');
+  await waitFor(() => assert.equal(creates().length, 1));
+  const payload = creates()[0][1];
+  assert.equal(payload.couponId, undefined, '不帶看不到的券');
+  assert.equal(payload.scheduledAt, undefined, '不帶停用的排程時間');
 });

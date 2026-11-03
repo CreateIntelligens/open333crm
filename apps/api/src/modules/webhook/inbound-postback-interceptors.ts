@@ -11,7 +11,7 @@ import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
-  emitToConversationAndTenant,
+  emitToConversationChannel,
 } from './inbound-socket-presenter.js';
 
 export async function runInboundPostbackInterceptors(ctx: InboundMessageContext): Promise<boolean> {
@@ -156,15 +156,16 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       const convPayload: ConversationUpdatedPayload = buildConversationUpdatedPayload(updatedConversation, {
         handoffReason: reason,
       });
-      emitToConversationAndTenant(
+      emitToConversationChannel(
         ctx.io,
-        ctx.conversation.id,
         ctx.tenantId,
+        ctx.conversation,
         'conversation.updated',
         convPayload,
       );
 
-      ctx.io.to(`conversation:${ctx.conversation.id}`).emit('message.new', buildMessageNewPayload(systemMessage, {
+      // 與其他 message.new 相同送到渠道房間（issue #427、PR #438 審查）
+      emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', buildMessageNewPayload(systemMessage, {
         includeMetadata: true,
         includeSenderNull: true,
       }));

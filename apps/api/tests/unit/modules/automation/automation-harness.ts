@@ -10,11 +10,13 @@ import { randomUUID } from 'node:crypto';
 export const TENANT = 'a0000000-0000-0000-0000-000000000001';
 export const CONVERSATION = 'c0000000-0000-0000-0000-00000000000c';
 export const MESSAGE = 'b0000000-0000-0000-0000-00000000000b';
+export const CHANNEL = 'd0000000-0000-0000-0000-00000000000d';
 
 export interface HarnessState {
   conversation: {
     id: string;
     tenantId: string;
+    channelId: string;
     status: string;
     handoffReason: string | null;
     botRepliesCount: number;
@@ -38,6 +40,7 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
     conversation: {
       id: CONVERSATION,
       tenantId: TENANT,
+      channelId: CHANNEL,
       status: 'BOT_HANDLED',
       handoffReason: null,
       botRepliesCount: overrides.botRepliesCount ?? 0,
@@ -101,7 +104,8 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
         if (data.senderType === 'SYSTEM' && state.failSystemMessage) throw new Error('system message write failed');
         const row = { id: randomUUID(), senderType: data.senderType, contentType: data.contentType, content: data.content, metadata: data.metadata ?? {} };
         state.messages.push(row);
-        return { ...row, createdAt: new Date() };
+        // 寫入回覆時以 include 取對話的渠道（agent.service：推播只送給看得到該渠道的成員）
+        return { ...row, createdAt: new Date(), conversation: { channelId: CHANNEL } };
       },
       findUnique: async ({ where }: { where: { id: string } }) => state.messages.find((m) => m.id === where.id) ?? null,
       findFirst: async ({ where }: { where: { id: string } }) => state.messages.find((m) => m.id === where.id) ?? null,

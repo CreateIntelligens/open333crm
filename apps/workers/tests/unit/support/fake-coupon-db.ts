@@ -281,7 +281,11 @@ export function fakeRedis() {
   const kv = new Map<string, string>();
   const redis = {
     async publish(channel: string, payload: string) {
-      if (channel === 'socket:emit') events.push(JSON.parse(payload));
+      if (channel === 'socket:emit') {
+        // rooms（渠道推播）攤成每個房間一筆，與 room 的格式一致
+        const { room, rooms, event, data } = JSON.parse(payload);
+        for (const r of rooms ?? [room]) events.push({ room: r, event, data });
+      }
       return 1;
     },
     async set(key: string, value: string) {

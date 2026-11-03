@@ -16,7 +16,7 @@ import {
   matchKeywordTrigger,
   validateAutomationRuleContract,
 } from '@open333crm/automation';
-import { publishSocketEvent } from '../lib/socket-bridge.js';
+import { publishChannelSocketEvent, publishSocketEvent } from '../lib/socket-bridge.js';
 import { executeWorkerAutomationActions } from '../lib/automation-actions.js';
 
 interface AutomationJobData {
@@ -228,12 +228,15 @@ async function evaluateAndExecute(
       pluginRegistry,
     });
 
-    await publishSocketEvent(
-      redisPublisher,
-      `tenant:${tenantId}`,
-      'automation.executed',
-      { ruleId: match.ruleId, trigger, context },
-    );
+    // 只帶 ID，不帶事件內容：context 含訊息全文（messageContent）、replyToken（issue #427）。
+    // 有渠道的事件只推給看得到該渠道的成員；沒有渠道的事件（例如短連結點擊）推到租戶房間
+    const executed = { ruleId: match.ruleId, trigger, conversationId, contactId, caseId };
+    const channelId = typeof context['channelId'] === 'string' ? context['channelId'] : null;
+    if (channelId) {
+      await publishChannelSocketEvent(redisPublisher, { tenantId, channelId }, 'automation.executed', executed);
+    } else {
+      await publishSocketEvent(redisPublisher, `tenant:${tenantId}`, 'automation.executed', executed);
+    }
 
     logger.info(`[automation] Rule ${match.ruleId} executed for trigger "${trigger}"`);
   }
