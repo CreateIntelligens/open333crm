@@ -12,6 +12,12 @@ All notable changes to **open333CRM** will be documented in this file.
 - **成員操作不能用在權限比自己高的人**（#413，change `guard-agent-target-rank-last-admin`）— 改角色、重設他人密碼、停用、刪除成員時比對對方目前的權限，對方多出操作者沒有的權限時回 403 `TARGET_OUTRANKS_ACTOR`，主管不能再把管理員降級。租戶最後一位啟用中的管理員不能被改成沒有管理權限的角色（422 `LAST_ADMIN_PROTECTED`）。「管理員」改依 `role.manage` 權限判斷，不再看舊的角色列舉。人員管理頁被拒時顯示中文原因。
 - **收件匣即時推播依渠道可見範圍送出**（#427，change `fix-socket-channel-rooms-427`）— `message.new`、`conversation.updated`、`conversation.created` 改送到渠道房間（`tenant:<租戶>:channel:<渠道>`，總店 `tenant:<租戶>:channels:all`），沒有渠道授權的成員不會再從 socket 收到其他渠道的訊息內容；workers 經 `socket:emit` 的推播同步改用渠道房間，`automation.executed` 改為只帶 ID。轉接真人（客人按按鈕或自動轉接）的系統訊息也改送渠道房間。成員可用渠道、角色、角色權限、渠道與團隊授權變更，以及方案異動（平台改方案、核准升級、試用轉正式、方案功能或權限設定改變）後，已連線的成員自動重新計算房間；成員被停用或刪除時斷開他的連線，停用的成員也不能再連線。訂閱房間時改從資料庫讀成員目前的角色，角色被降級後不能再用登入時 token 裡的舊角色訂閱看不到的對話。`socket:emit` 訊息同時給 `room` 與 `rooms`，或房間名稱是空字串時視為格式錯誤並丟棄。
 - **資料匯出限定可查看所有渠道的成員**（#428，change `restrict-data-export-to-tenant-wide-roles`）— 發起、查詢、下載資料匯出除了 `data.export`，還要 `channel.view_all`；只看得到部分渠道的自訂角色不能再匯出全租戶的客戶資料，被拒時回 403，`requiredPermission` 是 `channel.view_all`。`data.export` 的權限說明寫明會匯出全租戶。
+- **知識庫說「已為您轉接」時真的轉接真人**（#419 KB-01，change `fix-kb-clarify-handoff-419`）— 知識庫自動回覆的追問次數用完、或追問的 AI 呼叫失敗（含月額度用完）時，回覆轉接句的同時把對話改為真人處理，記錄轉接原因與系統訊息，收件匣即時更新；轉接不成立時這句話不送出。自動轉接與知識庫轉接共用 `handOffConversation()`，追問次數在轉接時歸零。轉接後關鍵字規則照常回覆，知識庫與 AI 不再回覆。
+- **對話轉接真人時通知客服**（#419 CONV-03）— `conversation.handoff` 原本沒有訂閱者，客服收不到轉接。現在發出「轉接真人」站內通知：已指派的對話通知負責客服，未指派通知所有主管與管理員。
+- **LINE 客人收得到滿意度問卷**（#416 CASE-03，change `fix-csat-line-flex-416`）— LINE 外掛補回 `flex` 訊息，不認得的訊息類型改為回失敗並帶原因，不再送出被 LINE 拒收的空白文字。問卷送不出時，收件匣的問卷卡片顯示「沒有送出」與原因，工單時間軸記錄 `csat_send_failed`；不自動重寄。
+- **網站聊天室的群發與批次發券不再假成功**（#415 CHAN-02 群發與發券部分，change `reject-webchat-push-415`）— 建立、送出群發，附券群發與券詳情批次發券，渠道不能主動推送（網站聊天室）時回 400 `CHANNEL_PUSH_NOT_SUPPORTED`；修正前建立的網站聊天室群發在排程或背景執行時標為失敗並寫入原因，不發券。群發頁渠道選單只列 LINE、Facebook、Instagram。能主動推送的渠道清單移到 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`，前後端共用。
+- **停用的租戶對外完全停止活動**（#410 AUTH-11，change `stop-disabled-tenant-activity-410`）— 停用（含試用到期）的租戶：網站聊天室建立工作階段、送訊息與訪客 socket 回 404，`processInboundMessage()` 共用入口也丟棄進站事件；到期的排程群發與附券群發佇列 job 不送出，群發標為失敗（`TENANT_DISABLED`）並顯示原因；不寄滿意度問卷。
+- **免費試用與輕量版方案可以使用渠道**（#411 PLAN-14，change `enable-channels-on-trial-light-411`）— `trial`、`light` 方案加入 `channels` 功能，租戶管理員可以檢視與建立渠道。既有方案由 migration `20261103120000_enable_channels_on_trial_light` 補上（只加 `channels`，不動其他欄位）。渠道管理頁收到 403 時顯示「沒有權限」，不再顯示成「沒有渠道」；沒有 `channel.create` 的成員看不到新增渠道、設定精靈與 Facebook 連結按鈕（RBAC-11 渠道頁部分）。
 
 ## [2026-11-02]
 

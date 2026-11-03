@@ -70,7 +70,6 @@
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
 | [AUTH-10](#auth-10) | 帳號與登入 | P3 | 未處理 | 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | 執行時確認 |
-| [AUTH-11](#auth-11) | 帳號與登入 | P1 | 未處理 | 停用的租戶仍收得到 WebChat 訊息，預約的群發也照常送出 | 執行時確認 |
 | [AUTH-12](#auth-12) | 帳號與登入 | P2 | 未處理 | 平台「修改密碼」打錯目前密碼會被整頁登出，看不到錯誤訊息 | 執行時確認 |
 | [AUTH-13](#auth-13) | 帳號與登入 | P2 | 未處理 | 平台的「重寄開通信」會立刻換掉任何啟用中帳號的密碼，包括自己，沒有確認 | 執行時確認 |
 | [AUTH-14](#auth-14) | 帳號與登入 | P2 | 未處理 | 平台帳號的開通信、重寄開通信與租戶的重寄開通信，寄送失敗時仍回成功 | 靜態確認 |
@@ -101,12 +100,12 @@
 | [PLAN-11](#plan-11) | 方案與額度 | P3 | 未處理 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
 | [PLAN-12](#plan-12) | 方案與額度 | P3 | 未處理 | AI 不在功能天花板的維度內，停用 AI 只能把 `monthlyTokens` 設成 `0` | 靜態確認 |
 | [PLAN-13](#plan-13) | 方案與額度 | P2 | 未處理 | 換方案或調高方案的額度之後，當月的額度告警不會再發 | 靜態確認 |
-| [PLAN-14](#plan-14) | 方案與額度 | P1 | 未處理 | 試用與輕量版方案不含 `channels` 功能（seed 與 UAT 相同），這兩個方案的管理員看不到也建不了渠道 | 執行時確認 |
 | [PLAN-15](#plan-15) | 方案與額度 | P2 | 未處理 | `/admin/plans` 同時編輯兩張方案卡片時，第二張送出的是舊值，畫面卻顯示已更新 | 執行時確認 |
 | [PLAN-16](#plan-16) | 方案與額度 | P2 | 未處理 | 方案異動申請的核准與駁回不是原子操作，同時送出時兩者都成功；「一筆待審」只靠查詢後建立，同時送出可建多筆 | 執行時確認 |
 | [PLAN-17](#plan-17) | 方案與額度 | P2 | 未處理 | 方案異動的審核結果傳不回租戶：平台頁沒有審核備註，核准與駁回也不通知租戶 | 執行時確認 |
 | [PLAN-18](#plan-18) | 方案與額度 | P2 | 未處理 | 「升級」申請不檢查方向，企業版租戶可以申請「升級」到標準版，核准後就是降級 | 執行時確認 |
 | [PLAN-19](#plan-19) | 方案與額度 | P2 | 未處理 | 待審的方案異動申請不能撤回，也沒有逾期；平台不處理就永遠擋住新申請 | 執行時確認 |
+| [PLAN-20](#plan-20) | 方案與額度 | P2 | 已提建議 | 每次部署 API 容器都跑 seed，把五個 seed 方案的名稱、功能、上限、價格寫回原始碼的值，平台後台對這些方案的修改在下次部署被覆蓋 | 靜態確認 |
 | [AI-01](#ai-01) | AI 用量與成本 | P2 | 未處理 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
 | [USAGE-01](#usage-01) | AI 用量與成本 | P3 | 未處理 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
 | [USAGE-02](#usage-02) | AI 用量與成本 | P2 | 已提建議 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0；租戶可選的 10 個 Gemini 模型只有 3 個有價目 | 執行時確認 |
@@ -121,12 +120,10 @@
 | [HOURS-02](#hours-02) | SLA | P2 | 未處理 | 營業時間不驗證時段與時區：跨午夜時段讓整天都判定為非營業；不合法的時區讓自動回覆整個失效 | 執行時確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
-| [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 未處理 | 對話轉接真人時，主管與管理員收不到通知 | 靜態確認 |
 | [CONV-04](#conv-04) | 對話、工單與自動化 | P1 | 未處理 | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 執行時確認 |
 | [CONV-05](#conv-05) | 對話、工單與自動化 | P2 | 未處理 | 重新開啟已關閉的對話，不檢查同一聯絡人在同一渠道是否已有未關閉的對話，造成兩段同時進行 | 執行時確認 |
 | [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 未處理 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派，通知只寄給停用的人 | 執行時確認 |
-| [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷也送不出去，見 CASE-03 | 靜態確認 |
-| [CASE-03](#case-03) | 對話、工單與自動化 | P1 | 未處理 | LINE 的滿意度調查送出空白文字，LINE 拒收，失敗沒有紀錄也不重寄 | 靜態確認 |
+| [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷已可送出（#416） | 靜態確認 |
 | [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 未處理 | 工單狀態轉換不維護 `resolvedAt` 與 `csatSentAt`：直接關閉不算已解決，重開保留舊值，報表的已解決數與 SLA 達成率失真，重開再解決的工單 1 分鐘內被自動結案 | 執行時確認 |
 | [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 未處理 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息 | 執行時確認 |
 | [CASE-06](#case-06) | 對話、工單與自動化 | P2 | 未處理 | 連結對話到工單不檢查對話的聯絡人與渠道可見範圍，可以把別的顧客、看不到的渠道的對話掛上 | 執行時確認 |
@@ -172,7 +169,7 @@
 | [PORTAL-03](#portal-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 編輯草稿活動不帶出原本的選項，只改標題就儲存會清掉所有選項與正確答案 | 執行時確認 |
 | [PORTAL-04](#portal-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲送出活動的答案不驗證：不屬於該活動的選項照收並給點，表單必填欄位空白也收 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 渠道刪除是硬刪除；有對話的渠道刪除改回 409 並可從畫面停用，沒有對話的渠道刪除時仍連帶刪除聯絡人身分 | 靜態確認 |
-| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P1 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；網站聊天室的群發與發券顯示成功，顧客收不到（2026-10-30 健檢）；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
+| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P1 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；網站聊天室不能群發與發券（#415 改為拒絕，不再假成功）；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [CHAN-06](#chan-06) | 渠道、稽核與資料權利 | P2 | 未處理 | LINE 的「測試連線」不檢查 Channel Secret；Secret 填錯時顯示成功，之後每則 webhook 都因簽章不符被拒，卡片沒有警示 | 靜態確認 |
 | [CHAN-07](#chan-07) | 渠道、稽核與資料權利 | P2 | 未處理 | LINE 重送的事件中，沒有訊息 id 的 postback 與 follow 被重複處理：存兩則、再跑一次貼標與轉真人 | 執行時確認 |
 | [CHAN-08](#chan-08) | 渠道、稽核與資料權利 | P2 | 未處理 | 客人收回 LINE 訊息時，原訊息照常顯示，另外多一則「不支援的訊息類型」 | 執行時確認 |
@@ -214,7 +211,6 @@
 | [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `OLLAMA_*` 環境變數與 Chat 的位址補救已無作用 | 靜態確認 |
 | [LLM-04](#llm-04) | Storage、LLM 與資料庫 | P2 | 未處理 | Embedding 只能呼叫 Ollama；UAT 目前靠 Compose 內的 Ollama 運作，依部署決定拿掉 Ollama 後，知識庫自動回覆、AI 建議回覆與語意搜尋都會失效 | 執行時確認 |
 | [LLM-05](#llm-05) | Storage、LLM 與資料庫 | P2 | 未處理 | AI 摘要在 LLM 失敗或額度用完時回傳一段固定範本，轉接真人時以「Bot 對話摘要」寫進對話 | 執行時確認 |
-| [KB-01](#kb-01) | Storage、LLM 與資料庫 | P1 | 未處理 | 知識庫追問次數用完時回覆「已為您轉接客服人員」，實際沒有轉接 | 執行時確認 |
 | [KB-02](#kb-02) | Storage、LLM 與資料庫 | P1 | 未處理 | 型號守門不分大小寫，把 `Wi-Fi`、`e-mail`、訂單編號當成查不到的型號，對所有租戶生效 | 執行時確認 |
 | [KB-03](#kb-03) | Storage、LLM 與資料庫 | P1 | 未處理 | 沒有 BOM 的 UTF-8 CSV 匯入知識庫後中文變亂碼，英文表頭時還會直接發布 | 執行時確認 |
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
@@ -505,7 +501,7 @@ CLI token 的停用問題另見 AUTH-02。
 | --- | --- | --- |
 | 自動化 | 新增規則、啟用開關、儲存規則、刪除規則 | HC-AUTOMATION-09 |
 | 工單 | 新增工單、刪除、關閉案件、狀態等 6 個下拉、備註 | HC-CASES-10 |
-| 渠道管理 | 套用、設定精靈、新增渠道、停用、測試連線、編輯、刪除 | HC-CHANNELS-02 |
+| 渠道管理 | 停用、測試連線、編輯、刪除（套用依 `channel.view_all`，#408；新增渠道、設定精靈依 `channel.create`，列表 403 顯示沒有權限，#411） | HC-CHANNELS-02 |
 | 聯絡人與標籤 | 合併聯絡人、貼標與移除標籤、標籤管理的新增編輯刪除 | HC-CONTACTS-06、HC-CONTACTS-07 |
 | 收件匣 | 結案、交回 Bot、接管、負責人與狀態下拉、輸入框、建立工單；存取層級不足時顯示英文 `Forbidden: channel access level insufficient` | HC-INBOX-04 |
 | 知識庫 | 新增文章、匯入、編輯、發布、封存、刪除 | HC-KNOWLEDGE-05 |
@@ -751,22 +747,6 @@ refresh token 外洩之後，持有者可以持續換發 access token，直到 r
 UAT 上有沒有只差大小寫的成員，還沒有查過。
 
 **修正方向**：建立、修改與登入時都先把 email 去掉頭尾空白並轉成小寫，查詢也以小寫比對。上線前先查出只差大小寫的成員，決定保留哪一位，再把既有的 email 全部轉成小寫。主規格補上「email 不分大小寫」。
-
-<a id="auth-11"></a>
-### AUTH-11：停用的租戶仍收得到 WebChat 訊息，排程群發照常送出
-
-停用租戶之後，有兩條路徑不檢查 `tenant.isActive`：
-
-| 路徑 | 現況 |
-| --- | --- |
-| WebChat（Chatbox）進站 | `chatbox.service.ts` 的 `resolveChatboxChannel()` 只看渠道的 `isActive`，`handleChatboxMessage()` 直接呼叫 `processInboundMessage()`。既有的訪客工作階段可以繼續送訊息，新訪客也能建立工作階段；系統照常建立聯絡人、對話與訊息，後續的自動化與 AI 回覆流程也照常進入。LINE、FB、IG 的 webhook 有檢查（`webhook.service.ts:86`） |
-| 排程群發 | `broadcast.scheduler.ts` 只依 `status = 'scheduled'` 與 `scheduledAt` 撈全部租戶的群發，不看租戶是否停用。停用（含試用到期自動停用）的租戶預約的群發照樣送給顧客 |
-
-AUTH-02 記錄的是停用租戶後既有的連線與憑證；這一項是進站訊息與背景工作。
-
-**規格依據。** 主規格 `inbound-message-processing` 的「停用租戶的進站事件直接丟棄」，以及 `trial-lifecycle` 的「到期停用」（inbound 訊息被丟棄）。WebChat 進站違反這兩條需求。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TENANTS-01（[PLATFORM-TENANTS 健檢](../features/health/PLATFORM-TENANTS.md)）、HC-PLATFORM-TENANTS-04（[PLATFORM-TENANTS 健檢](../features/health/PLATFORM-TENANTS.md)）。證據：`apps/api/src/modules/chatbox/chatbox.service.ts:354-366`、`:598-640`；停用租戶後同一工作階段與新工作階段各送一則都回 200，資料庫多 3 則 INBOUND 訊息（健檢實測）。排程群發 `apps/api/src/modules/marketing/broadcast.scheduler.ts:25-31`（讀程式）。HC-PLATFORM-TRIALS 報告引用同一個問題。
 
 <a id="auth-12"></a>
 ### AUTH-12：平台改密碼打錯目前密碼會被登出
@@ -1345,17 +1325,6 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 租戶有 `monthlyTokens` 的覆寫值時，換方案不會改變有效上限（見 PLAN-05），這時保留旗標是正確的。修正時要比較換方案前後的有效上限，上限提高才清除旗標。
 
-<a id="plan-14"></a>
-### PLAN-14：試用與輕量版方案的租戶看不到也建不了渠道
-
-`packages/database/prisma/seed.ts` 的 `trial`（免費試用）與 `light`（輕量版）方案，`features` 只有 `inbox` 與 `core`。`channel.view`、`channel.create` 屬於 `channels` feature，因此這兩個方案的租戶連管理員都看不到、也建不了任何渠道，接不了 LINE、FB、IG、WebChat。
-
-渠道頁把 403 顯示成「沒有渠道／新增您的第一個渠道」，按「新增渠道」才 403（RBAC-11）。租戶實際上有啟用中的渠道時，畫面也顯示沒有渠道。
-
-UAT 已確認相同：2026-10-30 以平台 API 唯讀查詢，`trial` 是 `["inbox","knowledge","core"]`、`light` 是 `["inbox","core"]`，都不含 `channels`。試用開通的租戶從第一天起就無法接渠道。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-PLANS-01（[PLATFORM-PLANS 健檢](../features/health/PLATFORM-PLANS.md)）。證據：`packages/database/prisma/seed.ts:31,38`、`packages/shared/src/rbac/permissions.ts:76-83`；自建方案設成 `["inbox","core"]`，租戶管理員 `GET /channels` 回 403 `requiredPermission: channel.view`（健檢實測）。
-
 <a id="plan-15"></a>
 ### PLAN-15：同時編輯兩張方案卡片，第二張存入舊值
 
@@ -1405,6 +1374,15 @@ UAT 已確認相同：2026-10-30 以平台 API 唯讀查詢，`trial` 是 `["inb
 UAT Demo 租戶有一筆 2026-09-16 起待審的加購申請（`21676e0e-…`）。這筆是 BD 在測試使用的，**不是殘留資料，不要處理**。它說明了這個限制的效果：在它處理之前，Demo 租戶無法再送申請，E2E `cross-plan-request` 遇到待審申請也會中止。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-PLAN-CHANGES-06（[PLATFORM-PLAN-CHANGES 健檢](../features/health/PLATFORM-PLAN-CHANGES.md)）。證據：`apps/api/src/modules/platform/plan-change.routes.ts:26-35`（讀程式）；UAT 唯讀查詢 `GET /plan-change`，`/dashboard/plan` 顯示「您有一筆處理中的申請」（健檢實測）。
+
+<a id="plan-20"></a>
+### PLAN-20：部署時 seed 覆蓋平台後台對方案的修改
+
+`apps/api/docker-entrypoint.sh` 每次啟動 API 容器都執行 `packages/database/prisma/seed.ts`。seed 以 `plan.upsert({ where: { slug } })` 寫入五個方案，`update` 分支會把 `name`、`features`、`limits`、`priceMonthly` 改回原始碼的值。平台在 `/admin/plans` 對這五個方案的修改，下次部署就被蓋掉；`allowedChannelTypes`、`permissionOverrides` 不在 `update` 裡，所以不受影響。主規格 `tenant-plan` 寫明平台改 plan features 即時生效，無需改碼或重新部署，部署後被還原與這條需求衝突。
+
+2026-11-03 修 #411 時發現（PLAN-14 的修正因此另加 migration，不只改 seed）。
+
+**修正方向**（已提建議）：seed 對已存在的方案不更新，只在方案不存在時建立；方案內容要改時改用 migration 或平台後台。
 
 ## AI 用量與成本
 
@@ -1652,22 +1630,6 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 
 **部分修正。** #294（`a3044f93`）讓狀態選單的「已關閉」改開結案視窗，走 `POST /:id/close`。2026-10-16，`updateConversation()` 收到 `CLOSED`（且對話尚未關閉）時改呼叫 `closeConversation()`，記錄來源 `manual`、時間與操作者並發布 `conversation.closed`；同時帶負責人時先改負責人再關閉。直接呼叫 API 的路徑因此也有結案紀錄。指派仍不發布 `conversation.assigned`。
 
-<a id="conv-03"></a>
-### CONV-03：對話轉接真人時，主管與管理員收不到通知
-
-兩條路徑會把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，並發布 `conversation.handoff`：
-
-| 路徑 | 位置 |
-| --- | --- |
-| 客人點「轉接客服」按鈕（postback `handoff_request`） | `webhook/inbound-postback-interceptors.ts` |
-| 自動轉真人（機器人回覆次數到上限、客人說出轉接關鍵字、客人傳圖片、檔案或影片） | `automation/automation.worker.ts` 的 `checkAutoHandoff()` |
-
-API 行程內沒有任何程式訂閱 `conversation.handoff`。`notification.worker.ts` 沒有訂閱這個事件，所以主管與管理員收不到「對話已轉接真人」的通知。只有訂閱了這個事件的對外 Webhook 收得到。
-
-change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫「既有 `conversation.handoff` event 已有 notification.worker 訂閱者通知 supervisor」。這個前提不成立，當時沒有實作訂閱者。
-
-**規格依據。** 主規格 `bot-handoff-config` 的「Webhook intercepts handoff_request postback」規定：系統 SHALL 發布 `conversation.handoff`，讓 SUPERVISOR 與 ADMIN 收到通知。事件有發布，但通知沒有發生，現況違反這條需求，因此列為 P2。自動轉真人的路徑不在這條需求內，但發布同一個事件。
-
 <a id="conv-04"></a>
 ### CONV-04：收件匣只載入前 50 段對話
 
@@ -1706,7 +1668,7 @@ change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫�
 
 | 渠道 | 實際送出的內容 | 客人能不能回覆 |
 | --- | --- | --- |
-| LINE | 設計上是 Flex Message，五個 postback 按鈕，資料是 `csat:<分數>:<工單 ID>` | 設計上能；實際上 Flex 送不出去，見 CASE-03 |
+| LINE | 設計上是 Flex Message，五個 postback 按鈕，資料是 `csat:<分數>:<工單 ID>` | 能（#416 修正 Flex 送出） |
 | 其他渠道 | `deliverToChannel()` 送出文字「回覆 csat:分數 即可，例如 csat:5」 | 不能 |
 
 `inbound-postback-interceptors.ts` 的 `handleCsatResponse()` 只認得 `csat:<分數>:<工單 ID>`。客人照提示回覆的 `csat:5` 沒有工單 ID，不符合這個格式，會被當成一般訊息交給 AI 回覆與自動化。
@@ -1716,18 +1678,7 @@ change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫�
 - `buildCsatChannelMessage()` 為非 LINE 渠道組了五個快速回覆選項，但 `sendCsatSurvey()` 只在 LINE 分支使用它的回傳值。
 - 進站的 `postbackData` 只從 LINE 的 `rawPayload.postback.data` 取值，Facebook 的 postback 欄位沒有解析，因此即使改送快速回覆或按鈕，Facebook 送回的 payload 也到不了攔截器。
 
-結果是非 LINE 渠道的工單永遠不會有 CSAT 分數。原本記為「報表的滿意度只反映 LINE 的客人」；2026-10-30 功能健檢發現 LINE 的問卷也送不出去（CASE-03），所以目前沒有任何渠道的客人能自己回覆滿意度，只剩客服手動記分（[LINE 健檢](../features/health/LINE.md)）。
-
-<a id="case-03"></a>
-### CASE-03：LINE 的滿意度調查送不出去
-
-`csat.service.ts` 的 `sendCsatSurvey()` 以 `contentType: 'flex'` 呼叫 LINE 外掛，但 `packages/channel-plugins/src/line/index.ts` 的 `buildLineMessage()` 沒有 `'flex'` 分支，落到 `default` 變成 `{"type":"text","text":""}`。LINE 拒收空白文字。
-
-失敗沒有任何地方看得到：外掛的 `sendMessage()` 回 `{success: false}` 不拋錯，`sendCsatSurvey()` 不檢查回傳值，`csatSentAt` 已經寫入，之後也不會再寄。`'flex'` 分支在 `3a19c457`（2026-05-20，新增素材系統）被刪除，之後沒有測試涵蓋 LINE 這條路徑。
-
-加上 CASE-02 的非 LINE 渠道，目前沒有任何渠道的客人能自己回覆滿意度，只剩客服手動記分（手動記分的問題見 CASE-05）。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-LINE-01（[LINE 健檢](../features/health/LINE.md)）。證據：`packages/channel-plugins/src/line/index.ts:134, 246`、`apps/api/src/modules/csat/csat.service.ts:25, 166`；以 tsx 呼叫 `buildLineMessage('flex', …)` 得到 `{"type":"text","text":""}`（函式層健檢實測）。LINE 端拒收依 API 規格判斷，待真機驗證。
+結果是非 LINE 渠道的工單永遠不會有 CSAT 分數。報表的滿意度只反映 LINE 的客人。2026-10-30 功能健檢發現 LINE 的問卷也送不出去，2026-11-03 已修正（#416），問卷送不出時收件匣與工單時間軸會留下紀錄（[LINE 健檢](../features/health/LINE.md)）。
 
 <a id="case-04"></a>
 ### CASE-04：工單狀態轉換不維護 `resolvedAt` 與 `csatSentAt`
@@ -2237,7 +2188,7 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 
 **未修正**：workers 的清單仍沒有 `webchatPlugin`，關鍵字與自動化規則的回覆送不到網站聊天室（收件匣有失敗紀錄）。AI 不會因此讓步，訪客仍收到 AI 回覆。即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
 
-**群發與批次發券也送不到網站聊天室（2026-10-30 功能健檢）。** API 行程的群發與批次發券同樣呼叫 `webchatPlugin.sendMessage()`，它只寫 log 並回成功；附券流程也沒有推送 socket 或寫入訊息。WebChat 渠道的群發與發券顯示「成功」、發券數照算，顧客實際收不到任何訊息，對話裡也沒有外送訊息。群發頁的渠道選單列出 WebChat；批次發券的介面不列 WebChat（`COUPON_PUSH_CHANNEL_TYPES`），但 API 照收並同樣回成功。UAT Demo 租戶也有 WebChat 渠道可以選。顧客收不到券，系統紀錄卻顯示已送達，因此這一項由 P2 調為 P1。
+**群發與批次發券（2026-10-30 功能健檢，2026-11-03 部分修正，#415）。** 原本群發與批次發券對網站聊天室呼叫 `webchatPlugin.sendMessage()`，它只寫 log 並回成功，顯示「成功」、發券數照算，顧客實際收不到。現在建立與送出回 400 `CHANNEL_PUSH_NOT_SUPPORTED`，修正前建立的網站聊天室群發在排程或背景執行時標為失敗並寫原因；群發頁只列能主動推送的渠道（`@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`）。網站聊天室仍然不能群發或發券，`webchatPlugin.sendMessage()` 維持回成功，因為收件匣回覆與 `deliverToChannel()` 依賴它。`canvas.worker.ts` 對網站聊天室也是假成功（沒推訪客房間）。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-04（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`packages/channel-plugins/src/webchat/index.ts:48-56`、`apps/web/src/app/dashboard/marketing/page.tsx:285`、`apps/web/src/lib/marketing/coupon-broadcast.ts:89`；WebChat 渠道的附券群發 `completed`、成功 3、發券 3，`messages` 表沒有任何外送訊息（健檢實測）。
 
@@ -2736,15 +2687,6 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 `ai.service.ts` 的摘要在 LLM 呼叫失敗時（含月額度用完的 403）回傳一段固定範本當成摘要：「客戶主要詢問了產品相關問題，Bot 提供了初步回覆但客戶可能需要更詳細的人工協助…」，內容與對話無關，回應是 200。自動轉接真人時（`automation.worker.ts`），這段文字以「Bot 對話摘要」寫進對話的系統訊息，永久留存，客服會以為是 AI 讀過對話的結論。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-USAGE-04（[PLATFORM-USAGE 健檢](../features/health/PLATFORM-USAGE.md)）。證據：`apps/api/src/modules/ai/ai.service.ts:113-128`、`apps/api/src/modules/automation/automation.worker.ts:136-147`；本機 LLM 不通時 `POST /ai/summarize` 回 200 與上述範本（健檢實測）；額度用完與寫入系統訊息為讀程式。
-
-<a id="kb-01"></a>
-### KB-01：追問次數用完時回覆已轉接，實際沒有轉接
-
-`kb-autoreply.service.ts` 在追問次數用完時送出「…已為您轉接客服人員，請稍候」，但只寫訊息，不改對話狀態：對話仍是 `BOT_HANDLED`，沒有 `handoffReason`、沒有系統訊息，客服不會收到。客人再傳訊息，又收到同一句。
-
-實際的轉接要等 `botRepliesCount` 達到渠道的 `maxBotReplies`（預設 5），才由 `automation.worker.ts` 的 `checkAutoHandoff()` 觸發；把 `maxBotReplies` 調高的渠道，客人會一直收到假的轉接訊息。LLM 失敗（含月額度用完的 `PLAN_LIMIT_EXCEEDED`）時，追問路徑也送同一句。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-KNOWLEDGE-01（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。證據：`apps/api/src/modules/ai/kb-autoreply.service.ts:252-255, 270-273`；健檢腳本搭配假 LLM 對新對話連送 4 則，後兩則都是 `clarify_handoff`，對話狀態一直是 `BOT_HANDLED`（健檢實測，未經 workers 與真實渠道）。
 
 <a id="kb-02"></a>
 ### KB-02：型號守門把一般英文詞當成型號
