@@ -74,6 +74,8 @@
 - [跨午夜的時段，原本存得進去，現在回 400] → 手冊已寫明不支援。前端只顯示通用錯誤（HC-SETTINGS-08），成員可能看不出原因。記在 Non-Goals，由 HC-SETTINGS-08 處理。
 - [CLI 登入多一次稽核寫入] → 寫入與 token 在同一個交易，登入的回應時間增加一次 INSERT。
 
+- [API 文件的產生器仍會被合法寫法繞過] → review-loop 第 2～5 輪都在 `apps/api/src/lib/openapi-inventory.mjs` 找到「換一種合法寫法，子 plugin 就被漏列或算錯路徑」的問題。第 2～4 輪已修正，最後改成逐一讀 options 的屬性、讀不懂就報錯。第 5 輪的 `fastify.register (child)`（`register` 後有空白）與 `register(/* 註解 */ child)` 仍會被靜默略過，repo 目前沒有這兩種寫法。產生器以 regex 解析原始碼，這類問題補不完，改由 issue #439 處理：改用 `@fastify/swagger` 從實際註冊的路由產生文件。
+
 ## Migration Plan
 
 沒有 migration。部署後，已存的不合法設定在讀取時回傳預設值；成員下一次儲存時覆蓋。回滾時，舊程式照舊讀取原本的資料，沒有資料需要還原。
