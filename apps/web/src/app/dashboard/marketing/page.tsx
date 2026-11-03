@@ -40,7 +40,7 @@ import {
   materialChannelKey,
   segmentConditionsError,
 } from '@/lib/marketing/broadcast-form';
-import { couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
+import { activePushChannels, couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
 import { BroadcastCouponField } from '@/components/marketing/BroadcastCouponField';
 import { COUPON_URL_NEEDS_COUPON_MESSAGE } from '@/lib/marketing/coupon-url';
 import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
@@ -300,7 +300,8 @@ function BroadcastTab() {
       .catch((err) => setTagsError(getApiErrorMessage(err, '標籤清單載入失敗')));
   }, [dialogOpen]);
 
-  const activeChannels = (channels as ChannelRow[]).filter((c) => c.isActive);
+  // 只列能主動推送的渠道：網站聊天室送不到顧客，後端也會拒絕（change reject-webchat-push-415）
+  const activeChannels = activePushChannels(channels as ChannelRow[]);
 
   // 依目前選擇的渠道過濾出對應的素材：渠道列舉是 LINE / FB，素材是 line / fb
   const selectedChannel = activeChannels.find((c) => c.id === formData.channelId);
@@ -630,7 +631,7 @@ function BroadcastTab() {
                   })),
                 ]}
               />
-              <p className="mt-1 text-xs text-muted-foreground">先選渠道，才能看到對應的素材</p>
+              <p className="mt-1 text-xs text-muted-foreground">先選渠道，才能看到對應的素材。網站聊天室不能主動推送訊息，不能群發</p>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{effectiveForm.couponId || isInstagram ? '素材（附券時可不選）' : '素材 *'}</label>

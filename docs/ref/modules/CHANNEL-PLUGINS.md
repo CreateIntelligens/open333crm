@@ -57,7 +57,7 @@
 各渠道要注意的地方：
 
 - **`THREADS` 其實是 Instagram 私訊。** 外掛呼叫的是 `graph.instagram.com`，憑證格式與 Facebook 相同。名稱沿用早期的規劃。
-- **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。
+- **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。群發與發券沒有這一步，所以群發、附券廣播與批次發券只接受 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`（LINE、FB、THREADS），網站聊天室回 400 `CHANNEL_PUSH_NOT_SUPPORTED`（issue #415）。`sendMessage()` 沒有改成回失敗：收件匣回覆與 `deliverToChannel()` 呼叫它之後才推訪客房間，回失敗會讓這兩條路徑把已送達的訊息標為失敗或不推送。
 - **`TELEGRAM` 只有 `telegram.ts` 的類別**，沒有匯出實例，也沒有註冊，見 APP-02。
 - **`WHATSAPP` 可以建立渠道**，但沒有外掛也沒有路由，見 APP-02。
 
@@ -84,7 +84,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 自動化與關鍵字回覆的 `send_message`、`send_material` | workers | workers 自己的 `Map` | LINE 選擇 reply 或 push |
 | Canvas 的 `MESSAGE` 節點 | API（`canvas.worker.ts`） | `getChannelPlugin()` | `email` 改走寄信 |
 | 滿意度調查 | API（`csat.service.ts`） | `getChannelPlugin()` | LINE 送附評分按鈕的 Flex 訊息，其他渠道送文字 |
-| 行銷群發 | API（`marketing.service.ts`） | `getChannelPlugin()` | LINE 在訊息不含個人化變數時改用 multicast，一次送給多人 |
+| 行銷群發、附券廣播、批次發券 | API（`marketing.service.ts`、`broadcast-coupon.flow.ts`） | `getChannelPlugin()` | LINE 在訊息不含個人化變數時改用 multicast，一次送給多人；只接受能主動推送的渠道，網站聊天室回 400 |
 
 **LINE 的 reply 與 push。** LINE 的 reply 不計入訊息額度，但 reply token 只在收到訊息後短時間內有效。`packages/shared/src/safe-reply.ts` 的 `selectSafeLineStrategy()` 決定用哪一種：帶著 reply token、而且收到訊息未滿 `LINE_REPLY_SAFE_WINDOW_MS` 時用 reply，否則用 push。API 與 workers 共用這個函式，但 reply 失敗後改用 push 的處理各寫一份。
 

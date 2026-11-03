@@ -2,6 +2,7 @@
  * 附券廣播與券詳情頁批次發券的前端規則（add-coupon-system design D29、D31）。
  * 廣播頁與券詳情頁共用：名額警示、跳過與失敗原因的顯示文字。
  */
+import { supportsProactivePush } from '@open333crm/shared';
 
 /** 預覽回應（POST /marketing/broadcasts/audience-preview、/coupons/:id/batch-issue/preview） */
 export interface CouponAudiencePreview {
@@ -85,5 +86,10 @@ export const COUPON_BROADCAST_FAILURE_HINTS: Record<string, string> = {
 /** 券詳情頁批次發放的人數上限（與後端 BATCH_ISSUE_MAX_RECIPIENTS 相同） */
 export const BATCH_ISSUE_MAX_RECIPIENTS = 1000;
 
-/** 能主動推送訊息、可以附券廣播與批次發券的渠道（網站客服沒有主動推送） */
-export const COUPON_PUSH_CHANNEL_TYPES = ['LINE', 'FB', 'THREADS'];
+/**
+ * 群發頁與券詳情批次發券的渠道選單：只列啟用中、能主動推送的渠道（網站聊天室沒有主動推送）。
+ * 清單在 `@open333crm/shared`，後端建立與送出群發時用同一份清單拒絕（change reject-webchat-push-415）
+ */
+export function activePushChannels<T extends { channelType: string; isActive: boolean }>(channels: readonly T[]): T[] {
+  return channels.filter((c) => c.isActive && supportsProactivePush(c.channelType));
+}

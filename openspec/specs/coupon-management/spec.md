@@ -1361,6 +1361,11 @@
 - **WHEN** 從券詳情頁批次發券
 - **THEN** 系統回 403，沒有發出任何券
 
+#### Scenario: 選網站聊天室渠道發券
+
+- **WHEN** 座席以 API 對網站聊天室渠道批次發券
+- **THEN** 系統回 400，code 為 `CHANNEL_PUSH_NOT_SUPPORTED`，不建立廣播，沒有發出任何券
+
 ### Requirement: 發券 API 不預設為對話發券
 
 `POST /api/v1/coupons/:id/issue` SHALL 不送訊息；沒有帶發放方式時記為 `api`。帶入系統保留的發放方式（`inbox`、`keyword`、`follow`、`automation`、`broadcast`、`batch`、`public_link`）時 SHALL 回 400（design D31）。

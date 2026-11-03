@@ -118,8 +118,10 @@ test('全部在視窗外時群發失敗', async () => {
 });
 
 test('沒有訊息視窗的渠道不略過', async () => {
-  const sends = plugin('LINE_TEST');
-  const f = fixture('LINE_TEST', [48, null]);
+  // 假外掛沒有設定訊息視窗。渠道類型要是能主動推送的（change reject-webchat-push-415），
+  // 不用 LINE：LINE 沒有變數時改走 multicast，一次請求只記到第一位
+  const sends = plugin('THREADS');
+  const f = fixture('THREADS', [48, null]);
   await executeBroadcast(f.prisma, io, 'bc-1', allChannels);
   assert.deepEqual(sends, ['uid-0', 'uid-1']);
   assert.equal(f.state.skippedCount, 0);
@@ -134,8 +136,8 @@ test('預估 FB 群發的可送達人數', async () => {
 });
 
 test('預估 LINE 群發', async () => {
-  plugin('LINE_TEST');
-  const f = fixture('LINE_TEST', [48, null]);
+  plugin('LINE');
+  const f = fixture('LINE', [48, null]);
   const result = await previewBroadcastAudience(f.prisma, TENANT, ALL_CHANNELS, { channelId: CHANNEL, targetType: 'all' });
   assert.deepEqual(result, { matched: 2, reachable: 2, messagingWindowHours: null });
 });

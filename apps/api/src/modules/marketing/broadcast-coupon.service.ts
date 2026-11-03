@@ -17,7 +17,7 @@
  * 收件紀錄在第 1 步就寫入：同一則廣播重送時，已有收件紀錄的人不再發券或送訊息（含 pending）。
  */
 import type { Prisma } from '@prisma/client';
-import { COUPON_ISSUED_VIA } from '@open333crm/shared';
+import { COUPON_ISSUED_VIA, supportsProactivePush } from '@open333crm/shared';
 import { confirmPendingInstance, isCouponPastFixedEnd, taipeiDateString, voidPendingInstance, type IssueSkipReason } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
@@ -27,9 +27,11 @@ import { CouponValidationError } from '../coupon/coupon.service.js';
 import { resolveContext } from './template-context.js';
 import { extractVariables, type TemplateVariable } from './template-renderer.js';
 import {
+  CHANNEL_PUSH_NOT_SUPPORTED_REASON,
   FAILURE_REASON_MAX_LENGTH,
   allRecipientsFailedReason,
   alreadySendingError,
+  assertChannelSupportsPush,
   createBroadcast,
   filterByMessagingWindow,
   resolveAudience,
@@ -107,10 +109,13 @@ export async function queueCouponBroadcast(
   const { tx, tenantId } = ctx;
   const broadcast = await tx.broadcast.findFirst({
     where: { id: broadcastId, tenantId },
-    select: { id: true, status: true, couponId: true },
+    select: { id: true, status: true, couponId: true, channelId: true },
   });
   if (!broadcast) throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   if (!broadcast.couponId) throw new AppError('這則廣播沒有附券', 'INVALID_STATE', 400);
+  // 修正前建立的網站聊天室附券廣播：不排入發送（change reject-webchat-push-415）
+  const channel = await tx.channel.findFirst({ where: { id: broadcast.channelId, tenantId }, select: { channelType: true } });
+  if (channel) assertChannelSupportsPush(channel.channelType);
   const scheduledAt = new Date(now);
   const queued = await tx.broadcast.updateMany({
     where: {
@@ -201,6 +206,8 @@ export async function claimCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
     select: { id: true, channelType: true, credentialsEncrypted: true, settings: true },
   });
   if (!channel) return invalid('CHANNEL_NOT_FOUND', '找不到此渠道或渠道已停用，請至設定確認');
+  // 修正前排定的網站聊天室附券廣播：標失敗、寫原因，不呼叫渠道也不發券（change reject-webchat-push-415）
+  if (!supportsProactivePush(channel.channelType)) return invalid('CHANNEL_PUSH_NOT_SUPPORTED', CHANNEL_PUSH_NOT_SUPPORTED_REASON);
 
   let material: CouponBroadcastPlan['material'] = null;
   if (b.materialId) {

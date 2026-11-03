@@ -55,6 +55,7 @@ description: >
 
 ## 不可破壞的規則
 - **兩個行程各一份外掛註冊表。** 新增渠道或外掛時，`apps/api/src/index.ts` 的 `registerChannelPlugin()` 與 `apps/workers/src/lib/plugin-registry.ts` 的 `createWorkerPluginRegistry()` 都要加，`packages/channel-plugins/src/index.ts` 的 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 也要同步（`apps/workers/tests/unit/lib/plugin-registry.test.ts` 會檢查）。漏 workers 的話自動化與關鍵字回覆在該渠道送不出去，且畫面看不出來（CHAN-02）。
+- **能主動推送的渠道只有一份清單。** 群發、附券廣播與批次發券只接受 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`（LINE、FB、THREADS），前端選單與後端檢查共用（#415）。新增能主動推送的渠道時要加進這份清單；網站聊天室外掛的 `sendMessage()` 只回成功，不要改成回失敗：收件匣回覆與 `deliverToChannel()` 呼叫它之後才推訪客房間。
 - **可見範圍是 fail-closed。** 沒有任何 `AgentChannelAccess`／`ChannelTeamAccess` 的渠道，只有持有 `channel.view_all` 的成員看得到；停用的渠道一律不在可見集合。新渠道沒送 `visibleAgentIds` 時綁給所有啟用中的成員，送空陣列時誰都不綁。不要加回「沒綁定＝全員可見」。
 - **單筆渠道操作要檢查可見範圍。** `channel.routes.ts` 的 `/:id/*` 路由都掛 `requireVisibleChannel(level)` preHandler（#408）：`channel.view` 的讀取用 `read_only`，`channel.update`／`channel.delete` 用 `full`。新增渠道端點時照做，看不到回 404，層級不足回 403。團隊指派路由例外，只看 `channel.assign_team`。
 - **外部帳號 ID 只能由驗證寫入。** `externalAccountId`（FB 粉專 ID、IG 專業帳號 ID）來自用該渠道權杖向 Meta 查得的結果；不可開放表單手填，否則共用同一個 Meta App 時能搶走別的租戶的粉專訊息。全平台唯一（`channelType + externalAccountId`），停用時清空。
