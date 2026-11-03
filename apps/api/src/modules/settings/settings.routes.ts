@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod/v3";
 import { AppError, success } from "../../shared/utils/response.js";
-import { getOfficeHours, updateOfficeHours } from "./office-hours.service.js";
 import {
   getEmbeddingSettings,
   updateEmbeddingSettings,
@@ -18,18 +17,6 @@ import {
   getProviderList,
 } from "./chat-settings.service.js";
 import {
-  createPartnerApiKey,
-  listPartnerApiKeys,
-  revokePartnerApiKey,
-} from "../auth/partner-api-key.service.js";
-import {
-  createCliSession,
-  revokeCliSession,
-  parseCliScopes,
-  DEFAULT_CLI_SCOPES,
-} from "../auth/cli-session.service.js";
-import { MCP_READ_SCOPE } from "../mcp/mcp.constants.js";
-import {
   CRM_REPLY_SYSTEM_PROMPT,
   SUMMARIZE_SYSTEM_PROMPT,
   CLARIFY_SYSTEM_PROMPT,
@@ -37,8 +24,6 @@ import {
 } from "../ai/llm.service.js";
 import { getTenantGeminiKeyStatus, setTenantGeminiKey, resolveGeminiKey } from "../ai/ai-key.service.js";
 import { requirePermission } from "../../guards/rbac.guard.js";
-import { getTrackingSettings, updateTrackingSettings } from "./tracking-settings.service.js";
-import { GA4_ID_PATTERN, META_PIXEL_ID_PATTERN } from "../shortlink/strategies/tracking-snippet.js";
 import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
@@ -53,33 +38,10 @@ import {
   getIdentityBindingSettings,
   invalidateIdentityBindingSettings,
 } from "../identity-binding/identity-binding.service.js";
-
-const dayScheduleSchema = z
-  .object({
-    start: z.string().regex(/^\d{2}:\d{2}$/),
-    end: z.string().regex(/^\d{2}:\d{2}$/),
-  })
-  .nullable();
-
-const officeHoursSchema = z.object({
-  timezone: z.string().default("Asia/Taipei"),
-  officeHours: z.object({
-    enabled: z.boolean(),
-    schedule: z.object({
-      mon: dayScheduleSchema.optional(),
-      tue: dayScheduleSchema.optional(),
-      wed: dayScheduleSchema.optional(),
-      thu: dayScheduleSchema.optional(),
-      fri: dayScheduleSchema.optional(),
-      sat: dayScheduleSchema.optional(),
-      sun: dayScheduleSchema.optional(),
-    }),
-    holidays: z.array(z.string()).default([]),
-    outsideHoursMessage: z
-      .string()
-      .default("您好！目前為非營業時間，我們將在營業時間內盡速回覆您。"),
-  }),
-});
+import officeHoursRoutes from "./office-hours.routes.js";
+import trackingSettingsRoutes from "./tracking-settings.routes.js";
+import partnerApiKeyRoutes from "./partner-api-key.routes.js";
+import cliSessionRoutes from "./cli-session.routes.js";
 
 const bindingKeywordsSchema = z
   .array(z.string().trim().min(1, "關鍵字不可為空白").max(20, "關鍵字不可超過 20 字"))
@@ -123,66 +85,15 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.addHook("preHandler", fastify.authenticate);
   fastify.addHook("preHandler", requirePermission("settings.manage"));
 
+  // 各資源的路由在自己的檔案（AGENTS.md 結構規則 3）。子 plugin 繼承上面的 hook，同樣要求登入與 settings.manage
+  await fastify.register(officeHoursRoutes);
+  await fastify.register(trackingSettingsRoutes);
+  await fastify.register(partnerApiKeyRoutes);
+  await fastify.register(cliSessionRoutes);
+
   // GET /api/v1/settings/a2a — safe bridge status only; credentials never leave deployment secrets.
   fastify.get("/a2a", async (_request, reply) => {
     return reply.send(success(buildA2AStatus(getConfig())));
-  });
-
-  // GET /api/v1/settings/office-hours
-  fastify.get("/office-hours", async (request, reply) => {
-    const result = await getOfficeHours(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success(result));
-  });
-
-  // PUT /api/v1/settings/office-hours
-  fastify.put("/office-hours", async (request, reply) => {
-    const data = officeHoursSchema.parse(request.body);
-    const result = await updateOfficeHours(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      data.timezone,
-      data.officeHours as any,
-    );
-    // 稽核：變更系統設定（只記變更的設定區塊，不放敏感值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "office-hours" },
-      ip: request.ip,
-    });
-    return reply.send(success(result));
-  });
-
-  // ─── Tracking Settings ──────────────────────────────────────────────────
-  // GET /api/v1/settings/tracking
-  fastify.get("/tracking", async (request, reply) => {
-    return reply.send(success(await getTrackingSettings(request.tenantPrisma, request.agent.tenantId)));
-  });
-
-  // PUT /api/v1/settings/tracking
-  fastify.put("/tracking", async (request, reply) => {
-    const data = trackingSettingsSchema.parse(request.body);
-    const tenantId = request.agent.tenantId;
-    const settings = await updateTrackingSettings(request.tenantPrisma, tenantId, {
-      gaId: data.gaId ?? null,
-      metaPixelId: data.metaPixelId ?? null,
-    });
-    // 稽核：變更追蹤設定（只記有無設定 GA/Pixel，不放 ID 值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: {
-        section: "tracking",
-        gaIdSet: Boolean(data.gaId),
-        metaPixelIdSet: Boolean(data.metaPixelId),
-      },
-      ip: request.ip,
-    });
-    return reply.send(success(settings));
   });
 
   // ─── Identity Binding（跨渠道 One ID）──────────────────────────────────────
@@ -368,170 +279,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     );
     return reply.send(success(health));
   });
-
-  // ─── Partner API Keys ────────────────────────────────────────────────────
-  // GET /api/v1/settings/api-keys — list (masked)
-  fastify.get("/api-keys", async (request, reply) => {
-    const rows = await listPartnerApiKeys(
-      request.tenantPrisma,
-      request.agent.tenantId,
-    );
-    return reply.send(
-      success(
-        rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          masked: `${r.keyPrefix}…${r.keySuffix}`,
-          isActive: r.isActive,
-          expiresAt: r.expiresAt,
-          lastUsedAt: r.lastUsedAt,
-          createdAt: r.createdAt,
-        })),
-      ),
-    );
-  });
-
-  // POST /api/v1/settings/api-keys — create (returns raw key once)
-  fastify.post("/api-keys", async (request, reply) => {
-    const body = createApiKeySchema.parse(request.body);
-    const expiresAt = body.expiresInDays
-      ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
-      : null;
-
-    const result = await createPartnerApiKey(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      createdById: request.agent.id,
-      name: body.name,
-      expiresAt,
-    });
-
-    return reply.status(201).send(
-      success({
-        // The raw key is only available here. Store it on the client side
-        // immediately — the server will never return it again.
-        key: result.key,
-        id: result.apiKey.id,
-        name: result.apiKey.name,
-        masked: `${result.apiKey.keyPrefix}…${result.apiKey.keySuffix}`,
-        expiresAt: result.apiKey.expiresAt,
-        createdAt: result.apiKey.createdAt,
-      }),
-    );
-  });
-
-  // DELETE /api/v1/settings/api-keys/:id — revoke (soft-delete; isActive=false)
-  fastify.delete<{ Params: { id: string } }>(
-    "/api-keys/:id",
-    async (request, reply) => {
-      await revokePartnerApiKey(
-        request.tenantPrisma,
-        request.agent.tenantId,
-        request.params.id,
-      );
-      return reply.send(success({ revoked: true }));
-    },
-  );
-
-  // ─── CLI Sessions ──────────────────────────────────────────────────────
-  // GET /api/v1/settings/cli-sessions — list CLI sessions for current tenant
-  fastify.get("/cli-sessions", async (request, reply) => {
-    const rows = await request.tenantPrisma.cliSession.findMany({
-      where: {
-        tenantId: request.agent.tenantId,
-        revokedAt: null,
-      },
-      include: {
-        agent: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    return reply.send(
-      success(
-        rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          agent: r.agent,
-          tokenPrefix: r.tokenPrefix,
-          tokenSuffix: r.tokenSuffix,
-          scopes: parseCliScopes(r.scopes),
-          expiresAt: r.expiresAt.toISOString(),
-          lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
-          createdAt: r.createdAt.toISOString(),
-        })),
-      ),
-    );
-  });
-
-  // POST /api/v1/settings/cli-sessions — create a new CLI session
-  fastify.post("/cli-sessions", async (request, reply) => {
-    const body = createCliSessionSchema.parse(request.body);
-    const expiresAt = body.expiresInDays
-      ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
-      : undefined;
-
-    const { token, session } = await createCliSession(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      agentId: request.agent.id,
-      name: body.name,
-      scopes: body.mcpRead
-        ? [...new Set([...(body.scopes ?? DEFAULT_CLI_SCOPES), MCP_READ_SCOPE])]
-        : body.scopes,
-      expiresAt,
-    });
-
-    return reply.status(201).send(
-      success({
-        token,
-        session: {
-          id: session.id,
-          name: session.name,
-          tokenPrefix: session.tokenPrefix,
-          tokenSuffix: session.tokenSuffix,
-          scopes: parseCliScopes(session.scopes),
-          expiresAt: session.expiresAt.toISOString(),
-          createdAt: session.createdAt.toISOString(),
-        },
-      }),
-    );
-  });
-
-  // DELETE /api/v1/settings/cli-sessions/:id — revoke a CLI session
-  fastify.delete<{ Params: { id: string } }>(
-    "/cli-sessions/:id",
-    async (request, reply) => {
-      await revokeCliSession(
-        request.tenantPrisma,
-        request.params.id,
-        request.agent.tenantId,
-      );
-      return reply.send(success({ revoked: true }));
-    },
-  );
 }
-
-/**
- * 追蹤 ID 會被拼進短連結公開中轉頁的 <script>：只收固定格式，否則是儲存型 XSS（G06）。
- * 空字串視為清除（null）。
- */
-const trackingIdSchema = (pattern: RegExp, message: string) =>
-  z
-    .string()
-    .trim()
-    .transform((v) => (v === "" ? null : v))
-    .refine((v) => v === null || pattern.test(v), { message })
-    .nullable()
-    .optional();
-
-export const trackingSettingsSchema = z.object({
-  gaId: trackingIdSchema(GA4_ID_PATTERN, "GA4 ID 格式不正確，應為 G- 開頭加大寫英文字母或數字，例如 G-ABC123XYZ9"),
-  metaPixelId: trackingIdSchema(META_PIXEL_ID_PATTERN, "Meta Pixel ID 格式不正確，應為 5～20 位數字"),
-});
-
-const createApiKeySchema = z.object({
-  name: z.string().min(1).max(100),
-  // null / undefined / 0 → never expires
-  expiresInDays: z.number().int().positive().nullable().optional(),
-});
 
 /** System prompt 長度上限：直接影響每次 LLM 呼叫的 token 成本 */
 export const MAX_SYSTEM_PROMPT_LENGTH = 8000;
@@ -570,11 +318,4 @@ const chatModelsQuery = z.object({
   provider: z.enum(["ollama", "gemini"]),
   // 後端會 fetch 這個位址（健康檢查／向量化）→ 不限 scheme 等於 SSRF 面
   baseUrl: httpUrlSchema.optional(),
-});
-
-const createCliSessionSchema = z.object({
-  name: z.string().min(1).max(100),
-  scopes: z.array(z.string()).optional(),
-  mcpRead: z.boolean().default(false),
-  expiresInDays: z.number().int().positive().nullable().optional(),
 });

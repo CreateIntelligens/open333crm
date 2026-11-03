@@ -1770,6 +1770,10 @@
       "health": "docs/ref/features/health/SETTINGS.md",
       "paths": [
         "apps/api/src/modules/settings/settings.routes.ts",
+        "apps/api/src/modules/settings/office-hours.routes.ts",
+        "apps/api/src/modules/settings/tracking-settings.routes.ts",
+        "apps/api/src/modules/settings/partner-api-key.routes.ts",
+        "apps/api/src/modules/settings/cli-session.routes.ts",
         "apps/api/src/modules/settings/office-hours.service.ts",
         "apps/api/src/modules/settings/tracking-settings.service.ts",
         "apps/api/src/modules/settings/a2a-status.service.ts",
