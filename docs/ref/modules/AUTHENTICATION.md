@@ -112,18 +112,18 @@ Socket.IO 的每個 namespace 各自認證：
 | 預設（`/`） | 客服 | `socket.plugin.ts` 的 `io.use()` 以 `JWT_SECRET` 驗證 handshake 的 token，把 `agentId`、`tenantId`、`role`、`roleId` 寫入 `socket.data` | `tenant:<tenantId>`、`agent:<agentId>`、`tenant:<tenantId>:agent:<agentId>`，以及依可見渠道的 `tenant:<tenantId>:channel:<channelId>`（持有 `channel.view_all` 時改為 `tenant:<tenantId>:channels:all`） | 送出 `subscribe` 時由 `authorizeSocketRoom()` 查資料庫授權，並限制頻率 |
 | `/visitor` | 網站訪客 | `webchat.socket.ts` 以 `chatboxSessionVerifier` 驗證 session ID 與 claim token，並以來源 IP 限制連線頻率 | `visitor:<channelId>:<visitorToken>` | 無 |
 
-客服的 socket 只在 handshake 驗證一次。連線建立之後，系統不會重新驗證，也不會在成員或租戶停用時主動斷線。
+客服的 socket 在 handshake 驗證 token，並拒絕已停用或已不存在的成員。連線建立之後不重新驗證 token：成員被停用或永久刪除時，重新計算房間會斷開他的連線；租戶停用時不會主動斷線。`subscribe` 的授權每次從資料庫讀成員目前的角色，不用 token 裡的 `roleId`。
 
-`message.new`、`conversation.*` 只送到渠道房間，不送到 `tenant:<tenantId>`（issue #427）。渠道房間在 handshake 驗證時算好；成員的可用渠道、角色或角色權限、渠道與渠道團隊授權改變時，`fastify.syncSocketChannelRooms()` 重新計算已連線 socket 的房間。`tenant:<tenantId>` 仍收到工單與聯絡人合併的事件，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
+`message.new`、`conversation.*` 只送到渠道房間，不送到 `tenant:<tenantId>`（issue #427）。渠道房間在 handshake 驗證時算好；成員的可用渠道、角色或角色權限、渠道與渠道團隊授權、租戶的方案或方案設定改變，以及成員停用與永久刪除時，`fastify.syncSocketChannelRooms()` 重新計算已連線 socket 的房間。`tenant:<tenantId>` 仍收到工單與聯絡人合併的事件，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
 
 ## 停用與撤銷什麼時候生效
 
 | 動作 | 客服 access token | 客服 refresh token | 客服 socket 連線 | CLI token | Partner API 金鑰 |
 | --- | --- | --- | --- | --- | --- |
-| 停用成員 | 有效到過期 | 換發時被擋下 | 不中斷 | 立即失效 | 不受影響 |
-| 永久刪除成員 | 有效到過期 | 換發時被擋下 | 不中斷 | 隨成員刪除 | 不受影響 |
+| 停用成員 | 有效到過期 | 換發時被擋下 | 立即斷線 | 立即失效 | 不受影響 |
+| 永久刪除成員 | 有效到過期 | 換發時被擋下 | 立即斷線 | 隨成員刪除 | 不受影響 |
 | 停用租戶 | 有效到過期 | 換發時被擋下 | 不中斷 | **不受影響** | **不受影響** |
-| 改成員的角色 | 沿用舊角色到過期 | 換發時取得新角色 | 沿用舊角色 | 不看角色 | 不看角色 |
+| 改成員的角色 | 沿用舊角色到過期 | 換發時取得新角色 | 立即依新角色重新計算房間 | 不看角色 | 不看角色 |
 | 登出 | 有效到過期 | cookie 清除，token 本身仍有效 | 前端斷線 | 以 `POST /auth/cli/logout` 撤銷 | 不適用 |
 | 撤銷該憑證 | 無法撤銷 | 無法撤銷 | 無法撤銷 | 立即失效 | 立即失效 |
 
