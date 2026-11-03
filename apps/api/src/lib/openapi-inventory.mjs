@@ -134,12 +134,33 @@ function readCallArguments(source, start) {
 }
 
 /**
- * 路由檔內以 `fastify.register(x)` 掛上的子 plugin：只算 x 是 import 進來的路由檔。
- * options 可以是 `{ prefix: '/p' }`，或含驗證的 guard（變數或物件字面值）。
+ * 子 plugin 的 options 只接受讀得懂的三種寫法（design：讀不懂的註冊要報錯，不可以靜默漏列）：
+ * - 不寫
+ * - 物件字面值，例如 `{ prefix: '/p' }`、`{ preHandler: [fastify.authenticate] }`
+ * - 同一個檔案以 `const 名稱 = { … }` 定義的變數，讀它的定義
+ * 其他寫法（函式呼叫、import 進來的變數、展開運算子、prefix 不是字串字面值）一律丟錯。
  */
+function resolveRegisterOptions(contents, file, symbol, options) {
+  const fail = (reason) => {
+    throw new Error(`Cannot parse the options of register(${symbol}, …) in ${file}: ${reason}`);
+  };
+  let object = options;
+  if (/^\w+$/.test(options)) {
+    const definition = new RegExp(`\\b(?:const|let)\\s+${options}\\s*=\\s*\\{`).exec(contents);
+    if (!definition) fail(`${options} is not defined as an object literal in this file`);
+    object = `{${readCallArguments(contents, definition.index + definition[0].length)}}`;
+  } else if (options && !(options.startsWith('{') && options.endsWith('}'))) {
+    fail('options must be omitted, an object literal or a variable defined in this file');
+  }
+  if (object.includes('...')) fail('spread syntax is not supported');
+  const prefix = object.match(/\bprefix\s*:\s*['"]([^'"]*)['"]/)?.[1];
+  if (prefix === undefined && /\bprefix\s*:/.test(object)) fail('prefix must be a string literal');
+  return { prefix: prefix ?? '', optionsAuth: AUTH_CALL.test(object) };
+}
+
+/** 路由檔內以 `fastify.register(x)` 掛上的子 plugin：只算 x 是 import 進來的路由檔 */
 function nestedRegistrations(file, contents) {
   const imports = parseImports(contents);
-  const guards = authGuardNames(contents);
   const children = [];
   for (const match of contents.matchAll(/\b(?:fastify|app)\.register\(/g)) {
     // 以括號配對讀出整個參數，結尾逗號與斷行都讀得到
@@ -148,15 +169,7 @@ function nestedRegistrations(file, contents) {
     const routeFile = symbol ? imports.get(symbol) : undefined;
     if (!routeFile) continue;
     const options = args.slice(args.indexOf(symbol) + symbol.length).replace(/^\s*,\s*/, '').replace(/\s*,?\s*$/, '');
-    // 讀不懂的 options（例如函式呼叫）丟錯：靜默略過會讓 API 文件漏掉可以呼叫的路由
-    if (options && !/^\w+$/.test(options) && !(options.startsWith('{') && options.endsWith('}'))) {
-      throw new Error(`Cannot parse the options of register(${symbol}, …) in ${file}`);
-    }
-    children.push({
-      file: resolveRouteFile(file, routeFile),
-      prefix: options.match(/prefix\s*:\s*['"]([^'"]*)['"]/)?.[1] ?? '',
-      optionsAuth: /^\w+$/.test(options) ? guards.has(options) : AUTH_CALL.test(options),
-    });
+    children.push({ file: resolveRouteFile(file, routeFile), ...resolveRegisterOptions(contents, file, symbol, options) });
   }
   return children;
 }

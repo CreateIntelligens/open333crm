@@ -133,6 +133,41 @@ describe('子 plugin 的註冊寫法', () => {
     assert.ok(document.paths['/api/v1/settings/c/x']?.get);
   });
 
+  // review-loop 第 3 輪：options 是變數時原本只比對變數名稱，前綴被當成空字串
+  it('options 是同一個檔案定義的變數時，讀它的前綴與驗證', () => {
+    const routeSources = new Map([
+      [resolve(sourceRoot, 'modules/settings/settings.routes.ts'), `
+        import aRoutes from "./a.routes.js";
+        const nested = { prefix: "/nested" };
+        const guard = { preHandler: [fastify.authenticate] };
+        await fastify.register(aRoutes, nested);
+        await fastify.register(aRoutes, guard);
+      `],
+      child('a.routes.ts', '/x'),
+    ]);
+    const document = buildOpenApiDocument(collectOpenApiRoutes(apiSource, routeSources));
+    assert.ok(document.paths['/api/v1/settings/nested/x']?.get, '前綴取自變數的定義');
+    assert.equal(Object.hasOwn(document.paths['/api/v1/settings/nested/x'].get, 'security'), false);
+    assert.deepEqual(document.paths['/api/v1/settings/x']?.get?.security, [{ BearerAuth: [] }], 'guard 變數含驗證');
+  });
+
+  for (const [label, register] of [
+    ['變數不是在這個檔案以物件字面值定義', 'await fastify.register(aRoutes, importedOptions);'],
+    ['options 有展開運算子', 'await fastify.register(aRoutes, { ...base, prefix: "/a" });'],
+    ['prefix 不是字串字面值', 'await fastify.register(aRoutes, { prefix: PREFIX });'],
+  ]) {
+    it(`${label}時丟出錯誤`, () => {
+      const routeSources = new Map([
+        [resolve(sourceRoot, 'modules/settings/settings.routes.ts'), `
+          import aRoutes from "./a.routes.js";
+          ${register}
+        `],
+        child('a.routes.ts', '/a'),
+      ]);
+      assert.throws(() => collectOpenApiRoutes(apiSource, routeSources), /aRoutes/);
+    });
+  }
+
   it('解析不出來的註冊丟出錯誤，不靜默略過', () => {
     const routeSources = new Map([
       [resolve(sourceRoot, 'modules/settings/settings.routes.ts'), `
