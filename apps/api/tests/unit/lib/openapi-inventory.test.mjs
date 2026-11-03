@@ -155,6 +155,13 @@ describe('子 plugin 的註冊寫法', () => {
     ['變數不是在這個檔案以物件字面值定義', 'await fastify.register(aRoutes, importedOptions);'],
     ['options 有展開運算子', 'await fastify.register(aRoutes, { ...base, prefix: "/a" });'],
     ['prefix 不是字串字面值', 'await fastify.register(aRoutes, { prefix: PREFIX });'],
+    // review-loop 第 4 輪：以下寫法原本找不到 prefix，當成沒有前綴
+    ['prefix 是簡寫屬性', 'const prefix = "/nested"; await fastify.register(aRoutes, { prefix });'],
+    ['屬性名稱加了引號', 'await fastify.register(aRoutes, { "prefix": "/nested" });'],
+    ['prefix 是字串相加', 'await fastify.register(aRoutes, { prefix: "/nested" + "/v2" });'],
+    ['prefix 是 template literal', 'await fastify.register(aRoutes, { prefix: `/nested` });'],
+    ['options 有 method', 'await fastify.register(aRoutes, { get prefix() { return "/nested"; } });'],
+    ['options 是有計算屬性名稱的物件', 'await fastify.register(aRoutes, { ["prefix"]: "/nested" });'],
   ]) {
     it(`${label}時丟出錯誤`, () => {
       const routeSources = new Map([

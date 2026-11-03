@@ -152,10 +152,45 @@ function resolveRegisterOptions(contents, file, symbol, options) {
   } else if (options && !(options.startsWith('{') && options.endsWith('}'))) {
     fail('options must be omitted, an object literal or a variable defined in this file');
   }
-  if (object.includes('...')) fail('spread syntax is not supported');
-  const prefix = object.match(/\bprefix\s*:\s*['"]([^'"]*)['"]/)?.[1];
-  if (prefix === undefined && /\bprefix\s*:/.test(object)) fail('prefix must be a string literal');
-  return { prefix: prefix ?? '', optionsAuth: AUTH_CALL.test(object) };
+  // 逐一讀屬性，每個屬性都必須是「識別字: 值」。簡寫屬性、加引號或計算的名稱、展開、method 都丟錯，
+  // 所以 prefix 只可能出現在 `prefix: <值>`，不會被其他寫法藏起來
+  let prefix = '';
+  for (const property of splitTopLevel(object.slice(1, -1))) {
+    const entry = /^([A-Za-z_$][\w$]*)\s*:\s*([\s\S]+)$/.exec(property);
+    if (!entry) fail(`unsupported property \`${property}\``);
+    if (entry[1] !== 'prefix') continue;
+    const literal = /^(['"])([^'"\\]*)\1$/.exec(entry[2]);
+    if (!literal) fail('prefix must be a single string literal');
+    prefix = literal[2];
+  }
+  return { prefix, optionsAuth: AUTH_CALL.test(object) };
+}
+
+/** 依最外層的逗號拆開，略過字串、括號內的逗號，去掉空白與空的項目 */
+function splitTopLevel(text) {
+  const parts = [];
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  let start = 0;
+  for (let cursor = 0; cursor < text.length; cursor += 1) {
+    const char = text[cursor];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char;
+    else if (char === '(' || char === '{' || char === '[') depth += 1;
+    else if (char === ')' || char === '}' || char === ']') depth -= 1;
+    else if (char === ',' && depth === 0) {
+      parts.push(text.slice(start, cursor));
+      start = cursor + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts.map((part) => part.trim()).filter(Boolean);
 }
 
 /** 路由檔內以 `fastify.register(x)` 掛上的子 plugin：只算 x 是 import 進來的路由檔 */
