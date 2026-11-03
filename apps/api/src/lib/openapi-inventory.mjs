@@ -33,8 +33,9 @@ function parseImports(source) {
   return imports;
 }
 
-function resolveRouteFile(importPath) {
-  const file = resolve(sourceRoot, importPath.replace(/^\.\//, '').replace(/^(\.\.\/)+/, ''));
+/** import 的路徑以 import 所在的檔案解析：index.ts 在 src/，子 plugin 的路由檔在各模組的目錄 */
+function resolveRouteFile(fromFile, importPath) {
+  const file = resolve(dirname(fromFile), importPath);
   return file.endsWith('.routes.ts') ? file : `${file}.routes.ts`;
 }
 
@@ -80,40 +81,76 @@ function readOptionObject(source, afterPath) {
   return '';
 }
 
-function authenticatedRoute(source, options) {
-  const hasPluginAuth = /\b(?:fastify|app)\.addHook\(\s*['"](?:preHandler|onRequest)['"]\s*,\s*(?:\[[^\]]*\]\s*,?\s*)?(?:fastify|app)\.authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?\b/.test(source);
+const AUTH_CALL = /\b(?:fastify|app)\.(?:authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?|requirePermission|requireRole)\b|\bauthenticateMcp\b/;
+
+/** 路由檔以 addHook 驗證整個 plugin。這個檔案註冊的子 plugin 也繼承這個 hook */
+function hasPluginAuthHook(source) {
+  return /\b(?:fastify|app)\.addHook\(\s*['"](?:preHandler|onRequest)['"]\s*,\s*(?:\[[^\]]*\]\s*,?\s*)?(?:fastify|app)\.authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?\b/.test(source);
+}
+
+/** 以變數定義、內容含驗證的 guard，例如 `const guard = { preHandler: [fastify.authenticate] }` */
+function authGuardNames(source) {
   const authGuards = new Set();
-  const authHandlers = new Set();
   for (const match of source.matchAll(/(?:const|let)\s+(\w+)\s*=\s*[\[{][\s\S]{0,220}?(?:fastify|app)\.(?:authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?|requirePermission|requireRole)/g)) {
     authGuards.add(match[1]);
   }
+  return authGuards;
+}
+
+/**
+ * 路由檔內以 `fastify.register(x)` 掛上的子 plugin：只算 x 是 import 進來的路由檔。
+ * options 可以是 `{ prefix: '/p' }`，或含驗證的 guard（變數或物件字面值）。
+ */
+function nestedRegistrations(file, contents) {
+  const imports = parseImports(contents);
+  const guards = authGuardNames(contents);
+  const children = [];
+  for (const match of contents.matchAll(/\b(?:fastify|app)\.register\(\s*(\w+)\s*(?:,\s*(\{[^}]*\}|\w+))?\s*\)/g)) {
+    const [, symbol, options = ''] = match;
+    const routeFile = imports.get(symbol);
+    if (!routeFile) continue;
+    children.push({
+      file: resolveRouteFile(file, routeFile),
+      prefix: options.match(/prefix\s*:\s*['"]([^'"]*)['"]/)?.[1] ?? '',
+      optionsAuth: /^\w+$/.test(options) ? guards.has(options) : AUTH_CALL.test(options),
+    });
+  }
+  return children;
+}
+
+function authenticatedRoute(source, options, inheritedAuth = false) {
+  if (inheritedAuth) return true;
+  const hasPluginAuth = hasPluginAuthHook(source);
+  const authGuards = authGuardNames(source);
+  const authHandlers = new Set();
   for (const match of source.matchAll(/(?:const|let)\s+(\w+)\s*=\s*async\b[\s\S]{0,350}?(?:fastify|app)\.(?:authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?|requirePermission|requireRole)|(?:const|let)\s+(\w+)\s*=\s*async\b[\s\S]{0,350}?\bauthenticateMcp\b/g)) {
     authHandlers.add(match[1] ?? match[2]);
   }
   if (hasPluginAuth) return true;
-  if (/\b(?:fastify|app)\.(?:authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?|requirePermission|requireRole)\b|\bauthenticateMcp\b/.test(options)) return true;
+  if (AUTH_CALL.test(options)) return true;
   return [...authGuards, ...authHandlers].some((name) => new RegExp(`\\b${name}\\b`).test(options));
 }
 
 export function collectOpenApiRoutes(apiSource, routeSourceByFile) {
   const imports = parseImports(apiSource);
+  const indexFile = resolve(sourceRoot, 'index.ts');
   const mountPrefixes = new Map();
   for (const match of apiSource.matchAll(/\.register\(\s*(\w+)\s*,\s*\{[^}]*?prefix\s*:\s*['"]([^'"]*)['"]/gs)) {
     const [, symbol, prefix] = match;
     const routeFile = imports.get(symbol);
     if (!routeFile) continue;
-    const file = resolveRouteFile(routeFile);
+    const file = resolveRouteFile(indexFile, routeFile);
     mountPrefixes.set(file, [...(mountPrefixes.get(file) ?? []), prefix]);
   }
   for (const match of apiSource.matchAll(/\.register\(\s*(\w+)\s*\)/g)) {
     const routeFile = imports.get(match[1]);
     if (!routeFile) continue;
-    const file = resolveRouteFile(routeFile);
+    const file = resolveRouteFile(indexFile, routeFile);
     if (!mountPrefixes.has(file)) mountPrefixes.set(file, ['']);
   }
 
   const routes = [];
-  const addRoutes = (sourceText, file, prefixes) => {
+  const addRoutes = (sourceText, file, prefixes, inheritedAuth = false) => {
     const callPattern = /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\s*(?:<[^>]+>)?\s*\(/g;
     const pathPattern = /\b(?:fastify|app)\.(get|post|put|patch|delete|options|head)\s*(?:<[^>]+>)?\s*\(\s*(['"])([^'"\n]+)\2/g;
     const callCount = [...sourceText.matchAll(callPattern)].length;
@@ -132,17 +169,30 @@ export function collectOpenApiRoutes(apiSource, routeSourceByFile) {
         path,
         tag: routeTag(file),
         source: file.replace(`${sourceRoot}/`, ''),
-        authenticated: authenticatedRoute(sourceText, options),
+        authenticated: authenticatedRoute(sourceText, options, inheritedAuth),
       });
       }
     }
   };
 
-  addRoutes(apiSource, resolve(sourceRoot, 'index.ts'), ['/']);
-  for (const [file, prefixes] of mountPrefixes) {
+  // 路由檔內以 register 掛上的子 plugin：沿用外層的前綴與驗證（Fastify 的子 plugin 繼承外層已加的 hook）
+  const mount = (file, prefixes, inheritedAuth, ancestors) => {
     const contents = routeSourceByFile.get(file);
-    if (contents) addRoutes(contents, file, prefixes);
-  }
+    if (!contents || ancestors.has(file)) return;
+    addRoutes(contents, file, prefixes, inheritedAuth);
+    const pluginAuth = inheritedAuth || hasPluginAuthHook(contents);
+    for (const child of nestedRegistrations(file, contents)) {
+      mount(
+        child.file,
+        prefixes.map((parent) => `${parent.replace(/\/$/, '')}${child.prefix}`),
+        pluginAuth || child.optionsAuth,
+        new Set([...ancestors, file]),
+      );
+    }
+  };
+
+  addRoutes(apiSource, indexFile, ['/']);
+  for (const [file, prefixes] of mountPrefixes) mount(file, prefixes, false, new Set());
   return routes.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 }
 
@@ -208,18 +258,25 @@ export function buildOpenApiDocument(routes) {
 
 export async function generateOpenApi(outputPath = resolve(repoRoot, 'apps/web/public/openapi.json')) {
   const apiSource = await readFile(resolve(sourceRoot, 'index.ts'), 'utf8');
-  const imports = parseImports(apiSource);
+  // 讀 index.ts 引用的路由檔，再讀這些路由檔引用的路由檔（子 plugin）
+  const indexFile = resolve(sourceRoot, 'index.ts');
   const sources = new Map();
-  for (const routeFile of new Set(imports.values())) {
-    const file = resolveRouteFile(routeFile);
+  const missing = new Set();
+  const pending = [...new Set(parseImports(apiSource).values())].map((routeFile) => resolveRouteFile(indexFile, routeFile));
+  while (pending.length) {
+    const file = pending.shift();
+    if (sources.has(file) || missing.has(file)) continue;
     try {
-      sources.set(file, await readFile(file, 'utf8'));
+      const contents = await readFile(file, 'utf8');
+      sources.set(file, contents);
+      // 路由檔不是 index.ts：只追以 register 掛上的路由檔，不追一般的 import
+      if (file !== indexFile) pending.push(...nestedRegistrations(file, contents).map((child) => child.file));
     } catch {
       // The check below reports unresolved route modules instead of silently omitting them.
+      missing.add(file);
     }
   }
-  const missing = [...new Set(imports.values())].map(resolveRouteFile).filter((file) => !sources.has(file));
-  if (missing.length) throw new Error(`Cannot resolve registered route files: ${missing.join(', ')}`);
+  if (missing.size) throw new Error(`Cannot resolve registered route files: ${[...missing].join(', ')}`);
 
   const routes = collectOpenApiRoutes(apiSource, sources);
   const document = buildOpenApiDocument(routes);

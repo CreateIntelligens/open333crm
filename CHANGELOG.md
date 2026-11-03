@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-03]
+
+### Fixed
+
+- **API 文件列出路由檔內註冊的子 plugin**（#337 階段 3 第九批）— 部署時產生 `openapi.json` 的 `openapi-inventory.mjs` 原本只讀 `index.ts` 註冊的路由檔。路由檔內以 `fastify.register()` 掛上的子 plugin 不在文件中，例如平台的 `GET`、`PATCH /api/v1/platform/tenants/:id/ai-privacy`。現在產生器也讀子 plugin：路徑接在外層的前綴後面。外層以 `addHook` 驗證登入，或註冊時傳入含驗證的 guard 時，子 plugin 的路由標示需要登入。
+
 ## [2026-11-02]
 
 ### Added
