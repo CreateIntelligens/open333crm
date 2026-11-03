@@ -1,28 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod/v3";
 import { success } from "../../shared/utils/response.js";
-import {
-  createCliSession,
-  revokeCliSession,
-  parseCliScopes,
-  DEFAULT_CLI_SCOPES,
-} from "../auth/cli-session.service.js";
+import { actorOf } from "../../lib/request-actor.js";
+import { parseCliScopes, DEFAULT_CLI_SCOPES } from "../auth/cli-session.service.js";
+import { createCliSessionFlow, listCliSessionsFlow, revokeCliSessionFlow } from "../auth/cli-session.flow.js";
 import { MCP_READ_SCOPE } from "../mcp/mcp.constants.js";
 
 /** CLI 連線（CLI token 的管理）。由 settings.routes.ts 註冊，沿用該檔的登入檢查與 settings.manage */
 export default async function cliSessionRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/cli-sessions — list CLI sessions for current tenant
   fastify.get("/cli-sessions", async (request, reply) => {
-    const rows = await request.tenantPrisma.cliSession.findMany({
-      where: {
-        tenantId: request.agent.tenantId,
-        revokedAt: null,
-      },
-      include: {
-        agent: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const rows = await listCliSessionsFlow(fastify, actorOf(request).tenantId);
     return reply.send(
       success(
         rows.map((r) => ({
@@ -47,9 +35,7 @@ export default async function cliSessionRoutes(fastify: FastifyInstance) {
       ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
       : undefined;
 
-    const { token, session } = await createCliSession(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      agentId: request.agent.id,
+    const { token, session } = await createCliSessionFlow(fastify, actorOf(request), {
       name: body.name,
       scopes: body.mcpRead
         ? [...new Set([...(body.scopes ?? DEFAULT_CLI_SCOPES), MCP_READ_SCOPE])]
@@ -77,11 +63,7 @@ export default async function cliSessionRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string } }>(
     "/cli-sessions/:id",
     async (request, reply) => {
-      await revokeCliSession(
-        request.tenantPrisma,
-        request.params.id,
-        request.agent.tenantId,
-      );
+      await revokeCliSessionFlow(fastify, actorOf(request), request.params.id);
       return reply.send(success({ revoked: true }));
     },
   );

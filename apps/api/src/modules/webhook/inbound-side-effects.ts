@@ -169,7 +169,8 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
   }
 
   try {
-    let outsideMsg = await getOutsideHoursMessage(ctx.prisma, ctx.tenantId);
+    // 收訊管線還沒有搬遷（#337 階段 4），沒有租戶交易：以管線的 client 組成 TenantCtx。查詢都帶 tenantId
+    let outsideMsg = await getOutsideHoursMessage({ tx: ctx.prisma, tenantId: ctx.tenantId });
 
     if (outsideMsg) {
       try {

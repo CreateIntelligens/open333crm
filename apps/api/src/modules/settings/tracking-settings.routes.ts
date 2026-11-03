@@ -1,37 +1,23 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod/v3";
 import { success } from "../../shared/utils/response.js";
-import { getTrackingSettings, updateTrackingSettings } from "./tracking-settings.service.js";
+import { actorOf } from "../../lib/request-actor.js";
+import { getTrackingSettingsFlow, updateTrackingSettingsFlow } from "./tracking-settings.flow.js";
 import { GA4_ID_PATTERN, META_PIXEL_ID_PATTERN } from "../shortlink/strategies/tracking-snippet.js";
-import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 
 /** 追蹤設定（GA4／Meta Pixel）。由 settings.routes.ts 註冊，沿用該檔的登入檢查與 settings.manage */
 export default async function trackingSettingsRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/tracking
   fastify.get("/tracking", async (request, reply) => {
-    return reply.send(success(await getTrackingSettings(request.tenantPrisma, request.agent.tenantId)));
+    return reply.send(success(await getTrackingSettingsFlow(fastify, actorOf(request).tenantId)));
   });
 
   // PUT /api/v1/settings/tracking
   fastify.put("/tracking", async (request, reply) => {
     const data = trackingSettingsSchema.parse(request.body);
-    const tenantId = request.agent.tenantId;
-    const settings = await updateTrackingSettings(request.tenantPrisma, tenantId, {
+    const settings = await updateTrackingSettingsFlow(fastify, actorOf(request), {
       gaId: data.gaId ?? null,
       metaPixelId: data.metaPixelId ?? null,
-    });
-    // 稽核：變更追蹤設定（只記有無設定 GA/Pixel，不放 ID 值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: {
-        section: "tracking",
-        gaIdSet: Boolean(data.gaId),
-        metaPixelIdSet: Boolean(data.metaPixelId),
-      },
-      ip: request.ip,
     });
     return reply.send(success(settings));
   });

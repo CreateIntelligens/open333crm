@@ -92,11 +92,13 @@ const appA = await buildApp(agentA);
 const appA2 = await buildApp(agentA2);
 const appB = await buildApp(agentB);
 const appNoPerm = await buildApp(await makeAgent(A, 'inbox-only', ['inbox.view']));
+// 有 settings.manage、但成員不存在：稽核的 actorId 違反外鍵，用來讓稽核寫入失敗
+const appGhost = await buildApp({ ...agentA, id: MISSING });
 const authApp = await buildAuthApp();
 type App = typeof appA;
 
 afterAll(async () => {
-  await Promise.all([appA.close(), appA2.close(), appB.close(), appNoPerm.close(), authApp.close()]);
+  await Promise.all([appA.close(), appA2.close(), appB.close(), appNoPerm.close(), appGhost.close(), authApp.close()]);
   for (const tenantId of [A, B]) {
     await owner.cliSession.deleteMany({ where: { tenantId } });
     await owner.partnerApiKey.deleteMany({ where: { tenantId } });
@@ -126,8 +128,8 @@ const officeHoursBody = (enabled: boolean) => ({
   },
 });
 
-/** 收訊管線呼叫的函式：非營業時間的自動回覆訊息 */
-const outsideMessage = (tenantId: string) => getOutsideHoursMessage(tenantScopedClient(tenantDb, tenantId), tenantId);
+/** 收訊管線呼叫的函式：非營業時間的自動回覆訊息。與 inbound-side-effects.ts 相同，以管線的 client 組成 ctx */
+const outsideMessage = (tenantId: string) => getOutsideHoursMessage({ tx: owner, tenantId });
 
 describe('權限', () => {
   const routes: Array<['GET' | 'POST' | 'PUT' | 'DELETE', string, unknown?]> = [
@@ -381,5 +383,28 @@ describe('CLI 登入與登出', () => {
     assert.deepEqual(res.json().data, { loggedOut: true });
     const verified = await verifyCliSession(owner, token);
     assert.equal(verified.ok, false);
+  });
+});
+
+// 主規格 tenant-audit-log「交易內的稽核與主操作一起 commit」（#337 階段 3 第九批搬遷後）
+describe('稽核寫入失敗時，修改一起 rollback', () => {
+  test('營業時間', async () => {
+    const before = (await call(appA, 'GET', `${S}/office-hours`)).body.data;
+    const res = await call(appGhost, 'PUT', `${S}/office-hours`, {
+      ...officeHoursBody(false),
+      timezone: 'Europe/London',
+    });
+    // error handler 把 Prisma 的外鍵錯誤轉成 400 DATABASE_ERROR
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.equal(res.body.error?.code, 'DATABASE_ERROR');
+    assert.deepEqual((await call(appA, 'GET', `${S}/office-hours`)).body.data, before, '設定沒有寫入');
+  });
+
+  test('追蹤設定', async () => {
+    await call(appA, 'PUT', `${S}/tracking`, { gaId: 'G-ROLLBACK1', metaPixelId: null });
+    const res = await call(appGhost, 'PUT', `${S}/tracking`, { gaId: 'G-ROLLBACK2', metaPixelId: '12345' });
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.equal(res.body.error?.code, 'DATABASE_ERROR');
+    assert.deepEqual((await call(appA, 'GET', `${S}/tracking`)).body.data, { gaId: 'G-ROLLBACK1', metaPixelId: null });
   });
 });

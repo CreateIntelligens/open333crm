@@ -1774,6 +1774,8 @@
         "apps/api/src/modules/settings/tracking-settings.routes.ts",
         "apps/api/src/modules/settings/partner-api-key.routes.ts",
         "apps/api/src/modules/settings/cli-session.routes.ts",
+        "apps/api/src/modules/settings/office-hours.flow.ts",
+        "apps/api/src/modules/settings/tracking-settings.flow.ts",
         "apps/api/src/modules/settings/office-hours.service.ts",
         "apps/api/src/modules/settings/tracking-settings.service.ts",
         "apps/api/src/modules/settings/a2a-status.service.ts",
@@ -1781,6 +1783,8 @@
         "apps/api/src/modules/webtalk/*",
         "apps/api/src/modules/auth/partner-api-key.service.ts",
         "apps/api/src/modules/auth/cli-session.service.ts",
+        "apps/api/src/modules/auth/partner-api-key.flow.ts",
+        "apps/api/src/modules/auth/cli-session.flow.ts",
         "apps/api/src/modules/mcp/mcp.routes.ts",
         "apps/api/src/modules/mcp/mcp.server.ts",
         "apps/api/src/modules/mcp/mcp.constants.ts"

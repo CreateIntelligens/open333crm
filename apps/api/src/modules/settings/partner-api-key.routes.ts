@@ -1,20 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod/v3";
 import { success } from "../../shared/utils/response.js";
+import { actorOf } from "../../lib/request-actor.js";
 import {
-  createPartnerApiKey,
-  listPartnerApiKeys,
-  revokePartnerApiKey,
-} from "../auth/partner-api-key.service.js";
+  createPartnerApiKeyFlow,
+  listPartnerApiKeysFlow,
+  revokePartnerApiKeyFlow,
+} from "../auth/partner-api-key.flow.js";
 
 /** Partner API 金鑰的管理。由 settings.routes.ts 註冊，沿用該檔的登入檢查與 settings.manage */
 export default async function partnerApiKeyRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/api-keys — list (masked)
   fastify.get("/api-keys", async (request, reply) => {
-    const rows = await listPartnerApiKeys(
-      request.tenantPrisma,
-      request.agent.tenantId,
-    );
+    const rows = await listPartnerApiKeysFlow(fastify, actorOf(request).tenantId);
     return reply.send(
       success(
         rows.map((r) => ({
@@ -37,12 +35,7 @@ export default async function partnerApiKeyRoutes(fastify: FastifyInstance) {
       ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
       : null;
 
-    const result = await createPartnerApiKey(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      createdById: request.agent.id,
-      name: body.name,
-      expiresAt,
-    });
+    const result = await createPartnerApiKeyFlow(fastify, actorOf(request), { name: body.name, expiresAt });
 
     return reply.status(201).send(
       success({
@@ -62,11 +55,7 @@ export default async function partnerApiKeyRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string } }>(
     "/api-keys/:id",
     async (request, reply) => {
-      await revokePartnerApiKey(
-        request.tenantPrisma,
-        request.agent.tenantId,
-        request.params.id,
-      );
+      await revokePartnerApiKeyFlow(fastify, actorOf(request).tenantId, request.params.id);
       return reply.send(success({ revoked: true }));
     },
   );

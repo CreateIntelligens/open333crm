@@ -8,7 +8,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { PrismaClient, PartnerApiKey } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { logger } from '@open333crm/core';
 
@@ -17,67 +17,62 @@ const KEY_RANDOM_BYTES = 32; // → 64 hex chars
 // keyPrefix col stores the leading visible identifier ("pk_" + first 5 hex);
 // keySuffix col stores last 4 hex. Together: "pk_a1b2c…f9e0"
 
+/** 新金鑰的明文與要存的欄位。由 generatePartnerApiKey() 在交易外產生 */
+export interface GeneratedApiKey {
+  /** Raw key — only shown once at creation. Never persisted. */
+  rawKey: string;
+  keyHash: string;
+  keyPrefix: string;
+  keySuffix: string;
+}
+
 export interface CreateApiKeyInput {
-  tenantId: string;
   createdById: string;
   name: string;
   expiresAt?: Date | null;
-}
-
-export interface CreateApiKeyResult {
-  /** Raw key — only shown once at creation. Never persisted. */
-  key: string;
-  apiKey: PartnerApiKey;
+  key: GeneratedApiKey;
 }
 
 /**
- * Generate a new API key, hash + persist, return both the raw key (one-time)
- * and the row.
+ * 產生金鑰並以 bcrypt 雜湊。bcrypt 很吃 CPU，呼叫端在交易外執行（AGENTS.md 結構規則 2）。
  */
-export async function createPartnerApiKey(
-  prisma: TenantDb,
-  input: CreateApiKeyInput,
-): Promise<CreateApiKeyResult> {
+export async function generatePartnerApiKey(): Promise<GeneratedApiKey> {
   const random = randomBytes(KEY_RANDOM_BYTES).toString('hex');
   const rawKey = `${KEY_PREFIX}${random}`;
-  const keyHash = await hashPassword(rawKey);
+  return {
+    rawKey,
+    keyHash: await hashPassword(rawKey),
+    // For display: "pk_xxxxx" (prefix + first 5 hex chars)
+    keyPrefix: `${KEY_PREFIX}${random.slice(0, 5)}`,
+    keySuffix: random.slice(-4),
+  };
+}
 
-  // For display: "pk_xxxxx" (prefix + first 5 hex chars)
-  const keyPrefix = `${KEY_PREFIX}${random.slice(0, 5)}`;
-  const keySuffix = random.slice(-4);
-
-  const apiKey = await prisma.partnerApiKey.create({
+/** 寫入 generatePartnerApiKey() 產生的金鑰 */
+export async function createPartnerApiKey(ctx: TenantCtx, input: CreateApiKeyInput): Promise<PartnerApiKey> {
+  return ctx.tx.partnerApiKey.create({
     data: {
-      tenantId: input.tenantId,
+      tenantId: ctx.tenantId,
       createdById: input.createdById,
       name: input.name,
-      keyHash,
-      keyPrefix,
-      keySuffix,
+      keyHash: input.key.keyHash,
+      keyPrefix: input.key.keyPrefix,
+      keySuffix: input.key.keySuffix,
       expiresAt: input.expiresAt ?? null,
     },
   });
-
-  return { key: rawKey, apiKey };
 }
 
-export async function listPartnerApiKeys(
-  prisma: TenantDb,
-  tenantId: string,
-): Promise<PartnerApiKey[]> {
-  return prisma.partnerApiKey.findMany({
-    where: { tenantId },
+export async function listPartnerApiKeys(ctx: TenantCtx): Promise<PartnerApiKey[]> {
+  return ctx.tx.partnerApiKey.findMany({
+    where: { tenantId: ctx.tenantId },
     orderBy: { createdAt: 'desc' },
   });
 }
 
-export async function revokePartnerApiKey(
-  prisma: TenantDb,
-  tenantId: string,
-  id: string,
-): Promise<void> {
-  await prisma.partnerApiKey.update({
-    where: { id, tenantId },
+export async function revokePartnerApiKey(ctx: TenantCtx, id: string): Promise<void> {
+  await ctx.tx.partnerApiKey.update({
+    where: { id, tenantId: ctx.tenantId },
     data: { isActive: false },
   });
 }
@@ -95,7 +90,8 @@ export type VerifyResult =
  * batch (almost always exactly 1 candidate).
  */
 export async function verifyPartnerApiKey(
-  prisma: TenantDb,
+  // 驗證時還不知道租戶：auth.plugin 以 prismaAdmin（BYPASSRLS）依前綴查詢
+  prisma: PrismaClient,
   rawKey: string,
 ): Promise<VerifyResult> {
   if (!rawKey.startsWith(KEY_PREFIX)) {

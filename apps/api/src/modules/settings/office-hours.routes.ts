@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod/v3";
 import { success } from "../../shared/utils/response.js";
-import { getOfficeHours, updateOfficeHours } from "./office-hours.service.js";
-import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
+import { actorOf } from "../../lib/request-actor.js";
+import { getOfficeHoursFlow, updateOfficeHoursFlow } from "./office-hours.flow.js";
 
 const dayScheduleSchema = z
   .object({
@@ -35,28 +35,14 @@ const officeHoursSchema = z.object({
 export default async function officeHoursRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/office-hours
   fastify.get("/office-hours", async (request, reply) => {
-    const result = await getOfficeHours(request.tenantPrisma, request.agent.tenantId);
+    const result = await getOfficeHoursFlow(fastify, actorOf(request).tenantId);
     return reply.send(success(result));
   });
 
   // PUT /api/v1/settings/office-hours
   fastify.put("/office-hours", async (request, reply) => {
     const data = officeHoursSchema.parse(request.body);
-    const result = await updateOfficeHours(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      data.timezone,
-      data.officeHours as any,
-    );
-    // 稽核：變更系統設定（只記變更的設定區塊，不放敏感值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "office-hours" },
-      ip: request.ip,
-    });
+    const result = await updateOfficeHoursFlow(fastify, actorOf(request), data.timezone, data.officeHours as any);
     return reply.send(success(result));
   });
 }

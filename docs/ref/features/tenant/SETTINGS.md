@@ -23,6 +23,17 @@
 
 `settings` 模組在整個 plugin 掛了 `requirePermission("settings.manage")`，所以營業時間、追蹤設定、API 金鑰、CLI 連線、A2A，以及 Chat、Embedding 與自備金鑰的設定，全部需要 `settings.manage`。
 
+營業時間、追蹤設定、API 金鑰與 CLI 連線各有自己的路由檔，由 `settings.routes.ts` 以子 plugin 註冊，所以也套用上面的權限檢查：
+
+| 分頁 | 路由檔 | flow |
+| --- | --- | --- |
+| 營業時間 | `settings/office-hours.routes.ts` | `settings/office-hours.flow.ts` |
+| 追蹤設定 | `settings/tracking-settings.routes.ts` | `settings/tracking-settings.flow.ts` |
+| API 金鑰 | `settings/partner-api-key.routes.ts` | `auth/partner-api-key.flow.ts` |
+| CLI 連線 | `settings/cli-session.routes.ts` | `auth/cli-session.flow.ts` |
+
+這四組路由的每個請求都在 flow 開的一個租戶交易內完成。建立 API 金鑰與 CLI token 時，flow 先在交易外產生並雜湊，再開交易寫入。
+
 租戶層級的設定存在 `TenantSettings`，一個租戶一列。這一列在第一次讀取任何設定時才建立，開通租戶時不會建立。
 
 ## 一般設定
@@ -99,6 +110,8 @@ A2A 橋接讓本系統的 AI agent 接收其他 agent 從 A2A Hub 送來的任�
 ## 稽核
 
 設定頁的修改寫入 `settings.update` 租戶稽核，`payload.section` 記錄是哪一類：`office-hours`、`tracking`、`chat`、`embedding`、`gemini-key`。
+
+營業時間與追蹤設定的稽核和修改在同一個交易寫入：稽核寫入失敗時，修改也不寫入。
 
 API 金鑰與 CLI token 的建立和撤銷**沒有**寫入稽核。這兩種都是長效憑證，事後無法查出是誰、在什麼時候建立或撤銷的，見 `../../system/AUDIT.md` 的 AUD-01。
 

@@ -8,6 +8,14 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **API 文件列出路由檔內註冊的子 plugin**（#337 階段 3 第九批）— 部署時產生 `openapi.json` 的 `openapi-inventory.mjs` 原本只讀 `index.ts` 註冊的路由檔。路由檔內以 `fastify.register()` 掛上的子 plugin 不在文件中，例如平台的 `GET`、`PATCH /api/v1/platform/tenants/:id/ai-privacy`。現在產生器也讀子 plugin：路徑接在外層的前綴後面。外層以 `addHook` 驗證登入，或註冊時傳入含驗證的 guard 時，子 plugin 的路由標示需要登入。
 
+### Changed
+
+- **營業時間、追蹤設定、API 金鑰與 CLI 連線改為入口開交易**（#337 階段 3 第九批）— 這四組設定路由原本把 `request.tenantPrisma` 傳給 service，每個查詢各自一個交易。現在每個請求在 flow 開的一個租戶交易內完成（AGENTS.md 結構規則 2）。
+  - 路由從 `settings.routes.ts` 移到各自的路由檔，由 `settings.routes.ts` 以子 plugin 註冊，權限檢查不變。
+  - 營業時間與追蹤設定的稽核和修改在同一個交易寫入：稽核寫入失敗時，修改也不寫入。原本稽核寫入失敗只記 log，修改照樣寫入。
+  - 建立 API 金鑰與 CLI token 時，先在交易外產生並以 bcrypt 雜湊，再開交易寫入。
+  - CLI 登入與登出（`POST /auth/cli/login`、`/auth/cli/logout`）改以租戶交易寫入 CLI token，不再使用 BYPASSRLS 的連線。驗證金鑰與 token 時還不知道租戶，仍然使用 BYPASSRLS 的連線。
+
 ## [2026-11-02]
 
 ### Added

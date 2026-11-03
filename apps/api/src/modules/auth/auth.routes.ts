@@ -34,11 +34,8 @@ import {
   storePasskeyChallenge,
   takePasskeyChallenge,
 } from './passkey.service.js';
-import {
-  createCliSession,
-  parseCliScopes,
-  revokeCliSession,
-} from './cli-session.service.js';
+import { parseCliScopes } from './cli-session.service.js';
+import { issueCliLoginSessionFlow, revokeCurrentCliSessionFlow } from './cli-session.flow.js';
 import { notFound } from '../../shared/messages/resource.js';
 
 type TokenPayload = FastifyJWT['payload'];
@@ -552,11 +549,11 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     const body = cliLoginRequestSchema.parse(request.body);
     // 與網頁登入共用同一個帳號的失敗計數，改打 CLI 端點也繞不過鎖定
     const agent = await login(fastify.prismaAdmin, body.email, body.password, loginAttempts());
-    const { token, session } = await createCliSession(fastify.prismaAdmin, {
-      tenantId: agent.tenantId,
-      agentId: agent.id,
-      name: body.name ?? body.profile ?? 'Open333 CLI',
-    });
+    const { token, session } = await issueCliLoginSessionFlow(
+      fastify,
+      agent,
+      body.name ?? body.profile ?? 'Open333 CLI',
+    );
 
     return reply.send(
       success({
@@ -588,7 +585,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
   }, async (request, reply) => {
     const session = request.agent.cliSession;
     if (session) {
-      await revokeCliSession(fastify.prismaAdmin, session.id, request.agent.tenantId);
+      await revokeCurrentCliSessionFlow(fastify, request.agent.tenantId, session.id);
     }
     return reply.send(success({ loggedOut: true }));
   });
