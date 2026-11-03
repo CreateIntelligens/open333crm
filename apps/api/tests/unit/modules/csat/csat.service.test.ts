@@ -34,6 +34,7 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
   const order: string[] = [];
   const updateManyCalls: unknown[] = [];
   const messageCreateCalls: unknown[] = [];
+  const failureRecords: string[] = [];
   const db = {
     case: {
       findUnique: async () => ({
@@ -63,12 +64,22 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
         if (messageCreateError) throw messageCreateError;
         return { id: 'msg-1', ...args.data };
       },
+      update: async () => {
+        failureRecords.push('message.update');
+        return {};
+      },
+    },
+    caseEvent: {
+      create: async (args: { data: { eventType: string } }) => {
+        failureRecords.push(`caseEvent:${args.data.eventType}`);
+        return {};
+      },
     },
     conversation: {
       update: async () => ({}),
     },
   };
-  return { db: db as unknown as TenantDb, order, updateManyCalls, messageCreateCalls };
+  return { db: db as unknown as TenantDb, order, updateManyCalls, messageCreateCalls, failureRecords };
 }
 
 test('排程讀取之後，別次執行已經寄出問卷', async () => {
@@ -127,7 +138,7 @@ test('送到客人的渠道失敗', async () => {
   delivered.length = 0;
   delivery.error = new Error('channel unavailable');
   try {
-    const { db, updateManyCalls, messageCreateCalls } = createDb(1);
+    const { db, updateManyCalls, messageCreateCalls, failureRecords } = createDb(1);
 
     const sent = await sendCsatSurvey(db, io, CASE_ID);
 
@@ -135,6 +146,8 @@ test('送到客人的渠道失敗', async () => {
     assert.equal(messageCreateCalls.length, 1);
     assert.equal(updateManyCalls.length, 1);
     assert.equal(delivered.length, 1);
+    // issue #416：問卷訊息標示沒有送出，工單時間軸留一筆紀錄（詳見 csat-delivery.test.ts）
+    assert.deepEqual(failureRecords, ['message.update', 'caseEvent:csat_send_failed']);
   } finally {
     delivery.error = undefined;
   }

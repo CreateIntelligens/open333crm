@@ -84,6 +84,9 @@ function formatEventDescription(
       return `自動指派給 ${payload?.assigneeName || '客服'}`;
     case 'conversation_linked':
       return '關聯了一個對話';
+    // 滿意度問卷送出失敗（issue #416）：系統不會自動重寄
+    case 'csat_send_failed':
+      return `滿意度問卷沒有送出，客人沒有收到${payload?.reason ? `：${payload.reason}` : ''}`;
     default:
       return eventType;
   }
@@ -185,6 +188,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
     switch (type) {
       case 'escalated':
       case 'closed':
+      case 'csat_send_failed':
         return 'bg-destructive-subtle text-destructive';
       case 'resolved':
         return 'bg-success-subtle text-success';

@@ -56,7 +56,7 @@
 | HC-PLATFORM-TENANTS-01 | [AUTH-11](../../system/AUDIT.md#auth-11) | #410（已修正） | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
 | HC-PLATFORM-TRIALS-01 | [TRIAL-05](../../system/AUDIT.md#trial-05) | 已修正（本 PR） | 同一 email 待驗證時再申請一次，會覆寫密碼，申請人點信後站台以他人密碼開通 | 本機實測；UAT 的 `trial.enabled` 為 true，正式環境可被利用。修正（#407，change `trial-set-password-after-verify`）：申請不收密碼，點驗證連結後在驗證頁設定密碼才開通；待驗證再申請不改資料、走重寄節流（同修 TRIAL-06）。feature 測試涵蓋搶先申請與覆寫 |
 | HC-PLATFORM-PLANS-01 | [PLAN-14](../../system/AUDIT.md#plan-14) | #411 | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容相同（2026-10-30 平台 API 唯讀確認） |
-| HC-LINE-01 | [CASE-03](../../system/AUDIT.md#case-03) | #416 | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗 |
+| HC-LINE-01 | CASE-03（已修正並從 AUDIT 移除） | #416，已修正（change `fix-csat-line-flex-416`） | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗。修正：LINE 外掛補回 `flex` 分支，不認得的 `contentType` 回失敗並帶原因；問卷送不出時問卷卡片顯示「沒有送出」、工單時間軸寫 `csat_send_failed`，不自動重寄。unit 測試涵蓋，真機待驗 |
 | HC-KNOWLEDGE-01 | [KB-01](../../system/AUDIT.md#kb-01) | #419 | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
 | HC-KNOWLEDGE-02 | [KB-02](../../system/AUDIT.md#kb-02) | #420 | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
 | HC-KNOWLEDGE-03 | [KB-03](../../system/AUDIT.md#kb-03) | #421 | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |

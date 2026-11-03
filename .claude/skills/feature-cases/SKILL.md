@@ -83,7 +83,7 @@ description: >
 - 「被指派的人說打開是 404／列表看不到」：負責人沒有該渠道的授權。手動指派不檢查（HC-CASES-04），查 `agent_channel_accesses` 與團隊的 `channel_team_accesses`。
 - 「指派了卻沒收到通知」：建立時帶負責人不發 `case.assigned`（`case.flow.ts` 的 `afterCaseCreated`）；升級時改派也不發。只有 `/assign` 與自動指派會通知。
 - 「自動指派沒反應」：畫面送不出 `teamId`（HC-CASES-06）；有團隊時看候選條件（`role=AGENT`、啟用、渠道授權 `reply_only/full`），全部不符就只寫 log「No available agent」。輪流位置存在行程記憶體，重啟或多行程各自從頭。
-- 「客人沒收到滿意度調查」：工單要有關聯對話（列表頁建的工單沒有）；只有轉成 `RESOLVED` 才寄，直接關閉不寄；非 LINE 渠道客人回不了（CASE-02）；投遞失敗只寫 log，`csatSentAt` 已寫入不會重寄。
+- 「客人沒收到滿意度調查」：工單要有關聯對話（列表頁建的工單沒有）；只有轉成 `RESOLVED` 才寄，直接關閉不寄；非 LINE 渠道客人回不了（CASE-02）。投遞失敗時問卷卡片顯示「這份問卷沒有送出」與原因（訊息 `metadata.deliveryFailed`／`deliveryError`），工單時間軸寫 `csat_send_failed`（#416）；`csatSentAt` 已寫入，不會重寄（重寄的產品決定見 #339）。
 - 「首次回應一直未達／已達」：後端看 `Case.firstResponseAt`（只在關聯對話的客服訊息寫入，SLA-05），詳情頁的「已達／未達」卻是用時間軸的第一個客服事件算（`apps/web/src/components/case/CaseDetail.tsx`，HC-CASES-11）。
 - 「統計卡數字跟列表對不上」：統計不套渠道可見範圍（RBAC-04）；「即將到期」統計 30 分鐘、倒數元件 120 分鐘（HC-CASES-15）；「今日解決」以 API 行程時區切日。
 - 「改分類被 400」：建立只收 `CASE_CATEGORIES`；舊工單更新時另收 `LEGACY_CASE_CATEGORIES`（`case.routes.ts`）。

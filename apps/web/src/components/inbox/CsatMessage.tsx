@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Star } from 'lucide-react';
+import { AlertCircle, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -11,9 +11,11 @@ interface CsatMessageProps {
   readonly?: boolean;
   caseId?: string;
   onRate?: (score: number) => void;
+  /** 問卷沒有送到客人時的原因；undefined 表示沒有失敗，空字串表示失敗但沒有原因 */
+  deliveryError?: string;
 }
 
-export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: CsatMessageProps) {
+export function CsatMessage({ score: initialScore, readonly, caseId, onRate, deliveryError }: CsatMessageProps) {
   const [hovered, setHovered] = useState(0);
   const [selected, setSelected] = useState(initialScore || 0);
   const [submitted, setSubmitted] = useState(!!initialScore);
@@ -71,6 +73,15 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: C
         </div>
         {displayScore > 0 && (
           <p className="mt-1 text-xs text-muted-foreground">{labels[displayScore]}</p>
+        )}
+        {deliveryError !== undefined && (
+          <p role="alert" className="mt-2 flex max-w-xs items-start gap-1 text-left text-xs text-destructive">
+            <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className="break-words">
+              這份問卷沒有送出，客人並未收到
+              {deliveryError && <span className="opacity-90">：{deliveryError}</span>}
+            </span>
+          </p>
         )}
       </div>
     </div>

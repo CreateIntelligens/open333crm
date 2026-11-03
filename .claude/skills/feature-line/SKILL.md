@@ -67,7 +67,7 @@ description: >
 - **驗簽在回應前**：LINE 路由先 `verifyWebhookRequest` 再回 200，簽章錯回 403（規格 line-webhook-events）；事件處理在回應後背景執行。webhook 的 content-type parser 保留原始 body（`__rawBody`），改 body 解析會讓驗簽全失敗。
 - LINE 驗簽用 `channelSecret`；FB／IG 用 `appSecret`。驗簽字串比較用 `signaturesMatch`（固定時間）。
 - **租戶由 channelId 反查**，webhook 一律 `prismaAdmin`（無 RLS），每個查詢都要自帶 `tenantId` 或渠道條件。
-- `buildLineMessage` 不認得的 `contentType` 會**靜默變成空白文字訊息**（LINE 拒收）。新增要送到 LINE 的訊息型別，一定要加 case 並寫測試；目前滿意度調查用的 `'flex'` 就沒有 case（健檢 HC-LINE-01）。
+- `buildLineMessage` 不認得的 `contentType` 會丟 `LineMessageBuildError`，`sendMessage` 回 `{ success: false, error }`、不呼叫 LINE（#416；以前靜默變成空白文字被 LINE 拒收）。認得的有：`text`、`quick_reply`、`flex`（滿意度問卷，需 `altText` 與 `contents`，舊資料的 `flexJson`／`text` 也接受）、`image`、`video`、`file`、`audio`、`location`、`sticker` 與素材的 `line_*`。新增要送到 LINE 的訊息型別，一定要加 case 並寫測試；FB 素材（`fb_*`）送到 LINE 會失敗。
 - `LinePlugin.sendMessage` 失敗回 `{success:false}` 不拋錯；呼叫端要檢查回傳值，否則失敗只剩 log（記憶規則「失敗不可以只寫 log」）。
 - LINE 一次最多 5 則訊息、multicast 每批 ≤ 500（群發用 499）、快速回覆最多 13 顆、標籤 20 字。
 - reply token：`selectSafeLineStrategy` 只在收到後 30 秒內用 reply，否則 push；reply 失敗補一次 push（規格 line-safe-reply）。`message.received` 事件帶 `replyToken`，對外 webhook 也會收到（AUDIT HOOK-01）。
@@ -95,7 +95,7 @@ description: >
 
 ## 常見 bug 從哪裡查
 - 「LINE 完全收不到訊息」：先看 API log 的 `[Webhook] Signature verification failed`（Channel Secret 填錯；手冊說測試連線只驗 Access Token）、`Channel not found or inactive`、`Tenant is disabled`；渠道有沒有設 `downstreamWebhook` 的 `immediate` 模式（`[DownstreamWebhook] Blocked SSRF target`）。
-- 「LINE 滿意度調查客人沒收到」：`apps/api/src/modules/csat/csat.service.ts` 送 `contentType:'flex'`，`buildLineMessage` 沒有這個 case，變成空白文字被 LINE 拒收，結果沒人檢查（HC-LINE-01）。
+- 「LINE 滿意度調查客人沒收到」：先看收件匣的問卷卡片有沒有「這份問卷沒有送出」與原因，或工單時間軸的「滿意度問卷沒有送出」（`case_events.eventType = 'csat_send_failed'`，原因在 `payload.reason`）。常見原因：渠道停用、找不到客人的 LINE 帳號、LINE API 拒收。系統不自動重寄（`csatSentAt` 保留）。#416 以前 `flex` 沒有 case，問卷變空白文字被拒收（HC-LINE-01）。
 - 「同一個點擊出現兩次」：LINE 重送事件，postback 沒有訊息 id 不去重（HC-LINE-02）。
 - 「客人收回的訊息還在」：`unsend` 只存成一則「[不支援的訊息類型]」（HC-LINE-03）。
 - 「圖文選單發布失敗」：錯誤詳情在回應的 `details.upstream`（畫面只顯示「請確認版型與渠道設定」）；401 是 Access Token 錯，400 多半是圖片尺寸或區域動作。`error` 狀態的選單到編輯頁按「發布到 LINE」重試，或複製一份改。

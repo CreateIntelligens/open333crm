@@ -1088,7 +1088,7 @@
         },
         {
           "domain": "cases",
-          "why": "滿意度調查在 LINE 渠道以 Flex postback 收分數（目前送不出，見健檢 HC-LINE-01）"
+          "why": "滿意度調查在 LINE 渠道以 Flex postback 收分數（LINE 外掛的 flex 分支，#416 修正）"
         },
         {
           "domain": "shortlinks",
