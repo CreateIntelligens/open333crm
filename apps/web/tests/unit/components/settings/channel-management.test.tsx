@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-const { api, channelsState, mutate } = vi.hoisted(() => ({
+const { api, channelsState, mutate, deniedPermissions } = vi.hoisted(() => ({
   api: {
     get: vi.fn(async (..._args: unknown[]) => ({ data: { data: {} } })),
     post: vi.fn(async (..._args: unknown[]) => ({ data: { data: [] } })),
@@ -16,9 +16,10 @@ const { api, channelsState, mutate } = vi.hoisted(() => ({
   },
   channelsState: { channels: [] as unknown[] },
   mutate: vi.fn(),
+  deniedPermissions: new Set<string>(),
 }));
 vi.mock('#src/lib/api.js', () => ({ default: api }));
-vi.mock('#src/providers/AuthProvider.js', () => ({ usePermission: () => true }));
+vi.mock('#src/providers/AuthProvider.js', () => ({ usePermission: (code: string) => !deniedPermissions.has(code) }));
 vi.mock('#src/hooks/useChannels.js', () => ({
   useChannels: () => ({ channels: channelsState.channels, isLoading: false, error: null, mutate }),
 }));
@@ -39,6 +40,7 @@ const channel = (id: string, channelType: string, isActive = true) => ({
 
 beforeEach(() => {
   channelsState.channels = [channel('a', 'LINE'), channel('b', 'LINE')];
+  deniedPermissions.clear();
   api.get.mockClear();
   api.post.mockClear();
   api.patch.mockClear();
@@ -103,4 +105,12 @@ test('從卡片停用渠道', async () => {
     const call = api.patch.mock.calls.find(([url]) => url === '/channels/z');
     assert.deepEqual(call?.[1], { isActive: true });
   });
+});
+
+test('分店成員看不到套用欄位：沒有 channel.view_all 時不顯示 Webhook 公開網址的套用', () => {
+  // 會改寫全租戶每個渠道，後端只允許總店（issue #408）
+  deniedPermissions.add('channel.view_all');
+  render(<ChannelManagement />);
+  assert.ok(screen.queryByRole('button', { name: '套用' }) === null);
+  assert.ok(screen.queryByPlaceholderText(/^例：https:\/\//) === null);
 });

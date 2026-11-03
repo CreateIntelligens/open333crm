@@ -36,7 +36,8 @@ const createRole = (slug: string, codes: string[]) =>
       permissions: { create: codes.map((permissionCode) => ({ permissionCode })) },
     },
   });
-const updateRole = await createRole('update', ['channel.view', 'channel.update']);
+// channel.view_all：測的是 LIFF 測試流程，不是渠道可見範圍（#408 起單筆渠道路由檢查可見範圍）
+const updateRole = await createRole('update', ['channel.view', 'channel.update', 'channel.view_all']);
 const viewRole = await createRole('view', ['channel.view']);
 
 const createChannel = (tenantId: string, channelType: 'LINE' | 'FB', slug: string, settings: Record<string, unknown>) =>

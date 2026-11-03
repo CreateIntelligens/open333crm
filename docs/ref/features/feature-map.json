@@ -1995,6 +1995,7 @@
         "apps/api/tests/unit/modules/webhook/threads-webhook.test.ts",
         "apps/api/tests/feature/modules/channel/channel-external-account.test.ts",
         "apps/api/tests/feature/modules/channel/channel-status-guard.test.ts",
+        "apps/api/tests/feature/modules/channel/channel-single-route-visibility.test.ts",
         "apps/api/tests/feature/modules/channel/channel-team-access.test.ts",
         "apps/api/tests/feature/modules/channel/meta-token-health.test.ts",
         "apps/api/tests/feature/modules/meta-connect/**",
