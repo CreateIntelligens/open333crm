@@ -97,6 +97,42 @@ function authGuardNames(source) {
   return authGuards;
 }
 
+/** 從 `(` 之後讀到配對的 `)`，回傳中間的文字。略過字串與註解裡的括號 */
+function readCallArguments(source, start) {
+  let depth = 1;
+  let quote = '';
+  let escaped = false;
+  for (let cursor = start; cursor < source.length; cursor += 1) {
+    const char = source[cursor];
+    const next = source[cursor + 1];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      cursor = source.indexOf('\n', cursor);
+      if (cursor < 0) break;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      cursor = source.indexOf('*/', cursor + 2);
+      if (cursor < 0) break;
+      cursor += 1;
+      continue;
+    }
+    if (char === '(' || char === '{' || char === '[') depth += 1;
+    if (char === ')' || char === '}' || char === ']') depth -= 1;
+    if (depth === 0) return source.slice(start, cursor);
+  }
+  return '';
+}
+
 /**
  * 路由檔內以 `fastify.register(x)` 掛上的子 plugin：只算 x 是 import 進來的路由檔。
  * options 可以是 `{ prefix: '/p' }`，或含驗證的 guard（變數或物件字面值）。
@@ -105,10 +141,17 @@ function nestedRegistrations(file, contents) {
   const imports = parseImports(contents);
   const guards = authGuardNames(contents);
   const children = [];
-  for (const match of contents.matchAll(/\b(?:fastify|app)\.register\(\s*(\w+)\s*(?:,\s*(\{[^}]*\}|\w+))?\s*\)/g)) {
-    const [, symbol, options = ''] = match;
-    const routeFile = imports.get(symbol);
+  for (const match of contents.matchAll(/\b(?:fastify|app)\.register\(/g)) {
+    // 以括號配對讀出整個參數，結尾逗號與斷行都讀得到
+    const args = readCallArguments(contents, match.index + match[0].length);
+    const symbol = args.match(/^\s*(\w+)\s*(?:,|$)/)?.[1];
+    const routeFile = symbol ? imports.get(symbol) : undefined;
     if (!routeFile) continue;
+    const options = args.slice(args.indexOf(symbol) + symbol.length).replace(/^\s*,\s*/, '').replace(/\s*,?\s*$/, '');
+    // 讀不懂的 options（例如函式呼叫）丟錯：靜默略過會讓 API 文件漏掉可以呼叫的路由
+    if (options && !/^\w+$/.test(options) && !(options.startsWith('{') && options.endsWith('}'))) {
+      throw new Error(`Cannot parse the options of register(${symbol}, …) in ${file}`);
+    }
     children.push({
       file: resolveRouteFile(file, routeFile),
       prefix: options.match(/prefix\s*:\s*['"]([^'"]*)['"]/)?.[1] ?? '',

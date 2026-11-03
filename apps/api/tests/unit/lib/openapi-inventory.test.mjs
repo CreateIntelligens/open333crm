@@ -100,3 +100,47 @@ describe('路由檔內註冊的子 plugin', () => {
     assert.equal(Object.hasOwn(document.paths['/api/v1/platform/status'].get, 'security'), false);
   });
 });
+
+// review-loop 第 2 輪：結尾逗號或斷行的 register 原本不符合 regex，子路由被靜默略過
+describe('子 plugin 的註冊寫法', () => {
+  const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../src');
+  const apiSource = `
+    import settingsRoutes from './modules/settings/settings.routes.js';
+    await app.register(settingsRoutes, { prefix: '/api/v1/settings' });
+  `;
+  const child = (file, path) => [resolve(sourceRoot, `modules/settings/${file}`), `fastify.get("${path}", async () => ({}));`];
+
+  it('結尾逗號與斷行的 register 也讀得到', () => {
+    const routeSources = new Map([
+      [resolve(sourceRoot, 'modules/settings/settings.routes.ts'), `
+        import aRoutes from "./a.routes.js";
+        import bRoutes from "./b.routes.js";
+        import cRoutes from "./c.routes.js";
+        await fastify.register(aRoutes,);
+        await fastify.register(bRoutes, {},);
+        await fastify.register(
+          cRoutes,
+          { prefix: "/c" },
+        );
+      `],
+      child('a.routes.ts', '/a'),
+      child('b.routes.ts', '/b'),
+      child('c.routes.ts', '/x'),
+    ]);
+    const document = buildOpenApiDocument(collectOpenApiRoutes(apiSource, routeSources));
+    assert.ok(document.paths['/api/v1/settings/a']?.get);
+    assert.ok(document.paths['/api/v1/settings/b']?.get);
+    assert.ok(document.paths['/api/v1/settings/c/x']?.get);
+  });
+
+  it('解析不出來的註冊丟出錯誤，不靜默略過', () => {
+    const routeSources = new Map([
+      [resolve(sourceRoot, 'modules/settings/settings.routes.ts'), `
+        import aRoutes from "./a.routes.js";
+        await fastify.register(aRoutes, buildOptions("/a"));
+      `],
+      child('a.routes.ts', '/a'),
+    ]);
+    assert.throws(() => collectOpenApiRoutes(apiSource, routeSources), /aRoutes/);
+  });
+});
