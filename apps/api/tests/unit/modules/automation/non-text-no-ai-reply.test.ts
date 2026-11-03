@@ -39,7 +39,8 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({ deliverToC
 
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
 
-const conversation = { id: 'conv-1', status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null as string | null };
+// 真實的 findFirst 回整列，含 updatedAt；轉接後推 conversation.updated 會讀它
+const conversation = { id: 'conv-1', status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null as string | null, updatedAt: new Date() };
 
 const prisma = {
   conversation: {
