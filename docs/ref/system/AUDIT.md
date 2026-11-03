@@ -79,7 +79,6 @@
 | [SEC-02](#sec-02) | 帳號與登入 | P2 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
-| [SEC-07](#sec-07) | 帳號與登入 | P2 | 未處理 | CLI token 與 API 金鑰的有效天數沒有上限，可以建立到期日在 2300 年的憑證；更大的值回 500 | 執行時確認 |
 | [SEC-08](#sec-08) | 帳號與登入 | P2 | 未處理 | 圖文選單發布時伺服器直接請求背景圖網址，不擋內網，可用來探測內網服務 | 執行時確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
@@ -117,8 +116,6 @@
 | [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [SLA-06](#sla-06) | SLA | P2 | 未處理 | SLA 以日曆時間連續計算，不扣營業時間、假日，也不在「待處理」時暫停；非營業時間照樣逾時、通知與升級 | 執行時確認 |
 | [SLA-07](#sla-07) | SLA | P2 | 未處理 | 工單優先級改變後不重新套用 SLA 政策：升成緊急的工單仍以原優先級的時限計時，逾時升級後也沒有新期限 | 執行時確認 |
-| [HOURS-01](#hours-01) | SLA | P1 | 未處理 | 營業時間設定為 `{}` 的租戶，在營業時間頁按「啟用」整頁崩潰，無法從畫面啟用營業時間 | 執行時確認 |
-| [HOURS-02](#hours-02) | SLA | P2 | 未處理 | 營業時間不驗證時段與時區：跨午夜時段讓整天都判定為非營業；不合法的時區讓自動回覆整個失效 | 執行時確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
 | [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 未處理 | 對話轉接真人時，主管與管理員收不到通知 | 靜態確認 |
@@ -179,7 +176,7 @@
 | [CHAN-09](#chan-09) | 渠道、稽核與資料權利 | P2 | 未處理 | 下游轉發設為立即模式時，目標網址被 SSRF 防護擋下，訊息既不轉發也不進 CRM，完全消失 | 執行時確認 |
 | [CHAN-10](#chan-10) | 渠道、稽核與資料權利 | P2 | 未處理 | 圖文選單綁定受眾的背景工作失敗時不重試、不通知，畫面只顯示「已送出」 | 執行時確認 |
 | [CHAN-11](#chan-11) | 渠道、稽核與資料權利 | P2 | 未處理 | 圖文選單的區域動作切成「日期時間選擇」時，模式下拉顯示有值卻沒有寫入，儲存回 400 | 執行時確認 |
-| [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更、優惠券與行銷、匯出下載、對外 Webhook 訂閱等操作 | 執行時確認 |
+| [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、渠道憑證變更、優惠券與行銷、匯出下載、對外 Webhook 訂閱等操作 | 執行時確認 |
 | [AUD-03](#aud-03) | 渠道、稽核與資料權利 | P1 | 未處理 | 永久刪除成員後，他在稽核紀錄裡的操作都變成沒有操作者，無法再查出是誰做的 | 執行時確認 |
 | [AUD-04](#aud-04) | 渠道、稽核與資料權利 | P2 | 未處理 | `agent.create` 稽核只記舊的角色列舉，不記實際指派的角色與可見渠道 | 執行時確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email、outbox 與 Webhook 送出紀錄兩種模式都保留；刪除後解除合併會讓被併入的人重新出現 | 執行時確認 |
@@ -869,13 +866,6 @@ AUTH-02 記錄的是停用租戶後既有的連線與憑證；這一項是進站
 帳號被鎖時，`login()` 會寫一筆 warn log（`[Auth] 登入因失敗次數過多被擋`，帶 email 雜湊），可以從 log 發現有人反覆鎖同一個帳號。
 
 **修正方向**：`login-attempts.ts` 的註解建議改以 email 加來源 IP 計數。改用這個鍵之後，攻擊者的失敗嘗試只鎖住攻擊者自己的 IP，成員從其他 IP 仍可登入。代價是：從多個 IP 分散猜同一個帳號時，每個 IP 各自計數，只剩每個 IP 的速率限制能擋。另一個做法是保留 email 計數，但鎖定期間改為要求額外驗證，而不是直接拒絕。兩種做法都會改變主規格規定的行為，修正的 PR 要以 MODIFIED 修改「登入失敗達上限時鎖定帳號」。
-
-<a id="sec-07"></a>
-### SEC-07：CLI token 與 API 金鑰的有效天數沒有上限
-
-`settings.routes.ts` 建立 CLI token 與 API 金鑰時，`expiresInDays` 只驗是正整數，沒有上限。CLI 頁寫「每個 Token 都有到期日」，但 API 接受 100000 天（到期日 2300 年）；3650000 天讓日期溢位，回 500 `INTERNAL_ERROR`。scope 不受限的問題見 RBAC-02。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SETTINGS-06（[SETTINGS 健檢](../features/health/SETTINGS.md)）。證據：`apps/api/src/modules/settings/settings.routes.ts:397-399, 468-470, 533, 579`；`POST /settings/cli-sessions {expiresInDays:100000}` 回 201、`expiresAt: 2300-08-15`，`3650000` 回 500（健檢實測，測試資料已撤銷）。
 
 <a id="sec-08"></a>
 ### SEC-08：圖文選單的背景圖網址可以打內網
@@ -1594,31 +1584,6 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SLA-02（[SLA 健檢](../features/health/SLA.md)）。證據：`apps/api/src/modules/case/case.service.ts:861-866`、`apps/workers/src/handlers/sla.handler.ts:457`；MEDIUM 工單改成 HIGH 後 `slaPolicy`、`slaDueAt` 不變（本機健檢實測）；UAT Demo 只讀查詢。
 
-<a id="hours-01"></a>
-### HOURS-01：營業時間設定為空物件時，營業時間頁崩潰
-
-`TenantSettings` 由營業時間以外的路徑建立時（追蹤設定、跨渠道綁定、AI 設定，或第一次收文字訊息時情緒分析呼叫 `getChatSettings()`），`officeHours` 是 schema 預設的 `{}`。
-
-- `office-hours.service.ts` 的 `getOfficeHours()` 只在沒有這一列時給預設值；`{}` 是 truthy，直接回傳。
-- 前端 `data.officeHours || DEFAULT_CONFIG` 也不會替換。
-
-結果是在營業時間頁按「啟用」開關時整頁崩潰（`Cannot read properties of undefined (reading 'mon')`）；不按開關直接儲存則回 400。收過訊息的租戶多半是這種狀態，因此這類租戶無法從畫面啟用營業時間。UAT Demo 租戶已有完整設定，不受影響；其他租戶沒有查。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SETTINGS-01（[SETTINGS 健檢](../features/health/SETTINGS.md)）。證據：`apps/api/src/modules/settings/office-hours.service.ts:69`、`apps/web/src/components/settings/OfficeHoursSettings.tsx:64, 192-194`；本機 Demo 租戶 `officeHours` 為 `{}`，點開關後出現「Application error: a client-side exception」（健檢實測）。
-
-<a id="hours-02"></a>
-### HOURS-02：營業時間不驗證時段與時區
-
-`PUT /settings/office-hours` 不驗證內容：
-
-| 輸入 | 結果 |
-| --- | --- |
-| 結束早於開始（跨午夜，例如 13:00–02:00） | 可以儲存，實際整天都判定為非營業，營業時間內也送出非營業時間自動回覆。手冊已提醒不支援跨午夜，但畫面與後端都不擋 |
-| `99:99`、`24:61`、假日 `abc`、`2026-13-45` | 都接受 |
-| 不合法的 `timezone`（例如 `Mars/Base`） | 每則進站訊息在 `Intl.DateTimeFormat` 拋 `RangeError`，`sendOutsideHoursAutoReply()` 只寫 error log，自動回覆整個失效，後台沒有任何提示 |
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SETTINGS-03（[SETTINGS 健檢](../features/health/SETTINGS.md)）、HC-SETTINGS-04（[SETTINGS 健檢](../features/health/SETTINGS.md)）。證據：`apps/api/src/modules/settings/settings.routes.ts:57-82`、`office-hours.service.ts:118, 146-151`、`apps/api/src/modules/webhook/inbound-side-effects.ts:216-217`；週五 13:32 設 `fri: 13:00–02:00` 後 WebChat 收到自動回覆；`timezone: "Mars/Base"` 後沒有自動回覆、log 有 `Invalid time zone specified`（健檢實測）。
-
 ## 對話、工單與自動化
 
 功能說明見[收件匣與對話](../features/tenant/INBOX.md)、[工單](../features/tenant/CASES.md)與[自動化](../features/tenant/AUTOMATION.md)。
@@ -2295,19 +2260,18 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作
 
-租戶稽核涵蓋成員、角色的建立改名刪除與權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。`role`、`agent`（change `migrate-role-agent-tenant-ctx`）與 `case`、`contact`、`webtalk`（#337 階段 3）以 `recordTenantAudit()` 在交易內寫稽核，其他模組仍呼叫 `writeTenantAudit()`。下列操作沒有寫稽核：
+租戶稽核涵蓋成員、角色的建立改名刪除與權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。`role`、`agent`（change `migrate-role-agent-tenant-ctx`）與 `case`、`contact`、`webtalk`、`settings` 的營業時間與追蹤設定、API 金鑰與 CLI token（#337 階段 3）以 `recordTenantAudit()` 在交易內寫稽核，其他模組仍呼叫 `writeTenantAudit()`。下列操作沒有寫稽核：
 
 | 範圍 | 沒有稽核的操作 |
 | --- | --- |
 | 認證 | 登入成功與失敗、Passkey 的註冊與刪除 |
-| 長效憑證 | API 金鑰的建立與撤銷、CLI token 的建立（`/settings/cli-sessions`、`/auth/cli/login`）與撤銷 |
 | 渠道 | 修改渠道，包括更換憑證（`PATCH /channels/:id`） |
 | 業務 | 送出群發、自動化規則的增刪改、刪除知識庫文章、刪除標籤 |
 | 行銷與優惠券（2026-10-30 健檢） | 優惠券的建立、發布、暫停、恢復、複製、刪除；群發與分群的建立。`coupon`、`marketing` 模組都沒有呼叫稽核函式 |
 | 匯出與對外 Webhook（2026-10-30 健檢） | 下載匯出檔（只把 `downloadCount` 加一，同租戶持 `data.export` 與 `channel.view_all` 的成員都能下載別人發起的匯出，規格明定）；對外 Webhook 訂閱的建立、修改、刪除與測試送出。訂閱 `message.received` 就能把客人訊息持續送到外部網址（HOOK-01），刪除又是硬刪除，連 `WebhookDelivery` 一起刪掉，事後查不到曾送到哪個網址 |
 | 其他敏感操作（2026-10-30 健檢） | 修改聯絡人的 email、電話；門市帳號的建立、重設密碼、強制登出、刪除（`store.manage`）；會員綁定設定與手動綁定、解除；SLA 政策的增刪改 |
 
-長效憑證與渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候建立了一把能長期存取租戶資料的金鑰。#408 之前渠道憑證可以被看不到該渠道的成員更換，現在要對該渠道有 `full` 層級。稽核紀錄失去操作者的問題見 AUD-03、AUD-04。
+渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候更換了渠道的憑證。#408 之前渠道憑證可以被看不到該渠道的成員更換，現在要對該渠道有 `full` 層級。API 金鑰與 CLI token 的建立與撤銷已經寫稽核（change `settings-input-validation-and-credential-audit`）。稽核紀錄失去操作者的問題見 AUD-03、AUD-04。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-14（[MARKETING 健檢](../features/health/MARKETING.md)）、HC-GOVERNANCE-03（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-04（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-09（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）。證據：優惠券與行銷操作、下載匯出檔、Webhook 訂閱的建立修改刪除、修改聯絡人 email 與電話之後 `tenant_audit_logs` 沒有新紀錄（健檢實測）；門市帳號、會員綁定、SLA 政策為讀程式，例如 `apps/api/src/modules/webhook-subscriptions/webhook-subscription.routes.ts:48, 58, 68, 86`、`apps/api/src/modules/data-export/data-export.flow.ts:62-69`、`apps/api/src/modules/store/store.routes.ts:56-100`。
 

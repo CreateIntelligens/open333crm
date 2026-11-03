@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { CliSession, Prisma, PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { logger } from '@open333crm/core';
 
@@ -15,17 +15,21 @@ export const CLI_APIS_SCOPE = 'cli:apis';
 export const CLI_ANALYTICS_READ_SCOPE = 'cli:analytics:read';
 export const DEFAULT_CLI_SCOPES = [CLI_STATUS_SCOPE, CLI_APIS_SCOPE, CLI_ANALYTICS_READ_SCOPE] as const;
 
+/** 新 token 的明文與要存的欄位。由 generateCliToken() 在交易外產生 */
+export interface GeneratedCliToken {
+  /** 明文只在建立時回傳一次，不寫入資料庫 */
+  token: string;
+  tokenHash: string;
+  tokenPrefix: string;
+  tokenSuffix: string;
+}
+
 export interface CreateCliSessionInput {
-  tenantId: string;
   agentId: string;
   name: string;
   scopes?: string[];
   expiresAt?: Date;
-}
-
-export interface CreateCliSessionResult {
-  token: string;
-  session: CliSession;
+  token: GeneratedCliToken;
 }
 
 export type VerifyCliSessionResult =
@@ -65,34 +69,44 @@ export function hasCliScope(scopes: string[], requiredScope: string): boolean {
   return scopes.includes(requiredScope);
 }
 
-export async function createCliSession(
-  prisma: TenantDb,
-  input: CreateCliSessionInput,
-): Promise<CreateCliSessionResult> {
+/**
+ * 產生 token 並以 bcrypt 雜湊。bcrypt 很吃 CPU，呼叫端在交易外執行（AGENTS.md 結構規則 2）。
+ */
+export async function generateCliToken(): Promise<GeneratedCliToken> {
   const random = randomBytes(TOKEN_RANDOM_BYTES).toString('hex');
   const token = `${TOKEN_PREFIX}${random}`;
-  const tokenHash = await hashPassword(token);
-  const { tokenPrefix, tokenSuffix } = visibleParts(random);
-  const scopes = input.scopes ?? [...DEFAULT_CLI_SCOPES];
+  return { token, tokenHash: await hashPassword(token), ...visibleParts(random) };
+}
 
-  const session = await prisma.cliSession.create({
+/** 寫入 generateCliToken() 產生的 token。CLI 登入與設定頁共用 */
+export async function createCliSession(ctx: TenantCtx, input: CreateCliSessionInput): Promise<CliSession> {
+  const scopes = input.scopes ?? [...DEFAULT_CLI_SCOPES];
+  return ctx.tx.cliSession.create({
     data: {
-      tenantId: input.tenantId,
+      tenantId: ctx.tenantId,
       agentId: input.agentId,
       name: input.name,
-      tokenHash,
-      tokenPrefix,
-      tokenSuffix,
+      tokenHash: input.token.tokenHash,
+      tokenPrefix: input.token.tokenPrefix,
+      tokenSuffix: input.token.tokenSuffix,
       scopes: scopes as unknown as Prisma.InputJsonValue,
       expiresAt: input.expiresAt ?? defaultExpiry(),
     },
   });
+}
 
-  return { token, session };
+/** 租戶內所有成員還沒有撤銷的 token，由新到舊 */
+export async function listCliSessions(ctx: TenantCtx) {
+  return ctx.tx.cliSession.findMany({
+    where: { tenantId: ctx.tenantId, revokedAt: null },
+    include: { agent: { select: { id: true, name: true, email: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
 }
 
 export async function verifyCliSession(
-  prisma: TenantDb,
+  // 驗證時還不知道租戶：auth.plugin 以 prismaAdmin（BYPASSRLS）依前綴查詢
+  prisma: PrismaClient,
   rawToken: string,
 ): Promise<VerifyCliSessionResult> {
   if (!rawToken.startsWith(TOKEN_PREFIX)) {
@@ -148,7 +162,7 @@ export async function verifyCliSession(
   return { ok: false, reason: 'CLI 權杖無效，請重新執行 open333 login' };
 }
 
-export function touchCliSessionLastUsedAt(prisma: TenantDb, id: string): void {
+export function touchCliSessionLastUsedAt(prisma: PrismaClient, id: string): void {
   prisma.cliSession
     .update({ where: { id }, data: { lastUsedAt: new Date() } })
     .catch((err) =>
@@ -156,13 +170,12 @@ export function touchCliSessionLastUsedAt(prisma: TenantDb, id: string): void {
     );
 }
 
-export async function revokeCliSession(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-): Promise<void> {
-  await prisma.cliSession.updateMany({
-    where: { id, tenantId },
+/** 回傳撤銷的筆數：0 代表 token 不存在、屬於另一個租戶，或已經撤銷 */
+export async function revokeCliSession(ctx: TenantCtx, id: string): Promise<number> {
+  // 已經撤銷的不再更新：保留原本的撤銷時間，也不重複寫稽核
+  const { count } = await ctx.tx.cliSession.updateMany({
+    where: { id, tenantId: ctx.tenantId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+  return count;
 }
