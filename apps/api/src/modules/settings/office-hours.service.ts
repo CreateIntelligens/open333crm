@@ -5,6 +5,7 @@
  * helpers to check if current time is within office hours.
  */
 
+import { createOrFindExisting } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 export interface DaySchedule {
@@ -45,23 +46,24 @@ const DEFAULT_OFFICE_HOURS: OfficeHoursConfig = {
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 /**
- * Get office hours settings for a tenant (upsert if not exists).
+ * Get office hours settings for a tenant. 租戶還沒有設定列時建立一列；
+ * 同時有另一個請求建立時，改用對方建立的那一列（createOrFindExisting）。
  */
 export async function getOfficeHours(
   ctx: TenantCtx,
 ): Promise<{ timezone: string; officeHours: OfficeHoursConfig }> {
-  let settings = await ctx.tx.tenantSettings.findUnique({
-    where: { tenantId: ctx.tenantId },
-  });
+  const find = () => ctx.tx.tenantSettings.findUnique({ where: { tenantId: ctx.tenantId } });
+  let settings = await find();
 
   if (!settings) {
-    settings = await ctx.tx.tenantSettings.create({
-      data: {
-        tenantId: ctx.tenantId,
-        timezone: 'Asia/Taipei',
-        officeHours: DEFAULT_OFFICE_HOURS as any,
-      },
-    });
+    ({ row: settings } = await createOrFindExisting(
+      () =>
+        ctx.tx.tenantSettings.createManyAndReturn({
+          data: [{ tenantId: ctx.tenantId, timezone: 'Asia/Taipei', officeHours: DEFAULT_OFFICE_HOURS as any }],
+          skipDuplicates: true,
+        }),
+      find,
+    ));
   }
 
   const officeHours = (settings.officeHours as unknown as OfficeHoursConfig) || DEFAULT_OFFICE_HOURS;

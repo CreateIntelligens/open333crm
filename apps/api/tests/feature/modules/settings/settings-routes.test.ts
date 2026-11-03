@@ -39,6 +39,8 @@ const tenantA = await owner.tenant.create({ data: { name: `${MARK}-a` } });
 const tenantB = await owner.tenant.create({ data: { name: `${MARK}-b` } });
 const A = tenantA.id;
 const B = tenantB.id;
+/** afterAll 要刪除的租戶；併發測試另外建立的租戶也加進來 */
+const tenantIds = [A, B];
 
 type TestAgent = { id: string; tenantId: string; roleId: string; email: string };
 
@@ -99,7 +101,7 @@ type App = typeof appA;
 
 afterAll(async () => {
   await Promise.all([appA.close(), appA2.close(), appB.close(), appNoPerm.close(), appGhost.close(), authApp.close()]);
-  for (const tenantId of [A, B]) {
+  for (const tenantId of tenantIds) {
     await owner.cliSession.deleteMany({ where: { tenantId } });
     await owner.partnerApiKey.deleteMany({ where: { tenantId } });
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
@@ -419,5 +421,26 @@ describe('撤銷時 id 不是 UUID', () => {
       (res.body.error?.details.issues as Array<{ path: string }>).map((i) => i.path),
       ['id'],
     );
+  });
+});
+
+// 同一個租戶第一次讀取設定時，GET 會建立 TenantSettings。兩個請求同時第一次讀取時，
+// 原本後寫入的請求撞到 tenantId 的唯一約束，回 409 CONFLICT
+describe('同時第一次讀取設定', () => {
+  test('營業時間與追蹤設定的讀取都成功，只建立一列設定', async () => {
+    for (let round = 0; round < 5; round++) {
+      const tenant = await owner.tenant.create({ data: { name: `${MARK}-concurrent-${round}` } });
+      tenantIds.push(tenant.id);
+      const app = await buildApp(await makeAgent(tenant.id, `concurrent-${round}`));
+      try {
+        const results = await Promise.all(
+          Array.from({ length: 6 }, (_, i) => call(app, 'GET', `${S}/${i % 2 === 0 ? 'office-hours' : 'tracking'}`)),
+        );
+        assert.deepEqual(results.map((r) => r.status), [200, 200, 200, 200, 200, 200], `第 ${round + 1} 回合：${JSON.stringify(results.map((r) => r.body.error))}`);
+        assert.equal(await owner.tenantSettings.count({ where: { tenantId: tenant.id } }), 1);
+      } finally {
+        await app.close();
+      }
+    }
   });
 });
