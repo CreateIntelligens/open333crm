@@ -29,7 +29,7 @@ import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 
 export interface AgentFlowDeps {
   prisma: PrismaClient;
-  /** 可用渠道或角色改變後重新計算該成員已連線 socket 的渠道房間（issue #427） */
+  /** 可用渠道或角色改變後重新計算該成員已連線 socket 的渠道房間（issue #427）；停用、刪除後斷開他的連線 */
   syncSocketChannelRooms?: SocketChannelRoomSync;
 }
 
@@ -124,7 +124,10 @@ export async function resetAgentPasswordFlow(deps: AgentFlowDeps, actor: Request
   });
 }
 
-/** 停用（可再啟用、保留 email）。不可停用自己，避免自我鎖定 */
+/**
+ * 停用（可再啟用、保留 email）。不可停用自己，避免自我鎖定。
+ * commit 之後斷開該成員已連線的 socket（resyncChannelRooms 遇到停用的成員就斷線）
+ */
 export async function deactivateAgentFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
   if (actor.agentId === agentId) throw new AppError('不可停用自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
@@ -136,6 +139,7 @@ export async function deactivateAgentFlow(deps: AgentFlowDeps, actor: RequestAct
       targetId: agentId,
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
   });
 }
 
@@ -153,7 +157,10 @@ export async function reactivateAgentFlow(deps: AgentFlowDeps, actor: RequestAct
   });
 }
 
-/** 永久刪除（釋放 email、不可復原）。不可刪除自己：自我鎖定，且稽核的 actorId 會違反外鍵 */
+/**
+ * 永久刪除（釋放 email、不可復原）。不可刪除自己：自我鎖定，且稽核的 actorId 會違反外鍵。
+ * commit 之後斷開該成員已連線的 socket
+ */
 export async function purgeAgentFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
   if (actor.agentId === agentId) throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
@@ -165,6 +172,7 @@ export async function purgeAgentFlow(deps: AgentFlowDeps, actor: RequestActor, a
       targetId: agentId,
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
   });
 }
 

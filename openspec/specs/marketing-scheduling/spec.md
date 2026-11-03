@@ -67,7 +67,7 @@ A broadcast without a coupon SHALL need `marketing.broadcast` to be sent. A coup
 - **THEN** the batch issue SHALL be sent
 
 ### Requirement: The Scheduler Rechecks The Scheduling Member's Permissions
-Before the scheduler sends a due broadcast, the system SHALL check the current effective permissions of the member who scheduled the send (`scheduledById`, or the creator when it is empty). When the member no longer exists, is deactivated, or lacks a needed permission, the system SHALL NOT send, SHALL set the broadcast to `failed`, and SHALL store a `failureCode` and a Chinese `failureReason` that names the cause.
+Before the scheduler sends a due broadcast, and before the `coupon-broadcast` queue job sends a coupon broadcast, the system SHALL check the current effective permissions of the member who scheduled the send (`scheduledById`, or the creator when it is empty). The queue job checks too, because a retry or a delayed outbox delivery can run it after the member lost a permission. When the member no longer exists, is deactivated, or lacks a needed permission, the system SHALL NOT send, SHALL set the broadcast to `failed`, and SHALL store a `failureCode` and a Chinese `failureReason` that names the cause.
 
 #### Scenario: Creator lost the broadcast permission
 - **GIVEN** a broadcast was scheduled by a member who had `marketing.broadcast`
@@ -87,6 +87,11 @@ Before the scheduler sends a due broadcast, the system SHALL check the current e
 #### Scenario: Member with the permissions
 - **WHEN** the scheduler reaches a due broadcast whose scheduling member still has the needed permissions
 - **THEN** the broadcast SHALL be sent
+
+#### Scenario: Sender lost the coupon permission before the queued job ran
+- **GIVEN** a member with `marketing.broadcast` and `coupon.issue` sent a coupon broadcast now, and the system queued the `coupon-broadcast` job
+- **WHEN** the member's role loses `coupon.issue` before the job runs
+- **THEN** the job SHALL NOT issue a coupon or send a message, and the broadcast SHALL be `failed` with `failureCode = 'SCHEDULED_SENDER_FORBIDDEN'`
 
 #### Scenario: Coupon broadcast sent now by another member
 - **GIVEN** member A without `marketing.broadcast` created a coupon broadcast draft

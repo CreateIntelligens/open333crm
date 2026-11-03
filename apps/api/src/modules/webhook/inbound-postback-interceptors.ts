@@ -164,7 +164,8 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
         convPayload,
       );
 
-      ctx.io.to(`conversation:${ctx.conversation.id}`).emit('message.new', buildMessageNewPayload(systemMessage, {
+      // 與其他 message.new 相同送到渠道房間（issue #427、PR #438 審查）
+      emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', buildMessageNewPayload(systemMessage, {
         includeMetadata: true,
         includeSenderNull: true,
       }));

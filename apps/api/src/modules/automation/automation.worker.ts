@@ -204,7 +204,8 @@ async function checkAutoHandoff(
       emitToChannel(io, tenantId, { channelId: updatedConversation.channelId, conversationId }, 'conversation.updated', wsPayload);
     }
 
-    io.to(`conversation:${conversationId}`).emit('message.new', {
+    // 與其他 message.new 相同送到渠道房間：列表與總店也收得到，沒有渠道授權的成員收不到（PR #438 審查）
+    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', {
       conversationId,
       message: {
         id: systemMessage.id,

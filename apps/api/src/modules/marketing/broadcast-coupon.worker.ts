@@ -9,7 +9,10 @@
  * （後台看得到），重試時搶不到，不會重複發送。
  */
 import type { Job } from 'bullmq';
+import type { PrismaClient } from '@prisma/client';
 import type { CouponBroadcastJobData } from './broadcast-coupon.service.js';
+import { runCouponBroadcast, type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
+import { rejectUnauthorizedScheduledSend } from './broadcast-send-authority.js';
 
 export type RunCouponBroadcast = (tenantId: string, broadcastId: string) => Promise<unknown>;
 
@@ -20,5 +23,18 @@ export function createCouponBroadcastProcessor(run: RunCouponBroadcast) {
       throw new Error('coupon-broadcast job 缺少 tenantId 或 broadcastId');
     }
     return run(tenantId, broadcastId);
+  };
+}
+
+/**
+ * coupon-broadcast 佇列的執行函式（index.ts）。發送前與排程器相同，以排定送出的成員當下的權限重新檢查：
+ * job 重試或 outbox 延後送出時，成員可能已經被停用或降權（PR #438 審查）。不能送時群發標為失敗，job 正常結束。
+ */
+export function createCouponBroadcastJobRunner(deps: CouponBroadcastDeps & { adminPrisma: PrismaClient }): RunCouponBroadcast {
+  const { adminPrisma, ...couponDeps } = deps;
+  return async (tenantId, broadcastId) => {
+    const denial = await rejectUnauthorizedScheduledSend({ prisma: couponDeps.prisma, adminPrisma }, tenantId, broadcastId);
+    if (denial) return { status: 'denied', failureCode: denial.code };
+    return runCouponBroadcast(couponDeps, tenantId, broadcastId);
   };
 }

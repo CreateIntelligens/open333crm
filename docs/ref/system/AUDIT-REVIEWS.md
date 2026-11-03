@@ -6,6 +6,15 @@
 
 ## 2026-11-03：第一優先的權限與隔離修正（RBAC-07、RBAC-08、RBAC-09、MKT-02、MKT-03、RLS-10、RBAC-04、RBAC-03）
 
+PR #438 的 bot 審查之後補修（同一天）：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-04 的 socket：停用或刪除的成員 | 已修正 | 停用、刪除成員後重新計算該成員的連線，停用或不存在的成員直接斷線；連線時也拒絕停用的成員。`socket-channel-rooms.test.ts` 兩項、`agent.flow.test.ts` 兩項修正前失敗 |
+| RBAC-04 的 socket：轉接訊息 | 已修正 | 自動轉接與 `handoff_request` 的 `message.new` 原本只送對話房間，改走渠道推播。`auto-handoff.test.ts`、`handoff-request-push.test.ts` 修正前失敗 |
+| RBAC-04 的 socket：方案異動 | 已修正 | 平台改方案、核准升級、試用轉正式、方案功能或權限設定改變後重新計算受影響租戶的連線。`platform-plan-socket-resync.test.ts` 4 項修正前失敗 |
+| MKT-02、MKT-03 的佇列 job | 已修正 | 附券群發的 `coupon-broadcast` job 執行前也以排定送出的成員當下的權限檢查（job 重試、outbox 延後時成員可能已被降權）。`broadcast-send-permissions.test.ts` 新增一項修正前失敗。檢查與搶占不在同一個交易，之間毫秒內被降權仍會送出，不處理 |
+
 issue #408、#409、#412、#413、#427、#428，同一個 PR。以本機測試資料庫的 feature 測試驗證，沒有連 UAT。
 
 | 項目 | 結果 | 依據 |

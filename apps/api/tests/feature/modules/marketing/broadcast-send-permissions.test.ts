@@ -22,6 +22,7 @@ import marketingRoutes from '#src/modules/marketing/marketing.routes.js';
 import { setupBroadcastScheduler } from '#src/modules/marketing/broadcast.scheduler.js';
 import { createBroadcast } from '#src/modules/marketing/marketing.service.js';
 import { createBatchIssueFlow } from '#src/modules/marketing/broadcast-coupon.flow.js';
+import { createCouponBroadcastJobRunner } from '#src/modules/marketing/broadcast-coupon.worker.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
@@ -356,6 +357,40 @@ describe('The Scheduler Rechecks The Scheduling Member\'s Permissions', () => {
     const row = await pollOnly(b.id);
     assert.equal(row?.status, 'completed', row?.failureReason ?? '');
     assert.equal(row?.scheduledById, agents.broadcaster.id, '記錄按下發送的人');
+    assert.equal(await owner.couponInstance.count({ where: { tenantId: T, couponId } }), 1);
+  });
+});
+
+describe('The Queue Job Rechecks The Sending Member\'s Permissions', () => {
+  /** 執行佇列 job，與 index.ts 的 coupon-broadcast 佇列相同的組法 */
+  const runJob = (broadcastId: string) =>
+    createCouponBroadcastJobRunner({ prisma, adminPrisma: owner, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, broadcastId);
+
+  it('Sender lost the coupon permission before the queued job ran', async () => {
+    const couponId = await coupon(`${MARK}券8`);
+    const b = await runInTenant(prisma, T, (ctx) =>
+      createBroadcast(ctx.tx, T, agents.broadcaster.id, { name: `${MARK} 佇列重驗`, channelId: lineChannel, couponId, ...audience() }, ALL_CHANNELS));
+    as('broadcaster');
+    const res = await post(`/broadcasts/${b.id}/send`);
+    assert.equal(res.statusCode, 202, res.body);
+    // job 重試或 outbox 延後送出時，成員已經被拿掉發券權限
+    await owner.agent.update({ where: { id: agents.broadcaster.id }, data: { roleId: roles.broadcastNoCoupon } });
+    await runJob(b.id);
+    const row = await owner.broadcast.findFirst({ where: { id: b.id } });
+    assert.equal(row?.status, 'failed');
+    assert.equal(row?.failureCode, 'SCHEDULED_SENDER_FORBIDDEN');
+    assert.equal(await owner.couponInstance.count({ where: { tenantId: T, couponId } }), 0, '沒有發出任何券');
+  });
+
+  it('Sender with the permissions', async () => {
+    const couponId = await coupon(`${MARK}券9`);
+    const b = await runInTenant(prisma, T, (ctx) =>
+      createBroadcast(ctx.tx, T, agents.broadcaster.id, { name: `${MARK} 佇列有權限`, channelId: lineChannel, couponId, ...audience() }, ALL_CHANNELS));
+    as('broadcaster');
+    assert.equal((await post(`/broadcasts/${b.id}/send`)).statusCode, 202);
+    await runJob(b.id);
+    const row = await owner.broadcast.findFirst({ where: { id: b.id } });
+    assert.equal(row?.status, 'completed', row?.failureReason ?? '');
     assert.equal(await owner.couponInstance.count({ where: { tenantId: T, couponId } }), 1);
   });
 });

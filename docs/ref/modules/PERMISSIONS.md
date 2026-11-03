@@ -171,7 +171,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 ## Socket 房間
 
-客服的 socket 連線建立時自動加入 `tenant:<tenantId>`、`agent:<agentId>` 與 `tenant:<tenantId>:agent:<agentId>`，這些房間不經過授權。連線時也依可見渠道加入渠道房間：每個看得到的渠道一個 `tenant:<tenantId>:channel:<channelId>`；持有 `channel.view_all` 時只加入 `tenant:<tenantId>:channels:all`。`message.new`、`conversation.*` 只送到渠道房間（issue #427）。可用渠道、角色、角色權限、渠道與渠道團隊授權改變時，系統重新計算已連線 socket 的渠道房間，並重新授權已訂閱的房間；方案異動要重新連線才生效。
+客服的 socket 連線建立時自動加入 `tenant:<tenantId>`、`agent:<agentId>` 與 `tenant:<tenantId>:agent:<agentId>`，這些房間不經過授權。連線時也依可見渠道加入渠道房間：每個看得到的渠道一個 `tenant:<tenantId>:channel:<channelId>`；持有 `channel.view_all` 時只加入 `tenant:<tenantId>:channels:all`。`message.new`、`conversation.*` 只送到渠道房間與已授權訂閱的對話房間 `conversation:<對話 ID>`，不送到 `tenant:<tenantId>`（issue #427）。可用渠道、角色、角色權限、渠道與渠道團隊授權、方案（平台改方案、核准升級、試用轉正式、方案功能或權限設定）改變時，系統重新計算已連線 socket 的渠道房間，並重新授權已訂閱的房間（包括對話房間）。成員停用或刪除時系統斷開他的連線，停用的成員也不能再連線。
 
 其他房間要送出 `subscribe`，由 `authorizeSocketRoom()` 判斷：
 

@@ -159,7 +159,7 @@
 
 **即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間（issue #427）：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
 
-成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權改變後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。方案異動拿掉 `channel.view_all` 時，成員要重新連線才生效。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
+成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權與方案異動後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。成員停用或刪除時，系統斷開他的連線。轉接真人的系統訊息也走渠道房間。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
 
 `assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 

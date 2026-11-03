@@ -19,3 +19,10 @@ test('格式不符：沒有房間、空陣列、陣列含非字串都回 null（
   assert.equal(bridgeRooms({ rooms: [] }), null);
   assert.equal(bridgeRooms({ rooms: ['tenant:t1', 3] }), null);
 });
+
+test('格式不符：同時給 room 與 rooms、空字串的房間名稱都回 null（PR #438 審查）', () => {
+  assert.equal(bridgeRooms({ room: 'tenant:t1', rooms: ['tenant:t1:channel:c1'] }), null);
+  assert.equal(bridgeRooms({ room: '' }), null);
+  assert.equal(bridgeRooms({ rooms: [''] }), null);
+  assert.equal(bridgeRooms({ rooms: ['tenant:t1', ''] }), null);
+});

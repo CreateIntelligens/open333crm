@@ -1,13 +1,19 @@
 /**
  * 排程送出前重新檢查發送權限（change require-broadcast-send-permissions，issue #409 MKT-02、MKT-03）。
  *
- * 排程器沒有 request：到期送出前，以「排定送出的成員」（scheduledById，舊資料為建立者）當下的有效權限檢查。
- * 成員不存在、已停用，或少了需要的權限時不送出，群發標為失敗並寫原因，後台列表看得到。
+ * 排程器與 coupon-broadcast 佇列 job 沒有 request：送出前，以「排定送出的成員」（scheduledById，舊資料為建立者）
+ * 當下的有效權限檢查。成員不存在、已停用，或少了需要的權限時不送出，群發標為失敗並寫原因，後台列表看得到。
+ * 佇列 job 也檢查（PR #438 審查）：job 重試或 outbox 延後送出時，成員可能已經被降權。
  *
- * 這裡的查詢收 TenantCtx（AGENTS.md 結構規則 2）；有效權限的計算（Redis 快取）由排程器在交易外呼叫。
+ * 查詢收 TenantCtx（AGENTS.md 結構規則 2）；rejectUnauthorizedScheduledSend 是入口用的函式，
+ * 在交易外計算有效權限（Redis 快取）。
  */
+import type { PrismaClient } from '@prisma/client';
 import { COUPON_ISSUED_VIA, PERMISSION_BY_CODE } from '@open333crm/shared';
-import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { logger } from '@open333crm/core';
+import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
+import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
+import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
 
 /** 判斷需要哪些權限所需的群發欄位 */
 export interface SendAuthorityBroadcast {
@@ -92,4 +98,54 @@ export async function markScheduledSendDenied(ctx: TenantCtx, broadcastId: strin
     data: { status: 'failed', failureCode: denial.code, failureReason: denial.reason },
   });
   return updated.count > 0;
+}
+
+/** 檢查權限用到的群發欄位 */
+export interface SendAuthorityTarget extends SendAuthorityBroadcast {
+  id: string;
+  tenantId: string;
+  createdById: string;
+  scheduledById: string | null;
+}
+
+export interface SendAuthorityDeps {
+  /** app_tenant 的基底連線（inTenant 用） */
+  prisma: PrismaClient;
+  /** 計算有效權限（角色 ∩ 方案天花板）的連線，與 requirePermission 相同用 prismaAdmin */
+  adminPrisma: PrismaClient;
+}
+
+/** 讀檢查權限用到的群發欄位；查不到回 null */
+export async function findSendAuthorityTarget(ctx: TenantCtx, broadcastId: string): Promise<SendAuthorityTarget | null> {
+  return ctx.tx.broadcast.findFirst({
+    where: { id: broadcastId, tenantId: ctx.tenantId },
+    select: { id: true, tenantId: true, createdById: true, scheduledById: true, couponId: true, couponIssuedVia: true },
+  });
+}
+
+/**
+ * 排定送出的成員當下不能送這則群發時，把群發標為失敗並回傳原因；可以送時回 null。
+ * 給群發 ID 時先讀群發（查不到回 null，交給發送流程處理）。
+ * 檢查與發送的搶占不在同一個交易：兩者之間的毫秒內被降權時仍會送出，與 HTTP 請求通過權限後立即送出相同。
+ */
+export async function rejectUnauthorizedScheduledSend(
+  deps: SendAuthorityDeps,
+  tenantId: string,
+  target: string | SendAuthorityTarget,
+): Promise<SendDenial | null> {
+  const broadcast = typeof target === 'string'
+    ? await inTenant(deps.prisma, tenantId, (ctx) => findSendAuthorityTarget(ctx, target))
+    : target;
+  if (!broadcast) return null;
+  const member = await inTenant(deps.prisma, tenantId, (ctx) => findSchedulingMember(ctx, schedulingMemberId(broadcast)));
+  const effective = member?.isActive
+    ? await getEffectiveTenantPermissions(deps.adminPrisma, member.roleId, await getTenantPlanId(deps.adminPrisma, tenantId))
+    : new Set<string>();
+  const denial = scheduledSendDenial(member, effective, requiredSendPermissions(broadcast));
+  if (!denial) return null;
+  const marked = await inTenant(deps.prisma, tenantId, (ctx) => markScheduledSendDenied(ctx, broadcast.id, denial));
+  logger.warn('[Broadcast] 排定的成員沒有發送權限，廣播沒有發送', {
+    tenantId, broadcastId: broadcast.id, code: denial.code, missingPermission: denial.missingPermission, marked,
+  });
+  return denial;
 }

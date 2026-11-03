@@ -443,7 +443,7 @@ CLI token 的停用問題另見 AUTH-02。
 | 資料刪除（`data-erasure.service.ts`） | 持 `data.erase` 但看不到某渠道的成員，可以匿名化或硬刪除只在那個渠道出現的聯絡人（HC-GOVERNANCE-05） |
 | `notification.worker.ts` 的未指派對話新訊息通知 | 通知所有 `ADMIN`、`SUPERVISOR`，不看渠道。只看得到分店渠道的主管仍收到其他渠道客人的名稱，點進去是 404（HC-NOTIFICATIONS-01） |
 
-**socket 推播已修正（#427，2026-11-03）。** 連線時依可見渠道加入 `tenant:<租戶>:channel:<渠道>`，總店加入 `tenant:<租戶>:channels:all`；`message.new`、`conversation.*` 改送渠道房間，不再送到租戶房間；成員可用渠道、角色、角色權限、渠道與團隊授權變更後重新計算已連線成員的房間（change `fix-socket-channel-rooms-427`，`socket-channel-rooms.test.ts`）。仍送到租戶房間的有 `case.*`（`case.created`、`case.deleted` 帶工單標題）、`sla.event`、`contact.merged`（帶聯絡人名稱）；方案異動拿掉 `channel.view_all` 時要重新連線才生效。
+**socket 推播已修正（#427，2026-11-03）。** 連線時依可見渠道加入 `tenant:<租戶>:channel:<渠道>`，總店加入 `tenant:<租戶>:channels:all`；`message.new`、`conversation.*` 改送渠道房間，不再送到租戶房間；成員可用渠道、角色、角色權限、渠道與團隊授權變更，以及方案異動後重新計算已連線成員的房間；停用或刪除的成員被斷線，也不能再連線（change `fix-socket-channel-rooms-427`、PR #438 審查，`socket-channel-rooms.test.ts`）。仍送到租戶房間的有 `case.*`（`case.created`、`case.deleted` 帶工單標題）、`sla.event`、`contact.merged`（帶聯絡人名稱）。
 
 **資料匯出已修正（#428，2026-11-03）。** 匯出定位為全租戶的資料可攜權，內容不依渠道篩選；發起、查詢與下載改為要求 `data.export` 加 `channel.view_all`（change `restrict-data-export-to-tenant-wide-roles`）。
 

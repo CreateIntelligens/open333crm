@@ -11,6 +11,12 @@ export async function listPlans(prisma: PrismaClient) {
   return prisma.plan.findMany({ orderBy: { priceMonthly: { sort: 'asc', nulls: 'last' } } });
 }
 
+/** 使用這個方案的租戶 ID：方案的功能或權限設定改變後，重新計算這些租戶已連線 socket 的渠道房間 */
+export async function listTenantIdsOnPlan(prisma: PrismaClient, planId: string): Promise<string[]> {
+  const tenants = await prisma.tenant.findMany({ where: { planId }, select: { id: true } });
+  return tenants.map((t) => t.id);
+}
+
 export async function updatePlan(
   prisma: PrismaClient,
   id: string,

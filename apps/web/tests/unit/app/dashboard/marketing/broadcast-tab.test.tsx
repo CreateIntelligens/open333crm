@@ -441,3 +441,25 @@ test('表單停用附券欄位：沒有發放優惠券權限時附券欄位停�
   within(dialog).getByText(/附上優惠券需要「發放優惠券」權限/);
   assert.ok(!api.get.mock.calls.some(([u]) => String(u).startsWith('/coupons')), '沒有權限不載入券清單（會 403）');
 });
+
+test('表單開著時失去權限：送出時不帶先前選的券與排程時間（PR #438 審查）', async () => {
+  api.get.mockImplementation(async (url: string) =>
+    String(url).startsWith('/coupons') ? { data: { data: [{ id: 'cp-1', name: '秋季九折' }] } } : { data: { data: TAGS } });
+  const { dialog } = openCreateDialog();
+  await within(dialog).findByRole('option', { name: '秋季九折' });
+  fireEvent.change(within(dialog).getByLabelText('附上優惠券（選填）'), { target: { value: 'cp-1' } });
+  const schedule = dialog.querySelector('input[type="datetime-local"]') as HTMLInputElement;
+  fireEvent.change(schedule, { target: { value: '2099-12-31T23:59' } });
+
+  // 權限在表單開著時被拿掉（例如權限重新載入）；改名稱讓表單重新渲染
+  perms.denied.add('coupon.issue');
+  perms.denied.add('marketing.broadcast');
+  fireEvent.change(within(dialog).getByPlaceholderText('廣播名稱'), { target: { value: '週年慶 2' } });
+
+  fireEvent.click(createButton(dialog));
+  const creates = () => api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts');
+  await waitFor(() => assert.equal(creates().length, 1));
+  const payload = creates()[0][1];
+  assert.equal(payload.couponId, undefined, '不帶看不到的券');
+  assert.equal(payload.scheduledAt, undefined, '不帶停用的排程時間');
+});

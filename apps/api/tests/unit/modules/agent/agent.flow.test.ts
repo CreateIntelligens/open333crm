@@ -129,3 +129,13 @@ test('updateAgentRoleFlow：commit 之後重新計算該成員已連線 socket �
   await flow.updateAgentRoleFlow({ prisma: mockPrisma(), syncSocketChannelRooms }, actor, 'agent-2', { roleId: 'role-2' });
   assert.deepEqual(log, ['begin', 'role:agent-2', 'audit:agent.role.assign:agent-2', 'commit', `sync:${TENANT_ID}:agent-2`]);
 });
+
+test('deactivateAgentFlow：commit 之後重新計算該成員已連線的 socket（停用的成員被斷線，PR #438 審查）', async () => {
+  await flow.deactivateAgentFlow({ prisma: mockPrisma(), syncSocketChannelRooms }, actor, 'agent-2');
+  assert.deepEqual(log, ['begin', 'deactivate:agent-2', 'audit:agent.deactivate:agent-2', 'commit', `sync:${TENANT_ID}:agent-2`]);
+});
+
+test('purgeAgentFlow：commit 之後重新計算該成員已連線的 socket（刪除的成員被斷線，PR #438 審查）', async () => {
+  await flow.purgeAgentFlow({ prisma: mockPrisma(), syncSocketChannelRooms }, actor, 'agent-2');
+  assert.deepEqual(log, ['begin', 'purge:agent-2', 'audit:agent.purge:agent-2', 'commit', `sync:${TENANT_ID}:agent-2`]);
+});

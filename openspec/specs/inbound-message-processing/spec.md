@@ -70,14 +70,14 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 
 1. 存入一則 `INBOUND` 訊息。
 2. 對話的 `unreadCount` 加 1，並更新 `lastMessageAt`。
-3. 推送 `message.new` 與 `conversation.updated`，對象是對話的房間 `conversation:<對話 ID>` 與租戶的房間 `tenant:<租戶 ID>`。
+3. 推送 `message.new` 與 `conversation.updated`，對象是對話的房間 `conversation:<對話 ID>` 與渠道房間（`tenant:<租戶 ID>:channel:<渠道 ID>`、`tenant:<租戶 ID>:channels:all`），不送到租戶的房間 `tenant:<租戶 ID>`（issue #427）。
 4. 發布 EventBus 事件 `message.received`，`payload.messageId` 是這則訊息的 ID。
 
 `processInboundMessage` SHALL 回傳 `duplicate: false`。
 
 #### Scenario: 一般進站訊息
 - **WHEN** 訪客第一次從 WebChat 渠道送出文字訊息 `hello`
-- **THEN** 對話有一則 `INBOUND` 訊息，`unreadCount` 是 1，`lastMessageAt` 有值；`message.new` 與 `conversation.updated` 都推送到對話與租戶的房間；`message.received` 發布一次，`payload.messageId` 是這則訊息的 ID
+- **THEN** 對話有一則 `INBOUND` 訊息，`unreadCount` 是 1，`lastMessageAt` 有值；`message.new` 與 `conversation.updated` 都推送到對話與渠道房間；`message.received` 發布一次，`payload.messageId` 是這則訊息的 ID
 
 ### Requirement: CSAT 回覆的攔截
 進站的文字或 postback 符合 `csat:<分數>:<工單 ID>`，而且分數是 1～5 時，系統 SHALL 攔截這則訊息，SHALL NOT 發布 `message.received`。

@@ -7,7 +7,7 @@ import { getConfig } from '../config/env.js';
 import { authorizeSocketRoom } from '../modules/socket/socket-room-authorization.js';
 import { registerRoomHandlers } from '../modules/socket/socket-room-handlers.js';
 import type { SocketChannelRoomSync } from '../events/socket-push.js';
-import { resolveChannelRooms, syncChannelRooms, type SyncableServer } from '../modules/socket/socket-channel-rooms.js';
+import { isActiveAgent, resolveChannelRooms, syncChannelRooms, type SyncableServer } from '../modules/socket/socket-channel-rooms.js';
 
 /**
  * socket 連線的 token 驗證：只收客服 access token（AUDIT AUTH-05）。
@@ -23,15 +23,14 @@ export function decodeSocketAgentToken(
 }
 
 /**
- * socket:emit 訊息的目標房間：`room`（一個）或 `rooms`（非空的字串陣列）。格式不符回 null。
+ * socket:emit 訊息的目標房間：`room`（一個非空字串）或 `rooms`（非空陣列，每個元素是非空字串），只能給其中一個。
+ * 格式不符（兩個都給、兩個都沒給、空字串）回 null，訊息被丟棄（主規格 core-inbox「socket:emit Message Shape」）。
  */
 export function bridgeRooms(payload: { room?: unknown; rooms?: unknown }): string[] | null {
-  if (typeof payload.room === 'string') return [payload.room];
-  if (
-    Array.isArray(payload.rooms)
-    && payload.rooms.length > 0
-    && payload.rooms.every((r): r is string => typeof r === 'string')
-  ) return payload.rooms;
+  const isRoomName = (r: unknown): r is string => typeof r === 'string' && r !== '';
+  if (payload.room !== undefined && payload.rooms !== undefined) return null;
+  if (isRoomName(payload.room)) return [payload.room];
+  if (Array.isArray(payload.rooms) && payload.rooms.length > 0 && payload.rooms.every(isRoomName)) return payload.rooms;
   return null;
 }
 
@@ -65,6 +64,8 @@ async function socketPlugin(fastify: FastifyInstance) {
       }
 
       const decoded = decodeSocketAgentToken((t) => fastify.jwt.verify(t), token);
+      // 停用或已刪除的成員：access token 還沒過期也不能連線（PR #438 審查）
+      if (!await isActiveAgent(fastify.prismaAdmin, decoded)) throw new Error('AGENT_INACTIVE');
 
       socket.data.agentId = decoded.agentId;
       socket.data.tenantId = decoded.tenantId;

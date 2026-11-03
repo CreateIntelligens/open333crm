@@ -233,3 +233,32 @@ test('授權變更後重新計算已連線 socket 的房間：新授權的渠道
   await settle();
   assert.deepEqual(eventsFor(rx, revoked), [], '撤銷後不收');
 });
+
+test('停用或刪除的成員：重新計算時斷開他已連線的 socket，之後重新連線被拒（PR #438 審查）', async () => {
+  const leaving = await createAgent('leaving', inboxRole.id);
+  await bind(chB.id, leaving.id);
+  let client: ClientSocket | undefined;
+  const rx = await connectAs(leaving, (c) => { client = c; });
+
+  await owner.agent.update({ where: { id: leaving.id }, data: { isActive: false } });
+  await app.syncSocketChannelRooms(A, leaving.id);
+  await settle();
+  assert.equal(client!.connected, false, '停用的成員被斷線');
+  assert.equal((await app.io.in(`tenant:${A}:agent:${leaving.id}`).fetchSockets()).length, 0, '停用的成員沒有連線留在伺服器');
+
+  const after = await inboundOnChannelB('停用後');
+  await settle();
+  assert.deepEqual(eventsFor(rx, after), [], '停用後不收');
+
+  await assert.rejects(connectAs(leaving), '停用的成員重新連線被拒');
+});
+
+test('永久刪除的成員：重新計算時斷開他已連線的 socket（PR #438 審查）', async () => {
+  const purged = await createAgent('purged', inboxRole.id);
+  let client: ClientSocket | undefined;
+  await connectAs(purged, (c) => { client = c; });
+  await owner.agent.delete({ where: { id: purged.id } });
+  await app.syncSocketChannelRooms(A, purged.id);
+  await settle();
+  assert.equal(client!.connected, false, '刪除的成員被斷線');
+});
