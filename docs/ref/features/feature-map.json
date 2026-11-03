@@ -289,6 +289,7 @@
         "apps/api/tests/unit/modules/coupon/*.test.ts",
         "apps/api/tests/feature/modules/coupon/*.test.ts",
         "apps/api/tests/feature/modules/marketing/broadcast-coupon.test.ts",
+        "apps/api/tests/feature/modules/marketing/broadcast-send-permissions.test.ts",
         "apps/api/tests/unit/modules/automation/issue-coupon-reference.test.ts",
         "apps/api/tests/unit/modules/automation/send-material-coupon-url.test.ts",
         "apps/web/tests/unit/app/dashboard/marketing/*.test.tsx",

@@ -45,6 +45,11 @@ import { BroadcastCouponField } from '@/components/marketing/BroadcastCouponFiel
 import { COUPON_URL_NEEDS_COUPON_MESSAGE } from '@/lib/marketing/coupon-url';
 import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { usePermission } from '@/providers/AuthProvider';
+
+// 建立群發的額外權限（change require-broadcast-send-permissions）：沒有權限時欄位停用並說明，後端也會擋
+const SCHEDULE_NEEDS_BROADCAST = '排程發送需要「執行群發」權限。可以先存成草稿，再請有權限的成員發送';
+const COUPON_NEEDS_ISSUE = '附上優惠券需要「發放優惠券」權限，請聯繫管理員開通';
 
 /** 渠道列表（`GET /channels`）在本頁用到的欄位 */
 type ChannelRow = { id: string; displayName: string; channelType: string; isActive: boolean };
@@ -270,6 +275,9 @@ function BroadcastTab() {
     couponId: '',
   };
   const [formData, setFormData] = useState(emptyForm);
+  // 排程到期由排程器送出，等同發送；附券每人發一張券（後端分別要求 marketing.broadcast、coupon.issue）
+  const canSchedule = usePermission('marketing.broadcast');
+  const canAttachCoupon = usePermission('coupon.issue');
   // 名額不足時，使用者勾選「我了解」才能建立
   const [couponAck, setCouponAck] = useState(false);
   // 正在查看結果的附券廣播
@@ -758,6 +766,7 @@ function BroadcastTab() {
               </div>
             )}
             <BroadcastCouponField
+              disabledReason={canAttachCoupon ? null : COUPON_NEEDS_ISSUE}
               value={formData.couponId}
               onChange={(couponId) => setFormData({ ...formData, couponId })}
               preview={audiencePreview}
@@ -771,8 +780,10 @@ function BroadcastTab() {
                 value={formData.scheduledAt}
                 // 只能選未來的時間：排到過去後端會擋下（排程器會立即發送）。只是提示，後端才是保證
                 min={scheduleMin}
+                disabled={!canSchedule}
                 onChange={(e) => setFormData({ ...formData, scheduledAt: e.target.value })}
               />
+              {!canSchedule && <p className="mt-1 text-xs text-muted-foreground">{SCHEDULE_NEEDS_BROADCAST}</p>}
             </div>
           </div>
           {formData.channelId && sourceError && (

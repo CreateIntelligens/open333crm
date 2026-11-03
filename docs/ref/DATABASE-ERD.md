@@ -319,7 +319,7 @@ erDiagram
 | `quick_reply_presets`  | `QuickReplyPreset`   | 客服快速回覆組合                                                           | `items` 為 `Json`                                                              |
 | `segments`             | `Segment`            | 客群分眾：篩選條件與邏輯運算子、預估人數                                   | `rules`／`conditions` 為 `Json`；`logic` 為 `AND`／`OR` 字串                   |
 | `campaigns`            | `Campaign`           | 行銷活動：起訖日、狀態、成效指標                                           | `metrics` 為 `Json`                                                            |
-| `broadcasts`           | `Broadcast`          | 單次廣播：目標設定、排程與實際發送時間、成功失敗與回覆統計                 | `targetConfig` 為 `Json`；`templateId`／`channelId`／`createdById` **沒有** FK |
+| `broadcasts`           | `Broadcast`          | 單次廣播：目標設定、排程與實際發送時間、成功失敗與回覆統計                 | `targetConfig` 為 `Json`；`templateId`／`channelId`／`createdById`／`scheduledById`（排定送出的成員，排程器重驗權限用）**沒有** FK |
 | `broadcast_recipients` | `BroadcastRecipient` | 廣播逐一收件人的投遞狀態，以及是否回覆、是否因此開案                       | `contactId`／`caseId` **沒有** FK                                              |
 
 ---

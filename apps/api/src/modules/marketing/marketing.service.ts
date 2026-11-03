@@ -355,6 +355,8 @@ export async function createBroadcast(
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
       status,
       createdById: agentId,
+      // 排程器到期以排定的人當下的權限重新檢查（change require-broadcast-send-permissions）
+      scheduledById: data.scheduledAt ? agentId : null,
       couponId: data.couponId ?? null,
       couponIssuedVia,
       couponMessage: data.couponId ? data.couponMessage?.trim() || null : null,

@@ -22,9 +22,10 @@ const idParamSchema = z.object({
  */
 const EXPORT_GUARDS = [
   requirePermission('data.export'),
-  requirePermission('channel.view_all', {
-    message: '資料匯出會匯出全租戶（所有渠道）的資料，需要同時具備「檢視所有渠道」權限。如需使用請聯繫管理員。',
-  }),
+  requirePermission(
+    'channel.view_all',
+    '資料匯出會匯出全租戶（所有渠道）的資料，需要同時具備「檢視所有渠道」權限。如需使用請聯繫管理員。',
+  ),
 ];
 
 export interface DataExportRoutesOptions {

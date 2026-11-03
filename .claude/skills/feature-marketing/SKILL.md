@@ -30,8 +30,8 @@ description: >
 | 1 | 建立活動 | `/dashboard/marketing/campaigns`「新增活動」；日期 `type=date` 送 `YYYY-MM-DD` | `POST /marketing/campaigns` → `campaign.service.ts` `createCampaign` | 無、無稽核 | `marketing.manage` / **不隱藏** |
 | 2 | 活動詳情與狀態 | 點卡片 → `campaigns/[campaignId]` | `PATCH /marketing/campaigns/:id {status}`；只允許 draft→active/cancelled、active→completed/cancelled | 讀取時彙總送達、回覆、開案數 | `marketing.manage` |
 | 3 | 建立分群 | `/dashboard/marketing/segments`；條件 `channelType`(LINE/FB/WEBCHAT/WHATSAPP)、`tag`、`createdAfter/Before`(date)，AND/OR | `POST /marketing/segments/preview`、`POST /marketing/segments` | 刪除是硬刪，不檢查是否被排程群發引用 | `marketing.manage` / **不隱藏** |
-| 4 | 建立群發 | `/dashboard/marketing/broadcasts`「建立廣播」：渠道、素材、活動、受眾(all/segment/tags；FB/IG 只有 all)、附券、排程 `datetime-local`→ISO | 即時預估 `POST /marketing/broadcasts/audience-preview`；建立 `POST /marketing/broadcasts` → `marketing.service.ts` `createBroadcast` | 有 `scheduledAt` 為 scheduled，排程器 `broadcast-scheduled` 每 60 秒取 10 筆。渠道選單列出所有啟用中渠道（含網站客服 WebChat，不套用成員可見範圍）；WebChat 沒有素材，只能附券建立，但 WebChat plugin 的 `sendMessage` 不推送也不寫訊息，結果顯示「已完成」顧客卻收不到 | `marketing.manage` / **不隱藏**；建立時不檢查 `marketing.broadcast`、`coupon.issue` 與渠道可見範圍，排程到期由排程器直接送出（健檢 HC-MARKETING-01、02） |
-| 5 | 立即發送/重送/取消 | 群發列 ▶ ↻ ✕ | `POST /marketing/broadcasts/:id/send`、`/cancel` | 附券：202，寫 `coupon-broadcast` 佇列，`runCouponBroadcast` 逐人保留→送出→確認；一般：請求內同步 `executeBroadcast`，素材網址換短連結，LINE 無變數 multicast 每批 499 | `marketing.broadcast` / **不隱藏** |
+| 4 | 建立群發 | `/dashboard/marketing/broadcasts`「建立廣播」：渠道、素材、活動、受眾(all/segment/tags；FB/IG 只有 all)、附券、排程 `datetime-local`→ISO | 即時預估 `POST /marketing/broadcasts/audience-preview`；建立 `POST /marketing/broadcasts` → `marketing.service.ts` `createBroadcast` | 有 `scheduledAt` 為 scheduled，排程器 `broadcast-scheduled` 每 60 秒取 10 筆。渠道選單列出所有啟用中渠道（含網站客服 WebChat，不套用成員可見範圍）；WebChat 沒有素材，只能附券建立，但 WebChat plugin 的 `sendMessage` 不推送也不寫訊息，結果顯示「已完成」顧客卻收不到 | `marketing.manage`；帶排程另要 `marketing.broadcast`、帶券另要 `coupon.issue`（403 `details.requiredPermission` 分辨），預估帶券要 `coupon.view` / 沒權限時排程與附券欄位停用並說明。排程器送出前以 `scheduledById`（null 時建立者）當下權限重驗，不過標 `failed`＋`SCHEDULED_SENDER_*`（`broadcast-send-authority.ts`） |
+| 5 | 立即發送/重送/取消 | 群發列 ▶ ↻ ✕ | `POST /marketing/broadcasts/:id/send`、`/cancel` | 附券：202，寫 `coupon-broadcast` 佇列並把 `scheduledById` 設為按下的人，`runCouponBroadcast` 逐人保留→送出→確認；一般：請求內同步 `executeBroadcast`，素材網址換短連結，LINE 無變數 multicast 每批 499 | `marketing.broadcast`（附券另要 `coupon.issue`）/ **不隱藏** |
 | 6 | 附券結果 | 群發列 👁 | `GET /marketing/broadcasts/:id`、`/recipients?status=failed\|skipped` | — | `marketing.view` |
 
 ### 後台：素材
@@ -79,6 +79,7 @@ description: >
 - 多 LINE OA 要同一個 provider 才能跨 OA 認出同一個客人；關鍵字領券、加好友禮依 channel 分別設定。
 - 一個 Contact 被合併時，BroadcastRecipient 與 CouponInstance 會搬到主聯絡人（聯絡人領域 `mergeContacts`）；新增掛在 Contact 上的行銷資料表要一起加進合併清單。
 - UI 不放 emoji 與 ✓（使用者要求）；目前群發列的 ▶ ↻ ✕ 👁 是既有圖示按鈕，新增按鈕不要再加。
+- 群發的發送權限：建立帶排程要 `marketing.broadcast`、帶券要 `coupon.issue`；排程器到期以排定的人（`scheduledById`，舊資料看建立者）當下權限重驗，批次發券只要 `coupon.issue`。新增送出入口時要寫 `scheduledById`，否則排程器後備送出會用建立者的權限判斷。
 - 新增權限點後既有租戶的系統角色不會自動拿到，部署時要跑 `scripts/grant-new-role-permissions.mjs`。
 
 ## 跨功能牽連

@@ -1330,6 +1330,9 @@ model Broadcast {
   totalDelivered Int       @default(0)
   totalReplied   Int       @default(0)
   createdById    String    @db.Uuid
+  // 排定送出的成員（change require-broadcast-send-permissions）：建立排程時是建立者，附券廣播「立即發送」
+  // 與批次發券是按下的人。排程器到期送出前以此人當下的有效權限重新檢查；null（舊資料）時退回 createdById
+  scheduledById  String?   @db.Uuid
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

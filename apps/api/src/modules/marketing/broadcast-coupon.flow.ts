@@ -82,9 +82,16 @@ export function couponUnavailableStop(cause: 'inactive' | 'expired', left: numbe
     };
 }
 
-export function queueCouponBroadcastFlow(deps: QueueBroadcastDeps, tenantId: string, broadcastId: string, now?: number) {
+export function queueCouponBroadcastFlow(
+  deps: QueueBroadcastDeps,
+  tenantId: string,
+  broadcastId: string,
+  now?: number,
+  /** 按下發送的人（scheduledById），排程器後備送出時以他的權限重新檢查 */
+  actorId?: string,
+) {
   return inTenant(deps.prisma, tenantId, async (scope) => {
-    const { job, ...queued } = await queueCouponBroadcast(scope, broadcastId, now);
+    const { job, ...queued } = await queueCouponBroadcast(scope, broadcastId, now, actorId);
     await enqueueBroadcastRun(scope, deps, job);
     return queued;
   });
