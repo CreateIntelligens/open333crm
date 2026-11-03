@@ -8,6 +8,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { getChannelPlugin, LINE_DELIVERY_METADATA_KEYS } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
@@ -284,8 +285,7 @@ export async function markConversationRead(
     updatedAt: updated.updatedAt.toISOString(),
   };
 
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: updated.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   return updated;
 }
@@ -412,8 +412,7 @@ export async function sendMessage(
     },
   };
 
-  io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', wsPayload);
 
   // --- Channel Delivery: route outbound message through channel plugin ---
   let delivery: { success: boolean; requestId?: string; error?: string } | null = null;
@@ -532,8 +531,7 @@ export async function sendMessage(
       returnedMessage = { ...message, metadata: metadata as Prisma.JsonValue };
       // 再推一次 message.new：聊天視窗重新載入，顯示「沒有送出」的紅框
       const failedPayload = { ...wsPayload, message: { ...wsPayload.message, metadata } };
-      io.to(`conversation:${conversationId}`).emit('message.new', failedPayload);
-      io.to(`tenant:${tenantId}`).emit('message.new', failedPayload);
+      emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', failedPayload);
     } catch (err) {
       logger.error('[ChannelDelivery] 記錄送出失敗標示失敗', { messageId: message.id, error: String(err) });
     }
@@ -618,8 +616,7 @@ export async function returnConversationToBot(
     lastMessageAt: conversation.lastMessageAt?.toISOString() ?? now.toISOString(),
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'conversation.updated', wsPayload);
 
   const msgPayload = {
     conversationId,
@@ -634,8 +631,7 @@ export async function returnConversationToBot(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', msgPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', msgPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', msgPayload);
 
   return updated;
 }
@@ -717,8 +713,7 @@ export async function handoffConversation(
     lastMessageAt: now.toISOString(),
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'conversation.updated', wsPayload);
 
   const msgPayload = {
     conversationId,
@@ -733,8 +728,7 @@ export async function handoffConversation(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', msgPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', msgPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', msgPayload);
 
   // Publish event
   eventBus.publish({
@@ -947,8 +941,7 @@ export async function updateConversation(
     updatedAt: updated.updatedAt.toISOString(),
   };
 
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   return updated;
 }
@@ -1024,8 +1017,7 @@ export async function closeConversation(
     lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   eventBus.publish({
     name: 'conversation.closed',
@@ -1061,6 +1053,7 @@ export async function closeConversationsForCase(
     },
     select: {
       id: true,
+      channelId: true,
       assignedToId: true,
       unreadCount: true,
       lastMessageAt: true,
@@ -1092,8 +1085,7 @@ export async function closeConversationsForCase(
       lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
       updatedAt: now.toISOString(),
     };
-    io.to(`conversation:${conversation.id}`).emit('conversation.updated', wsPayload);
-    io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'conversation.updated', wsPayload);
 
     eventBus.publish({
       name: 'conversation.closed',

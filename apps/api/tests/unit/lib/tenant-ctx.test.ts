@@ -12,7 +12,7 @@ import type { OutboxInput, OutboxRow } from '@open333crm/core';
 import type { Server } from 'socket.io';
 import { inTenant } from '#src/lib/tenant-ctx.js';
 import { enqueueJob, publishEvent, type EventPublisher } from '#src/events/outbox-publisher.js';
-import { notifyAgent, notifyTenant } from '#src/events/socket-push.js';
+import { notifyAgent, notifyChannel, notifyTenant, resyncChannelRooms } from '#src/events/socket-push.js';
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 const AGENT_ID = 'c0000000-0000-0000-0000-000000000003';
@@ -57,10 +57,10 @@ function createEvents(dispatch: 'ok' | 'fail' | 'hang' = 'ok'): EventPublisher {
 }
 
 const io = {
-  to(room: string) {
+  to(room: string | string[]) {
     return {
       emit(event: string) {
-        log.push(`push:${room}:${event}`);
+        log.push(`push:${[room].flat().join(',')}:${event}`);
       },
     };
   },
@@ -171,6 +171,39 @@ test('全租戶推播：只送到交易綁定租戶的房間', async () => {
     notifyTenant(scope, io, 'case.updated', { caseId: 'c1' });
   });
   assert.deepEqual(log, ['commit', `push:tenant:${TENANT_ID}:case.updated`]);
+});
+
+test('渠道推播：只送到該渠道的房間與總店房間，不送到全租戶房間（issue #427）', async () => {
+  const CHANNEL_ID = 'e0000000-0000-0000-0000-000000000005';
+  await inTenant(createPrisma(), TENANT_ID, async (scope) => {
+    notifyChannel(scope, io, { channelId: CHANNEL_ID }, 'message.new', { conversationId: 'c1' });
+  });
+  assert.deepEqual(log, ['commit', `push:tenant:${TENANT_ID}:channel:${CHANNEL_ID},tenant:${TENANT_ID}:channels:all:message.new`]);
+});
+
+test('渠道推播帶對話時，同一次送出也包含對話房間', async () => {
+  const CHANNEL_ID = 'e0000000-0000-0000-0000-000000000005';
+  await inTenant(createPrisma(), TENANT_ID, async (scope) => {
+    notifyChannel(scope, io, { channelId: CHANNEL_ID, conversationId: 'c1' }, 'conversation.updated', {});
+  });
+  assert.deepEqual(log, ['commit', `push:conversation:c1,tenant:${TENANT_ID}:channel:${CHANNEL_ID},tenant:${TENANT_ID}:channels:all:conversation.updated`]);
+});
+
+test('重新計算渠道房間在 commit 之後執行，rollback 時不執行', async () => {
+  const calls: string[] = [];
+  const sync = async (tenantId: string, agentId?: string) => { calls.push(`${tenantId}:${agentId ?? '*'}`); log.push('sync'); };
+  await inTenant(createPrisma(), TENANT_ID, async (scope) => {
+    resyncChannelRooms(scope, sync, AGENT_ID);
+    log.push('in-tx');
+  });
+  assert.deepEqual(log, ['in-tx', 'commit', 'sync']);
+  assert.deepEqual(calls, [`${TENANT_ID}:${AGENT_ID}`]);
+
+  await assert.rejects(inTenant(createPrisma(), TENANT_ID, async (scope) => {
+    resyncChannelRooms(scope, sync);
+    throw new Error('boom');
+  }));
+  assert.deepEqual(calls, [`${TENANT_ID}:${AGENT_ID}`], 'rollback 後不重新計算');
 });
 
 test('給客服人員的推播：只送到帶租戶 ID 的該客服人員房間', async () => {

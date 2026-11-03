@@ -1,6 +1,7 @@
 import type { Conversation, Message } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { ConversationUpdatedPayload } from '@open333crm/shared';
+import { emitToChannel, type ChannelPushName } from '../../events/socket-push.js';
 
 export function buildMessageNewPayload(
   message: Pick<Message, 'id' | 'conversationId' | 'direction' | 'senderType' | 'senderId' | 'contentType' | 'content' | 'createdAt'> & {
@@ -51,13 +52,16 @@ export function buildConversationUpdatedPayload(
   };
 }
 
-export function emitToConversationAndTenant(
+/**
+ * 推到對話房間與該對話渠道的房間：只有看得到這個渠道的成員收到（issue #427）。
+ * 不推到全租戶房間；房間由 events/socket-push.ts 決定。
+ */
+export function emitToConversationChannel(
   io: SocketIOServer,
-  conversationId: string,
   tenantId: string,
-  event: string,
+  conversation: Pick<Conversation, 'id' | 'channelId'>,
+  event: ChannelPushName,
   payload: unknown,
 ) {
-  io.to(`conversation:${conversationId}`).emit(event, payload);
-  io.to(`tenant:${tenantId}`).emit(event, payload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, event, payload);
 }

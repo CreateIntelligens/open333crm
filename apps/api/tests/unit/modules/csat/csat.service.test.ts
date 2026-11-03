@@ -156,7 +156,7 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
     const db = {
       platformSetting: { findUnique: async () => ({ value: { enabled: true } }) },
       case: {
-        findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, csatScore: null, conversations: [{ id: 'conv-1' }] }),
+        findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, csatScore: null, conversations: [{ id: 'conv-1', channelId: 'ch-1' }] }),
         update: async () => ({}),
       },
       message: {

@@ -11,7 +11,7 @@ import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
-  emitToConversationAndTenant,
+  emitToConversationChannel,
 } from './inbound-socket-presenter.js';
 
 export async function runInboundPostbackInterceptors(ctx: InboundMessageContext): Promise<boolean> {
@@ -156,10 +156,10 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       const convPayload: ConversationUpdatedPayload = buildConversationUpdatedPayload(updatedConversation, {
         handoffReason: reason,
       });
-      emitToConversationAndTenant(
+      emitToConversationChannel(
         ctx.io,
-        ctx.conversation.id,
         ctx.tenantId,
+        ctx.conversation,
         'conversation.updated',
         convPayload,
       );

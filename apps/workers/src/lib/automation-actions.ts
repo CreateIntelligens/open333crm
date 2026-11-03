@@ -506,7 +506,7 @@ export async function executeWorkerAutomationActions(
         // channel 防呆：素材 channelType 與對話 channel 不符就 skip（避免 FB 對話送 line_* 空訊息）
         const conv = await prisma.conversation.findFirst({
           where: { id: context.conversationId, tenantId: context.tenantId },
-          include: { channel: { select: { channelType: true } } },
+          include: { channel: { select: { id: true, channelType: true } } },
         });
         const convChannelType = conv?.channel?.channelType?.toLowerCase();
         const matChannelType = material.channelType?.toLowerCase();

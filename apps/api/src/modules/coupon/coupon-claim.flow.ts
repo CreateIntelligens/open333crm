@@ -110,7 +110,7 @@ async function replyFailure(
   try {
     await inTenantOf(deps, input.tenantId, async (scope) => {
       const message = await recordClaimReply(scope, link, input.conversationId, { text, reason, delivered }, new Date((deps.now ?? Date.now)()));
-      notifyCouponMessage(scope, deps.io, message);
+      notifyCouponMessage(scope, deps.io, input.channelId, message);
     });
   } catch (err) {
     logger.error('[CouponClaim] 無法在對話留下領券紀錄', { tenantId: input.tenantId, conversationId: input.conversationId, reason, error: (err as Error).message });
@@ -178,7 +178,7 @@ export async function claimFromInbound(
     try {
       await inTenantOf(deps, tenantId, async (scope) => {
         const message = await recordClaimReply(scope, link, input.conversationId, { text: failureText, reason: 'DELIVERY_FAILED', delivered: replied }, now());
-        notifyCouponMessage(scope, deps.io, message);
+        notifyCouponMessage(scope, deps.io, input.channelId, message);
       });
     } catch (err) {
       logger.error('[CouponClaim] 無法在對話留下領券紀錄', { tenantId, error: (err as Error).message });
@@ -193,7 +193,7 @@ export async function claimFromInbound(
         const confirmed = await confirmClaim(scope, link, input, reserved.reserved, text, now());
         if (!confirmed) return null;
         if (confirmed.tag) await publishCouponTag(scope, createOutboxPublisher(deps.prisma), input.contactId, confirmed.tag);
-        notifyCouponMessage(scope, deps.io, confirmed.message);
+        notifyCouponMessage(scope, deps.io, input.channelId, confirmed.message);
         notifyInstanceUpdated(scope, deps.io, { instanceId, contactId: input.contactId, change: 'issued' });
         return confirmed.message;
       });

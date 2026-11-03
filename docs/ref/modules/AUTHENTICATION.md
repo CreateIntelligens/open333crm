@@ -109,12 +109,12 @@ Socket.IO 的每個 namespace 各自認證：
 
 | namespace | 使用者 | 認證 | 連線後自動加入的房間 | 其他房間 |
 | --- | --- | --- | --- | --- |
-| 預設（`/`） | 客服 | `socket.plugin.ts` 的 `io.use()` 以 `JWT_SECRET` 驗證 handshake 的 token，把 `agentId`、`tenantId`、`role`、`roleId` 寫入 `socket.data` | `tenant:<tenantId>`、`agent:<agentId>` | 送出 `subscribe` 時由 `authorizeSocketRoom()` 查資料庫授權，並限制頻率 |
+| 預設（`/`） | 客服 | `socket.plugin.ts` 的 `io.use()` 以 `JWT_SECRET` 驗證 handshake 的 token，把 `agentId`、`tenantId`、`role`、`roleId` 寫入 `socket.data` | `tenant:<tenantId>`、`agent:<agentId>`、`tenant:<tenantId>:agent:<agentId>`，以及依可見渠道的 `tenant:<tenantId>:channel:<channelId>`（持有 `channel.view_all` 時改為 `tenant:<tenantId>:channels:all`） | 送出 `subscribe` 時由 `authorizeSocketRoom()` 查資料庫授權，並限制頻率 |
 | `/visitor` | 網站訪客 | `webchat.socket.ts` 以 `chatboxSessionVerifier` 驗證 session ID 與 claim token，並以來源 IP 限制連線頻率 | `visitor:<channelId>:<visitorToken>` | 無 |
 
 客服的 socket 只在 handshake 驗證一次。連線建立之後，系統不會重新驗證，也不會在成員或租戶停用時主動斷線。
 
-`tenant:<tenantId>` 房間會收到整個租戶的 `message.new`，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
+`message.new`、`conversation.*` 只送到渠道房間，不送到 `tenant:<tenantId>`（issue #427）。渠道房間在 handshake 驗證時算好；成員的可用渠道、角色或角色權限、渠道與渠道團隊授權改變時，`fastify.syncSocketChannelRooms()` 重新計算已連線 socket 的房間。`tenant:<tenantId>` 仍收到工單與聯絡人合併的事件，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
 
 ## 停用與撤銷什麼時候生效
 

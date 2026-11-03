@@ -151,3 +151,36 @@ test('關鍵字規則在期限內回覆：動作拿到回覆權杖與收到時�
   assert.equal(executed[0].context.receivedAt, receivedAt);
   assert.equal(executed[0].context.ruleName, 'rule-hours');
 });
+
+// ── automation.executed 推播（issue #427）：不帶事件內容（訊息全文、replyToken），
+//    有渠道的事件只推給看得到該渠道的成員 ──
+
+function recordingRedis() {
+  const emitted: Array<{ room?: string; rooms?: string[]; event: string; data: Record<string, unknown> }> = [];
+  return {
+    emitted,
+    redis: {
+      publish: async (channel: string, payload: string) => {
+        if (channel === 'socket:emit') emitted.push(JSON.parse(payload));
+        return 1;
+      },
+    },
+  };
+}
+
+test('automation.executed：有渠道時只推到渠道與總店房間，內容只有 ID、不含訊息全文與 replyToken', async () => {
+  const { db } = fakeDb();
+  const { redis: rec, emitted } = recordingRedis();
+  const j = job('請問營業時間') as unknown as { data: { context: Record<string, unknown> } };
+  j.data.context.channelId = 'channel-1';
+  await handleAutomationJob(j as never, db as never, rec as never);
+
+  const executedEvents = emitted.filter((e) => e.event === 'automation.executed');
+  assert.equal(executedEvents.length, 1);
+  assert.equal(executedEvents[0].room, undefined, '不推到全租戶房間');
+  assert.deepEqual(executedEvents[0].rooms, [`tenant:${TENANT}:channel:channel-1`, `tenant:${TENANT}:channels:all`]);
+  assert.deepEqual(executedEvents[0].data, {
+    ruleId: 'rule-hours', trigger: 'keyword.matched', conversationId: 'conv-1', contactId: 'contact-1', caseId: null,
+  });
+  assert.ok(!JSON.stringify(executedEvents[0].data).includes('營業時間'), '不含訊息全文');
+});

@@ -7,7 +7,7 @@
 import type { Prisma } from '@prisma/client';
 import type { Server } from 'socket.io';
 import type { TenantScope } from '../../lib/tenant-ctx.js';
-import { notifyTenant } from '../../events/socket-push.js';
+import { notifyChannel, notifyTenant } from '../../events/socket-push.js';
 import type { EventPublisher } from '../../events/outbox-publisher.js';
 import { publishContactTagged } from '../tag/tag-effects.js';
 
@@ -22,13 +22,14 @@ export function notifyInstanceUpdated(
   notifyTenant(scope, io, 'coupon.instance.updated', update);
 }
 
-/** 對話新增一則訊息（發券或領券的券卡、沒有發出券時的回覆） */
+/** 對話新增一則訊息（發券或領券的券卡、沒有發出券時的回覆）；只推給看得到該渠道的成員（issue #427） */
 export function notifyCouponMessage(
   scope: TenantScope,
   io: Server,
+  channelId: string,
   message: Prisma.MessageGetPayload<object> & { sender?: unknown },
 ): void {
-  notifyTenant(scope, io, 'message.new', {
+  notifyChannel(scope, io, { channelId, conversationId: message.conversationId }, 'message.new', {
     conversationId: message.conversationId,
     message: {
       id: message.id,

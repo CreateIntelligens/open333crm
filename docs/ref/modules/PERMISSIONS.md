@@ -165,13 +165,15 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 對話綁了團隊時，`assertConversationChannelVisible()` 另外要求成員是負責人或該團隊的成員。`Conversation.teamId` 沒有寫入端，這段檢查目前不會觸發；團隊本身也沒有建立的途徑。兩者都見 `../system/AUDIT.md` 的 TEAM-01。
 
-聯絡人清單與合併、AI 輔助與租戶房間的即時事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。聯絡人的對話、工單與時間軸有套用。
+聯絡人清單與合併、AI 輔助與租戶房間的工單與聯絡人合併事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。聯絡人的對話、工單與時間軸有套用。
 
 資料匯出不依可見範圍篩選，匯出的是全租戶資料。所以匯出路由除了 `data.export`，還要求 `channel.view_all`，只缺後者時回 403、`requiredPermission` 是 `channel.view_all`。`channel.view_all` 本身有 `dependsOn`，不能當 `data.export` 的前置權限，角色與權限頁不會連動勾選。見[稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md#資料匯出)。
 
 ## Socket 房間
 
-客服的 socket 連線建立時自動加入 `tenant:<tenantId>` 與 `agent:<agentId>`，這兩個房間不經過授權。其他房間要送出 `subscribe`，由 `authorizeSocketRoom()` 判斷：
+客服的 socket 連線建立時自動加入 `tenant:<tenantId>`、`agent:<agentId>` 與 `tenant:<tenantId>:agent:<agentId>`，這些房間不經過授權。連線時也依可見渠道加入渠道房間：每個看得到的渠道一個 `tenant:<tenantId>:channel:<channelId>`；持有 `channel.view_all` 時只加入 `tenant:<tenantId>:channels:all`。`message.new`、`conversation.*` 只送到渠道房間（issue #427）。可用渠道、角色、角色權限、渠道與渠道團隊授權改變時，系統重新計算已連線 socket 的渠道房間，並重新授權已訂閱的房間；方案異動要重新連線才生效。
+
+其他房間要送出 `subscribe`，由 `authorizeSocketRoom()` 判斷：
 
 | 房間 | 可以訂閱的條件 |
 | --- | --- |
@@ -228,7 +230,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | RBAC-01 |
 | CLI token 只看 scope，`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 業務規則看舊的 `role`，不看細粒度角色 | RBAC-03 |
-| 渠道可見範圍沒有套用在租戶房間、聯絡人清單與合併、AI 輔助 | RBAC-04 |
+| 渠道可見範圍沒有套用在租戶房間的工單與聯絡人合併事件、聯絡人清單與合併、AI 輔助 | RBAC-04 |
 | reconcile 腳本會覆蓋租戶對系統角色的修改，也不清除快取 | RBAC-05 |
 | 角色與權限頁不套方案天花板 | PLAN-08 |
 | 功能天花板只在掛了 `requirePermission()` 的路由生效；行銷、知識庫、粉絲活動仍有路由沒掛 | PLAN-04 |

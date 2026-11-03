@@ -157,11 +157,13 @@
 
 渠道看不見時回 404，看得見但層級不足時回 403。看不見時不回 403，是為了不透露其他分店的對話是否存在。
 
-**即時事件沒有套用可見範圍。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。但每條 socket 連線一建立就自動加入 `tenant:<租戶 ID>` 房間，而新訊息事件 `message.new` 會帶著訊息內容發到這個房間。因此只能看某些渠道的客服，仍會即時收到租戶內所有渠道的訊息。見 `../../system/AUDIT.md` 的 RBAC-04。
+**即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間（issue #427）：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
+
+成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權改變後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。方案異動拿掉 `channel.view_all` 時，成員要重新連線才生效。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
 
 `assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 
-可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。AI 輔助端點以 `conversationId` 讀對話時也會檢查。租戶房間的即時事件、聯絡人清單與合併都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
+可見範圍套用在收件匣與工單的 REST 路由、socket 的對話房間與渠道相關的即時事件。AI 輔助端點以 `conversationId` 讀對話時也會檢查。租戶房間的工單與聯絡人合併事件、聯絡人清單與合併都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 右側面板的跨渠道功能
 
@@ -202,7 +204,7 @@
 | 限制 | 說明 |
 | --- | --- |
 | **指派對話不會通知被指派的人** | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
-| **即時事件與聯絡人清單不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
+| **工單與聯絡人合併的即時事件、聯絡人清單不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 對話的狀態下拉選單繞過關閉的紀錄與事件 | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | 閒置時限沒有維護介面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |
 

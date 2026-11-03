@@ -352,6 +352,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
       payload: { channelType: data.channelType, displayName: data.displayName },
       ip: request.ip,
     });
+    // 已連線成員的渠道房間依新的渠道與授權重新計算（issue #427）
+    await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.status(201).send(success(channel));
   });
@@ -388,6 +390,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
         request.log.warn({ err: err instanceof Error ? err.message : err, channelId: request.params.id }, '更新權杖後自動驗證失敗'),
       );
     }
+    // 停用、重新啟用改變可見渠道：已連線成員的渠道房間重新計算（issue #427）
+    if (data.isActive !== undefined) await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.send(success(channel));
   });
@@ -409,6 +413,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
       targetId: request.params.id,
       ip: request.ip,
     });
+    // 已連線成員的渠道房間依新的渠道與授權重新計算（issue #427）
+    await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.send(success(result));
   });
@@ -708,6 +714,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
         payload: { teamId: body.teamId, accessLevel: body.accessLevel },
         ip: request.ip,
       });
+      // 已連線成員的渠道房間依新的團隊授權重新計算（issue #427）
+      await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
       return reply.status(201).send(success(row));
     },
@@ -738,6 +746,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
         payload: { teamId: request.params.teamId },
         ip: request.ip,
       });
+      // 已連線成員的渠道房間依撤銷後的團隊授權重新計算（issue #427）
+      await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
       return reply.status(204).send();
     },

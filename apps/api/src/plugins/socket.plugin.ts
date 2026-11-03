@@ -6,6 +6,8 @@ import IORedis from 'ioredis';
 import { getConfig } from '../config/env.js';
 import { authorizeSocketRoom } from '../modules/socket/socket-room-authorization.js';
 import { registerRoomHandlers } from '../modules/socket/socket-room-handlers.js';
+import type { SocketChannelRoomSync } from '../events/socket-push.js';
+import { resolveChannelRooms, syncChannelRooms, type SyncableServer } from '../modules/socket/socket-channel-rooms.js';
 
 /**
  * socket 連線的 token 驗證：只收客服 access token（AUDIT AUTH-05）。
@@ -20,9 +22,23 @@ export function decodeSocketAgentToken(
   return decoded as unknown as { agentId: string; tenantId: string; role: string; roleId?: string | null };
 }
 
+/**
+ * socket:emit 訊息的目標房間：`room`（一個）或 `rooms`（非空的字串陣列）。格式不符回 null。
+ */
+export function bridgeRooms(payload: { room?: unknown; rooms?: unknown }): string[] | null {
+  if (typeof payload.room === 'string') return [payload.room];
+  if (
+    Array.isArray(payload.rooms)
+    && payload.rooms.length > 0
+    && payload.rooms.every((r): r is string => typeof r === 'string')
+  ) return payload.rooms;
+  return null;
+}
+
 declare module 'fastify' {
   interface FastifyInstance {
     io: SocketIOServer;
+    syncSocketChannelRooms: SocketChannelRoomSync;
   }
 }
 
@@ -55,6 +71,11 @@ async function socketPlugin(fastify: FastifyInstance) {
       socket.data.role = decoded.role;
       // roleId 供房間授權判斷 channel.view_all（總店可見全部）
       socket.data.roleId = decoded.roleId ?? null;
+      // 渠道房間在連線完成前算好（issue #427）：客戶端收到 connect 時已在該在的房間，不會漏推播
+      socket.data.channelRooms = await resolveChannelRooms(fastify.prismaAdmin, {
+        tenantId: decoded.tenantId,
+        agentId: decoded.agentId,
+      });
 
       next();
     } catch {
@@ -71,7 +92,12 @@ async function socketPlugin(fastify: FastifyInstance) {
       { agentId, tenantId, role: socket.data.role, roleId: socket.data.roleId ?? null },
       input,
     );
-    registerRoomHandlers(socket, { agentId, tenantId }, authorize, fastify.log);
+    registerRoomHandlers(
+      socket,
+      { agentId, tenantId, channelRooms: socket.data.channelRooms ?? [] },
+      authorize,
+      fastify.log,
+    );
 
     socket.on('disconnect', (reason) => {
       fastify.log.info({ agentId, reason }, 'Socket disconnected');
@@ -79,19 +105,31 @@ async function socketPlugin(fastify: FastifyInstance) {
   });
 
   fastify.decorate('io', io);
+  // 重新計算已連線 socket 的渠道房間（issue #427）。失敗只記 log、不丟錯：
+  // 授權已經寫入，該成員重新連線時仍會依新授權加入房間
+  const syncSocketChannelRooms: SocketChannelRoomSync = async (tenantId, agentId) => {
+    try {
+      await syncChannelRooms(io as unknown as SyncableServer, fastify.prismaAdmin, tenantId, agentId);
+    } catch (err) {
+      fastify.log.warn({ err, tenantId, agentId }, '[Socket] 重新計算渠道房間失敗，成員重新連線後生效');
+    }
+  };
+  fastify.decorate('syncSocketChannelRooms', syncSocketChannelRooms);
 
   // ── Redis pub/sub bridge — forward events from standalone workers ────────────
   const socketBridgeSub = new IORedis(config.REDIS_URL);
   await socketBridgeSub.subscribe('socket:emit');
   socketBridgeSub.on('message', (_channel, message) => {
     try {
-      const payload = JSON.parse(message) as { room?: string; event?: string; data?: unknown; namespace?: string };
-      if (typeof payload.room !== 'string' || typeof payload.event !== 'string') {
+      const payload = JSON.parse(message) as { room?: unknown; rooms?: unknown; event?: unknown; data?: unknown; namespace?: string };
+      const rooms = bridgeRooms(payload);
+      if (!rooms || typeof payload.event !== 'string') {
         fastify.log.warn({ message }, '[SocketBridge] Malformed message, discarding');
         return;
       }
       const ns = typeof payload.namespace === 'string' ? io.of(payload.namespace) : io;
-      ns.to(payload.room).emit(payload.event as any, payload.data);
+      // 多個房間用一次 to() 送出：同一個連線在多個房間也只收到一次（渠道推播，issue #427）
+      ns.to(rooms).emit(payload.event as any, payload.data);
     } catch (err) {
       fastify.log.warn({ err }, '[SocketBridge] Failed to parse socket:emit message');
     }

@@ -290,8 +290,12 @@ A service obeys these rules:
 
 A flow and a background job obey these rules:
 
-- Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant) or
-  `notifyAgent(scope, io, agentId, name, data)` (to one agent), from `apps/api/src/events/socket-push.ts`.
+- Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant),
+  `notifyChannel(scope, io, { channelId, conversationId }, name, data)` (to the agents who can see the
+  channel) or `notifyAgent(scope, io, agentId, name, data)` (to one agent), from
+  `apps/api/src/events/socket-push.ts`. An event that carries messages or conversation data of a
+  channel (`message.new`, `conversation.*`) uses `notifyChannel`. Do not send such data to the tenant
+  room: an agent without access to the channel would receive it (issue #427).
   Send events with `await publishEvent(scope, publisher, name, payload)`. Send BullMQ jobs with
   `await enqueueJob(scope, publisher, queueName, name, data)`. `publisher` is an `EventPublisher`,
   for example `createOutboxPublisher(prisma)`. Both are in
@@ -570,7 +574,8 @@ Use path A when all of these conditions are true:
 
 - The event is the direct result of the current HTTP request.
 - The data is already in the database.
-- The Socket event goes to all agents of the tenant (`notifyTenant`) or to one agent (`notifyAgent`).
+- The Socket event goes to all agents of the tenant (`notifyTenant`), to the agents who can see a
+  channel (`notifyChannel`), or to one agent (`notifyAgent`).
 - You need no more queries.
 
 **Path B — Async queue** (outbox → subscriber queue → BullMQ → workers → Redis pub/sub):
@@ -597,6 +602,10 @@ await redisPublisher.publish(
   JSON.stringify({ room, event, data }),
 );
 ```
+
+A worker sends an event with the messages or conversation data of a channel with
+`publishChannelSocketEvent()` from `apps/workers/src/lib/socket-bridge.ts`. It sends the message to the
+channel rooms (`rooms` in the `socket:emit` message), not to the tenant room.
 
 Workers send a business event with `writeOutbox()` from `@open333crm/core`, in the transaction
 that writes the data. Give the `tenantId`: the workers connection has no RLS. After the commit,

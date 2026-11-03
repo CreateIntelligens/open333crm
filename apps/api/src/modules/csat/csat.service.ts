@@ -6,6 +6,7 @@ import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { createAndDispatch } from '../notification/notification.service.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
@@ -143,8 +144,7 @@ export async function sendCsatSurvey(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
-  io.to(`tenant:${caseRecord.tenantId}`).emit('message.new', wsPayload);
+  emitToChannel(io, caseRecord.tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', wsPayload);
 
   // Deliver to external channel
   try {
@@ -221,7 +221,7 @@ export async function recordCsatScore(
     where: { id: caseId, tenantId: scope.tenantId, contactId: scope.contactId },
     include: {
       conversations: {
-        select: { id: true },
+        select: { id: true, channelId: true },
         take: 1,
       },
     },
@@ -232,7 +232,8 @@ export async function recordCsatScore(
   if (score < 1 || score > 5) return false;
 
   const now = new Date();
-  const conversationId = caseRecord.conversations[0]?.id;
+  const conversation = caseRecord.conversations[0];
+  const conversationId = conversation?.id;
 
   // Update case with CSAT data
   await prisma.case.update({
@@ -247,7 +248,7 @@ export async function recordCsatScore(
   // Send follow-up message
   const followUp = getFollowUpMessage(score);
 
-  if (conversationId) {
+  if (conversation && conversationId) {
     const storedFollowUp = await prepareStoredMessageContent(prisma, scope.tenantId, { text: followUp }, 'system_template');
     // Create follow-up message in conversation
     const followUpMsg = await prisma.message.create({
@@ -282,8 +283,7 @@ export async function recordCsatScore(
         sender: null,
       },
     };
-    io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
-    io.to(`tenant:${caseRecord.tenantId}`).emit('message.new', wsPayload);
+    emitToChannel(io, caseRecord.tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', wsPayload);
 
     // Deliver follow-up to channel
     deliverToChannel(prisma, conversationId, followUp).catch(() => {});

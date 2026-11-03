@@ -18,6 +18,7 @@ import { loadOtherChannelContext, withOtherChannelContext } from '../other-chann
 import type { AccessibleChannels } from '../../../services/channel-visibility.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
 import type { BotReplyGuard } from '../../automation/bot-reply-guard.js';
+import { emitToChannel } from '../../../events/socket-push.js';
 
 export const AGENT_SYSTEM_PROMPT =
   '你是 Open333CRM 的專業客服與研究助手，使用繁體中文回答。' +
@@ -215,7 +216,7 @@ export async function persistAndDeliverAgentReply(
 ): Promise<void> {
   const now = new Date();
   const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text }, 'system');
-  type PersistedAgentMessage = { id: string; metadata: unknown };
+  type PersistedAgentMessage = { id: string; metadata: unknown; conversation: { channelId: string } };
   const message = await replyGuard.persist(async (db: Prisma.TransactionClient): Promise<PersistedAgentMessage | null> => {
     const claimed = await db.conversation.updateMany({
       where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
@@ -233,7 +234,8 @@ export async function persistAndDeliverAgentReply(
         metadata: { source: 'agentic_llm', agentRunId: runId, ...storedContent.metadata, ...(bindingCodeBlocked ? { bindingCodeBlocked: true } : {}) },
         createdAt: now,
       },
-      select: { id: true, metadata: true },
+      // channelId：推播只送給看得到這個渠道的成員（issue #427）
+      select: { id: true, metadata: true, conversation: { select: { channelId: true } } },
     }) as unknown as PersistedAgentMessage;
   });
   if (!message) return;
@@ -252,8 +254,7 @@ export async function persistAndDeliverAgentReply(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', payload);
-  io.to(`tenant:${tenantId}`).emit('message.new', payload);
+  emitToChannel(io, tenantId, { channelId: message.conversation.channelId, conversationId }, 'message.new', payload);
   await deliverToChannel(prisma, conversationId, { contentType: 'text', content: storedContent.content, delivery });
 }
 

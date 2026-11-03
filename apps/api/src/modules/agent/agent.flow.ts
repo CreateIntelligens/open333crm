@@ -14,6 +14,7 @@ import { hashPassword } from '../../shared/utils/password.js';
 import type { ChannelGrantScope } from '../../services/channel-visibility.js';
 import { listChannelsForAgent, setAgentChannels } from '../../services/channel-team-access.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { resyncChannelRooms, type SocketChannelRoomSync } from '../../events/socket-push.js';
 import {
   changeOwnPassword,
   createAgent,
@@ -28,6 +29,8 @@ import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 
 export interface AgentFlowDeps {
   prisma: PrismaClient;
+  /** 可用渠道或角色改變後重新計算該成員已連線 socket 的渠道房間（issue #427） */
+  syncSocketChannelRooms?: SocketChannelRoomSync;
 }
 
 /** 成員列表：isActive 為 false 時列出停用的成員 */
@@ -101,6 +104,7 @@ export function updateAgentRoleFlow(
       payload: { role: agent.role, roleId: input.roleId ?? null },
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
     return agent;
   });
 }
@@ -176,6 +180,7 @@ export function setAgentChannelsFlow(deps: AgentFlowDeps, actor: RequestActor, a
       payload: { count: result.count },
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
     return result;
   });
 }

@@ -246,6 +246,9 @@ importers:
       pino-pretty:
         specifier: ^11.0.0
         version: 11.3.0
+      socket.io-client:
+        specifier: 4.8.3
+        version: 4.8.3
       tsx:
         specifier: ^4.22.0
         version: 4.23.15
@@ -1852,7 +1855,6 @@ packages:
   '@lancedb/lancedb@0.11.0':
     resolution: {integrity: sha512-oZSoKgaAoZIo5Oz4yhO7Z0kFzXRbXRgBK7zoNnA4/4m74T5KRRWovKSgHUwGNw18sBP2lnT2hT5WV3r20PKfzQ==}
     engines: {node: '>= 18'}
-    cpu: [x64, arm64]
     os: [darwin, linux, win32]
     peerDependencies:
       apache-arrow: '>=13.0.0 <=17.0.0'
