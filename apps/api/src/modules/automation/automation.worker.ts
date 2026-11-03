@@ -10,15 +10,14 @@
 
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
-import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { Queue } from 'bullmq';
-import { claimOne, claimSideEffect, hasSideEffectClaim, logger } from '@open333crm/core';
+import { claimSideEffect, hasSideEffectClaim, logger } from '@open333crm/core';
 import { getBotConfig, shouldRunAgentReply, type BotConfig } from '@open333crm/automation';
 import { hasMatchingKeywordRule } from './keyword-yield.js';
 import { createEventRouter, type EventHandler, type SubscribedEvent } from '../../events/subscriber-workers.js';
 import { createOutboxPublisher, publishEvent, type EventPublisher } from '../../events/outbox-publisher.js';
 import { inTenant } from '../../lib/tenant-ctx.js';
-import { emitToChannel } from '../../events/socket-push.js';
+import { handOffConversation } from './handoff.flow.js';
 
 /** 認領與寫入結果的交易：tenantPrisma 是 inTenant() 的基礎連線（受 RLS 約束），events 寫 outbox */
 interface TenantDeps {
@@ -149,79 +148,32 @@ async function checkAutoHandoff(
     : `自動轉接人工客服：${reason}`;
   const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: systemText }, 'system');
 
-  // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領
+  // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領。
+  // 轉接本身（狀態、原因、系統訊息、conversation.handoff、渠道推播）與 KB 追問用完共用 handOffConversation()
   const replyGuard = createBotReplyGuard(tenantDeps.tenantPrisma, prisma, tenantId, inboundMessageId);
-  const handedOff = await replyGuard.persist(async (tx, scope) => {
-    const claimed = await claimOne(() =>
-      tx.conversation.updateMany({
-        where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-        data: { status: 'AGENT_HANDLED', handoffReason: reason, lastMessageAt: now },
-      }),
-    );
-    // 另一個處理已經轉接了這段對話
-    if (!claimed) return null;
-
-    const systemMessage = await tx.message.create({
-      data: {
+  const handedOff = await replyGuard.persist((_tx, scope) =>
+    handOffConversation(
+      scope,
+      { io, events: tenantDeps.events },
+      {
         conversationId,
-        direction: 'OUTBOUND',
-        senderType: 'SYSTEM',
-        contentType: 'system',
-        content: storedContent.content,
-        metadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
-        isRead: true,
-        createdAt: now,
+        channelId: conversation.channelId,
+        reason,
+        summary,
+        now,
+        systemContent: storedContent.content,
+        systemMetadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
       },
-    });
-    await publishEvent(scope, tenantDeps.events, 'conversation.handoff', {
-      conversationId,
-      reason,
-      summary,
-      previousStatus: 'BOT_HANDLED',
-    });
-    const updatedConversation = await tx.conversation.findFirst({ where: { id: conversationId, tenantId } });
-    return { systemMessage, updatedConversation };
-  });
+    ),
+  );
   if (!handedOff) return;
 
   // 以下在轉接 commit 之後：失敗只記 log，不重試（轉接訊息最多送出一次）
   try {
-    // Deliver configurable handoff message to channel
     await deliverToChannel(prisma, conversationId, botConfig.handoffMessage);
-
-    // Emit WebSocket events
-    const { systemMessage, updatedConversation } = handedOff;
-    if (updatedConversation) {
-      const wsPayload: ConversationUpdatedPayload = {
-        id: updatedConversation.id,
-        status: updatedConversation.status,
-        assignedToId: updatedConversation.assignedToId,
-        unreadCount: updatedConversation.unreadCount,
-        lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
-        updatedAt: updatedConversation.updatedAt.toISOString(),
-        handoffReason: reason,
-      };
-      emitToChannel(io, tenantId, { channelId: updatedConversation.channelId, conversationId }, 'conversation.updated', wsPayload);
-    }
-
-    // 與其他 message.new 相同送到渠道房間：列表與總店也收得到，沒有渠道授權的成員收不到（PR #438 審查）
-    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', {
-      conversationId,
-      message: {
-        id: systemMessage.id,
-        conversationId,
-        direction: 'OUTBOUND',
-        senderType: 'SYSTEM',
-        contentType: 'system',
-        content: systemMessage.content,
-        createdAt: now.toISOString(),
-        sender: null,
-      },
-    });
-
     logger.info(`[AutoHandoff] Conversation ${conversationId} auto-escalated: ${reason}`);
   } catch (err) {
-    logger.error('[AutoHandoff] 轉接之後送出轉接訊息或推播失敗:', err);
+    logger.error('[AutoHandoff] 轉接之後送出轉接訊息失敗:', err);
   }
 }
 
@@ -369,7 +321,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
             }
             if (!agentHandled) {
               try {
-                await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard);
+                await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard, tenantDeps.events);
               } catch (err) {
                 if (err instanceof ClaimTransactionError) throw err;
                 logger.error('[AutomationWorker] KB auto-reply error:', err);

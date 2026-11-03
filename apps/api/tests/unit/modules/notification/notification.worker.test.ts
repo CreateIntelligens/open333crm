@@ -35,7 +35,7 @@ vi.mock('#src/modules/email/email.service.js', () => ({
   },
 }));
 
-import { USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
+import { EVENT_NOTIFICATION_QUEUE, subscriberQueuesOf, USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { setupNotificationWorker } from '#src/modules/notification/notification.worker.js';
 
@@ -94,4 +94,27 @@ test('Redis unavailable at enqueue time（Subscriber cannot enqueue the next job
   sent.redisDown = true;
   await assert.rejects(handle(event('case.assigned', { caseId: 'case-1', assigneeId: 'agent-x', title: 'T' })), /redis down/);
   await assert.rejects(handle(event('message.received', { conversationId: 'conv-1', contactId: 'contact-1' })), /redis down/);
+});
+
+test('未指派的對話轉接：conversation.handoff 送進通知訂閱者，通知主管與管理員，內容寫轉接原因', async () => {
+  // outbox 依名稱決定送給哪些訂閱者：沒有列入通知訂閱者時，事件只到 webhook，客服收不到（#419）
+  assert.ok(subscriberQueuesOf('conversation.handoff').includes(EVENT_NOTIFICATION_QUEUE));
+
+  await handle(event('conversation.handoff', { conversationId: 'conv-1', reason: '知識庫找不到可回答的內容，追問次數已達上限（2/2）' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__supervisor-a`, `${EVENT}__admin-b`]);
+  assert.equal(jobs[0].data.type, 'conversation_handoff');
+  assert.equal(jobs[0].data.clickUrl, '/dashboard/inbox?conv=conv-1');
+  assert.match(String(jobs[0].data.body), /客人/);
+  assert.match(String(jobs[0].data.body), /追問次數已達上限/);
+});
+
+test('已指派的對話轉接：只通知負責的客服', async () => {
+  const assignedHandle = setupNotificationWorker({
+    agent: { findMany: async () => [{ id: 'supervisor-a' }, { id: 'admin-b' }] },
+    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', contact: { displayName: '客人' } }) },
+  } as never);
+  await assignedHandle(event('conversation.handoff', { conversationId: 'conv-1', reason: 'AI 月額度已用完，無法自動回覆' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__agent-x`]);
 });

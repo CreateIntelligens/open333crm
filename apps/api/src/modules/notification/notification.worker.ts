@@ -240,6 +240,40 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
     }
   });
 
+  // ── conversation.handoff ───────────────────────────────────────────────
+  // 機器人轉接真人（自動轉接、知識庫追問用完或 AI 失敗、客人按轉接鈕）：收件人與 message.received 相同
+  events.on('conversation.handoff', async (event: SubscribedEvent) => {
+    try {
+      const { conversationId, reason } = event.payload as { conversationId?: string; reason?: string };
+      if (!conversationId) return;
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, tenantId: event.tenantId },
+        select: { assignedToId: true, contact: { select: { displayName: true } } },
+      });
+      if (!conversation) return;
+
+      const contactName = conversation.contact.displayName;
+      const notifPayload = {
+        tenantId: event.tenantId,
+        type: 'conversation_handoff',
+        title: '對話已轉接真人',
+        body: reason ? `${contactName} 的對話需要客服接手：${reason}` : `${contactName} 的對話需要客服接手`,
+        clickUrl: `/dashboard/inbox?conv=${conversationId}`,
+      };
+      const recipients = conversation.assignedToId
+        ? [conversation.assignedToId]
+        : await getSupervisorAndAdminIds(prisma, event.tenantId);
+      for (const agentId of recipients) {
+        await enqueueDispatch(event, agentId, notifPayload);
+      }
+      logger.info(`[NotificationWorker] conversation.handoff → ${recipients.length} agent(s)`);
+    } catch (err) {
+      logger.error('[NotificationWorker] Error handling conversation.handoff:', err);
+      throw err;
+    }
+  });
+
   // ── conversation.assigned ──────────────────────────────────────────────
   events.on('conversation.assigned', async (event: SubscribedEvent) => {
     try {

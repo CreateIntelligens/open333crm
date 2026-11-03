@@ -35,7 +35,8 @@ async function testUpdatedAtOrderingAndPayloads() {
   const inboundSideEffectsSource = await readSource('modules/webhook/inbound-side-effects.ts');
   const inboundPresenterSource = await readSource('modules/webhook/inbound-socket-presenter.ts');
   const simulatorSource = await readSource('channels/simulator/simulator.service.ts');
-  const automationWorkerSource = await readSource('modules/automation/automation.worker.ts');
+  // 轉接的 conversation.updated 推播在自動轉接與 KB 追問用完共用的 handoff.flow.ts（#419）
+  const handoffFlowSource = await readSource('modules/automation/handoff.flow.ts');
 
   assert.equal(serviceSource.includes("orderBy: { updatedAt: 'desc' }"), true);
   assert.equal(serviceSource.includes('updatedAt: updated.updatedAt.toISOString()'), true);
@@ -43,7 +44,8 @@ async function testUpdatedAtOrderingAndPayloads() {
   assert.equal(inboundSideEffectsSource.includes('buildConversationUpdatedPayload(updatedConv)'), true);
   assert.equal(inboundPresenterSource.includes('updatedAt: conversation.updatedAt.toISOString()'), true);
   assert.equal(simulatorSource.includes('updatedAt: updatedConv.updatedAt.toISOString()'), true);
-  assert.equal(automationWorkerSource.includes('ConversationUpdatedPayload'), true);
+  assert.equal(handoffFlowSource.includes('ConversationUpdatedPayload'), true);
+  assert.equal(handoffFlowSource.includes('updatedAt: conversation.updatedAt.toISOString()'), true);
 }
 
 async function testFrontendSocketLocalUpdates() {
