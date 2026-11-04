@@ -8,7 +8,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import type { Prisma } from '@prisma/client';
-import type { CaseStatus, Priority } from '@open333crm/shared';
+import { caseTransitionTimestamps, type CaseStatus, type Priority } from '@open333crm/shared';
 import { addMinutes } from 'date-fns';
 import { validateTransition } from './case-state-machine.js';
 import { AppError } from '../../shared/utils/response.js';
@@ -419,6 +419,7 @@ export async function assignCase(
     data: {
       assigneeId,
       status: newStatus,
+      ...caseTransitionTimestamps(caseRecord.status as CaseStatus, newStatus, new Date()),
     },
     include: {
       assignee: {
@@ -488,17 +489,11 @@ export async function transitionCase(
 
   validateTransition(caseRecord.status as CaseStatus, toStatus);
 
-  const now = new Date();
+  // resolvedAt／closedAt 依共用規則（issue #417）：直接關閉不算已解決，重開清除解決時間
   const updateData: Prisma.CaseUpdateInput = {
     status: toStatus,
+    ...caseTransitionTimestamps(caseRecord.status as CaseStatus, toStatus, new Date()),
   };
-
-  if (toStatus === 'RESOLVED') {
-    updateData.resolvedAt = now;
-  }
-  if (toStatus === 'CLOSED') {
-    updateData.closedAt = now;
-  }
 
   const updated = await prisma.case.update({
     where: { id: caseId },
@@ -576,6 +571,7 @@ export async function escalateCase(
   const updateData: Prisma.CaseUpdateInput = {
     status: 'ESCALATED',
     priority: newPriority as any,
+    ...caseTransitionTimestamps(caseRecord.status as CaseStatus, 'ESCALATED', new Date()),
   };
 
   // If assigneeId provided, reassign
