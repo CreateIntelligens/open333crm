@@ -120,7 +120,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 
 | kind | sourceId | subKey | 保護的副作用 |
 | --- | --- | --- | --- |
-| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接的轉接訊息：每則入站訊息最多一則機器人回覆 |
+| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接與 AI 回覆失敗轉接（#445）的轉接訊息：每則入站訊息最多一則機器人回覆 |
 | `automation_action` | 觸發事件 id | `<規則 id>#<動作序號>` | workers 的每個規則動作。SLA 排程沒有事件 id，不認領 |
 | `sentiment` | 入站訊息 id | 空字串 | 情緒分析的結果與 `sentiment.negative` |
 | `keyword_matched` | 入站訊息 id | 規則 id | 給對外 Webhook 的 `keyword.matched` |
@@ -134,7 +134,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 - 認領、寫入結果或寫入 outbox 的交易失敗。沒有 commit 就沒有認領紀錄，也沒有 outbox，只有佇列的重試能補做。API 的機器人回覆以 `ClaimTransactionError`（`bot-reply-guard.ts`）標示這種失敗。降級用的 catch（例如「agent 失敗改由 KB 回覆」）遇到這個錯誤時，會往外丟，不會吞掉。
 - 把下一步的 job 送進佇列失敗，例如規則評估、站內通知、告警信。
 
-刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時改用關鍵字判斷，照舊只記 log。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
+刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時改用關鍵字判斷，照舊只記 log。agent 沒有回覆、KB 回覆又因錯誤失敗時，不再只記 log：`handOffAfterAiFailure()` 以 `bot_reply` 認領並轉接真人，轉接的交易失敗時往外丟，由佇列重試（#445）。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
 
 對話轉接以條件更新認領對話（`BOT_HANDLED` 改成 `AGENT_HANDLED`），不另外寫認領紀錄。
 

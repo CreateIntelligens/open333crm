@@ -212,6 +212,7 @@
 | [KB-03](#kb-03) | Storage、LLM 與資料庫 | P1 | 未處理 | 沒有 BOM 的 UTF-8 CSV 匯入知識庫後中文變亂碼，英文表頭時還會直接發布 | 執行時確認 |
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
 | [KB-05](#kb-05) | Storage、LLM 與資料庫 | P2 | 未處理 | 型號守門命中後寫進對話的 `modelGuard` 永遠不清除，之後的回覆都沿用舊值 | 執行時確認 |
+| [KB-06](#kb-06) | Storage、LLM 與資料庫 | P3 | 部分修正 | AI 與知識庫回覆都失敗時客人收不到回覆；知識庫失敗時已改為轉真人（#445），`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆、不轉接 | 執行時確認 |
 | [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
 | [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
@@ -2633,12 +2634,12 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 
 | 功能 | 失敗時的行為 |
 | --- | --- |
-| 知識庫自動回覆（`kb-autoreply.service.ts` 的 `attemptKbAutoReply()`） | 只記 error log，然後不回覆客人，也不轉真人 |
+| 知識庫自動回覆（`kb-autoreply.service.ts` 的 `attemptKbAutoReply()`） | 回傳 `failed`，agent 也沒回覆時轉真人，原因「AI 暫時無法回覆（AI 服務發生錯誤）」（KB-06，#445）。客人收不到 AI 回覆 |
 | AI 建議回覆（`ai.service.ts` 的 `suggestReply()`） | 回傳空的建議清單 |
 | 知識庫語意搜尋（`knowledge.service.ts` 的 `semanticSearch()`） | 拋出錯誤 |
 | 建立或修改文章時產生向量（`embedArticle()`） | 在背景失敗，只記 log。文章仍可發布，但不會被檢索到 |
 
-自動回覆的失敗最不容易察覺：客人收不到回覆，對話也沒有轉給客服。
+自動回覆的失敗原本最不容易察覺：客人收不到回覆，對話也沒有轉給客服。#445 之後改為轉真人，但每則文字訊息都會轉給客服（KB-06）。
 
 **UAT 目前仍正常產生向量（2026-10-30 功能健檢）。** UAT Demo 租戶的 `GET /knowledge/embedding-status` 回 `{ok: true, model: "bge-m3:latest"}`，1180 篇已發布文章抽查前 200 篇都有向量。UAT 靠 Compose 內仍在執行的 Ollama 服務（LLM-02）運作。「Embedding 只能呼叫 Ollama」仍然成立；上表是拿掉 Ollama 之後的結果，不是 UAT 目前的現況。原本這裡寫成「所有產生向量的路徑都會失敗」，依健檢改成條件式（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。
 
@@ -2686,6 +2687,21 @@ Google 試算表、Numbers 與程式匯出的 CSV 都沒有 BOM；台灣版 Exce
 `kb-autoreply.service.ts` 以 `{...existingMeta, ...metadataExtras}` 寫對話的 metadata。守門命中後寫入的 `modelGuard` 之後永遠不會清掉，後續的一般回答與追問都沿用舊值，客服或除錯時會誤以為最近一則是守門回覆。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-KNOWLEDGE-06（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。證據：`apps/api/src/modules/ai/kb-autoreply.service.ts:436`；守門之後的 `clarify`、`kb_high_confidence` 回覆，對話 metadata 仍是 `{"modelGuard":{"unknownModel":"E-MAIL",…}}`（健檢實測）。
+
+<a id="kb-06"></a>
+### KB-06：AI 與知識庫回覆都失敗時客人收不到回覆
+
+2026-11-04 UAT Demo 租戶開了 AI 個資遮罩，去識別化服務短暫回 503。同一則客人訊息的 agent 回覆與知識庫自動回覆（產生向量時呼叫去識別化服務）都失敗，`automation.worker.ts` 只記 log：客人沒收到回覆，對話停在 `BOT_HANDLED`，收件匣看不到失敗（issue #445）。
+
+**已修正**（change `handoff-on-ai-reply-failure-445`）：agent 沒有回覆、`attemptKbAutoReply()` 又因錯誤失敗時，`automation/ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()` 以 `bot_reply` 認領並呼叫 `handOffConversation()` 轉真人，`handoffReason` 寫「AI 暫時無法回覆（去識別化服務無法使用）」等，送出 `handoffMessage`。系統訊息不呼叫去識別化服務。關鍵字讓步、`botMode` 關閉、已回覆過不轉接。
+
+**未修正**：
+
+- `KB_AUTO_REPLY_ENABLED` 關閉時，agent 失敗的訊息仍然沒有回覆、也不轉接（核准的預設：「KB 停用不可轉接」）。
+- 不自動重試 AI 回覆：服務幾秒後恢復也不會補回覆，改由客服接手。
+- 收件匣只在轉接系統訊息與原因看得到失敗，客人那則訊息本身沒有「AI 回覆失敗」標示。
+
+**規格依據**：`bot-handoff-config`「AI 與知識庫回覆都因錯誤失敗時轉接真人」「正常不回覆時不轉接」。
 
 <a id="db-01"></a>
 ### DB-01：向量維度不一致

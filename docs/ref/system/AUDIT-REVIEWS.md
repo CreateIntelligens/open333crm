@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：AI 與知識庫回覆都失敗時客人收不到回覆（KB-06、LLM-04）
+
+issue #445，change `handoff-on-ai-reply-failure-445`。以本機單元測試與測試資料庫的 feature 測試驗證，沒有連 UAT；真機（LINE）尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-06（新增） | 部分修正 | `attemptKbAutoReply()` 改回傳 `KbAutoReplyResult`（`replied`／`skipped` 與原因／`failed`），embedding 失敗與丟出的錯誤算失敗；`automation.worker.ts` 在 agent 沒有回覆、知識庫失敗時呼叫 `ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()`：沿用 `createBotReplyGuard()`（`bot_reply` 認領）與 `handOffConversation()`，原因由 `kb-autoreply.service.ts` 的 `aiReplyFailedReason()` 產生（與 `clarifyLlmFailedReason()` 共用錯誤種類判斷）；系統訊息用 `fixedSystemMessageContent()`，不呼叫 2md。`ai-failure-handoff.test.ts` 9 項，4 項修正前以 assertion 失敗，其餘 5 項以 mutation 驗證。`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，未處理 |
+| LLM-04 的知識庫自動回覆列 | 描述更新 | embedding 失敗不再「不回覆也不轉真人」，改為轉真人。Embedding 只能呼叫 Ollama 本身未處理 |
+
 ## 2026-11-03：第二優先的顧客受影響且失敗看不到的問題（KB-01、CONV-03、CASE-03、CHAN-02、AUTH-11、PLAN-14、RBAC-11）
 
 issue #410、#411、#415、#416、#419，同一個 PR。以本機測試資料庫的 unit 與 feature 測試驗證，沒有連 UAT；真機（LINE、FB）尚未驗證。

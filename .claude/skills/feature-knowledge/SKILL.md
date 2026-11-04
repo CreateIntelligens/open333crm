@@ -66,13 +66,14 @@ description: >
 1. 新增文章 → 發布 → 確認列表綠色圖示（有 embedding 服務的環境）→ 語義搜尋找得到 → 封存後搜不到。
 2. 匯入：BOM 與無 BOM 的中文 CSV、xlsx 問答表、`.md`、JSON 陣列與一筆壞資料；確認問答表是直接發布。
 3. KB 自動回覆（需要 LLM 與 embedding）：高相似度、追問兩次後的第三則、提到不存在型號、提到 `Wi-Fi`；確認對話狀態與客服是否收到轉接。
+3a. AI 失敗轉接（#445）：讓 embedding 服務或去識別化服務暫時失敗（或停掉 embedding 服務），客人傳文字 → 對話變 `AGENT_HANDLED`、`handoffReason` 是「AI 暫時無法回覆（…）」、客人收到 `handoffMessage`、客服收到轉接通知；命中關鍵字、`botMode: off` 的訊息不轉接。單元測試 `tests/unit/modules/automation/ai-failure-handoff.test.ts`。
 4. 「👎 沒幫到我」→ 回報調教出現 → 編輯文章 → 標為已處理。
 5. 用 agent 與只有 `knowledge.view` 的自訂角色重走 1、2、4，確認 403 與按鈕顯示；直開 `/dashboard/knowledge/chat-prompt` 顯示「沒有權限」。
 - 自動測試：`pnpm --filter @open333crm/api test -- modules/ai modules/knowledge modules/embedding`；`pnpm --filter @open333crm/web test -- knowledge`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/trial/token-quota-alert modules/ai`。
 - E2E：`apps/web/tests/e2e-uat/tenant-knowledge.spec.ts`、`apps/web/tests/e2e-uat/tenant-fields-knowledge-automation.spec.ts`。
 
 ## 常見 bug 從哪裡查
-- 「AI 都不回」：依序查 `KB_AUTO_REPLY_ENABLED`、對話是否 `BOT_HANDLED`、渠道 `botMode`、是否命中關鍵字規則（`apps/api/src/modules/automation/keyword-yield.ts`）、embedding 是否連得上（`generateEmbedding` 失敗時直接不回、不轉接，只有 error log）、`PLAN_LIMIT_EXCEEDED`。
+- 「AI 都不回」：依序查 `KB_AUTO_REPLY_ENABLED`、對話是否 `BOT_HANDLED`、渠道 `botMode`、是否命中關鍵字規則（`apps/api/src/modules/automation/keyword-yield.ts`）、embedding 是否連得上（`generateEmbedding` 失敗、agent 也沒回覆時會轉真人，原因「AI 暫時無法回覆（…）」，#445；`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回、不轉接，見 KB-06）、`PLAN_LIMIT_EXCEEDED`。
 - 「AI 說已轉接但沒人接」：`clarify_handoff` 後對話應為 `AGENT_HANDLED` 且有 `handoffReason` 與 `auto_handoff` 系統訊息（#419）；未指派的對話會通知看得到該渠道的主管與管理員（`conversation_handoff`）。若仍是 `BOT_HANDLED`，查 job 是否失敗（轉接交易失敗時整則回覆不送出、由佇列重試）。
 - 「AI 說型號查不到」：訊息 `metadata.modelGuard.unknownModel`；`GET /knowledge/models` 看白名單；`apps/api/src/modules/ai/model-matcher.ts`。
 - 「文章發布了卻搜不到」：`hasEmbedding`、Embedding 頁「未嵌入」數、`POST /knowledge/bulk-embed`；維度不符見 DB-01。

@@ -33,10 +33,20 @@ export interface HarnessState {
   failClaimKind: string | null;
   /** 查這個種類的認領紀錄時丟錯，模擬呼叫 LLM 之前的預查失敗（「Claim check fails」） */
   failClaimCheckKind: string | null;
+  /** 平台設定 ai.privacy.<tenantId>：租戶開啟 AI 個資遮罩（去識別化服務真的會被呼叫） */
+  privacyEnabled: boolean;
+  /** 租戶的自動化規則（關鍵字讓步判斷讀它） */
+  automationRules: Array<Record<string, unknown>>;
 }
 
 export function createHarness(
-  overrides: { botRepliesCount?: number; botConfig?: Record<string, unknown>; metadata?: Record<string, unknown> } = {},
+  overrides: {
+    botRepliesCount?: number;
+    botConfig?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+    privacyEnabled?: boolean;
+    automationRules?: Array<Record<string, unknown>>;
+  } = {},
 ) {
   const state: HarnessState = {
     conversation: {
@@ -56,6 +66,8 @@ export function createHarness(
     failSystemMessage: false,
     failClaimKind: null,
     failClaimCheckKind: null,
+    privacyEnabled: overrides.privacyEnabled ?? false,
+    automationRules: overrides.automationRules ?? [],
   };
 
   const claimKey = (r: { kind: string; sourceId: string; subKey?: string }) => `${r.kind}|${r.sourceId}|${r.subKey ?? ''}`;
@@ -150,7 +162,16 @@ export function createHarness(
       },
       updateMany: async () => ({ count: 1 }),
     },
-    automationRule: { findMany: async () => [] },
+    automationRule: { findMany: async () => state.automationRules },
+    platformSetting: {
+      findUnique: async ({ where }: { where: { key: string } }) =>
+        state.privacyEnabled && where.key === `ai.privacy.${TENANT}` ? { value: { enabled: true } } : null,
+    },
+    // agent 回覆的執行紀錄（agent.service 的 runAgentReply）
+    agentRun: {
+      create: async ({ data }: { data: { expiresAt: Date } }) => ({ id: randomUUID(), expiresAt: data.expiresAt }),
+      updateMany: async () => ({ count: 1 }),
+    },
     material: { findMany: async () => [] },
     contact: { findFirst: async () => null },
     case: { findFirst: async () => null, count: async () => 0 },

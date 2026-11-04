@@ -10,6 +10,7 @@
  *
  * 追問用完或追問的 LLM 呼叫失敗時，回覆「已為您轉接客服人員」並在同一個交易真的轉接
  * （handOffConversation，與自動轉接共用；issue #419）。
+ * 因錯誤沒有回覆時回傳 failed（KbAutoReplyResult），由 automation.worker 轉接真人（issue #445）。
  *
  * The LLM now receives the recent conversation history (last 10 messages) so
  * follow-up turns make sense and clarification questions don't repeat earlier
@@ -52,9 +53,28 @@ function clarifyExhaustedReason(attempts: number, max: number): string {
   return `知識庫找不到可回答的內容，追問次數已達上限（${attempts}/${max}）`;
 }
 function clarifyLlmFailedReason(err: unknown): string {
-  return err instanceof AppError && err.code === 'PLAN_LIMIT_EXCEEDED'
+  return aiErrorCause(err) === AI_ERROR_CAUSES.PLAN_LIMIT_EXCEEDED
     ? 'AI 月額度已用完，無法自動回覆'
     : 'AI 回覆失敗，無法自動追問';
+}
+
+/** 錯誤種類 → 客服看得懂的原因。錯誤訊息不寫進原因：可能含供應商回應或內部網址 */
+const AI_ERROR_CAUSES: Record<string, string> = {
+  AI_DEIDENTIFICATION_UNAVAILABLE: '去識別化服務無法使用',
+  AI_PRIVACY_POLICY_UNAVAILABLE: '個資保護設定無法讀取',
+  PLAN_LIMIT_EXCEEDED: 'AI 月額度已用完',
+};
+function aiErrorCause(err: unknown): string | undefined {
+  return err instanceof AppError ? AI_ERROR_CAUSES[err.code] : undefined;
+}
+
+/**
+ * agent 沒有回覆、知識庫回覆又因錯誤失敗時的轉接原因（issue #445）。
+ * 先看知識庫的錯誤，是一般錯誤時再看 agent 丟出的錯誤
+ */
+export function aiReplyFailedReason(kbError: unknown, agentError?: unknown): string {
+  const cause = aiErrorCause(kbError) ?? aiErrorCause(agentError) ?? 'AI 服務發生錯誤';
+  return `AI 暫時無法回覆（${cause}）`;
 }
 
 /**
@@ -92,6 +112,26 @@ function buildKbContext(
  */
 const MODEL_GUARD_EXEMPT_SIMILARITY = 0.85;
 
+/**
+ * 知識庫自動回覆的結果（issue #445）。呼叫端以 failed 判斷要不要轉接真人：
+ * - replied：已寫入並送出回覆（含型號守門、追問、「已為您轉接」與 LLM 失敗時的文章內容）
+ * - skipped：正常的不回覆，不是失敗，不轉接
+ * - failed：因錯誤沒有回覆（例如 embedding 或去識別化服務失敗）。這個函式丟出的錯誤（ClaimTransactionError 以外）也是失敗
+ */
+export type KbAutoReplySkipReason =
+  | 'kb_disabled'
+  | 'not_bot_handled'
+  | 'keyword_rule'
+  | 'bot_mode'
+  /** 寫入時認領不到（別的處理已回覆），或要轉接時對話已不是 BOT_HANDLED */
+  | 'already_handled';
+export type KbAutoReplyResult =
+  | { status: 'replied' }
+  | { status: 'skipped'; reason: KbAutoReplySkipReason }
+  | { status: 'failed'; error: unknown };
+
+const skipped = (reason: KbAutoReplySkipReason): KbAutoReplyResult => ({ status: 'skipped', reason });
+
 type ReplyKind =
   | 'kb_high_confidence'
   | 'kb_with_handoff'
@@ -110,11 +150,11 @@ export async function attemptKbAutoReply(
   replyGuard: BotReplyGuard,
   /** 轉接真人時在同一個交易發出 conversation.handoff */
   events: EventPublisher,
-): Promise<boolean> {
+): Promise<KbAutoReplyResult> {
   const config = getConfig();
 
   // 1. Global enable check
-  if (!config.KB_AUTO_REPLY_ENABLED) return false;
+  if (!config.KB_AUTO_REPLY_ENABLED) return skipped('kb_disabled');
 
   // 2. Only proceed for BOT_HANDLED conversations
   const conversation = await prisma.conversation.findFirst({
@@ -130,7 +170,7 @@ export async function attemptKbAutoReply(
       },
     },
   });
-  if (!conversation) return false;
+  if (!conversation) return skipped('not_bot_handled');
 
   // 2.5 若有 keyword.matched 規則命中此訊息、且能在這個渠道回覆，讓步給 keyword 規則處理：
   // 一則訊息只回一次，命中關鍵字的訊息不算追問、也不會因追問用完而轉接（#419）。
@@ -143,7 +183,7 @@ export async function attemptKbAutoReply(
     })
   ) {
     logger.info(`[KbAutoReply] conv=${conversationId} skipped: keyword rule will handle`);
-    return false;
+    return skipped('keyword_rule');
   }
 
   // 3. Channel botMode gating + 解析完整 botConfig（含 handoff prompt 設定）
@@ -163,7 +203,7 @@ export async function attemptKbAutoReply(
         ? merged.handoffButtonLabel
         : DEFAULT_BOT_CONFIG.handoffButtonLabel,
   };
-  if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return false;
+  if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return skipped('bot_mode');
 
   // 4. Load tenant chat settings (clarify thresholds + system prompts)
   const chatSettings = await getChatSettings(prisma, tenantId);
@@ -178,8 +218,9 @@ export async function attemptKbAutoReply(
   try {
     queryEmbedding = await generateEmbedding(prisma, tenantId, messageText);
   } catch (err) {
+    // 沒有向量就無法檢索，也無法回覆：回 failed，由呼叫端轉接真人（issue #445）
     logger.error('[KbAutoReply] Failed to generate embedding:', err);
-    return false;
+    return { status: 'failed', error: err };
   }
 
   // 7. KB similarity search
@@ -405,7 +446,7 @@ async function persistAndDeliver(input: {
   replyGuard: BotReplyGuard;
   events: EventPublisher;
   handoff?: { reason: string };
-}): Promise<boolean> {
+}): Promise<KbAutoReplyResult> {
   const {
     prisma,
     io,
@@ -495,7 +536,7 @@ async function persistAndDeliver(input: {
   });
   if (!botMessage) {
     logger.info(`[KbAutoReply] conv=${conversationId} skipped: this inbound message already has a bot reply`);
-    return false;
+    return skipped('already_handled');
   }
 
   // Real-time
@@ -552,7 +593,7 @@ async function persistAndDeliver(input: {
     `[KbAutoReply] conv=${conversationId} kind=${replyKind} sim=${topSimilarity.toFixed(3)} handoffStyle=${botConfig.handoffPromptEnabled ? botConfig.handoffPromptStyle : 'disabled'}`,
   );
 
-  return true;
+  return { status: 'replied' };
 }
 
 /**

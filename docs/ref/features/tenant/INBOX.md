@@ -71,13 +71,22 @@
 | 客人要求 | 客人點「轉接客服」按鈕，或傳送 `handoff_request` | `inbound-postback-interceptors.ts` 的 `handleHandoffRequest()` | 不指派 |
 | 自動轉真人 | 機器人回覆次數達到 `maxBotReplies`、訊息含 `handoffKeywords`，或客人傳圖片、檔案或影片 | `automation.worker.ts` 的 `checkAutoHandoff()` | 不指派 |
 | 知識庫追問用完 | 知識庫自動回覆的追問次數達到 `clarifyMaxAttempts`，或追問的 LLM 呼叫失敗（含月額度用完） | `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` | 不指派 |
+| AI 回覆失敗 | AI agent 沒有回覆，知識庫回覆又因錯誤失敗（例如去識別化服務、embedding 服務或模型供應商故障） | `automation/ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()` | 不指派 |
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
-每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求與自動轉真人送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人與知識庫追問用完會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派、且負責客服仍啟用並看得到該渠道時通知負責的客服；沒有指派，或負責客服已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。
+每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求、自動轉真人與 AI 回覆失敗送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人、知識庫追問用完與 AI 回覆失敗會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派、且負責客服仍啟用並看得到該渠道時通知負責的客服；沒有指派，或負責客服已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。
 
 自動轉真人與知識庫追問用完共用 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`）：以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理，才寫系統訊息、發出 `conversation.handoff`（經 outbox），commit 之後推播 `conversation.updated` 與系統訊息到渠道房間，再送出轉接訊息。所以同一則訊息處理兩次、或兩次處理同時進行時，只轉接一次。摘要與系統訊息的遮罩在交易之前完成。知識庫追問用完時，轉接與「已為您轉接」回覆寫在同一個交易；轉接的條件不成立時，這則回覆不寫入也不送出。
 
 轉接之後，關鍵字規則照樣回覆（workers 執行關鍵字規則時不看對話狀態），知識庫自動回覆與 agent 只回覆 `BOT_HANDLED` 的對話。
+
+**AI 回覆失敗時轉真人（issue #445）。** 客人的文字訊息沒有得到 AI agent 的回覆，知識庫回覆又因錯誤失敗時，客人原本收不到任何訊息，對話停在 `BOT_HANDLED`。現在改為轉真人，客服在收件匣看到轉接原因，也收到「轉接真人」通知：
+
+- `handoffReason` 與系統訊息寫「AI 暫時無法回覆（去識別化服務無法使用）」「（個資保護設定無法讀取）」「（AI 月額度已用完）」或「（AI 服務發生錯誤）」，不寫錯誤內容。系統訊息的 `metadata.source` 是 `ai_reply_failed`。
+- 系統訊息是固定文字，不呼叫去識別化服務；租戶開啟遮罩時，遮罩副本就是原文（`privacy.mode` 為 `system_fixed`）。不寫對話摘要。
+- 也走 `handOffConversation()`，並以 `bot_reply` 認領：同一則訊息只轉接一次，這則訊息已有機器人回覆時不轉接。轉接的交易失敗時，處理失敗、由佇列重試。
+- 正常的不回覆不轉接：關鍵字規則讓步、`botMode` 為 `off` 或 `keyword`、`KB_AUTO_REPLY_ENABLED` 關閉、這則訊息已有機器人回覆、對話已不是 `BOT_HANDLED`。`KB_AUTO_REPLY_ENABLED` 關閉時，agent 失敗的訊息仍然沒有回覆（KB-06）。
+- 不自動重試 AI 回覆：重試可能讓客人收到兩則回覆。
 
 客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 

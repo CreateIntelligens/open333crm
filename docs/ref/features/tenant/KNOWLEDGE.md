@@ -93,6 +93,8 @@
 
 依文章回答的訊息會附上「👎 沒幫到我」快速回覆按鈕；追問與型號守門的回覆沒有這個按鈕。客人按下後，進站攔截器把回饋記到 `KbArticleFeedback`，並回一則感謝訊息。管理員在「知識庫 → 回報調教」查看各文章的回報，並標記為已處理。
 
+**知識庫回覆因錯誤失敗時轉真人。** 產生訊息向量失敗（去識別化服務、embedding 服務故障），或讀設定、檢索、寫入前的遮罩丟出錯誤，而 AI agent 也沒有回覆時，`attemptKbAutoReply()` 回傳 `failed`，系統轉真人，原因寫「AI 暫時無法回覆（…）」（issue #445，見[收件匣的轉真人](./INBOX.md#轉真人)）。`attemptKbAutoReply()` 的結果分三種：`replied`（已回覆，含 LLM 失敗時的備援內容）、`skipped`（正常不回覆：停用、對話不是 `BOT_HANDLED`、關鍵字規則讓步、`botMode`、已有回覆）與 `failed`。
+
 **AI agent 優先。** 環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，機器人先交給 AI agent 回覆；AI agent 沒有處理時，才走上面的知識庫流程。AI agent 可以呼叫外部工具，執行紀錄存在 `AgentRun`，可以用 `GET /ai/agent/runs/:id` 查看；紀錄關聯的對話所在渠道看不到時回 404。
 
 ## AI 設定
