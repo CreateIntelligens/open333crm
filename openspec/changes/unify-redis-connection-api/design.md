@@ -127,4 +127,4 @@ core 的 `redis` 沒有其他使用者把它當成 BullMQ 的連線。只有 cha
 
 ### 記錄就好的項目
 
-（review-loop 各輪補上）
+- **`REDIS_URL` 的 query 參數會覆寫用途的設定**（review-loop 第 1 輪，Codex）— ioredis 先解析 URL，再以 `defaults()` 合併傳入的設定，所以 `redis://host:6379/?commandTimeout=1000` 這類 URL 的值優先。query 解析出的值是字串，`commandTimeout` 因此失效，一般指令不會在 1 秒後失敗（`packages/core/src/redis/create-client.ts`）。要先在 URL 寫入 ioredis 的選項才會發生。repo 內的 `REDIS_URL`（`.env*.example`、compose 檔）都沒有 query。Laravel 的 `ConfigurationUrlParser` 也是 URL 的值優先。URL 的來源與檢查屬於 #244。
