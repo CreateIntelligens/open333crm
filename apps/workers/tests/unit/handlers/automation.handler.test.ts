@@ -184,3 +184,28 @@ test('automation.executed：有渠道時只推到渠道與總店房間，內容�
   });
   assert.ok(!JSON.stringify(executedEvents[0].data).includes('營業時間'), '不含訊息全文');
 });
+
+// ── 文字欄位比對數字比較值（issue #418、AUDIT AUTO-06；change fix-automation-numeric-text-conditions）：
+//    舊版編輯器把「8888」存成數字，workers 的 contains 對訊息內容比對數字永遠不成立 ──
+
+test('訊息內容包含數字比較值：條件存成數字 8888 的 message.received 規則，對「我的單號 8888」執行動作', async () => {
+  const { db } = fakeDb();
+  const numericRule = {
+    id: 'rule-order-no',
+    name: 'rule-order-no',
+    priority: 10,
+    stopOnMatch: false,
+    eventType: 'message.received',
+    trigger: { type: 'message.received' },
+    conditions: { all: [{ fact: 'message.text', operator: 'contains', value: 8888 }] },
+    actions: [{ type: 'add_tag', params: { tagName: '查單號' } }],
+  };
+  (db.automationRule as { findMany: unknown }).findMany = async ({ where }: { where: { eventType: string } }) =>
+    where.eventType === 'message.received' ? [numericRule] : [];
+
+  await handleAutomationJob(job('我的單號 8888'), db as never, redis as never);
+
+  const ran = executed.filter((e) => e.context.ruleId === 'rule-order-no');
+  assert.equal(ran.length, 1);
+  assert.equal(ran[0].context.trigger, 'message.received');
+});

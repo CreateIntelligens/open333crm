@@ -37,8 +37,8 @@ description: >
 | - | ---- | ---- | ---------- | ------ | ---- |
 | 1 | 活動列表 | `/dashboard/portal/activities`（三個子路由共用 `apps/web/src/app/dashboard/portal/page.tsx`，依網址最後一段切分頁） | `GET /portal/activities`（`fetchAllPages` 逐頁取完）→ `listActivities`；預設排除 `ARCHIVED`，「查看已封存」帶 `status=ARCHIVED` | 無 | `portal.view` |
 | 2 | 建立活動 | 「建立活動」→ `ActivityFormDialog` | `POST /portal/activities` → `createActivity`；日期 `datetime-local` 經 `toIsoForApi` 轉 ISO | 無事件、無稽核 | `portal.manage` / **不隱藏** |
-| 3 | 編輯草稿 | 草稿卡「編輯」 | `PATCH /portal/activities/:id` → `updateActivity`（只有 DRAFT 可改；`options`/`fields` 有送就整批刪除重建） | **對話框拿清單項當資料，清單沒有 options/fields，存檔會清空選項與欄位（HC-PORTAL-01）** | `portal.manage` / **不隱藏** |
-| 4 | 發布、結束 | 卡片「發布」（DRAFT）、「結束」（PUBLISHED），不再確認 | `POST /:id/publish`、`/:id/end` | 發布寫 `publishedAt` | `portal.manage` / **不隱藏** |
+| 3 | 編輯草稿 | 草稿卡「編輯」→ 對話框先 `GET /portal/activities/:id` 取完整活動，載入完成前與失敗時不能儲存 | `PATCH /portal/activities/:id` → `updateActivity`（只有 DRAFT 可改；`options`/`fields` 沒帶就不動，有送就整批刪除重建；投票、競猜的空 `options` 與表單的空 `fields` 回 400） | 無事件、無稽核（HC-PORTAL-01 已由 #424 修正） | `portal.manage` / **不隱藏** |
+| 4 | 發布、結束 | 卡片「發布」（DRAFT）、「結束」（PUBLISHED），不再確認；發布失敗以 alert 顯示後端訊息 | `POST /:id/publish`（投票、競猜沒有選項或表單沒有欄位時回 400，活動維持草稿，#447）、`/:id/end` | 發布寫 `publishedAt` | `portal.manage` / **不隱藏** |
 | 5 | 封存、取消封存 | ENDED 卡「封存」（有 confirm）；「查看已封存」→「取消封存」 | `POST /:id/archive`（DRAFT、ENDED 可封存）、`/:id/unarchive`（一律回到 ENDED） | 提交紀錄保留 | `portal.manage` / **不隱藏** |
 | 6 | 刪除草稿 | 草稿卡「刪除」（confirm） | `DELETE /:id`；只有 DRAFT | 硬刪，選項、欄位 cascade | `portal.manage` / **不隱藏** |
 | 7 | 提交紀錄 | `/dashboard/portal/submissions`，下拉選活動（不含已封存） | `GET /:id/submissions` → `listSubmissions` | 無；答案摘要只顯示數量 | `portal.view` |
@@ -88,8 +88,9 @@ description: >
 ## 回歸清單
 改到本領域時，至少重走：
 1. 建立投票（兩個選項、起訖時間、每次 3 點）→ 重新整理後選項、時間、積分一致。
-2. 編輯該草稿只改標題 → `GET /portal/activities/:id` 選項仍在（目前會被清空，HC-PORTAL-01）。
+2. 編輯該草稿只改標題 → `GET /portal/activities/:id` 選項與正確答案仍在（#424 修正，feature 測試「只改標題時，選項、正確答案與表單欄位都保留」）。
 3. 發布 → 結束 → 封存 → 查看已封存 → 取消封存，每一步按鈕與狀態正確；已發布的活動 PATCH、DELETE 被拒。
+3a. 建立沒有選項的投票草稿（可以建立）→ 按「發布」→ alert「投票與競猜活動至少要有一個選項」，仍是草稿；補上選項後可以發布。表單沒有欄位同理（#447，feature 測試「發布沒有選項的投票或競猜回 400，活動仍是草稿」）。
 4. 粉絲端（以票券夾取得的 fanToken，或測試中以 `signFanToken` 簽發）：列表不含草稿、送出加點、重複送出被拒、結果不含 `isCorrect`。
 5. 積分：同一位聯絡人並行加點 10 次，餘額等於交易總和；合併兩位有點數的聯絡人後再解除，點數正確。
 6. 用只有 `portal.view` 的自訂角色重走 1–3、抽獎、調整：後端 403（`details.requiredPermission: portal.manage`），按鈕應隱藏。
@@ -97,7 +98,7 @@ description: >
 - E2E：`apps/web/tests/e2e-uat/tenant-fields-channels-portal.spec.ts`。
 
 ## 常見 bug 從哪裡查
-- 「編輯活動後選項不見」：`apps/web/src/app/dashboard/portal/page.tsx` 把清單項（沒有 options/fields）傳給 `apps/web/src/components/portal/ActivityFormDialog.tsx`；後端 `updateActivity` 收到空陣列就整批刪除。
+- 「編輯活動後選項不見」：#424 已修正。`apps/web/src/components/portal/ActivityFormDialog.tsx` 打開編輯時以 `GET /portal/activities/:id` 取完整活動（列表項沒有 options/fields，不可直接拿來填）；後端 `updateActivity` 拒絕投票、競猜的空 `options` 與表單的空 `fields`。若再發生，先看是否有其他呼叫端送了非空但不完整的陣列（有送就整批取代）。
 - 「點數不對、少加」：先比 `sum(amount)` 與最新一筆 `balance`。差異來自並行寫入或同一毫秒的多筆紀錄（`points.service.ts` 的 `getLatestPointEntry`）。合併轉移看 `contact-merge.service.ts` 的 `transferPoints`。
 - 「交易類型顯示英文代碼」：`apps/web/src/components/portal/PointsTab.tsx` 的 `typeLabels` 沒有 `merge_transfer_*`、`revert_transfer_*`。
 - 「粉絲端 401」：token 不是 `sub: 'fan'`（裝置憑證、客服 token），或已過 24 小時；顧客要回對話重新點票券連結。
