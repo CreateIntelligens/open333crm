@@ -1,8 +1,9 @@
 ## 1. 型號守門只攔截知識庫型號格式的型號
 
-- [x] 1.1 測試 `apps/api/tests/unit/modules/ai/model-matcher.test.ts`：「型號偵測不命中一般英文詞」（`Wi-Fi`、`e-mail`、`T-shirt`、大寫英文詞、`tac-11p` 不命中；真實型號各命中一個）與 `hasKnownPrefix`。在現有程式上一般英文詞與小寫詞的案例斷言失敗（偵測到 `WI-FI`、`E-MAIL`…），真實型號案例通過
-- [x] 1.2 測試 `apps/api/tests/unit/modules/ai/kb-model-guard.test.ts`（經 workers `message.received`，真的 `attemptKbAutoReply`，LLM 與檢索換假的）：「一般英文詞不當成型號」「小寫的型號格式不當成型號」「知識庫沒有型號文章時不守門」「前綴不在白名單的編號不守門」在現有程式上斷言失敗（回覆類型為 `model_not_found`）；「查無的型號仍引導選型號」寫好就通過（既有行為）
-- [x] 1.3 `model-matcher.ts`：正規式拿掉 `i` 旗標、排除常見英文詞（清單沿用 `packages/kb-ingest` 的停用詞，加 `T-SHIRT`）、新增 `hasKnownPrefix()`；`checkModelGuard()` 略過前綴不在白名單的型號
+- [x] 1.1 測試 `apps/api/tests/unit/modules/ai/model-matcher.test.ts`：「型號偵測不命中一般英文詞」（`Wi-Fi`、`e-mail`、`T-shirt`、大寫英文詞、`tac-11p` 偵測為 `TAC-11P`；真實型號各命中一個）與 `hasKnownPrefix`。在現有程式上一般英文詞與小寫詞的案例斷言失敗（偵測到 `WI-FI`、`E-MAIL`…），真實型號案例通過
+- [x] 1.2 測試 `apps/api/tests/unit/modules/ai/kb-model-guard.test.ts`（經 workers `message.received`，真的 `attemptKbAutoReply`，LLM 與檢索換假的）：「一般英文詞不當成型號」「小寫型號視同大寫」「知識庫沒有型號文章時不守門」「前綴不在白名單的編號不守門」在現有程式上斷言失敗（回覆類型為 `model_not_found`）；「查無的型號仍引導選型號」寫好就通過（既有行為）
+- [x] 1.3 `model-matcher.ts`：排除常見英文詞（轉大寫後比對）（清單沿用 `packages/kb-ingest` 的停用詞，加 `T-SHIRT`）、新增 `hasKnownPrefix()`；`checkModelGuard()` 略過前綴不在白名單的型號
+- [x] 1.5 審查後調整：恢復不分大小寫、結果轉大寫。測試「小寫型號視同大寫」（`model-matcher.test.ts`、`kb-model-guard.test.ts`）在大小寫敏感的版本上斷言失敗；「小寫的已知型號不守門」以突變驗證（`isKnownModel` 對大寫輸入一律回 false 時失敗）；`wi-fi`、`t-shirt` 仍不命中
 - [x] 1.4 突變驗證：拿掉 `checkModelGuard()` 的 `hasKnownPrefix` 判斷時，「知識庫沒有型號文章時不守門」「前綴不在白名單的編號不守門」失敗；「查無的型號仍引導選型號」在 1.3 之後仍通過
 
 ## 2. 型號守門回覆計入追問次數

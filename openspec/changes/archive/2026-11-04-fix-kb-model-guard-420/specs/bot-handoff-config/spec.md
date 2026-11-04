@@ -46,15 +46,15 @@
 
 ### Requirement: 型號守門只攔截知識庫型號格式的型號
 
-型號偵測 SHALL 區分大小寫：型號是 1 到 4 個大寫英文字母的前綴、`-`、再接大寫英數段（例如 `TAC-11P`、`TAC-06L-MCW`）。小寫或大小寫混合的詞（`Wi-Fi`、`e-mail`、`T-shirt`、`tac-11p`），以及大寫時也符合格式的常見英文詞（`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`TYPE-C`、`HDMI-2`、`CD-R`、`DVD-R`）SHALL NOT 當成型號。型號守門 SHALL 只攔截前綴出現在租戶型號白名單的型號；白名單是空的（知識庫沒有型號文章）時 SHALL NOT 攔截任何訊息。
+型號偵測 SHALL 不分大小寫，結果一律轉成大寫：型號是 1 到 4 個英文字母的前綴、`-`、再接英數段（例如 `TAC-11P`、`TAC-06L-MCW`），`tac-11p` 與 `TAC-11P` 視為同一個型號。轉成大寫後是常見英文詞的（`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`TYPE-C`、`HDMI-2`、`CD-R`、`DVD-R`）SHALL NOT 當成型號；從文章標題抽出型號白名單時套用同一規則。型號守門 SHALL 只攔截前綴出現在租戶型號白名單的型號；白名單是空的（知識庫沒有型號文章）時 SHALL NOT 攔截任何訊息。
 
 #### Scenario: 一般英文詞不當成型號
-- **WHEN** 租戶型號白名單有 `TAC-11A`，客人傳送「我家 Wi-Fi 連不上怎麼辦」「請問可以寄 e-mail 給你們嗎」「我想買 T-shirt」或「WI-FI 密碼要怎麼改」，知識庫相似度低於 0.85
+- **WHEN** 租戶型號白名單有 `TAC-11A`，客人傳送「我家 Wi-Fi 連不上怎麼辦」「請問可以寄 e-mail 給你們嗎」「我想買 T-shirt」「WI-FI 密碼要怎麼改」或「wi-fi 一直斷線」，知識庫相似度低於 0.85
 - **THEN** 回覆類型不是 `model_not_found`（照常追問），回覆的 metadata 沒有 `modelGuard`
 
-#### Scenario: 小寫的型號格式不當成型號
-- **WHEN** 租戶型號白名單有 `TAC-11A`，客人傳送「tac-11p 怎麼清洗」，知識庫相似度低於 0.85
-- **THEN** 回覆類型不是 `model_not_found`
+#### Scenario: 小寫型號視同大寫
+- **WHEN** 租戶型號白名單有 `TAC-11A`、`TAC-11KN`，客人傳送「tac-11p 怎麼清洗」，知識庫相似度低於 0.85
+- **THEN** 回覆類型為 `model_not_found`，`modelGuard.unknownModel` 為 `TAC-11P`；客人傳送「tac-11a 怎麼清洗」時回覆類型不是 `model_not_found`
 
 #### Scenario: 查無的型號仍引導選型號
 - **WHEN** 租戶型號白名單有 `TAC-11A`、`TAC-11KN`，客人傳送「TAC-11P 怎麼清洗」，知識庫相似度低於 0.85
@@ -69,5 +69,5 @@
 - **THEN** 回覆類型不是 `model_not_found`
 
 #### Scenario: 型號偵測不命中一般英文詞
-- **WHEN** 以 `Wi-Fi`、`e-mail`、`T-shirt`、`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`Type-C`、`HDMI-2`、`tac-11p` 呼叫型號偵測
-- **THEN** 偵測結果是空的；以 `TAC-11P`、`TAC-06L-MCW`、`TAW-A080WM`、`TDH-168MC-NW`、`AC-9` 呼叫時各偵測到一個型號
+- **WHEN** 以 `Wi-Fi`、`wi-fi`、`e-mail`、`T-shirt`、`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`Type-C`、`HDMI-2` 呼叫型號偵測
+- **THEN** 偵測結果是空的；以 `TAC-11P`、`TAC-06L-MCW`、`TAW-A080WM`、`TDH-168MC-NW`、`AC-9` 呼叫時各偵測到一個型號，以 `tac-11p` 呼叫時偵測到 `TAC-11P`

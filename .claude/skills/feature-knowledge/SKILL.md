@@ -47,7 +47,7 @@ description: >
 ## 不可破壞的規則
 - 回覆分流（`kb-autoreply.service.ts`）：最高相似度 ≥ 0.80 直接答；`clarifyThreshold`～0.80 答＋依 botConfig 附轉接提示；低於 `clarifyThreshold` 或沒文章就追問，次數記在 `conversation.metadata.clarifyAttempts`，成功回答歸零。
 - **`clarify_handoff` 會真的轉接**（#419）：追問用完或追問的 LLM 呼叫失敗時，`persistAndDeliver` 在 bot_reply 認領的同一個交易呼叫 `apps/api/src/modules/automation/handoff.flow.ts` 的 `handOffConversation()`（與 `checkAutoHandoff` 共用）：條件更新 `BOT_HANDLED→AGENT_HANDLED`、`handoffReason`、系統訊息、`conversation.handoff`（通知客服）、`notifyChannel` 推播；追問次數歸零。條件不成立時整筆 rollback，不送「已為您轉接」。`handoff_request` postback 仍是自己的程式（`inbound-postback-interceptors.ts`）。改轉接邏輯時改 `handoff.flow.ts`，不要在各路徑各寫一份。轉接後關鍵字規則照樣回覆（workers 不看對話狀態），KB 與 agent 不回 `AGENT_HANDLED` 的對話。
-- 型號守門（#420）：白名單由 `model-registry.service.ts` 從 `PUBLISHED` 文章**標題**抽出、程序內快取 10 分鐘，偵測用 `model-matcher.ts` 的 `detectModels()`（大小寫敏感，排除 `WI-FI`、`E-MAIL`、`T-SHIRT` 等常見英文詞）。只攔截前綴在白名單的型號（`hasKnownPrefix()`），白名單空的租戶等於不守門。相似度 ≥ 0.85 豁免。守門回覆計入 `clarifyAttempts`，用完時走 `clarify_handoff` 轉接，不要另寫轉接。`packages/kb-ingest` 有一份刻意不分大小寫的複本（語音逐字稿用）。
+- 型號守門（#420）：白名單由 `model-registry.service.ts` 從 `PUBLISHED` 文章**標題**抽出、程序內快取 10 分鐘，偵測用 `model-matcher.ts` 的 `detectModels()`（不分大小寫、結果轉大寫，排除 `WI-FI`、`E-MAIL`、`T-SHIRT` 等常見英文詞）。只攔截前綴在白名單的型號（`hasKnownPrefix()`），白名單空的租戶等於不守門。相似度 ≥ 0.85 豁免。守門回覆計入 `clarifyAttempts`，用完時走 `clarify_handoff` 轉接，不要另寫轉接。`packages/kb-ingest` 有一份複本（語音逐字稿用），停用詞要兩邊同步。
 - 每則入站訊息最多一則機器人回覆：寫入要包在 `BotReplyGuard.persist()` 交易裡，不要繞過。
 - 檢索只能取 `status = 'PUBLISHED'`（規格 `km-ingestion`「Archived Articles Excluded」）；夥伴 DELETE 是軟刪 `ARCHIVED`，網頁刪除是硬刪除。
 - 向量維度：程式寫 1024，部分環境欄位是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
@@ -65,7 +65,7 @@ description: >
 改到本領域時，至少重走：
 1. 新增文章 → 發布 → 確認列表綠色圖示（有 embedding 服務的環境）→ 語義搜尋找得到 → 封存後搜不到。
 2. 匯入：BOM 與無 BOM 的中文 CSV、xlsx 問答表、`.md`、JSON 陣列與一筆壞資料；確認問答表是直接發布。
-3. KB 自動回覆（需要 LLM 與 embedding）：高相似度、追問兩次後的第三則、提到不存在型號（`TAC-11P`，應列相近型號）、提到 `Wi-Fi`／`e-mail`／訂單編號 `AB-12345`（不應回「型號查不到」）、連續三則提到不存在型號（第三則轉真人）、沒有型號文章的租戶提到型號（不守門）；確認對話狀態與客服是否收到轉接。單元測試 `tests/unit/modules/ai/kb-model-guard.test.ts`、`model-matcher.test.ts`。
+3. KB 自動回覆（需要 LLM 與 embedding）：高相似度、追問兩次後的第三則、提到不存在型號（`TAC-11P`，應列相近型號）、提到 `Wi-Fi`／`e-mail`／訂單編號 `AB-12345`（不應回「型號查不到」）、小寫的不存在型號 `tac-11p`（應列相近型號）、連續三則提到不存在型號（第三則轉真人）、沒有型號文章的租戶提到型號（不守門）；確認對話狀態與客服是否收到轉接。單元測試 `tests/unit/modules/ai/kb-model-guard.test.ts`、`model-matcher.test.ts`。
 3a. AI 失敗轉接（#445）：讓 embedding 服務或去識別化服務暫時失敗（或停掉 embedding 服務），客人傳文字 → 對話變 `AGENT_HANDLED`、`handoffReason` 是「AI 暫時無法回覆（…）」、客人收到 `handoffMessage`、客服收到轉接通知；命中關鍵字、`botMode: off` 的訊息不轉接。單元測試 `tests/unit/modules/automation/ai-failure-handoff.test.ts`。
 4. 「👎 沒幫到我」→ 回報調教出現 → 編輯文章 → 標為已處理。
 5. 用 agent 與只有 `knowledge.view` 的自訂角色重走 1、2、4，確認 403 與按鈕顯示；直開 `/dashboard/knowledge/chat-prompt` 顯示「沒有權限」。

@@ -19,13 +19,14 @@
  * - 緊接 `-` 與至少一段「英數」，後面可再接多段 `-英數`
  * 例：TAC-11P-MFB、TAW-A080WM、TDH-168MC-NW、AC-9
  *
- * 大小寫敏感（issue #420）：型號一律大寫，不分大小寫時 `Wi-Fi`、`e-mail`、`T-shirt`
- * 都會被當成型號，機器人就回「這個型號我這邊查不到資料」。
+ * 不分大小寫比對，結果一律轉成大寫（`tac-11p` 與 `TAC-11P` 視為同一個型號，客人常打小寫）。
+ * `Wi-Fi`、`e-mail`、`T-shirt` 這類常見英文詞由 NON_MODEL_WORDS 排除；
+ * 其餘不是型號的編號（訂單編號等）由型號守門的前綴白名單擋下（hasKnownPrefix，issue #420）。
  */
-const MODEL_PATTERN = /\b([A-Z]{1,4})-([0-9A-Z]+(?:-[0-9A-Z]+)*)\b/g;
+const MODEL_PATTERN = /\b([A-Z]{1,4})-([0-9A-Z]+(?:-[0-9A-Z]+)*)\b/gi;
 
 /**
- * 大寫時也符合型號格式的常見英文詞，不是型號（客人可能整段大寫輸入，例如 `WI-FI`）。
+ * 符合型號格式的常見英文詞，不是型號（轉大寫後比對，`Wi-Fi`、`wi-fi`、`WI-FI` 都排除）。
  * 清單與 packages/kb-ingest/src/lib/transcript.ts 的 MODEL_STOPWORDS 同源，另加 T-SHIRT。
  */
 const NON_MODEL_WORDS: ReadonlySet<string> = new Set([
@@ -39,7 +40,7 @@ function extractCapacityDigits(firstSegment: string): string | null {
 }
 
 export interface ParsedModel {
-  /** 完整輸入型號，例：TAC-11P-MFB */
+  /** 正規化後的完整輸入型號（大寫），例：TAC-11P-MFB */
   raw: string;
   /** 前綴品類碼，例：TAC */
   prefix: string;
@@ -61,10 +62,10 @@ export function detectModels(text: string): ParsedModel[] {
   const out: ParsedModel[] = [];
 
   // matchAll 需要 global flag；用副本避免共用 lastIndex 狀態。
-  const re = new RegExp(MODEL_PATTERN.source, 'g');
+  const re = new RegExp(MODEL_PATTERN.source, 'gi');
   for (const match of text.matchAll(re)) {
-    const prefix = match[1];
-    const rest = match[2];
+    const prefix = match[1].toUpperCase();
+    const rest = match[2].toUpperCase();
     const segments = rest.split('-');
     const firstSegment = segments[0];
 

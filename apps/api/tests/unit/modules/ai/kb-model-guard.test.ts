@@ -115,6 +115,7 @@ test.each([
   ['請問可以寄 e-mail 給你們嗎'],
   ['我想買 T-shirt'],
   ['WI-FI 密碼要怎麼改'],
+  ['wi-fi 一直斷線'],
 ])('一般英文詞不當成型號：%s → 走追問，不回型號查不到', async (text) => {
   const { h } = await send(text);
   const reply = lastBotReply(h);
@@ -123,8 +124,17 @@ test.each([
   assert.ok(!calls.prompts.includes(MODEL_GUIDE_SYSTEM_PROMPT), '沒有用型號引導的提示詞');
 });
 
-test('小寫的型號格式不當成型號：tac-11p → 走追問', async () => {
+test('小寫型號視同大寫：前綴在白名單時照常守門，tac-11p → model_not_found', async () => {
   const { h } = await send('tac-11p 怎麼清洗');
+  const reply = lastBotReply(h);
+  assert.equal(reply.metadata.replyKind, 'model_not_found');
+  const guard = reply.metadata.modelGuard as { unknownModel: string; relatedModels: string[] };
+  assert.equal(guard.unknownModel, 'TAC-11P');
+  assert.deepEqual(guard.relatedModels, ['TAC-11A', 'TAC-11KN']);
+});
+
+test('小寫的已知型號不守門：tac-11a → 走追問', async () => {
+  const { h } = await send('tac-11a 怎麼清洗');
   assert.equal(lastBotReply(h).metadata.replyKind, 'clarify');
 });
 

@@ -7,9 +7,9 @@ Issue #420（AUDIT KB-02、健檢 HC-KNOWLEDGE-02）：知識庫自動回覆的�
 
 ## What Changes
 
-- `detectModels()` 改成大小寫敏感，並排除大寫時也符合格式的常見英文詞（`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`TYPE-C`、
-  `HDMI-2`、`CD-R`、`DVD-R`；清單沿用 `packages/kb-ingest` 的停用詞）。型號白名單也用同一個函式從文章標題抽出，
-  標題裡的小寫詞與這些英文詞不再進白名單。
+- `detectModels()` 維持不分大小寫、結果轉成大寫（`tac-11p` 與 `TAC-11P` 視為同一個），排除轉大寫後是常見英文詞的
+  （`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`TYPE-C`、`HDMI-2`、`CD-R`、`DVD-R`；清單沿用 `packages/kb-ingest` 的停用詞）。
+  型號白名單也用同一個函式從文章標題抽出，標題裡的這些英文詞不再進白名單。
 - 型號守門只攔截前綴（品類碼）出現在白名單的型號。前綴不在白名單的編號（訂單編號）不攔截；知識庫沒有型號文章
   （白名單空）時，等於不啟用守門。
 - 守門回覆計入追問次數（`clarifyAttempts`）。追問次數已達 `clarifyMaxAttempts` 時，命中守門的訊息改走追問用完的路徑：
@@ -27,11 +27,13 @@ Issue #420（AUDIT KB-02、健檢 HC-KNOWLEDGE-02）：知識庫自動回覆的�
   新增「型號守門只攔截知識庫型號格式的型號」（型號守門原本沒有主規格）。未歸檔的 `integrate-clef-decision-model`
   在同一個 capability 修改的是其他需求，沒有衝突。
 
+審查後調整（協調者決定）：初版把偵測改成大小寫敏感，但已有前綴白名單擋住非型號的編號，大小寫敏感只會讓客人打小寫型號時
+失去「請確認型號」的引導，因此恢復不分大小寫。
+
 ## Impact
 
 - `apps/api/src/modules/ai/model-matcher.ts`、`apps/api/src/modules/ai/kb-autoreply.service.ts`。
-- `model-registry.service.ts` 沿用 `detectModels()`：重建白名單後，小寫標題（例如健檢建立的 `hc-knowledge-…`）不再產生型號。
-- 客人輸入小寫型號（`tac-11p`）不再觸發守門，改走一般知識庫回答或追問。
+- `model-registry.service.ts` 沿用 `detectModels()`：重建白名單後，標題裡的 `Wi-Fi` 等英文詞不再產生型號。
 - 前綴打錯的型號（白名單沒有這個前綴）不再觸發守門，改走一般知識庫回答或追問。
 - 文件：`docs/ref/system/AUDIT.md` KB-02、`AUDIT-REVIEWS.md`、`docs/ref/features/health/KNOWLEDGE.md`、
   `docs/ref/features/tenant/KNOWLEDGE.md`、`.claude/skills/feature-knowledge/SKILL.md`、`CHANGELOG.md`。

@@ -2,8 +2,8 @@
  * 型號偵測（issue #420，AUDIT KB-02，change fix-kb-model-guard-420：
  * bot-handoff-config「型號守門只攔截知識庫型號格式的型號」）。
  *
- * 型號是大寫英文前綴加 `-` 與大寫英數（例如 TAC-11P、TAC-06L-MCW）。
- * 一般英文詞（Wi-Fi、e-mail、T-shirt）與小寫詞不是型號。
+ * 型號是英文前綴加 `-` 與英數（例如 TAC-11P、TAC-06L-MCW），不分大小寫、結果一律轉大寫。
+ * 一般英文詞（Wi-Fi、e-mail、T-shirt，不論大小寫）不是型號。
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
@@ -21,13 +21,16 @@ describe('detectModels：一般英文詞不當成型號', () => {
     ['T-SHIRT 有幾種尺寸'],
     ['要用 USB-C 還是 Type-C 充電'],
     ['我家的 HDMI-2 接不上'],
+    ['wi-fi 斷線'],
+    ['t-shirt 尺寸'],
   ])('%s → 不命中', (text) => {
     assert.deepEqual(raws(text), []);
   });
 
-  test('小寫的型號格式不命中', () => {
-    assert.deepEqual(raws('tac-11p 怎麼清洗'), []);
-    assert.deepEqual(raws('Tac-11p 怎麼清洗'), []);
+  test('小寫型號視同大寫：tac-11p 與 Tac-11p 偵測為 TAC-11P', () => {
+    assert.deepEqual(raws('tac-11p 怎麼清洗'), ['TAC-11P']);
+    assert.deepEqual(raws('Tac-11p 怎麼清洗'), ['TAC-11P']);
+    assert.equal(detectModels('tac-06l-mcw')[0].key, 'TAC-06L');
   });
 });
 
@@ -48,6 +51,10 @@ describe('detectModels：真實型號仍命中', () => {
 
   test('同一則訊息有型號也有一般英文詞：只回型號', () => {
     assert.deepEqual(raws('TAC-11P 可以連 Wi-Fi 嗎？還是要 E-MAIL 問'), ['TAC-11P']);
+  });
+
+  test('文章標題的停用詞不進白名單：標題「TAC-11A Wi-Fi 設定」只抽出 TAC-11A', () => {
+    assert.deepEqual(detectModels('TAC-11A wi-fi 設定').map((m) => m.key), ['TAC-11A']);
   });
 });
 
