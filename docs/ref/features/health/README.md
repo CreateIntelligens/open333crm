@@ -66,7 +66,7 @@
 | HC-SETTINGS-01 | HOURS-01（已修正並從 AUDIT 移除） | #425，已修正（#337 第九批） | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測；修正（change `settings-input-validation-and-credential-audit`）以 feature 測試驗證 |
 | HC-PLATFORM-SETTINGS-02 | [RLS-10](../../system/AUDIT.md#rls-10) | #412 | `rls_roles_and_grants` migration 把整個 schema 授權給 `app_tenant`：租戶連線能讀平台帳號的密碼雜湊、改價目表與其他租戶的平台設定。要先有注入點才能利用，但 RLS 少了一道防線 | 本機實測（交易內，已 ROLLBACK） |
 | HC-INBOX-01 | CONV-04（已修正並從 AUDIT 移除） | #422，已修正（change `fix-inbox-conversation-pagination`） | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 本機與 UAT 實測。修正：列表可載入更多，未讀、我的與搜尋改由後端執行；unit 與 feature 測試涵蓋 |
-| HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | #417 | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值 |
+| HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | #417，已修正（change `fix-case-resolved-at-417`；直接關閉依使用者決定不算已解決） | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值。修正：重開清除 `resolvedAt`，API 與 workers 共用 `caseTransitionTimestamps()`；既有資料不補值；unit 與 feature 測試涵蓋 |
 | HC-ANALYTICS-04 | [ANA-03](../../system/AUDIT.md#ana-03) | #423 | 匯出 CSV 沒有跳脫，顧客暱稱含逗號會錯位、以 `=` 開頭會被 Excel 當公式 | 本機實測 |
 
 Issue 欄的 #408～#425 是 2026-10-30 依「同根因合成一張」開的單；TRIAL-05 的重現步驟可直接用來攻擊正式環境，當時暫不開公開 issue；2026-11-02 已修正（#407，change `trial-set-password-after-verify`），部署到正式環境之前仍可被利用。

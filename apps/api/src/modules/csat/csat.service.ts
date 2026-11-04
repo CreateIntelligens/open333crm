@@ -9,7 +9,7 @@ import { createAndDispatch } from '../notification/notification.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { emitToChannel } from '../../events/socket-push.js';
 import { logger } from '@open333crm/core';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, caseTransitionTimestamps, type CaseStatus } from '@open333crm/shared';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 
 /**
@@ -378,6 +378,8 @@ export async function recordCsatScore(
       data: {
         status: 'CLOSED',
         closedAt: now,
+        // resolvedAt 依共用規則（issue #417）：從 RESOLVED 結案保留，沒有經過 RESOLVED 的不算已解決
+        ...caseTransitionTimestamps(caseRecord.status as CaseStatus, 'CLOSED', now),
       },
     });
 

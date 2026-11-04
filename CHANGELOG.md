@@ -19,6 +19,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **重開的工單不再算已解決，報表的已解決數與 SLA 達成率不再失真**（#417，change `fix-case-resolved-at-417`，AUDIT CASE-04、AUTO-10，健檢 HC-ANALYTICS-02）— 原本工單解決後重開仍保留舊的 `resolvedAt`，處理中的工單被報表算成已解決；自動化規則的「改工單狀態」完全不寫 `resolvedAt`／`closedAt`。現在：
+  - `@open333crm/shared` 新增 `caseTransitionTimestamps()`，API 的狀態轉換（按鈕、狀態下拉、升級、指派時自動改狀態）、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 共用：轉成「已解決」寫入 `resolvedAt`；從「已解決」轉成「已關閉」保留；直接關閉（沒有經過「已解決」）不算已解決；轉成其他狀態（重開）清除。
+  - `update_case_status` 改成以 `tenantId` 讀目前狀態再條件更新。規則改成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查。
+  - 既有資料不補值。重開後的滿意度問卷行為不變（#339）。
 - **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
   - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
   - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。

@@ -104,7 +104,7 @@
 
 **工單類動作繞過工單模組。** workers 直接更新 `Case` 的欄位，不經過 `case.service.ts`：
 
-- `update_case_status` 不檢查轉換是否合法，不寫時間軸，也不寫 `resolvedAt`、`closedAt`。由規則轉成 `RESOLVED` 的工單因此不會發送滿意度調查，因為 CSAT 排程以 `resolvedAt` 判斷。
+- `update_case_status` 不檢查轉換是否合法，不寫時間軸，也不發 `case.resolved`、`case.closed`。`resolvedAt`、`closedAt` 與工單模組用同一個規則（`caseTransitionTimestamps()`，#417）：由規則轉成 `RESOLVED` 的工單有 `resolvedAt`，問卷排程會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
 - `escalate_case` 只提高優先級，不把狀態改成 `ESCALATED`，也不發布 `case.escalated`。
 - `assign_agent` 只改 `assigneeId`，不發布 `case.assigned`，被指派的人不會收到通知。上下文沒有工單時略過，不會指派對話。
 

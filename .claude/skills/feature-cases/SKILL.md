@@ -34,7 +34,7 @@ description: >
 | 2 | 列表頁新增工單 | 「新增工單」→ `CaseCreateModal`（不帶 conversationId）：搜尋聯絡人（`GET /contacts?q&limit=10`）→ 選渠道（只列聯絡人有身分的可見渠道）→ 標題、分類必填 | `POST /cases` → `case.flow.ts` `createCaseFlow` → `createCase`（聯絡人不在渠道 400 `CONTACT_NOT_ON_CHANNEL`）→ `createCaseRecord` | 挑 SLA 政策算 `slaDueAt`、寫 `created` 事件、outbox `case.created`；commit 後另開交易做群發歸因與自動指派。帶負責人**不發** `case.assigned`、狀態維持 `OPEN` | `case.create`，帶負責人／團隊另需 `case.assign`；渠道需 `full` / **按鈕不隱藏** |
 | 3 | 從對話建立 | 收件匣 `ContactInfoPanel`「建立工單」→ `CaseCreateModal`（帶 conversationId） | `POST /cases/from-conversation/:conversationId`（與 `POST /conversations/:id/case` 相同）→ `createCaseFromConversation` | 同交易建工單並寫 `conversation.caseId`；對話已有工單 409「這則對話已建立過案件」 | 同上；按鈕在已有工單的對話也顯示 |
 | 4 | 詳情就地編輯 | `/dashboard/cases/[caseId]`：點標題、優先級／分類／團隊下拉 | `PATCH /cases/:id` → `updateCaseFlow` → `updateCase` | 只改欄位時推播 `case.updated`；改負責人（`null` 取消）不通知 | `case.update`；帶 `assigneeId`/`teamId` 另需 `case.assign`；渠道 `full` / **不隱藏** |
-| 5 | 改狀態 | 頂部按鈕「標記解決／關閉案件／重新開啟／升級」（依 `canTransition` 顯示）；狀態下拉（選已關閉先確認、選已升級開升級視窗） | `POST /cases/:id/{resolve,close,reopen}` → `transitionCaseFlow`；下拉走 `PATCH {status}` → `updateCase` 轉交 `transitionCase`／`escalateCase` | 寫 `status_changed`；`RESOLVED` 寫 `resolvedAt` 並發 `case.resolved`，`CLOSED` 寫 `closedAt` 並發 `case.closed`。重開不清 `resolvedAt`、`closedAt`、`csatSentAt` | `case.update`（改成已升級需 `case.escalate`）/ 不隱藏 |
+| 5 | 改狀態 | 頂部按鈕「標記解決／關閉案件／重新開啟／升級」（依 `canTransition` 顯示）；狀態下拉（選已關閉先確認、選已升級開升級視窗） | `POST /cases/:id/{resolve,close,reopen}` → `transitionCaseFlow`；下拉走 `PATCH {status}` → `updateCase` 轉交 `transitionCase`／`escalateCase` | 寫 `status_changed`；`RESOLVED` 寫 `resolvedAt` 並發 `case.resolved`，`CLOSED` 寫 `closedAt` 並發 `case.closed`。`resolvedAt` 依 `caseTransitionTimestamps()`：`RESOLVED` → `CLOSED` 保留、直接關閉為 null、重開清除（#417）；重開不清 `closedAt`、`csatSentAt` | `case.update`（改成已升級需 `case.escalate`）/ 不隱藏 |
 | 6 | 手動指派 | 詳情頁「負責人」下拉（列出全部成員，`GET /agents`） | `POST /cases/:id/assign {assigneeId}` → `assignCase` | `OPEN` 自動改 `IN_PROGRESS`；寫 `assigned`；outbox `case.assigned` → 站內通知。**不檢查負責人看不看得到渠道、是否停用**；下拉失敗沒有提示 | `case.assign`；渠道 `full` |
 | 7 | 自動指派（輪流） | 建立時有 `teamId`、沒有 `assigneeId` | `assignment.service.ts` `autoAssignCase` → `getNextAgent` | 候選：團隊內 `role=AGENT`、啟用、直綁或團隊被授權工單渠道 `reply_only/full`；挑未結（OPEN/IN_PROGRESS/PENDING/ESCALATED）最少者，同數以行程記憶體輪流；寫 `auto_assigned`、`case.assigned`。**畫面的團隊下拉永遠是空的**（讀錯 `agent.team`，API 回 `teams[]`），所以目前只有 API、CLI 與自動化觸發得到 | — |
 | 8 | 升級 | 「升級」→ `EscalationModal`：原因必填、升級後優先級、改派、通知對象 | `POST /cases/:id/escalate {reason, note?, newPriority, assigneeId?, notifyTargets}` → `escalateCase` | 狀態 `ESCALATED`、改優先級、寫 `escalated`；outbox `case.escalated` → `resolveEscalationRecipients`。改派的新負責人不另外通知 | `case.escalate`；渠道 `full` |
@@ -49,6 +49,7 @@ description: >
 
 ## 不可破壞的規則
 - 狀態轉換只有一張表：`packages/shared/src/constants/case-transitions.ts` 的 `VALID_CASE_TRANSITIONS`。API 的 `validateTransition`、詳情頁下拉、頂部按鈕都讀它。新增改狀態的路徑要經過 `transitionCase` 或 `escalateCase`，否則不寫時間軸、不發事件（`recordCsatScore` 目前就繞過了，HC-CASES-01）。
+- `resolvedAt`／`closedAt` 只有一個規則：`packages/shared/src/constants/case-transitions.ts` 的 `caseTransitionTimestamps()`（#417）。API 的 `transitionCase`／`escalateCase`／`assignCase`、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 都用它；新增改狀態的路徑也要用，不要自己寫 `resolvedAt`。報表以 `resolvedAt` 判斷已解決：直接關閉不算、重開不算。
 - 頂部按鈕與狀態下拉要有相同的副作用：`updateCase` 把狀態變更轉給 `transitionCase`／`escalateCase`，`updateCaseFlow` 依 `change.kind` 送相同的推播與事件（S06）。不要在 `updateCase` 裡直接寫 `status`。
 - 推播在 commit 之後送出；事件與工單同交易寫 outbox（`case-effects.ts`）。自動指派與群發歸因在 commit 之後各開一個交易，失敗只記 log、不影響已建立的工單。
 - 工單依 `channelId` 套用渠道可見範圍：讀 `read_only`、貼標與備註 `reply_only`、其他 `full`；看不到的工單回 404，不是 403。改路由時保留 `assertCaseChannelVisible`／`assertChannelVisible`／`assertConversationChannelVisible`。工單的渠道必須是聯絡人有身分的渠道（`CONTACT_NOT_ON_CHANNEL`）。
@@ -70,7 +71,7 @@ description: >
 改到本領域時，至少重走：
 1. 列表頁「新增工單」：選有兩個渠道的聯絡人 → 選渠道 → 建立 → 導到詳情；錯誤：聯絡人不在渠道、空白標題、舊分類。
 2. 收件匣從對話建立工單 → 同一對話再建一次要 409。
-3. 狀態：OPEN → 指派（自動變處理中）→ 待處理 → 處理中 → 標記解決 → 關閉 → 重新開啟；每一步時間軸都有事件，`case.resolved`／`case.closed` 進 outbox；不合法的轉換 422 並列出可改的狀態。
+3. 狀態：OPEN → 指派（自動變處理中）→ 待處理 → 處理中 → 標記解決 → 關閉 → 重新開啟；每一步時間軸都有事件，`case.resolved`／`case.closed` 進 outbox；不合法的轉換 422 並列出可改的狀態。查 DB：解決後有 `resolvedAt`、關閉後保留、重新開啟後為 null；另一張直接關閉的 `resolvedAt` 為 null（#417）。
 4. 升級：勾兩個通知對象，Supervisor 與原負責人各收到一則，升級者自己不收；`notifyTargets: ["everyone"]` 400。
 5. 用 API 帶 `teamId` 建工單，確認輪流指派、沒有渠道授權的成員被排除。
 6. CSAT：解決後 5 分鐘對話出現問卷；以 SQL 把 `csatSentAt` 調到 72 小時前，確認排程結案並關閉對話；重開工單後不被結案。
