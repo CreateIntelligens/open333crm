@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { channelDisplayName } from '@open333crm/shared';
 import { Select } from '@/components/ui/select';
 import {
   Dialog,
@@ -467,7 +468,7 @@ function EditAgentDialog({
                         onChange={() => toggleChannel(ch.id)}
                       />
                       <span className="truncate">{ch.displayName}</span>
-                      <span className="text-xs text-muted-foreground">{ch.channelType}</span>
+                      <span className="text-xs text-muted-foreground">{channelDisplayName(ch.channelType)}</span>
                     </label>
                   ))}
                 </div>

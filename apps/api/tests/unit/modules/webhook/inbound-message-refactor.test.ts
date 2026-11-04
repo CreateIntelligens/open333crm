@@ -126,6 +126,8 @@ async function testDuplicateClientMessageReturnsExistingMessage() {
   const messageCreate = mockFn(() => assert.fail('duplicate path must not create message'));
   const conversationUpdate = mockFn(() => assert.fail('duplicate path must not update conversation'));
   const prisma = {
+    // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
+    tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
       findUnique: mockFn(() => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } })),
     },
@@ -174,6 +176,8 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
   const conversation = createConversation();
   const inboundMessage = createInboundMessage({ content: { text: 'csat:5:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
   const prisma = {
+    // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
+    tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
       findUnique: mockFn(() => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } })),
     },
@@ -233,6 +237,8 @@ async function testCsatLookupScopedToTenantAndSender() {
   const caseId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const inboundMessage = createInboundMessage({ content: { text: `csat:1:${caseId}` } });
   const prisma = {
+    // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
+    tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
       findUnique: mockFn(() => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } })),
     },

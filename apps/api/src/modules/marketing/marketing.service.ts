@@ -20,9 +20,26 @@ import { snapshotOgInBackground } from '../shortlink/og-snapshot.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
 import { campaignHasOtherChannelsError, readableCampaignWhere, writableCampaignWhere } from './campaign.service.js';
-import { COUPON_ISSUED_VIA } from '@open333crm/shared';
+import { COUPON_ISSUED_VIA, channelDisplayName, supportsProactivePush } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
 import { channelIdWhereFilter, type AccessibleChannels, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
+
+// --- Broadcast channel ---
+
+/** 渠道不能主動推送時的原因：群發、附券廣播與批次發券共用（建立、送出、排程失敗都寫這段文字） */
+export const CHANNEL_PUSH_NOT_SUPPORTED_REASON =
+  '網站聊天室不能主動推送訊息，群發與批次發券送不到顧客。請改選 LINE、Facebook 或 Instagram 渠道';
+
+/**
+ * 群發只能用能主動推送的渠道（change reject-webchat-push-415，issue #415）。網站聊天室的外掛 sendMessage()
+ * 只回成功，訪客房間的推送只有收件匣回覆路徑會做；不擋的話群發與發券會回報成功，顧客卻收不到。
+ */
+export function assertChannelSupportsPush(channelType: string, path = 'channelId'): void {
+  if (supportsProactivePush(channelType)) return;
+  throw new AppError(CHANNEL_PUSH_NOT_SUPPORTED_REASON, 'CHANNEL_PUSH_NOT_SUPPORTED', 400, {
+    issues: [{ path, message: CHANNEL_PUSH_NOT_SUPPORTED_REASON }],
+  });
+}
 
 // --- Broadcast audience ---
 
@@ -305,6 +322,7 @@ export async function createBroadcast(
   if (!channel) {
     throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
   }
+  assertChannelSupportsPush(channel.channelType);
 
   // 素材與渠道要相符：FB 素材排給 LINE 渠道，發送時才會整批失敗
   if (data.materialId && !materialMatchesChannel(materialChannelType, channel.channelType)) {
@@ -573,10 +591,12 @@ export async function executeBroadcast(
     if (!channel) {
       throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
     }
+    // 修正前建立的網站聊天室群發：由外層 catch 標失敗並寫原因，不呼叫渠道
+    assertChannelSupportsPush(channel.channelType);
 
     const plugin = getChannelPlugin(channel.channelType);
     if (!plugin) {
-      throw new AppError(`此渠道類型（${channel.channelType}）不支援發送廣播`, 'UNSUPPORTED_CHANNEL', 400);
+      throw new AppError(`此渠道類型（${channelDisplayName(channel.channelType)}）不支援發送廣播`, 'UNSUPPORTED_CHANNEL', 400);
     }
     // 憑證解密：金鑰不符（如從其他環境 sync 來的 token）會拋原生錯，
     // 包成友善 AppError 避免冒成裸 500「An unexpected error occurred」。

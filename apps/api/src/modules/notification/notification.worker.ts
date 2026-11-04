@@ -11,6 +11,7 @@ import { logger, USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
 import type { UsageAlertEmailJob } from './usage-alert-email.worker.js';
 import { getConfig } from '../../config/env.js';
 import { resolveEscalationRecipients } from './notification.service.js';
+import { ALL_CHANNELS, agentVisibilityResolver, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -73,8 +74,51 @@ async function getSupervisorAndAdminIds(
   return agents.map((a) => a.id);
 }
 
-export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
+/**
+ * 未指派對話的通知收件人：啟用中的主管與管理員，只留看得到這個渠道的人。
+ * 通知內容有客人名稱與轉接原因，分店主管不可收到其他分店渠道的通知（RBAC-04，HC-NOTIFICATIONS-01）。
+ */
+async function getChannelSupervisorAndAdminIds(
+  prisma: PrismaClient,
+  visibility: AgentVisibilityResolver,
+  tenantId: string,
+  channelId: string,
+): Promise<string[]> {
+  const ids = await getSupervisorAndAdminIds(prisma, tenantId);
+  const visible = await Promise.all(ids.map(async (agentId) => {
+    const channels = await visibility(tenantId, agentId);
+    return channels === ALL_CHANNELS || channels.has(channelId);
+  }));
+  return ids.filter((_, i) => visible[i]);
+}
+
+/**
+ * 對話通知的收件人：負責客服仍啟用且看得到這個渠道時只通知他；沒有指派，或負責客服已停用、
+ * 已失去渠道權限時，改通知看得到渠道的主管與管理員（change notify-visible-assignee-440）。
+ */
+async function getConversationRecipients(
+  prisma: PrismaClient,
+  visibility: AgentVisibilityResolver,
+  tenantId: string,
+  conversation: { assignedToId: string | null; channelId: string },
+): Promise<{ recipients: string[]; toAssignee: boolean }> {
+  const { assignedToId, channelId } = conversation;
+  if (assignedToId) {
+    const assignee = await prisma.agent.findFirst({ where: { id: assignedToId, tenantId, isActive: true }, select: { id: true } });
+    const channels = assignee ? await visibility(tenantId, assignedToId) : null;
+    if (channels && (channels === ALL_CHANNELS || channels.has(channelId))) {
+      return { recipients: [assignedToId], toAssignee: true };
+    }
+  }
+  return { recipients: await getChannelSupervisorAndAdminIds(prisma, visibility, tenantId, channelId), toAssignee: false };
+}
+
+export function setupNotificationWorker(
+  prisma: PrismaClient,
+  opts: { visibility?: AgentVisibilityResolver } = {},
+): EventHandler {
   const events = createEventRouter();
+  const visibility = opts.visibility ?? agentVisibilityResolver(prisma);
 
   // ── case.assigned ──────────────────────────────────────────────────────
   events.on('case.assigned', async (event: SubscribedEvent) => {
@@ -209,7 +253,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
 
       const conversation = await prisma.conversation.findFirst({
         where: { id: conversationId, tenantId: event.tenantId },
-        select: { assignedToId: true, contactId: true, contact: { select: { displayName: true } } },
+        select: { assignedToId: true, contactId: true, channelId: true, contact: { select: { displayName: true } } },
       });
 
       if (!conversation) return;
@@ -223,19 +267,45 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
         clickUrl: `/dashboard/inbox?conv=${conversationId}`,
       };
 
-      if (conversation.assignedToId) {
-        // Assigned → notify the assigned agent only
-        await enqueueDispatch(event, conversation.assignedToId, notifPayload);
-      } else {
-        // Unassigned → notify all ADMIN and SUPERVISOR agents
-        const adminAndSupervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
-        for (const agentId of adminAndSupervisorIds) {
-          await enqueueDispatch(event, agentId, notifPayload);
-        }
-        logger.info(`[NotificationWorker] message.received (unassigned) → ${adminAndSupervisorIds.length} admin(s)/supervisor(s)`);
+      const { recipients, toAssignee } = await getConversationRecipients(prisma, visibility, event.tenantId, conversation);
+      for (const agentId of recipients) {
+        await enqueueDispatch(event, agentId, notifPayload);
       }
+      logger.info(`[NotificationWorker] message.received (${toAssignee ? 'assignee' : 'channel supervisors'}) → ${recipients.length} agent(s)`);
     } catch (err) {
       logger.error('[NotificationWorker] Error handling message.received:', err);
+      throw err;
+    }
+  });
+
+  // ── conversation.handoff ───────────────────────────────────────────────
+  // 機器人轉接真人（自動轉接、知識庫追問用完或 AI 失敗、客人按轉接鈕）：收件人與 message.received 相同
+  events.on('conversation.handoff', async (event: SubscribedEvent) => {
+    try {
+      const { conversationId, reason } = event.payload as { conversationId?: string; reason?: string };
+      if (!conversationId) return;
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, tenantId: event.tenantId },
+        select: { assignedToId: true, channelId: true, contact: { select: { displayName: true } } },
+      });
+      if (!conversation) return;
+
+      const contactName = conversation.contact.displayName;
+      const notifPayload = {
+        tenantId: event.tenantId,
+        type: 'conversation_handoff',
+        title: '對話已轉接真人',
+        body: reason ? `${contactName} 的對話需要客服接手：${reason}` : `${contactName} 的對話需要客服接手`,
+        clickUrl: `/dashboard/inbox?conv=${conversationId}`,
+      };
+      const { recipients } = await getConversationRecipients(prisma, visibility, event.tenantId, conversation);
+      for (const agentId of recipients) {
+        await enqueueDispatch(event, agentId, notifPayload);
+      }
+      logger.info(`[NotificationWorker] conversation.handoff → ${recipients.length} agent(s)`);
+    } catch (err) {
+      logger.error('[NotificationWorker] Error handling conversation.handoff:', err);
       throw err;
     }
   });

@@ -27,6 +27,7 @@ import { QuickReplyEditor, type QuickReplyItem } from './QuickReplyEditor';
 import type { MaterialVariable } from '@/hooks/useMaterials';
 import { validateMaterialBody } from './validate-body';
 import api from '@/lib/api';
+import { channelDisplayName } from '@open333crm/shared';
 
 export interface MaterialDraft {
   name: string;
@@ -51,11 +52,6 @@ interface Props {
 }
 
 // channel / contentType 對使用者顯示的中文名稱
-const CHANNEL_LABEL: Record<string, string> = {
-  line: 'LINE',
-  fb: 'FB Messenger',
-};
-
 const CONTENT_TYPE_LABEL: Record<string, string> = {
   // LINE
   line_text: 'LINE 純文字',
@@ -141,7 +137,7 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
         <div className="flex items-center gap-2.5">
           <h1 className="text-lg font-bold">編輯素材{templateName ? `．${templateName}` : ''}</h1>
           <span className="rounded-md bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary ring-1 ring-primary-border">
-            {CHANNEL_LABEL[draft.channelType] ?? draft.channelType}．{CONTENT_TYPE_LABEL[draft.contentType] ?? draft.contentType}
+            {channelDisplayName(draft.channelType)}．{CONTENT_TYPE_LABEL[draft.contentType] ?? draft.contentType}
           </span>
         </div>
         <div className="flex gap-2">

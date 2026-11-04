@@ -15,7 +15,7 @@ description: >
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/KNOWLEDGE.md`
-  - 注意：其中「追問次數達到上限後轉真人」與實際不符，程式只回一句轉接文字、不改對話狀態，見健檢 HC-KNOWLEDGE-01。
+  - 追問次數達到上限、或追問的 LLM 呼叫失敗時，與自動轉真人共用 `handOffConversation()` 真的轉接（#419，HC-KNOWLEDGE-01 已修正）。
   - 注意：其中與 AUDIT LLM-04「Embedding 一律失敗」與 UAT 現況不符，UAT Demo 租戶靠 Compose 的 Ollama 正常產生向量。
 - 健檢結果與已知問題：`docs/ref/features/health/KNOWLEDGE.md`
 - 規格：`openspec/specs/km-ingestion/spec.md`（前兩條需求已與程式脫節）、`openspec/specs/knowledge-base-information-architecture/spec.md`、`openspec/specs/token-quota/spec.md`、`openspec/specs/usage-quota-alerts/spec.md`、`openspec/specs/ai-usage-recording/spec.md`、`openspec/specs/agentic-llm-orchestration/spec.md`、`openspec/specs/bot-handoff-config/spec.md`。**KB 自動回覆分流、型號守門、KB 回報、問答表拆分都沒有主規格**
@@ -46,12 +46,12 @@ description: >
 
 ## 不可破壞的規則
 - 回覆分流（`kb-autoreply.service.ts`）：最高相似度 ≥ 0.80 直接答；`clarifyThreshold`～0.80 答＋依 botConfig 附轉接提示；低於 `clarifyThreshold` 或沒文章就追問，次數記在 `conversation.metadata.clarifyAttempts`，成功回答歸零。
-- **追問用完的 `clarify_handoff` 只送文字，不轉接**（HC-KNOWLEDGE-01）；真正轉接只有 `checkAutoHandoff`（`maxBotReplies`、轉接關鍵字、客人傳圖檔）與 `handoff_request` postback。改轉接邏輯時兩邊要一致。
+- **`clarify_handoff` 會真的轉接**（#419）：追問用完或追問的 LLM 呼叫失敗時，`persistAndDeliver` 在 bot_reply 認領的同一個交易呼叫 `apps/api/src/modules/automation/handoff.flow.ts` 的 `handOffConversation()`（與 `checkAutoHandoff` 共用）：條件更新 `BOT_HANDLED→AGENT_HANDLED`、`handoffReason`、系統訊息、`conversation.handoff`（通知客服）、`notifyChannel` 推播；追問次數歸零。條件不成立時整筆 rollback，不送「已為您轉接」。`handoff_request` postback 仍是自己的程式（`inbound-postback-interceptors.ts`）。改轉接邏輯時改 `handoff.flow.ts`，不要在各路徑各寫一份。轉接後關鍵字規則照樣回覆（workers 不看對話狀態），KB 與 agent 不回 `AGENT_HANDLED` 的對話。
 - 型號守門對**所有租戶**生效，白名單由 `model-registry.service.ts` 從 `PUBLISHED` 文章**標題**抽出、程序內快取 10 分鐘；正規式在 `model-matcher.ts`，會誤判 `Wi-Fi`、`e-mail`（HC-KNOWLEDGE-02）。相似度 ≥ 0.85 豁免。
 - 每則入站訊息最多一則機器人回覆：寫入要包在 `BotReplyGuard.persist()` 交易裡，不要繞過。
 - 檢索只能取 `status = 'PUBLISHED'`（規格 `km-ingestion`「Archived Articles Excluded」）；夥伴 DELETE 是軟刪 `ARCHIVED`，網頁刪除是硬刪除。
 - 向量維度：程式寫 1024，部分環境欄位是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
-- 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply` 超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback 會改送文章原文或假轉接（HC-KNOWLEDGE-01、04）。
+- 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply` 超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback：依文章回答的路徑改送文章原文（HC-KNOWLEDGE-04），追問路徑回「已為您轉接」並真的轉接（`handoffReason`「AI 月額度已用完，無法自動回覆」）。
 - 個資遮罩啟用時，所有模型輸入與 `generateEmbedding` 都先經 2md 去識別化；失敗就停止，不可用原文當 fallback。
 - 設定路由在 `settings.routes.ts`，整個模組掛 `requirePermission('settings.manage')`；`baseUrl` 用 `httpUrlSchema`（只許 http/https，但內網要放行，Ollama 就在內網）。
 - 本機不要為了測試把共用租戶的 Chat/Embedding 改指向外部付費服務；UAT 不可觸發 AI 回覆。
@@ -73,7 +73,7 @@ description: >
 
 ## 常見 bug 從哪裡查
 - 「AI 都不回」：依序查 `KB_AUTO_REPLY_ENABLED`、對話是否 `BOT_HANDLED`、渠道 `botMode`、是否命中關鍵字規則（`apps/api/src/modules/automation/keyword-yield.ts`）、embedding 是否連得上（`generateEmbedding` 失敗時直接不回、不轉接，只有 error log）、`PLAN_LIMIT_EXCEEDED`。
-- 「AI 說已轉接但沒人接」：`clarify_handoff`，看訊息 `metadata.replyKind`；對話仍是 `BOT_HANDLED`（HC-KNOWLEDGE-01）。
+- 「AI 說已轉接但沒人接」：`clarify_handoff` 後對話應為 `AGENT_HANDLED` 且有 `handoffReason` 與 `auto_handoff` 系統訊息（#419）；未指派的對話會通知看得到該渠道的主管與管理員（`conversation_handoff`）。若仍是 `BOT_HANDLED`，查 job 是否失敗（轉接交易失敗時整則回覆不送出、由佇列重試）。
 - 「AI 說型號查不到」：訊息 `metadata.modelGuard.unknownModel`；`GET /knowledge/models` 看白名單；`apps/api/src/modules/ai/model-matcher.ts`。
 - 「文章發布了卻搜不到」：`hasEmbedding`、Embedding 頁「未嵌入」數、`POST /knowledge/bulk-embed`；維度不符見 DB-01。
 - 「匯入後中文亂碼」：CSV 沒有 UTF-8 BOM（`apps/api/src/modules/knowledge/file-parser.service.ts` 的 `XLSX.read`）。

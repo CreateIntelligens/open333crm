@@ -4,6 +4,7 @@ import { recordStitchedIdentity } from '../contact/contact-merge.service.js';
 import { inTransaction } from '../identity-binding/binding-common.js';
 import { scheduleAvatarRefresh } from './inbound-avatar-refresh.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
+import { channelDisplayName } from '@open333crm/shared';
 
 export async function resolveInboundContact(ctx: InboundMessageContext): Promise<void> {
   let channelIdentity = await ctx.prisma.channelIdentity.findUnique({
@@ -84,7 +85,7 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
   }
 
   if (!channelIdentity) {
-    let displayName = `${ctx.channel.channelType} User ${ctx.contactUid.slice(-6)}`;
+    let displayName = `${channelDisplayName(ctx.channel.channelType)} User ${ctx.contactUid.slice(-6)}`;
     let avatarUrl: string | undefined;
 
     if (ctx.plugin) {

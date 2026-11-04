@@ -35,9 +35,10 @@ vi.mock('#src/modules/email/email.service.js', () => ({
   },
 }));
 
-import { USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
+import { EVENT_NOTIFICATION_QUEUE, subscriberQueuesOf, USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { setupNotificationWorker } from '#src/modules/notification/notification.worker.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 loadEnvConfig();
 
@@ -53,9 +54,9 @@ const handle = setupNotificationWorker({
   },
   tenant: { findUnique: async () => ({ name: '測試站台' }) },
   conversation: {
-    findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', contact: { displayName: '客人' } }),
+    findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '客人' } }),
   },
-} as never);
+} as never, { visibility: async () => ALL_CHANNELS });
 
 beforeEach(() => {
   sent.jobs = [];
@@ -94,4 +95,92 @@ test('Redis unavailable at enqueue time（Subscriber cannot enqueue the next job
   sent.redisDown = true;
   await assert.rejects(handle(event('case.assigned', { caseId: 'case-1', assigneeId: 'agent-x', title: 'T' })), /redis down/);
   await assert.rejects(handle(event('message.received', { conversationId: 'conv-1', contactId: 'contact-1' })), /redis down/);
+});
+
+test('未指派的對話轉接：conversation.handoff 送進通知訂閱者，通知主管與管理員，內容寫轉接原因', async () => {
+  // outbox 依名稱決定送給哪些訂閱者：沒有列入通知訂閱者時，事件只到 webhook，客服收不到（#419）
+  assert.ok(subscriberQueuesOf('conversation.handoff').includes(EVENT_NOTIFICATION_QUEUE));
+
+  await handle(event('conversation.handoff', { conversationId: 'conv-1', reason: '知識庫找不到可回答的內容，追問次數已達上限（2/2）' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__supervisor-a`, `${EVENT}__admin-b`]);
+  assert.equal(jobs[0].data.type, 'conversation_handoff');
+  assert.equal(jobs[0].data.clickUrl, '/dashboard/inbox?conv=conv-1');
+  assert.match(String(jobs[0].data.body), /客人/);
+  assert.match(String(jobs[0].data.body), /追問次數已達上限/);
+});
+
+test('已指派的對話轉接：只通知負責的客服', async () => {
+  const assignedHandle = setupNotificationWorker({
+    agent: {
+      findMany: async () => [{ id: 'supervisor-a' }, { id: 'admin-b' }],
+      findFirst: async () => ({ id: 'agent-x' }),
+    },
+    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', channelId: 'ch-a', contact: { displayName: '客人' } }) },
+  } as never, { visibility: async () => ALL_CHANNELS });
+  await assignedHandle(event('conversation.handoff', { conversationId: 'conv-1', reason: 'AI 月額度已用完，無法自動回覆' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__agent-x`]);
+});
+
+// 分店主管只看得到渠道 ch-b：未指派對話的通知只發給看得到該渠道的主管與管理員（PR #440 審查，RBAC-04 HC-NOTIFICATIONS-01）
+function branchScopedHandle() {
+  return setupNotificationWorker({
+    agent: { findMany: async () => [{ id: 'hq-admin' }, { id: 'branch-supervisor' }] },
+    conversation: { findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '他店客人' } }) },
+  } as never, {
+    visibility: async (_tenantId: string, agentId: string) => (agentId === 'hq-admin' ? ALL_CHANNELS : new Set(['ch-b'])),
+  });
+}
+
+test('未指派的對話轉接：看不到該渠道的主管不會收到轉接通知（PR #440 審查）', async () => {
+  await branchScopedHandle()(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('未指派對話的新訊息：看不到該渠道的主管不會收到新訊息通知（PR #440 審查）', async () => {
+  await branchScopedHandle()(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+// 指派給 agent-x 的渠道 ch-a 對話；hq-admin 持有 channel.view_all（change notify-visible-assignee-440）
+function assignedHandle(opts: { assigneeActive: boolean; assigneeChannels: Set<string> | typeof ALL_CHANNELS }) {
+  return setupNotificationWorker({
+    agent: {
+      findMany: async () => [{ id: 'hq-admin' }, { id: 'branch-supervisor' }],
+      findFirst: async ({ where }: { where: { id: string; isActive?: boolean } }) =>
+        where.id === 'agent-x' && (opts.assigneeActive || where.isActive !== true) ? { id: 'agent-x' } : null,
+    },
+    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '客人' } }) },
+  } as never, {
+    visibility: async (_tenantId: string, agentId: string) =>
+      agentId === 'agent-x' ? opts.assigneeChannels : agentId === 'hq-admin' ? ALL_CHANNELS : new Set(['ch-b']),
+  });
+}
+
+test('負責客服看得到渠道：只有負責客服收到新訊息通知', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-a']) })(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__agent-x`]);
+});
+
+test('負責客服失去渠道權限：負責客服不收新訊息通知，改通知看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-b']) })(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('負責客服已停用：負責客服不收轉接通知，改通知看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: false, assigneeChannels: ALL_CHANNELS })(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('負責客服看不到渠道時改通知主管：轉接通知改發給看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-b']) })(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+  assert.equal(jobs[0].data.type, 'conversation_handoff');
 });

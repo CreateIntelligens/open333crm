@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { ConversationUpdatedPayload } from '@open333crm/shared';
+import { channelDisplayName, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
 import { emitToChannel } from '../../events/socket-push.js';
@@ -55,7 +55,7 @@ export async function simulateInboundMessage(
     contactId = channelIdentity.contactId;
   } else {
     // Create a new contact and channel identity
-    const displayName = contactName ?? `${channelType} User ${contactUid.slice(-6)}`;
+    const displayName = contactName ?? `${channelDisplayName(channelType)} User ${contactUid.slice(-6)}`;
 
     const newContact = await prisma.contact.create({
       data: {

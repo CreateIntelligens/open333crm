@@ -177,7 +177,7 @@ export function MessageInput({
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       } else {
-        alert('目前僅支援 LINE / FB / Webchat 聊天室傳送圖片');
+        alert('目前僅支援 LINE、Facebook 與網站聊天室傳送圖片');
       }
     } catch (err) {
       console.error('Failed to send image:', err);

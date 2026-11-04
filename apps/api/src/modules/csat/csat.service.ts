@@ -1,4 +1,5 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { deliverToChannel } from '../conversation/conversation.service.js';
@@ -99,9 +100,10 @@ export async function sendCsatSurvey(
 
   const now = new Date();
 
-  // 先以條件更新認領工單再寄出：job 重跑、兩期重疊，或讀取後工單被重開時，只有認領成功的一次會寄
+  // 先以條件更新認領工單再寄出：job 重跑、兩期重疊，或讀取後工單被重開時，只有認領成功的一次會寄。
+  // 租戶在排程查詢之後才被停用時也認領不到（issue #410，PR #440 審查）
   const { count } = await prisma.case.updateMany({
-    where: { id: caseId, tenantId: caseRecord.tenantId, status: 'RESOLVED', csatSentAt: null },
+    where: { id: caseId, tenantId: caseRecord.tenantId, status: 'RESOLVED', csatSentAt: null, tenant: { isActive: true } },
     data: { csatSentAt: now },
   });
   if (count === 0) {
@@ -147,39 +149,97 @@ export async function sendCsatSurvey(
   emitToChannel(io, caseRecord.tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', wsPayload);
 
   // Deliver to external channel
+  // 送不出時 failureReason 是給客服看的原因；認領之後最多寄一次，失敗不還原 csatSentAt、不自動重寄（issue #416）
+  let failureReason: string | null = null;
   try {
     const channelType = conversation.channelType;
     const csatPayload = buildCsatChannelMessage(channelType, caseId);
 
     // For LINE, we need to send the Flex message via plugin directly
-    if (channelType === CHANNEL_TYPE.LINE && conversation.channel?.isActive) {
+    if (channelType === CHANNEL_TYPE.LINE) {
       const channel = conversation.channel;
-      const identity = await prisma.channelIdentity.findFirst({
-        where: { contactId: caseRecord.contactId, channelId: channel.id },
-      });
+      const identity = channel?.isActive
+        ? await prisma.channelIdentity.findFirst({
+            where: { contactId: caseRecord.contactId, channelId: channel.id },
+          })
+        : null;
+      const plugin = getChannelPlugin(CHANNEL_TYPE.LINE);
 
-      if (identity) {
-        const plugin = getChannelPlugin(CHANNEL_TYPE.LINE);
-        if (plugin) {
-          const credentials = decryptCredentials(channel.credentialsEncrypted);
-          // Send Flex message (LINE plugin sendMessage handles it as raw JSON)
-          await plugin.sendMessage(identity.uid, csatPayload, credentials);
+      if (!channel?.isActive) {
+        failureReason = '渠道已停用或不存在，問卷沒有送到客人';
+      } else if (!identity) {
+        failureReason = '找不到這位聯絡人在此渠道的帳號，問卷沒有送到客人';
+      } else if (!plugin) {
+        failureReason = '這個渠道類型目前無法從後台送出訊息';
+      } else {
+        const credentials = decryptCredentials(channel.credentialsEncrypted);
+        const result = await plugin.sendMessage(identity.uid, csatPayload, credentials);
+        if (!result.success) {
+          failureReason = (result.error || 'LINE 沒有接受這份問卷').slice(0, 500);
         }
       }
     } else {
       // FB / WEBCHAT: fallback to text-based CSAT
-      await deliverToChannel(
+      const delivered = await deliverToChannel(
         prisma,
         conversationId,
         '感謝您的耐心等候！請評價此次服務體驗（1-5 分），回覆 csat:分數 即可，例如 csat:5',
       );
+      if (!delivered) failureReason = '問卷沒有送到客人，請確認渠道設定';
     }
   } catch (err) {
     logger.error('[CsatService] Channel delivery error:', err);
+    failureReason = '問卷沒有送到客人，請確認渠道設定';
+  }
+
+  if (failureReason) {
+    logger.warn(`[CsatService] CSAT survey for case ${caseId} not delivered: ${failureReason}`);
+    const metadata = await recordCsatDeliveryFailure(
+      { tx: prisma as TenantCtx['tx'], tenantId: caseRecord.tenantId },
+      { caseId, messageId: csatMessage.id, messageMetadata: csatMessage.metadata, reason: failureReason },
+    );
+    // 再推一次 message.new：聊天視窗重新載入，問卷卡片顯示「沒有送出」
+    emitToChannel(io, caseRecord.tenantId, { channelId: conversation.channelId, conversationId }, 'message.new', {
+      ...wsPayload,
+      message: { ...wsPayload.message, metadata },
+    });
+    return true;
   }
 
   logger.info(`[CsatService] CSAT survey sent for case ${caseId}`);
   return true;
+}
+
+/**
+ * 滿意度問卷沒有送到客人時，留下客服看得到的紀錄（issue #416）：
+ * - 問卷訊息的 metadata 標 `deliveryFailed` 與原因：收件匣的問卷卡片與對話列表顯示「沒有送出」。
+ * - 工單時間軸寫一筆 `csat_send_failed`。
+ * 回傳更新後的 metadata，讓呼叫端推播給聊天視窗。
+ */
+export async function recordCsatDeliveryFailure(
+  ctx: TenantCtx,
+  input: { caseId: string; messageId: string; messageMetadata: unknown; reason: string },
+): Promise<Record<string, unknown>> {
+  const base = input.messageMetadata && typeof input.messageMetadata === 'object' && !Array.isArray(input.messageMetadata)
+    ? (input.messageMetadata as Record<string, unknown>)
+    : {};
+  const metadata = { ...base, deliveryFailed: true, deliveryError: input.reason };
+  // 只動這個租戶的資料：舊入口傳進來的 tx 不一定綁定租戶（PR #440 審查）
+  await ctx.tx.message.updateMany({
+    where: { id: input.messageId, conversation: { tenantId: ctx.tenantId } },
+    data: { metadata: metadata as Prisma.InputJsonValue },
+  });
+  const caseInTenant = await ctx.tx.case.count({ where: { id: input.caseId, tenantId: ctx.tenantId } });
+  if (caseInTenant === 0) return metadata;
+  await ctx.tx.caseEvent.create({
+    data: {
+      caseId: input.caseId,
+      actorType: 'system',
+      eventType: 'csat_send_failed',
+      payload: { reason: input.reason, messageId: input.messageId },
+    },
+  });
+  return metadata;
 }
 
 /**

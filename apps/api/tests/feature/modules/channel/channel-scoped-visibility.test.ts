@@ -322,6 +322,12 @@ test('Direct and team bindings combined：直接綁定與團隊授權取聯集',
 const marketerRole = await createRole('marketer', ['marketing.view', 'marketing.manage', 'marketing.broadcast']);
 const marketer = await createAgent('marketer', marketerRole.id);
 await bind(visible.id, marketer.id, 'read_only');
+/**
+ * 建立與送出群發用的可見渠道：群發只能用能主動推送的渠道，WebChat 會被拒（change reject-webchat-push-415）。
+ * 用 LINE 而不是 FB：分群條件「有 FB 帳號」不能被這個渠道的身分本身符合
+ */
+const visiblePush = await createChannel('visible-push', { channelType: 'LINE' });
+await bind(visiblePush.id, marketer.id, 'read_only');
 const marketerApp = await buildApp(marketer.id, marketerRole.id);
 const audienceTag = await owner.tag.create({ data: { tenantId: A, name: `${MARK}-audience` } });
 
@@ -527,12 +533,12 @@ test('總店規劃的空活動：分店看得到，並能以自己的渠道建�
   assert.ok((list.json().data as Array<{ id: string }>).some((c) => c.id === planned.id), '空活動照常列出');
 
   const material = await owner.material.create({
-    data: { tenantId: A, name: `${MARK}-planned-material`, channelType: 'WEBCHAT', contentType: 'text', body: { text: 'hi' } },
+    data: { tenantId: A, name: `${MARK}-planned-material`, channelType: 'line', contentType: 'text', body: { text: 'hi' } },
   });
   const created = await marketerApp.inject({
     method: 'POST',
     url: '/api/v1/marketing/broadcasts',
-    payload: { name: `${MARK}-bc-into-planned`, channelId: visible.id, materialId: material.id, targetType: 'all', campaignId: planned.id },
+    payload: { name: `${MARK}-bc-into-planned`, channelId: visiblePush.id, materialId: material.id, targetType: 'all', campaignId: planned.id },
   });
   assert.equal(created.statusCode, 201, created.body);
 });
@@ -553,12 +559,12 @@ test('修改含其他分店群發的活動被拒：修改、刪除、建立群�
   assert.equal((await owner.campaign.findUniqueOrThrow({ where: { id: mixed.id } })).status, 'draft');
 
   const material = await owner.material.create({
-    data: { tenantId: A, name: `${MARK}-campaign-material`, channelType: 'WEBCHAT', contentType: 'text', body: { text: 'hi' } },
+    data: { tenantId: A, name: `${MARK}-campaign-material`, channelType: 'line', contentType: 'text', body: { text: 'hi' } },
   });
   const created = await marketerApp.inject({
     method: 'POST',
     url: '/api/v1/marketing/broadcasts',
-    payload: { name: `${MARK}-bc-into-mixed`, channelId: visible.id, materialId: material.id, targetType: 'all', campaignId: mixed.id },
+    payload: { name: `${MARK}-bc-into-mixed`, channelId: visiblePush.id, materialId: material.id, targetType: 'all', campaignId: mixed.id },
   });
   assert.equal(created.statusCode, 403, created.body);
   assert.equal(code(created), 'CAMPAIGN_HAS_OTHER_CHANNELS');
@@ -591,13 +597,13 @@ const hqMarketer = await createAgent('hq-marketer', hqRole.id);
 const hqApp = await buildApp(hqMarketer.id, hqRole.id);
 afterAll(() => hqApp.close());
 
-/** 聯絡人在可見的 WebChat 渠道有身分，在其他分店的 FB 渠道也有身分；分群條件是「有 FB 帳號」 */
+/** 聯絡人在可見的 LINE 渠道有身分，在其他分店的 FB 渠道也有身分；分群條件是「有 FB 帳號」 */
 async function crossBranchSegment(slug: string) {
   const branchFb = await createChannel(`${slug}-fb`, { channelType: 'FB' });
   await bind(branchFb.id, other.id);
   const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-${slug}` } });
   await owner.channelIdentity.create({
-    data: { contactId: contact.id, channelId: visible.id, channelType: 'WEBCHAT', uid: `${MARK}-${slug}-webchat` },
+    data: { contactId: contact.id, channelId: visiblePush.id, channelType: 'LINE', uid: `${MARK}-${slug}-line` },
   });
   await owner.channelIdentity.create({
     data: { contactId: contact.id, channelId: branchFb.id, channelType: 'FB', uid: `${MARK}-${slug}-fb` },
@@ -607,7 +613,7 @@ async function crossBranchSegment(slug: string) {
     data: { tenantId: A, name: `${MARK}-${slug}-segment`, rules, conditions: rules.conditions, contactCount: 0 },
   });
   const material = await owner.material.create({
-    data: { tenantId: A, name: `${MARK}-${slug}-material`, channelType: 'WEBCHAT', contentType: 'text', body: { text: 'hi' } },
+    data: { tenantId: A, name: `${MARK}-${slug}-material`, channelType: 'line', contentType: 'text', body: { text: 'hi' } },
   });
   return { segment, material };
 }
@@ -617,14 +623,14 @@ test('分店建立的分群群發只以可見渠道判斷條件：預估與送�
   const preview = await marketerApp.inject({
     method: 'POST',
     url: '/api/v1/marketing/broadcasts/audience-preview',
-    payload: { channelId: visible.id, targetType: 'segment', segmentId: segment.id },
+    payload: { channelId: visiblePush.id, targetType: 'segment', segmentId: segment.id },
   });
   assert.equal(preview.statusCode, 200, preview.body);
   assert.equal(preview.json().data.matched, 0, '預估不算只在其他分店渠道符合條件的人');
 
   const broadcast = await owner.broadcast.create({
     data: {
-      tenantId: A, channelId: visible.id, name: `${MARK}-branch-seg-bc`, createdById: marketer.id,
+      tenantId: A, channelId: visiblePush.id, name: `${MARK}-branch-seg-bc`, createdById: marketer.id,
       materialId: material.id, targetType: 'segment', segmentId: segment.id,
     },
   });
@@ -640,14 +646,14 @@ test('總店建立的分群群發以所有渠道判斷條件：分店成員按�
   const preview = await hqApp.inject({
     method: 'POST',
     url: '/api/v1/marketing/broadcasts/audience-preview',
-    payload: { channelId: visible.id, targetType: 'segment', segmentId: segment.id },
+    payload: { channelId: visiblePush.id, targetType: 'segment', segmentId: segment.id },
   });
   assert.equal(preview.statusCode, 200, preview.body);
   assert.ok(preview.json().data.matched >= 1, preview.body);
 
   const broadcast = await owner.broadcast.create({
     data: {
-      tenantId: A, channelId: visible.id, name: `${MARK}-hq-seg-bc`, createdById: hqMarketer.id,
+      tenantId: A, channelId: visiblePush.id, name: `${MARK}-hq-seg-bc`, createdById: hqMarketer.id,
       materialId: material.id, targetType: 'segment', segmentId: segment.id,
     },
   });

@@ -2,7 +2,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, channelDisplayName } from '@open333crm/shared';
 import { resolveEffectiveLimit } from '../platform/plan-limits.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { insertAgentChannelAccess } from '../../services/channel-team-access.js';
@@ -673,7 +673,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     return { verified: true, pageInfo: igInfo };
   }
 
-  throw new AppError(`不支援的渠道類型: ${channel.channelType}`, 'UNSUPPORTED_CHANNEL', 400);
+  throw new AppError(`不支援的渠道類型：${channelDisplayName(channel.channelType)}`, 'UNSUPPORTED_CHANNEL', 400);
 }
 
 export async function updateWebhookBaseUrl(

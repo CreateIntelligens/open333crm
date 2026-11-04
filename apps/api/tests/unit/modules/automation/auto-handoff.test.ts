@@ -121,3 +121,24 @@ test('轉接的 message.new 送到渠道房間（與其他 message.new 相同）
   assert.ok(messageNew.rooms.includes(`tenant:${TENANT}:channel:${CHANNEL}`), `送到渠道房間：${messageNew.rooms.join(',')}`);
   assert.ok(messageNew.rooms.includes(`tenant:${TENANT}:channels:all`), '送到總店房間');
 });
+
+test('自動轉接：worker 推播 conversation.updated 到渠道房間，帶對話的 updatedAt 與轉接原因', async () => {
+  const h = createHarness({ botRepliesCount: 5 });
+  const emitted: Array<{ rooms: string[]; name: string; data: Record<string, unknown> }> = [];
+  const io = {
+    to: (rooms: string | string[]) => ({
+      emit: (name: string, data: Record<string, unknown>) => {
+        emitted.push({ rooms: Array.isArray(rooms) ? rooms : [rooms], name, data });
+      },
+    }),
+  };
+  await setupAutomationWorker(h.adminPrisma as never, io as never, h.tenantPrisma as never)(messageReceived());
+
+  const updated = emitted.filter((e) => e.name === 'conversation.updated');
+  assert.equal(updated.length, 1);
+  assert.equal(updated[0].data.status, 'AGENT_HANDLED');
+  assert.equal(typeof updated[0].data.updatedAt, 'string');
+  assert.ok(!Number.isNaN(Date.parse(String(updated[0].data.updatedAt))));
+  assert.ok(updated[0].data.handoffReason);
+  assert.ok(updated[0].rooms.includes(`tenant:${TENANT}:channel:${CHANNEL}`), JSON.stringify(updated[0].rooms));
+});

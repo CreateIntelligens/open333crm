@@ -79,7 +79,7 @@ description: >
 執行 `node scripts/feature-impact.mjs --domain platform-trials` 看最新版本。重點：
 - **依賴**：租戶管理（`provisionTenant`、停用行為）、平台認證（平台 token；到期後成員登入 `TENANT_DISABLED`）、方案（trial 方案天花板、轉正式的快取失效）、平台設定（`trial.*` KV）、通知（`sendEmail`）、成員（提醒只寄 `role=ADMIN`）。
 - **被依賴**：租戶管理（合約與復原的服務在 `trial-admin.service.ts`、開通信模板在 `trial-emails.ts`）、方案異動審核（`TRIAL_EXIT_DATA`、`assertNotTrialPlan`）、平台用量（試用 AI 額度）。
-- 試用到期停用的租戶仍收得到 WebChat 訊息（HC-PLATFORM-TENANTS-01），排程群發也照送（HC-PLATFORM-TENANTS-04）。
+- 試用到期停用的租戶：進站訊息（含 WebChat）丟棄、到期群發不送出並標 `failed`（`TENANT_DISABLED`）、不寄滿意度問卷（#410 修正 HC-PLATFORM-TENANTS-01、04）。
 
 ## 回歸清單
 改到本領域時，至少重走（用 `hc-` 前綴的 email 與租戶，**不要對 Demo 或其他租戶做到期與清除**；`trial.enabled` 測完要恢復）：

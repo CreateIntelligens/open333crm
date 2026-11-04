@@ -22,6 +22,8 @@ const NOTIFICATION_EVENTS: ReadonlySet<string> = new Set<AppEventName>([
   'sla.breached',
   'message.received',
   'conversation.assigned',
+  // 機器人轉接真人：通知負責客服，沒有指派時通知主管與管理員（bot-handoff-config，#419）
+  'conversation.handoff',
   'usage.quota.threshold',
 ]);
 

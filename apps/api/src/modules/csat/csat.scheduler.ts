@@ -29,6 +29,8 @@ export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient
           csatSentAt: null,
           resolvedAt: { lte: cutoff },
           conversations: { some: {} },
+          // 租戶停用（含試用到期）時不寄問卷給客人（issue #410）
+          tenant: { isActive: true },
         },
         include: {
           conversations: {

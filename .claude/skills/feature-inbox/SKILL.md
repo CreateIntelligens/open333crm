@@ -43,8 +43,8 @@ description: >
 | 11 | 從對話建立工單 | 右欄「建立工單」（`CaseCreateModal`） | `POST /cases/from-conversation/:id`（工單領域）；`POST /conversations/:id/case` 是同功能、前端沒用 | 已有工單時 409「這則對話已建立過案件」 | `case.create`（+`case.assign`）+ `full` / 不隱藏 |
 | 12 | AI 建議回覆 | 表頭燈泡（`AiSuggestPanel.tsx`），「採用」以 `ai-adopt` 事件帶入輸入框 | `POST /ai/suggest-reply {conversationId}` | 呼叫 LLM、計用量；失敗一律顯示「無法取得建議」 | 只驗登入（PLAN-12）+ `read_only` |
 | 13 | 即時更新 | `SocketProvider`、`useConversations`、`useMessages` 監聽 `message.new`、`conversation.updated` | 來源：`sendMessage`、`inbound-socket-presenter.ts`、workers 經 Redis `socket:emit` | 列表就地合併欄位並重排；**不套用目前篩選**（已關閉的仍留在進行中，直到重新整理）。前端不訂閱 `conversation:` 房間，全部靠渠道房間（#427） | 只送給看得到該渠道的成員與總店；授權變更後已連線的成員自動重新計算房間 |
-| 14 | 顧客要求轉真人（系統） | 顧客點「轉接客服」或傳 `handoff_request`（文字也算） | `inbound-postback-interceptors.ts` `handleHandoffRequest` | `BOT_HANDLED→AGENT_HANDLED`、不指派、送 `handoffMessage`、發 `conversation.handoff`（沒有通知訂閱者，CONV-03）；`ACTIVE` 時只記 log、不回顧客 | — |
-| 15 | 機器人回覆、自動轉真人（系統） | `message.received` → `automation.worker.ts` | `checkAutoHandoff`（次數上限、`handoffKeywords`、媒體）→ AI agent → `kb-autoreply.service.ts` | 以 `bot-reply-guard.ts` 認領，每則入站訊息最多一則機器人回覆 | — |
+| 14 | 顧客要求轉真人（系統） | 顧客點「轉接客服」或傳 `handoff_request`（文字也算） | `inbound-postback-interceptors.ts` `handleHandoffRequest` | `BOT_HANDLED→AGENT_HANDLED`、不指派、送 `handoffMessage`、發 `conversation.handoff`（送「轉接真人」通知，#419）；`ACTIVE` 時只記 log、不回顧客 | — |
+| 15 | 機器人回覆、自動轉真人（系統） | `message.received` → `automation.worker.ts` | `checkAutoHandoff`（次數上限、`handoffKeywords`、媒體）→ AI agent → `kb-autoreply.service.ts`（追問用完或 LLM 失敗也轉接）；兩者共用 `automation/handoff.flow.ts` 的 `handOffConversation()` | 以 `bot-reply-guard.ts` 認領，每則入站訊息最多一則機器人回覆；轉接寫在同一個認領交易 | — |
 | 16 | 閒置自動關閉（系統） | 每 5 分鐘 `inactivity-close.worker.ts` | `closeConversation(source:'inactivity')` | 時限 `TenantSettings.inactivityCloseHours`，沒有介面（CONV-01） | — |
 
 **有後端、沒有前端入口**：`POST /:id/send-video`；`POST /:id/typing`（前端不呼叫，`TypingIndicator` 也收不到，因為事件只發到沒人訂閱的 `conversation:` 房間）；`HandoffModal`（指定接手人、自訂轉接訊息）在頁面上永遠不會開啟；`POST /:id/case`；列表的 `assigneeId=<特定成員>`、`unread`；`useMessages` 的 `loadOlder`（載入更早訊息）沒有被 `ChatWindow` 使用；`PATCH` 的 `status: BOT_HANDLED`。

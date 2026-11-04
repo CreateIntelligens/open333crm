@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { ALL_CHANNELS, channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { channelDisplayName } from '@open333crm/shared';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -829,8 +830,9 @@ async function buildCsv(
         existing.convs = c.value;
         channelMap.set(c.name, existing);
       }
+      // 渠道欄寫顯示名稱（Instagram），不寫系統代號（THREADS）
       const rows = Array.from(channelMap.entries()).map(
-        ([name, v]) => `${name},${v.msgs},${v.convs}`,
+        ([name, v]) => `${channelDisplayName(name)},${v.msgs},${v.convs}`,
       );
       return `${headers}\n${rows.join('\n')}`;
     }

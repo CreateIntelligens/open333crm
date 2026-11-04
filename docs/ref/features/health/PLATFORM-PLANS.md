@@ -23,7 +23,7 @@
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-PLATFORM-PLANS-01 | P1 | seed 的 `trial`（免費試用）與 `light`（輕量版）方案的 `features` 不含 `channels`。`channel.view`、`channel.create` 都屬於 `channels` feature，因此這兩個方案的租戶連管理員都看不到、也建不了任何渠道，接不了 LINE／FB／IG／WebChat。渠道頁把 403 顯示成「沒有渠道」，旁邊的「新增渠道」按下才 403 | **實測（本機）**：把自建方案設成與 `light` 相同的 `["inbox","core"]`，租戶管理員 `GET /channels` → 403 `requiredPermission: channel.view`；`/dashboard/settings/channels` 顯示「沒有渠道／新增您的第一個渠道」，但租戶實際有 2 個啟用中的渠道。**UAT 已確認**：主控 2026-10-30 以平台 API 唯讀查詢，UAT 的 `trial` 是 `["inbox","knowledge","core"]`、`light` 是 `["inbox","core"]`，兩者都不含 `channels`，與 seed 相同 | `packages/database/prisma/seed.ts:31,38`、`packages/shared/src/rbac/permissions.ts:76-83` | PLAN-14 |
+| HC-PLATFORM-PLANS-01 | P1 | （健檢當時，issue #411 已修正：seed 與 migration `20261103120000_enable_channels_on_trial_light` 讓 `trial`、`light` 含 `channels`；渠道頁的 403 改顯示「沒有權限」）seed 的 `trial`（免費試用）與 `light`（輕量版）方案的 `features` 不含 `channels`。`channel.view`、`channel.create` 都屬於 `channels` feature，因此這兩個方案的租戶連管理員都看不到、也建不了任何渠道，接不了 LINE／FB／IG／WebChat。渠道頁把 403 顯示成「沒有渠道」，旁邊的「新增渠道」按下才 403 | **實測（本機）**：把自建方案設成與 `light` 相同的 `["inbox","core"]`，租戶管理員 `GET /channels` → 403 `requiredPermission: channel.view`；`/dashboard/settings/channels` 顯示「沒有渠道／新增您的第一個渠道」，但租戶實際有 2 個啟用中的渠道。**UAT 已確認**：主控 2026-10-30 以平台 API 唯讀查詢，UAT 的 `trial` 是 `["inbox","knowledge","core"]`、`light` 是 `["inbox","core"]`，兩者都不含 `channels`，與 seed 相同 | `packages/database/prisma/seed.ts:31,38`、`packages/shared/src/rbac/permissions.ts:76-83` | PLAN-14 |
 | HC-PLATFORM-PLANS-02 | P2 | `/admin/plans` 同時編輯兩張方案卡片時，先儲存的那張會重載全部方案的狀態，另一張的數值輸入框（`defaultValue`，非受控）仍顯示新值。再儲存另一張時送出的是舊值，畫面卻顯示「已更新…該方案所有租戶即時生效」 | **實測（本機 Playwright）**：A 卡「客服人數」改成 7 不存 → 按 B 卡「儲存」→ A 卡輸入框仍顯示 7 → 按 A 卡「儲存」→ 綠色「已更新」，資料庫 `maxAgents` 仍是 1，重新整理顯示 1 | `apps/web/src/app/admin/plans/page.tsx:44-47,131-132,239` | PLAN-15 |
 | HC-PLATFORM-PLANS-03 | P3 | 方案只能改不能增刪；`name`、`priceMonthly`、`isActive` 只有 API。AUDIT PLAN-01 寫「`/admin/plans` 也能切換」停售，與程式不符：頁面自 #145 起就沒有停售、名稱、月費的欄位 | **實測**：`/admin/plans` 卡片只有功能、上限、渠道類型與「儲存」；`PATCH /platform/plans/:id {"isActive":false}` 200。平台路由只有 `GET /plans`、`PATCH /plans/:id`；本次測試方案只能用 SQL 建立 | `apps/api/src/modules/platform/platform.routes.ts:249-261`、`apps/web/src/app/admin/plans/page.tsx:121-130` | PLAN-01（文字過時） |
 | HC-PLATFORM-PLANS-04 | P3 | 數值上限輸入用 `parseInt`：`1.5` 存成 1、`abc` 不更新卻顯示「已更新」、`-3` 被後端擋下但只顯示「儲存失敗」，而且失敗訊息與成功訊息同樣是綠底 | **實測（本機 Playwright）**：依序輸入 `1.5`、`abc`、`-3` 儲存，資料庫分別為 1、不變、不變；`-3` 的訊息顏色 `rgb(23,147,91)` | `apps/web/src/app/admin/plans/page.tsx:103-119,133-134,168-171` | 新 |
@@ -88,7 +88,7 @@
 
 ## 建議新增到 AUDIT.md 的項目
 
-- HC-PLATFORM-PLANS-01：`trial`、`light` 方案不含 `channels`，租戶無法建立或查看渠道。UAT 方案內容已確認相同；如果是刻意設計，平台與手冊要說明這兩個方案怎麼接渠道。
+- HC-PLATFORM-PLANS-01：`trial`、`light` 方案不含 `channels`，租戶無法建立或查看渠道。UAT 方案內容已確認相同。（已收錄為 PLAN-14，issue #411 已修正）
 - HC-PLATFORM-PLANS-02：方案頁跨卡片儲存送出舊值、卻顯示已更新（改成受控輸入，或儲存後只更新該卡）。
 - HC-PLATFORM-PLANS-05：`updatePlanSchema` 補 `limits` key 白名單、`name` 最小長度、`priceMonthly` 非負整數、`features` 驗 slug。
 - HC-PLATFORM-PLANS-07：額度告警的連結與收件人。
@@ -97,5 +97,5 @@
 
 - `docs/ref/system/AUDIT.md` PLAN-01：「`/admin/plans` 也能切換它」不正確，頁面沒有停售開關，只能打 API。
 - `docs/ref/system/AUDIT.md` PLAN-07：「`/admin/plans` 兩個欄位都編輯得到，補上值就會生效」正確，但沒提到渠道類型選項含建不出的 `TELEGRAM`（HC-08）。
-- `docs/ref/features/platform/PLANS.md` 未提到：沒有新增、刪除方案的途徑；`/admin/plans` 只編輯四個欄位；`trial`、`light` 不含 `channels` 的後果。
+- `docs/ref/features/platform/PLANS.md` 未提到：沒有新增、刪除方案的途徑；`/admin/plans` 只編輯四個欄位。（`trial`、`light` 不含 `channels` 已由 issue #411 修正）
 - `packages/core/src/rbac/features.ts` 的 `core` 說明寫「方案用量」，`billing.view` 說明寫「租戶站內方案/用量頁」，但沒有任何頁面顯示用量（RBAC-01、PLAN-10）。

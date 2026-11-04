@@ -35,7 +35,9 @@ export interface HarnessState {
   failClaimCheckKind: string | null;
 }
 
-export function createHarness(overrides: { botRepliesCount?: number; botConfig?: Record<string, unknown> } = {}) {
+export function createHarness(
+  overrides: { botRepliesCount?: number; botConfig?: Record<string, unknown>; metadata?: Record<string, unknown> } = {},
+) {
   const state: HarnessState = {
     conversation: {
       id: CONVERSATION,
@@ -45,7 +47,7 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
       handoffReason: null,
       botRepliesCount: overrides.botRepliesCount ?? 0,
       lastMessageAt: null,
-      metadata: {},
+      metadata: overrides.metadata ?? {},
     },
     botConfig: { botMode: 'llm', handoffKeywords: [], maxBotReplies: 5, ...overrides.botConfig },
     claims: [],
@@ -64,7 +66,8 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
       assignedToId: null,
       unreadCount: 0,
       updatedAt: new Date(),
-      channel: { settings: { botConfig: state.botConfig } },
+      contactId: 'contact-1',
+      channel: { id: state.conversation.channelId, channelType: 'LINE', isActive: true, settings: { botConfig: state.botConfig } },
     };
   }
 
@@ -108,6 +111,8 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
         return { ...row, createdAt: new Date(), conversation: { channelId: CHANNEL } };
       },
       findUnique: async ({ where }: { where: { id: string } }) => state.messages.find((m) => m.id === where.id) ?? null,
+      // KB 自動回覆讀對話紀錄（loadKbHistory）：測試不依賴紀錄內容
+      findMany: async () => [],
       findFirst: async ({ where }: { where: { id: string } }) => state.messages.find((m) => m.id === where.id) ?? null,
       update: async ({ where, data }: { where: { id: string }; data: { metadata: Record<string, unknown> } }) => {
         const m = state.messages.find((x) => x.id === where.id)!;

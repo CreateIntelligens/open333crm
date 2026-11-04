@@ -4,6 +4,23 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-03：第二優先的顧客受影響且失敗看不到的問題（KB-01、CONV-03、CASE-03、CHAN-02、AUTH-11、PLAN-14、RBAC-11）
+
+issue #410、#411、#415、#416、#419，同一個 PR。以本機測試資料庫的 unit 與 feature 測試驗證，沒有連 UAT；真機（LINE、FB）尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-01（HC-KNOWLEDGE-01） | 已修正，從 `AUDIT.md` 移除 | 追問用完或追問的 LLM 呼叫失敗（含 `PLAN_LIMIT_EXCEEDED`）時，`kb-autoreply.service.ts` 在 bot_reply 認領的交易內呼叫 `automation/handoff.flow.ts` 的 `handOffConversation()`（與 `checkAutoHandoff()` 共用）：改 `AGENT_HANDLED`、寫 `handoffReason` 與系統訊息、發 `conversation.handoff`、`notifyChannel` 推播；轉接不成立時整筆 rollback，轉接句不送出。轉接後關鍵字規則照常回覆（寫入規格）。change `fix-kb-clarify-handoff-419`。`kb-clarify-handoff.test.ts` 7 項中 6 項修正前失敗；`handoff-flow.test.ts`（feature）3 項 |
+| CONV-03 | 已修正，從 `AUDIT.md` 移除 | `conversation.handoff` 加入通知訂閱者，類型 `conversation_handoff`：已指派通知負責客服，未指派通知主管與管理員。通知測試修正前失敗。`handoff_request` 按鈕仍用自己的程式與 `eventBus.publish` |
+| CASE-03（HC-LINE-01） | 已修正，從 `AUDIT.md` 移除 | `buildLineMessage()` 補回 `flex`，不認得的 contentType 丟 `LineMessageBuildError`，`sendMessage()` 回失敗且不呼叫 LINE；`sendCsatSurvey()` 檢查送出結果，失敗時寫入訊息 `metadata.deliveryFailed`／`deliveryError` 與 `case_events` 的 `csat_send_failed`，`csatSentAt` 保留不重寄。change `fix-csat-line-flex-416`。`line-flex-message.test.ts` 6 項、`csat-delivery.test.ts` 4 項修正前失敗。CASE-02（非 LINE 渠道無法回覆）不變 |
+| CHAN-02 的群發與發券（HC-MARKETING-04） | 部分修正 | `createBroadcast`、`executeBroadcast`、`queueCouponBroadcast`、`claimCouponBroadcast` 以 `supportsProactivePush()` 拒絕網站聊天室（400 `CHANNEL_PUSH_NOT_SUPPORTED`，舊排程標失敗）；群發頁選單只列能推送的渠道。change `reject-webchat-push-415`。`broadcast-push-channel.test.ts` 5 項、`coupon-batch-issue.test.ts` 2 項修正前失敗。workers 的 WebChat 外掛、共用送出函式、`canvas.worker.ts` 的假成功未處理 |
+| AUTH-11（HC-PLATFORM-TENANTS-01、04） | 已修正，從 `AUDIT.md` 移除 | `processInboundMessage()` 共用入口丟棄停用租戶的進站事件；chatbox 的 `resolveChatboxChannel()`、`verifyChatboxSession()` 回 404；排程群發與 coupon-broadcast job 在權限重驗前檢查租戶，停用時標 `failed`（`TENANT_DISABLED`）；問卷排程過濾停用租戶。change `stop-disabled-tenant-activity-410`。`chatbox-disabled-tenant`、`broadcast-disabled-tenant`、`csat-disabled-tenant` 三支 feature 測試修正前失敗。Canvas 等待節點恢復不看租戶，未處理 |
+| PLAN-14（HC-PLATFORM-PLANS-01） | 已修正，從 `AUDIT.md` 移除 | seed 的 `trial`、`light` 加入 `channels`；migration `20261103120000_enable_channels_on_trial_light` 只對這兩個方案補 `channels`，不動其他欄位，重複執行不再改。部署後 Redis `perms:tenant:*` 最多 10 分鐘生效。change `enable-channels-on-trial-light-411`。`plans.test.ts`、`channel-trial-light-plans.test.ts` 修正前失敗；migration 測試以突變驗證 |
+| RBAC-04 的未指派對話通知（HC-NOTIFICATIONS-01） | 已修正 | PR #440 審查發現 #419 的轉接通知照用「所有主管與管理員」的收件人。`notification.worker.ts` 的未指派分支（`message.received`、`conversation.handoff`）改用 `resolveAgentChannelVisibility()` 過濾，只留看得到該渠道的人。change `scope-unassigned-notifications-440`。`notification.worker.test.ts` 2 項修正前失敗。第五輪審查再補已指派分支：負責人已停用或看不到該渠道時不通知他，改通知看得到渠道的主管與管理員（change `notify-visible-assignee-440`，3 項修正前失敗），CONV-06 的停用成員一列與 HC-NOTIFICATIONS-02 的對話通知部分一併修正 |
+| RBAC-11 的渠道管理頁 | 部分修正 | 列表 403 顯示「沒有權限」，新增渠道、設定精靈、Facebook 連結依 `channel.create` 顯示。`channel-management.test.tsx` 3 項修正前失敗。停用、測試連線、編輯、刪除仍未依權限隱藏 |
+
+另外發現：API 容器每次啟動都跑 seed，會把五個方案的名稱、功能、上限、價格寫回原始碼的值，與主規格「平台改 plan features 即時生效」衝突，記為 PLAN-20（issue #441）。
+
 ## 2026-11-03：營業時間的輸入檢查、憑證的有效天數與稽核（HOURS-01、HOURS-02、SEC-07、AUD-01）
 
 #337 階段 3 第九批，change `settings-input-validation-and-credential-audit`。以 feature 測試確認，沒有連 UAT。

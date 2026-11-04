@@ -244,7 +244,7 @@ async function createCaseFromAutomation(
   return created.id;
 }
 
-const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網頁聊天' };
+const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網站聊天室' };
 const channelLabel = (channelType: string) => CHANNEL_LABELS[channelType] ?? channelType;
 
 /**

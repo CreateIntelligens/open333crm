@@ -8,6 +8,9 @@
  *   < threshold (or no KB)— **clarify**: ask one question to gather more info,
  *                           bounded by clarifyMaxAttempts (then handoff)
  *
+ * 追問用完或追問的 LLM 呼叫失敗時，回覆「已為您轉接客服人員」並在同一個交易真的轉接
+ * （handOffConversation，與自動轉接共用；issue #419）。
+ *
  * The LLM now receives the recent conversation history (last 10 messages) so
  * follow-up turns make sense and clarification questions don't repeat earlier
  * answers.
@@ -36,10 +39,23 @@ import { hasMatchingKeywordRule } from '../automation/keyword-yield.js';
 import { logger } from '@open333crm/core';
 import { emitToChannel } from '../../events/socket-push.js';
 import type { BotReplyGuard } from '../automation/bot-reply-guard.js';
+import { handOffConversation } from '../automation/handoff.flow.js';
+import type { EventPublisher } from '../../events/outbox-publisher.js';
+import { AppError } from '../../shared/utils/response.js';
 
 const CLARIFY_HANDOFF_FALLBACK =
   '不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。';
 const HISTORY_LIMIT = 10;
+
+/** 追問用完、或追問的 LLM 呼叫失敗時寫進 handoffReason 的原因（客服看得到為什麼轉接） */
+function clarifyExhaustedReason(attempts: number, max: number): string {
+  return `知識庫找不到可回答的內容，追問次數已達上限（${attempts}/${max}）`;
+}
+function clarifyLlmFailedReason(err: unknown): string {
+  return err instanceof AppError && err.code === 'PLAN_LIMIT_EXCEEDED'
+    ? 'AI 月額度已用完，無法自動回覆'
+    : 'AI 回覆失敗，無法自動追問';
+}
 
 /**
  * kbContext 字數預算：避免單篇硬截把答案尾段切掉，同時控制總長不撐爆 LLM context。
@@ -92,6 +108,8 @@ export async function attemptKbAutoReply(
   delivery: { replyToken?: string; receivedAt?: string },
   /** 以 bot_reply 認領這則入站訊息：每則入站訊息最多一則機器人回覆 */
   replyGuard: BotReplyGuard,
+  /** 轉接真人時在同一個交易發出 conversation.handoff */
+  events: EventPublisher,
 ): Promise<boolean> {
   const config = getConfig();
 
@@ -114,8 +132,9 @@ export async function attemptKbAutoReply(
   });
   if (!conversation) return false;
 
-  // 2.5 若有 keyword.matched 規則命中此訊息、且能在這個渠道回覆，讓步給 keyword 規則處理。
-  // 避免 KB 走 clarify_handoff 把對話改成 AGENT_HANDLED，後續 keyword rule 觸發後也無法回。
+  // 2.5 若有 keyword.matched 規則命中此訊息、且能在這個渠道回覆，讓步給 keyword 規則處理：
+  // 一則訊息只回一次，命中關鍵字的訊息不算追問、也不會因追問用完而轉接（#419）。
+  // 關鍵字規則由 workers 執行，不看對話狀態，所以轉接成 AGENT_HANDLED 之後關鍵字規則照樣回覆。
   // 規則送不到這個渠道時照常回覆，否則顧客什麼都收不到（change fix-keyword-yield-ig-delivery）
   if (
     await hasMatchingKeywordRule(prisma, tenantId, messageText, conversation.channel.channelType, {
@@ -182,6 +201,8 @@ export async function attemptKbAutoReply(
   let replyText: string;
   let replyKind: ReplyKind;
   let metadataExtras: Record<string, unknown> = {};
+  /** 有值時這則回覆同時轉接真人（clarify_handoff） */
+  let handoffReason: string | undefined;
 
   const modelGuard = await checkModelGuard(
     prisma,
@@ -238,6 +259,7 @@ export async function attemptKbAutoReply(
       metadataExtras,
       delivery,
       replyGuard,
+      events,
     });
   }
 
@@ -254,6 +276,7 @@ export async function attemptKbAutoReply(
       replyText = CLARIFY_HANDOFF_FALLBACK;
       replyKind = 'clarify_handoff';
       metadataExtras = { clarifyAttempts: prevAttempts };
+      handoffReason = clarifyExhaustedReason(prevAttempts, chatSettings.clarifyMaxAttempts);
     } else {
       try {
         const overridePrompt =
@@ -272,6 +295,7 @@ export async function attemptKbAutoReply(
         replyText = CLARIFY_HANDOFF_FALLBACK;
         replyKind = 'clarify_handoff';
         metadataExtras = { clarifyAttempts: prevAttempts };
+        handoffReason = clarifyLlmFailedReason(err);
       }
     }
   } else {
@@ -313,6 +337,8 @@ export async function attemptKbAutoReply(
     metadataExtras,
     delivery,
     replyGuard,
+    events,
+    handoff: handoffReason ? { reason: handoffReason } : undefined,
   });
 }
 
@@ -360,6 +386,7 @@ async function checkModelGuard(
 /**
  * 共用的「儲存 BOT 訊息 → 更新對話 → WebSocket 推送 → 送往 channel」流程。
  * KB 正常回答路徑與型號守門路徑共用此函式。
+ * 帶 handoff 時，同一個交易轉接真人（handOffConversation）；對話已不是 BOT_HANDLED 時整筆 rollback，不送出回覆。
  */
 async function persistAndDeliver(input: {
   prisma: PrismaClient;
@@ -376,6 +403,8 @@ async function persistAndDeliver(input: {
   metadataExtras: Record<string, unknown>;
   delivery?: { replyToken?: string; receivedAt?: string };
   replyGuard: BotReplyGuard;
+  events: EventPublisher;
+  handoff?: { reason: string };
 }): Promise<boolean> {
   const {
     prisma,
@@ -392,6 +421,8 @@ async function persistAndDeliver(input: {
     metadataExtras,
     delivery,
     replyGuard,
+    events,
+    handoff,
   } = input;
 
   // 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
@@ -401,11 +432,15 @@ async function persistAndDeliver(input: {
   const guarded = await guardAiReplyForTenant(prisma, tenantId, kbReply.text, { conversationId, source: 'kb_autoreply' });
   const finalText = guarded.text;
   const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: finalText }, 'system');
+  // 轉接的系統訊息也在交易外遮罩（與自動轉接相同的文字格式）
+  const handoffContent = handoff
+    ? await prepareStoredMessageContent(prisma, tenantId, { text: `自動轉接人工客服：${handoff.reason}` }, 'system')
+    : null;
 
   // 寫入 BOT 訊息並更新對話：與 bot_reply 認領在同一個交易，認領失敗就不寫入、不送出
   const now = new Date();
   const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
-  const botMessage = await replyGuard.persist(async (tx) => {
+  const botMessage = await replyGuard.persist(async (tx, scope) => {
     const created = await tx.message.create({
       data: {
         conversationId,
@@ -429,14 +464,33 @@ async function persistAndDeliver(input: {
     });
 
     // Update conversation (counters + clarifyAttempts / modelGuard)
+    // 轉接時追問次數歸零：客服交回 Bot 之後重新計算，不會一交回就再轉接
     await tx.conversation.update({
       where: { id: conversationId },
       data: {
         botRepliesCount: { increment: 1 },
         lastMessageAt: now,
-        metadata: { ...existingMeta, ...metadataExtras } as Prisma.InputJsonValue,
+        metadata: { ...existingMeta, ...metadataExtras, ...(handoff ? { clarifyAttempts: 0 } : {}) } as Prisma.InputJsonValue,
       },
     });
+
+    if (handoff && handoffContent) {
+      const handedOff = await handOffConversation(
+        scope,
+        { io, events },
+        {
+          conversationId,
+          channelId: conversation.channelId,
+          reason: handoff.reason,
+          now,
+          systemCreatedAt: new Date(now.getTime() + 1),
+          systemContent: handoffContent.content,
+          systemMetadata: { type: 'auto_handoff', reason: handoff.reason, source: 'kb_auto_reply', ...handoffContent.metadata },
+        },
+      );
+      // 另一個處理已轉接、或客服已接手：不寫入、不送出這則「已為您轉接」
+      if (!handedOff) return null;
+    }
     return created;
   });
   if (!botMessage) {

@@ -43,7 +43,7 @@ P0：無。HC-INBOX-01 原列 P2，2026-10-30 使用者決定升為 P1。
 | HC-INBOX-19 | P3 | 篩選與狀態文案：篩選 chip 顯示渠道原始代碼（`WEBCHAT`、`THREADS`），抽屜裡卻是「WebChat」「Instagram」；同一個 `AGENT_HANDLED`，篩選寫「等待客服」、表頭寫「已處理」；「進行中」分頁可勾「已關閉」狀態，結果顯示已關閉對話 | 本機：篩選 WebChat + 未指派 → chip「WEBCHAT」「未指派」；進行中勾「已關閉」→ 篩選結果 1 個對話（已關閉的 C2） | `FilterChips.tsx:59-62`；`FilterDrawer.tsx:24-29`；`ChatWindow.tsx:88-92, 219-224` | 新 |
 | HC-INBOX-20 | P3 | 主規格自相矛盾與過時：`core-inbox` 的「Conversation Route Access Is Open to All Authenticated Roles」規定不加 RBAC、資料過濾延後，與同檔「對話、標籤、短連結路由依權限碼授權」及 `channel-scoped-visibility` 衝突；`fb-chat-media` 的「Non-LINE/FB channel type」沒有算進 WebChat，「Video file too large」要求 `FILE_TOO_LARGE`，實作回 `BAD_REQUEST` | 讀規格與程式 | `openspec/specs/core-inbox/spec.md:50-68`；`openspec/specs/fb-chat-media/spec.md:20-23, 41-44`；`conversation.routes.ts:67-69` | 新（規格） |
 | CONV-02 | P2 | 指派仍不發布 `conversation.assigned`，被指派的人不會收到通知 | 讀程式：`grep "conversation.assigned" apps/api/src` 只有訂閱端 | `conversation.service.ts:873-950` | CONV-02（已記錄） |
-| CONV-03 | P2 | 顧客要求轉真人時發布 `conversation.handoff`，沒有通知訂閱者；對話停在未指派 | 本機：WebChat 訪客傳 `handoff_request` → 對話變 `AGENT_HANDLED`、`handoffReason: user_requested_handoff`、寫系統訊息；沒有主管通知 | `webhook/inbound-postback-interceptors.ts:101-186` | CONV-03（已記錄） |
+| CONV-03 | P2 | （健檢當時，#419 已修正：`conversation.handoff` 送出「轉接真人」通知；對話仍停在未指派）顧客要求轉真人時發布 `conversation.handoff`，沒有通知訂閱者；對話停在未指派 | 本機：WebChat 訪客傳 `handoff_request` → 對話變 `AGENT_HANDLED`、`handoffReason: user_requested_handoff`、寫系統訊息；沒有主管通知 | `webhook/inbound-postback-interceptors.ts:101-186` | CONV-03（已記錄） |
 | CONV-01、TEAM-01、PLAN-12 | P2–P3 | 閒置時限沒有介面；`Conversation.teamId` 沒有寫入端；AI 輔助端點只驗登入 | 讀程式，與 AUDIT 描述一致 | — | 已記錄 |
 
 ### 實測時另外看到、不屬本領域的
@@ -68,7 +68,7 @@ P0：無。HC-INBOX-01 原列 P2，2026-10-30 使用者決定升為 P1。
 | 11 從對話建立工單 | 本機 | 正常：`POST /conversations/:id/case` 201 | 空標題 400；已建過 409 | `full` 才可 | 已有工單時按鈕仍顯示（HC-INBOX-16） |
 | 12 AI 建議回覆 | 本機 | 本機沒有可用的 LLM，API 回 200 空陣列，畫面「無法取得建議」 | — | 只驗登入（PLAN-12） | 錯誤被吞（HC-INBOX-13）。真實建議內容待 UAT 或有金鑰的環境 |
 | 13 即時更新 | 本機 | 正常：訪客傳「即時測試 RT1」，不重新整理就出現在聊天區與列表 | — | **異常**（健檢當時，#427 已修正）：看不到渠道的成員也收到 `message.new` 全文（RBAC-04） | 不套用篩選（HC-INBOX-08）；「正在輸入」沒接通（HC-INBOX-14） |
-| 14 顧客要求轉真人 | 本機（WebChat） | 正常：訪客傳 `handoff_request` → `AGENT_HANDLED`、寫系統訊息、送轉接訊息 | — | — | 主管不會收到通知（CONV-03）。LINE／FB 按鈕待真機驗 |
+| 14 顧客要求轉真人 | 本機（WebChat） | 正常：訪客傳 `handoff_request` → `AGENT_HANDLED`、寫系統訊息、送轉接訊息 | — | — | 主管不會收到通知（CONV-03，#419 已修正）。LINE／FB 按鈕待真機驗 |
 | 15 機器人回覆、自動轉真人 | — | 本機沒有 LLM，訪客訊息只做了情緒分析，沒有機器人回覆 | — | — | 以 unit 測試（`auto-handoff`、`bot-reply-claim`、`keyword-suppresses-ai`）為準；待真機驗 |
 | 16 閒置自動關閉 | — | 未驗（要等 72 小時或改 `TenantSettings`，屬租戶設定） | — | — | 讀程式 |
 | 17 渠道可見範圍與層級 | 本機 | 正常：三種層級與「沒有授權」逐條符合 INBOX.md 的層級表（讀、回覆、管理） | 看不到 404、層級不足 403 | — | 層級不足的訊息是英文（HC-INBOX-04）；`GET /conversations/:id` 洩漏其他渠道身分（HC-INBOX-05） |
@@ -92,7 +92,7 @@ P0：無。HC-INBOX-01 原列 P2，2026-10-30 使用者決定升為 P1。
 | --- | --- | --- | --- | --- | --- |
 | core-inbox | 17 | 44 | 44 | 「Conversation Route Access Is Open to All Authenticated Roles」3 個 scenario 與現況矛盾（HC-INBOX-20）；「Status change reflects immediately in Select」對 `BOT_HANDLED` 不成立（HC-INBOX-06） | 「Pagination respects updatedAt order」：API 有分頁，前端從不請求第二頁（HC-INBOX-01） |
 | channel-scoped-visibility | 6 | 14 | 14 | 「與即時推播一致／socket 與列表一致」健檢當時沒做到（RBAC-04，已實測；#427 已修正，feature 測試 `socket-channel-rooms`）；「團隊對話只限團隊成員操作」程式有，但沒有團隊可用（TEAM-01） | 有 |
-| bot-handoff-config | 6 | 16 | 16 | 「Webhook intercepts handoff_request postback」的通知部分（CONV-03） | 機器人設定表單在渠道設定頁（channels 領域） |
+| bot-handoff-config | 6 | 16 | 16 | 「Webhook intercepts handoff_request postback」的通知部分（CONV-03，#419 已修正） | 機器人設定表單在渠道設定頁（channels 領域） |
 | socket-room-authorization | 4 | 15 | 15 | 0（本次實測「對話的渠道看不到」訂閱被拒） | 前端不使用 `subscribe`（HC-INBOX-14） |
 | fb-chat-media | 2 | 6 | 6 | 「Video file too large for FB」錯誤碼不符；「Non-LINE/FB channel type」過時（HC-INBOX-20） | 影片傳送沒有前端 |
 

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useChannels } from '@/hooks/useChannels';
 import { usePermission } from '@/providers/AuthProvider';
+import { channelDisplayName } from '@open333crm/shared';
 
 export interface FilterValues {
   statuses: string[];
@@ -27,16 +28,6 @@ const STATUS_OPTIONS = [
   { value: 'AGENT_HANDLED', label: '等待客服' },
   { value: 'CLOSED', label: '已關閉' },
 ];
-
-// 渠道類型 → 顯示名稱（對應 GET /channels 回傳的 channelType）
-const CHANNEL_TYPE_LABEL: Record<string, string> = {
-  LINE: 'LINE',
-  FB: 'Facebook',
-  THREADS: 'Instagram',
-  WEBCHAT: 'WebChat',
-  WHATSAPP: 'WhatsApp',
-  EMAIL: 'Email',
-};
 
 const ASSIGNEE_OPTIONS = [
   { value: '', label: '所有' },
@@ -60,7 +51,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
     }
     return Array.from(types, (type) => ({
       value: type,
-      label: CHANNEL_TYPE_LABEL[type] ?? type,
+      label: channelDisplayName(type),
     }));
   }, [channels]);
 

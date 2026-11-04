@@ -261,8 +261,8 @@ test('ch15 截圖', async ({ browser }) => {
   await shot(page, bot, 'ch15-bot');
   await bot.getByRole('button', { name: '取消', exact: true }).click();
 
-  // WebChat 嵌入碼
+  // 網站聊天室嵌入碼
   await card(page, '官網即時客服').getByRole('button', { name: '取得嵌入碼' }).click();
   await page.waitForTimeout(1500);
-  await shot(page, page.getByRole('dialog').filter({ hasText: 'WebChat 嵌入碼' }), 'ch15-embed');
+  await shot(page, page.getByRole('dialog').filter({ hasText: '網站聊天室嵌入碼' }), 'ch15-embed');
 });

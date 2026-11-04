@@ -75,6 +75,9 @@ email 的唯一檢查刻意放在交易外先做，讓衝突回 409 `CONFLICT`�
 | REST | 會 | 一個 access token 的有效期 |
 | Socket.IO 既有連線 | 不會 | 連線不中斷就一直有效 |
 | CLI token | 不會 | CLI session 自己的有效期 |
+| 進站訊息（LINE、Facebook、Instagram、網站聊天室） | 會 | 立即。webhook 提早丟棄，`processInboundMessage()` 共用入口再擋一次；網站聊天室建立工作階段、送訊息與訪客 socket 回 404 |
+| 排程群發、附券群發的佇列 job | 會 | 立即。到期時不送出，群發標為 `failed`（`TENANT_DISABLED`） |
+| 滿意度問卷排程 | 會 | 立即。不處理停用租戶的工單 |
 
 REST 這一面是有界的。`authenticate` 只驗 JWT 簽章不回查資料庫，停用當下已經發出的 access token 仍然可用；但續命與重新登入都被擋住：
 

@@ -31,7 +31,7 @@ description: >
 
 | # | 流程 | 入口 | API → 後端 | 副作用 | 權限 |
 | - | ---- | ---- | ---------- | ------ | ---- |
-| 1 | 渠道列表 | 設定 → 渠道管理 | `GET /channels` → `listChannels`（依 `resolveChannelVisibility` 過濾）；頁面再對每個**啟用中的 FB** 呼叫 `GET /channels/:id/status` → `checkFbTokenStatus`（會打 Meta `debug_token`） | 只讀，不寫 `lastVerifiedAt`。卡片顯示 webhook 網址、粉專/IG 帳號 ID、`settings.webhookRouting` 分派警示、`settings.tokenHealth` 失效紅框 | `channel.view` / 頁籤**不隱藏**；403 時畫面顯示「沒有渠道」與新增按鈕 |
+| 1 | 渠道列表 | 設定 → 渠道管理 | `GET /channels` → `listChannels`（依 `resolveChannelVisibility` 過濾）；頁面再對每個**啟用中的 FB** 呼叫 `GET /channels/:id/status` → `checkFbTokenStatus`（會打 Meta `debug_token`） | 只讀，不寫 `lastVerifiedAt`。卡片顯示 webhook 網址、粉專/IG 帳號 ID、`settings.webhookRouting` 分派警示、`settings.tokenHealth` 失效紅框 | `channel.view` / 頁籤**不隱藏**；列表 403 時顯示「沒有權限」（`SettingsLoadError`），其他讀取錯誤顯示原因與「重新載入」，不顯示「沒有渠道」（#411）；「新增渠道」「設定精靈」與 Facebook 連結按鈕只對有 `channel.create` 的成員顯示 |
 | 2 | 新增渠道（表單） | 「新增渠道」 | `POST /channels {channelType, displayName, credentials, webhookBaseUrl?, visibleAgentIds?}` → `createChannel`（同一交易寫 `AgentChannelAccess`） | 加密憑證、產生 `publicKey`、`webhookUrl`；稽核 `channel.create`。全選成員時不送 `visibleAgentIds`＝綁給所有啟用中的成員；建立者不是總店且沒勾自己時自動加入 | `channel.create` / 按鈕**不隱藏** |
 | 3 | 新增渠道（設定精靈） | 「設定精靈」四步 | `POST /channels` → `POST /channels/:id/verify` → LINE 再 `POST /:id/setup-webhook`；WebChat 再 `GET /:id/embed-code` | 同上；FB／IG 完成頁顯示 webhook 網址與前端產生的 `verifyToken` | 同上 |
 | 4 | 用 Facebook 連結粉專 | 「用 Facebook 連結粉專」（`GET /meta-connect/status` 為 configured 才出現） | `POST /meta-connect/start` → Facebook 授權 → `GET /meta-connect/callback` → `GET /meta-connect/sessions/:id/pages` → `POST /meta-connect/sessions/:id/connect {pageIds}` | 新建平台模式渠道（`connectMode: platform`、`externalAccountId`＝粉專 ID、訂閱平台 App），綁給所有啟用中成員；已連結的粉專改為「重新連結」只換權杖 | `channel.create` |
@@ -55,6 +55,7 @@ description: >
 
 ## 不可破壞的規則
 - **兩個行程各一份外掛註冊表。** 新增渠道或外掛時，`apps/api/src/index.ts` 的 `registerChannelPlugin()` 與 `apps/workers/src/lib/plugin-registry.ts` 的 `createWorkerPluginRegistry()` 都要加，`packages/channel-plugins/src/index.ts` 的 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 也要同步（`apps/workers/tests/unit/lib/plugin-registry.test.ts` 會檢查）。漏 workers 的話自動化與關鍵字回覆在該渠道送不出去，且畫面看不出來（CHAN-02）。
+- **能主動推送的渠道只有一份清單。** 群發、附券廣播與批次發券只接受 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`（LINE、FB、THREADS），前端選單與後端檢查共用（#415）。新增能主動推送的渠道時要加進這份清單；網站聊天室外掛的 `sendMessage()` 只回成功，不要改成回失敗：收件匣回覆與 `deliverToChannel()` 呼叫它之後才推訪客房間。
 - **可見範圍是 fail-closed。** 沒有任何 `AgentChannelAccess`／`ChannelTeamAccess` 的渠道，只有持有 `channel.view_all` 的成員看得到；停用的渠道一律不在可見集合。新渠道沒送 `visibleAgentIds` 時綁給所有啟用中的成員，送空陣列時誰都不綁。不要加回「沒綁定＝全員可見」。
 - **單筆渠道操作要檢查可見範圍。** `channel.routes.ts` 的 `/:id/*` 路由都掛 `requireVisibleChannel(level)` preHandler（#408）：`channel.view` 的讀取用 `read_only`，`channel.update`／`channel.delete` 用 `full`。新增渠道端點時照做，看不到回 404，層級不足回 403。團隊指派路由例外，只看 `channel.assign_team`。
 - **外部帳號 ID 只能由驗證寫入。** `externalAccountId`（FB 粉專 ID、IG 專業帳號 ID）來自用該渠道權杖向 Meta 查得的結果；不可開放表單手填，否則共用同一個 Meta App 時能搶走別的租戶的粉專訊息。全平台唯一（`channelType + externalAccountId`），停用時清空。
