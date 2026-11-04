@@ -153,7 +153,7 @@ export type StoredMessagePrivacySource =
 export interface StoredMessagePrivacy {
   version: 1;
   /** inbound keeps channel content; mask is the tenant default; original is an explicit agent choice. */
-  mode: 'inbound' | 'mask' | 'original' | 'system' | 'system_template' | 'tenant_template';
+  mode: 'inbound' | 'mask' | 'original' | 'system' | 'system_template' | 'tenant_template' | 'system_fixed';
   maskedContent: Record<string, unknown>;
 }
 
@@ -219,6 +219,23 @@ export async function prepareStoredMessageContent(
   return {
     content: (source === 'agent_default' || source === 'system' ? maskedContent : content) as Prisma.InputJsonObject,
     metadata: { privacy: { version: 1, mode, maskedContent } as unknown as Prisma.InputJsonValue },
+  };
+}
+
+/**
+ * 程式內固定、不含顧客或租戶資料的系統訊息（例如 AI 失敗時的轉接原因，issue #445）。
+ * 遮罩副本就是原文，不呼叫 2md：這種訊息常在 2md 故障時寫入，呼叫一定失敗。
+ * privacyEnabled 由呼叫端以 readAiPrivacyPolicy() 讀取。
+ * 不可用在含顧客輸入、模型輸出或租戶設定文字的內容。
+ */
+export function fixedSystemMessageContent(
+  content: { text: string },
+  privacyEnabled: boolean,
+): PreparedStoredMessageContent {
+  if (!privacyEnabled) return { content, metadata: {} };
+  return {
+    content,
+    metadata: { privacy: { version: 1, mode: 'system_fixed', maskedContent: content } as unknown as Prisma.InputJsonValue },
   };
 }
 

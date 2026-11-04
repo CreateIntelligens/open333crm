@@ -24,7 +24,16 @@ issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。�
 | 模型價目（`seedModelPricing`） | 不覆寫（`update: {}`） | 無 | 維持；改價時新增一列較新的 `effectiveFrom`（USAGE-02） |
 | 方案（`seedPlans`） | issue #441 後不覆寫 | 無 | 已修正 |
 
-UAT 是否設了 `SEED_DEMO_ACCOUNTS`，這次沒有查（不連 UAT）。
+2026-11-04 唯讀確認 UAT `.env.api`：`NODE_ENV=production`，沒有設 `SEED_DEMO_ACCOUNTS`，Demo 區段部署時不執行。
+
+## 2026-11-04：AI 與知識庫回覆都失敗時客人收不到回覆（KB-06、LLM-04）
+
+issue #445，change `handoff-on-ai-reply-failure-445`。以本機單元測試與測試資料庫的 feature 測試驗證，沒有連 UAT；真機（LINE）尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-06（新增） | 部分修正 | `attemptKbAutoReply()` 改回傳 `KbAutoReplyResult`（`replied`／`skipped` 與原因／`failed`），embedding 失敗與丟出的錯誤算失敗；`automation.worker.ts` 在 agent 沒有回覆、知識庫失敗時呼叫 `ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()`：沿用 `createBotReplyGuard()`（`bot_reply` 認領）與 `handOffConversation()`，原因由 `kb-autoreply.service.ts` 的 `aiReplyFailedReason()` 產生（與 `clarifyLlmFailedReason()` 共用錯誤種類判斷）；系統訊息用 `fixedSystemMessageContent()`，不呼叫 2md。`ai-failure-handoff.test.ts` 9 項，4 項修正前以 assertion 失敗，其餘 5 項以 mutation 驗證。`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，未處理 |
+| LLM-04 的知識庫自動回覆列 | 描述更新 | embedding 失敗不再「不回覆也不轉真人」，改為轉真人。Embedding 只能呼叫 Ollama 本身未處理 |
 
 ## 2026-11-03：第二優先的顧客受影響且失敗看不到的問題（KB-01、CONV-03、CASE-03、CHAN-02、AUTH-11、PLAN-14、RBAC-11）
 
