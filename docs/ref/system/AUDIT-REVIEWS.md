@@ -23,6 +23,14 @@ issue #418，change `fix-automation-numeric-text-conditions`。以 unit 測試�
 | --- | --- | --- |
 | AUTO-06（HC-AUTOMATION-01） | 已修正，保留在 `AUDIT.md` 並標示已修正 | 編輯器 `qb-to-engine.ts` 依契約的欄位型別轉值，文字欄位保留字串，載入舊規則再存會改成字串；`packages/automation/src/rules/operators.ts` 在文字欄位遇到數字比較值時轉成字串比對，已存成數字的規則不必重存。`packages/automation` 的 `operators.test.ts` 6 項、web 的 `qb-to-engine.test.ts` 3 項、workers 的 `automation.handler.test.ts`「訊息內容包含數字比較值」、api 的 `automation-test-numeric-text.test.ts`「試試看與實際觸發一致」修正前失敗；數字與布林欄位不變的測試以突變驗證。後端仍不驗證條件值型別（#405） |
 
+## 2026-11-04：編輯粉絲活動草稿清掉選項（PORTAL-03）
+
+issue #424。以本機測試資料庫的 feature 測試與 web 的 component 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| PORTAL-03（HC-PORTAL-01） | 已修正，從 `AUDIT.md` 移除 | `ActivityFormDialog.tsx` 打開編輯時以 `GET /portal/activities/:id` 取完整活動，載入完成前與載入失敗時停用「儲存」並顯示原因；`portal.service.ts` 的 `updateActivity()` 對投票、競猜的空 `options` 與表單的空 `fields` 丟 400，不刪除既有內容。change `fix-portal-edit-keeps-content`。`portal-flow.test.ts`（feature）新增 3 項，其中 2 項修正前失敗，「只改標題時，選項、正確答案與表單欄位都保留」以 mutation 驗證；`activity-form-dialog-edit.test.tsx` 2 項修正前失敗 |
+
 ## 2026-11-03：第二優先的顧客受影響且失敗看不到的問題（KB-01、CONV-03、CASE-03、CHAN-02、AUTH-11、PLAN-14、RBAC-11）
 
 issue #410、#411、#415、#416、#419，同一個 PR。以本機測試資料庫的 unit 與 feature 測試驗證，沒有連 UAT；真機（LINE、FB）尚未驗證。

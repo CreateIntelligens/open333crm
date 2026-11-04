@@ -162,7 +162,6 @@
 | [ANA-03](#ana-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 報表匯出的 CSV 沒有跳脫：名稱含逗號會跑欄，以 `=` 等字元開頭會被 Excel 當成公式 | 執行時確認 |
 | [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；活動詳情端點不看開始與結束時間；票券夾已簽發 fanToken，端點可以進入 | 執行時確認 |
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 執行時確認 |
-| [PORTAL-03](#portal-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 編輯草稿活動不帶出原本的選項，只改標題就儲存會清掉所有選項與正確答案 | 執行時確認 |
 | [PORTAL-04](#portal-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲送出活動的答案不驗證：不屬於該活動的選項照收並給點，表單必填欄位空白也收 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 渠道刪除是硬刪除；有對話的渠道刪除改回 409 並可從畫面停用，沒有對話的渠道刪除時仍連帶刪除聯絡人身分 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P1 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；網站聊天室不能群發與發券（#415 改為拒絕，不再假成功）；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
@@ -2096,13 +2095,6 @@ analytics 的其他統計以 SQL 的 `count` 或 `$queryRaw` 彙總，或以 `ta
 - 非 `AppError` 的例外（例如 Prisma 錯誤）也把原始訊息回給公開用戶端，違反 `AGENTS.md` 的「Do not return raw errors」。
 
 原本以「端點目前無法進入」標為 P3。這個前提已不成立（見 PORTAL-01），調為 P2。2026-10-30 功能健檢實測：「您已參加過這個活動」（409）、草稿與已結束（404）都變成 400 `BAD_REQUEST`，Prisma 錯誤原文（含伺服器檔案路徑與程式碼片段）直接回給公開端。main 已把輸入解析移到 `try` 之外，業務錯誤仍轉成 400（[PORTAL 健檢](../features/health/PORTAL.md)）。修正方式是移除這段 `try/catch`，交給全域的錯誤處理。
-
-<a id="portal-03"></a>
-### PORTAL-03：編輯草稿活動會清掉選項
-
-活動頁把清單項當成編輯資料，而 `portal.service.ts` 的 `listActivities()` 不 include `options`、`fields`。編輯對話框因此沒有帶出原本的選項與欄位；只改標題就按「儲存」，前端送出 `options: []`，`updateActivity()` 收到空陣列就 `deleteMany`，所有選項（含競猜的正確答案）或表單欄位被刪光。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PORTAL-01（[PORTAL 健檢](../features/health/PORTAL.md)）。證據：`apps/web/src/app/dashboard/portal/page.tsx:182`、`apps/api/src/modules/portal/portal.service.ts:44-54, 131-156`、`apps/web/src/components/portal/ActivityFormDialog.tsx:62-71, 99-104`；本機介面改標題儲存後 `options` 為 `[]`；UAT 以前端相同的 body PATCH 草稿，回應 `options: []`（健檢實測）。
 
 <a id="portal-04"></a>
 ### PORTAL-04：粉絲送出活動的答案不驗證

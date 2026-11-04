@@ -570,6 +570,12 @@ test.describe('粉絲門戶 /dashboard/portal 欄位', () => {
       trash.activities = trash.activities.filter((x) => x !== id);
     }
 
+    // 發布前必須至少有一個選項（#447）；空草稿（含舊的可重用草稿）先補上選項
+    const withOption = await api.patch(`portal/activities/${id}`, {
+      data: { options: [{ label: `${E2E_PREFIX} 選項` }] },
+    });
+    expect(withOption.status(), '草稿應可補上選項').toBe(200);
+
     const pub = await api.post(`portal/activities/${id}/publish`);
     expect(pub.status(), '草稿應可發布').toBe(200);
 
