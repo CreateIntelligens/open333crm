@@ -94,7 +94,7 @@
 
 ## 對話清單、篩選與搜尋
 
-`GET /api/v1/conversations` 依 `updatedAt desc` 排序，回應帶 `meta.total`、`page`、`limit`、`totalPages`。收件匣每頁請求 50 段（`apps/web/src/hooks/useConversations.ts` 的 `useSWRInfinite`），列表底部的「載入更多對話」依 `meta.totalPages` 取下一頁；已載入的各頁依 `id` 去重後依 `updatedAt desc` 排序。翻頁期間有對話被更新往前移時，被擠出已載入範圍的對話要重新整理才看得到（offset 分頁的限制）。載入失敗時列表顯示「對話列表載入失敗」與重試；下一頁失敗時重試同一頁。
+`GET /api/v1/conversations` 依 `updatedAt desc` 排序，回應帶 `meta.total`、`page`、`limit`、`totalPages`。收件匣每頁請求 50 段（`apps/web/src/hooks/useConversations.ts` 的 `useSWRInfinite`），列表底部的「載入更多對話」依 `meta.totalPages` 取下一頁；已載入的各頁依 `id` 去重（同一段對話出現在兩頁時保留 `updatedAt` 較新的那筆）後依 `updatedAt desc` 排序。翻頁期間有對話被更新往前移時，被擠出已載入範圍的對話要重新整理才看得到（offset 分頁的限制）。載入失敗時列表顯示「對話列表載入失敗」與重試；下一頁失敗時重試同一頁。
 
 篩選全部由後端執行，切換任何篩選都從第 1 頁重新載入：
 

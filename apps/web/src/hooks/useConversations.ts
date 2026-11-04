@@ -96,21 +96,20 @@ function getSortTime(row: ConversationRow) {
 }
 
 /**
- * 把已載入的各頁合成一份列表：依 id 去重（保留第一次出現），依 updatedAt desc 排序。
+ * 把已載入的各頁合成一份列表：依 id 去重（保留 updatedAt 較新的那筆），依 updatedAt desc 排序。
  * offset 分頁期間有對話往前移時，下一頁會再出現同一段對話（design D2）。
  */
 function mergePages(pages: ConversationsResponse[] | undefined): ConversationRow[] {
   if (!pages) return [];
-  const seen = new Set<string>();
-  const rows: ConversationRow[] = [];
+  // 同一段對話出現在兩頁時保留較新的那一筆（後載入的頁可能帶著較新的欄位，PR #449 審查）
+  const byId = new Map<string, ConversationRow>();
   for (const page of pages) {
     for (const row of page?.data ?? []) {
-      if (seen.has(row.id)) continue;
-      seen.add(row.id);
-      rows.push(row);
+      const existing = byId.get(row.id);
+      if (!existing || getSortTime(row) > getSortTime(existing)) byId.set(row.id, row);
     }
   }
-  return rows.sort((a, b) => getSortTime(b) - getSortTime(a));
+  return [...byId.values()].sort((a, b) => getSortTime(b) - getSortTime(a));
 }
 
 /**

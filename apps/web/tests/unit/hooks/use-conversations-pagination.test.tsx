@@ -257,3 +257,16 @@ test('選取中的對話：不再符合篩選時仍留在列表，避免正在�
   await emit('conversation.updated', { id: 'c2', unreadCount: 0 });
   assert.deepEqual(ids(), ['c1', 'c2']);
 });
+
+test('下一頁的重複對話比較新：保留較新的那一筆（PR #449 審查）', async () => {
+  // 第 1 頁載入後對話被往後擠：第 2 頁的同一段對話帶著較新的 updatedAt 與未讀數
+  twoPages([{ ...row(50), unreadCount: 3, updatedAt: new Date(BASE + 60_000).toISOString() }, ...range(51, 55)]);
+  renderList();
+  await flush();
+  fireEvent.click(screen.getByText('more'));
+  await flush();
+  const rows = screen.queryAllByTestId('row').filter((el) => el.textContent === 'c50');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].getAttribute('data-unread'), '3');
+  assert.equal(ids()[0], 'c50', '較新的那筆排在最上面');
+});
