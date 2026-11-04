@@ -1,5 +1,6 @@
 import { Queue, type JobsOptions } from 'bullmq';
-import { Redis as IORedis } from 'ioredis';
+import type { Redis } from 'ioredis';
+import { createRedisClient } from '@open333crm/core';
 
 export interface NotificationDispatchInput {
   tenantId: string;
@@ -11,11 +12,14 @@ export interface NotificationDispatchInput {
 }
 
 let notificationQueue: Queue<NotificationDispatchInput> | null = null;
+// BullMQ 不關閉傳入的連線，關閉佇列時要自己關
+let connection: Redis | null = null;
 
 function getNotificationQueue(): Queue<NotificationDispatchInput> {
   if (!notificationQueue) {
+    connection = createRedisClient(process.env.REDIS_URL!, 'queue');
     notificationQueue = new Queue<NotificationDispatchInput>('notification', {
-      connection: new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null }),
+      connection,
       // job id 由事件 id 組成：完成的 job 保留 24 小時，事件重送時 BullMQ 不建立第二個 job（design 決策 10）。
       // 寫入通知失敗時重試；通知是至少一次，重試可能產生重複的通知（standalone-worker-runtime）
       defaultJobOptions: {
@@ -36,5 +40,7 @@ export async function enqueueNotification(input: NotificationDispatchInput, opts
 export async function closeNotificationQueue(): Promise<void> {
   if (!notificationQueue) return;
   await notificationQueue.close();
+  await connection?.quit();
   notificationQueue = null;
+  connection = null;
 }

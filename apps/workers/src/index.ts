@@ -1,6 +1,5 @@
 import './load-env.js';
 import { Worker, Queue } from 'bullmq';
-import { Redis as IORedis } from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { createWorkerPluginRegistry } from './lib/plugin-registry.js';
@@ -16,6 +15,7 @@ import {
   handleDataExportCleanup,
 } from './handlers/data-export.handler.js';
 import { closeNotificationQueue } from './lib/notification-queue.js';
+import { createWorkerRedis } from './lib/redis.js';
 import { registerRepeatingJobs } from './lib/repeating-jobs.js';
 import { handleAgentRetentionCleanup } from './handlers/agent-retention.handler.js';
 import { handleTagExpiryCleanup } from './handlers/tag-expiry.handler.js';
@@ -47,8 +47,7 @@ async function main() {
   });
 
   // Redis connections: one for BullMQ workers, one for pub/sub publishing
-  const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
-  const redisPublisher = new IORedis(process.env.REDIS_URL!);
+  const { connection, publisher: redisPublisher } = createWorkerRedis(process.env.REDIS_URL!);
 
   // ── Channel plugin registry ──────────────────────────────────────────────────
   const pluginRegistry = createWorkerPluginRegistry();
