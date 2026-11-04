@@ -7,6 +7,7 @@
  */
 import type { Prisma } from '@prisma/client';
 import { taipeiDateStart, taipeiDateString } from '@open333crm/core';
+import { csvRow } from '@open333crm/shared';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 export interface CouponStats {
@@ -76,18 +77,6 @@ export async function getCouponStats(
     redeemRate: claimed > 0 ? Math.round((redeemed / claimed) * 1000) / 10 : null,
     claimRate: issued > 0 ? Math.round((claimed / issued) * 1000) / 10 : null,
   };
-}
-
-/** CSV 欄位一律加引號並轉義內部引號——券名與券碼來自使用者輸入，可能含逗號。 */
-/**
- * CSV 儲存格。以 = + - @ 或 Tab、換行開頭的值，Excel 會當成公式執行（持有者名稱來自顧客自訂的暱稱），
- * 前面加單引號當成文字。
- */
-export function csvCell(v: unknown): string {
-  if (v == null) return '""';
-  const text = String(v);
-  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-  return `"${safe.replace(/"/g, '""')}"`;
 }
 
 function formatDate(d: Date | null): string {
@@ -192,26 +181,27 @@ export async function readInstancesForExport(
 
 /** 序號明細轉成 CSV（含 BOM）。依發放時間由新到舊排序 */
 export function instancesToCsv(instances: ExportRow[]): string {
-  const headers = [
+  // 儲存格跳脫與公式防護共用 csvRow()（#423）：持有者名稱來自顧客自訂暱稱，可能含逗號或以 = 開頭
+  const headers = csvRow([
     '券號', '狀態', '持有者', '發放來源', '發放時間',
     '領取時間', '開啟時間', '核銷時間', '核銷方式', '到期時間',
-  ].map(csvCell).join(',');
+  ]);
 
   const rows = [...instances]
     .sort((x, y) => y.issuedAt.getTime() - x.issuedAt.getTime())
     .map((i) =>
-      [
-        csvCell(i.code),
-        csvCell(i.status),
-        csvCell(i.contact?.displayName ?? ''),
-        csvCell(i.issuedVia ?? ''),
-        csvCell(formatDate(i.issuedAt)),
-        csvCell(formatDate(i.claimedAt)),
-        csvCell(formatDate(i.openedAt)),
-        csvCell(formatDate(i.redeemedAt)),
-        csvCell(i.redeemMode ?? ''),
-        csvCell(formatDate(i.expiresAt)),
-      ].join(','),
+      csvRow([
+        i.code,
+        i.status,
+        i.contact?.displayName ?? '',
+        i.issuedVia ?? '',
+        formatDate(i.issuedAt),
+        formatDate(i.claimedAt),
+        formatDate(i.openedAt),
+        formatDate(i.redeemedAt),
+        i.redeemMode ?? '',
+        formatDate(i.expiresAt),
+      ]),
     );
 
   // BOM 讓 Excel 正確辨識 UTF-8，否則中文會變亂碼
