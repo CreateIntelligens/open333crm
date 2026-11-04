@@ -193,3 +193,54 @@ test('評分的訊息在收件匣顯示文字', async () => {
   assert.equal((reply.metadata as { postbackData?: string }).postbackData, raw);
   assert.equal(events.some((e) => e.name === 'message.received'), false);
 });
+
+test('LINE 按鈕送出的評分在收件匣顯示文字', async () => {
+  // 按鈕的 postback：客人在 LINE 上看到的是 displayText，評分記錄前就改寫（PR #455 審查後的分流）
+  const uid = `visitor-csat-button-${stamp}`;
+  const first = await receive(uid, '我要申訴');
+  const conversation = first.result!.conversation;
+  const kase = await prisma.case.create({
+    data: { tenantId: tenant.id, contactId: conversation.contactId, channelId: channel.id, title: `CI CSAT button ${stamp}`, status: 'RESOLVED' },
+  });
+  await prisma.conversation.update({ where: { id: conversation.id }, data: { caseId: kase.id } });
+
+  const raw = `csat:4:${kase.id}`;
+  const io = { to: () => ({ emit: () => {} }) };
+  await processInboundMessage(prisma, io as never, {}, channel, tenant.id, {
+    contactUid: uid,
+    channelMsgId: `ci-inbound-${stamp}-${seq++}`,
+    timestamp: new Date(),
+    contentType: 'postback',
+    content: { text: raw },
+    rawPayload: { postback: { data: raw } },
+  } as never);
+
+  const reply = await prisma.message.findFirstOrThrow({
+    where: { conversationId: conversation.id, direction: 'INBOUND' },
+    orderBy: { createdAt: 'desc' },
+  });
+  assert.equal((reply.content as { text?: string }).text, '我的評分：4 分');
+  assert.equal((await prisma.case.findUniqueOrThrow({ where: { id: kase.id } })).csatScore, 4);
+});
+
+test('不屬於自己的評分代碼不改寫訊息（PR #455 審查）', async () => {
+  // 客人手打別人的工單代碼：評分被拒絕，存下的訊息維持原文，收件匣不顯示「我的評分」
+  const owner = await receive(`visitor-csat-owner-${stamp}`, '我要退貨');
+  const ownerConv = owner.result!.conversation;
+  const otherCase = await prisma.case.create({
+    data: { tenantId: tenant.id, contactId: ownerConv.contactId, channelId: channel.id, title: `CI CSAT forged ${stamp}`, status: 'RESOLVED' },
+  });
+
+  const uid = `visitor-csat-forger-${stamp}`;
+  const first = await receive(uid, '你好');
+  const raw = `csat:5:${otherCase.id}`;
+  await receive(uid, raw);
+
+  const sent = await prisma.message.findFirstOrThrow({
+    where: { conversationId: first.result!.conversation.id, direction: 'INBOUND' },
+    orderBy: { createdAt: 'desc' },
+  });
+  assert.equal((sent.content as { text?: string }).text, raw);
+  const kase = await prisma.case.findUniqueOrThrow({ where: { id: otherCase.id } });
+  assert.equal(kase.csatScore, null);
+});
