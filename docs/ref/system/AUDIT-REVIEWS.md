@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：直接關閉與重開的工單在報表算錯已解決（CASE-04、AUTO-10）
+
+issue #417，分支 `fix/p4-417`，change `fix-case-resolved-at-417`。以單元測試與測試資料庫 `open333crm_test_p4_417` 的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-04 的 `resolvedAt` | 部分修正（`csatSentAt` 未處理，#339） | `packages/shared/src/constants/case-transitions.ts` 新增 `caseTransitionTimestamps()`，`case.service.ts` 的 `transitionCase()`、`escalateCase()`、`assignCase()`，`csat.service.ts` 的 `recordCsatScore()`、`csat.scheduler.ts` 的逾時結案都用它。轉成 `RESOLVED` 寫入；`RESOLVED` → `CLOSED` 保留；直接關閉為 null（使用者決定不算已解決）；其他轉換清除。既有資料不補值。`case-resolved-at.test.ts`（unit）的兩項重開與 feature 測試（走 `transitionCaseFlow` 與 `getOverviewStats`，`resolvedCases` 期望 2）修正前以 assertion 失敗；其餘以突變驗證（change 的 tasks.md 3.1） |
+| AUTO-10 的 `update_case_status` | 部分修正 | 先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，套同一個規則。`automation-update-case-status.test.ts` 6 項修正前全部失敗。不檢查轉換、不寫工單事件、`assign_agent` 不通知與其他動作不帶 `tenantId` 未處理 |
+| HC-ANALYTICS-02 | 已修正（直接關閉依使用者決定維持不算已解決） | 報表查詢不改，`resolvedAt` 的語意與報表一致。報表另有以 `status` 判斷的地方，與 `resolvedAt` 不衝突，未改：總覽「處理中工單」（`OPEN/IN_PROGRESS/PENDING/ESCALATED`）、案件報表 SLA 違規表與我的績效「即將到期」（排除 `CLOSED/RESOLVED`，直接關閉的逾期工單不列為違規）、我的績效「待處理」（只算 `OPEN/IN_PROGRESS`，不含 `PENDING/ESCALATED`）；案件趨勢的「已解決」（`closed` 欄）是依建立日分組、目前有 `resolvedAt` 的工單數，不是當天解決的數量 |
+
+規則轉成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查；修正前不會寄。
+
 ## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
 
 issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。

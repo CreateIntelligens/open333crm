@@ -77,7 +77,7 @@ description: >
 | `create_case` | 建單、套 SLA、寫 `case_events`、發 `case.created` | 對話已有未結案工單時不開 |
 | `add_tag` / `remove_tag` | 正常；依名稱找不到就建標籤（AUTO-03） | SLA 規則永遠略過（沒有 contactId，HC-AUTOMATION-02） |
 | `set_case_priority` / `escalate_case` | 只改 `priority` | 不改狀態、不發 `case.escalated` |
-| `update_case_status` | 改成 RESOLVED，但 `resolvedAt` 仍是 null、沒有工單事件 | 不檢查狀態轉換，CSAT 不會發（HC-AUTOMATION-05） |
+| `update_case_status` | 改成 RESOLVED 有 `resolvedAt`（與工單模組同規則，#417），問卷排程會寄 CSAT；沒有工單事件 | 不檢查狀態轉換、不發 `case.resolved`／`case.closed`（HC-AUTOMATION-05） |
 | `assign_agent` | 只改 `assigneeId` | 不通知、不發 `case.assigned`；`agentId` 不驗證 |
 | `notify` | 指定 → 工單負責人 → 對話負責人 → 全部 ADMIN/SUPERVISOR（看 `Agent.role`，RBAC-03） | — |
 | `notify_supervisor` | 全部 ADMIN/SUPERVISOR | RBAC-03 |
@@ -103,7 +103,7 @@ description: >
 ## 回歸清單
 1. 建 `message.received` 規則（條件「訊息內容 包含 退貨」，動作貼標＋建立工單＋傳送通知＋傳送訊息）→ 用 `POST /api/v1/simulator/send-message` 送含「退貨」的訊息 → 標籤、工單、通知、外送訊息（或失敗紀錄）都出現。
 2. 條件值用純數字（例如「包含 8888」）重走 1，確認會命中，且送出的條件 `value` 是字串（#418 已修正）。
-3. `case.created` 規則（指派、改優先級、改狀態、指定通知）→ 由 1 的建立工單觸發。
+3. `case.created` 規則（指派、改優先級、改狀態、指定通知）→ 由 1 的建立工單觸發。改狀態為「已解決」時查 DB 有 `resolvedAt`；改回「處理中」的規則觸發後 `resolvedAt` 為 null（#417）。
 4. `contact.tagged` 規則 → 人工貼標觸發一次；自動化貼標不觸發；再貼別的標籤是否重觸發。
 5. 關鍵字回覆頁建 FB 規則 → FB 訊息觸發、LINE 訊息不觸發；WebChat 送不出（CHAN-02）。
 6. `stopOnMatch`：兩條同事件規則，高優先序勾停止 → 低的不執行。
@@ -117,6 +117,6 @@ description: >
 - 「有觸發但客人沒收到」：查該對話的外送訊息 `metadata.deliveryFailed` / `deliveryError`（憑證、WebChat 外掛、素材渠道不符）。
 - 「同一則訊息回兩次」：一則訊息命中幾條關鍵字規則就回幾次；或關鍵字規則不能回覆而 AI 沒讓步（`keyword-yield.ts`）。
 - 「SLA 規則的貼標沒作用」：SLA 路徑沒傳 contactId（`apps/workers/src/handlers/sla.handler.ts` 的 `evaluateSlaAutomationRules`）。
-- 「規則改成已解決，客人沒收到滿意度調查」：`update_case_status` 不寫 `resolvedAt`。
+- 「規則改成已解決，客人沒收到滿意度調查」：#417 起 `update_case_status` 會寫 `resolvedAt`；仍沒收到時查工單有沒有關聯對話、租戶是否停用、`csatSentAt` 是否已寫入。
 - 「執行紀錄空白」：AUTO-02，沒有程式寫入。
 - 「Canvas 流程跑完一步就失敗」：節點 `nextNodeId` 無法指到同一請求建立的節點；執行紀錄 `errorMessage` 會是 `Node … not found in flow`。

@@ -64,6 +64,19 @@
 
 各路徑允許的轉換相同，副作用也相同。`PATCH /cases/:id` 帶 `status` 時，`updateCase()` 把改成 `ESCALATED` 的請求交給 `escalateCase()`，其他狀態交給 `transitionCase()`，`updateCaseFlow()` 再依結果送出與頂部按鈕相同的推播與事件。因此從下拉選單改狀態，一樣會寫時間軸、發布事件，也會觸發通知、自動化與對外 Webhook。詳情頁的下拉選單選「已關閉」時先要求確認，選「已升級」時開啟升級對話框。
 
+### 解決時間與關閉時間
+
+`resolvedAt` 與 `closedAt` 由 `packages/shared` 的 `caseTransitionTimestamps()` 決定（#417）。上表三條路徑、指派時的自動改狀態、評分後結案、問卷逾時結案，以及自動化規則的「改工單狀態」動作（workers 的 `update_case_status`）都用這個函式：
+
+| 轉換 | `resolvedAt` | `closedAt` |
+| --- | --- | --- |
+| 轉成 `RESOLVED` | 寫入轉換時間 | 不變 |
+| `RESOLVED` → `CLOSED` | 保留 | 寫入轉換時間 |
+| 其他狀態 → `CLOSED`（直接關閉） | null，不算已解決 | 寫入轉換時間 |
+| 轉成其他狀態（重開、處理中、待處理、升級） | 清除 | 不變 |
+
+報表以 `resolvedAt` 判斷「已解決」，所以直接關閉與重開的工單不算已解決。2026-11-04 之前的資料沒有補值：當時直接關閉的工單沒有 `resolvedAt`，當時重開、之後沒有再改狀態的工單仍保留舊的 `resolvedAt`。重開不清除 `closedAt` 與 `csatSentAt`（#339）。
+
 推播（`case.updated` 等）在交易 commit 之後送出。事件與工單的變更在同一個交易寫進 outbox，保證至少送出一次，見[事件與背景工作](../../modules/EVENTS.md)。推播與事件的內容寫在 `case-effects.ts`。
 
 ## 指派
