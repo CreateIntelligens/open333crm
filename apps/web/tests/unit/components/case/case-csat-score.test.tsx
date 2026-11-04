@@ -24,7 +24,7 @@ test('時間軸以中文顯示評分與自動關閉', () => {
       caseId="c-1"
       onRefresh={vi.fn()}
       events={[
-        { id: 'e1', type: 'csat_rated', eventType: 'csat_rated', actorType: 'contact', payload: { score: 2, source: 'customer' }, createdAt: at },
+        { id: 'e1', type: 'csat_rated', eventType: 'csat_rated', actorType: 'contact', createdBy: 'c0ffee00-0000-4000-8000-000000000001', payload: { score: 2, source: 'customer' }, createdAt: at },
         { id: 'e2', type: 'csat_rated', eventType: 'csat_rated', actorType: 'agent', actor: { id: 'a-1', name: '王小明' }, payload: { score: 4, source: 'agent' }, createdAt: at },
         { id: 'e3', type: 'status_changed', eventType: 'status_changed', actorType: 'system', payload: { from: 'RESOLVED', to: 'CLOSED', reason: 'csat_rated' }, createdAt: at },
       ]}

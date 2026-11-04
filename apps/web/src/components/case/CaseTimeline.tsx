@@ -174,7 +174,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
         type: evtType,
         content: formatEventDescription(evtType, payload),
         isInternal: e.isInternal || false,
-        author: e.actor?.name || e.agentName || e.createdBy || (e.actorType === 'contact' ? '客人' : '系統'),
+        author: e.actorType === 'contact' ? '客人' : e.actor?.name || e.agentName || e.createdBy || '系統',
         createdAt: e.createdAt,
         isNote: false,
       };
