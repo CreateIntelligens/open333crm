@@ -2,6 +2,17 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-04]
+
+### Fixed
+
+- **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
+  - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
+  - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。
+  - `GET /api/v1/conversations` 新增 `search` 參數：去頭尾空白後最多 100 字（超過回 400 `VALIDATION_ERROR`），不分大小寫比對聯絡人名稱或對話中任一則訊息的文字；與其他篩選、tenantId、渠道可見範圍同時套用。搜尋框改用這個參數。
+  - 篩選列的「篩選結果」改顯示後端的總數。列表載入失敗時顯示「對話列表載入失敗」與重試，不再顯示成「沒有對話」。
+  - 操作手冊第 1 章的 50 筆限制說明同步更新。聊天視窗只載最近 50 則訊息（HC-INBOX-07）未改。
+
 ## [2026-11-03]
 
 ### Fixed

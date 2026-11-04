@@ -117,7 +117,6 @@
 | [SLA-07](#sla-07) | SLA | P2 | 未處理 | 工單優先級改變後不重新套用 SLA 政策：升成緊急的工單仍以原優先級的時限計時，逾時升級後也沒有新期限 | 執行時確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
-| [CONV-04](#conv-04) | 對話、工單與自動化 | P1 | 未處理 | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 執行時確認 |
 | [CONV-05](#conv-05) | 對話、工單與自動化 | P2 | 未處理 | 重新開啟已關閉的對話，不檢查同一聯絡人在同一渠道是否已有未關閉的對話，造成兩段同時進行 | 執行時確認 |
 | [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 未處理 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440） | 執行時確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷已可送出（#416） | 靜態確認 |
@@ -1593,15 +1592,6 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 **修正方向**：`updateConversation()` 收到 `CLOSED` 時改走 `closeConversation()`；指派時發布 `conversation.assigned`，讓通知與對外 Webhook 接得到。
 
 **部分修正。** #294（`a3044f93`）讓狀態選單的「已關閉」改開結案視窗，走 `POST /:id/close`。2026-10-16，`updateConversation()` 收到 `CLOSED`（且對話尚未關閉）時改呼叫 `closeConversation()`，記錄來源 `manual`、時間與操作者並發布 `conversation.closed`；同時帶負責人時先改負責人再關閉。直接呼叫 API 的路徑因此也有結案紀錄。指派仍不發布 `conversation.assigned`。
-
-<a id="conv-04"></a>
-### CONV-04：收件匣只載入前 50 段對話
-
-`useConversations.ts` 只送 `page=1&limit=50`，對話列表沒有分頁，也沒有「載入更多」。「未讀」「我的」與搜尋都在前端對這 50 段過濾，第 51 段以後在收件匣找不到，API 的 `meta.total` 與 `totalPages` 沒有被使用。
-
-手冊已寫明限制，建議改到聯絡人頁找；但只有 WebChat 身分的聯絡人不在聯絡人清單，這個繞道對他們無效。進行中對話常態超過 50 段的租戶，收件匣等於主要功能失效。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-INBOX-01（[INBOX 健檢](../features/health/INBOX.md)）。證據：`apps/web/src/hooks/useConversations.ts:130`、`apps/web/src/components/inbox/ConversationList.tsx:78-103`；本機插入 55 段已關閉對話，「已關閉」分頁只顯示 50 段；UAT Demo 近 30 天已關閉 93 段，畫面顯示 50 段（健檢實測，UAT 只讀）。子代理原列 P2，2026-10-30 使用者決定升為 P1。
 
 <a id="conv-05"></a>
 ### CONV-05：重新開啟對話造成兩段未關閉的對話

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod/v3';
+import { paginationSchema } from '../../shared/utils/pagination.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   listConversations,
@@ -119,14 +120,19 @@ async function handleSendMedia(
   return reply.status(201).send(success({ ...message, delivery }));
 }
 
-const listQuerySchema = z.object({
+const listQuerySchema = paginationSchema.extend({
   status: z.string().optional(),
   channelType: z.string().optional(),
   assigneeId: z.string().optional(),
   unread: z.coerce.boolean().optional(),
   closedAfter: z.string().optional(),
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+  // 收件匣搜尋框（#422）：去頭尾空白後最多 100 字；只有空白時視為沒有搜尋
+  search: z
+    .string()
+    .trim()
+    .max(100, '搜尋關鍵字不可超過 100 字')
+    .optional()
+    .transform((v) => (v ? v : undefined)),
 });
 
 const updateConversationSchema = z.object({

@@ -22,6 +22,8 @@ export interface ConversationFilters {
   assigneeId?: string;
   unread?: boolean;
   closedAfter?: string;
+  /** 關鍵字：比對聯絡人名稱或任一則訊息的文字內容（不分大小寫）；路由已去頭尾空白，空字串視為沒有搜尋 */
+  search?: string;
 }
 
 export interface PaginationParams {
@@ -100,6 +102,16 @@ export async function listConversations(
   }
   if (filters.closedAfter) {
     where.updatedAt = { gte: new Date(filters.closedAfter) };
+  }
+  if (filters.search) {
+    // Prisma 無法表達「最後一則訊息」，改比對任一則訊息：是舊前端只比對最後一則的超集合（design D3）
+    const keyword = filters.search;
+    where.OR = [
+      { contact: { displayName: { contains: keyword, mode: 'insensitive' } } },
+      {
+        messages: { some: { content: { path: ['text'], string_contains: keyword, mode: 'insensitive' } } },
+      },
+    ];
   }
 
   const [conversations, total] = await Promise.all([
