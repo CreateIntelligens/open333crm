@@ -178,7 +178,10 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
           created.push(data);
           return { id: 'msg-1', createdAt: new Date(), ...data };
         },
+        // issue #444：記錄分數時找問卷訊息寫入分數；這個測試沒有問卷訊息
+        findMany: async () => [],
       },
+      caseEvent: { create: async () => ({}) },
       conversation: { update: async () => ({}) },
     } as unknown as TenantDb;
 

@@ -349,7 +349,8 @@ export default async function caseRoutes(fastify: FastifyInstance) {
       request.params.id,
       data.score,
       data.comment,
-      { tenantId: request.agent.tenantId },
+      // 客服代評：時間軸記錄評分的客服（issue #444）
+      { tenantId: request.agent.tenantId, agentId: request.agent.id },
     );
 
     if (!recorded) {

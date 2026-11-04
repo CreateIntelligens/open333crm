@@ -172,3 +172,24 @@ test('同租戶、同聯絡人的工單寫入評分', async () => {
   assert.equal(after.csatScore, 5);
   assert.equal(events.some((e) => e.name === 'message.received'), false);
 });
+
+test('評分的訊息在收件匣顯示文字', async () => {
+  const uid = `visitor-csat-label-${stamp}`;
+  const first = await receive(uid, '我要申訴');
+  const conversation = first.result!.conversation;
+  const kase = await prisma.case.create({
+    data: { tenantId: tenant.id, contactId: conversation.contactId, channelId: channel.id, title: `CI CSAT label ${stamp}`, status: 'RESOLVED' },
+  });
+  await prisma.conversation.update({ where: { id: conversation.id }, data: { caseId: kase.id } });
+
+  const raw = `csat:2:${kase.id}`;
+  const { events } = await receive(uid, raw);
+
+  const reply = await prisma.message.findFirstOrThrow({
+    where: { conversationId: conversation.id, direction: 'INBOUND' },
+    orderBy: { createdAt: 'desc' },
+  });
+  assert.equal((reply.content as { text?: string }).text, '我的評分：2 分');
+  assert.equal((reply.metadata as { postbackData?: string }).postbackData, raw);
+  assert.equal(events.some((e) => e.name === 'message.received'), false);
+});

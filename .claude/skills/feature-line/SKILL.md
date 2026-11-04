@@ -89,7 +89,7 @@ description: >
 3. image（LINE 代管）在假權杖下要出現 `mediaError`；`fileSize` 超過 25 MB 不下載。
 4. 圖文選單：建立 → 編輯 → 發布（假權杖會變「發布失敗」）→ 綁定受眾 → 取消發布；supervisor 可、agent 403。
 5. 快速回覆預設組：建立、重新整理讀回、刪除；agent 寫入 403。
-6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查、收回訊息、LIFF 開票券。
+6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查（客人按分數後，收件匣卡片顯示「客人評 N 分」、客人訊息顯示「我的評分：N 分」，#444）、收回訊息、LIFF 開票券。
 - 自動測試：`pnpm --filter @open333crm/channel-plugins test`；`pnpm --filter @open333crm/api test -- rich-menu webhook-signature downstream-forwarder inbound-media tag-on-click line-id-token channel-credential-security line-imagemap`；`pnpm --filter @open333crm/workers test -- rich-menu-bind credentials`；`pnpm --filter @open333crm/web test -- rich-menu imagemap-url bot-config-form-line-login`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/webhook/ channel-liff-id coupon-line-login`。
 - E2E：`apps/web/tests/e2e-uat/tenant-line-materials.spec.ts`。
 

@@ -10,7 +10,14 @@ import { eventBus } from '../../events/event-bus.js';
 import { emitToChannel } from '../../events/socket-push.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
-import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { fixedSystemMessageContent, prepareStoredMessageContent } from '../ai/deidentification.service.js';
+
+/**
+ * 客人按下問卷分數後看到的文字：LINE 按鈕的 displayText，以及收件匣顯示的客人訊息（issue #444）。
+ */
+export function csatReplyDisplayText(score: number): string {
+  return `我的評分：${score} 分`;
+}
 
 /**
  * Build CSAT channel-specific message payload for LINE / FB / WEBCHAT.
@@ -48,7 +55,7 @@ export function buildCsatChannelMessage(
                 type: 'postback',
                 label: `${score}`,
                 data: `csat:${score}:${caseId}`,
-                displayText: `我的評分：${score} 分`,
+                displayText: csatReplyDisplayText(score),
               },
               style: 'secondary',
               height: 'sm',
@@ -263,6 +270,114 @@ function getFollowUpMessage(score: number): string {
 export interface CsatScope {
   tenantId: string;
   contactId?: string;
+  /** 客服代評時評分的客服；時間軸記錄評分者（issue #444）。客人回覆不給 */
+  agentId?: string;
+}
+
+/** 誰評的分：客人回覆問卷，或客服在後台代評 */
+export type CsatRatedBy = 'customer' | 'agent';
+
+/** 已寫入分數的問卷訊息：呼叫端推一次 message.new，讓收件匣的問卷卡片顯示分數 */
+export interface RatedSurveyMessage {
+  id: string;
+  conversationId: string;
+  channelId: string;
+  direction: string;
+  senderType: string;
+  contentType: string;
+  content: unknown;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+}
+
+function asMetadataObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * 記錄分數之後讓客服看得到結果（issue #444）：
+ * - 這張工單的問卷訊息 metadata 寫入 csatScore 與 csatRatedBy：收件匣的問卷卡片只讀這兩個欄位。
+ * - 工單時間軸寫一筆 csat_rated，標明客人評分或客服代評。
+ * 回傳更新後的問卷訊息，讓呼叫端推播給聊天視窗。
+ */
+export async function recordCsatRating(
+  ctx: TenantCtx,
+  input: { caseId: string; score: number; ratedBy: CsatRatedBy; agentId?: string },
+): Promise<RatedSurveyMessage[]> {
+  // 先以工單的對話縮小範圍（走 conversations.caseId 與 messages.conversationId 索引），再比對 metadata.caseId
+  const surveys = await ctx.tx.message.findMany({
+    where: {
+      contentType: 'csat',
+      metadata: { path: ['caseId'], equals: input.caseId },
+      conversation: { tenantId: ctx.tenantId, caseId: input.caseId },
+    },
+    include: { conversation: { select: { channelId: true } } },
+  });
+
+  const rated: RatedSurveyMessage[] = [];
+  for (const survey of surveys) {
+    const metadata = { ...asMetadataObject(survey.metadata), csatScore: input.score, csatRatedBy: input.ratedBy };
+    await ctx.tx.message.updateMany({
+      where: { id: survey.id, conversation: { tenantId: ctx.tenantId } },
+      data: { metadata: metadata as Prisma.InputJsonValue },
+    });
+    rated.push({
+      id: survey.id,
+      conversationId: survey.conversationId,
+      channelId: survey.conversation.channelId,
+      direction: survey.direction,
+      senderType: survey.senderType,
+      contentType: survey.contentType,
+      content: survey.content,
+      metadata,
+      createdAt: survey.createdAt,
+    });
+  }
+
+  await ctx.tx.caseEvent.create({
+    data: {
+      caseId: input.caseId,
+      actorType: input.ratedBy === 'agent' ? 'agent' : 'contact',
+      actorId: input.ratedBy === 'agent' ? (input.agentId ?? null) : null,
+      eventType: 'csat_rated',
+      payload: { score: input.score, source: input.ratedBy },
+    },
+  });
+  return rated;
+}
+
+/**
+ * 評分後系統自動關閉工單：時間軸寫一筆 status_changed（issue #444）。工單原本就是 CLOSED 時不寫。
+ */
+export async function recordCsatAutoClose(ctx: TenantCtx, input: { caseId: string; from: string }): Promise<void> {
+  if (input.from === 'CLOSED') return;
+  await ctx.tx.caseEvent.create({
+    data: {
+      caseId: input.caseId,
+      actorType: 'system',
+      eventType: 'status_changed',
+      payload: { from: input.from, to: 'CLOSED', reason: 'csat_rated' },
+    },
+  });
+}
+
+/**
+ * 進站的評分（csat:<分數>:<工單 ID>）被攔截後，把這則客人訊息改寫成客人在 LINE 上看到的文字，
+ * 原始資料存在 metadata.postbackData（issue #444）。LINE webhook 不送按鈕的 displayText，
+ * 不改寫的話收件匣、匯出與 AI 讀到的歷史都是代碼。
+ * 改寫的文字是程式固定的內容：原本有遮罩副本（租戶啟用去識別化）時，副本改成同一段文字，不呼叫 2md。
+ */
+export async function relabelCsatReplyMessage(
+  ctx: TenantCtx,
+  input: { messageId: string; messageMetadata: unknown; score: number; postbackData: string },
+): Promise<void> {
+  const base = asMetadataObject(input.messageMetadata);
+  const fixed = fixedSystemMessageContent({ text: csatReplyDisplayText(input.score) }, base.privacy !== undefined);
+  const metadata = { ...base, ...fixed.metadata, postbackData: input.postbackData };
+  await ctx.tx.message.updateMany({
+    where: { id: input.messageId, conversation: { tenantId: ctx.tenantId } },
+    data: { content: fixed.content as Prisma.InputJsonValue, metadata: metadata as Prisma.InputJsonValue },
+  });
 }
 
 /**
@@ -304,6 +419,32 @@ export async function recordCsatScore(
       csatRespondedAt: now,
     },
   });
+
+  // 問卷卡片顯示分數、時間軸記錄評分者（issue #444）。舊入口傳進來的 prisma 不一定綁定租戶，查詢自帶 tenantId
+  const ratingCtx = { tx: prisma as TenantCtx['tx'], tenantId: caseRecord.tenantId };
+  const ratedSurveys = await recordCsatRating(ratingCtx, {
+    caseId,
+    score,
+    ratedBy: scope.agentId ? 'agent' : 'customer',
+    agentId: scope.agentId,
+  });
+  // 先推問卷訊息再推感謝訊息：對話列表的最後一則仍是感謝訊息
+  for (const survey of ratedSurveys) {
+    emitToChannel(io, caseRecord.tenantId, { channelId: survey.channelId, conversationId: survey.conversationId }, 'message.new', {
+      conversationId: survey.conversationId,
+      message: {
+        id: survey.id,
+        conversationId: survey.conversationId,
+        direction: survey.direction,
+        senderType: survey.senderType,
+        contentType: survey.contentType,
+        content: survey.content as Record<string, unknown>,
+        metadata: survey.metadata,
+        createdAt: survey.createdAt.toISOString(),
+        sender: null,
+      },
+    });
+  }
 
   // Send follow-up message
   const followUp = getFollowUpMessage(score);
@@ -380,6 +521,7 @@ export async function recordCsatScore(
         closedAt: now,
       },
     });
+    await recordCsatAutoClose(ratingCtx, { caseId, from: caseRecord.status });
 
     // Publish case.closed event
     eventBus.publish({

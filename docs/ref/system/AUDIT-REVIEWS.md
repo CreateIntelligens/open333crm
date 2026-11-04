@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：評分後收件匣與工單看得到分數（CASE-05）
+
+issue #444，分支 `fix/p4-444`，change `show-csat-score-444`。以單元測試與測試資料庫 `open333crm_test_p4_444` 的 feature 測試驗證，沒有連 UAT；LINE 真機尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-05 | 部分修正 | `recordCsatScore()` 呼叫新的 `recordCsatRating(ctx: TenantCtx, …)`：問卷訊息（`contentType: 'csat'`、`metadata.caseId`、同租戶）寫入 `metadata.csatScore`／`csatRatedBy` 並再推一次 `message.new`，寫 `csat_rated` 事件；自動關閉寫 `status_changed`（`reason: 'csat_rated'`）。`csat-score-display.test.ts` 4 項、`csat-record-scope.test.ts` 新增 3 項修正前失敗。仍不經狀態機、不關閉對話、客服代評也送感謝訊息（#339） |
+| UAT 實測的評分顯示成 `csat:2:<工單 ID>` | 已修正（未列 AUDIT） | 進站攔截後 `relabelCsatReplyMessage()` 把訊息改寫成「我的評分：N 分」，原文存在 `metadata.postbackData`；有遮罩副本時副本改成同一段固定文字。`inbound-message-processing.test.ts`「評分的訊息在收件匣顯示文字」修正前失敗 |
+
 ## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
 
 issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。

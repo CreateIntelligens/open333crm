@@ -5,9 +5,12 @@ import { AlertCircle, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { csatScoreLabel } from '@/lib/csat-labels';
 
 interface CsatMessageProps {
   score?: number;
+  /** 誰評的分（問卷訊息的 metadata.csatRatedBy，issue #444）：客人回覆或客服代評 */
+  ratedBy?: 'customer' | 'agent';
   readonly?: boolean;
   caseId?: string;
   onRate?: (score: number) => void;
@@ -15,15 +18,17 @@ interface CsatMessageProps {
   deliveryError?: string;
 }
 
-export function CsatMessage({ score: initialScore, readonly, caseId, onRate, deliveryError }: CsatMessageProps) {
+export function CsatMessage({ score: initialScore, ratedBy, readonly, caseId, onRate, deliveryError }: CsatMessageProps) {
   const [hovered, setHovered] = useState(0);
-  const [selected, setSelected] = useState(initialScore || 0);
-  const [submitted, setSubmitted] = useState(!!initialScore);
+  // 客服在這張卡片上點的分數；後端推來的分數（initialScore）優先，socket 更新後卡片跟著變（issue #444）
+  const [picked, setPicked] = useState(0);
+  const rated = !!initialScore;
+  const selected = initialScore || picked;
+  const locked = readonly || rated || picked > 0;
 
   const handleClick = async (star: number) => {
-    if (readonly || submitted) return;
-    setSelected(star);
-    setSubmitted(true);
+    if (locked) return;
+    setPicked(star);
     onRate?.(star);
 
     if (caseId) {
@@ -31,33 +36,38 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate, del
         await api.post(`/cases/${caseId}/csat`, { score: star });
       } catch (err) {
         console.error('Failed to submit CSAT:', err);
+        // 沒有記錄成功：恢復可點，不讓卡片看起來已評分
+        setPicked(0);
         alert(getApiErrorMessage(err, '評分送出失敗，請稍後重試'));
       }
     }
   };
 
   const displayScore = hovered || selected;
-
-  const labels = ['', '非常不滿意', '不滿意', '一般', '滿意', '非常滿意'];
+  const title = rated
+    ? `${ratedBy === 'agent' ? '客服代評' : '客人評'} ${initialScore} 分`
+    : picked > 0
+      ? '感謝您的評價！'
+      : '請評價此次服務體驗';
 
   return (
     <div className="flex justify-center py-3">
       <div className="rounded-xl border border-border bg-card px-6 py-4 text-center shadow-soft">
         <p className="mb-2 text-sm font-semibold text-primary">
-          {submitted ? '感謝您的評價！' : '請評價此次服務體驗'}
+          {title}
         </p>
         <div className="flex items-center justify-center gap-1">
           {[1, 2, 3, 4, 5].map((star) => (
             <button
               key={star}
-              onMouseEnter={() => !readonly && !submitted && setHovered(star)}
-              onMouseLeave={() => !readonly && !submitted && setHovered(0)}
+              onMouseEnter={() => !locked && setHovered(star)}
+              onMouseLeave={() => !locked && setHovered(0)}
               onClick={() => handleClick(star)}
-              disabled={readonly || submitted}
+              disabled={locked}
               className={cn(
                 'transition-transform',
-                !readonly && !submitted && 'hover:scale-110 cursor-pointer',
-                (readonly || submitted) && 'cursor-default'
+                !locked && 'hover:scale-110 cursor-pointer',
+                locked && 'cursor-default'
               )}
             >
               <Star
@@ -72,7 +82,7 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate, del
           ))}
         </div>
         {displayScore > 0 && (
-          <p className="mt-1 text-xs text-muted-foreground">{labels[displayScore]}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{csatScoreLabel(displayScore)}</p>
         )}
         {deliveryError !== undefined && (
           <p role="alert" className="mt-2 flex max-w-xs items-start gap-1 text-left text-xs text-destructive">

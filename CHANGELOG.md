@@ -14,6 +14,11 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **客人評分後，收件匣與工單看得到分數**（#444，change `show-csat-score-444`，AUDIT CASE-05 部分）— 客人評分後問卷卡片仍是空星、客服再點會 400，評分在對話裡顯示成 `csat:2:<工單 ID>`，工單時間軸與詳情頁都沒有分數。現在：
+  - 記錄分數時（客人回覆或客服代評），問卷訊息的 `metadata` 寫入 `csatScore` 與 `csatRatedBy`，並再推一次 `message.new`。卡片唯讀，顯示「客人評 N 分」或「客服代評 N 分」；客服送出失敗時卡片恢復可點。
+  - 客人的評分訊息存成「我的評分：N 分」（與 LINE 按鈕的 `displayText` 相同），原文存在 `metadata.postbackData`；攔截判斷不變。
+  - 工單時間軸寫 `csat_rated`（客人評分或客服代評，客服代評記錄評分的客服）；評分後自動關閉寫 `status_changed`（`reason: 'csat_rated'`），顯示「（評分後自動關閉）」。工單詳情頁新增「滿意度」區塊。
+  - 仍未處理：客服代評不經狀態機、不關閉對話、也送感謝訊息（#339）。
 - **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
   - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
   - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。
