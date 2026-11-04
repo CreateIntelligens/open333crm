@@ -3,7 +3,7 @@
 收件匣是客服的主畫面。左欄是對話清單，右欄是訊息與聯絡人資料。客服在這裡回覆客人、把對話從機器人手上接過來、指派給同事、關閉對話，或把對話開成工單。
 
 - **資料來源**：`apps/api/src/modules/conversation/*`、`apps/api/src/modules/ai/ai.routes.ts`、`apps/api/src/modules/ai/ai.service.ts`、`apps/api/src/modules/automation/automation.worker.ts`、`apps/api/src/modules/automation/bot-reply-guard.ts`、`packages/automation/src/bot-config.ts`、`apps/api/src/modules/webhook/inbound-postback-interceptors.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/web/src/components/inbox/*`
-- **核對日期**：2026-10-21
+- **核對日期**：2026-11-04
 
 ## 負責的模組
 
@@ -91,6 +91,22 @@
 - 保留指派的客服，機器人處理不了再轉真人時回到同一位。
 - 寫一則系統訊息記錄是誰交回的，這則訊息不送給客人。
 - 已結案（要先重新開啟）、已經是 `BOT_HANDLED`，或渠道的 `botMode` 是 `off` 時回 400，按鈕旁顯示原因。
+
+## 對話清單、篩選與搜尋
+
+`GET /api/v1/conversations` 依 `updatedAt desc` 排序，回應帶 `meta.total`、`page`、`limit`、`totalPages`。收件匣每頁請求 50 段（`apps/web/src/hooks/useConversations.ts` 的 `useSWRInfinite`），列表底部的「載入更多對話」依 `meta.totalPages` 取下一頁；已載入的各頁依 `id` 去重後依 `updatedAt desc` 排序。翻頁期間有對話被更新往前移時，被擠出已載入範圍的對話要重新整理才看得到（offset 分頁的限制）。載入失敗時列表顯示「對話列表載入失敗」與重試；下一頁失敗時重試同一頁。
+
+篩選全部由後端執行，切換任何篩選都從第 1 頁重新載入：
+
+| 畫面 | 送出的參數 |
+| --- | --- |
+| 「進行中」／「已關閉」 | `status=!CLOSED`／`status=CLOSED` 加 `closedAfter`（7、30、90 天） |
+| 「未讀」 | `unread=true`（`unreadCount > 0`） |
+| 「我的」 | `assigneeId=<自己的 id>`，覆蓋進階篩選的「指派」 |
+| 進階篩選 | `status`（逗號串接）、`channelType`、`assigneeId`（自己或 `unassigned`） |
+| 搜尋框 | `search`：去頭尾空白後最多 100 字（超過回 400），不分大小寫比對聯絡人名稱或對話中任一則訊息的 `content.text`；只有空白時視為沒有搜尋 |
+
+篩選列的「篩選結果」顯示後端的 `meta.total`。所有條件都與 tenantId 及渠道可見範圍同時套用。socket 推來的 `message.new`、`conversation.updated` 合併到已載入的那一列並重排，不套用目前的篩選；列表沒有那段對話時重新載入已載入的各頁。
 
 ## 客服回覆怎麼送出
 
