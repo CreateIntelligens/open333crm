@@ -8,6 +8,7 @@
  * 查詢收 TenantCtx（AGENTS.md 結構規則 2）；rejectUnauthorizedScheduledSend 是入口用的函式，
  * 在交易外計算有效權限（Redis 快取）。
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@prisma/client';
 import { COUPON_ISSUED_VIA, PERMISSION_BY_CODE } from '@open333crm/shared';
 import { logger } from '@open333crm/core';
@@ -113,6 +114,8 @@ export interface SendAuthorityDeps {
   prisma: PrismaClient;
   /** 計算有效權限（角色 ∩ 方案天花板）的連線，與 requirePermission 相同用 prismaAdmin */
   adminPrisma: PrismaClient;
+  /** 有效權限的快取所在的連線 */
+  redis: Redis;
 }
 
 /** 讀檢查權限用到的群發欄位；查不到回 null */
@@ -139,7 +142,7 @@ export async function rejectUnauthorizedScheduledSend(
   if (!broadcast) return null;
   const member = await inTenant(deps.prisma, tenantId, (ctx) => findSchedulingMember(ctx, schedulingMemberId(broadcast)));
   const effective = member?.isActive
-    ? await getEffectiveTenantPermissions(deps.adminPrisma, member.roleId, await getTenantPlanId(deps.adminPrisma, tenantId))
+    ? await getEffectiveTenantPermissions(deps.adminPrisma, deps.redis, member.roleId, await getTenantPlanId(deps.adminPrisma, tenantId))
     : new Set<string>();
   const denial = scheduledSendDenial(member, effective, requiredSendPermissions(broadcast));
   if (!denial) return null;

@@ -5,6 +5,7 @@
  * 送出告警失敗時重試 3 次；重試用完時只記 log，因為 ops-alert 佇列不在告警監聽的清單內，不發出新的告警。
  */
 import assert from 'node:assert/strict';
+import type { Redis } from 'ioredis';
 import { test, vi } from 'vitest';
 
 const queues = vi.hoisted(() => [] as Array<{ name: string; opts: { defaultJobOptions?: Record<string, unknown> } }>);
@@ -22,8 +23,9 @@ import { OPS_ALERT_QUEUE, sendOpsAlert } from '#src/modules/ops-alert/ops-alert.
 import { ALERTED_QUEUES, MONITORED_QUEUES } from '#src/modules/queue-monitoring/monitored-queues.js';
 
 test('Slack 持續無法連線：ops-alert 佇列重試 3 次，重試用完不發出新的告警', async () => {
-  // 單元測試的 Redis 指令一律失敗（tests/setup/unit.setup.ts），只檢查建立佇列時的選項
-  await sendOpsAlert({ key: 'k', title: 't', fields: {} }).catch(() => undefined);
+  // 合併鍵已存在（set NX 回 null）：不送出，只檢查建立佇列時的選項
+  const redis = { set: async () => null, incr: async () => 1, pexpire: async () => 1 } as unknown as Redis;
+  await sendOpsAlert({ key: 'k', title: 't', fields: {} }, { redis });
 
   const queue = queues.find((q) => q.name === OPS_ALERT_QUEUE);
   assert.ok(queue, 'ops-alert 佇列沒有建立');

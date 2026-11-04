@@ -11,7 +11,7 @@ import { logger, USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
 import type { UsageAlertEmailJob } from './usage-alert-email.worker.js';
 import { getConfig } from '../../config/env.js';
 import { resolveEscalationRecipients } from './notification.service.js';
-import { ALL_CHANNELS, agentVisibilityResolver, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -115,10 +115,10 @@ async function getConversationRecipients(
 
 export function setupNotificationWorker(
   prisma: PrismaClient,
-  opts: { visibility?: AgentVisibilityResolver } = {},
+  opts: { visibility: AgentVisibilityResolver },
 ): EventHandler {
   const events = createEventRouter();
-  const visibility = opts.visibility ?? agentVisibilityResolver(prisma);
+  const { visibility } = opts;
 
   // ── case.assigned ──────────────────────────────────────────────────────
   events.on('case.assigned', async (event: SubscribedEvent) => {

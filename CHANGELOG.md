@@ -11,6 +11,11 @@ All notable changes to **open333CRM** will be documented in this file.
   - core 的 `redis` 與 `getSharedRedis()` 改用 `'command'`。呼叫端原本就處理 Redis 失敗，行為只差在不再一直等。`EventBus` 的訂閱改用自己的 `'queue'` 連線。
   - API 新增 `fastify.redis`（`plugins/redis.plugin.ts`），與 `getSharedRedis()` 是同一條連線。建立應用程式時不連 Redis，關閉 Fastify 時一起關閉，原本關機時沒有關閉。
   - 登入失敗計數與綁定代碼的入口改從 `fastify.redis` 取得連線，刪除 `getLoginAttemptStore()`。webhook 收訊流程仍用 `getBindingStore()`，隨 #337 階段 4 改為注入。
+- **權限快取、passkey 與維運告警改由呼叫端傳入 Redis，越權檢查不在交易內使用 Redis**（#337 10.4）— `permission.service.ts`、`passkey.service.ts`、`ops-alert.service.ts` 原本自己 import Redis。角色與成員的越權檢查在租戶交易內讀寫權限快取，Redis 不回應時交易可能接近 5 秒的逾時。現在：
+  - 讀寫權限快取的函式以參數接收 Redis，guard、路由、socket、群發與平台路由傳入 `fastify.redis`。
+  - 越權檢查改呼叫新的 `loadRolePermissions()`，只查資料庫、不讀快取，所以一律用最新的權限。每次檢查多 1～2 次查詢，只發生在修改角色與成員時。
+  - `storePasskeyChallenge()`、`takePasskeyChallenge()`、`sendOpsAlert()` 改由呼叫端傳入 Redis。
+  - `check-tenant-ctx` 的「service 直接 import Redis client」從 6 降到 3，剩下的 `token-quota`、`chatbox`、`conversation` 隨 #337 階段 4 處理。
 
 ### Fixed
 

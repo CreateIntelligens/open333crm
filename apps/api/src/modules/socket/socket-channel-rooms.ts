@@ -14,6 +14,7 @@
  *
  * `prisma` 是 BYPASSRLS 的連線（socket plugin 傳入 prismaAdmin）：每個查詢自帶 tenantId。
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@open333crm/database';
 import { isTenantChannelScopedRoom, tenantAllChannelsRoom, tenantChannelRoom } from '@open333crm/shared';
 import { ALL_CHANNELS, resolveAgentChannelVisibility } from '../../services/channel-visibility.js';
@@ -23,9 +24,10 @@ import { authorizeSocketRoom } from './socket-room-authorization.js';
 /** 成員應該在的渠道房間 */
 export async function resolveChannelRooms(
   prisma: PrismaClient,
+  redis: Redis,
   identity: { tenantId: string; agentId: string },
 ): Promise<string[]> {
-  const visible = await resolveAgentChannelVisibility(prisma, identity.tenantId, identity.agentId);
+  const visible = await resolveAgentChannelVisibility(prisma, redis, identity.tenantId, identity.agentId);
   if (visible === ALL_CHANNELS) return [tenantAllChannelsRoom(identity.tenantId)];
   return [...visible].map((channelId) => tenantChannelRoom(identity.tenantId, channelId));
 }
@@ -66,6 +68,7 @@ const SUBSCRIBED_ROOM_RE = /^(tenant|agent|team|channel|conversation):[0-9a-f-]{
 export async function syncChannelRooms(
   io: SyncableServer,
   prisma: PrismaClient,
+  redis: Redis,
   tenantId: string,
   agentId?: string,
 ): Promise<void> {
@@ -84,7 +87,7 @@ export async function syncChannelRooms(
       continue;
     }
     if (!roomsByAgent.has(socketAgentId)) {
-      roomsByAgent.set(socketAgentId, resolveChannelRooms(prisma, { tenantId, agentId: socketAgentId }));
+      roomsByAgent.set(socketAgentId, resolveChannelRooms(prisma, redis, { tenantId, agentId: socketAgentId }));
     }
     const target = new Set(await roomsByAgent.get(socketAgentId)!);
 
@@ -96,7 +99,7 @@ export async function syncChannelRooms(
 
     for (const room of [...socket.rooms]) {
       if (!SUBSCRIBED_ROOM_RE.test(room) || room === tenantPushRoom(tenantId)) continue;
-      const result = await authorizeSocketRoom(prisma, {
+      const result = await authorizeSocketRoom(prisma, redis, {
         agentId: socketAgentId,
         tenantId,
         role: socket.data.role ?? '',

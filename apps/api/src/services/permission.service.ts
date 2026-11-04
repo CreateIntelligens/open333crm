@@ -4,11 +4,14 @@
  * 對應 rbac-granular-permissions specs/permission-check：
  * - 有效權限集合 = RolePermission(roleId) ∪ implies 遞迴閉包
  * - 快取 perms:role:{roleId}（TTL ≤ 10min），RolePermission 變更時主動失效
+ *
+ * 讀寫快取的函式以參數接收 Redis，由入口傳入 `fastify.redis`。租戶交易內的越權檢查改用
+ * loadRolePermissions()，只查資料庫：交易內不使用 Redis（AGENTS.md 結構規則 2、#337 10.4）。
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { Redis } from 'ioredis';
 import type { TenantDb } from '../lib/tenant-db.js';
-import { redis, resolveImplied, permsForFeatures, CORE_FEATURE } from '@open333crm/core';
+import { resolveImplied, permsForFeatures, CORE_FEATURE } from '@open333crm/core';
 
 const CACHE_PREFIX = 'perms:role:';
 const TENANT_CACHE_PREFIX = 'perms:tenant:';
@@ -24,11 +27,28 @@ function tenantCacheKey(roleId: string, planId: string | null): string {
 }
 
 /**
- * 解析某角色的有效權限集合（含 implies 閉包），優先讀 Redis 快取。
- * roleId 為 null（過渡期未回填）時回空集合。
+ * 某角色的有效權限集合（含 implies 閉包），只查資料庫、不讀快取。
+ * 租戶交易內的越權檢查用這個；roleId 為 null（過渡期未回填）時回空集合。
  */
-export async function getEffectivePermissions(
+export async function loadRolePermissions(
   prisma: TenantDb,
+  roleId: string | null | undefined,
+): Promise<Set<string>> {
+  if (!roleId) return new Set();
+  const rows = await prisma.rolePermission.findMany({
+    where: { roleId },
+    select: { permissionCode: true },
+  });
+  return resolveImplied(rows.map((r) => r.permissionCode));
+}
+
+/**
+ * 解析某角色的有效權限集合（含 implies 閉包），優先讀 Redis 快取。
+ * 不要在租戶交易內呼叫，交易內改用 loadRolePermissions()。
+ */
+async function getEffectivePermissions(
+  prisma: TenantDb,
+  redis: Redis,
   roleId: string | null | undefined,
 ): Promise<Set<string>> {
   if (!roleId) return new Set();
@@ -41,15 +61,7 @@ export async function getEffectivePermissions(
     /* 快取失敗不阻斷，回退查 DB */
   }
 
-  // 查 DB：明確授予的權限碼
-  const rows = await prisma.rolePermission.findMany({
-    where: { roleId },
-    select: { permissionCode: true },
-  });
-  const granted = rows.map((r) => r.permissionCode);
-
-  // 加上 implies 遞迴閉包
-  const effective = resolveImplied(granted);
+  const effective = await loadRolePermissions(prisma, roleId);
 
   // 回填快取
   try {
@@ -61,22 +73,12 @@ export async function getEffectivePermissions(
   return effective;
 }
 
-/** 某角色是否擁有某權限（含 implies）。 */
-export async function roleHasPermission(
-  prisma: TenantDb,
-  roleId: string | null | undefined,
-  code: string,
-): Promise<boolean> {
-  const eff = await getEffectivePermissions(prisma, roleId);
-  return eff.has(code);
-}
-
 /** 失效某角色的權限快取（RolePermission 變更後呼叫）。 */
-export async function invalidateRolePermissions(roleId: string): Promise<void> {
+export async function invalidateRolePermissions(redis: Redis, roleId: string): Promise<void> {
   try {
     await redis.del(cacheKey(roleId));
     // 角色權限變更也影響其套天花板後的結果 → 一併清該角色的 tenant 交集快取
-    await delByPattern(`${TENANT_CACHE_PREFIX}${roleId}:*`);
+    await delByPattern(redis, `${TENANT_CACHE_PREFIX}${roleId}:*`);
   } catch {
     /* 失效失敗靠 TTL 兜底 */
   }
@@ -91,13 +93,14 @@ export async function invalidateRolePermissions(roleId: string): Promise<void> {
  */
 export async function getEffectiveTenantPermissions(
   prisma: TenantDb,
+  redis: Redis,
   roleId: string | null | undefined,
   planId: string | null | undefined,
 ): Promise<Set<string>> {
   if (!roleId) return new Set();
 
   // 無方案 → 不設天花板，直接回角色權限
-  if (!planId) return getEffectivePermissions(prisma, roleId);
+  if (!planId) return getEffectivePermissions(prisma, redis, roleId);
 
   const key = tenantCacheKey(roleId, planId);
   try {
@@ -107,7 +110,7 @@ export async function getEffectiveTenantPermissions(
     /* 快取失敗回退計算 */
   }
 
-  const roleEff = await getEffectivePermissions(prisma, roleId);
+  const roleEff = await getEffectivePermissions(prisma, redis, roleId);
   const plan = await prisma.plan.findUnique({
     where: { id: planId },
     select: { features: true, permissionOverrides: true },
@@ -132,19 +135,16 @@ export async function getEffectiveTenantPermissions(
 }
 
 /** 失效某方案所有租戶的天花板交集快取（改 plan.features 後呼叫）。 */
-export async function invalidatePlanPermissions(
-  _prisma: PrismaClient,
-  planId: string,
-): Promise<void> {
+export async function invalidatePlanPermissions(redis: Redis, planId: string): Promise<void> {
   try {
-    await delByPattern(`${TENANT_CACHE_PREFIX}*:${planId}`);
+    await delByPattern(redis, `${TENANT_CACHE_PREFIX}*:${planId}`);
   } catch {
     /* 失效失敗靠 TTL 兜底 */
   }
 }
 
 /** 以 SCAN 逐批刪除符合 pattern 的 key（避免 KEYS 阻塞）。 */
-async function delByPattern(pattern: string): Promise<void> {
+async function delByPattern(redis: Redis, pattern: string): Promise<void> {
   let cursor = '0';
   do {
     const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);

@@ -6,6 +6,7 @@
  * inTenant() 等清除完成才回傳，所以 route 的回應在清除之後送出（主規格 permission-check）。
  */
 import type { PrismaClient } from '@prisma/client';
+import type { Redis } from 'ioredis';
 import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
 import type { RequestActor } from '../../lib/request-actor.js';
 import { invalidateRolePermissions } from '../../services/permission.service.js';
@@ -15,12 +16,14 @@ import { createRole, deleteRole, getRolePermissions, listRoles, renameRole, setR
 
 export interface RoleFlowDeps {
   prisma: PrismaClient;
+  /** 權限快取所在的連線，入口傳入 `fastify.redis` */
+  redis: Redis;
   /** 角色權限改變後重新計算已連線 socket 的渠道房間（channel.view_all 可能增減，issue #427） */
   syncSocketChannelRooms?: SocketChannelRoomSync;
 }
 
-function clearPermissionCache(scope: TenantScope, roleId: string) {
-  scope.afterCommit('invalidateRolePermissions', () => invalidateRolePermissions(roleId));
+function clearPermissionCache(scope: TenantScope, redis: Redis, roleId: string) {
+  scope.afterCommit('invalidateRolePermissions', () => invalidateRolePermissions(redis, roleId));
 }
 
 export function listRolesFlow(deps: RoleFlowDeps, actor: RequestActor) {
@@ -75,7 +78,7 @@ export function setRolePermissionsFlow(deps: RoleFlowDeps, actor: RequestActor, 
       payload: { permissions: result.permissions },
       ip: actor.ip,
     });
-    clearPermissionCache(scope, roleId);
+    clearPermissionCache(scope, deps.redis, roleId);
     // 在清快取之後：重新計算時讀到新的權限
     resyncChannelRooms(scope, deps.syncSocketChannelRooms);
     return result;
@@ -94,7 +97,7 @@ export function deleteRoleFlow(deps: RoleFlowDeps, actor: RequestActor, roleId: 
       payload: { name },
       ip: actor.ip,
     });
-    clearPermissionCache(scope, roleId);
+    clearPermissionCache(scope, deps.redis, roleId);
     return { deleted: true as const };
   });
 }

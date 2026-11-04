@@ -18,20 +18,20 @@ const state = vi.hoisted(() => ({ requestType: 'upgrade' as string }));
 vi.mock('#src/modules/platform/platform-audit.service.js', () => ({ writePlatformAudit: async () => undefined }));
 vi.mock('#src/modules/platform/plan.service.js', () => ({
   listPlans: async () => [],
-  updatePlan: async (_prisma: unknown, id: string) => ({ id }),
+  updatePlan: async (_prisma: unknown, _redis: unknown, id: string) => ({ id }),
   listTenantIdsOnPlan: async () => [TENANT_ID, OTHER_TENANT_ID],
 }));
 vi.mock('#src/modules/platform/platform-tenant.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/platform-tenant.service.js')>()),
-  updateTenant: async (_prisma: unknown, id: string) => ({ id }),
+  updateTenant: async (_prisma: unknown, _redis: unknown, id: string) => ({ id }),
 }));
 vi.mock('#src/modules/platform/trial-admin.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/trial-admin.service.js')>()),
-  convertToPaid: async (_prisma: unknown, id: string) => ({ id }),
+  convertToPaid: async (_prisma: unknown, _redis: unknown, id: string) => ({ id }),
 }));
 vi.mock('#src/modules/platform/plan-change.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/plan-change.service.js')>()),
-  approveRequest: async (_prisma: unknown, id: string) => ({ id, tenantId: TENANT_ID, type: state.requestType, trialExited: false }),
+  approveRequest: async (_prisma: unknown, _redis: unknown, id: string) => ({ id, tenantId: TENANT_ID, type: state.requestType, trialExited: false }),
 }));
 
 import platformRoutes from '#src/modules/platform/platform.routes.js';

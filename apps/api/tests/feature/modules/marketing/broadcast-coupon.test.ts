@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { registerChannelPlugin, type ChannelPlugin, type OutboundPayload } from '@open333crm/channel-plugins';
-import { readWalletToken } from '@open333crm/core';
+import { readWalletToken, redis } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient, withTenant } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
@@ -776,7 +776,7 @@ describe('排程的附券廣播到時間由排程發送', () => {
       },
     }) as PrismaClient;
     let poll: (() => Promise<void>) | null = null;
-    setupBroadcastScheduler({ registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never, scoped, testIo as never, { prisma, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS });
+    setupBroadcastScheduler({ registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never, scoped, testIo as never, redis, { prisma, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS });
     assert.ok(poll);
     await poll!();
 

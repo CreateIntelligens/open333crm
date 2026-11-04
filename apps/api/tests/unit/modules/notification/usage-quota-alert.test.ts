@@ -53,7 +53,7 @@ const handle = setupNotificationWorker({
       where.role === 'ADMIN' && where.isActive ? admins : [],
   },
   tenant: { findUnique: async () => tenant },
-} as never);
+} as never, { visibility: async () => new Set() });
 
 beforeEach(() => {
   sent.jobs = [];

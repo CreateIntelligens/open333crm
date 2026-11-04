@@ -257,7 +257,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   fastify.get('/plans', guard, async () => success(await listPlans(fastify.prismaAdmin)));
   fastify.patch<{ Params: { id: string } }>('/plans/:id', guard, async (request) => {
     const body = updatePlanSchema.parse(request.body);
-    const plan = await updatePlan(fastify.prismaAdmin, request.params.id, body);
+    const plan = await updatePlan(fastify.prismaAdmin, fastify.redis, request.params.id, body);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'plan.update',
@@ -286,7 +286,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       })
       .refine((b) => b.name !== undefined || b.planSlug !== undefined, { message: '至少提供一個欄位' })
       .parse(request.body);
-    const tenant = await updateTenant(fastify.prismaAdmin, request.params.id, body);
+    const tenant = await updateTenant(fastify.prismaAdmin, fastify.redis, request.params.id, body);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.update',
@@ -391,7 +391,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   // 轉正式方案
   fastify.patch<{ Params: { id: string } }>('/trial-tenants/:id/convert', guard, async (request) => {
     const { planSlug } = z.object({ planSlug: z.string().min(1) }).parse(request.body);
-    const result = await convertToPaid(fastify.prismaAdmin, request.params.id, planSlug);
+    const result = await convertToPaid(fastify.prismaAdmin, fastify.redis, request.params.id, planSlug);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.trial.convert',
@@ -482,7 +482,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   });
   fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/approve', guard, async (request) => {
     const { note } = z.object({ note: z.string().optional() }).parse(request.body ?? {});
-    const result = await approveRequest(fastify.prismaAdmin, request.params.id, request.platformUser!.id, note);
+    const result = await approveRequest(fastify.prismaAdmin, fastify.redis, request.params.id, request.platformUser!.id, note);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'plan_change.approve',

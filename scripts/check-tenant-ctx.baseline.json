@@ -88,12 +88,9 @@
   },
   "service 內的 inTenant(": {},
   "service 直接 import Redis client": {
-    "modules/auth/passkey.service.ts": 1,
     "modules/chatbox/chatbox.service.ts": 1,
     "modules/conversation/conversation.service.ts": 1,
-    "modules/ops-alert/ops-alert.service.ts": 1,
-    "modules/trial/token-quota.service.ts": 1,
-    "services/permission.service.ts": 1
+    "modules/trial/token-quota.service.ts": 1
   },
   "service 直接 import LLM 入口": {
     "modules/ai/agent/agent.service.ts": 2,

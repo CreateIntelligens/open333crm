@@ -1,7 +1,7 @@
+import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { executeBroadcast } from './marketing.service.js';
-import { agentVisibilityResolver } from '../../services/channel-visibility.js';
 import { runCouponBroadcast, type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
 import { logger } from '@open333crm/core';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
@@ -26,10 +26,11 @@ export function setupBroadcastScheduler(
   scheduler: JobScheduler,
   prisma: PrismaClient,
   io: SocketIOServer,
+  redis: Redis,
   couponDeps: Omit<CouponBroadcastDeps, 'io'>,
 ) {
   async function pollScheduled() {
-    const authorityDeps = { prisma: couponDeps.prisma, adminPrisma: prisma };
+    const authorityDeps = { prisma: couponDeps.prisma, adminPrisma: prisma, redis };
     try {
       const due = await prisma.broadcast.findMany({
         where: {
@@ -51,7 +52,7 @@ export function setupBroadcastScheduler(
             logger.info(`[BroadcastScheduler] 附券廣播 ${broadcast.id}（${broadcast.name}）：${result.status}`);
             continue;
           }
-          await executeBroadcast(prisma, io, broadcast.id, agentVisibilityResolver(prisma));
+          await executeBroadcast(prisma, io, broadcast.id, couponDeps.visibilityOf);
           logger.info(`[BroadcastScheduler] Executed broadcast ${broadcast.id} (${broadcast.name})`);
         } catch (err) {
           // 失敗原因已寫進廣播（failureReason），後台看得到

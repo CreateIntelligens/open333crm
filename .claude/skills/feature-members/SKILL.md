@@ -52,12 +52,12 @@ description: >
 ## 不可破壞的規則
 - **權限碼只有一個來源**：`packages/shared/src/rbac/permissions.ts`。新增權限碼要：加進註冊表（`feature`、需要時 `dependsOn`／`implies`）→ `default-roles.ts` 決定預設角色 → 路由掛 `requirePermission()` → 需要時 `Sidebar.tsx` 的 `perm` → 部署後跑 `node scripts/grant-new-role-permissions.mjs <碼...>` 並清 Redis `perms:*`。**不要跑 reconcile 腳本**，它會覆蓋租戶對系統角色的修改（RBAC-05）。
 - `dependsOn` 只能一層（`rbac-registry.test.ts` 檢查）；同一個碼不能同時出現在 `dependsOn` 與 `implies`；至少要有一個 `selfLock` 碼，否則 API 不啟動（`validatePermissionRegistry`），`agent.service.ts` 載入時也會丟錯。
-- 有效權限 = （角色權限 ＋ implies）∩（方案功能模組 − deny）。**越權防護用的是角色原始權限 `getEffectivePermissions`，路由檢查用的是 `getEffectiveTenantPermissions`**，兩者不要混用。
+- 有效權限 = （角色權限 ＋ implies）∩（方案功能模組 − deny）。**越權防護用的是角色原始權限 `loadRolePermissions`（在租戶交易內，只查資料庫、不讀快取），路由檢查用的是 `getEffectiveTenantPermissions`**，兩者不要混用。
 - 改角色權限要經 `role.flow.ts`：快取在 commit **之後**才清（`scope.afterCommit`），提早清會被另一個請求以舊資料寫回。
 - 租戶的方案在 API 行程記憶體快取 60 秒（`tenant-plan.cache.ts`），Redis `FLUSHDB` 清不到；換方案後短時間的 403 多半是這個。
 - email 在**全系統**唯一（登入靠 email 找租戶）。停用不釋放 email，只有永久刪除才釋放；刪除前要先清 RESTRICT 外鍵（通知、CLI session、Passkey）。新增一張以 RESTRICT 參照 `agents` 的表，必須同步加進 `purgeAgent`。
 - `Agent` 有兩個角色欄位：`role`（舊列舉）與 `roleId`。路由權限只看 `roleId`；自動指派、通知收件人、試用到期信仍看 `role`（RBAC-03）。最後一位管理員保護看權限：角色有效權限含 `selfLock` 碼（`role.manage`）才算管理員（`agent.service.ts` 的 `roleIsAdmin`、`listAdminRoleIds`）。指派自訂角色時 `role` 沿用舊值。
-- 對他人的操作（改角色、重設密碼、停用、刪除）不能用在權限比自己高的成員（`TARGET_OUTRANKS_ACTOR`，`admin` 系統角色不受限），比較的是角色原始權限 `getEffectivePermissions`。新增其他「對另一位成員」的操作時也要呼叫 `assertTargetNotAboveActor()`。
+- 對他人的操作（改角色、重設密碼、停用、刪除）不能用在權限比自己高的成員（`TARGET_OUTRANKS_ACTOR`，`admin` 系統角色不受限），比較的是角色原始權限 `loadRolePermissions`。新增其他「對另一位成員」的操作時也要呼叫 `assertTargetNotAboveActor()`。
 - 自我保護：不能停用、刪除自己（`SELF_ACTION_FORBIDDEN`）；不能把自己改成沒有 `selfLock` 碼的角色、不能從自己的角色移除 `role.manage`（`SELF_LOCK`）；`admin` 系統角色的 `adminLock` 碼不能移除（`ADMIN_LOCK`）。
 - 渠道可見範圍是 fail-closed：沒有直綁、團隊也沒授權、角色又沒有 `channel.view_all` 的成員什麼都看不到。新增成員一定要決定渠道。
 - 停用與改角色都不會立刻踢人：access token 有效到過期（預設 15 分鐘），socket 直到斷線。要立即生效只能等這些憑證過期。

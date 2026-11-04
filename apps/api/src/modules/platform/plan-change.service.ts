@@ -3,6 +3,7 @@
  * - upgrade：核准後改 tenant.planId + 失效權限快取
  * - token_topup：核准後把加購量加進 tenant.limitOverrides.monthlyTokens（在方案額度之上）
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
@@ -81,6 +82,7 @@ export async function listPendingRequests(prisma: PrismaClient) {
  */
 export async function approveRequest(
   prisma: PrismaClient,
+  redis: Redis,
   requestId: string,
   platformUserId: string,
   reviewNote?: string,
@@ -101,7 +103,7 @@ export async function approveRequest(
       data: trialExited ? { planId: plan.id, ...TRIAL_EXIT_DATA } : { planId: plan.id },
     });
     // 方案變動 → 失效權限天花板快取 + 租戶 plan 快取
-    await invalidatePlanPermissions(prisma, plan.id);
+    await invalidatePlanPermissions(redis, plan.id);
     invalidateTenantPlan(req.tenantId);
   } else {
     // token_topup：把加購量加進 limitOverrides.monthlyTokens（在方案額度之上）

@@ -42,6 +42,7 @@ vi.mock('@open333crm/core', async (importOriginal) => {
   };
 });
 
+import { redis } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { getEffectiveTenantPermissions } from '#src/services/permission.service.js';
 import { getTenantPlanId } from '#src/services/tenant-plan.cache.js';
@@ -256,6 +257,7 @@ async function tenantApp(db: Db, tenantId: string, roleCodes: string[]) {
   const roleId = db.addRole(roleCodes);
   const app = Fastify();
   app.decorate('prismaAdmin', db.prisma);
+  app.decorate('redis', redis);
   app.decorateRequest('agent', null);
   app.decorate('authenticate', async (request: never) => {
     (request as { agent: unknown }).agent = { id: 'agent-1', tenantId, roleId, role: 'ADMIN' };
@@ -271,6 +273,7 @@ async function platformApp(db: Db) {
   const { default: platformRoutes } = await import('#src/modules/platform/platform.routes.js');
   const app = Fastify();
   app.decorate('prismaAdmin', db.prisma);
+  app.decorate('redis', redis);
   app.decorateRequest('platformUser', null);
   app.decorate('authenticatePlatformSuperuser', async (request: never) => {
     (request as { platformUser: unknown }).platformUser = { id: REVIEWER, role: 'PLATFORM_SUPERUSER', mustChangePassword: false };
@@ -428,7 +431,7 @@ test('核准升級後立即生效：新方案的權限立即可用，申請記�
   const tenant = db.addTenant(light.id);
   const roleId = db.addRole(['marketing.view']);
   const permissions = async () =>
-    getEffectiveTenantPermissions(db.prisma, roleId, await getTenantPlanId(db.prisma, tenant.id));
+    getEffectiveTenantPermissions(db.prisma, redis, roleId, await getTenantPlanId(db.prisma, tenant.id));
   assert.equal((await permissions()).has('marketing.view'), false);
   const req = db.addRequest(tenant.id, { type: 'upgrade', targetPlanSlug: 'standard' });
 
@@ -458,7 +461,7 @@ test('目標方案已不存在：回 404，租戶的方案與申請都不變', a
   const req = db.addRequest(tenant.id, { type: 'upgrade', targetPlanSlug: 'retired' });
   db.removePlan(gone.id);
 
-  await rejectsWith(approveRequest(db.prisma, req.id, REVIEWER), 404);
+  await rejectsWith(approveRequest(db.prisma, redis, req.id, REVIEWER), 404);
   assert.equal(db.tenant(tenant.id).planId, light.id);
   assert.equal(db.requests[0]!.status, 'pending');
 });
@@ -471,7 +474,7 @@ test('沒有覆寫時加在方案的額度上：方案 1,000,000，加購 500,00
   const tenant = db.addTenant(plan.id);
   const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 500_000 });
 
-  const result = await approveRequest(db.prisma, req.id, REVIEWER, '加購一包');
+  const result = await approveRequest(db.prisma, redis, req.id, REVIEWER, '加購一包');
 
   assert.equal(db.tenant(tenant.id).limitOverrides.monthlyTokens, 1_500_000);
   assert.equal(result.status, 'approved');
@@ -486,7 +489,7 @@ test('已有覆寫時加在覆寫值上：覆寫 1,200,000，加購 500,000，�
   const tenant = db.addTenant(plan.id, { monthlyTokens: 1_200_000, maxAgents: 8 });
   const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 500_000 });
 
-  await approveRequest(db.prisma, req.id, REVIEWER);
+  await approveRequest(db.prisma, redis, req.id, REVIEWER);
 
   assert.deepEqual(db.tenant(tenant.id).limitOverrides, { monthlyTokens: 1_700_000, maxAgents: 8 });
 });
@@ -497,7 +500,7 @@ test('有效額度是無上限時不能加購：回 400 TOPUP_UNLIMITED，覆寫
   const tenant = db.addTenant(plan.id);
   const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 500_000 });
 
-  await rejectsWith(approveRequest(db.prisma, req.id, REVIEWER), 400, 'TOPUP_UNLIMITED');
+  await rejectsWith(approveRequest(db.prisma, redis, req.id, REVIEWER), 400, 'TOPUP_UNLIMITED');
   assert.deepEqual(db.tenant(tenant.id).limitOverrides, {});
   assert.equal(db.requests[0]!.status, 'pending');
 });
@@ -510,7 +513,7 @@ test('核准加購後立即恢復 AI：用量等於上限時被擋，核准後�
   assert.equal(await isMonthlyTokenExceeded(db.prisma, tenant.id), true);
   const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 500_000 });
 
-  await approveRequest(db.prisma, req.id, REVIEWER);
+  await approveRequest(db.prisma, redis, req.id, REVIEWER);
 
   assert.equal(await isMonthlyTokenExceeded(db.prisma, tenant.id), false);
 });
@@ -525,7 +528,7 @@ test('核准加購後再次跨越門檻：本月已發過 warning 與 critical�
   db.setUsage(tenant.id, 200_000);
   const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 300_000 });
 
-  await approveRequest(db.prisma, req.id, REVIEWER);
+  await approveRequest(db.prisma, redis, req.id, REVIEWER);
 
   // 新上限 500,000：用量從 390,000 累加到 400,000，跨越 80%
   const crossed = await checkQuotaThresholdCrossing(db.prisma, tenant.id, 10_000, 400_000);
@@ -569,8 +572,8 @@ test('已處理的申請不能再核准：回 400，申請與租戶都不變', a
   const upgrade = db.addRequest(tenant.id, { type: 'upgrade', targetPlanSlug: 'standard', status: 'rejected', reviewedAt });
   const topup = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 500_000, status: 'approved', reviewedAt });
 
-  await rejectsWith(approveRequest(db.prisma, upgrade.id, REVIEWER), 400);
-  await rejectsWith(approveRequest(db.prisma, topup.id, REVIEWER), 400);
+  await rejectsWith(approveRequest(db.prisma, redis, upgrade.id, REVIEWER), 400);
+  await rejectsWith(approveRequest(db.prisma, redis, topup.id, REVIEWER), 400);
 
   assert.equal(db.tenant(tenant.id).planId, light.id);
   assert.deepEqual(db.tenant(tenant.id).limitOverrides, {});
