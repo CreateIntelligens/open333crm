@@ -205,6 +205,21 @@ test('去識別化服務失敗', async () => {
   assert.ok(updated[0].rooms.includes(`tenant:${TENANT}:channel:${CHANNEL}`), JSON.stringify(updated[0].rooms));
 });
 
+test('個資保護設定讀取失敗時仍轉接（PR #450 審查）', async () => {
+  // 讀平台設定失敗：agent 與知識庫都丟 AI_PRIVACY_POLICY_UNAVAILABLE，轉接本身不可再因同一個讀取失敗而中止
+  const { h, handle } = setup();
+  h.state.failPrivacyRead = true;
+  await handle(messageReceived({ messageContent: '你們幾點開門' }));
+
+  assert.equal(h.state.conversation.status, 'AGENT_HANDLED');
+  assert.equal(h.state.conversation.handoffReason, 'AI 暫時無法回覆（個資保護設定無法讀取）');
+  const system = h.state.messages.filter((m) => m.senderType === 'SYSTEM');
+  assert.equal(system.length, 1);
+  assert.equal(system[0].metadata.source, 'ai_reply_failed');
+  assert.equal(handoffEvents(h).length, 1);
+  assert.deepEqual(calls.delivered, [HANDOFF_MESSAGE]);
+});
+
 test('其他錯誤', async () => {
   calls.agentProviderFails = true;
   calls.embedStatus = 500;

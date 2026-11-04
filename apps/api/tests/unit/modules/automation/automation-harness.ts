@@ -35,6 +35,8 @@ export interface HarnessState {
   failClaimCheckKind: string | null;
   /** 平台設定 ai.privacy.<tenantId>：租戶開啟 AI 個資遮罩（去識別化服務真的會被呼叫） */
   privacyEnabled: boolean;
+  /** 讀平台設定（ai.privacy.<tenantId>）時資料庫丟錯 */
+  failPrivacyRead: boolean;
   /** 租戶的自動化規則（關鍵字讓步判斷讀它） */
   automationRules: Array<Record<string, unknown>>;
 }
@@ -67,6 +69,7 @@ export function createHarness(
     failClaimKind: null,
     failClaimCheckKind: null,
     privacyEnabled: overrides.privacyEnabled ?? false,
+    failPrivacyRead: false,
     automationRules: overrides.automationRules ?? [],
   };
 
@@ -164,8 +167,10 @@ export function createHarness(
     },
     automationRule: { findMany: async () => state.automationRules },
     platformSetting: {
-      findUnique: async ({ where }: { where: { key: string } }) =>
-        state.privacyEnabled && where.key === `ai.privacy.${TENANT}` ? { value: { enabled: true } } : null,
+      findUnique: async ({ where }: { where: { key: string } }) => {
+        if (state.failPrivacyRead) throw new Error('platform_settings read failed');
+        return state.privacyEnabled && where.key === `ai.privacy.${TENANT}` ? { value: { enabled: true } } : null;
+      },
     },
     // agent 回覆的執行紀錄（agent.service 的 runAgentReply）
     agentRun: {

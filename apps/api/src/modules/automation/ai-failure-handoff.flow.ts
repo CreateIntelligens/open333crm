@@ -52,8 +52,16 @@ export async function handOffAfterAiFailure(deps: AiFailureHandoffDeps, input: A
   const botConfig = getBotConfig(conversation.channel?.settings);
 
   const reason = aiReplyFailedReason(input.kbError, input.agentError);
-  const privacy = await readAiPrivacyPolicy(prisma, tenantId);
-  const stored = fixedSystemMessageContent({ text: `自動轉接人工客服：${reason}` }, privacy.enabled);
+  // 個資設定讀不到可能正是 AI 失敗的原因（AI_PRIVACY_POLICY_UNAVAILABLE）：轉接不能因同一個讀取失敗而中止。
+  // 系統訊息是不含個資的固定文字，讀取失敗時當作已開啟遮罩（遮罩副本就是原文），照常轉接（PR #450 審查）
+  const privacyEnabled = await readAiPrivacyPolicy(prisma, tenantId).then(
+    (policy) => policy.enabled,
+    (err: unknown) => {
+      logger.warn('[AiFailureHandoff] 讀取個資保護設定失敗，系統訊息以已開啟遮罩寫入:', err);
+      return true;
+    },
+  );
+  const stored = fixedSystemMessageContent({ text: `自動轉接人工客服：${reason}` }, privacyEnabled);
   const now = new Date();
 
   const replyGuard = createBotReplyGuard(tenantPrisma, prisma, tenantId, input.inboundMessageId);
