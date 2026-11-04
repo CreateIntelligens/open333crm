@@ -42,7 +42,7 @@
 **誰能匯出。** 匯出內容是全租戶、所有渠道的資料，不依成員的渠道可見範圍篩選。所以發起、查詢與下載都要同時有 `data.export` 與 `channel.view_all`（檢視所有渠道）。只缺 `channel.view_all` 時回 403，`error.details.requiredPermission` 是 `channel.view_all`，訊息寫明需要「檢視所有渠道」。兩個權限都有的成員可以查詢與下載同租戶其他成員發起的匯出。`channel.view_all` 不是 `data.export` 的 `dependsOn`（註冊表只允許一層前置權限），角色與權限頁不會自動連動勾選，只在 `data.export` 的說明寫明。規格：`openspec/specs/tenant-data-export/spec.md`「匯出只限可查看所有渠道的成員」。
 
 1. `POST /tenant/data-export` 建立一筆 `pending` 的申請，寫稽核，把工作送進 `data-export` queue，立刻回應。
-2. workers 的 `data-export.handler.ts` 分頁讀出資料，打包成 zip：每種資料一份 JSON（保留關聯）與一份 CSV（攤平的主表），加上一份 `manifest.json`。
+2. workers 的 `data-export.handler.ts` 分頁讀出資料，打包成 zip：每種資料一份 JSON（保留關聯）與一份 CSV（攤平的主表），加上一份 `manifest.json`。CSV 的每一欄經過 `@open333crm/shared` 的 `csvRow()`：以 `=`、`+`、`-`、`@` 等開頭的文字加 `'`，日期是 ISO 字串（#423）；檔案沒有 UTF-8 BOM。
 3. 上傳到物件儲存，申請改成 `completed`，並通知申請人。
 4. `GET /tenant/data-export/:id` 查詢狀態；`GET /tenant/data-export/:id/download` 取得 15 分鐘有效的下載連結，並累計下載次數。
 5. 匯出檔保留 7 天。workers 每小時檢查一次，刪除過期的檔案。

@@ -16,6 +16,14 @@ issue #417，分支 `fix/p4-417`，change `fix-case-resolved-at-417`。以單元
 
 規則轉成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查；修正前不會寄。
 
+## 2026-11-04：CSV 匯出的欄位跳脫與公式防護（ANA-03）
+
+issue #423，分支 `fix/p4-423`，change `fix-csv-export-escaping`。以 unit 測試與測試資料庫的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ANA-03 | 已修正，從 `AUDIT.md` 移除 | 全 repo 盤點產生 CSV 的位置共三處，改為共用 `packages/shared/src/utils/csv.ts` 的 `csvCell()`／`csvRow()`（沿用優惠券 `csvCell()` 的公式防護規則，改為需要時才加引號、數字不加 `'`）。① 報表匯出 `analytics.service.ts` 的 `buildCsv()` 四種報表；`export-csv-escaping.test.ts` 的 4 項修正前以 assertion 失敗，「概覽 CSV 的負數不加單引號」以突變驗證。② 優惠券序號明細 `coupon-stats.service.ts`（原本已有公式防護）；`csv-cell.test.ts` 改測 `instancesToCsv()`，以突變（拿掉公式防護）驗證；feature 測試「CSV 欄位含逗號時不破壞格式」原本數 `","`，改用 CSV 解析比欄數。③ 租戶資料匯出 workers `simple-zip.ts` 的 `toCsv()`（原本沒有公式防護，日期被 `JSON.stringify` 多包一層引號）；`data-export-zip.test.ts` 的 2 項修正前失敗。前端不產生 CSV。`packages/kb-ingest` 的審核用 CSV 不改：檔案會被讀回匯入，且是離線工具 |
+
 ## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
 
 issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。

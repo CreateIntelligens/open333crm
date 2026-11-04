@@ -23,6 +23,11 @@ All notable changes to **open333CRM** will be documented in this file.
   - `@open333crm/shared` 新增 `caseTransitionTimestamps()`，API 的狀態轉換（按鈕、狀態下拉、升級、指派時自動改狀態）、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 共用：轉成「已解決」寫入 `resolvedAt`；從「已解決」轉成「已關閉」保留；直接關閉（沒有經過「已解決」）不算已解決；轉成其他狀態（重開）清除。
   - `update_case_status` 改成以 `tenantId` 讀目前狀態再條件更新。規則改成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查。
   - 既有資料不補值。重開後的滿意度問卷行為不變（#339）。
+- **CSV 匯出的欄位一律跳脫並防公式注入**（#423，change `fix-csv-export-escaping`，AUDIT ANA-03，健檢 HC-ANALYTICS-04）— 報表匯出原本只替工單標題加引號，聯絡人名稱、客服姓名、分類、渠道名稱原樣輸出：名稱含逗號時後面的欄位錯位，以 `=`、`+`、`-`、`@` 開頭時 Excel 當成公式。現在：
+  - 新增共用的 `csvCell()`／`csvRow()`（`@open333crm/shared`）：含逗號、雙引號、CR／LF 的欄位以雙引號包住並把 `"` 改成 `""`；以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`；數字照原樣輸出（負數不加 `'`），日期輸出 ISO 字串。
+  - 報表匯出的四種報表（概覽、案件、客服、渠道）標題列與每一欄都經過 `csvRow()`。
+  - 優惠券序號明細改用共用函式（刪掉模組內的 `csvCell()`），輸出改成需要時才加引號，解析結果不變。
+  - 租戶資料匯出 zip 的 `csv/` 檔補上公式防護；日期欄改輸出 ISO 字串（原本是帶引號的 JSON 字串）。
 - **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
   - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
   - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。

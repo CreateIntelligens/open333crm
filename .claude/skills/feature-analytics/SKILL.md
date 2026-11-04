@@ -45,6 +45,7 @@ description: >
 ## 不可破壞的規則
 - 每個 `from`/`to` 端點都要拒絕 `from > to`（主規格 `analytics-reports`），新端點要用 `analytics.routes.ts` 的 `ordered()` 包起來。
 - 匯出的 CSV 必須以 UTF-8 BOM 開頭；只對有 `analytics.export` 的成員顯示按鈕。
+- 匯出的 CSV 每一欄（含標題列）都要經過 `@open333crm/shared` 的 `csvRow()`／`csvCell()`（#423）：含逗號、引號、換行時包引號，以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字加 `'`，數字照原樣。新增報表或欄位時不要自己用 `join(',')` 拼字串；數字欄位要傳 number，不要先轉成字串，否則負數會被加 `'`。
 - `apps/api/src/modules/analytics/analytics.routes.ts` 的模組門檻是 `requireAnyPermission(['analytics.view','analytics.view.self'])`，除了 `/my` 以外每條路由都要再掛 `requirePermission('analytics.view')`。新增路由忘了掛，就變成只有 `view.self` 的客服也看得到全租戶報表。
 - service 函式收 Prisma 執行器當第一個參數；網頁走 `request.tenantPrisma`，CLI 走 `fastify.prismaAdmin`（BYPASSRLS）。所以 **每個 raw SQL 都必須自己帶 `tenantId` 條件**，不能靠 RLS。
 - 報表全部即時從原始表計算，不讀 `DailyStat`。要改成讀彙總表，先處理 DB-03 的決定與時區問題。
@@ -62,7 +63,7 @@ description: >
 1. 用 psql 對一段期間算訊息數、新工單、已解決、SLA 達成率，與 `GET /analytics/overview` 對照；同一段期間比較報表頁 KPI。另建三張工單：直接關閉、解決後重開、解決後關閉，只有第三張算入已解決（#417）。
 2. 在台灣時間凌晨 0–8 點建一筆訊息與工單，選那一天，確認趨勢圖落在正確的日期（目前會落到前一天，ANA-01）。
 3. 訊息趨勢圖 X 軸要有日期（目前 `date` 被蓋成 0，HC-ANALYTICS-01）。
-4. 四個分頁各匯出一次：BOM、欄位數一致、聯絡人名稱含逗號或以 `=` 開頭時不會跑欄或變公式（HC-ANALYTICS-04）。
+4. 四個分頁各匯出一次：BOM、欄位數一致、聯絡人名稱含逗號或以 `=` 開頭時不會跑欄、該欄以 `'` 開頭不變公式；負數與數字欄位沒有 `'`（HC-ANALYTICS-04，#423 已修正，unit 測試 `export-csv-escaping.test.ts`）。
 5. 選反日期 → 後端 400；supervisor 看得到匯出、agent 只看得到「我的績效」、只有 `analytics.view` 的自訂角色看不到匯出。
 6. CLI：agent 帳號 `POST /auth/cli/login` 拿 token 打 `/cli/analytics/overview`（RBAC-02 修好後應 403）；`open333 stats --json`。
 - 自動測試：`pnpm --filter @open333crm/api test -- analytics`、`pnpm --filter @open333crm/api test -- cli-session`、`pnpm --filter @open333crm/web test -- analytics date-range-picker sidebar`、`pnpm --filter @open333crm/cli test -- stats`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/analytics guards/permission-check`。
