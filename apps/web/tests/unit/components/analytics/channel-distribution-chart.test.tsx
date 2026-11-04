@@ -38,5 +38,5 @@ test('各渠道對話數的橫軸顯示 Instagram、Facebook、網站聊天室�
   const ticks = [...container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')].map((t) => t.textContent);
   assert.deepEqual(ticks, ['Instagram', 'Facebook', '網站聊天室']);
   const text = container.textContent ?? '';
-  for (const code of ['THREADS', 'WEBCHAT']) assert.ok(!text.includes(code), `畫面出現系統代號 ${code}`);
+  for (const code of ['THREADS', 'FB', 'WEBCHAT']) assert.ok(!text.includes(code), `畫面出現系統代號 ${code}`);
 });

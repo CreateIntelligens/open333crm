@@ -191,7 +191,7 @@ When a broadcast is created with a material, the material's channel type SHALL m
 
 ### Requirement: 群發只能使用能主動推送的渠道
 
-群發（含附券廣播與券詳情的批次發券）的渠道 SHALL 是能主動推送訊息的渠道（LINE、Facebook、Instagram）。建立或送出渠道為網站聊天室的群發時，系統 SHALL 回 400、code `CHANNEL_PUSH_NOT_SUPPORTED` 與中文原因，不建立、不送出也不排入發送。已存在的這類群發被排程或背景工作執行時，系統 SHALL 標為失敗並寫入原因，不呼叫渠道、不發券。群發頁的渠道選單 SHALL 只列能主動推送的渠道。
+群發（含附券廣播與券詳情的批次發券）的渠道 SHALL 是能主動推送訊息的渠道（LINE、Facebook、Instagram）。建立渠道為網站聊天室的群發時，系統 SHALL 回 400、code `CHANNEL_PUSH_NOT_SUPPORTED` 與中文原因，不建立資料也不排入發送。修正前已存在的這類群發：管理者按下送出時，系統 SHALL 回同樣的 400，並把群發標為失敗、寫入原因；被排程或背景工作執行時，系統 SHALL 標為失敗並寫入原因。這兩種情況都不呼叫渠道、不發券。群發頁的渠道選單 SHALL 只列能主動推送的渠道。
 
 #### Scenario: 建立網站聊天室的群發
 

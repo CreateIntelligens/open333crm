@@ -7,7 +7,7 @@
 ## Requirements
 
 ### Requirement: Plan 全域資料模型
-系統 SHALL 提供 `Plan` 全域表（slug @unique、name、features Json、limits Json、priceMonthly?、isActive；不帶 tenantId 並於 schema 註解標明）與 `Tenant.planId`（nullable FK）、`Tenant.limitOverrides`（Json）。seed MUST 以 idempotent upsert 建立 trial/light/standard/professional/enterprise 五個方案。每個 seed 方案的 features MUST 含 `channels`。既有的 trial、light 方案 features 不含 `channels` 時，migration MUST 加入 `channels`，且不改動其他欄位與其他方案。
+系統 SHALL 提供 `Plan` 全域表（slug @unique、name、features Json、limits Json、priceMonthly?、isActive；不帶 tenantId 並於 schema 註解標明）與 `Tenant.planId`（nullable FK）、`Tenant.limitOverrides`（Json）。seed MUST 以 idempotent upsert 建立 trial/light/standard/professional/enterprise 五個方案。每個 seed 方案的 features MUST 含 `channels`。既有的 trial、light 方案 features 不含 `channels` 時，migration MUST 加入 `channels`，且不改動 name、limits、allowedChannelTypes、permissionOverrides 等其他設定與其他方案（`updatedAt` 隨更新改為當下時間）。
 
 #### Scenario: seed 重複執行
 - **WHEN** 方案 seed 執行兩次

@@ -194,6 +194,8 @@ test('轉接後客人傳送關鍵字：照樣交給關鍵字規則評估，KB �
   const { h, handle } = setup({ clarifyAttempts: 2 });
   await handle(messageReceived({ messageContent: '喂？有人嗎' }));
   assert.equal(h.state.conversation.status, 'AGENT_HANDLED');
+  // 轉接時已寫一則「已為您轉接」的機器人回覆
+  const botRepliesAfterHandoff = h.state.messages.filter((m) => m.senderType === 'BOT').length;
 
   h.state.messages.push({ id: 'b0000000-0000-0000-0000-0000000000b3', senderType: 'CONTACT', contentType: 'text', content: { text: '營業時間' }, metadata: {} });
   await handle(messageReceived({ messageId: 'b0000000-0000-0000-0000-0000000000b3', messageContent: '營業時間' }));
@@ -202,5 +204,6 @@ test('轉接後客人傳送關鍵字：照樣交給關鍵字規則評估，KB �
   const second = calls.evaluate.filter((c) => c.messageId === 'b0000000-0000-0000-0000-0000000000b3');
   assert.equal(second.length, 1);
   assert.equal(second[0].messageContent, '營業時間');
-  assert.equal(h.state.messages.filter((m) => m.senderType === 'BOT').length, 1, 'KB 不再回覆');
+  assert.equal(h.state.messages.filter((m) => m.senderType === 'BOT').length, botRepliesAfterHandoff, 'KB 不再回覆');
+  assert.equal(calls.llm, 0, '轉接後不再呼叫模型');
 });
