@@ -145,7 +145,16 @@ export async function updateActivity(
     throw new AppError('結束時間必須晚於開始時間', 'INVALID_DATE_RANGE', 400);
   }
 
-  // Replace options and fields if provided
+  // 沒帶 options／fields（undefined）= 這部分不動。帶了就整批刪除重建，所以投票、競猜的空選項
+  // 與表單的空欄位一律擋下：前端曾在沒載入選項時送出 []，只改標題就刪光選項與正確答案（#424）。
+  // 活動沒有選項或欄位就無法作答，刪光不是合法的編輯結果。
+  if ((activity.type === 'POLL' || activity.type === 'QUIZ') && data.options?.length === 0) {
+    throw new AppError('投票與競猜活動至少要有一個選項', 'ACTIVITY_OPTIONS_REQUIRED', 400);
+  }
+  if (activity.type === 'FORM' && data.fields?.length === 0) {
+    throw new AppError('表單活動至少要有一個欄位', 'ACTIVITY_FIELDS_REQUIRED', 400);
+  }
+
   if (data.options) {
     await prisma.portalOption.deleteMany({ where: { activityId: id } });
     await prisma.portalOption.createMany({

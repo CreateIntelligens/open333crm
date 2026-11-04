@@ -458,3 +458,65 @@ test('事件寫不進 outbox 時，作答與積分都不留下', async () => {
     await app.close();
   }
 });
+
+// ─── 編輯草稿不清掉選項與欄位（#424，PORTAL-03） ─────────────────────────────
+
+test('只改標題時，選項、正確答案與表單欄位都保留', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-保留內容`,
+    options: [{ label: '紅茶', isCorrect: true }, { label: '綠茶' }],
+    fields: [{ fieldKey: 'name', label: '姓名', isRequired: true }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const patched = await admin(appA, 'PATCH', `/activities/${id}`, { title: `${MARK}-新標題` });
+  assert.equal(patched.statusCode, 200, patched.body);
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.equal(after.title, `${MARK}-新標題`);
+  assert.deepEqual(
+    after.options.map((o: { label: string; isCorrect: boolean }) => [o.label, o.isCorrect]),
+    [['紅茶', true], ['綠茶', false]],
+  );
+  assert.deepEqual(
+    after.fields.map((f: { fieldKey: string; label: string; isRequired: boolean }) => [f.fieldKey, f.label, f.isRequired]),
+    [['name', '姓名', true]],
+  );
+});
+
+test('投票或競猜的選項送空陣列時回 400', async () => {
+  for (const type of ['POLL', 'QUIZ'] as const) {
+    const created = await admin(appA, 'POST', '/activities', {
+      type,
+      title: `${MARK}-${type}-空選項`,
+      options: [{ label: '甲', isCorrect: true }, { label: '乙' }],
+    });
+    assert.equal(created.statusCode, 200, created.body);
+    const id = created.json().data.id as string;
+
+    const patched = await admin(appA, 'PATCH', `/activities/${id}`, { title: `${MARK}-不該存`, options: [] });
+    assert.equal(patched.statusCode, 400, `${type}: ${patched.body}`);
+
+    const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+    assert.equal(after.title, `${MARK}-${type}-空選項`, type);
+    assert.deepEqual(after.options.map((o: { label: string }) => o.label), ['甲', '乙'], type);
+  }
+});
+
+test('表單的欄位送空陣列時回 400', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'FORM',
+    title: `${MARK}-表單-空欄位`,
+    fields: [{ fieldKey: 'phone', label: '電話' }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const patched = await admin(appA, 'PATCH', `/activities/${id}`, { fields: [] });
+  assert.equal(patched.statusCode, 400, patched.body);
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.deepEqual(after.fields.map((f: { fieldKey: string }) => f.fieldKey), ['phone']);
+});

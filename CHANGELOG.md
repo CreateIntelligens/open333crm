@@ -2,6 +2,14 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-04]
+
+### Fixed
+
+- **編輯粉絲活動草稿只改標題時，選項、競猜正確答案與表單欄位不再被清空**（issue #424，AUDIT PORTAL-03，健檢 HC-PORTAL-01，change `fix-portal-edit-keeps-content`）— 編輯對話框原本拿活動列表的資料當編輯內容，列表不含選項與欄位，只改標題就儲存會送出 `options: []`，後端刪光選項，畫面沒有提示。
+  - 編輯對話框打開時以 `GET /api/v1/portal/activities/:id` 取完整活動；載入中顯示「正在載入活動內容」，載入失敗顯示原因與「重新載入」，兩種情況都不能儲存。
+  - `PATCH /api/v1/portal/activities/:id`：沒帶 `options`／`fields` 時維持不變；投票與競猜送空的 `options`、表單送空的 `fields` 回 400，不刪除既有內容，也不儲存同一個請求的其他欄位。建立活動不受影響。
+
 ## [2026-11-03]
 
 ### Fixed
