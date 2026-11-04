@@ -169,9 +169,9 @@ flowchart LR
 
 ### 領域套件摘要
 
-- `core`：Inbox、案件、聯絡人、Canvas、範本、RBAC、身分縫合、Storage、License、Logger、Redis 與 event bus。
+- `core`：Inbox、案件、聯絡人、Canvas、範本、RBAC、身分縫合、Storage、Logger、Redis 與 event bus。
 - `automation`：包裝 `json-rules-engine`，並定義事件、Facts、Operators、Actions 與 UI 描述。
-- `channel-plugins`：提供 LINE、Facebook、WebChat、Telegram 與 Threads 轉接器。只有 LINE 附帶專用背景工作，位於 `src/line/`：`worker-insight-sync`、`worker-media-download`、`worker-narrowcast-progress`。
+- `channel-plugins`：提供 LINE、Facebook、WebChat、Telegram 與 Threads 轉接器。
 - `database`：`src/` 是 Prisma 的薄封裝；主要內容位於 `prisma/schema.prisma` 與 migrations。應用程式必須遵守 `AGENTS.md` 的 Prisma client 規則。
 - `brain`：包含 LanceDB、BM25、混合檢索、記憶、摘要與語音轉文字服務，目前沒有 app 匯入。
 - `ui`：目前只有空匯出。

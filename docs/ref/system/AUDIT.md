@@ -80,7 +80,6 @@
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
 | [SEC-08](#sec-08) | 帳號與登入 | P2 | 未處理 | 圖文選單發布時伺服器直接請求背景圖網址，不擋內網，可用來探測內網服務 | 執行時確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
-| [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | [TRIAL-02](#trial-02) | 試用 | P2 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效；通用端點也能寫壞租戶的個資遮罩設定，讓該租戶所有訊息寫入失敗 | 執行時確認 |
 | [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
 | [TRIAL-04](#trial-04) | 試用 | P3 | 部分修正 | 租戶頁啟用已過期的試用租戶，只維持到下一輪排程，並重寄到期信；啟用不清除軟刪標記。延長試用已改為清除標記（`9f3c6c1a`） | 執行時確認 |
@@ -854,12 +853,9 @@ UAT 上有沒有只差大小寫的成員，還沒有查過。
 ## 金鑰與 License
 
 <a id="lic-01"></a>
-<a id="lic-02"></a>
-### LIC-01、LIC-02：兩份 LicenseService
+### LIC-01：API 使用寫死的授權資料
 
 `license.guard.ts` 使用 `apps/api/src/services/license.ts`。該實作直接建立寫死的授權資料，不會連線到授權伺服器。
-
-`packages/core/src/license/license-service.ts` 會呼叫 `LICENSE_FETCH_URL`，但沒有實際使用者。
 
 **主規格已移除。** 主規格 `license-service` 與 `team-license` 描述系統從授權伺服器取得授權資料，與現況不符。issue #217 確認功能天花板與額度改由 `tenant-plan`、`plan-limits-core`、`granular-plan-entitlement` 負責，移除了這兩份主規格。這一項沒有違反主規格，維持 P4。
 
@@ -2557,13 +2553,12 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 | --- | --- | --- |
 | `ChannelPlugin.setWebhook()` | LINE 與 Telegram 外掛有實作 | 沒有。LINE 的自動設定由 API 的 `line-webhook-setup.service.ts` 直接呼叫 LINE API |
 | `extensions.audience` | LINE 外掛有實作分眾名單 | 沒有 |
-| `line/worker-media-download.ts`、`worker-narrowcast-progress.ts`、`worker-insight-sync.ts` | 各自定義 BullMQ 佇列與 worker | 沒有任何檔案 import。LINE 媒體下載實際走 `resolveInboundMedia()` |
 | `getAllChannelPlugins()`、`hasChannelPlugin()`、`getPlugin()`、`registerPlugin` | 註冊表的輔助函式與舊名稱 | 沒有 |
 | `telegram.ts` | `TelegramPlugin` 類別，由套件入口與 `./telegram` 子路徑匯出 | 沒有註冊，見 APP-02 |
 
 與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.service.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
 
-**主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `worker-insight-sync.ts`、`worker-narrowcast-progress.ts` 與 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
+**主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
 
 ## Storage、LLM 與資料庫
 

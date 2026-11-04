@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：刪除沒有呼叫端、使用 core `redis` 的檔案（LIC-02、PKG-06）
+
+issue #443 的 B，分支 `refactor/redis-connection-workers`。以 `grep` 確認沒有呼叫端後刪除，`pnpm test` 通過。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| LIC-02 | 已修正，從 `AUDIT.md` 移除 | 刪除 `packages/core/src/license/license-service.ts` 與 core 入口的匯出。整個 repo 沒有 import 它；API 的 `services/license.ts` 是另一個同名類別，不受影響。core 的 `axios` 因此沒有使用者，一併移除。LIC-01 的標題改為只描述 API 的寫死授權資料 |
+| PKG-06 | 部分修正 | 刪除 `line/worker-media-download.ts`、`worker-narrowcast-progress.ts`、`worker-insight-sync.ts`，三者都沒有被 import，也不在 `package.json` 的 `exports`。`channel-plugins` 的 `bullmq` 因此沒有使用者，一併移除。`setWebhook()`、`extensions.audience`、註冊表的輔助函式與 `telegram.ts` 未處理 |
+
 ## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
 
 issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。

@@ -16,6 +16,10 @@ All notable changes to **open333CRM** will be documented in this file.
   - 越權檢查改呼叫新的 `loadRolePermissions()`，只查資料庫、不讀快取，所以一律用最新的權限。每次檢查多 1～2 次查詢，只發生在修改角色與成員時。
   - `storePasskeyChallenge()`、`takePasskeyChallenge()`、`sendOpsAlert()` 改由呼叫端傳入 Redis。
   - `check-tenant-ctx` 的「service 直接 import Redis client」從 6 降到 3，剩下的 `token-quota`、`chatbox`、`conversation` 隨 #337 階段 4 處理。
+- **workers 的 Redis 連線改用 `createRedisClient()`，關機時關閉通知佇列的連線**（#443 的 B）— workers 原本自己 `new IORedis`：發布 socket 事件的連線用預設值，Redis 接受連線卻不回應時一直等。現在：
+  - BullMQ 的連線用 `'queue'`，發布 socket 事件的連線用 `'command'`，Redis 不回應時，發布在 1 秒內失敗。呼叫端處理發布失敗的方式不變。
+  - 通知佇列（`lib/notification-queue.ts`）的連線改用 `'queue'`，關閉佇列時一起關閉。BullMQ 不關閉傳入的連線，原本關機時沒有關閉。
+  - 刪除沒有呼叫端的 `channel-plugins/src/line/worker-*.ts` 3 個檔案與 core 的 `license/license-service.ts`（AUDIT PKG-06 部分、LIC-02），以及因此沒有使用者的依賴：core 的 `axios`、`channel-plugins` 的 `bullmq`。core 內只剩 `EventBus` 使用模組層級的 `redis`，隨 #337 階段 6 移除。
 
 ### Fixed
 
