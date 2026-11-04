@@ -6,6 +6,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **營業時間檢查輸入，已存的設定不合法時當作沒有設定**（#337 階段 3 第九批，change `settings-input-validation-and-credential-audit`，issue #425，健檢 HC-SETTINGS-01、03、04）— `PUT /api/v1/settings/office-hours` 原本只檢查時間的形狀：跨午夜的時段、`99:99`、不存在的日期與不合法的時區都存得進去。存入不合法的時區之後，非營業時間的自動回覆整個失效，後台沒有提示。現在回 400 `VALIDATION_ERROR`，`error.details.issues` 指出欄位：
+  - 時段是 `HH:mm`（00:00～23:59），結束時間必須晚於開始時間，不支援跨過午夜。
+  - 假日是存在的日期（`YYYY-MM-DD`），最多 366 筆。
+  - 時區是有效的 IANA 時區；非營業時間的訊息是 1～1000 字。
+  - 讀取時以同一份規則解析已存的設定。設定是 `{}`（由其他設定建立 `TenantSettings` 時留下）或不合法時，回傳預設值，`enabled` 是 `false`，收訊時不自動回覆。原本 `{}` 的租戶在營業時間頁按「啟用」整頁崩潰。
+- **API 金鑰與 CLI token 的有效天數只收 1～365 天**（change `settings-input-validation-and-credential-audit`，健檢 HC-SETTINGS-06、12）— `expiresInDays` 原本沒有上限：100000 天建立到期日在 2300 年的憑證，3650000 天讓日期溢位、回 500。現在其他值回 400 `VALIDATION_ERROR`，錯誤訊息寫明範圍。API 金鑰不送有效天數時仍然永不過期，CLI token 仍然是 30 天。
+- **API 文件列出路由檔內註冊的子 plugin**（#337 階段 3 第九批）— 部署時產生 `openapi.json` 的 `openapi-inventory.mjs` 原本只讀 `index.ts` 註冊的路由檔。路由檔內以 `fastify.register()` 掛上的子 plugin 不在文件中，例如平台的 `GET`、`PATCH /api/v1/platform/tenants/:id/ai-privacy`。現在產生器也讀子 plugin：路徑接在外層的前綴後面。外層以 `addHook` 驗證登入，或註冊時傳入含驗證的 guard 時，子 plugin 的路由標示需要登入。
+- **撤銷 API 金鑰與 CLI token 時，路徑的 id 先檢查是不是 UUID**（#337 階段 3 第九批，健檢 HC-SETTINGS-11）— `DELETE /api/v1/settings/api-keys/:id`、`DELETE /api/v1/settings/cli-sessions/:id` 的 id 不是 UUID 時，原本查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出欄位。現在回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
+- **同時第一次讀取營業時間或追蹤設定時不再回 409**（#337 階段 3 第九批）— 租戶還沒有 `TenantSettings` 時，`GET /api/v1/settings/office-hours` 與 `GET /api/v1/settings/tracking` 會建立一列。兩個請求同時第一次讀取時，後寫入的請求原本撞到 `tenantId` 的唯一約束，回 409 `CONFLICT`「資料重複」。現在改用 `createOrFindExisting()`，後到的請求讀取對方建立的那一列。
 - **單筆渠道路由套用渠道可見範圍**（#408，change `scope-single-channel-routes-408`）— 沒有 `channel.view_all` 的成員對看不到的渠道讀取、修改、換憑證、測試連線、刪除、讀嵌入碼或導流識別、改 WebChat 外觀，現在都回 404。讀取要 `read_only`，管理操作要 `full`，不足回 403 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`。`GET /channels/:id/embed-code` 改為需要 `channel.view`；`POST /channels/webhook-base-url` 會改寫全租戶渠道，改為另需 `channel.view_all`，渠道管理頁對其他成員不顯示套用欄位。
 - **群發的發送權限**（#409 MKT-02、MKT-03，change `require-broadcast-send-permissions`）— 建立帶排程時間的群發要 `marketing.broadcast`，附上優惠券要 `coupon.issue`，附券群發的立即發送也要 `coupon.issue`；預估附券群發人數要 `coupon.view`。排程器到期前與附券群發的佇列 job 執行前，都以排定送出的成員當下的權限重新檢查，成員停用或失去權限時不送出，群發標為失敗並顯示原因。新增 `broadcasts.scheduledById` 欄位。建立群發的表單在沒有權限時停用排程與附券欄位並說明，表單開著時失去權限也不送出先前填的券與排程時間。
 - **租戶連線收回平台層資料表權限**（#412）— migration `20261103110000_revoke_app_tenant_platform_tables` 讓 `app_tenant` 對 `tenants`、`plans`、`platform_settings`、`model_pricings` 只剩 `SELECT`，完全收回 `platform_users`、`platform_audit_logs`、`trial_signups`、`_prisma_migrations`。租戶路徑不能再讀平台帳號的密碼雜湊，也不能改個資遮罩、試用政策或價目表。新表不再自動授權給 `app_tenant`，新的租戶表要在 migration 明確 `GRANT`（AGENTS.md 與 RLS skill 已寫明）。部署時 migration 必須以 owner（`MIGRATE_DATABASE_URL`）執行。
@@ -20,6 +29,21 @@ All notable changes to **open333CRM** will be documented in this file.
 - **停用的租戶對外完全停止活動**（#410 AUTH-11，change `stop-disabled-tenant-activity-410`）— 停用（含試用到期）的租戶：網站聊天室建立工作階段、送訊息與訪客 socket 回 404，`processInboundMessage()` 共用入口也丟棄進站事件；到期的排程群發與附券群發佇列 job 不送出，群發標為失敗（`TENANT_DISABLED`）並顯示原因；不寄滿意度問卷。
 - **免費試用與輕量版方案可以使用渠道**（#411 PLAN-14，change `enable-channels-on-trial-light-411`）— `trial`、`light` 方案加入 `channels` 功能，租戶管理員可以檢視與建立渠道。既有方案由 migration `20261103120000_enable_channels_on_trial_light` 補上（只加 `channels`，不動其他欄位）。渠道管理頁收到 403 時顯示「沒有權限」，不再顯示成「沒有渠道」；沒有 `channel.create` 的成員看不到新增渠道、設定精靈與 Facebook 連結按鈕（RBAC-11 渠道頁部分）。
 - **報表與素材等畫面不再顯示渠道系統代號（THREADS、FB、WEBCHAT），改顯示 Instagram、Facebook、網站聊天室** — 新增 `@open333crm/shared` 的 `channelDisplayName()`，前後端共用一份對照（系統代號維持 `THREADS` 不改）。改用的地方：報表「渠道分析」的渠道訊息分布與各渠道對話數、「訊息趨勢」（並補上原本沒有的 Instagram 線）、素材庫列表與素材編輯頁、成員管理的可用渠道、從收件匣建立工單的來源說明、收件匣篩選、聯絡人合併與時間軸、工單詳情、渠道徽章；後端的「不支援的渠道類型」「此渠道類型不支援發送廣播」錯誤、workers 的「系統未載入渠道外掛」送出失敗原因，以及抓不到個人資料時新聯絡人的預設名稱（例如「Instagram User 123456」）。**渠道報表 CSV（`POST /analytics/export`，`reportType: channels`）的「渠道」欄改寫顯示名稱**：原本是 `THREADS`、`FB`、`WEBCHAT`，現在是 `Instagram`、`Facebook`、`網站聊天室`（`LINE` 不變）；有用這個欄位值做試算表公式或比對的人要改用新名稱。報表 API 的 JSON 仍回系統代號，CLI `open333 stats` 不受影響。網站聊天室在渠道徽章、收件匣篩選等處原本顯示「WebChat」，現在顯示「網站聊天室」。後台與手冊的產品名稱統一為「網站聊天室」（渠道設定頁的嵌入碼與網頁版連結、新增渠道與設定精靈的選項、自動化條件、群發分群、模擬器、聯絡人綁定連結與網站聊天室回給訪客的錯誤訊息；原本混用 WebChat、網頁聊天、網站客服）；收件匣模板分類「FB」改顯示「Facebook」，領券連結 API 的渠道類型錯誤訊息改寫為「LINE、Facebook 或 Instagram（API 值：LINE、FB、THREADS）」。
+
+### Added
+
+- **建立與撤銷 API 金鑰、CLI token 時寫租戶稽核**（change `settings-input-validation-and-credential-audit`，AUDIT AUD-01）— 原本這兩種長效憑證的建立與撤銷都沒有稽核，事後查不出是誰建立的。現在稽核與憑證在同一個交易寫入，不含明文：
+  - 設定頁的操作寫 `settings.update`，`payload.section` 是 `api-keys` 或 `cli-sessions`，`payload.operation` 是 `create` 或 `revoke`。
+  - `POST /api/v1/auth/cli/login` 與 `/auth/cli/logout` 寫 `cli_session.login`、`cli_session.logout`，`targetId` 是 token 的 id。
+  - 撤銷不存在、屬於另一個租戶或已經撤銷的憑證時，不寫稽核。已經撤銷的 CLI token 再撤銷一次，不再覆寫原本的撤銷時間；已經停用的 API 金鑰再撤銷一次，仍回 200。
+
+### Changed
+
+- **營業時間、追蹤設定、API 金鑰與 CLI 連線改為入口開交易**（#337 階段 3 第九批）— 這四組設定路由原本把 `request.tenantPrisma` 傳給 service，每個查詢各自一個交易。現在每個請求在 flow 開的一個租戶交易內完成（AGENTS.md 結構規則 2）。
+  - 路由從 `settings.routes.ts` 移到各自的路由檔，由 `settings.routes.ts` 以子 plugin 註冊，權限檢查不變。
+  - 營業時間與追蹤設定的稽核和修改在同一個交易寫入：稽核寫入失敗時，修改也不寫入。原本稽核寫入失敗只記 log，修改照樣寫入。
+  - 建立 API 金鑰與 CLI token 時，先在交易外產生並以 bcrypt 雜湊，再開交易寫入。
+  - CLI 登入與登出（`POST /auth/cli/login`、`/auth/cli/logout`）改以租戶交易寫入 CLI token，不再使用 BYPASSRLS 的連線。驗證金鑰與 token 時還不知道租戶，仍然使用 BYPASSRLS 的連線。
 
 ## [2026-11-02]
 

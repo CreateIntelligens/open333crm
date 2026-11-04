@@ -23,6 +23,19 @@ describe('OpenAPI 產生器讀得懂所有已註冊的路由', () => {
       assert.ok(document.paths['/api/v1/fan/member-binding']?.post, '顧客端綁定須出現在文件中');
       assert.ok(document.paths['/api/v1/fan/member-binding/fields']?.get, '顧客端綁定欄位須出現在文件中');
       assert.ok(document.paths['/api/v1/member-binding']?.get, '後台會員綁定設定須出現在文件中');
+      // 路由檔內以 register 掛上的子 plugin（platform 的 ai-privacy）
+      const aiPrivacy = document.paths['/api/v1/platform/tenants/{id}/ai-privacy'];
+      assert.ok(aiPrivacy?.get && aiPrivacy?.patch, '平台的租戶個資遮罩設定須出現在文件中');
+      assert.deepEqual(aiPrivacy.get.security, [{ BearerAuth: [] }], '個資遮罩設定須標示需要登入');
+      // settings.routes.ts 以子 plugin 掛上各資源的路由檔，沿用 /api/v1/settings 與整組的登入檢查
+      for (const [path, method] of [
+        ['/api/v1/settings/office-hours', 'put'],
+        ['/api/v1/settings/tracking', 'put'],
+        ['/api/v1/settings/api-keys/{id}', 'delete'],
+        ['/api/v1/settings/cli-sessions', 'post'],
+      ] as const) {
+        assert.deepEqual(document.paths[path]?.[method]?.security, [{ BearerAuth: [] }], `${method} ${path} 須出現在文件中並標示需要登入`);
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

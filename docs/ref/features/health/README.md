@@ -63,7 +63,7 @@
 | HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | #418 | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測 |
 | HC-ANALYTICS-01 | 未收錄 | — | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測；main 的 `093b7e75` 已修正 |
 | HC-PORTAL-01 | [PORTAL-03](../../system/AUDIT.md#portal-03) | #424 | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測；main 仍存在 |
-| HC-SETTINGS-01 | [HOURS-01](../../system/AUDIT.md#hours-01) | #425 | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測 |
+| HC-SETTINGS-01 | HOURS-01（已修正並從 AUDIT 移除） | #425，已修正（#337 第九批） | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測；修正（change `settings-input-validation-and-credential-audit`）以 feature 測試驗證 |
 | HC-PLATFORM-SETTINGS-02 | [RLS-10](../../system/AUDIT.md#rls-10) | #412 | `rls_roles_and_grants` migration 把整個 schema 授權給 `app_tenant`：租戶連線能讀平台帳號的密碼雜湊、改價目表與其他租戶的平台設定。要先有注入點才能利用，但 RLS 少了一道防線 | 本機實測（交易內，已 ROLLBACK） |
 | HC-INBOX-01 | [CONV-04](../../system/AUDIT.md#conv-04) | #422 | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 本機與 UAT 實測 |
 | HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | #417 | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值 |

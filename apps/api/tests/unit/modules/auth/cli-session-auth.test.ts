@@ -14,8 +14,10 @@ import { loadEnvConfig } from '#src/config/env.js';
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 import {
   createCliSession,
+  generateCliToken,
   verifyCliSession,
 } from '#src/modules/auth/cli-session.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 import { hashPassword } from '#src/shared/utils/password.js';
 
 import { test, vi } from 'vitest';
@@ -155,6 +157,8 @@ function createPrismaMock(agent: ReturnType<typeof createAgent>) {
       updateMany: mockFn(async ({ where, data }) => {
         let count = 0;
         for (const session of sessions) {
+          // revokeCliSession() 只撤銷還沒撤銷的 token（where.revokedAt 是 null）
+          if (where.revokedAt === null && session.revokedAt) continue;
           if (session.id === where.id && session.tenantId === where.tenantId) {
             Object.assign(session, data);
             count++;
@@ -162,6 +166,10 @@ function createPrismaMock(agent: ReturnType<typeof createAgent>) {
         }
         return { count };
       }),
+    },
+    // CLI 登入與登出在同一個交易寫稽核（change settings-input-validation-and-credential-audit）
+    tenantAuditLog: {
+      create: mockFn(async ({ data }) => data),
     },
   };
   return prisma;
@@ -185,10 +193,12 @@ async function testCliSessionServiceLifecycle() {
   const agent = createAgent(await hashPassword('secret'));
   const prisma = createPrismaMock(agent);
 
-  const { token, session } = await createCliSession(prisma as never, {
-    tenantId: agent.tenantId,
+  const generated = await generateCliToken();
+  const { token } = generated;
+  const session = await createCliSession(createMockTenantCtx(prisma, agent.tenantId).ctx, {
     agentId: agent.id,
     name: 'local-dev',
+    token: generated,
   });
 
   assert.match(token, /^cli_/);
@@ -291,11 +301,13 @@ async function testCliAnalyticsRoutes() {
 
   try {
     // 預設 scope 已包含 cli:analytics:read（b493c17），這裡刻意建立沒有它的 token
-    const { token } = await createCliSession(prisma as never, {
-      tenantId: agent.tenantId,
+    const generated = await generateCliToken();
+    const { token } = generated;
+    await createCliSession(createMockTenantCtx(prisma, agent.tenantId).ctx, {
       agentId: agent.id,
       name: 'analytics-test',
       scopes: ['cli:status', 'cli:apis'],
+      token: generated,
     });
 
     const invalid = await app.inject({
