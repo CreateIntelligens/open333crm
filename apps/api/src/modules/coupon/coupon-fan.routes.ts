@@ -12,7 +12,6 @@ import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod/v3';
 import { AppError } from '../../shared/utils/response.js';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { openInstance } from './coupon-redeem.service.js';
 import { getFanCoupon } from './coupon-fan.service.js';
 import { verifyLineIdToken } from './line-id-token.js';
@@ -78,7 +77,7 @@ const idParams = z.object({ id: z.string().uuid('券識別格式不正確') });
 export default async function couponFanRoutes(app: FastifyInstance, opts: CouponFanRoutesOptions = {}) {
   // 交易由 coupon-wallet.flow 以顧客憑證或票券權杖的租戶開（公開端點沒有登入的座席）
   const deps = (): WalletFlowDeps => ({
-    store: getBindingStore(),
+    store: app.redis,
     prisma: app.prisma,
     io: app.io,
     ...(opts.sendEmailCode ? { sendEmailCode: opts.sendEmailCode } : {}),

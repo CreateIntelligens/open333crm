@@ -3,7 +3,7 @@
  * 「顧客須完成歸戶驗證才能開啟票券夾」）：POST /fan/coupons/session（deviceTokens）、
  * /session/code、/session/code/verify。
  *
- * 走真實路由；票券權杖與驗證碼存真實 Redis（顧客端路由用 getBindingStore），寄信以注入函式取代。
+ * 走真實路由；票券權杖與驗證碼存真實 Redis（顧客端路由用 fastify.redis），寄信以注入函式取代。
  * 資料以 MARK 標記，afterAll 刪除。
  */
 import assert from 'node:assert/strict';
@@ -14,7 +14,7 @@ import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { withTenant } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
-import { getBindingStore } from '#src/modules/identity-binding/binding-code.js';
+import redisPlugin from '#src/plugins/redis.plugin.js';
 import couponFanRoutes from '#src/modules/coupon/coupon-fan.routes.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
@@ -45,7 +45,7 @@ const post = (url: string, payload: unknown) =>
 const inboxDeps = (): InboxFlowDeps => ({
   prisma,
   io: testIo,
-  store: getBindingStore(),
+  store: app.redis,
   webBaseUrl: 'https://crm.example.com',
   deliver: async () => ({ sent: true }),
 });
@@ -95,6 +95,7 @@ beforeAll(async () => {
 
   app = Fastify();
   await app.register(errorHandlerPlugin);
+  await app.register(redisPlugin);
   app.decorate('prisma', prisma);
   app.decorate('io', testIo as never);
   await app.register(couponFanRoutes, {

@@ -288,6 +288,19 @@ A service obeys these rules:
   failure, which code does the step again, and the guarantee. Change `outbox-event-delivery`,
   `design.md` section 14, shows such a table.
 
+**Redis connections.** In the API process, an entry point gets the Redis connection for
+commands (cache, counters, short-lived codes) from `fastify.redis` and gives it to the flow as a
+parameter. Do not import a Redis client in a module. To create a connection in another place,
+call `createRedisClient(url, purpose)` from `@open333crm/core`:
+
+- `'command'`: for commands. When Redis refuses the connection or does not reply, a command
+  fails in 1 second or less.
+- `'queue'`: for BullMQ and for a subscriber. A command waits until Redis replies, as BullMQ
+  requires.
+
+Do not create a connection with `new IORedis` (#443). `fastify.redis` does not connect when the
+application starts. It connects at the first command, and it closes when Fastify closes.
+
 A flow and a background job obey these rules:
 
 - Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant),
@@ -361,8 +374,8 @@ so these functions do not change its result.
   is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
   - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
-  - a reference from a service file to a Redis client (`redis` or the whole module from
-    `@open333crm/core`, or `ioredis`) or to an LLM module (`ai/llm.service.js`, a file in
+  - a reference from a service file to a Redis client (`redis`, `createRedisClient` or the
+    whole module from `@open333crm/core`, `ioredis`, or `lib/redis-client`) or to an LLM module (`ai/llm.service.js`, a file in
     `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
     module-level clients inside the transaction, so a flow receives them as dependencies instead.
 
@@ -714,6 +727,23 @@ that no code registers. Thus a renamed or removed id does not stay in Redis.
 
 ## Conventions
 
+- **Do not reinvent existing code (MANDATORY)**: before you write a helper, a schema, a guard, a
+  flow or a component, search the repo for code that already does the job, and use it. Extend the
+  existing code if it does almost the job. Do not write a second version next to it.
+  - **Why**: two versions of one rule diverge. A later fix reaches one version only, and the other
+    version keeps the bug. Reviews in this repo have found new SSRF checks written next to
+    `isBlockedUrl()`, and new handoff code written next to `handOffConversation()`.
+  - **How to search**: `grep -rn` for the function name, the error code and the Chinese message
+    text; read the skill of the feature area (`.claude/skills/feature-<id>/`); run
+    `node scripts/feature-impact.mjs --files <file>` to find the area that owns the code.
+  - **Common helpers**: `isBlockedUrl()` (SSRF check, `apps/api/src/modules/webhook/downstream-forwarder.ts`),
+    `handOffConversation()` (hand a conversation to an agent, `apps/api/src/modules/automation/handoff.flow.ts`),
+    `claimSideEffect()` (`packages/core/src/outbox/claims.ts`), `createOrFindExisting()` and
+    `claimOne()` (`packages/core/src/db/db-invariants.ts`), `paginationSchema`
+    (`apps/api/src/shared/utils/pagination.ts`), `int4Schema`
+    (`apps/api/src/shared/utils/numeric-bounds.ts`), `AppError` (`apps/api/src/shared/utils/response.ts`).
+  - If the existing code cannot be reused (for example, it breaks a structure rule), write in the
+    pull request why, and move the callers to the new code in the same change.
 - **CHANGELOG Maintenance (MANDATORY)**: when you implement a feature (`feat`), a bug fix (`fix`)
   or an architecture change, you **MUST update `CHANGELOG.md`**. A pull request that changes only
   docs, OpenSpec files or tests does not need an entry. Write the entry under the latest release

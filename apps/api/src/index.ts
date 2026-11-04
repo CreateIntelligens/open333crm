@@ -26,6 +26,7 @@ import { usedPermissionCodes } from './guards/rbac.guard.js';
 import { loadEnvConfig } from './config/env.js';
 import { installZodChineseLocale } from './config/zod-locale.js';
 import prismaPlugin from './plugins/prisma.plugin.js';
+import redisPlugin from './plugins/redis.plugin.js';
 import cookiePlugin from './plugins/cookie.plugin.js';
 import authPlugin from './plugins/auth.plugin.js';
 import corsPlugin from './plugins/cors.plugin.js';
@@ -112,7 +113,6 @@ import { agentVisibilityResolver } from './services/channel-visibility.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { createCouponBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
-import { getBindingStore } from './modules/identity-binding/binding-code.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
@@ -172,6 +172,7 @@ export async function bootstrap() {
   await app.register(corsPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(prismaPlugin);
+  await app.register(redisPlugin);
   await app.register(cookiePlugin);
   await app.register(authPlugin);
   await app.register(socketPlugin);
@@ -269,7 +270,7 @@ export async function bootstrap() {
       [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
       // 附券廣播「立即發送」與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
       [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createCouponBroadcastJobRunner({
-        prisma: app.prisma, adminPrisma: app.prismaAdmin, io: app.io, store: getBindingStore(), visibilityOf: agentVisibilityResolver(app.prismaAdmin),
+        prisma: app.prisma, adminPrisma: app.prismaAdmin, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin),
       })) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
@@ -297,7 +298,7 @@ export async function bootstrap() {
   // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
   setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, {
     prisma: app.prisma,
-    store: getBindingStore(),
+    store: app.redis,
     visibilityOf: agentVisibilityResolver(app.prismaAdmin),
   });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);

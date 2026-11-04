@@ -11,7 +11,7 @@ import { z } from 'zod/v3';
 import { AppError, success } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import { tenantScopedClient, withTenant } from '../../lib/tenant-db.js';
-import { getBindingStore, type BindingStore } from './binding-code.js';
+import type { BindingStore } from './binding-code.js';
 import type { BindingDeps } from './binding-common.js';
 import {
   describeRegistration,
@@ -59,7 +59,7 @@ export function createRegistrationRoutes(spec: RegistrationRouteSpec) {
   const expired = () => new AppError('連結已失效，請回到對話重新取得', spec.expiredCode, 410);
 
   return async function registrationRoutes(fastify: FastifyInstance, opts: RegistrationRoutesOptions) {
-    const store = () => opts.store ?? getBindingStore();
+    const store = () => opts.store ?? fastify.redis;
     const deps = (): BindingDeps => ({
       store: store(),
       io: fastify.io,

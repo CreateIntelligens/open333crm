@@ -4,8 +4,30 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-04]
 
+### Changed
+
+- **Redis 連線改由同一個函式建立，一般指令在 Redis 故障時 1 秒內失敗**（#443，change `unify-redis-connection-api`）— API 原本有兩條設定不同的一般用途連線：`@open333crm/core` 的 `redis` 在 Redis 連不上時讓指令一直等，`getSharedRedis()` 在 Redis 接受連線卻不回應時也一直等。權限快取、token 額度、chatbox 認領在租戶交易內使用前者，交易可能超過 5 秒的逾時。現在：
+  - core 新增 `createRedisClient(url, purpose)`。`'command'` 用於一般指令：Redis 拒絕連線時約 0.2 秒失敗，不回應時 1 秒失敗。`'queue'` 用於 BullMQ 與訂閱，指令等到 Redis 恢復。
+  - core 的 `redis` 與 `getSharedRedis()` 改用 `'command'`。呼叫端原本就處理 Redis 失敗，行為只差在不再一直等。`EventBus` 的訂閱改用自己的 `'queue'` 連線。
+  - API 新增 `fastify.redis`（`plugins/redis.plugin.ts`），與 `getSharedRedis()` 是同一條連線。建立應用程式時不連 Redis，關閉 Fastify 時一起關閉，原本關機時沒有關閉。
+  - 登入失敗計數與綁定代碼的入口改從 `fastify.redis` 取得連線，刪除 `getLoginAttemptStore()`。webhook 收訊流程仍用 `getBindingStore()`，隨 #337 階段 4 改為注入。
+
 ### Fixed
 
+- **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
+  - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
+  - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。
+  - `GET /api/v1/conversations` 新增 `search` 參數：去頭尾空白後最多 100 字（超過回 400 `VALIDATION_ERROR`），不分大小寫比對聯絡人名稱或對話中任一則訊息的文字；與其他篩選、tenantId、渠道可見範圍同時套用。搜尋框改用這個參數。
+  - socket 更新後不再符合目前狀態、「未讀」或「我的」篩選的對話（讀過、改派、結案）從列表移除，選取中的對話保留（HC-INBOX-08）。搜尋關鍵字裡的 `%`、`_` 與反斜線當成一般文字，不再當成萬用字元。
+  - 篩選列的「篩選結果」改顯示後端的總數。列表載入失敗時顯示「對話列表載入失敗」與重試，不再顯示成「沒有對話」。
+  - 操作手冊第 1 章的 50 筆限制說明同步更新。聊天視窗只載最近 50 則訊息（HC-INBOX-07）未改。
+- **自動化規則的條件填純數字時會觸發**（#418 AUTO-06，change `fix-automation-numeric-text-conditions`，健檢 HC-AUTOMATION-01）— 規則編輯器原本把「8888」「1」、電話這類純數字的條件值一律存成數字，規則引擎對「訊息內容」「聯絡人名稱」「聯絡人標籤」等文字欄位比對數字時永遠不成立，規則不觸發，「試試看」也顯示不會觸發。現在編輯器依欄位型別存值：只有數字欄位存數字、是／否欄位存布林，文字欄位保留字串。規則引擎在文字欄位遇到數字比較值時當成文字比對，已存成數字的舊規則不必重存就恢復觸發，workers 與「試試看」結果一致。數字欄位（例如開啟案件數）的比對不變。
+- **編輯粉絲活動草稿只改標題時，選項、競猜正確答案與表單欄位不再被清空**（issue #424，AUDIT PORTAL-03，健檢 HC-PORTAL-01，change `fix-portal-edit-keeps-content`）— 編輯對話框原本拿活動列表的資料當編輯內容，列表不含選項與欄位，只改標題就儲存會送出 `options: []`，後端刪光選項，畫面沒有提示。
+  - 編輯對話框打開時以 `GET /api/v1/portal/activities/:id` 取完整活動；載入中顯示「正在載入活動內容」，載入失敗顯示原因與「重新載入」，兩種情況都不能儲存。
+  - `PATCH /api/v1/portal/activities/:id`：沒帶 `options`／`fields` 時維持不變；投票與競猜送空的 `options`、表單送空的 `fields` 回 400，不刪除既有內容，也不儲存同一個請求的其他欄位。建立活動不受影響。
+- **粉絲活動不能在沒有選項或欄位時發布**（issue #447，change `fix-portal-publish-requires-content`）— 原本投票、競猜沒有選項或表單沒有欄位也能發布，粉絲打開後無法作答。
+  - `POST /api/v1/portal/activities/:id/publish`：投票與競猜至少要有一個選項、表單至少要有一個欄位，否則回 400（訊息「投票與競猜活動至少要有一個選項」／「表單活動至少要有一個欄位」），活動維持草稿；後台「發布」按鈕以 alert 顯示這段訊息。
+  - 建立草稿不變，仍可先建立空草稿再補內容。檢查與編輯草稿（#424）共用同一個函式。
 - **部署後保留平台後台對方案的修改**（#441 PLAN-20，change `preserve-plan-edits-on-seed-441`）— API 容器每次啟動都跑 seed，原本會把 `trial`、`light`、`standard`、`professional`、`enterprise` 五個方案的名稱、功能、上限與月費改回原始碼的值，平台在 `/admin/plans` 的修改下次部署就消失，沒有任何提示。現在 seed 只建立資料庫還沒有的方案，已存在的方案不寫入。程式要改既有方案的內容時，改用只改目標欄位、可重複執行的資料 migration（規則見 `docs/ref/features/platform/PLANS.md`）。
 - **AI 與知識庫回覆都失敗時轉接真人**（#445 KB-06，change `handoff-on-ai-reply-failure-445`）— 去識別化服務、embedding 服務或模型供應商短暫故障時，同一則客人訊息的 AI agent 回覆與知識庫回覆都失敗，原本只記 log：客人收不到任何回覆，對話停在「Bot 處理中」，客服也不知道要接手。現在 agent 沒有回覆、知識庫回覆又因錯誤失敗時，對話轉真人：狀態改為真人處理，轉接原因寫「AI 暫時無法回覆（去識別化服務無法使用）」「（AI 月額度已用完）」「（AI 服務發生錯誤）」等（不寫錯誤內容），收件匣顯示轉接系統訊息並通知客服，客人收到渠道設定的轉接訊息。轉接的系統訊息是固定文字，不需要去識別化服務。同一則訊息重送只轉接一次，已回覆過的訊息不轉接；轉接寫入失敗時交給佇列重試。關鍵字規則讓步、Bot 模式關閉、知識庫自動回覆停用等正常不回覆的情況不轉接。不會自動重送 AI 回覆，避免客人收到兩則。
 

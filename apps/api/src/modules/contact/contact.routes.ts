@@ -16,7 +16,6 @@ import {
 } from './contact.flow.js';
 import { addTagToTargetFlow, removeTagFromTargetFlow } from '../tag/tag.flow.js';
 import { actorOf } from '../../lib/request-actor.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import {
   findBindingActorForConversation,
   getIdentityBindingSettings,
@@ -212,7 +211,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
 
       // 不包在交易內：發碼會推播到 LINE/FB 並寫 Redis，外部呼叫放進交易會拖長交易、
       // 逾時回滾時顧客已收到代碼但對話紀錄消失
-      const result = await issueBindingCode(db, { store: getBindingStore(), io: fastify.io }, {
+      const result = await issueBindingCode(db, { store: fastify.redis, io: fastify.io }, {
         tenantId,
         channelId: conversation.channelId,
         channelType: conversation.channel.channelType,
@@ -258,7 +257,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       if (!actor) throw new AppError('找不到此聯絡人在這個對話的渠道身分', 'NOT_FOUND', 404);
 
       // 不包在交易內：推播到渠道是外部呼叫（同傳送綁定連結）
-      const result = await issueEmailRegistrationLink(db, { store: getBindingStore(), io: fastify.io }, actor, 'agent');
+      const result = await issueEmailRegistrationLink(db, { store: fastify.redis, io: fastify.io }, actor, 'agent');
 
       await writeTenantAudit(request.tenantPrisma, {
         tenantId,
@@ -296,7 +295,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       if (!actor) throw new AppError('找不到此聯絡人在這個對話的渠道身分', 'NOT_FOUND', 404);
 
       // 不包在交易內：推播到渠道是外部呼叫（同傳送綁定連結）
-      const result = await issuePhoneRegistrationLink(db, { store: getBindingStore(), io: fastify.io }, actor, 'agent');
+      const result = await issuePhoneRegistrationLink(db, { store: fastify.redis, io: fastify.io }, actor, 'agent');
 
       await writeTenantAudit(request.tenantPrisma, {
         tenantId,

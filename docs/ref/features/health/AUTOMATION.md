@@ -20,7 +20,7 @@
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-AUTOMATION-01 | P1 | 規則編輯器把純數字的條件值轉成數字存檔，「訊息內容」「聯絡人名稱」「聯絡人標籤」這類字串欄位的條件因此永遠不成立。訂單編號、選單數字（「1」「2」）、電話這類最常見的關鍵字都受影響；「試試看」也顯示不會觸發，管理員只會以為規則壞了 | **實測**。本機 admin 在 `/dashboard/automation/new` 建「收到訊息、訊息內容 包含 8888、新增標籤」並啟用；送出的 body 是 `"value":8888`（數字），重新整理後畫面仍顯示 8888。模擬進站訊息「我的單號 8888 還有 7777」：這條規則沒有貼標；同時用 API 存入字串 `"7777"` 的對照規則有貼標。`POST /rules/:id/test {facts:{"message.text":"單號 8888"}}` 回 `matched:false` | `apps/web/src/lib/automation/qb-to-engine.ts:9-16,82`（`parseValue`）、`packages/automation/src/rules/operators.ts`（`contains` 遇到非字串比較值回 false） | AUTO-06 |
+| HC-AUTOMATION-01 | P1 | 規則編輯器把純數字的條件值轉成數字存檔，「訊息內容」「聯絡人名稱」「聯絡人標籤」這類字串欄位的條件因此永遠不成立。訂單編號、選單數字（「1」「2」）、電話這類最常見的關鍵字都受影響；「試試看」也顯示不會觸發，管理員只會以為規則壞了 | **實測**。本機 admin 在 `/dashboard/automation/new` 建「收到訊息、訊息內容 包含 8888、新增標籤」並啟用；送出的 body 是 `"value":8888`（數字），重新整理後畫面仍顯示 8888。模擬進站訊息「我的單號 8888 還有 7777」：這條規則沒有貼標；同時用 API 存入字串 `"7777"` 的對照規則有貼標。`POST /rules/:id/test {facts:{"message.text":"單號 8888"}}` 回 `matched:false` | `apps/web/src/lib/automation/qb-to-engine.ts:9-16,82`（`parseValue`）、`packages/automation/src/rules/operators.ts`（`contains` 遇到非字串比較值回 false） | AUTO-06；#418 已修正（change `fix-automation-numeric-text-conditions`） |
 | HC-AUTOMATION-02 | P2 | SLA 規則路徑和一般路徑不一致：不做契約驗證（含已停用動作的 SLA 規則不會被略過），也不把 `contactId` 傳給動作，契約允許的「新增標籤」「移除標籤」在 SLA 規則永遠被略過（log「no contact in context」）。手冊第 6 節已提醒不要用 | 讀程式（子代理對照） | `apps/workers/src/handlers/sla.handler.ts:226-260`、`apps/workers/src/lib/automation-actions.ts:321` | AUTO-07 |
 | HC-AUTOMATION-03 | P2 | 「聯絡人加標籤」觸發的規則沒有「剛貼上的標籤」條件可用，只能用「聯絡人標籤 包含 X」，而這個條件看的是聯絡人身上全部標籤。之後聯絡人每被貼上**任何**標籤，規則都再執行一次 | **實測**。建 `contact.tagged` 規則（條件：聯絡人標籤 包含 hc-automation-tagM，動作：通知主管）→ 人工貼 tagM，admin、supervisor 各收到 1 則通知 → 再貼無關的 tagN → 又各收到 1 則（共 4 則） | `apps/api/src/modules/automation/automation.worker.ts:479`（只傳 contactId，丟掉 tagId/tagName）、`packages/automation/src/contracts/facts.ts`（沒有對應事實） | AUTO-08 |
 | HC-AUTOMATION-04 | P2 | 試跑與執行紀錄只驗登入：沒有 `automation.view` 的成員可以用規則 ID 呼叫 `POST /automation/rules/:id/test`，拿到規則的名稱、條件與動作全文（含通知文字、素材 ID、客服 ID）。權限說明寫 `automation.view` 涵蓋「logs、test」 | **實測**。agent（沒有 `automation.view`，`GET /automation/rules` 回 403）呼叫 `/rules/<id>/test` → 200，回應含 `rule.conditions`、`rule.actions`；`GET /automation/logs` → 200 | `apps/api/src/modules/automation/automation.routes.ts:196,210`、`packages/shared/src/rbac/permissions.ts:70` | AUTO-09（PLAN-04 只從方案角度提到 7 條中 5 條有檢查）；main 的 `8899e280` 已修正 |
@@ -53,7 +53,7 @@
 | 2 開關規則 | 本機 UI＋API | 正常：列表開關停用 R11，重新整理仍是停用 | 不合契約的規則啟用回 400（unit 測試覆蓋） | 異常：supervisor 看得到開關、PATCH 403（HC-09） | — |
 | 3 新增/編輯 | 本機 UI＋API | 正常：UI 建規則後跳到編輯頁，重新整理讀回一致；API 建 `message.received` 多動作規則 201 | 名稱空白時「儲存規則」停用；`priority -1`、關鍵字 101 字、說明 1001 字回 400（訊息籠統，HC-10）；`llm_reply` 回「已停用，請刪除」；未知事件、事件不適用的動作回中文錯誤；只送 `payload` 的動作回「必須填寫訊息內容」 | 異常：supervisor 可按儲存（HC-09）；agent 看到空白表單（HC-11） | 參數值不驗證（HC-07） |
 | 4 換觸發事件 | — | 未驗 | — | — | 手冊已寫「會直接清空，不會先問」 |
-| 5 條件 | 本機 UI＋模擬進站 | 文字條件「包含 hc-automation-r1」正常命中 | 數字條件永遠不成立（HC-01） | — | `stopOnMatch`：高優先序勾停止的規則命中後，同事件其他規則都不執行（符合文件） |
+| 5 條件 | 本機 UI＋模擬進站 | 文字條件「包含 hc-automation-r1」正常命中 | 數字條件永遠不成立（HC-01，#418 已修正） | — | `stopOnMatch`：高優先序勾停止的規則命中後，同事件其他規則都不執行（符合文件） |
 | 6 動作 | 本機模擬進站 | `add_tag`、`create_case`（含優先級、分類、`case.created` 連鎖）、`notify`（指定與回退）、`notify_supervisor`、`set_case_priority`、`assign_agent`、`update_case_status`、`send_message`、`send_material`（變數代入）都有執行 | 送出動作在本機只有失敗紀錄（憑證）；WebChat 送不出（CHAN-02） | — | 異常：工單類動作繞過工單模組（HC-05）；SLA 路徑貼標不執行（HC-02，讀程式） |
 | 7 試試看 | 本機 UI＋API | 正常：填符合的值顯示「會觸發」與「會執行：…」，不符合顯示「不會觸發：條件不符合」 | — | 異常：沒有 `automation.view` 也能試跑並讀到規則內容（HC-04） | — |
 | 8 刪除 | 本機 UI＋API | 正常：確認後回列表，`enabled=false, isActive=false` | — | 正常：supervisor、agent `DELETE` 回 403 | UI 無法復原 |
@@ -119,7 +119,7 @@
   - 第 5 節「渠道條件目前只能選 LINE、Facebook、WebChat，還不能選 Instagram」已過時：契約已列 Instagram（`THREADS`）。
   - 第 4 節觸發時機表沒有「加入好友」。
   - 第 6 節「傳送訊息、傳送素材……什麼時機能用：收到訊息、關鍵字命中、新對話建立」漏了「加入好友」。
-  - 沒有提醒「條件值只填數字時不會命中」（HC-01，修好前應加註）。
+  - 沒有提醒「條件值只填數字時不會命中」（HC-01；#418 已修正，不需要加註）。
   - 第 6 節「只想在 LINE 依關鍵字回素材」：關鍵字回覆已支援 LINE、Facebook、Instagram。
 - `packages/shared/src/rbac/permissions.ts:70` 的 `automation.view` 說明寫涵蓋「logs、test」，但兩條路由沒有掛這個權限。
 

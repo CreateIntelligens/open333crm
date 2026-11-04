@@ -10,7 +10,7 @@ import {
   passkeyRegistrationVerifySchema,
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
-import { getLoginAttemptStore, type LoginAttemptStore } from './login-attempts.js';
+import type { LoginAttemptStore } from './login-attempts.js';
 import { ACCESS_TOKEN_TYPE, REFRESH_TOKEN_TYPE, isAgentRefreshToken } from '../../lib/agent-token.js';
 import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
 import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
@@ -139,7 +139,7 @@ export interface AuthRoutesOptions {
 }
 
 export default async function authRoutes(fastify: FastifyInstance, opts: AuthRoutesOptions = {}) {
-  const loginAttempts = () => opts.loginAttempts ?? getLoginAttemptStore();
+  const loginAttempts = () => opts.loginAttempts ?? fastify.redis;
 
   await fastify.register(rateLimit, {
     global: false,

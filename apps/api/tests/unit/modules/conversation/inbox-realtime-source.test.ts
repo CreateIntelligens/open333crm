@@ -54,8 +54,8 @@ async function testFrontendSocketLocalUpdates() {
 
   assert.equal(hookSource.includes("import type { ConversationUpdatedPayload } from '@open333crm/shared'"), true);
   assert.equal(hookSource.includes('interface ConversationUpdatedPayload'), false);
-  assert.equal(hookSource.includes('function sortByUpdatedAtDesc'), true);
-  assert.equal(hookSource.includes('function updateRows'), true);
+  // 多頁合併與重排（#422 改為 mergePages／updatePages）由 web 的行為測試
+  // tests/unit/hooks/use-conversations-pagination.test.tsx 驗證，這裡不再比對函式名稱
   assert.equal(hookSource.includes('{ revalidate: false }'), true);
   assert.equal(hookSource.includes('const handleNewMessage = () =>'), false);
   assert.equal(hookSource.includes('const handleConversationUpdated = () =>'), false);

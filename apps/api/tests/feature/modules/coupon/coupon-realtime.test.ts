@@ -1,6 +1,6 @@
 /**
  * 已發優惠券區塊即時更新（add-coupon-system design D23；spec coupon-management「已發優惠券區塊即時更新」）。
- * 走真實路由，以替身記下 socket 推送；票券權杖存真實 Redis（顧客端路由用 getBindingStore）。
+ * 走真實路由，以替身記下 socket 推送；票券權杖存真實 Redis（顧客端路由用 fastify.redis）。
  * 資料以 MARK 標記，afterAll 刪除。
  */
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient, withTenant } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
-import { getBindingStore } from '#src/modules/identity-binding/binding-code.js';
+import redisPlugin from '#src/plugins/redis.plugin.js';
 import couponRoutes from '#src/modules/coupon/coupon.routes.js';
 import couponFanRoutes from '#src/modules/coupon/coupon-fan.routes.js';
 import storeConsoleRoutes from '#src/modules/store/store-console.routes.js';
@@ -47,7 +47,7 @@ let app: FastifyInstance;
 const inboxDeps = (): InboxFlowDeps => ({
   prisma,
   io,
-  store: getBindingStore(),
+  store: app.redis,
   webBaseUrl: 'https://crm.example.com',
   deliver: async () => ({ sent: true }),
 });
@@ -98,6 +98,7 @@ beforeAll(async () => {
 
   app = Fastify();
   await app.register(errorHandlerPlugin);
+  await app.register(redisPlugin);
   app.decorate('prisma', prisma);
   app.decorate('prismaAdmin', owner);
   app.decorate('io', io as never);

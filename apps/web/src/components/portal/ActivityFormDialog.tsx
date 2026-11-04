@@ -50,26 +50,20 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
   const [options, setOptions] = useState<OptionItem[]>([{ label: '', isCorrect: false }]);
   const [fields, setFields] = useState<FieldItem[]>([{ fieldKey: '', label: '', fieldType: 'text', isRequired: false }]);
 
+  // 編輯時要以完整活動（含 options／fields）帶入內容。列表項沒有這兩項，
+  // 直接拿來填會讓選項欄變空白，只改標題儲存就送出 options: [] 刪光選項（#424）。
+  // 載入完成前與載入失敗時都不能儲存。
+  // 已載入完整資料的活動 id；與目前編輯的 id 不同就代表還沒載入（第一次 render 也算）
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+  const editId = editData ? String(editData.id) : null;
+
   useEffect(() => {
-    if (editData) {
-      setType((editData.type as string) || 'POLL');
-      setTitle((editData.title as string) || '');
-      setDescription((editData.description as string) || '');
-      setStartsAt(toLocalInputValue(editData.startsAt as string | null | undefined));
-      setEndsAt(toLocalInputValue(editData.endsAt as string | null | undefined));
-      const settings = (editData.settings || {}) as Record<string, unknown>;
-      setPointsPerSubmit((settings.pointsPerSubmit as number) || 0);
-      if (editData.options && (editData.options as unknown[]).length > 0) {
-        setOptions((editData.options as OptionItem[]).map((o) => ({ label: o.label, imageUrl: o.imageUrl, isCorrect: o.isCorrect })));
-      } else {
-        setOptions([{ label: '', isCorrect: false }]);
-      }
-      if (editData.fields && (editData.fields as unknown[]).length > 0) {
-        setFields((editData.fields as FieldItem[]).map((f) => ({ fieldKey: f.fieldKey, label: f.label, fieldType: f.fieldType, isRequired: f.isRequired })));
-      } else {
-        setFields([{ fieldKey: '', label: '', fieldType: 'text', isRequired: false }]);
-      }
-    } else {
+    setError('');
+    setLoadError('');
+    setLoadedId(null);
+    if (!editId) {
       setType('POLL');
       setTitle('');
       setDescription('');
@@ -78,11 +72,53 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
       setPointsPerSubmit(0);
       setOptions([{ label: '', isCorrect: false }]);
       setFields([{ fieldKey: '', label: '', fieldType: 'text', isRequired: false }]);
+      return;
     }
-  }, [editData, open]);
+    if (!open) return;
+
+    let cancelled = false;
+    api
+      .get(`/portal/activities/${editId}`)
+      .then((res) => {
+        if (cancelled) return;
+        const full = res.data?.data as Record<string, unknown> | undefined;
+        if (!full) throw new Error('活動資料格式不正確');
+        setType((full.type as string) || 'POLL');
+        setTitle((full.title as string) || '');
+        setDescription((full.description as string) || '');
+        setStartsAt(toLocalInputValue(full.startsAt as string | null | undefined));
+        setEndsAt(toLocalInputValue(full.endsAt as string | null | undefined));
+        const settings = (full.settings || {}) as Record<string, unknown>;
+        setPointsPerSubmit((settings.pointsPerSubmit as number) || 0);
+        const fullOptions = (full.options as OptionItem[] | undefined) ?? [];
+        setOptions(
+          fullOptions.length > 0
+            ? fullOptions.map((o) => ({ label: o.label, imageUrl: o.imageUrl ?? undefined, isCorrect: o.isCorrect }))
+            : [{ label: '', isCorrect: false }],
+        );
+        const fullFields = (full.fields as FieldItem[] | undefined) ?? [];
+        setFields(
+          fullFields.length > 0
+            ? fullFields.map((f) => ({ fieldKey: f.fieldKey, label: f.label, fieldType: f.fieldType, isRequired: f.isRequired }))
+            : [{ fieldKey: '', label: '', fieldType: 'text', isRequired: false }],
+        );
+        setLoadedId(editId);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Load activity error:', err);
+        setLoadError(getApiErrorMessage(err, '無法載入活動內容，請稍後再試'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, open, reloadKey]);
+
+  const loadingFull = Boolean(editId) && loadedId !== editId && !loadError;
+  const editNotReady = Boolean(editId) && loadedId !== editId;
 
   const handleSave = async () => {
-    if (!title) return;
+    if (!title || editNotReady) return;
     setError('');
     setSaving(true);
     try {
@@ -128,6 +164,26 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
           <DialogTitle>{editData ? '編輯活動' : '建立活動'}</DialogTitle>
         </DialogHeader>
 
+        {editData && loadingFull && (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            正在載入活動內容
+          </div>
+        )}
+
+        {editData && loadError && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            <span>{loadError}</span>
+            <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+              重新載入
+            </Button>
+          </div>
+        )}
+
+        {!editNotReady && (
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium">類型</label>
@@ -289,6 +345,7 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
             </div>
           )}
         </div>
+        )}
 
         {error && (
           // 視窗內容長，失敗時捲回錯誤位置，否則使用者停在上方欄位
@@ -304,7 +361,7 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={handleSave} disabled={saving || !title}>
+          <Button onClick={handleSave} disabled={saving || !title || editNotReady}>
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             {editData ? '儲存' : '建立'}
           </Button>

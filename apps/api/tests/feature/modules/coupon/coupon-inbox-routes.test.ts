@@ -10,6 +10,7 @@ import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient, withTenant } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
+import redisPlugin from '#src/plugins/redis.plugin.js';
 import couponInboxRoutes from '#src/modules/coupon/coupon-inbox.routes.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
@@ -42,6 +43,7 @@ async function agentWith(slug: string, permissions: string[], access?: 'read_onl
 
   const app = Fastify();
   await app.register(errorHandlerPlugin);
+  await app.register(redisPlugin);
   app.decorate('prisma', prisma);
   app.decorate('prismaAdmin', owner);
   app.decorate('io', { to: () => ({ emit: () => {} }) } as never);

@@ -3,6 +3,8 @@
 - 核對日期：2026-10-30
 - 程式版本：5c81102e（本機 API、web 與自動測試都是這個版本）。`origin/main`（0a49a1dc）在當天 09:16–11:54 另有 10 個 portal 修正 commit，UAT 已部署；每個問題另標「main 狀態」
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 已修正：HC-PORTAL-01（#424，change `fix-portal-edit-keeps-content`，AUDIT PORTAL-03 已移除）。編輯對話框以 `GET /portal/activities/:id` 帶入完整活動（含選項、正確答案與表單欄位），載入中顯示「正在載入活動內容」，載入失敗顯示原因與「重新載入」，兩種情況都不能儲存；`updateActivity()` 沒帶 `options`／`fields` 時不動，投票與競猜送空的 `options`、表單送空的 `fields` 時回 400，不刪除既有內容。UAT 尚未重測
+- 後續修正（不在本報告的問題清單）：#447，change `fix-portal-publish-requires-content`。發布前檢查投票、競猜至少一個選項，表單至少一個欄位，不符合時回 400 並維持草稿；建立草稿不變。UAT 尚未重測
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認）
 - 範圍：`docs/ref/features/feature-map.json` 的 `portal`；功能文件 `docs/ref/features/tenant/PORTAL.md`；手冊 `apps/web/public/manual/ch11-portal.html`
 
@@ -20,7 +22,7 @@ P0：無。
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT | main 狀態 |
 | --- | --- | --- | --- | --- | --- | --- |
-| HC-PORTAL-01 | P1 | 編輯草稿活動時，對話框沒有帶出原本的選項與欄位；只改標題就按「儲存」，所有選項（含競猜的正確答案）或表單欄位被刪光 | **本機 UI 實測**：建立投票「紅茶」「綠茶」→ 卡片「編輯」→ 選項欄只有一個空白「選項 1」→ 改標題 → 儲存 → `GET /portal/activities/:id` 的 `options` 為 `[]`。**UAT API 實測**：建立 QUIZ 草稿兩個選項 → 清單項沒有 `options` 欄位 → 以前端相同的 body（`options: []`）PATCH → 回應 `options: []` | `apps/web/src/app/dashboard/portal/page.tsx:182`（把清單項當 `editData`）；`apps/api/src/modules/portal/portal.service.ts:44-54`（`listActivities` 不 include options/fields）；`apps/web/src/components/portal/ActivityFormDialog.tsx:62-71, 99-104`；`portal.service.ts:131-156`（收到空陣列就 `deleteMany`） | PORTAL-03 | 仍存在（UAT 重現） |
+| HC-PORTAL-01 | P1 | 編輯草稿活動時，對話框沒有帶出原本的選項與欄位；只改標題就按「儲存」，所有選項（含競猜的正確答案）或表單欄位被刪光 | **本機 UI 實測**：建立投票「紅茶」「綠茶」→ 卡片「編輯」→ 選項欄只有一個空白「選項 1」→ 改標題 → 儲存 → `GET /portal/activities/:id` 的 `options` 為 `[]`。**UAT API 實測**：建立 QUIZ 草稿兩個選項 → 清單項沒有 `options` 欄位 → 以前端相同的 body（`options: []`）PATCH → 回應 `options: []` | `apps/web/src/app/dashboard/portal/page.tsx:182`（把清單項當 `editData`）；`apps/api/src/modules/portal/portal.service.ts:44-54`（`listActivities` 不 include options/fields）；`apps/web/src/components/portal/ActivityFormDialog.tsx:62-71, 99-104`；`portal.service.ts:131-156`（收到空陣列就 `deleteMany`） | PORTAL-03 | 已修正（#424）；修正前 UAT 重現 |
 | PORTAL-01 | P2（AUDIT 為 P3） | 結果端點回傳 `isCorrect`，粉絲作答前就讀得到競猜答案；草稿活動的結果也讀得到。AUDIT 以「fanToken 沒有簽發端、端點無法進入」標 P3，**這個前提已不成立**（HC-PORTAL-02） | 本機：以 `signFanToken` 相同格式的 fanToken → `GET /fan/activities/<QUIZ>/result`，作答前回 `isCorrect: true`；`GET /fan/activities/<草稿>/result` 回 200（詳情端點對同一草稿回 404） | `apps/api/src/modules/portal/portal.service.ts:369-414`；`portal-public.routes.ts:112-118` | PORTAL-01 | 仍存在（main 補記了詳情端點不看開放時間） |
 | PORTAL-02 | P2（AUDIT 為 P3） | 粉絲送出一律回 400：「您已參加過這個活動」（409）、草稿與已結束（404）都變 400 `BAD_REQUEST`；Prisma 錯誤原文（含伺服器檔案路徑與程式碼片段）直接回給公開端 | 本機：同一活動送出兩次，第二次 400；活動 `settings.pointsPerSubmit` 為 `"abc"` 時送出回 400，`message` 開頭是 `Invalid prisma.portalSubmission.create() invocation in /Users/.../portal.service.ts:301:52` | `apps/api/src/modules/portal/portal-public.routes.ts:104-109` | PORTAL-02 | 仍存在（main 把輸入解析移到 try 之外，業務錯誤仍轉 400） |
 | HC-PORTAL-03 | P2 | 積分並行寫入會遺失：`addPointTransaction` 先讀最新餘額再寫入，沒有鎖。同一毫秒的多筆紀錄 `createdAt` 相同，「最新一筆」也不確定 | **本機實測**：對同一位聯絡人並行 10 次 `POST /portal/points/adjust {amount: 1}`，全部 200，餘額 45 → 47（應為 55）；資料庫 `sum(amount)=55`、最新一筆 `balance=47`，有 4 筆 `createdAt` 相同 | `apps/api/src/modules/portal/points.service.ts:18-62` | 未收錄（main 已修，`ac945b86`、`0a49a1dc`） | main 已修（`ac945b86`、`0a49a1dc`，讀程式） |
@@ -47,7 +49,7 @@ P0：無。
 | --- | --- | --- | --- | --- | --- |
 | 1 活動列表 | 本機、UAT | 正常：本機列出全部活動；「查看已封存」只列封存的。UAT Demo 21 筆（19 ENDED、2 DRAFT），封存 0 筆 | `status=FOO`、`type=FOO` 本機 400 `VALIDATION_ERROR` | 無 `portal.view`：後端 403，畫面顯示成空清單（HC-PORTAL-12）；側欄正確隱藏 | |
 | 2 建立活動 | 本機 | 正常：UI 建立投票（兩選項、`2026-12-01T09:00`～`2026-12-31T23:59`、每次 3 點），重新整理後一致，DB 存 UTC（01:00Z、15:59Z） | 標題空白時「建立」停用；API 空白標題、錯類型、`abc` 日期、結束早於開始都 400；UI 只顯示通用訊息（HC-PORTAL-13） | 唯讀角色看得到按鈕（HC-PORTAL-07） | `datetime-local` 原字串（無時區）後端也接受，以伺服器時區解讀 |
-| 3 編輯草稿 | 本機、UAT | **異常**：選項被清空（HC-PORTAL-01） | 只改 `endsAt` 早於 DB 的 `startsAt` → 400；已發布 → 400（應為 409，HC-PORTAL-08） | 唯讀角色看得到「編輯」 | P1 |
+| 3 編輯草稿 | 本機、UAT | **異常**：選項被清空（HC-PORTAL-01，#424 已修正） | 只改 `endsAt` 早於 DB 的 `startsAt` → 400；已發布 → 400（應為 409，HC-PORTAL-08） | 唯讀角色看得到「編輯」 | P1 |
 | 4 發布、結束 | 本機 | 正常：UI 發布 → 「進行中」→ 結束 → 只剩「封存」 | 重複發布、重複結束 400（HC-PORTAL-08） | 唯讀角色按發布：alert「權限不足」 | 不再確認，與手冊一致 |
 | 5 封存、取消封存 | 本機 | 正常：封存有 confirm，列表消失，「查看已封存」看得到，取消封存回到 ENDED | 已封存再封存 409；進行中封存 409。**異常**：封存的草稿取消封存變 ENDED（HC-PORTAL-09） | — | |
 | 6 刪除草稿 | 本機、UAT | 正常：DELETE 200，之後 GET 404 | 已發布刪除 400 | — | |
