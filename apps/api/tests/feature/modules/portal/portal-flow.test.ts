@@ -520,3 +520,70 @@ test('表單的欄位送空陣列時回 400', async () => {
   const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
   assert.deepEqual(after.fields.map((f: { fieldKey: string }) => f.fieldKey), ['phone']);
 });
+
+// ─── 發布前檢查選項與欄位（#447） ───────────────────────────────────────────
+
+test('建立沒有選項或欄位的草稿仍然允許', async () => {
+  for (const type of ['POLL', 'QUIZ', 'FORM'] as const) {
+    const created = await admin(appA, 'POST', '/activities', { type, title: `${MARK}-${type}-空草稿` });
+    assert.equal(created.statusCode, 200, `${type}: ${created.body}`);
+    assert.equal(created.json().data.status, 'DRAFT', type);
+  }
+});
+
+test('發布沒有選項的投票或競猜回 400，活動仍是草稿', async () => {
+  for (const type of ['POLL', 'QUIZ'] as const) {
+    const created = await admin(appA, 'POST', '/activities', {
+      type,
+      title: `${MARK}-${type}-發布空選項`,
+      fields: [{ fieldKey: 'name', label: '姓名' }],
+    });
+    assert.equal(created.statusCode, 200, created.body);
+    const id = created.json().data.id as string;
+
+    const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+    assert.equal(published.statusCode, 400, `${type}: ${published.body}`);
+    assert.equal(published.json().error.message, '投票與競猜活動至少要有一個選項', type);
+
+    const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+    assert.equal(after.status, 'DRAFT', type);
+    assert.equal(after.publishedAt, null, type);
+  }
+});
+
+test('發布沒有欄位的表單回 400，活動仍是草稿', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'FORM',
+    title: `${MARK}-表單-發布空欄位`,
+    options: [{ label: '不算欄位' }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 400, published.body);
+  assert.equal(published.json().error.message, '表單活動至少要有一個欄位');
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.equal(after.status, 'DRAFT');
+});
+
+test('草稿補上選項或欄位後可以發布', async () => {
+  const cases = [
+    { type: 'POLL', patch: { options: [{ label: '甲' }] } },
+    { type: 'QUIZ', patch: { options: [{ label: '甲', isCorrect: true }, { label: '乙' }] } },
+    { type: 'FORM', patch: { fields: [{ fieldKey: 'phone', label: '電話' }] } },
+  ] as const;
+  for (const { type, patch } of cases) {
+    const created = await admin(appA, 'POST', '/activities', { type, title: `${MARK}-${type}-補內容後發布` });
+    assert.equal(created.statusCode, 200, created.body);
+    const id = created.json().data.id as string;
+
+    const patched = await admin(appA, 'PATCH', `/activities/${id}`, patch);
+    assert.equal(patched.statusCode, 200, `${type}: ${patched.body}`);
+
+    const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+    assert.equal(published.statusCode, 200, `${type}: ${published.body}`);
+    assert.equal(published.json().data.status, 'PUBLISHED', type);
+  }
+});
