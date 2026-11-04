@@ -12,7 +12,6 @@ import { z } from 'zod/v3';
 import { getConfig } from '../../config/env.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { success } from '../../shared/utils/response.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import {
   connectPages,
@@ -39,7 +38,7 @@ const connectBody = z.object({ pageIds: z.array(z.string().regex(/^\d{1,32}$/, '
 const actorOf = (request: FastifyRequest) => ({ tenantId: request.agent.tenantId, agentId: request.agent.id });
 
 export default async function metaConnectRoutes(fastify: FastifyInstance, opts: MetaConnectRoutesOptions = {}) {
-  const store = () => opts.store ?? getBindingStore();
+  const store = () => opts.store ?? fastify.redis;
   const channelsPage = () => `${getConfig().WEB_BASE_URL}/dashboard/settings/channels`;
 
   fastify.get('/status', { preHandler: [fastify.authenticate, requirePermission('channel.view')] }, async (_request, reply) => {

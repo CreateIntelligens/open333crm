@@ -1,5 +1,6 @@
 export * from "./logger/index.js";
 export * from "./redis/client.js";
+export * from "./redis/create-client.js";
 export * from "./event-bus/event-bus.js";
 export * from "./storage/index.js";
 export * from "./storage/minio-provider.js";

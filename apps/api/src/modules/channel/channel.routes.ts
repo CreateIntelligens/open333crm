@@ -40,7 +40,6 @@ import {
 import { notFound } from '../../shared/messages/resource.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { resolveBindingHandle } from '../identity-binding/binding-links.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { checkLineIdToken } from '../coupon/line-id-token.js';
 import { getLiffTestResultFlow, startLiffTestFlow, type LiffTestDeps } from './liff-test.flow.js';
 import { liffTestIdSchema } from './liff-test-public.routes.js';
@@ -304,7 +303,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
     prisma: fastify.prisma,
     checkIdToken: checkLineIdToken,
     ...opts.liffTest,
-    store: opts.liffTest?.store ?? getBindingStore(),
+    store: opts.liffTest?.store ?? fastify.redis,
   });
 
   // All routes require authentication
