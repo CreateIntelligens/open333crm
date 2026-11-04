@@ -5,6 +5,7 @@
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 已修正：HC-KNOWLEDGE-01（#419，change `fix-kb-clarify-handoff-419`）。追問次數用完或追問的 LLM 呼叫失敗（含 `PLAN_LIMIT_EXCEEDED`）時，與自動轉真人共用 `handOffConversation()` 真的轉接：對話改成 `AGENT_HANDLED`、寫 `handoffReason` 與系統訊息、發出 `conversation.handoff` 並通知客服；`tenant/KNOWLEDGE.md` 已同步。手冊 ch06、ch07 的「追問不清楚就轉真人」因此與行為一致。本報告其餘段落仍描述健檢當時的程式
+- 已修正（部分）：知識庫 embedding 失敗、agent 也沒回覆時客人收不到任何回覆（issue #445，change `handoff-on-ai-reply-failure-445`）。現在轉真人，原因寫「AI 暫時無法回覆（…）」；`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，記為 KB-06
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只做唯讀 API 查詢）
 - 規格：`docs/ref/features/feature-map.json` 的 `knowledge`；功能文件 `docs/ref/features/tenant/KNOWLEDGE.md`
 
@@ -98,6 +99,7 @@
 - 「👎 沒幫到我」與轉接按鈕在 LINE、FB、IG、WebChat 的顯示與點按（quick reply postback）。
 - 真實 LLM（Gemini）下的型號守門文案：「Wi-Fi」被當型號時客人實際看到的內容。
 - 月額度用完時客人實際收到的內容（HC-KNOWLEDGE-04）。
+- AI 失敗轉接（#445）：UAT 開啟遮罩的租戶在去識別化服務失敗時，LINE 客人收到 `handoffMessage`、收件匣顯示轉接原因與通知（目前只有單元測試）。
 - UAT 的 Chat & Prompt、Embedding 設定頁畫面（本次只做 API 唯讀，沒有開頁面，避免觸發 Gemini 健康檢查）。
 - 夥伴系統以 `pk_` 金鑰推送 CREATE／UPDATE／DELETE。
 

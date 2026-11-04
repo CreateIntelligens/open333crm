@@ -74,14 +74,15 @@ description: >
 3. 用自訂角色（只有 `inbox.view`）與三種存取層級的成員（`read_only`、`reply_only`、`full`，直接寫 `agent_channel_accesses`）重走 1–2，確認 403／404 與畫面訊息；沒有任何渠道的成員看不到對話。
 4. socket：以看不到某渠道的成員連線，確認收不到該渠道的 `message.new`、`conversation.updated`；有授權的成員與總店收得到；後台改該成員的可用渠道後，不重新整理就開始（或停止）收到（feature 測試 `modules/socket/socket-channel-rooms`）。
 5. 進行中超過 50 段時按「載入更多對話」、在第 2 頁的對話收到新訊息時移到最上面且不重複；搜尋第 51 段以後的聯絡人名稱找得到。單一對話超過 50 則時目前只顯示 50 則（HC-INBOX-07）。
-- 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/conversation tests/unit/modules/socket tests/unit/services/channel-visibility auto-handoff bot-reply-claim return-to-bot ai-routes-channel-scope`；`pnpm --filter @open333crm/web test -- tests/unit/components/inbox tests/unit/lib/inbox tests/unit/lib/socket`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/channel/channel-scoped-visibility route-permission-guards modules/webhook/inbound-message-processing modules/socket/socket-channel-rooms`。
+6. AI 與知識庫回覆都失敗（#445）：去識別化服務或 embedding 服務失敗時，`BOT_HANDLED` 對話的文字訊息轉真人，收件匣即時顯示轉接系統訊息與原因，客服收到轉接通知；同一則訊息重送不重複轉接（`ai-failure-handoff.test.ts`）。
+- 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/conversation tests/unit/modules/socket tests/unit/services/channel-visibility auto-handoff ai-failure-handoff bot-reply-claim return-to-bot ai-routes-channel-scope`；`pnpm --filter @open333crm/web test -- tests/unit/components/inbox tests/unit/lib/inbox tests/unit/lib/socket`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/channel/channel-scoped-visibility route-permission-guards modules/webhook/inbound-message-processing modules/socket/socket-channel-rooms`。
 - E2E：`apps/web/tests/e2e-uat/tenant-inbox.spec.ts`。
 
 ## 常見 bug 從哪裡查
 - 「客服說看不到某段對話」：先查渠道可見範圍（`agent_channel_accesses`、`channel_team_accesses`、角色有無 `channel.view_all`，`apps/api/src/services/channel-visibility.ts`）；再查是否還沒按「載入更多對話」（每頁 50 段）；被指派給看不到渠道的人時，他的「我的」也是空的。
 - 「訊息沒即時出現」：API 直接 emit 看 `conversation.service.ts`；webhook 進站看 `apps/api/src/modules/webhook/inbound-socket-presenter.ts`；workers 走 Redis `socket:emit`，由 `socket.plugin.ts` 轉發。前端靠渠道房間收到：成員看不到該渠道、或授權剛改而重新計算失敗（log `重新計算渠道房間失敗`）時收不到，重新整理（重新連線）即可。
 - 「客服回了但顧客沒收到」：看訊息泡泡的紅字（`metadata.deliveryError`），再看 API log 的 `[ChannelDelivery]`。
-- 「機器人不回／一直轉真人」：渠道 `settings.botConfig`（`packages/automation/src/bot-config.ts` 的預設值）、`botRepliesCount` 與 `maxBotReplies`、`handoffKeywords`；處理在 `apps/api/src/modules/automation/automation.worker.ts`。對話不是 `BOT_HANDLED` 時機器人一律不回。
+- 「機器人不回／一直轉真人」：渠道 `settings.botConfig`（`packages/automation/src/bot-config.ts` 的預設值）、`botRepliesCount` 與 `maxBotReplies`、`handoffKeywords`；處理在 `apps/api/src/modules/automation/automation.worker.ts`。對話不是 `BOT_HANDLED` 時機器人一律不回。轉接原因是「AI 暫時無法回覆（…）」時，是 AI 與知識庫回覆都失敗（`ai-failure-handoff.flow.ts`，#445），查 API log 的 `[KbAutoReply]`、`[AgentRunner]`、`[AiFailureHandoff]`。
 - 「指派了對方沒收到通知」：已知 CONV-02，`conversation.assigned` 沒有發布端。
 - 「同一位顧客有兩段進行中的對話」：多半是重新開啟舊對話造成（HC-INBOX-02），或 IDENT-03 的同渠道雙身分。
 - 「按了按鈕出現英文 Forbidden」：渠道存取層級不足（`CHANNEL_ACCESS_LEVEL_INSUFFICIENT`），訊息字串在 `channel-visibility.ts`。

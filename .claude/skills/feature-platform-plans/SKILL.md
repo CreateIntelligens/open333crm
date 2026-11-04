@@ -56,7 +56,7 @@ description: >
 | `maxTags` | 無 | 不擋（PLAN-04） |
 
 ## 有後端沒前端
-- 新增方案、刪除方案：**沒有 API 也沒有 UI**，只能改 `packages/database/prisma/seed.ts` 或直接寫資料庫。
+- 新增方案、刪除方案：**沒有 API 也沒有 UI**，只能改 `packages/database/prisma/seed-data/plans.ts`（只在資料庫沒有該 slug 時建立）、寫 migration 或直接寫資料庫。
 - 改方案名稱、月費、停售（`name`、`priceMonthly`、`isActive`）：API 接受，`/admin/plans` 沒有欄位。停售本身沒有效果（PLAN-01）。
 - 租戶覆寫 `Tenant.limitOverrides`：沒有任何讀寫 UI，也沒有 API；唯一寫入端是核准加購（PLAN-03、PLAN-05）。
 - `billing.view` 權限碼：沒有任何路由或頁面使用（RBAC-01）。
@@ -76,6 +76,8 @@ description: >
 - 計數只算 `isActive: true` 的成員與渠道；把停用的資源改回啟用也要檢查上限（成員已做，渠道還沒做）。
 - AI 計數器 `aiquota:{tenantId}:{YYYY-MM}` 用 UTC 月份，只累加平台金鑰的成功呼叫；BYOK 不計不擋。
 - 新增權限碼或 feature：權限碼宣告在 `packages/shared/src/rbac/permissions.ts`，feature 在 `packages/core/src/rbac/features.ts`，平台頁自動出現。既有租戶的系統角色要跑 `scripts/grant-new-role-permissions.mjs`。
+- seed（API 容器每次啟動都跑）只建立不存在的方案，**不可以更新既有方案**，平台後台的修改要在部署後保留（issue #441，`tenant-plan` 規格「部署後保留平台修改」）。不要把 `seedPlans()` 改回 upsert 的 `update`。
+- 程式要改既有方案的內容時，寫一次性的資料 migration：以 `slug` 篩選、只改目標欄位、加「還沒改過」條件可重複執行、檔頭寫回滾 SQL，並同步更新 `SEED_PLANS`。範例 `20261103120000_enable_channels_on_trial_light`；細節見 `docs/ref/features/platform/PLANS.md`「seed 建立的五個方案」。
 - UI 不放 emoji 與 ✓（使用者要求）。
 
 ## 跨功能牽連
@@ -92,13 +94,13 @@ description: >
 5. `monthlyTokens`：把 Redis `aiquota:{tenantId}:{YYYY-MM}` 設成上限值 → `POST /ai/rewrite` 回 403 `PLAN_LIMIT_EXCEEDED`（不會呼叫 LLM）；`limitOverrides.monthlyTokens=null` 後不擋。
 6. 平台 `PATCH /platform/tenants/:id {planSlug}` 換方案 → 下一個請求即套新天花板。
 7. `/dashboard/plan` 用 admin、supervisor、agent 各開一次（agent 應 403）。
-- 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/platform/plan tests/unit/modules/platform/tenant-plan tests/unit/modules/channel/channel-plan-limits tests/unit/modules/ai/usage-quota tests/unit/modules/ai/agent-quota tests/unit/modules/agent/agent-reactivate`；`pnpm --filter @open333crm/web test -- plans-page`；`pnpm --filter @open333crm/core test -- rbac`；feature：`test:feature modules/trial/token-quota`（要搶鎖）。
+- 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/platform/plan tests/unit/modules/platform/tenant-plan tests/unit/modules/channel/channel-plan-limits tests/unit/modules/ai/usage-quota tests/unit/modules/ai/agent-quota tests/unit/modules/agent/agent-reactivate`；`pnpm --filter @open333crm/web test -- plans-page`；`pnpm --filter @open333crm/core test -- rbac`；`pnpm --filter @open333crm/database test`（seed 方案內容與不覆寫既有方案）；feature：`test:feature modules/trial/token-quota`（要搶鎖）。
 - E2E：`apps/web/tests/e2e-uat/platform-smoke.spec.ts`、`apps/web/tests/e2e-uat/cross-plan-request.spec.ts`。
 
 ## 常見 bug 從哪裡查
 - 「升級／換方案後還是 403」：先看 `getTenantPlanId` 的 60 秒行程快取（`apps/api/src/services/tenant-plan.cache.ts`）；直接改資料庫或多行程時要等 60 秒。Redis `perms:tenant:{roleId}:{planId}` 是第二層，`FLUSHDB` 清不到第一層。
 - 「角色頁明明有勾，成員卻 403」：方案天花板擋掉（PLAN-08）；看 403 的 `details.requiredPermission` 屬於哪個 feature，再查租戶方案的 `features` 與 `permissionOverrides.deny`。
-- 「渠道頁顯示沒有權限」：`GET /channels` 回 403。看 `details.requiredPermission`，再查角色有沒有 `channel.view`、方案 `features` 有沒有 `channels`。seed 的五個方案都含 `channels`；`trial`、`light` 原本沒有，issue #411 以 seed 與 migration `20261103120000_enable_channels_on_trial_light` 補上。平台改了方案的 `features` 之後，seed 在 API 每次啟動時會把五個 seed 方案的 `name`、`features`、`limits`、`priceMonthly` 寫回 `packages/database/prisma/seed-data/plans.ts` 的值。
+- 「渠道頁顯示沒有權限」：`GET /channels` 回 403。看 `details.requiredPermission`，再查角色有沒有 `channel.view`、方案 `features` 有沒有 `channels`。seed 的五個方案都含 `channels`；`trial`、`light` 原本沒有，issue #411 以 seed 與 migration `20261103120000_enable_channels_on_trial_light` 補上。seed 不會改回平台對方案的修改（issue #441 之後只建立不存在的方案）。
 - 「平台改了上限卻沒生效」：同時編輯兩張方案卡片時，先存的那張會重載資料，另一張輸入框顯示新值、送出的卻是舊值（HC-PLATFORM-PLANS-02）；也檢查租戶有沒有 `limitOverrides`（覆寫優先）。
 - 「方案人數上限擋不住」：看是不是從停用改回啟用的渠道（成員已檢查）；`maxTags` 本來就不擋。
 - 「AI 額度用完卻還能用」：該租戶是 BYOK（不計不擋），或 `monthlyTokens` 是 null；BYOK 解密失敗會退回平台金鑰開始計數（AI-01）。

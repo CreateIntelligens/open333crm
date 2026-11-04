@@ -61,7 +61,7 @@
 
 | Spec | Scenario | 缺實作（含部分） | 缺測試 | 缺前端入口 | 主要缺口 |
 | --- | --- | --- | --- | --- | --- |
-| tenant-plan | 11 | 1（部分） | 1 | 0 | 「trial 方案未含 marketing」要求呼叫 marketing API 被擋，行銷仍有路由沒掛 `requirePermission`（PLAN-04）；「seed 重複執行」沒有測試（`seedPlans` 用 upsert）。其餘由 `tenant-plan.test.ts`、`plans-page.test.tsx`、`platform-audit-routes.test.ts` 覆蓋 |
+| tenant-plan | 11 | 1（部分） | 1 | 0 | 「trial 方案未含 marketing」要求呼叫 marketing API 被擋，行銷仍有路由沒掛 `requirePermission`（PLAN-04）；「seed 重複執行」與「部署後保留平台修改」由 `packages/database/tests/unit/seed/plans.test.ts` 覆蓋（issue #441 後 `seedPlans` 不更新既有方案）。其餘由 `tenant-plan.test.ts`、`plans-page.test.tsx`、`platform-audit-routes.test.ts` 覆蓋 |
 | plan-limits-core | 7 | 0 | 2 | 0 | 「trial 租戶達人數上限」「停用的 agent 不計數」沒有 `createAgent` 的測試（只有 `agent-reactivate.test.ts` 測重新啟用）；本次實測兩者都通過 |
 | granular-plan-entitlement | 15 | 0 | 9 | 0 | deny 三個 scenario、`allowedChannelTypes` 四個、registry 動態化兩個都沒有測試（實測 deny 與白名單正常）；「平台設定權限點 deny 與渠道限制」只有實測。`maxChannels` 五個由 `channel-plan-limits.test.ts` 覆蓋 |
 | token-quota | 10 | 0 | 0 | 0 | `usage-quota.test.ts`、`agent-quota.test.ts` 齊全；實測 `rewriteText` 也會擋 |

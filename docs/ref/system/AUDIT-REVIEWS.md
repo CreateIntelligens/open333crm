@@ -4,6 +4,37 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
+
+issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| PLAN-20 | 已修正，從 `AUDIT.md` 移除 | `seedPlans()` 移到 `packages/database/prisma/seed-data/plans.ts`，`upsert` 的 `update` 改為空物件（與 `seedModelPricing()` 相同寫法）：方案不存在時建立，已存在時不寫入（`updatedAt` 也不變）。`plans.test.ts` 的「部署後保留平台修改」兩項與「只補缺少的方案」修正前失敗（`maxAgents` 8 被改回 5 等），「方案不存在時 seed 建立」以突變驗證。拋棄式資料庫 `open333crm_test_p3_441_seed` 實跑：改 `light`、刪 `enterprise` 後再跑 seed，`light` 的欄位與 `updatedAt` 不變、`enterprise` 被補回；跑完已刪除。主規格 `tenant-plan` 補上「部署後保留平台修改」「方案不存在時 seed 建立」。程式要改既有方案改用資料 migration，規則寫在 `docs/ref/features/platform/PLANS.md` 與 skill `feature-platform-plans` |
+
+**seed 其他區段的盤點。** API 容器每次啟動都執行 `packages/database/prisma/seed.ts`（`apps/api/docker-entrypoint.sh`）。這次只修方案；其他區段的現況如下：
+
+| 區段 | 已存在時覆寫的欄位 | 對 UAT 的影響 | 建議 |
+| --- | --- | --- | --- |
+| Demo 租戶（`seedDemoAccounts`） | `tenants.name` 改回 `Demo Tenant` | `NODE_ENV=production` 時預設不執行（#394），只在設 `SEED_DEMO_ACCOUNTS=true` 時執行 | 改名的需求出現時改為 `update: {}` |
+| Demo 系統角色（`seedDemoRoles`） | `roles.name`、`isSystem`；`role_permissions` 整批刪除後依 `DEFAULT_ROLE_PERMISSIONS` 重建 | 同上，預設不執行。設了 `SEED_DEMO_ACCOUNTS=true` 時，平台或租戶對 Demo 系統角色權限的調整每次部署都被還原（RBAC-06 記載的情形） | 正式環境不要設 `SEED_DEMO_ACCOUNTS=true`；若要保留這個開關，改為只在角色不存在時建立 |
+| Demo 成員（三個） | `agents.name`、`role`、`roleId`（密碼與啟用狀態已不覆寫，#394） | 同上，預設不執行。執行時會把被改過角色的 Demo 成員改回原角色 | 同上 |
+| 開發用平台帳號 | `platform_users.name`（密碼不覆寫，#394） | 同上，預設不執行 | 影響小，維持 |
+| 系統模板（`seedSystemTemplates`） | 全部欄位，含 `isActive: true` | `systemTemplates` 目前是空陣列，沒有任何寫入 | 重新加入系統模板時，先決定是否允許租戶或平台修改，再決定是否保留 `update` |
+| 模型價目（`seedModelPricing`） | 不覆寫（`update: {}`） | 無 | 維持；改價時新增一列較新的 `effectiveFrom`（USAGE-02） |
+| 方案（`seedPlans`） | issue #441 後不覆寫 | 無 | 已修正 |
+
+2026-11-04 唯讀確認 UAT `.env.api`：`NODE_ENV=production`，沒有設 `SEED_DEMO_ACCOUNTS`，Demo 區段部署時不執行。
+
+## 2026-11-04：AI 與知識庫回覆都失敗時客人收不到回覆（KB-06、LLM-04）
+
+issue #445，change `handoff-on-ai-reply-failure-445`。以本機單元測試與測試資料庫的 feature 測試驗證，沒有連 UAT；真機（LINE）尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-06（新增） | 部分修正 | `attemptKbAutoReply()` 改回傳 `KbAutoReplyResult`（`replied`／`skipped` 與原因／`failed`），embedding 失敗與丟出的錯誤算失敗；`automation.worker.ts` 在 agent 沒有回覆、知識庫失敗時呼叫 `ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()`：沿用 `createBotReplyGuard()`（`bot_reply` 認領）與 `handOffConversation()`，原因由 `kb-autoreply.service.ts` 的 `aiReplyFailedReason()` 產生（與 `clarifyLlmFailedReason()` 共用錯誤種類判斷）；系統訊息用 `fixedSystemMessageContent()`，不呼叫 2md。`ai-failure-handoff.test.ts` 9 項，4 項修正前以 assertion 失敗，其餘 5 項以 mutation 驗證。`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，未處理 |
+| LLM-04 的知識庫自動回覆列 | 描述更新 | embedding 失敗不再「不回覆也不轉真人」，改為轉真人。Embedding 只能呼叫 Ollama 本身未處理 |
+
 ## 2026-11-04：收件匣對話列表的分頁與後端篩選（CONV-04）
 
 issue #422，change `fix-inbox-conversation-pagination`。以本機測試資料庫的 unit 與 feature 測試驗證，沒有連 UAT。
