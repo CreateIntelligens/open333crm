@@ -140,7 +140,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // POST /api/v1/knowledge/upload — 多格式檔案上傳
   fastify.post('/upload', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const parts = request.files();
-    const results: { title: string; success: boolean; error?: string }[] = [];
+    const results: { title: string; success: boolean; error?: string; code?: string }[] = [];
     let uploaded = 0;
     let failed = 0;
 
@@ -187,10 +187,12 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         results.push({ title: parsed.title, success: true });
       } catch (err) {
         failed++;
+        // 每個檔案各自回報失敗；CSV 編碼無法辨識（CSV_ENCODING_UNREADABLE）時這個檔案一筆都不寫入
         results.push({
           title: part.filename,
           success: false,
           error: (err as Error).message,
+          ...(err instanceof AppError ? { code: err.code } : {}),
         });
       }
     }

@@ -33,6 +33,26 @@ issue #444，分支 `fix/p4-444`，change `show-csat-score-444`。以單元測�
 | CASE-05 | 部分修正 | `recordCsatScore()` 呼叫新的 `recordCsatRating(ctx: TenantCtx, …)`：問卷訊息（`contentType: 'csat'`、`metadata.caseId`、同租戶）寫入 `metadata.csatScore`／`csatRatedBy` 並再推一次 `message.new`，寫 `csat_rated` 事件；自動關閉寫 `status_changed`（`reason: 'csat_rated'`）。`csat-score-display.test.ts` 4 項、`csat-record-scope.test.ts` 新增 3 項修正前失敗。仍不經狀態機、不關閉對話、客服代評也送感謝訊息（#339） |
 | UAT 實測的評分顯示成 `csat:2:<工單 ID>` | 已修正（未列 AUDIT） | 進站攔截後 `relabelCsatReplyMessage()` 把訊息改寫成「我的評分：N 分」，原文存在 `metadata.postbackData`；有遮罩副本時副本改成同一段固定文字。`inbound-message-processing.test.ts`「評分的訊息在收件匣顯示文字」修正前失敗 |
 
+## 2026-11-04：型號守門把一般英文詞當成型號（KB-02）
+
+issue #420，分支 `fix/p4-420`，change `fix-kb-model-guard-420`。以 unit 測試驗證（假 LLM 與檢索、經 workers `message.received`），沒有連 UAT，真機未驗。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-02（HC-KNOWLEDGE-02） | 已修正，從 `AUDIT.md` 移除 | `model-matcher.ts` 排除轉大寫後是常見英文詞的（偵測維持不分大小寫、結果轉大寫，`tac-11p` 視同 `TAC-11P`）（`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`TYPE-C`、`HDMI-2`、`CD-R`、`DVD-R`，沿用 `packages/kb-ingest` 的停用詞）；`checkModelGuard()` 只攔截前綴出現在白名單的型號，白名單空（沒有型號文章）時不攔截，訂單編號 `AB-12345` 這類前綴不在白名單的編號也不攔截。守門回覆計入 `clarifyAttempts`，用完時改走 #419 的 `clarify_handoff`（`clarifyExhaustedReason()`、`handOffConversation()`）。`model-matcher.test.ts` 的一般英文詞案例、`kb-model-guard.test.ts` 11 項中 10 項修正前以 assertion 失敗，「查無的型號仍引導選型號」為既有行為；`hasKnownPrefix` 判斷、守門累加次數、用完時轉接各以突變驗證。主規格 `bot-handoff-config` 新增「型號守門只攔截知識庫型號格式的型號」，修改「知識庫追問用完或 AI 失敗時轉接真人」 |
+| HC-KNOWLEDGE-06（守門的 `modelGuard` 留在對話 metadata） | 未處理 | 不在這次範圍 |
+
+初版把偵測改成大小寫敏感，審查後恢復不分大小寫（前綴白名單已擋住非型號的編號，大小寫敏感只會讓小寫型號失去引導）；「小寫型號視同大寫」在大小寫敏感的版本上失敗。
+前綴打錯的型號（白名單沒有這個前綴）不再觸發守門，改走一般知識庫回答或追問。
+
+## 2026-11-04：知識庫匯入 CSV 的文字編碼（KB-03）
+
+issue #421，分支 `fix/p4-421`，change `fix-kb-csv-encoding-421`。以本機單元測試與手冊範例檔驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-03（HC-KNOWLEDGE-03） | 已修正，從 `AUDIT.md` 移除 | `file-parser.service.ts` 新增 `decodeCsvText()`：UTF-8 BOM 去掉後以 UTF-8 解，沒有 BOM 先嚴格 UTF-8、失敗試 Big5（Node 內建 `TextDecoder`，不新增依賴）；`readWorkbook()` 依 zip 檔頭分辨 xlsx 與 CSV，`parseSpreadsheetToQaRows()` 與單篇 CSV 匯入都經過它。兩種都解不出或含 U+FFFD 時拋 `CSV_ENCODING_UNREADABLE`（400，中文原因），上傳路由沿用每檔各自回報的結構，在該檔結果帶 `code`，該檔不寫入任何文章。`knowledge-file-parser-encoding.test.ts` 7 項中 6 項修正前以 assertion 失敗、有 BOM 的一項以突變驗證；`knowledge-upload-encoding.test.ts` 2 項修正前失敗。`apps/web/tests/fixtures/manual-kb-sample.csv`（無 BOM UTF-8）實跑拆出正確中文問答。問答表直接發布依使用者決定（2026-11-04）保留，不列為問題 |
+
 ## 2026-11-04：刪除沒有呼叫端、使用 core `redis` 的檔案（LIC-02、PKG-06）
 
 issue #443 的 B，分支 `refactor/redis-connection-workers`。以 `grep` 確認沒有呼叫端後刪除，`pnpm test` 通過。

@@ -26,7 +26,7 @@ import { getChatSettings } from '../settings/chat-settings.service.js';
 import { generateReply, CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
 import { prepareStoredMessageContent } from './deidentification.service.js';
 import type { HistoryMessage } from './llm.service.js';
-import { detectModels, isKnownModel, findRelatedModels } from './model-matcher.js';
+import { detectModels, isKnownModel, findRelatedModels, hasKnownPrefix } from './model-matcher.js';
 import { getKnownModelKeys } from './model-registry.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { loadOtherChannelContext } from './other-channel-context.js';
@@ -239,6 +239,7 @@ export async function attemptKbAutoReply(
   //     代表這可能是「查無此型號（打錯/記錯）」。此時不要拿相近型號的資料硬答，
   //     改為引導客戶從相近型號清單中確認正確型號。
   //     高相似度（>= MODEL_GUARD_EXEMPT_SIMILARITY）豁免，避免誤擋剛新增的型號。
+  //     守門回覆與追問共用追問次數：用完時改走追問用完的轉接（issue #420）。
   let replyText: string;
   let replyKind: ReplyKind;
   let metadataExtras: Record<string, unknown> = {};
@@ -252,7 +253,13 @@ export async function attemptKbAutoReply(
     topSimilarity,
   );
 
-  if (modelGuard) {
+  // Track clarify attempts in conversation.metadata to avoid loops（追問與型號守門共用）
+  const convMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
+  const prevAttempts = Number(convMeta.clarifyAttempts ?? 0);
+  const nextAttempts = prevAttempts + 1;
+  const clarifyExhausted = prevAttempts >= chatSettings.clarifyMaxAttempts;
+
+  if (modelGuard && !clarifyExhausted) {
     // 命中守門 → 引導選型號
     const relatedList = modelGuard.relatedModels;
     const guideContext =
@@ -277,8 +284,9 @@ export async function attemptKbAutoReply(
             `方便請您確認一下產品本體底部標籤或外箱貼紙上的正確型號嗎？`;
     }
     replyKind = 'model_not_found';
-    // 守門不應重置 clarify 計數，但也不該累加；維持原值即可（不寫入 metadataExtras）。
+    // 守門回覆也算一次追問：客人一直提到查無的型號時，追問用完就轉接真人（issue #420）
     metadataExtras = {
+      clarifyAttempts: nextAttempts,
       modelGuard: {
         unknownModel: modelGuard.unknownModel,
         relatedModels: relatedList,
@@ -305,15 +313,11 @@ export async function attemptKbAutoReply(
   }
 
   // 8. Decide reply path
-  const needsClarify = !topResult || topSimilarity < chatSettings.clarifyThreshold;
+  // 命中型號守門但追問次數已用完：與追問用完相同，回「已為您轉接」並轉接真人
+  const needsClarify = !!modelGuard || !topResult || topSimilarity < chatSettings.clarifyThreshold;
 
   if (needsClarify) {
-    // Track clarify attempts in conversation.metadata to avoid loops
-    const convMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
-    const prevAttempts = Number(convMeta.clarifyAttempts ?? 0);
-    const nextAttempts = prevAttempts + 1;
-
-    if (prevAttempts >= chatSettings.clarifyMaxAttempts) {
+    if (clarifyExhausted) {
       replyText = CLARIFY_HANDOFF_FALLBACK;
       replyKind = 'clarify_handoff';
       metadataExtras = { clarifyAttempts: prevAttempts };
@@ -386,7 +390,8 @@ export async function attemptKbAutoReply(
 /**
  * 型號守門檢查：判斷訊息是否提到「知識庫查無的型號」，需要引導使用者選型號。
  *
- * 回傳 null = 不攔截（沒提型號 / 型號已知 / KB 相似度夠高可豁免）。
+ * 回傳 null = 不攔截（沒提型號 / 型號已知 / KB 相似度夠高可豁免 /
+ * 知識庫沒有型號文章（白名單空）/ 型號前綴不在白名單，例如訂單編號）。
  * 回傳物件 = 攔截，附上查無的型號與相近型號清單。
  *
  * 只針對「第一個查無的型號」攔截（通常客戶一次問一台）。
@@ -413,6 +418,9 @@ async function checkModelGuard(
   }
 
   for (const model of detected) {
+    // 前綴不在白名單就不是這個租戶的型號（例如訂單編號 AB-12345）；
+    // 知識庫沒有型號文章（白名單空）時每個前綴都不在白名單，等於不啟用守門（issue #420）
+    if (!hasKnownPrefix(model, knownKeys)) continue;
     if (!isKnownModel(model, knownKeys)) {
       const relatedModels = findRelatedModels(model, knownKeys);
       logger.info(

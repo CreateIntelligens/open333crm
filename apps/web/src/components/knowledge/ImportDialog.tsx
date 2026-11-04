@@ -171,15 +171,18 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
           {fileStatuses.length > 0 && (
             <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border p-2">
               {fileStatuses.map((fs) => (
-                <div key={fs.name} className="flex items-center gap-2 text-sm">
-                  {fs.state === 'pending' && <FileText className="h-4 w-4 text-muted-foreground" />}
-                  {fs.state === 'uploading' && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-                  {fs.state === 'success' && <CheckCircle2 className="h-4 w-4 text-success" />}
-                  {fs.state === 'error' && <XCircle className="h-4 w-4 text-destructive" />}
-                  <span className="flex-1 truncate">{fs.name}</span>
-                  {fs.error && (
-                    <span className="ml-2 truncate text-xs text-destructive">{fs.error}</span>
-                  )}
+                <div key={fs.name} className="flex items-start gap-2 text-sm">
+                  {fs.state === 'pending' && <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+                  {fs.state === 'uploading' && <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />}
+                  {fs.state === 'success' && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />}
+                  {fs.state === 'error' && <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{fs.name}</div>
+                    {/* 失敗原因完整換行顯示，不截斷（例如 CSV 編碼無法辨識時要看到「另存成 CSV UTF-8」） */}
+                    {fs.error && (
+                      <div className="break-words text-xs text-destructive">{fs.error}</div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
