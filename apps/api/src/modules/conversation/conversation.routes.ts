@@ -125,6 +125,13 @@ const listQuerySchema = z.object({
   assigneeId: z.string().optional(),
   unread: z.coerce.boolean().optional(),
   closedAfter: z.string().optional(),
+  // 收件匣搜尋框（#422）：去頭尾空白後最多 100 字；只有空白時視為沒有搜尋
+  search: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .transform((v) => (v ? v : undefined)),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
