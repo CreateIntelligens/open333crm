@@ -288,6 +288,19 @@ A service obeys these rules:
   failure, which code does the step again, and the guarantee. Change `outbox-event-delivery`,
   `design.md` section 14, shows such a table.
 
+**Redis connections.** In the API process, an entry point gets the Redis connection for
+commands (cache, counters, short-lived codes) from `fastify.redis` and gives it to the flow as a
+parameter. Do not import a Redis client in a module. To create a connection in another place,
+call `createRedisClient(url, purpose)` from `@open333crm/core`:
+
+- `'command'`: for commands. When Redis refuses the connection or does not reply, a command
+  fails in 1 second or less.
+- `'queue'`: for BullMQ and for a subscriber. A command waits until Redis replies, as BullMQ
+  requires.
+
+Do not create a connection with `new IORedis` (#443). `fastify.redis` does not connect when the
+application starts. It connects at the first command, and it closes when Fastify closes.
+
 A flow and a background job obey these rules:
 
 - Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant),

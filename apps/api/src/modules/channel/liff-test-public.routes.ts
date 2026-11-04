@@ -7,7 +7,6 @@ import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod/v3';
 import { AppError } from '../../shared/utils/response.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { checkLineIdToken } from '../coupon/line-id-token.js';
 import { LIFF_TEST_CLIENT_FAILURES, reportLiffTestFlow, type LiffTestDeps } from './liff-test.flow.js';
 
@@ -28,7 +27,7 @@ export default async function liffTestPublicRoutes(app: FastifyInstance, opts: L
     prisma: app.prisma,
     checkIdToken: checkLineIdToken,
     ...opts.liffTest,
-    store: opts.liffTest?.store ?? getBindingStore(),
+    store: opts.liffTest?.store ?? app.redis,
   });
 
   await app.register(rateLimit, { global: true, max: 30, timeWindow: '1 minute', keyGenerator: (request) => request.ip });

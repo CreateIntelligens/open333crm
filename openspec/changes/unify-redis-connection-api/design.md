@@ -57,6 +57,15 @@ ioredis 5.9.3 在指令進入離線佇列之前就啟動 `commandTimeout` 的計
 
 `maxRetriesPerRequest: 2` 保留：Redis 拒絕連線時，指令不必等滿 1 秒。
 
+實測結果（2026-11-04，ioredis 5.9.3，本機，`create-redis-client.test.ts` 與一支量測腳本）：
+
+| 故障 | ioredis 預設（20 次） | `maxRetriesPerRequest: 2` | 加上 `commandTimeout: 1000` |
+| --- | --- | --- | --- |
+| 拒絕連線 | 10537 毫秒 | 156 毫秒 | 154 毫秒 |
+| 接受連線但不回應 | 沒有量 | 超過 5000 毫秒仍未結束 | 約 1000 毫秒 |
+
+所以 1 秒的數值不改。
+
 現有的呼叫端都已經處理 Redis 失敗，所以加上等待上限之後，呼叫端不必改（查核：2026-11-04）：
 
 - `permission.service.ts`、`token-quota.service.ts`、`chatbox.service.ts` 的每個 Redis 呼叫都有 try/catch。
@@ -67,7 +76,7 @@ ioredis 5.9.3 在指令進入離線佇列之前就啟動 `commandTimeout` 的計
 
 core 的 `redis` 改用 `createRedisClient(url, 'command')` 建立。它的使用者是 `permission.service.ts`、`token-quota.service.ts`、`chatbox.service.ts`、`ops-alert.service.ts` 與 `EventBus.publish()`，都只下一般指令，而且都已經處理失敗（D2）。改完之後，這些指令在 Redis 故障時不再一直等。這是 #443 要解決的主要問題，不必等 10.4 PR 與階段 4。
 
-唯一的阻礙是 `EventBus.subscribe()`：它以 `redis.duplicate()` 建立訂閱連線，複製的連線會繼承 `commandTimeout`。Redis 在啟動時無法使用的話，`SUBSCRIBE` 會在 1 秒後失敗。`subscribe()` 沒有等待這個 Promise，結果是未處理的 rejection，canvas 的事件訂閱也會消失。所以 `subscribe()` 改用 `createRedisClient(url, 'queue')` 建立自己的訂閱連線，設定與現在相同。`EventBus` 的其他部分留到 #337 階段 6。
+唯一的阻礙是 `EventBus.subscribe()`：它以 `redis.duplicate()` 建立訂閱連線，複製的連線會繼承 `commandTimeout`。Redis 在啟動時無法使用的話，`SUBSCRIBE` 會在 1 秒後失敗。`subscribe()` 沒有等待這個 Promise，結果是未處理的 rejection，canvas 的事件訂閱也會消失。所以 `subscribe()` 改用 `createRedisClient(url, 'queue')` 建立自己的訂閱連線，設定與現在相同。`subscribe()` 的 Promise 補上 catch 並寫 log：關閉連線時，還沒完成的訂閱會被拒絕，原本會變成未處理的 rejection。`EventBus` 的其他部分留到 #337 階段 6。
 
 core 的 `redis` 沒有其他使用者把它當成 BullMQ 的連線。只有 channel-plugins 的 3 個 `worker-*.ts` 這樣做，但它們沒有呼叫端，不會執行，#443 的 B 會刪除它們（查核：2026-11-04）。
 
@@ -96,7 +105,8 @@ core 的 `redis` 沒有其他使用者把它當成 BullMQ 的連線。只有 cha
 | Scenario | 測試檔 | 為什麼放這裡 |
 | --- | --- | --- |
 | 一般用途：拒絕連線、接受連線但不回應 | `packages/core/tests/unit/redis/create-redis-client.test.ts` | core 的 unit 測試用真的 ioredis。測試在本機開一個不回應的 `net` server，以及一個沒有程式監聽的 port，不需要 Redis |
-| BullMQ 用途：交給 Worker、不回應時繼續等 | 同上 | 同上。Worker 以 `autorun: false` 建立，不開始處理 job |
+| BullMQ 用途：不回應時繼續等 | 同上 | 同上 |
+| BullMQ 用途：交給 Worker | `apps/api/tests/feature/lib/redis-connection.test.ts` | Worker 在連上 Redis 之前關閉的話，BullMQ 呼叫的 `connect()` 會留下未處理的 rejection，unit 測試只能靠等待時間避開。所以用真的 Redis，等 Worker 就緒後正常關閉。另有一項對照組：一般用途的連線交給 Worker 時，BullMQ 丟出設定錯誤 |
 | `EventBus` 的訂閱連線不繼承一般用途的設定 | `packages/core/tests/unit/event-bus/event-bus.test.ts` | 檢查 `subscribe()` 回傳的連線的 `commandTimeout` 與 `maxRetriesPerRequest`。行為測試要讓 Redis 在啟動時無法使用、之後恢復，unit 測試做不到 |
 | 建立 API 應用程式時不連 Redis、關閉時關閉連線 | `apps/api/tests/unit/plugins/redis.plugin.test.ts` | 測試檔以 `vi.mock('ioredis', importOriginal)` 換回真的 ioredis，指向沒有程式監聽的 port。全域的假 Redis 永遠回報狀態 `end`，分不出「還沒連線」與「已關閉」 |
 
