@@ -18,8 +18,19 @@
  * - 前綴：2~4 個大寫英文字母（TAC / TF / TAW / TDH / TOT / TEK …）
  * - 緊接 `-` 與至少一段「英數」，後面可再接多段 `-英數`
  * 例：TAC-11P-MFB、TAW-A080WM、TDH-168MC-NW、AC-9
+ *
+ * 大小寫敏感（issue #420）：型號一律大寫，不分大小寫時 `Wi-Fi`、`e-mail`、`T-shirt`
+ * 都會被當成型號，機器人就回「這個型號我這邊查不到資料」。
  */
-const MODEL_PATTERN = /\b([A-Z]{1,4})-([0-9A-Z]+(?:-[0-9A-Z]+)*)\b/gi;
+const MODEL_PATTERN = /\b([A-Z]{1,4})-([0-9A-Z]+(?:-[0-9A-Z]+)*)\b/g;
+
+/**
+ * 大寫時也符合型號格式的常見英文詞，不是型號（客人可能整段大寫輸入，例如 `WI-FI`）。
+ * 清單與 packages/kb-ingest/src/lib/transcript.ts 的 MODEL_STOPWORDS 同源，另加 T-SHIRT。
+ */
+const NON_MODEL_WORDS: ReadonlySet<string> = new Set([
+  'WI-FI', 'E-MAIL', 'T-SHIRT', 'HDMI-2', 'USB-C', 'TYPE-C', 'CD-R', 'DVD-R',
+]);
 
 /** 從「第1段」抽出人份數字（型號開頭的連續數字），抓不到回傳 null。 */
 function extractCapacityDigits(firstSegment: string): string | null {
@@ -28,7 +39,7 @@ function extractCapacityDigits(firstSegment: string): string | null {
 }
 
 export interface ParsedModel {
-  /** 正規化後的完整輸入型號（大寫、去空白），例：TAC-11P-MFB */
+  /** 完整輸入型號，例：TAC-11P-MFB */
   raw: string;
   /** 前綴品類碼，例：TAC */
   prefix: string;
@@ -50,10 +61,10 @@ export function detectModels(text: string): ParsedModel[] {
   const out: ParsedModel[] = [];
 
   // matchAll 需要 global flag；用副本避免共用 lastIndex 狀態。
-  const re = new RegExp(MODEL_PATTERN.source, 'gi');
+  const re = new RegExp(MODEL_PATTERN.source, 'g');
   for (const match of text.matchAll(re)) {
-    const prefix = match[1].toUpperCase();
-    const rest = match[2].toUpperCase();
+    const prefix = match[1];
+    const rest = match[2];
     const segments = rest.split('-');
     const firstSegment = segments[0];
 
@@ -61,6 +72,7 @@ export function detectModels(text: string): ParsedModel[] {
     // 註：若需涵蓋無人份數的型號，可放寬此條件。
     const raw = `${prefix}-${rest}`;
     const key = `${prefix}-${firstSegment}`;
+    if (NON_MODEL_WORDS.has(raw)) continue;
     if (seen.has(raw)) continue;
     seen.add(raw);
 
@@ -81,6 +93,17 @@ export function detectModels(text: string): ParsedModel[] {
  */
 export function isKnownModel(parsed: ParsedModel, knownKeys: ReadonlySet<string>): boolean {
   return knownKeys.has(parsed.key);
+}
+
+/**
+ * 判斷型號的前綴（品類碼）是否出現在白名單（issue #420）。
+ * 前綴不在白名單的編號（例如訂單編號 `AB-12345`）不是這個租戶的產品型號，型號守門不攔截。
+ */
+export function hasKnownPrefix(parsed: ParsedModel, knownKeys: ReadonlySet<string>): boolean {
+  for (const key of knownKeys) {
+    if (splitKey(key)[0] === parsed.prefix) return true;
+  }
+  return false;
 }
 
 /**

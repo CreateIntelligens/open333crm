@@ -5,6 +5,7 @@
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 已修正：HC-KNOWLEDGE-01（#419，change `fix-kb-clarify-handoff-419`）。追問次數用完或追問的 LLM 呼叫失敗（含 `PLAN_LIMIT_EXCEEDED`）時，與自動轉真人共用 `handOffConversation()` 真的轉接：對話改成 `AGENT_HANDLED`、寫 `handoffReason` 與系統訊息、發出 `conversation.handoff` 並通知客服；`tenant/KNOWLEDGE.md` 已同步。手冊 ch06、ch07 的「追問不清楚就轉真人」因此與行為一致。本報告其餘段落仍描述健檢當時的程式
+- 已修正：HC-KNOWLEDGE-02（#420，change `fix-kb-model-guard-420`）。型號偵測改成大小寫敏感並排除常見英文詞（`WI-FI`、`E-MAIL`、`T-SHIRT` 等）；守門只攔截前綴出現在白名單的型號，白名單空時不守門，訂單編號這類前綴不在白名單的編號不攔截；守門回覆計入追問次數，用完時與追問用完相同轉接真人。`tenant/KNOWLEDGE.md` 已同步。HC-KNOWLEDGE-06（`modelGuard` 殘留在 metadata）未處理
 - 已修正（部分）：知識庫 embedding 失敗、agent 也沒回覆時客人收不到任何回覆（issue #445，change `handoff-on-ai-reply-failure-445`）。現在轉真人，原因寫「AI 暫時無法回覆（…）」；`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，記為 KB-06
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只做唯讀 API 查詢）
 - 規格：`docs/ref/features/feature-map.json` 的 `knowledge`；功能文件 `docs/ref/features/tenant/KNOWLEDGE.md`

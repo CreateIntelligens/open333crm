@@ -205,7 +205,6 @@
 | [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `OLLAMA_*` 環境變數與 Chat 的位址補救已無作用 | 靜態確認 |
 | [LLM-04](#llm-04) | Storage、LLM 與資料庫 | P2 | 未處理 | Embedding 只能呼叫 Ollama；UAT 目前靠 Compose 內的 Ollama 運作，依部署決定拿掉 Ollama 後，知識庫自動回覆、AI 建議回覆與語意搜尋都會失效 | 執行時確認 |
 | [LLM-05](#llm-05) | Storage、LLM 與資料庫 | P2 | 未處理 | AI 摘要在 LLM 失敗或額度用完時回傳一段固定範本，轉接真人時以「Bot 對話摘要」寫進對話 | 執行時確認 |
-| [KB-02](#kb-02) | Storage、LLM 與資料庫 | P1 | 未處理 | 型號守門不分大小寫，把 `Wi-Fi`、`e-mail`、訂單編號當成查不到的型號，對所有租戶生效 | 執行時確認 |
 | [KB-03](#kb-03) | Storage、LLM 與資料庫 | P1 | 未處理 | 沒有 BOM 的 UTF-8 CSV 匯入知識庫後中文變亂碼，英文表頭時還會直接發布 | 執行時確認 |
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
 | [KB-05](#kb-05) | Storage、LLM 與資料庫 | P2 | 未處理 | 型號守門命中後寫進對話的 `modelGuard` 永遠不清除，之後的回覆都沿用舊值 | 執行時確認 |
@@ -2629,16 +2628,6 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 `ai.service.ts` 的摘要在 LLM 呼叫失敗時（含月額度用完的 403）回傳一段固定範本當成摘要：「客戶主要詢問了產品相關問題，Bot 提供了初步回覆但客戶可能需要更詳細的人工協助…」，內容與對話無關，回應是 200。自動轉接真人時（`automation.worker.ts`），這段文字以「Bot 對話摘要」寫進對話的系統訊息，永久留存，客服會以為是 AI 讀過對話的結論。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-USAGE-04（[PLATFORM-USAGE 健檢](../features/health/PLATFORM-USAGE.md)）。證據：`apps/api/src/modules/ai/ai.service.ts:113-128`、`apps/api/src/modules/automation/automation.worker.ts:136-147`；本機 LLM 不通時 `POST /ai/summarize` 回 200 與上述範本（健檢實測）；額度用完與寫入系統訊息為讀程式。
-
-<a id="kb-02"></a>
-### KB-02：型號守門把一般英文詞當成型號
-
-`model-matcher.ts` 的正規式 `\b([A-Z]{1,4})-([0-9A-Z]+…)\b` 不分大小寫，`Wi-Fi`、`e-mail`、`T-shirt`、訂單編號 `AB-12345` 都被當成型號。KB 相似度低於 0.85 時，機器人回「這個型號我這邊查不到資料」，請客人確認型號。
-
-- 守門對**所有租戶**生效。沒有任何型號文章的租戶白名單是空的，只要訊息有這類詞，就一定走守門。
-- 守門路徑不累加追問次數，客人一直提到這類詞就一直不會轉真人。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-KNOWLEDGE-02（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。證據：`apps/api/src/modules/ai/model-matcher.ts:22`、`kb-autoreply.service.ts:185-237`；健檢腳本送「我家 Wi-Fi 連不上怎麼辦」得到 `replyKind=model_not_found`、`unknownModel=WI-FI`；`detectModels()` 對 `T-shirt`、`AB-12345` 也命中（健檢實測）。
 
 <a id="kb-03"></a>
 ### KB-03：知識庫匯入沒有 BOM 的 CSV 變成亂碼
