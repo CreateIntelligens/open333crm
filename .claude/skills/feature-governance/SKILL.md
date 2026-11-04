@@ -64,7 +64,7 @@ description: >
 ## 回歸清單
 改到本領域時，至少重走：
 1. 用有 `audit.view` 的帳號查 `GET /tenant/audit-logs`，確認你新增或改動的操作有寫一筆，`payload` 不含個資，`ip` 有值。
-2. 發起匯出 → 等 `completed` → 下載 zip，檢查 manifest.json 筆數與 CSV 內容。
+2. 發起匯出 → 等 `completed` → 下載 zip，檢查 manifest.json 筆數與 CSV 內容（以 `=` 開頭的名稱前面有 `'`、日期是 ISO 字串；`toCsv()` 共用 `@open333crm/shared` 的 `csvRow()`，#423）。
 3. 對自建的測試聯絡人（名稱加前綴）各跑一次 `anonymize` 與 `hard_delete`，用 psql 確認 `affected` 與實際刪除一致，其他聯絡人不受影響。**UAT 不做匯出與刪除。**
 4. 合併兩位測試聯絡人 → 刪除主要聯絡人 → 檢查被併入的封存聯絡人與合併紀錄（ERASE-01、HC-GOVERNANCE-06）。
 5. 沒有 `audit.view`／`data.export`／`data.erase`／`webhook.manage` 的角色各打一次，確認 403 的 `requiredPermission`；另用有 `data.export`、沒有 `channel.view_all` 的角色打匯出，確認 `requiredPermission` 是 `channel.view_all`。

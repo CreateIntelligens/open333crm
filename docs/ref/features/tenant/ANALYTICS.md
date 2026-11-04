@@ -56,7 +56,7 @@ CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`cr
 | 其他報表 | `analytics.view` |
 | `POST /analytics/export` | `analytics.export` |
 
-側欄的「總覽」要 `analytics.view`，「我的績效」要 `analytics.view.self`；兩個都沒有時不顯示「報表」。「匯出 CSV」按鈕只對有 `analytics.export` 的成員顯示，匯出的 CSV 以 UTF-8 BOM 開頭，Excel 開啟中文不會亂碼。
+側欄的「總覽」要 `analytics.view`，「我的績效」要 `analytics.view.self`；兩個都沒有時不顯示「報表」。「匯出 CSV」按鈕只對有 `analytics.export` 的成員顯示，匯出的 CSV 以 UTF-8 BOM 開頭，Excel 開啟中文不會亂碼。每一欄（含標題列）都經過 `@open333crm/shared` 的 `csvRow()`：含逗號、引號、換行的欄位以雙引號包住，以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`，Excel 不會當成公式；數字欄位照原樣輸出（#423）。
 
 報表頁的自訂日期以瀏覽器的本地時區解析，迄日算到當天 23:59:59。
 
