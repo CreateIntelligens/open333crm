@@ -4,6 +4,7 @@
 - 程式版本：5c81102e（本機 API、web 與自動測試都是這個版本）。`origin/main`（0a49a1dc）在當天 09:16–11:54 另有 10 個 portal 修正 commit，UAT 已部署；每個問題另標「main 狀態」
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 已修正：HC-PORTAL-01（#424，change `fix-portal-edit-keeps-content`，AUDIT PORTAL-03 已移除）。編輯對話框以 `GET /portal/activities/:id` 帶入完整活動（含選項、正確答案與表單欄位），載入中顯示「正在載入活動內容」，載入失敗顯示原因與「重新載入」，兩種情況都不能儲存；`updateActivity()` 沒帶 `options`／`fields` 時不動，投票與競猜送空的 `options`、表單送空的 `fields` 時回 400，不刪除既有內容。UAT 尚未重測
+- 後續修正（不在本報告的問題清單）：#447，change `fix-portal-publish-requires-content`。發布前檢查投票、競猜至少一個選項，表單至少一個欄位，不符合時回 400 並維持草稿；建立草稿不變。UAT 尚未重測
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認）
 - 範圍：`docs/ref/features/feature-map.json` 的 `portal`；功能文件 `docs/ref/features/tenant/PORTAL.md`；手冊 `apps/web/public/manual/ch11-portal.html`
 
