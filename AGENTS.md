@@ -288,6 +288,19 @@ A service obeys these rules:
   failure, which code does the step again, and the guarantee. Change `outbox-event-delivery`,
   `design.md` section 14, shows such a table.
 
+**Redis connections.** In the API process, an entry point gets the Redis connection for
+commands (cache, counters, short-lived codes) from `fastify.redis` and gives it to the flow as a
+parameter. Do not import a Redis client in a module. To create a connection in another place,
+call `createRedisClient(url, purpose)` from `@open333crm/core`:
+
+- `'command'`: for commands. When Redis refuses the connection or does not reply, a command
+  fails in 1 second or less.
+- `'queue'`: for BullMQ and for a subscriber. A command waits until Redis replies, as BullMQ
+  requires.
+
+Do not create a connection with `new IORedis` (#443). `fastify.redis` does not connect when the
+application starts. It connects at the first command, and it closes when Fastify closes.
+
 A flow and a background job obey these rules:
 
 - Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant),
@@ -361,8 +374,8 @@ so these functions do not change its result.
   is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
   - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
-  - a reference from a service file to a Redis client (`redis` or the whole module from
-    `@open333crm/core`, or `ioredis`) or to an LLM module (`ai/llm.service.js`, a file in
+  - a reference from a service file to a Redis client (`redis`, `createRedisClient` or the
+    whole module from `@open333crm/core`, `ioredis`, or `lib/redis-client`) or to an LLM module (`ai/llm.service.js`, a file in
     `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
     module-level clients inside the transaction, so a flow receives them as dependencies instead.
 

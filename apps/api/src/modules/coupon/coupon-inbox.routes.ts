@@ -10,7 +10,6 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { assertConversationChannelVisible } from '../../services/channel-visibility.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { getIssueRequest, type InboxIssueFailure } from './coupon-inbox.service.js';
 import {
   getIssueContextFlow,
@@ -47,7 +46,7 @@ const FAILURES: Record<InboxIssueFailure, { status: number; message: string }> =
 export default async function couponInboxRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  const deps = (): InboxFlowDeps => ({ store: getBindingStore(), prisma: app.prisma, io: app.io });
+  const deps = (): InboxFlowDeps => ({ store: app.redis, prisma: app.prisma, io: app.io });
 
   app.get('/conversations/:conversationId', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
     const { conversationId } = paramsSchema.parse(request.params);

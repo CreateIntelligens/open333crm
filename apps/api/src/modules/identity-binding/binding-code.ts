@@ -94,7 +94,10 @@ export async function readCounter(store: BindingStore, key: string): Promise<num
   return Number((await store.get(key)) ?? 0);
 }
 
-/** 正式環境的 Redis 實作（共用連線，延遲建立） */
+/**
+ * 拿不到 `fastify` 的 webhook 收訊流程（inbound-identity-binding、inbound-coupon-claim）用的 Redis 實作。
+ * 其他入口傳入 `fastify.redis`。webhook 收訊流程改為注入之後移除（#337 階段 4）。
+ */
 export function getBindingStore(): BindingStore {
-  return getSharedRedis() as unknown as BindingStore;
+  return getSharedRedis();
 }

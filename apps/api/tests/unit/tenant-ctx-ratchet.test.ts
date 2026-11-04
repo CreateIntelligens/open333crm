@@ -138,7 +138,17 @@ test('service 檔直接 import Redis client：算增加', { timeout: 30_000 }, a
   for (const f of ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
 });
 
-test('service 檔直接 import LLM 入口：算增加', { timeout: 30_000 }, async () => {
+test('service 檔 import core 建立連線的函式：算增加', { timeout: 30_000 }, async () => {
+  // 自己建立連線一樣是不經過參數取得 Redis，改名 import 也要算到
+  await put('modules/c1/c1.service.ts', ["import { createRedisClient } from '@open333crm/core';"]);
+  await put('modules/c2/c2.service.ts', ["import { createRedisClient as mk } from '@open333crm/core';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /Redis client/);
+  for (const f of ['c1', 'c2']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('service 檔直接 import LLM 入口：算增加',{ timeout: 30_000 }, async () => {
   await put('modules/l1/l1.service.ts', ["import { generateReply } from '../ai/llm.service.js';"]);
   await put('modules/l2/l2.service.ts', ["import { getChatProvider } from '../ai/providers/index.js';"]);
   const { code, output } = await check(args('--strict'));

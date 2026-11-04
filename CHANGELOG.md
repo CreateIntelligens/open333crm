@@ -4,6 +4,14 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-04]
 
+### Changed
+
+- **Redis 連線改由同一個函式建立，一般指令在 Redis 故障時 1 秒內失敗**（#443，change `unify-redis-connection-api`）— API 原本有兩條設定不同的一般用途連線：`@open333crm/core` 的 `redis` 在 Redis 連不上時讓指令一直等，`getSharedRedis()` 在 Redis 接受連線卻不回應時也一直等。權限快取、token 額度、chatbox 認領在租戶交易內使用前者，交易可能超過 5 秒的逾時。現在：
+  - core 新增 `createRedisClient(url, purpose)`。`'command'` 用於一般指令：Redis 拒絕連線時約 0.2 秒失敗，不回應時 1 秒失敗。`'queue'` 用於 BullMQ 與訂閱，指令等到 Redis 恢復。
+  - core 的 `redis` 與 `getSharedRedis()` 改用 `'command'`。呼叫端原本就處理 Redis 失敗，行為只差在不再一直等。`EventBus` 的訂閱改用自己的 `'queue'` 連線。
+  - API 新增 `fastify.redis`（`plugins/redis.plugin.ts`），與 `getSharedRedis()` 是同一條連線。建立應用程式時不連 Redis，關閉 Fastify 時一起關閉，原本關機時沒有關閉。
+  - 登入失敗計數與綁定代碼的入口改從 `fastify.redis` 取得連線，刪除 `getLoginAttemptStore()`。webhook 收訊流程仍用 `getBindingStore()`，隨 #337 階段 4 改為注入。
+
 ### Fixed
 
 - **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
