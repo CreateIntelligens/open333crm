@@ -17,7 +17,7 @@
 **Goals:**
 
 - 一個函式決定 Redis 連線的設定，呼叫端只選用途。
-- API 的一般用途連線只有一條，由 Fastify 管理它的關閉。
+- `fastify.redis` 由 Fastify 管理它的關閉。core 的 `redis` 仍然沒有關閉，隨 #337 的 10.4 PR 與階段 6 移除。
 - 入口把連線傳給既有的 store 參數，不需要轉型。
 
 **Non-Goals:**
@@ -84,7 +84,7 @@ core 的 `redis` 沒有其他使用者把它當成 BullMQ 的連線。只有 cha
 
 `redis.plugin.ts` 以 `getSharedRedis()` 取得連線，掛到 `fastify.redis`，並在 `onClose` 呼叫 `closeSharedRedis()`。`getSharedRedis()` 改用 `createRedisClient(url, 'command')` 建立連線。`closeSharedRedis()` 關閉連線並清掉模組變數，下一次取用時建立新的連線。
 
-理由：webhook 收訊流程、`passkey`、`downstream-loop-guard` 在這個 change 之後仍然呼叫 `getSharedRedis()`。如果 plugin 另外建立一條連線，API 會有兩條一般用途的連線，其中一條沒有在關閉時關掉。共用同一條連線，就能滿足「API 只有一條一般用途連線，關閉 Fastify 時一起關閉」。
+理由：webhook 收訊流程、`passkey`、`downstream-loop-guard` 在這個 change 之後仍然呼叫 `getSharedRedis()`。如果 plugin 另外建立一條連線，API 會有兩條一般用途的連線，其中一條沒有在關閉時關掉。共用同一條連線，`getSharedRedis()` 的使用者也在關閉 Fastify 時一起關閉。core 的 `redis` 不在此列：它在改動前就沒有關閉，`index.ts` 在 `app.close()` 之後呼叫 `process.exit(0)`，不會拖慢關機。
 
 這些使用者都改為注入之後，plugin 直接呼叫 `createRedisClient()`，再刪除 `lib/redis-client.ts`。
 

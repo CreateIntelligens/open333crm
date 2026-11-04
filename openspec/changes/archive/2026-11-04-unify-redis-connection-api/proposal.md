@@ -21,7 +21,7 @@ API 有兩條一般用途的 Redis 連線，兩條的設定不同（#443）：
   - 把一般用途的連線掛到 `fastify.redis`。
   - 註冊時不連 Redis，第一次執行指令才連線。
   - 關閉 Fastify 時關閉這條連線。
-- `getSharedRedis()` 改由同一個函式建立，並且與 `fastify.redis` 是同一條連線。API 的一般用途連線只剩這一條。
+- `getSharedRedis()` 改由同一個函式建立，並且與 `fastify.redis` 是同一條連線。API 的一般用途連線只剩這一條與 core 的 `redis`；core 的 `redis` 沒有在關閉時關掉，隨 #337 移除。
 - 登入失敗計數與綁定代碼的入口改從 `fastify.redis` 取得連線：
   - 刪除 `getLoginAttemptStore()`。
   - 路由與 `index.ts` 不再呼叫 `getBindingStore()`。webhook 收訊流程的 2 個檔案仍然呼叫它，隨 #337 階段 4 的 `webhook` 改為注入。

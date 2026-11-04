@@ -44,7 +44,7 @@ API 行程註冊一般用途的 Redis 連線時，MUST NOT 連線到 Redis。第
 
 ### Requirement: 關閉 API 應用程式時關閉一般用途的連線
 
-API 應用程式關閉時，一般用途的 Redis 連線 MUST 一起關閉。關閉之後，這條連線上的指令 MUST 以錯誤結束。
+API 應用程式關閉時，`fastify.redis` 的連線 MUST 一起關閉。關閉之後，這條連線上的指令 MUST 以錯誤結束。
 
 #### Scenario: 關閉 API 應用程式
 
