@@ -220,7 +220,13 @@ async function closeUpdateAfterScore(status: string) {
         return {};
       },
     },
-    message: { create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'msg-1', createdAt: new Date(), ...data }) },
+    message: {
+      create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'msg-1', createdAt: new Date(), ...data }),
+      // issue #444：記錄分數時找問卷訊息寫入分數；這個測試沒有問卷訊息
+      findMany: async () => [],
+    },
+    // issue #444：評分與評分後結案寫時間軸
+    caseEvent: { create: async () => ({}) },
     conversation: { update: async () => ({}) },
   } as unknown as TenantDb;
   assert.equal(await recordCsatScore(db, io, CASE_ID, 5, undefined, { tenantId: TENANT_ID }), true);
