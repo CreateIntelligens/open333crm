@@ -120,3 +120,11 @@ core 的 `redis` 沒有其他使用者把它當成 BullMQ 的連線。只有 cha
 ## Migration Plan
 
 沒有資料或設定要遷移。部署後 API 的行為只有兩處不同：Redis 不回應時，一般指令在 1 秒內失敗，包括原本一直等的權限快取、token 額度與 chatbox 認領；API 關閉時多關一條連線。回復時 revert 這個 PR 即可。
+
+## 審查基準（review-loop，2026-11-04）
+
+至少達到 ioredis＋BullMQ 的常見用法，以及 Laravel Redis facade／Horizon 的水準。這些框架的專案也會有的情況，記錄在本節就好，不在這個 change 修正。例如：關機時正在執行的指令被中斷、Redis 叢集與 Sentinel 不支援。
+
+### 記錄就好的項目
+
+（review-loop 各輪補上）
