@@ -24,6 +24,20 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **重開的工單不再算已解決，報表的已解決數與 SLA 達成率不再失真**（#417，change `fix-case-resolved-at-417`，AUDIT CASE-04、AUTO-10，健檢 HC-ANALYTICS-02）— 原本工單解決後重開仍保留舊的 `resolvedAt`，處理中的工單被報表算成已解決；自動化規則的「改工單狀態」完全不寫 `resolvedAt`／`closedAt`。現在：
+  - `@open333crm/shared` 新增 `caseTransitionTimestamps()`，API 的狀態轉換（按鈕、狀態下拉、升級、指派時自動改狀態）、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 共用：轉成「已解決」寫入 `resolvedAt`；從「已解決」轉成「已關閉」保留；直接關閉（沒有經過「已解決」）不算已解決；轉成其他狀態（重開）清除。
+  - `update_case_status` 改成以 `tenantId` 讀目前狀態再條件更新。規則改成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查。
+  - 既有資料不補值。重開後的滿意度問卷行為不變（#339）。
+- **CSV 匯出的欄位一律跳脫並防公式注入**（#423，change `fix-csv-export-escaping`，AUDIT ANA-03，健檢 HC-ANALYTICS-04）— 報表匯出原本只替工單標題加引號，聯絡人名稱、客服姓名、分類、渠道名稱原樣輸出：名稱含逗號時後面的欄位錯位，以 `=`、`+`、`-`、`@` 開頭時 Excel 當成公式。現在：
+  - 新增共用的 `csvCell()`／`csvRow()`（`@open333crm/shared`）：含逗號、雙引號、CR／LF 的欄位以雙引號包住並把 `"` 改成 `""`；以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`；數字照原樣輸出（負數不加 `'`），日期輸出 ISO 字串。
+  - 報表匯出的四種報表（概覽、案件、客服、渠道）標題列與每一欄都經過 `csvRow()`。
+  - 優惠券序號明細改用共用函式（刪掉模組內的 `csvCell()`），輸出改成需要時才加引號，解析結果不變。
+  - 租戶資料匯出 zip 的 `csv/` 檔補上公式防護；日期欄改輸出 ISO 字串（原本是帶引號的 JSON 字串）。
+- **客人評分後，收件匣與工單看得到分數**（#444，change `show-csat-score-444`，AUDIT CASE-05 部分）— 客人評分後問卷卡片仍是空星、客服再點會 400，評分在對話裡顯示成 `csat:2:<工單 ID>`，工單時間軸與詳情頁都沒有分數。現在：
+  - 記錄分數時（客人回覆或客服代評），問卷訊息的 `metadata` 寫入 `csatScore` 與 `csatRatedBy`，並再推一次 `message.new`。卡片唯讀，顯示「客人評 N 分」或「客服代評 N 分」；客服送出失敗時卡片恢復可點。
+  - 客人的評分訊息存成「我的評分：N 分」（與 LINE 按鈕的 `displayText` 相同），原文存在 `metadata.postbackData`；攔截判斷不變。LINE 按鈕送出的評分直接改寫；客人手打的代碼要評分確實記錄才改寫，偽造或別人工單的代碼維持原文。
+  - 工單時間軸寫 `csat_rated`（客人評分或客服代評，客服代評記錄評分的客服）；評分後自動關閉寫 `status_changed`（`reason: 'csat_rated'`），顯示「（評分後自動關閉）」。工單詳情頁新增「滿意度」區塊。
+  - 仍未處理：客服代評不經狀態機、不關閉對話、也送感謝訊息（#339）。
 - **知識庫匯入 Google 試算表、Numbers 或台灣版 Excel 存的 CSV，中文不再變亂碼**（#421，change `fix-kb-csv-encoding-421`，AUDIT KB-03，健檢 HC-KNOWLEDGE-03）— 原本 CSV 沒有 UTF-8 BOM 就被當成單位元組讀，英文表頭時亂碼的問答還會直接發布。現在：
   - `file-parser.service.ts` 新增 `decodeCsvText()`：有 BOM 去掉後以 UTF-8 解；沒有 BOM 先以嚴格 UTF-8 解，失敗再試 Big5。xlsx 依 zip 檔頭辨識，不受影響。
   - 兩種都解不出或解出的文字含 U+FFFD 時，該檔一篇都不寫入，上傳結果標成失敗並帶 `code: CSV_ENCODING_UNREADABLE` 與中文原因（建議另存成「CSV UTF-8」）；同批其他檔案照常匯入。

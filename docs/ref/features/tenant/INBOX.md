@@ -129,7 +129,7 @@
 
 要知道的事：
 
-- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。系統寄的滿意度問卷用同樣的欄位，問卷卡片（`CsatMessage`）下方顯示「這份問卷沒有送出」與原因（#416，見 `CASES.md`）。
+- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。系統寄的滿意度問卷用同樣的欄位，問卷卡片（`CsatMessage`）下方顯示「這份問卷沒有送出」與原因（#416，見 `CASES.md`）。 記錄評分後，問卷訊息的 `metadata.csatScore`／`csatRatedBy` 有值，系統再推一次 `message.new`，問卷卡片改成唯讀並顯示「客人評 N 分」或「客服代評 N 分」；客人的評分訊息顯示「我的評分：N 分」，不顯示 `csat:` 代碼（issue #444）。
 - **客服回覆不會改變對話狀態。** 對話是 `BOT_HANDLED` 時客服直接回覆，機器人仍會繼續回應客人的下一則訊息。要讓機器人停下來，必須先接手。
 - **客服回覆不會指派對話。** 回覆的人不會自動成為負責人。
 - **客服回覆在 LINE 上用 push。** `sendMessage()` 沒有帶 reply token，LINE 外掛以 push 送出，會計入 LINE 官方帳號的訊息額度。機器人的回覆則在 reply token 有效期間內優先用 reply，由 `selectSafeLineStrategy()` 判斷。

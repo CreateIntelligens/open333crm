@@ -45,11 +45,12 @@ description: >
 ## 不可破壞的規則
 - 每個 `from`/`to` 端點都要拒絕 `from > to`（主規格 `analytics-reports`），新端點要用 `analytics.routes.ts` 的 `ordered()` 包起來。
 - 匯出的 CSV 必須以 UTF-8 BOM 開頭；只對有 `analytics.export` 的成員顯示按鈕。
+- 匯出的 CSV 每一欄（含標題列）都要經過 `@open333crm/shared` 的 `csvRow()`／`csvCell()`（#423）：含逗號、引號、換行時包引號，以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字加 `'`，數字照原樣。新增報表或欄位時不要自己用 `join(',')` 拼字串；數字欄位要傳 number，不要先轉成字串，否則負數會被加 `'`。
 - `apps/api/src/modules/analytics/analytics.routes.ts` 的模組門檻是 `requireAnyPermission(['analytics.view','analytics.view.self'])`，除了 `/my` 以外每條路由都要再掛 `requirePermission('analytics.view')`。新增路由忘了掛，就變成只有 `view.self` 的客服也看得到全租戶報表。
 - service 函式收 Prisma 執行器當第一個參數；網頁走 `request.tenantPrisma`，CLI 走 `fastify.prismaAdmin`（BYPASSRLS）。所以 **每個 raw SQL 都必須自己帶 `tenantId` 條件**，不能靠 RLS。
 - 報表全部即時從原始表計算，不讀 `DailyStat`。要改成讀彙總表，先處理 DB-03 的決定與時區問題。
 - 日期分組用資料庫 `date_trunc()`，目前是 UTC（ANA-01）。`TenantSettings.timezone`（預設 `Asia/Taipei`）存在但報表沒用；修時區時前端的區間（已是本地時區）與後端的分組要一起改。
-- 「已解決」「SLA 達成率」「平均解決時間」只看 `Case.resolvedAt`。工單直接關閉（`OPEN/IN_PROGRESS → CLOSED`）不寫 `resolvedAt`，重開不清 `resolvedAt`。改工單狀態轉換時要想清楚報表定義。
+- 「已解決」「SLA 達成率」「平均解決時間」只看 `Case.resolvedAt`。`resolvedAt` 由 `@open333crm/shared` 的 `caseTransitionTimestamps()` 維護（#417）：直接關閉（`OPEN/IN_PROGRESS → CLOSED`）為 null、不算已解決（使用者決定），`RESOLVED → CLOSED` 保留，重開清除。2026-11-04 之前的資料沒有補值。不要在報表改用 `status` 或 `closedAt` 推算已解決。
 - CLI 的 `/cli/analytics/cases` 刻意把 `slaViolations` 摘要成數量（`summarizeCaseStats`），不回傳原始工單；改 CLI 回應時不要把它拿掉（主規格 `cli-analytics`「CLI response shaping」）。
 
 ## 跨功能牽連
@@ -59,20 +60,20 @@ description: >
 
 ## 回歸清單
 改到本領域時，至少重走：
-1. 用 psql 對一段期間算訊息數、新工單、已解決、SLA 達成率，與 `GET /analytics/overview` 對照；同一段期間比較報表頁 KPI。
+1. 用 psql 對一段期間算訊息數、新工單、已解決、SLA 達成率，與 `GET /analytics/overview` 對照；同一段期間比較報表頁 KPI。另建三張工單：直接關閉、解決後重開、解決後關閉，只有第三張算入已解決（#417）。
 2. 在台灣時間凌晨 0–8 點建一筆訊息與工單，選那一天，確認趨勢圖落在正確的日期（目前會落到前一天，ANA-01）。
 3. 訊息趨勢圖 X 軸要有日期（目前 `date` 被蓋成 0，HC-ANALYTICS-01）。
-4. 四個分頁各匯出一次：BOM、欄位數一致、聯絡人名稱含逗號或以 `=` 開頭時不會跑欄或變公式（HC-ANALYTICS-04）。
+4. 四個分頁各匯出一次：BOM、欄位數一致、聯絡人名稱含逗號或以 `=` 開頭時不會跑欄、該欄以 `'` 開頭不變公式；負數與數字欄位沒有 `'`（HC-ANALYTICS-04，#423 已修正，unit 測試 `export-csv-escaping.test.ts`）。
 5. 選反日期 → 後端 400；supervisor 看得到匯出、agent 只看得到「我的績效」、只有 `analytics.view` 的自訂角色看不到匯出。
 6. CLI：agent 帳號 `POST /auth/cli/login` 拿 token 打 `/cli/analytics/overview`（RBAC-02 修好後應 403）；`open333 stats --json`。
 - 自動測試：`pnpm --filter @open333crm/api test -- analytics`、`pnpm --filter @open333crm/api test -- cli-session`、`pnpm --filter @open333crm/web test -- analytics date-range-picker sidebar`、`pnpm --filter @open333crm/cli test -- stats`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/analytics guards/permission-check`。
 - E2E：`apps/web/tests/e2e-uat/tenant-analytics.spec.ts`。
-- 目前**沒有任何測試檢查報表數字是否正確**，只測日期順序、BOM、權限與畫面格式。改計算邏輯時請補 feature 測試（插入固定時間的資料再比對）。
+- 報表數字的 feature 測試：`apps/api/tests/feature/modules/analytics/analytics-reports.test.ts`（固定資料）；已解決數與工單狀態轉換的關係：`apps/api/tests/feature/modules/case/case-resolved-at.test.ts`（#417）。改計算邏輯時請補 feature 測試（插入固定時間的資料再比對）。
 
 ## 常見 bug 從哪裡查
 - 「訊息趨勢圖沒有日期／CLI 的 Latest period 是 0」：`apps/api/src/modules/analytics/analytics.service.ts` 的 `getMessageTrend`，pivot 物件預設 `date: 0`，回傳時 `{ date, ...vals }` 被蓋掉。
 - 「某天的數字少了／多了」：先看是不是台灣凌晨的資料（ANA-01，`date_trunc` 以 UTC 切）；KPI 卡的總數用的是前端本地時區的區間，趨勢圖的分桶是 UTC，兩者對不起來是正常的現況。
-- 「已解決、SLA 達成率偏低或偏高」：查工單的 `resolvedAt`。直接關閉的工單沒有 `resolvedAt`，重開的工單保留舊的 `resolvedAt`（`apps/api/src/modules/case/case.service.ts` 的狀態轉換）。
+- 「已解決、SLA 達成率偏低或偏高」：查工單的 `resolvedAt`。直接關閉的工單沒有 `resolvedAt`（設計如此）；2026-11-04 之前重開、之後沒再改狀態的工單仍保留舊的 `resolvedAt`（沒有補值，#417）。
 - 「平均首次回應是空的」：工單沒有關聯對話（SLA-05），或只有 AI／系統回覆。
 - 「報表 CSAT 和 CSAT 報告對不起來」：總覽依工單 `createdAt` 歸期間，`/analytics/csat` 依 `csatSentAt`。
 - 「首頁開啟中工單和報表不一樣」：首頁 `apps/web/src/app/dashboard/page.tsx` 只算 `OPEN`、依渠道可見範圍；報表算 `OPEN/IN_PROGRESS/PENDING/ESCALATED`、全租戶。

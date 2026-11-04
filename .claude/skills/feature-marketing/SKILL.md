@@ -94,6 +94,7 @@ description: >
 3. 建立優惠券（每種 `validityMode` 至少一次）→ 發布 → 暫停 → 恢復 → 提前結束；已發布後改鎖定欄位要 409。
 4. 建立領券連結 → 開 `/coupon/claim/[code]` → 顧客送代碼領券（本機用 WebChat）→ 開票券 → 核銷。
 5. 用 supervisor 與 agent 重走 1、3，確認 403 與按鈕停用。
+- 匯出序號明細（持有者名稱含逗號或以 `=` 開頭）：每列欄數一致、該欄以 `'` 開頭；CSV 跳脫共用 `@open333crm/shared` 的 `csvRow()`（#423），不要在模組內另寫。
 6. 真機（UAT）：LINE 關鍵字領券、FB/IG 關鍵字領券、圖文選單領券、封鎖再加入（本機收不到 LINE/FB webhook）。
 - 自動測試：`pnpm --filter @open333crm/api test -- marketing`、`-- coupon`；`pnpm --filter @open333crm/web test -- marketing`、`-- coupon`、`-- materials`；`pnpm --filter @open333crm/workers test -- coupon`；feature 測試同名過濾。
 - E2E：`apps/web/tests/e2e-uat/tenant-marketing.spec.ts`、`apps/web/tests/e2e-uat/tenant-materials-all-types.spec.ts`。

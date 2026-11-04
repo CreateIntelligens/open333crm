@@ -31,3 +31,36 @@ Every analytics endpoint that accepts `from` and `to` SHALL respond 400 naming t
 #### Scenario: 匯出失敗時顯示錯誤
 - **WHEN** 成員按「匯出 CSV」，API 回 HTTP 500
 - **THEN** 頁面顯示匯出失敗的訊息
+
+### Requirement: 已解決數以工單的解決時間判斷
+
+總覽的已解決數 SHALL 只計算 `resolvedAt` 在查詢區間內的工單。因為狀態轉換依 `case-management` 的規則維護 `resolvedAt`，直接關閉的工單與解決後重開的工單 SHALL NOT 算入已解決數；從已解決轉成已關閉的工單 SHALL 算入。
+
+#### Scenario: 直接關閉與重開的工單不算已解決
+
+- **WHEN** 區間內同一個渠道有五張工單：直接關閉、解決、解決後改回處理中、解決後關閉、解決後關閉再重開，成員查詢只含這個渠道的總覽
+- **THEN** 總覽的 `resolvedCases` 為 2
+
+### Requirement: 匯出的 CSV 欄位經過跳脫與公式防護
+
+`POST /api/v1/analytics/export` 的四種報表（overview、cases、agents、channels）SHALL 讓標題列與每個欄位經過同一套規則：含逗號、雙引號、CR 或 LF 的欄位以雙引號包住，內部的 `"` 改成 `""`；以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`，Excel 當成文字而不是公式。數字欄位（計數、平均分鐘、CSAT、百分比）SHALL 照原樣輸出，負數也不加 `'`。
+
+#### Scenario: 聯絡人名稱含逗號與公式時工單 CSV 欄數正確
+- **WHEN** 成員匯出工單報表，其中一張工單的聯絡人名稱是 `=HYPERLINK("http://evil.example","hc-analytics, 點我")`
+- **THEN** 該資料列與標題列都是 10 欄，聯絡人欄的值是 `'` 加上原名稱
+
+#### Scenario: 標題、分類、客服姓名以公式字元開頭或含換行時加以跳脫
+- **WHEN** 工單標題是 `=1+1 退貨, 急件`、分類是 `+分類`、另一張工單標題含換行
+- **THEN** 標題欄是 `'=1+1 退貨, 急件`、分類欄是 `'+分類`，含換行的標題以雙引號包住，每列仍是 10 欄
+
+#### Scenario: 客服 CSV 的數字欄位不加單引號
+- **WHEN** 成員匯出客服報表，某位客服姓名是 `@陳, 大文`，平均首次回應是 -1.5 分鐘
+- **THEN** 姓名欄是 `'@陳, 大文`，平均首次回應欄是 `-1.5`，每列 9 欄
+
+#### Scenario: 渠道 CSV 的渠道名稱經過跳脫
+- **WHEN** 成員匯出渠道報表，渠道名稱含逗號
+- **THEN** 渠道欄以雙引號包住，訊息數與對話數照原樣輸出，每列 3 欄
+
+#### Scenario: 概覽 CSV 的負數不加單引號
+- **WHEN** 成員匯出概覽報表，平均首次回應是 -2
+- **THEN** 標題列與資料列欄數相同，平均首次回應欄是 `-2`

@@ -178,7 +178,10 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
           created.push(data);
           return { id: 'msg-1', createdAt: new Date(), ...data };
         },
+        // issue #444：記錄分數時找問卷訊息寫入分數；這個測試沒有問卷訊息
+        findMany: async () => [],
       },
+      caseEvent: { create: async () => ({}) },
       conversation: { update: async () => ({}) },
     } as unknown as TenantDb;
 
@@ -192,4 +195,52 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+/**
+ * 評分後結案的 resolvedAt 依共用規則（issue #417）：從 RESOLVED 結案保留解決時間；
+ * 沒有經過 RESOLVED 的工單（客服在處理中的工單上點星星，AUDIT CASE-05）不算已解決。
+ */
+async function closeUpdateAfterScore(status: string) {
+  delivered.length = 0;
+  const updates: Array<Record<string, unknown>> = [];
+  const db = {
+    platformSetting: { findUnique: async () => null },
+    case: {
+      findFirst: async () => ({
+        id: CASE_ID,
+        tenantId: TENANT_ID,
+        status,
+        resolvedAt: new Date('2026-01-02T00:00:00Z'),
+        csatScore: null,
+        conversations: [{ id: 'conv-1', channelId: 'ch-1' }],
+      }),
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        updates.push(data);
+        return {};
+      },
+    },
+    message: {
+      create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'msg-1', createdAt: new Date(), ...data }),
+      // issue #444：記錄分數時找問卷訊息寫入分數；這個測試沒有問卷訊息
+      findMany: async () => [],
+    },
+    // issue #444：評分與評分後結案寫時間軸
+    caseEvent: { create: async () => ({}) },
+    conversation: { update: async () => ({}) },
+  } as unknown as TenantDb;
+  assert.equal(await recordCsatScore(db, io, CASE_ID, 5, undefined, { tenantId: TENANT_ID }), true);
+  const close = updates.find((d) => d.status === 'CLOSED');
+  assert.ok(close, '評分後結案');
+  return close;
+}
+
+test('評分後結案：從 RESOLVED 結案保留 resolvedAt', async () => {
+  const close = await closeUpdateAfterScore('RESOLVED');
+  assert.equal('resolvedAt' in close, false);
+});
+
+test('評分後結案：沒有經過 RESOLVED 的工單不算已解決', async () => {
+  const close = await closeUpdateAfterScore('IN_PROGRESS');
+  assert.equal(close.resolvedAt, null);
 });

@@ -80,4 +80,4 @@ description: >
 - 「SLA 規則的貼標沒反應」：workers log 出現 `Worker action "add_tag" skipped: no contact in context`（HC-AUTOMATION-02）。
 - 「通知沒收到」：預警只給負責人，工單沒有負責人時預警沒有人收到；通知不檢查成員是否停用（HC-NOTIFICATIONS-02）。看 `apps/workers/src/handlers/sla.handler.ts` 的 `enqueueDefaultNotifications`。
 - 「設定頁 SLA 列表是空的」：先看 `GET /sla-policies` 是否 403（成員沒有 `sla.manage`），畫面不會說。
-- 「報表 SLA 達成率怪」：只算期間內已解決的工單，`resolvedAt` 的維護問題見 HC-ANALYTICS-02；日期以 UTC 切（ANA-01）。
+- 「報表 SLA 達成率怪」：只算期間內已解決的工單，`resolvedAt` 的規則見 feature-cases（#417：直接關閉不算已解決、重開清除，舊資料沒有補值）；日期以 UTC 切（ANA-01）。

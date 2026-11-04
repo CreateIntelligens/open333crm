@@ -34,12 +34,12 @@ description: >
 | 2 | 列表頁新增工單 | 「新增工單」→ `CaseCreateModal`（不帶 conversationId）：搜尋聯絡人（`GET /contacts?q&limit=10`）→ 選渠道（只列聯絡人有身分的可見渠道）→ 標題、分類必填 | `POST /cases` → `case.flow.ts` `createCaseFlow` → `createCase`（聯絡人不在渠道 400 `CONTACT_NOT_ON_CHANNEL`）→ `createCaseRecord` | 挑 SLA 政策算 `slaDueAt`、寫 `created` 事件、outbox `case.created`；commit 後另開交易做群發歸因與自動指派。帶負責人**不發** `case.assigned`、狀態維持 `OPEN` | `case.create`，帶負責人／團隊另需 `case.assign`；渠道需 `full` / **按鈕不隱藏** |
 | 3 | 從對話建立 | 收件匣 `ContactInfoPanel`「建立工單」→ `CaseCreateModal`（帶 conversationId） | `POST /cases/from-conversation/:conversationId`（與 `POST /conversations/:id/case` 相同）→ `createCaseFromConversation` | 同交易建工單並寫 `conversation.caseId`；對話已有工單 409「這則對話已建立過案件」 | 同上；按鈕在已有工單的對話也顯示 |
 | 4 | 詳情就地編輯 | `/dashboard/cases/[caseId]`：點標題、優先級／分類／團隊下拉 | `PATCH /cases/:id` → `updateCaseFlow` → `updateCase` | 只改欄位時推播 `case.updated`；改負責人（`null` 取消）不通知 | `case.update`；帶 `assigneeId`/`teamId` 另需 `case.assign`；渠道 `full` / **不隱藏** |
-| 5 | 改狀態 | 頂部按鈕「標記解決／關閉案件／重新開啟／升級」（依 `canTransition` 顯示）；狀態下拉（選已關閉先確認、選已升級開升級視窗） | `POST /cases/:id/{resolve,close,reopen}` → `transitionCaseFlow`；下拉走 `PATCH {status}` → `updateCase` 轉交 `transitionCase`／`escalateCase` | 寫 `status_changed`；`RESOLVED` 寫 `resolvedAt` 並發 `case.resolved`，`CLOSED` 寫 `closedAt` 並發 `case.closed`。重開不清 `resolvedAt`、`closedAt`、`csatSentAt` | `case.update`（改成已升級需 `case.escalate`）/ 不隱藏 |
+| 5 | 改狀態 | 頂部按鈕「標記解決／關閉案件／重新開啟／升級」（依 `canTransition` 顯示）；狀態下拉（選已關閉先確認、選已升級開升級視窗） | `POST /cases/:id/{resolve,close,reopen}` → `transitionCaseFlow`；下拉走 `PATCH {status}` → `updateCase` 轉交 `transitionCase`／`escalateCase` | 寫 `status_changed`；`RESOLVED` 寫 `resolvedAt` 並發 `case.resolved`，`CLOSED` 寫 `closedAt` 並發 `case.closed`。`resolvedAt` 依 `caseTransitionTimestamps()`：`RESOLVED` → `CLOSED` 保留、直接關閉為 null、重開清除（#417）；重開不清 `closedAt`、`csatSentAt` | `case.update`（改成已升級需 `case.escalate`）/ 不隱藏 |
 | 6 | 手動指派 | 詳情頁「負責人」下拉（列出全部成員，`GET /agents`） | `POST /cases/:id/assign {assigneeId}` → `assignCase` | `OPEN` 自動改 `IN_PROGRESS`；寫 `assigned`；outbox `case.assigned` → 站內通知。**不檢查負責人看不看得到渠道、是否停用**；下拉失敗沒有提示 | `case.assign`；渠道 `full` |
 | 7 | 自動指派（輪流） | 建立時有 `teamId`、沒有 `assigneeId` | `assignment.service.ts` `autoAssignCase` → `getNextAgent` | 候選：團隊內 `role=AGENT`、啟用、直綁或團隊被授權工單渠道 `reply_only/full`；挑未結（OPEN/IN_PROGRESS/PENDING/ESCALATED）最少者，同數以行程記憶體輪流；寫 `auto_assigned`、`case.assigned`。**畫面的團隊下拉永遠是空的**（讀錯 `agent.team`，API 回 `teams[]`），所以目前只有 API、CLI 與自動化觸發得到 | — |
 | 8 | 升級 | 「升級」→ `EscalationModal`：原因必填、升級後優先級、改派、通知對象 | `POST /cases/:id/escalate {reason, note?, newPriority, assigneeId?, notifyTargets}` → `escalateCase` | 狀態 `ESCALATED`、改優先級、寫 `escalated`；outbox `case.escalated` → `resolveEscalationRecipients`。改派的新負責人不另外通知 | `case.escalate`；渠道 `full` |
 | 9 | 備註、標籤、時間軸 | 詳情右側「時間軸與備註」；「案件標籤」（`TagManager` targetType=CASE） | `POST /cases/:id/notes {content, isInternal}`；`POST/DELETE /cases/:id/tags`（`tag.flow.ts`）；時間軸由 `GET /cases/:id` 的 `events`+`notes` 合成 | 備註不送給客人，「內部」只是樣式；標籤 scope 必須是 CASE。備註失敗沒有提示，作者一律顯示「客服」 | `case.update`；渠道 `reply_only` 即可 |
-| 10 | CSAT 問卷與結案 | 系統排程；收件匣 `ChatWindow` 的問卷卡片（`CsatMessage`，客服也能點星星） | 排程 `csat.scheduler.ts`：`csat-send`（解決 5 分鐘後，`sendCsatSurvey` 先認領 `csatSentAt` 再寄）、`csat-auto-close`（寄出 72 小時沒回覆就結案並關閉所有關聯對話）；客人 postback `csat:<分數>:<工單 ID>` → 進站攔截器 → `recordCsatScore`；客服 `POST /cases/:id/csat` | `recordCsatScore` 寫分數、送感謝訊息給顧客、2 分以下通知 `SUPERVISOR`、**不檢查狀態直接改 `CLOSED`**、發 eventBus `case.closed`（最多一次） | 客服評分 `case.update`、渠道 `full` |
+| 10 | CSAT 問卷與結案 | 系統排程；收件匣 `ChatWindow` 的問卷卡片（`CsatMessage`，客服也能點星星） | 排程 `csat.scheduler.ts`：`csat-send`（解決 5 分鐘後，`sendCsatSurvey` 先認領 `csatSentAt` 再寄）、`csat-auto-close`（寄出 72 小時沒回覆就結案並關閉所有關聯對話）；客人 postback `csat:<分數>:<工單 ID>` → 進站攔截器 → `recordCsatScore`；客服 `POST /cases/:id/csat` | `recordCsatScore` 寫分數、問卷訊息 `metadata.csatScore`／`csatRatedBy` 並再推 `message.new`（卡片唯讀，#444）、時間軸 `csat_rated`、送感謝訊息給顧客、2 分以下通知 `SUPERVISOR`、**不檢查狀態直接改 `CLOSED`**（寫 `status_changed`，`reason: 'csat_rated'`）、發 eventBus `case.closed`（最多一次） | 客服評分 `case.update`、渠道 `full` |
 | 11 | 刪除 | 列表最右「操作」垃圾桶（`window.confirm`） | `DELETE /cases/:id` → `deleteCaseFlow` | 硬刪除；事件、備註、標籤一併刪，對話解除關聯；同交易寫 `case.delete` 稽核；推播 `case.deleted`（列表不監聽，靠 30 秒輪詢） | `case.delete`；渠道 `full` / 不隱藏，失敗只顯示「刪除工單失敗」 |
 | 12 | 連結既有工單（無 UI） | — | `POST /cases/:id/conversations/:conversationId/link` → `linkConversationToCase` | 寫 `conversation_linked`，補首次回應；**不檢查對話的聯絡人與渠道可見範圍** | `case.update`；只檢查工單的渠道 `full` |
 
@@ -48,7 +48,8 @@ description: >
 **前端實際送出的值**：優先級 `LOW|MEDIUM|HIGH|URGENT`；狀態 `OPEN|IN_PROGRESS|PENDING|RESOLVED|ESCALATED|CLOSED`（列表篩選也送大寫，後端另接受小寫）；分類來自 `CASE_CATEGORIES`，詳情頁「未分類」送空字串；更新時另接受 `LEGACY_CASE_CATEGORIES`（維修／查詢／投訴），建立時不接受；升級 `notifyTargets` 只送 `supervisor`、`original_assignee`（後端另接受 `team`，不通知任何人）；取消指派送 `assigneeId: null`；CSAT `score` 1–5 整數。
 
 ## 不可破壞的規則
-- 狀態轉換只有一張表：`packages/shared/src/constants/case-transitions.ts` 的 `VALID_CASE_TRANSITIONS`。API 的 `validateTransition`、詳情頁下拉、頂部按鈕都讀它。新增改狀態的路徑要經過 `transitionCase` 或 `escalateCase`，否則不寫時間軸、不發事件（`recordCsatScore` 目前就繞過了，HC-CASES-01）。
+- 狀態轉換只有一張表：`packages/shared/src/constants/case-transitions.ts` 的 `VALID_CASE_TRANSITIONS`。API 的 `validateTransition`、詳情頁下拉、頂部按鈕都讀它。新增改狀態的路徑要經過 `transitionCase` 或 `escalateCase`，否則不寫時間軸、不發事件（`recordCsatScore` 目前就繞過了狀態機，只自己補寫 `csat_rated` 與 `status_changed`，HC-CASES-01）。
+- `resolvedAt`／`closedAt` 只有一個規則：`packages/shared/src/constants/case-transitions.ts` 的 `caseTransitionTimestamps()`（#417）。API 的 `transitionCase`／`escalateCase`／`assignCase`、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 都用它；新增改狀態的路徑也要用，不要自己寫 `resolvedAt`。報表以 `resolvedAt` 判斷已解決：直接關閉不算、重開不算。
 - 頂部按鈕與狀態下拉要有相同的副作用：`updateCase` 把狀態變更轉給 `transitionCase`／`escalateCase`，`updateCaseFlow` 依 `change.kind` 送相同的推播與事件（S06）。不要在 `updateCase` 裡直接寫 `status`。
 - 推播在 commit 之後送出；事件與工單同交易寫 outbox（`case-effects.ts`）。自動指派與群發歸因在 commit 之後各開一個交易，失敗只記 log、不影響已建立的工單。
 - 工單依 `channelId` 套用渠道可見範圍：讀 `read_only`、貼標與備註 `reply_only`、其他 `full`；看不到的工單回 404，不是 403。改路由時保留 `assertCaseChannelVisible`／`assertChannelVisible`／`assertConversationChannelVisible`。工單的渠道必須是聯絡人有身分的渠道（`CONTACT_NOT_ON_CHANNEL`）。
@@ -70,16 +71,17 @@ description: >
 改到本領域時，至少重走：
 1. 列表頁「新增工單」：選有兩個渠道的聯絡人 → 選渠道 → 建立 → 導到詳情；錯誤：聯絡人不在渠道、空白標題、舊分類。
 2. 收件匣從對話建立工單 → 同一對話再建一次要 409。
-3. 狀態：OPEN → 指派（自動變處理中）→ 待處理 → 處理中 → 標記解決 → 關閉 → 重新開啟；每一步時間軸都有事件，`case.resolved`／`case.closed` 進 outbox；不合法的轉換 422 並列出可改的狀態。
+3. 狀態：OPEN → 指派（自動變處理中）→ 待處理 → 處理中 → 標記解決 → 關閉 → 重新開啟；每一步時間軸都有事件，`case.resolved`／`case.closed` 進 outbox；不合法的轉換 422 並列出可改的狀態。查 DB：解決後有 `resolvedAt`、關閉後保留、重新開啟後為 null；另一張直接關閉的 `resolvedAt` 為 null（#417）。
 4. 升級：勾兩個通知對象，Supervisor 與原負責人各收到一則，升級者自己不收；`notifyTargets: ["everyone"]` 400。
 5. 用 API 帶 `teamId` 建工單，確認輪流指派、沒有渠道授權的成員被排除。
 6. CSAT：解決後 5 分鐘對話出現問卷；以 SQL 把 `csatSentAt` 調到 72 小時前，確認排程結案並關閉對話；重開工單後不被結案。
+   評分（客人 `csat:<分數>:<工單 ID>` 或客服點卡片星星）後：開著的收件匣不重新整理，問卷卡片變唯讀並顯示「客人評 N 分」／「客服代評 N 分」；客人的訊息顯示「我的評分：N 分」不是代碼；工單時間軸有評分與「（評分後自動關閉）」兩筆；詳情頁「滿意度」區塊顯示分數（#444）。
 7. 用只有 `case.view` 的自訂角色與只能看部分渠道的成員重走 1–4，確認 403、404 與按鈕狀態。
 - 自動測試：`pnpm --filter @open333crm/api test -- case csat assignment`；`pnpm --filter @open333crm/web test -- case escalation csat`；`pnpm --filter @open333crm/workers test -- create-case`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/case modules/csat`；權限表在 `apps/api/tests/feature/modules/route-permission-guards.test.ts`。
 - E2E：`apps/web/tests/e2e-uat/tenant-cases.spec.ts`、`apps/web/tests/e2e-uat/tenant-fields-cases-contacts-inbox.spec.ts`。
 
 ## 常見 bug 從哪裡查
-- 「工單自己變成已關閉」：先看 `case_events` 有沒有 `status_changed`。沒有的話是 CSAT：客人或客服評分（`csat.service.ts` 的 `recordCsatScore` 不寫事件）、或問卷逾時結案（`csat.scheduler.ts`，重開過的工單也會被結案，HC-CASES-02）。SLA 逾時只提高優先級，不結案。
+- 「工單自己變成已關閉」：先看 `case_events` 有沒有 `status_changed`。`payload.reason` 是 `csat_rated` 的是客人或客服評分後自動關閉（#444 起寫事件）。沒有事件的話是問卷逾時結案（`csat.scheduler.ts`，重開過的工單也會被結案，HC-CASES-02）。SLA 逾時只提高優先級，不結案。
 - 「被指派的人說打開是 404／列表看不到」：負責人沒有該渠道的授權。手動指派不檢查（HC-CASES-04），查 `agent_channel_accesses` 與團隊的 `channel_team_accesses`。
 - 「指派了卻沒收到通知」：建立時帶負責人不發 `case.assigned`（`case.flow.ts` 的 `afterCaseCreated`）；升級時改派也不發。只有 `/assign` 與自動指派會通知。
 - 「自動指派沒反應」：畫面送不出 `teamId`（HC-CASES-06）；有團隊時看候選條件（`role=AGENT`、啟用、渠道授權 `reply_only/full`），全部不符就只寫 log「No available agent」。輪流位置存在行程記憶體，重啟或多行程各自從頭。

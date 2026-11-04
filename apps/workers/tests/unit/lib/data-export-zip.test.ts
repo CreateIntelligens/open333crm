@@ -4,6 +4,7 @@
  *  - SimpleZip 產出可被系統 unzip 正常解開（結構正確）
  *  - 解開後內容與寫入一致（CRC / store 正確）
  *  - toCsv 主表扁平化與跳脫正確
+ *  - toCsv 防 CSV injection：以 = + - @ 開頭的文字加單引號，數字不加（#423）
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
@@ -58,3 +59,24 @@ function testZipRoundtrip() {
 
 test('csv', testCsv);
 test('zip roundtrip', testZipRoundtrip);
+
+function exportLines() {
+  const csv = toCsv([
+    { id: 'c1', displayName: '=HYPERLINK("http://evil.example","點我, 領獎")', score: -3, createdAt: new Date('2026-11-04T00:00:00.000Z') },
+    { id: 'c2', displayName: '@王小美', score: 7, createdAt: null },
+  ]);
+  return csv.split('\r\n');
+}
+
+test('聯絡人名稱以公式開頭又含逗號', () => {
+  const lines = exportLines();
+  assert.equal(lines[0], 'id,displayName,score,createdAt');
+  assert.equal(lines[1], `c1,"'=HYPERLINK(""http://evil.example"",""點我, 領獎"")",-3,2026-11-04T00:00:00.000Z`);
+  assert.equal(lines[2], "c2,'@王小美,7,");
+});
+
+test('數字與日期欄位照原樣輸出', () => {
+  const lines = exportLines();
+  assert.ok(lines[1].endsWith(',-3,2026-11-04T00:00:00.000Z'));
+  assert.ok(lines[2].endsWith(',7,'));
+});

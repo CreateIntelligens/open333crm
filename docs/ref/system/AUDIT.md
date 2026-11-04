@@ -118,8 +118,8 @@
 | [CONV-05](#conv-05) | 對話、工單與自動化 | P2 | 未處理 | 重新開啟已關閉的對話，不檢查同一聯絡人在同一渠道是否已有未關閉的對話，造成兩段同時進行 | 執行時確認 |
 | [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 未處理 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440） | 執行時確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷已可送出（#416） | 靜態確認 |
-| [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 未處理 | 工單狀態轉換不維護 `resolvedAt` 與 `csatSentAt`：直接關閉不算已解決，重開保留舊值，報表的已解決數與 SLA 達成率失真，重開再解決的工單 1 分鐘內被自動結案 | 執行時確認 |
-| [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 未處理 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息 | 執行時確認 |
+| [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 部分修正 | 工單狀態轉換不維護 `csatSentAt`：重開再解決的工單 1 分鐘內被自動結案；`resolvedAt` 的部分（重開保留舊值，報表的已解決數與 SLA 達成率失真）#417 已修正 | 執行時確認 |
+| [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 部分修正 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息；時間軸已有紀錄（#444） | 執行時確認 |
 | [CASE-06](#case-06) | 對話、工單與自動化 | P2 | 未處理 | 連結對話到工單不檢查對話的聯絡人與渠道可見範圍，可以把別的顧客、看不到的渠道的對話掛上 | 執行時確認 |
 | [CASE-07](#case-07) | 對話、工單與自動化 | P2 | 未處理 | 建立與修改工單不驗證 `assigneeId`、`teamId` 屬於本租戶，可以把其他租戶的成員寫成負責人 | 執行時確認 |
 | [CASE-08](#case-08) | 對話、工單與自動化 | P2 | 未處理 | 工單的「團隊」下拉讀錯欄位，永遠只有「未指定」，畫面上無法觸發依團隊輪流指派 | 執行時確認 |
@@ -132,7 +132,7 @@
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
 | [AUTO-09](#auto-09) | 對話、工單與自動化 | P2 | 已修正 | 自動化的試跑與執行紀錄只驗登入，沒有 `automation.view` 的成員可以讀到規則的條件與動作全文 | 執行時確認 |
-| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 未處理 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫 `resolvedAt` 與工單事件、不通知被指派的人，查詢也不帶 `tenantId` | 執行時確認 |
+| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫工單事件、不通知被指派的人，`assign_agent`、`escalate_case` 的查詢不帶 `tenantId`；`update_case_status` 的 `resolvedAt`／`closedAt` 與 `tenantId` #417 已修正 | 執行時確認 |
 | [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 未處理 | Canvas 用 API 建不出串接的節點，草稿也能觸發；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網 | 執行時確認 |
 | [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 未處理 | 自動化動作的參數只檢查有填，不檢查值：狀態可存 `"FOO"`，負責人可存其他租戶的成員 | 執行時確認 |
 | [AUTO-13](#auto-13) | 對話、工單與自動化 | P2 | 未處理 | 「短連結被點擊」的觸發說明可以依連結決定動作，但契約沒有連結的條件欄位，用到時存檔被拒 | 靜態確認 |
@@ -157,7 +157,6 @@
 | [SHORT-04](#short-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 建立短連結的路由把所有例外包成 400 並回傳原始訊息，Prisma 錯誤原文顯示在畫面上；跨租戶的自訂代碼重複也走這條路徑 | 執行時確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
 | [ANA-02](#ana-02) | 聯絡人、行銷與報表 | P3 | 已提建議 | 工單報表的 CSV 匯出與 CSAT 報表讀出期間內的所有工單，在 API 行程內計算，回應時間隨工單數增加 | 執行時確認 |
-| [ANA-03](#ana-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 報表匯出的 CSV 沒有跳脫：名稱含逗號會跑欄，以 `=` 等字元開頭會被 Excel 當成公式 | 執行時確認 |
 | [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；活動詳情端點不看開始與結束時間；票券夾已簽發 fanToken，端點可以進入 | 執行時確認 |
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 執行時確認 |
 | [PORTAL-04](#portal-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲送出活動的答案不驗證：不屬於該活動的選項照收並給點，表單必填欄位空白也收 | 靜態確認 |
@@ -1634,12 +1633,16 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 
 workers 的 `update_case_status` 動作也不寫 `resolvedAt`，見 AUTO-10。
 
+**`resolvedAt` 的部分已修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`@open333crm/shared` 的 `caseTransitionTimestamps()` 是唯一的規則，API 的 `transitionCase()`、`escalateCase()`、`assignCase()`、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 都用它。轉成 `RESOLVED` 寫入 `resolvedAt`；從 `RESOLVED` 轉成 `CLOSED` 保留；直接關閉不算已解決（使用者決定，`resolvedAt` 為 null）；轉成其他狀態（重開）清除。既有資料不補值：修正前直接關閉的工單仍沒有 `resolvedAt`，修正前重開、目前仍在處理中的工單仍保留舊的 `resolvedAt`，直到下一次狀態轉換。**重開後被自動結案**（`csatSentAt`）未處理，由 #339 決定。
+
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-02（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-02（[CASES 健檢](../features/health/CASES.md)）。證據：`apps/api/src/modules/case/case.service.ts:487-492`、`apps/api/src/modules/analytics/analytics.service.ts:68-88, 211-214, 350-357`、`apps/api/src/modules/csat/csat.scheduler.ts:65-90`；本機以 API 直接關閉後 `resolvedAt: null`，重開後 `resolvedAt` 不變，固定資料下總覽 `resolvedCases` 為 2（期望 1）；`csatSentAt` 設為 80 小時前、重開再解決，約 1 分鐘後工單已是 `CLOSED`（健檢實測）。HC-ANALYTICS-02 子代理原列 P2，2026-10-30 使用者決定升為 P1。
 
 <a id="case-05"></a>
 ### CASE-05：客服記錄滿意度直接把工單改成已關閉
 
-`POST /cases/:id/csat`（收件匣 CSAT 卡片的星星）呼叫 `csat.service.ts`，不檢查工單狀態，直接把工單改成 `CLOSED`：不經狀態機、不寫時間軸、不關閉對話。同時把「感謝評分」的追蹤訊息送給顧客；2 分以下送「我們會立即安排主管為您跟進處理」，但顧客根本沒有評分。
+`POST /cases/:id/csat`（收件匣 CSAT 卡片的星星）呼叫 `csat.service.ts`，不檢查工單狀態，直接把工單改成 `CLOSED`：不經狀態機、不關閉對話。同時把「感謝評分」的追蹤訊息送給顧客；2 分以下送「我們會立即安排主管為您跟進處理」，但顧客根本沒有評分。
+
+**2026-11-04 部分修正（#444，change `show-csat-score-444`）。** 記錄分數時寫一筆 `csat_rated` 時間軸事件（客服代評 `actorType: 'agent'`、`actorId` 是評分的客服，`payload.source: 'agent'`），評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`）。收件匣的問卷卡片有分數時唯讀，客人評過分後客服不會再點到 400。仍未處理：不經狀態機、不關閉對話、客服代評也送感謝訊息給顧客；客服代評的去留在 #339 討論。
 
 **規格依據。** 主規格 `case-management` 的「Case Status Transition Validation」規定狀態轉換 SHALL 經過狀態機驗證。現況違反這條需求。
 
@@ -1788,6 +1791,8 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 - 這幾個 `case.update` 只用 `where: { id }`，沒有自帶 `tenantId`。workers 用 BYPASSRLS 連線，租戶隔離只剩呼叫端傳入的 ID 是否正確（RLS-08）。
 
 功能文件 `AUTOMATION.md` 的「工單類動作繞過工單模組」已寫行為。
+
+**部分修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`update_case_status` 改成先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，`resolvedAt`／`closedAt` 用 API 共用的 `caseTransitionTimestamps()`（CASE-04）。因此規則改成「已解決」的工單會有 `resolvedAt`，問卷排程會照常寄滿意度調查。仍未處理：不檢查轉換是否合法、不寫工單事件、不發 `case.resolved`／`case.closed`、`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-05（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/workers/src/lib/automation-actions.ts:295-305,385-428`；`case.created` 規則設定 URGENT、指派、改成 RESOLVED 之後 `resolvedAt` 為 null、`case_events` 只有 `created`、被指派的人沒有通知（健檢實測）。
 
@@ -2046,16 +2051,6 @@ analytics 的其他統計以 SQL 的 `count` 或 `$queryRaw` 彙總，或以 `ta
 - 工單報表的匯出：二選一，兩者都要開 change：
   - 限制匯出筆數，超過時告知使用者。
   - 改成背景工作產生檔案，做法比照 `tenant/data-export`。
-
-<a id="ana-03"></a>
-### ANA-03：報表匯出的 CSV 沒有跳脫
-
-`analytics.service.ts` 匯出 CSV 時，工單報表只替標題加引號，聯絡人名稱、客服姓名、分類原樣輸出；客服報表的姓名也一樣。聯絡人名稱來自 LINE、FB 暱稱或 WebChat 訪客自填：
-
-- 名稱含逗號時，後面的欄位錯位。
-- 名稱以 `=`、`+`、`-`、`@` 開頭時，Excel 把它當成公式（CSV injection）。顧客可以自己設定這個值。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-04（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）。證據：`apps/api/src/modules/analytics/analytics.service.ts:652-666, 672-685, 701-703`；聯絡人名稱改成 `=HYPERLINK("http://evil.example","hc-analytics, 點我")`，匯出的工單 CSV 標題列 10 欄、資料列 11 欄（健檢實測）。子代理原列 P2，2026-10-30 使用者決定升為 P1。
 
 <a id="portal-01"></a>
 ### PORTAL-01：粉絲門戶的活動結果端點回傳測驗答案與未發布活動的結果，詳情端點不看開放時間

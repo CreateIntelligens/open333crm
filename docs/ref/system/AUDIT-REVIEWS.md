@@ -4,6 +4,35 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：直接關閉與重開的工單在報表算錯已解決（CASE-04、AUTO-10）
+
+issue #417，分支 `fix/p4-417`，change `fix-case-resolved-at-417`。以單元測試與測試資料庫 `open333crm_test_p4_417` 的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-04 的 `resolvedAt` | 部分修正（`csatSentAt` 未處理，#339） | `packages/shared/src/constants/case-transitions.ts` 新增 `caseTransitionTimestamps()`，`case.service.ts` 的 `transitionCase()`、`escalateCase()`、`assignCase()`，`csat.service.ts` 的 `recordCsatScore()`、`csat.scheduler.ts` 的逾時結案都用它。轉成 `RESOLVED` 寫入；`RESOLVED` → `CLOSED` 保留；直接關閉為 null（使用者決定不算已解決）；其他轉換清除。既有資料不補值。`case-resolved-at.test.ts`（unit）的兩項重開與 feature 測試（走 `transitionCaseFlow` 與 `getOverviewStats`，`resolvedCases` 期望 2）修正前以 assertion 失敗；其餘以突變驗證（change 的 tasks.md 3.1） |
+| AUTO-10 的 `update_case_status` | 部分修正 | 先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，套同一個規則。`automation-update-case-status.test.ts` 6 項修正前全部失敗。不檢查轉換、不寫工單事件、`assign_agent` 不通知與其他動作不帶 `tenantId` 未處理 |
+| HC-ANALYTICS-02 | 已修正（直接關閉依使用者決定維持不算已解決） | 報表查詢不改，`resolvedAt` 的語意與報表一致。報表另有以 `status` 判斷的地方，與 `resolvedAt` 不衝突，未改：總覽「處理中工單」（`OPEN/IN_PROGRESS/PENDING/ESCALATED`）、案件報表 SLA 違規表與我的績效「即將到期」（排除 `CLOSED/RESOLVED`，直接關閉的逾期工單不列為違規）、我的績效「待處理」（只算 `OPEN/IN_PROGRESS`，不含 `PENDING/ESCALATED`）；案件趨勢的「已解決」（`closed` 欄）是依建立日分組、目前有 `resolvedAt` 的工單數，不是當天解決的數量 |
+
+規則轉成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查；修正前不會寄。
+
+## 2026-11-04：CSV 匯出的欄位跳脫與公式防護（ANA-03）
+
+issue #423，分支 `fix/p4-423`，change `fix-csv-export-escaping`。以 unit 測試與測試資料庫的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ANA-03 | 已修正，從 `AUDIT.md` 移除 | 全 repo 盤點產生 CSV 的位置共三處，改為共用 `packages/shared/src/utils/csv.ts` 的 `csvCell()`／`csvRow()`（沿用優惠券 `csvCell()` 的公式防護規則，改為需要時才加引號、數字不加 `'`）。① 報表匯出 `analytics.service.ts` 的 `buildCsv()` 四種報表；`export-csv-escaping.test.ts` 的 4 項修正前以 assertion 失敗，「概覽 CSV 的負數不加單引號」以突變驗證。② 優惠券序號明細 `coupon-stats.service.ts`（原本已有公式防護）；`csv-cell.test.ts` 改測 `instancesToCsv()`，以突變（拿掉公式防護）驗證；feature 測試「CSV 欄位含逗號時不破壞格式」原本數 `","`，改用 CSV 解析比欄數。③ 租戶資料匯出 workers `simple-zip.ts` 的 `toCsv()`（原本沒有公式防護，日期被 `JSON.stringify` 多包一層引號）；`data-export-zip.test.ts` 的 2 項修正前失敗。前端不產生 CSV。`packages/kb-ingest` 的審核用 CSV 不改：檔案會被讀回匯入，且是離線工具 |
+
+## 2026-11-04：評分後收件匣與工單看得到分數（CASE-05）
+
+issue #444，分支 `fix/p4-444`，change `show-csat-score-444`。以單元測試與測試資料庫 `open333crm_test_p4_444` 的 feature 測試驗證，沒有連 UAT；LINE 真機尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-05 | 部分修正 | `recordCsatScore()` 呼叫新的 `recordCsatRating(ctx: TenantCtx, …)`：問卷訊息（`contentType: 'csat'`、`metadata.caseId`、同租戶）寫入 `metadata.csatScore`／`csatRatedBy` 並再推一次 `message.new`，寫 `csat_rated` 事件；自動關閉寫 `status_changed`（`reason: 'csat_rated'`）。`csat-score-display.test.ts` 4 項、`csat-record-scope.test.ts` 新增 3 項修正前失敗。仍不經狀態機、不關閉對話、客服代評也送感謝訊息（#339） |
+| UAT 實測的評分顯示成 `csat:2:<工單 ID>` | 已修正（未列 AUDIT） | 進站攔截後 `relabelCsatReplyMessage()` 把訊息改寫成「我的評分：N 分」，原文存在 `metadata.postbackData`；有遮罩副本時副本改成同一段固定文字。`inbound-message-processing.test.ts`「評分的訊息在收件匣顯示文字」修正前失敗 |
+
 ## 2026-11-04：型號守門把一般英文詞當成型號（KB-02）
 
 issue #420，分支 `fix/p4-420`，change `fix-kb-model-guard-420`。以 unit 測試驗證（假 LLM 與檢索、經 workers `message.received`），沒有連 UAT，真機未驗。
