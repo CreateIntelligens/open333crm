@@ -39,7 +39,7 @@
 | `ENDED` | 已結束，不再接受提交 | `POST /activities/:id/end` |
 | `ARCHIVED` | 封存，不在清單顯示 | `POST /activities/:id/archive`，可以用 `/unarchive` 還原 |
 
-編輯、刪除與每一種狀態轉換，都先鎖住活動列，再檢查狀態。兩個操作同時進行時，後一個等前一個 commit 之後才檢查。例如發布還沒 commit 時開始編輯，編輯會在發布 commit 之後回 409，不會換掉已發布活動的選項。
+編輯、刪除與每一種狀態轉換，都先鎖住活動列，再檢查狀態。兩個操作同時進行時，後一個等前一個 commit 之後才檢查。例如發布還沒 commit 時開始編輯，編輯會在發布 commit 之後被拒（service 丟 409 `INVALID_ACTIVITY_STATUS`，後台路由目前包成 400 `BAD_REQUEST`，見健檢 HC-PORTAL-08），不會換掉已發布活動的選項。
 
 編輯草稿時，`PATCH /activities/:id` 沒帶 `options` 或 `fields` 就不動那一部分；有帶就整批取代。投票與競猜送空的 `options`、表單送空的 `fields` 回 400，不刪除既有內容（#424）。後台的編輯對話框打開時以 `GET /activities/:id` 取完整活動帶入選項與欄位，載入完成前與載入失敗時不能儲存。
 
