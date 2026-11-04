@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-04]
+
+### Fixed
+
+- **部署後保留平台後台對方案的修改**（#441 PLAN-20，change `preserve-plan-edits-on-seed-441`）— API 容器每次啟動都跑 seed，原本會把 `trial`、`light`、`standard`、`professional`、`enterprise` 五個方案的名稱、功能、上限與月費改回原始碼的值，平台在 `/admin/plans` 的修改下次部署就消失，沒有任何提示。現在 seed 只建立資料庫還沒有的方案，已存在的方案不寫入。程式要改既有方案的內容時，改用只改目標欄位、可重複執行的資料 migration（規則見 `docs/ref/features/platform/PLANS.md`）。
+
 ## [2026-11-03]
 
 ### Fixed
