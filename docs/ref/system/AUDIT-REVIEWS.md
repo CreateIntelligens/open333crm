@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：型號守門把一般英文詞當成型號（KB-02）
+
+issue #420，分支 `fix/p4-420`，change `fix-kb-model-guard-420`。以 unit 測試驗證（假 LLM 與檢索、經 workers `message.received`），沒有連 UAT，真機未驗。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-02（HC-KNOWLEDGE-02） | 已修正，從 `AUDIT.md` 移除 | `model-matcher.ts` 排除轉大寫後是常見英文詞的（偵測維持不分大小寫、結果轉大寫，`tac-11p` 視同 `TAC-11P`）（`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`TYPE-C`、`HDMI-2`、`CD-R`、`DVD-R`，沿用 `packages/kb-ingest` 的停用詞）；`checkModelGuard()` 只攔截前綴出現在白名單的型號，白名單空（沒有型號文章）時不攔截，訂單編號 `AB-12345` 這類前綴不在白名單的編號也不攔截。守門回覆計入 `clarifyAttempts`，用完時改走 #419 的 `clarify_handoff`（`clarifyExhaustedReason()`、`handOffConversation()`）。`model-matcher.test.ts` 的一般英文詞案例、`kb-model-guard.test.ts` 11 項中 10 項修正前以 assertion 失敗，「查無的型號仍引導選型號」為既有行為；`hasKnownPrefix` 判斷、守門累加次數、用完時轉接各以突變驗證。主規格 `bot-handoff-config` 新增「型號守門只攔截知識庫型號格式的型號」，修改「知識庫追問用完或 AI 失敗時轉接真人」 |
+| HC-KNOWLEDGE-06（守門的 `modelGuard` 留在對話 metadata） | 未處理 | 不在這次範圍 |
+
+初版把偵測改成大小寫敏感，審查後恢復不分大小寫（前綴白名單已擋住非型號的編號，大小寫敏感只會讓小寫型號失去引導）；「小寫型號視同大寫」在大小寫敏感的版本上失敗。
+前綴打錯的型號（白名單沒有這個前綴）不再觸發守門，改走一般知識庫回答或追問。
+
 ## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
 
 issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。

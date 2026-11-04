@@ -78,7 +78,10 @@
 2. **讓步給關鍵字**。訊息會命中關鍵字規則、而且規則能在這個渠道回覆時不回覆。
 3. **讀取對話紀錄**。取最近的訊息作為上下文，讓追問不會重複已經回答過的內容。
 4. **檢索**。產生訊息的向量，找出相似度達到門檻的前幾篇文章。篇數與門檻是 Embedding 設定的 `topK` 與 `threshold`。
-5. **型號守門**。客人提到的型號不在型號白名單、相似度又不夠高時，不硬答，改列出相近型號請客人確認。型號白名單從文章中抽出，快取一段時間；`POST /knowledge/models/refresh` 可以立即重建。
+5. **型號守門**。客人提到的型號不在型號白名單、相似度又低於 0.85 時，不硬答，改列出相近型號請客人確認。型號白名單從已發布文章的**標題**抽出，快取 10 分鐘；`POST /knowledge/models/refresh` 可以立即重建。
+   - 型號是英文前綴加 `-` 與英數，例如 `TAC-11P`、`TAC-06L-MCW`，不分大小寫（`tac-11p` 視同 `TAC-11P`）。`Wi-Fi`、`e-mail`、`T-shirt`、`USB-C`、`Type-C`、`HDMI-2`、`CD-R`、`DVD-R` 這類常見英文詞不論大小寫都不算型號，文章標題裡的也不會進白名單（#420）。
+   - 只攔截前綴出現在白名單的型號：知識庫沒有型號文章（白名單空）時不守門；訂單編號 `AB-12345` 這類前綴不在白名單的編號也不攔截。
+   - 守門回覆和追問共用追問次數；次數已達 `clarifyMaxAttempts` 時不再引導型號，改回「已為您轉接客服人員」並轉真人。
 6. **決定回覆方式**：
 
 | 最高相似度 | 回覆 |
@@ -87,7 +90,7 @@
 | `clarifyThreshold` 到 0.80 之間 | 同樣回答，並在後面附上轉接客服的提示 |
 | 低於 `clarifyThreshold`，或沒有文章 | 追問一個問題。追問次數達到 `clarifyMaxAttempts` 後轉真人 |
 
-`0.80` 是 `kb-autoreply.service.ts` 裡的常數；`clarifyThreshold` 與 `clarifyMaxAttempts` 是 Chat 設定的欄位。追問次數記在對話的 `metadata`，成功回答一次就歸零。
+`0.80` 是 `kb-autoreply.service.ts` 裡的常數；`clarifyThreshold` 與 `clarifyMaxAttempts` 是 Chat 設定的欄位。追問次數記在對話的 `metadata`，型號守門的回覆也算一次，成功回答一次就歸零。
 
 追問次數用完，或追問的 LLM 呼叫失敗（包含月額度用完的 `PLAN_LIMIT_EXCEEDED`）時，機器人回「不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。」，並在同一個交易真的轉真人：對話改成 `AGENT_HANDLED`、`handoffReason` 寫原因（追問次數已達上限、AI 月額度已用完、AI 回覆失敗）、寫一則系統訊息、發出 `conversation.handoff`（客服收到「轉接真人」通知），追問次數歸零。轉接用的是與自動轉真人相同的 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`），見[收件匣的轉真人](./INBOX.md#轉真人)。之後客人的訊息不再由知識庫或 agent 回覆；命中關鍵字規則的訊息照樣由關鍵字規則回覆。命中關鍵字規則的訊息本來就由關鍵字規則處理，不算追問，也不會觸發這個轉接（issue #419）。
 

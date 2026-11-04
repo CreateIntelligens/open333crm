@@ -4,6 +4,7 @@
  * 型號偵測邏輯刻意「複製自」apps/api 的 model-matcher.ts（純字串函式），
  * 讓 kb-ingest 只依賴 @open333crm/database，不拉整條 apps/api 依賴鏈。
  * 若 apps/api 的正則更新，需同步此處（正則保持一致）。
+ * apps/api 另排除 T-SHIRT，型號守門只攔截前綴在白名單的型號（issue #420）。
  */
 import { basename } from 'node:path';
 import type { Turn } from './types.js';

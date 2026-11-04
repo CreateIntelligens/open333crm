@@ -18,8 +18,20 @@
  * - 前綴：2~4 個大寫英文字母（TAC / TF / TAW / TDH / TOT / TEK …）
  * - 緊接 `-` 與至少一段「英數」，後面可再接多段 `-英數`
  * 例：TAC-11P-MFB、TAW-A080WM、TDH-168MC-NW、AC-9
+ *
+ * 不分大小寫比對，結果一律轉成大寫（`tac-11p` 與 `TAC-11P` 視為同一個型號，客人常打小寫）。
+ * `Wi-Fi`、`e-mail`、`T-shirt` 這類常見英文詞由 NON_MODEL_WORDS 排除；
+ * 其餘不是型號的編號（訂單編號等）由型號守門的前綴白名單擋下（hasKnownPrefix，issue #420）。
  */
 const MODEL_PATTERN = /\b([A-Z]{1,4})-([0-9A-Z]+(?:-[0-9A-Z]+)*)\b/gi;
+
+/**
+ * 符合型號格式的常見英文詞，不是型號（轉大寫後比對，`Wi-Fi`、`wi-fi`、`WI-FI` 都排除）。
+ * 清單與 packages/kb-ingest/src/lib/transcript.ts 的 MODEL_STOPWORDS 同源，另加 T-SHIRT。
+ */
+const NON_MODEL_WORDS: ReadonlySet<string> = new Set([
+  'WI-FI', 'E-MAIL', 'T-SHIRT', 'HDMI-2', 'USB-C', 'TYPE-C', 'CD-R', 'DVD-R',
+]);
 
 /** 從「第1段」抽出人份數字（型號開頭的連續數字），抓不到回傳 null。 */
 function extractCapacityDigits(firstSegment: string): string | null {
@@ -28,7 +40,7 @@ function extractCapacityDigits(firstSegment: string): string | null {
 }
 
 export interface ParsedModel {
-  /** 正規化後的完整輸入型號（大寫、去空白），例：TAC-11P-MFB */
+  /** 正規化後的完整輸入型號（大寫），例：TAC-11P-MFB */
   raw: string;
   /** 前綴品類碼，例：TAC */
   prefix: string;
@@ -61,6 +73,7 @@ export function detectModels(text: string): ParsedModel[] {
     // 註：若需涵蓋無人份數的型號，可放寬此條件。
     const raw = `${prefix}-${rest}`;
     const key = `${prefix}-${firstSegment}`;
+    if (NON_MODEL_WORDS.has(raw)) continue;
     if (seen.has(raw)) continue;
     seen.add(raw);
 
@@ -81,6 +94,17 @@ export function detectModels(text: string): ParsedModel[] {
  */
 export function isKnownModel(parsed: ParsedModel, knownKeys: ReadonlySet<string>): boolean {
   return knownKeys.has(parsed.key);
+}
+
+/**
+ * 判斷型號的前綴（品類碼）是否出現在白名單（issue #420）。
+ * 前綴不在白名單的編號（例如訂單編號 `AB-12345`）不是這個租戶的產品型號，型號守門不攔截。
+ */
+export function hasKnownPrefix(parsed: ParsedModel, knownKeys: ReadonlySet<string>): boolean {
+  for (const key of knownKeys) {
+    if (splitKey(key)[0] === parsed.prefix) return true;
+  }
+  return false;
 }
 
 /**
