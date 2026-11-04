@@ -64,7 +64,7 @@ description: >
 ## 回歸清單
 改到本領域時，至少重走：
 1. 新增文章 → 發布 → 確認列表綠色圖示（有 embedding 服務的環境）→ 語義搜尋找得到 → 封存後搜不到。
-2. 匯入：BOM 與無 BOM 的中文 CSV、xlsx 問答表、`.md`、JSON 陣列與一筆壞資料；確認問答表是直接發布。
+2. 匯入：BOM 與無 BOM 的 UTF-8 中文 CSV、台灣版 Excel 存的 Big5 CSV（中英文表頭各一）、xlsx 問答表、`.md`、JSON 陣列與一筆壞資料；確認問答表是直接發布、中文不是亂碼。再上傳一份編碼認不出的 CSV（例如 GBK 或混入非法位元組），該檔顯示「無法辨識這個 CSV 檔案的文字編碼…」且一篇都沒寫入（#421）。單元測試 `tests/unit/modules/knowledge/knowledge-file-parser-encoding.test.ts`、`knowledge-upload-encoding.test.ts`。
 3. KB 自動回覆（需要 LLM 與 embedding）：高相似度、追問兩次後的第三則、提到不存在型號、提到 `Wi-Fi`；確認對話狀態與客服是否收到轉接。
 3a. AI 失敗轉接（#445）：讓 embedding 服務或去識別化服務暫時失敗（或停掉 embedding 服務），客人傳文字 → 對話變 `AGENT_HANDLED`、`handoffReason` 是「AI 暫時無法回覆（…）」、客人收到 `handoffMessage`、客服收到轉接通知；命中關鍵字、`botMode: off` 的訊息不轉接。單元測試 `tests/unit/modules/automation/ai-failure-handoff.test.ts`。
 4. 「👎 沒幫到我」→ 回報調教出現 → 編輯文章 → 標為已處理。
@@ -77,7 +77,7 @@ description: >
 - 「AI 說已轉接但沒人接」：`clarify_handoff` 後對話應為 `AGENT_HANDLED` 且有 `handoffReason` 與 `auto_handoff` 系統訊息（#419）；未指派的對話會通知看得到該渠道的主管與管理員（`conversation_handoff`）。若仍是 `BOT_HANDLED`，查 job 是否失敗（轉接交易失敗時整則回覆不送出、由佇列重試）。
 - 「AI 說型號查不到」：訊息 `metadata.modelGuard.unknownModel`；`GET /knowledge/models` 看白名單；`apps/api/src/modules/ai/model-matcher.ts`。
 - 「文章發布了卻搜不到」：`hasEmbedding`、Embedding 頁「未嵌入」數、`POST /knowledge/bulk-embed`；維度不符見 DB-01。
-- 「匯入後中文亂碼」：CSV 沒有 UTF-8 BOM（`apps/api/src/modules/knowledge/file-parser.service.ts` 的 `XLSX.read`）。
+- 「匯入後中文亂碼」或「CSV 被拒：無法辨識文字編碼」：CSV 由 `apps/api/src/modules/knowledge/file-parser.service.ts` 的 `decodeCsvText()` 解碼（UTF-8 去 BOM → 嚴格 UTF-8 → Big5，都不行或含 U+FFFD 就回 `CSV_ENCODING_UNREADABLE`，#421）。GBK、Shift-JIS 等其他編碼不支援，請使用者另存成「CSV UTF-8」；Big5 偶爾能把其他編碼「解成功」但字不對，這種情形不會被擋。
 - 「上傳被拒、英文錯誤」：內容偵測 `apps/api/src/modules/upload/upload-content-detector.ts` 的 `extensionMatches`。
 - 「額度用完／用量對不上」：`apps/api/src/modules/trial/token-quota.service.ts`（Redis `aiquota:{tenantId}:{YYYY-MM}`，失敗退回 DB 加總）、`apps/api/src/modules/ai/llm.service.ts` 的 `recordAiUsage`；BYOK 解密失敗退回平台金鑰見 AI-01。
 - 「設定頁顯示假資料或 403」：缺 `settings.manage`；`apps/web/src/components/knowledge/SettingsLoadError.tsx`。

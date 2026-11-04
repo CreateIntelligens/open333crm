@@ -5,6 +5,7 @@
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 已修正：HC-KNOWLEDGE-01（#419，change `fix-kb-clarify-handoff-419`）。追問次數用完或追問的 LLM 呼叫失敗（含 `PLAN_LIMIT_EXCEEDED`）時，與自動轉真人共用 `handOffConversation()` 真的轉接：對話改成 `AGENT_HANDLED`、寫 `handoffReason` 與系統訊息、發出 `conversation.handoff` 並通知客服；`tenant/KNOWLEDGE.md` 已同步。手冊 ch06、ch07 的「追問不清楚就轉真人」因此與行為一致。本報告其餘段落仍描述健檢當時的程式
+- 已修正：HC-KNOWLEDGE-03（#421，change `fix-kb-csv-encoding-421`）。CSV 匯入前先自行解碼：有 UTF-8 BOM 去掉後以 UTF-8 解，沒有 BOM 先以嚴格 UTF-8 解、失敗再試 Big5；都解不出或含 U+FFFD 時該檔一篇都不寫入，匯入結果顯示中文原因（`CSV_ENCODING_UNREADABLE`，建議另存成「CSV UTF-8」）。依使用者決定（2026-11-04），問答表拆出的文章仍直接發布
 - 已修正（部分）：知識庫 embedding 失敗、agent 也沒回覆時客人收不到任何回覆（issue #445，change `handoff-on-ai-reply-failure-445`）。現在轉真人，原因寫「AI 暫時無法回覆（…）」；`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，記為 KB-06
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只做唯讀 API 查詢）
 - 規格：`docs/ref/features/feature-map.json` 的 `knowledge`；功能文件 `docs/ref/features/tenant/KNOWLEDGE.md`
@@ -25,7 +26,7 @@
 | --- | --- | --- | --- | --- | --- |
 | HC-KNOWLEDGE-01 | P1 | 追問次數用完時，機器人回「已為您轉接客服人員，請稍候」，但**沒有轉接**：對話仍是 `BOT_HANDLED`，沒有 `handoffReason`、沒有系統訊息、客服不會收到。客人再傳訊息，又收到同一句「已為您轉接」。實際轉接要等 `botRepliesCount` 達到渠道的 `maxBotReplies`（預設 5）才由 `checkAutoHandoff` 觸發；`maxBotReplies` 調高的渠道，客人會一直收到假的轉接訊息。LLM 失敗（含月額度用完的 `PLAN_LIMIT_EXCEEDED`）時，追問路徑也走同一句 | **實測**（健檢腳本＋假 LLM）：新對話依序送「你們幾點開門」「還是不懂你們幾點開門」「到底幾點開門」「喂？有人嗎」→ 前兩則 `clarify`，後兩則都是 `clarify_handoff`「…已為您轉接客服人員，請稍候。」，對話狀態一直是 `BOT_HANDLED` | `apps/api/src/modules/ai/kb-autoreply.service.ts:252-255, 270-273`（只寫訊息，不改對話狀態）；轉接本身在 `apps/api/src/modules/automation/automation.worker.ts` 的 `checkAutoHandoff` | KB-01 |
 | HC-KNOWLEDGE-02 | P1 | 型號守門把一般英文詞當成型號：正規式 `\b([A-Z]{1,4})-([0-9A-Z]+…)\b` 不分大小寫，`Wi-Fi`、`e-mail`、`T-shirt`、訂單編號 `AB-12345` 都被當成「查無此型號」，機器人回「這個型號我這邊查不到資料」並請客人確認型號。守門對**所有租戶**生效；沒有任何型號文章的租戶（白名單是空的），只要訊息有這類詞、KB 相似度低於 0.85，就一定走守門。守門路徑也不累加追問次數，客人一直提到這類詞就一直不會轉真人 | **實測**（健檢腳本＋假 LLM）：送「我家 Wi-Fi 連不上怎麼辦」→ `replyKind=model_not_found`、`unknownModel=WI-FI`；送「請問可以寄 e-mail 給你們嗎」→ `unknownModel=E-MAIL`。另以 `detectModels()` 直接驗證 `T-shirt`、`AB-12345` 也命中。本機建立標題含 `hc-knowledge-` 的文章後，`GET /knowledge/models` 出現 `HC-KNOWLEDGE` | `apps/api/src/modules/ai/model-matcher.ts:22`；`kb-autoreply.service.ts:185-237`（守門無條件執行） | KB-02 |
-| HC-KNOWLEDGE-03 | P1 | 上傳 UTF-8 編碼、**沒有 BOM** 的 CSV，中文全部變亂碼：`XLSX.read(buffer, {type:'buffer'})` 沒指定編碼，把 UTF-8 當單位元組讀。表頭「問題,答案」因此認不出，整份變一篇亂碼草稿；表頭是英文 `question,answer` 時會拆成問答，但標題與答案是亂碼，而且**直接發布**，AI 馬上會用。有 BOM 的 CSV 正常。Google 試算表、Numbers、程式匯出的 CSV 都沒有 BOM；台灣版 Excel 的「CSV（逗號分隔）」是 Big5，同樣會亂碼。手冊用的範例檔 `apps/web/tests/fixtures/manual-kb-sample.csv` 就是無 BOM 的 UTF-8 | **實測**（本機 API）：上傳 `問題,答案\nQ1 退貨要幾天,七天內可退貨` → 1 篇草稿，內容為「åé¡ \| ç­æ¡」；上傳英文表頭版本 → 1 篇**已發布**，標題「éè²¨è¦å¹¾å¤©」；加上 `EF BB BF` 後正常拆成「退貨要幾天」。文章管理頁截圖可見亂碼標題 | `apps/api/src/modules/knowledge/file-parser.service.ts:57, 139`；QA 列直接發布在 `knowledge.routes.ts:167` | KB-03 |
+| HC-KNOWLEDGE-03 | P1 | 上傳 UTF-8 編碼、**沒有 BOM** 的 CSV，中文全部變亂碼：`XLSX.read(buffer, {type:'buffer'})` 沒指定編碼，把 UTF-8 當單位元組讀。表頭「問題,答案」因此認不出，整份變一篇亂碼草稿；表頭是英文 `question,answer` 時會拆成問答，但標題與答案是亂碼，而且**直接發布**，AI 馬上會用。有 BOM 的 CSV 正常。Google 試算表、Numbers、程式匯出的 CSV 都沒有 BOM；台灣版 Excel 的「CSV（逗號分隔）」是 Big5，同樣會亂碼。手冊用的範例檔 `apps/web/tests/fixtures/manual-kb-sample.csv` 就是無 BOM 的 UTF-8 | **實測**（本機 API）：上傳 `問題,答案\nQ1 退貨要幾天,七天內可退貨` → 1 篇草稿，內容為「åé¡ \| ç­æ¡」；上傳英文表頭版本 → 1 篇**已發布**，標題「éè²¨è¦å¹¾å¤©」；加上 `EF BB BF` 後正常拆成「退貨要幾天」。文章管理頁截圖可見亂碼標題 | `apps/api/src/modules/knowledge/file-parser.service.ts:57, 139`；QA 列直接發布在 `knowledge.routes.ts:167` | KB-03（已修正並從 AUDIT 移除，#421） |
 | HC-KNOWLEDGE-04 | P2 | LLM 呼叫失敗時，知識庫回答路徑把**整篇文章原文**（最多不限長度，`topResult.content`）直接送給客人。月額度用完（`PLAN_LIMIT_EXCEEDED`）也走這條：規格要求的「不呼叫 LLM」做到了，但客人收到的是未整理的文章全文，文章裡若有內部備註也會一起送出 | **實測**（健檢腳本）：假 LLM 回 500，客人問「濾網怎麼拆」→ 回覆內容就是文章 content「濾網每兩週清洗一次。」，`replyKind=kb_high_confidence` | `kb-autoreply.service.ts:292-296` | KB-04 |
 | HC-KNOWLEDGE-05 | P2 | 知識庫的寫入按鈕不依權限隱藏：「新增文章」「匯入文章」與每列的編輯、發布、封存、刪除鈕，對沒有 `knowledge.manage` 的成員照樣顯示，按下才跳 alert「權限不足」。只有「標為已處理」有依 `knowledge.admin` 隱藏 | **實測**（本機 UI）：自建角色只有 `knowledge.view, inbox.view` → 文章管理頁有「新增文章」「匯入文章」各 1、刪除鈕 13；按封存跳出「權限不足，無法執行此操作…」 | `apps/web/src/app/dashboard/knowledge/page.tsx:244-257`；`apps/web/src/components/knowledge/ArticleList.tsx:180-216` | RBAC-11 |
 | HC-KNOWLEDGE-06 | P2 | 型號守門命中後，`modelGuard` 物件寫進 `conversation.metadata` 之後永遠不會清掉；之後的一般回答、追問都沿用舊值，客服或除錯時會誤以為最近一則是守門回覆 | **實測**（健檢腳本）：守門之後的 `clarify`、`kb_high_confidence` 回覆，對話 metadata 仍是 `{"modelGuard":{"unknownModel":"E-MAIL",…}}` | `kb-autoreply.service.ts:436`（`{...existingMeta, ...metadataExtras}`） | KB-05 |
@@ -116,7 +117,7 @@
 
 - HC-KNOWLEDGE-01：追問次數用完時回覆「已為您轉接」但不轉接。
 - HC-KNOWLEDGE-02：型號守門正規式誤判一般英文詞，且對所有租戶生效。
-- HC-KNOWLEDGE-03：無 BOM 的 UTF-8 CSV（與 Big5 CSV）匯入變亂碼，問答表會直接發布。
+- HC-KNOWLEDGE-03：無 BOM 的 UTF-8 CSV（與 Big5 CSV）匯入變亂碼，問答表會直接發布。（#421 已修正：UTF-8 有無 BOM、Big5 都正確解碼，解不出時拒絕匯入；問答仍直接發布）
 - HC-KNOWLEDGE-04：LLM 失敗或額度用完時把文章原文直接送給客人。
 - HC-KNOWLEDGE-05：知識庫寫入按鈕不依權限隱藏（可與 RBAC-01 一起處理）。
 - LLM-04 的影響描述改成條件式（UAT 目前靠 Compose 的 Ollama 正常產生向量）。
@@ -125,9 +126,9 @@
 
 - `docs/ref/features/tenant/KNOWLEDGE.md`「機器人怎麼用知識庫回答」寫「追問次數達到 `clarifyMaxAttempts` 後轉真人」：程式只回一句轉接文字，不改對話狀態（HC-KNOWLEDGE-01）。
 - `docs/ref/features/tenant/KNOWLEDGE.md` 的「目前的限制」與 AUDIT LLM-04 寫 Embedding 在組織內一律失敗：UAT Demo 租戶目前正常。
-- `docs/ref/features/tenant/KNOWLEDGE.md`「匯入」沒寫 CSV/Excel 拆出的問答**直接發布**，也沒寫 CSV 要 UTF-8 BOM。
+- `docs/ref/features/tenant/KNOWLEDGE.md`「匯入」沒寫 CSV/Excel 拆出的問答**直接發布**，也沒寫 CSV 要 UTF-8 BOM。（#421 已補上直接發布與 CSV 編碼的說明）
 - `docs/ref/features/tenant/KNOWLEDGE.md` 沒提到型號守門對所有租戶生效、以及白名單從「已發布文章標題」抽取。
-- 手冊 `apps/web/public/manual/ch06-knowledge.html`「匯入文章」：CSV 沒有提醒要存成「CSV UTF-8」；第 1 節「知識庫裡沒有的，AI 不會亂編，而是請客人轉給真人」與第 8 節「問不清楚再轉真人」與實際行為不符。
+- 手冊 `apps/web/public/manual/ch06-knowledge.html`「匯入文章」：CSV 沒有提醒要存成「CSV UTF-8」（#421 已補上可用的編碼與認不出時的處理）；第 1 節「知識庫裡沒有的，AI 不會亂編，而是請客人轉給真人」與第 8 節「問不清楚再轉真人」與實際行為不符。
 - 手冊 `apps/web/public/manual/ch07-ai-settings.html`「多輪追問」寫「最大追問次數：超過就自動轉給真人客服」，同上不符。
 - `openspec/specs/km-ingestion/spec.md` 的前兩條需求（2md、語音、LanceDB）與程式不符，應改寫或移除。
 - `chat-settings.service.ts` 的 `DEFAULT_CHAT_SETTINGS.temperature` 是 0.2，資料庫預設與手冊是 0.3。

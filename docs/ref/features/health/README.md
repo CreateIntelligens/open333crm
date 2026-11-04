@@ -59,7 +59,7 @@
 | HC-LINE-01 | CASE-03（已修正並從 AUDIT 移除） | #416，已修正（change `fix-csat-line-flex-416`） | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗。修正：LINE 外掛補回 `flex` 分支，不認得的 `contentType` 回失敗並帶原因；問卷送不出時問卷卡片顯示「沒有送出」、工單時間軸寫 `csat_send_failed`，不自動重寄。unit 測試涵蓋，真機待驗 |
 | HC-KNOWLEDGE-01 | KB-01（已修正並從 AUDIT 移除） | #419，已修正（change `fix-kb-clarify-handoff-419`） | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
 | HC-KNOWLEDGE-02 | [KB-02](../../system/AUDIT.md#kb-02) | #420 | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
-| HC-KNOWLEDGE-03 | [KB-03](../../system/AUDIT.md#kb-03) | #421 | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |
+| HC-KNOWLEDGE-03 | KB-03（已修正並從 AUDIT 移除） | #421，已修正（change `fix-kb-csv-encoding-421`） | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測。修正：CSV 先以 UTF-8（去 BOM）解、失敗試 Big5，都解不出或含 U+FFFD 時該檔不寫入並顯示中文原因；問答仍直接發布（使用者決定）。unit 測試涵蓋 |
 | HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | #418，已修正（change `fix-automation-numeric-text-conditions`） | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測；修正以 unit 測試驗證 |
 | HC-ANALYTICS-01 | 未收錄 | — | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測；main 的 `093b7e75` 已修正 |
 | HC-PORTAL-01 | PORTAL-03（已修正並從 AUDIT 移除） | #424，已修正（change `fix-portal-edit-keeps-content`） | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測。修正：編輯對話框以 `GET /portal/activities/:id` 帶入完整活動，載入完成前與失敗時不能儲存；後端拒絕投票、競猜的空選項與表單的空欄位。feature 與 component 測試涵蓋，UAT 尚未重測 |
