@@ -209,10 +209,18 @@ export async function detectUploadContent(
   const label = prediction.prediction.output.label;
   const confidence = prediction.prediction.score;
   const rawMime = fileType?.mime;
-  const detectedMime =
+  const sniffedMime =
     zipOfficeMime(input.buffer) ??
     (rawMime === 'application/zip' ? magikaMime(label) ?? rawMime : rawMime) ??
     magikaMime(label);
+  // Magika 常把列數少、內容是長中文的 CSV 判成 txt；CSV 本來就是純文字，副檔名是 .csv 且政策允許 CSV 時視為 CSV
+  // （issue #421 後續：UAT 上傳一列中文的 CSV 被拒）。只放寬 text/plain → text/csv，其他類型照常比對
+  const detectedMime =
+    sniffedMime === 'text/plain' &&
+    /\.csv$/i.test(input.filename) &&
+    input.policy.allowedMimes.includes('text/csv')
+      ? 'text/csv'
+      : sniffedMime;
   const clientMime = normalizeMime(input.clientMime);
 
   if (prediction.status !== 'ok' || confidence < MAGIKA_MIN_SCORE) {

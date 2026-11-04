@@ -16,7 +16,7 @@ import {
   checkOllamaHealth,
   embedArticle,
 } from './knowledge.service.js';
-import { parseFileToMarkdown, parseSpreadsheetToQaRows } from './file-parser.service.js';
+import { normalizeCsvUpload, parseFileToMarkdown, parseSpreadsheetToQaRows } from './file-parser.service.js';
 import {
   ingestPartnerDoc,
   parseCmd,
@@ -145,8 +145,10 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     let failed = 0;
 
     for await (const part of parts) {
-      const buffer = await part.toBuffer();
+      const raw = await part.toBuffer();
       try {
+        // CSV 先轉成 UTF-8 再偵測內容類型：偵測認不出 Big5，會在解碼前就拒絕（issue #421 後續）
+        const buffer = normalizeCsvUpload(raw, part.filename);
         const detected = await assertUploadContent(
           { buffer, filename: part.filename, clientMime: part.mimetype },
           UPLOAD_POLICIES.knowledge,

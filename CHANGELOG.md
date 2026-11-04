@@ -24,6 +24,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **台灣版 Excel 存的 Big5 CSV 可以匯入知識庫**（#421 後續，2026-11-04 UAT 驗證發現）— #421 的解碼在檔案內容類型偵測之後才執行，偵測（Magika）認不出 Big5 文字，上傳時回英文錯誤「File content type rejected: file content type is unknown」，走不到解碼。現在 `.csv` 檔先以 `decodeCsvText()` 轉成 UTF-8 再偵測與解析。另外偵測常把列數少、內容是長中文的 CSV 判成純文字而拒絕，副檔名是 `.csv` 且政策允許 CSV 時，純文字視為 CSV。
 - **工單詳情頁顯示滿意度分數**（#444 後續，2026-11-04 UAT 驗證發現）— #444 在 `CaseDetail` 加了「滿意度」區塊，但工單詳情頁（`/dashboard/cases/[caseId]`）傳給元件的資料沒有 `csatScore`、`csatComment`、`csatSentAt`、`csatRespondedAt`，UAT 上看不到分數。頁面補上這四個欄位，新增從頁面渲染的測試。
 - **重開的工單不再算已解決，報表的已解決數與 SLA 達成率不再失真**（#417，change `fix-case-resolved-at-417`，AUDIT CASE-04、AUTO-10，健檢 HC-ANALYTICS-02）— 原本工單解決後重開仍保留舊的 `resolvedAt`，處理中的工單被報表算成已解決；自動化規則的「改工單狀態」完全不寫 `resolvedAt`／`closedAt`。現在：
   - `@open333crm/shared` 新增 `caseTransitionTimestamps()`，API 的狀態轉換（按鈕、狀態下拉、升級、指派時自動改狀態）、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 共用：轉成「已解決」寫入 `resolvedAt`；從「已解決」轉成「已關閉」保留；直接關閉（沒有經過「已解決」）不算已解決；轉成其他狀態（重開）清除。
