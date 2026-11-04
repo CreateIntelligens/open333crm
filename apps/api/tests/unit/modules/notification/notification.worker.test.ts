@@ -112,7 +112,10 @@ test('未指派的對話轉接：conversation.handoff 送進通知訂閱者，�
 
 test('已指派的對話轉接：只通知負責的客服', async () => {
   const assignedHandle = setupNotificationWorker({
-    agent: { findMany: async () => [{ id: 'supervisor-a' }, { id: 'admin-b' }] },
+    agent: {
+      findMany: async () => [{ id: 'supervisor-a' }, { id: 'admin-b' }],
+      findFirst: async () => ({ id: 'agent-x' }),
+    },
     conversation: { findFirst: async () => ({ assignedToId: 'agent-x', channelId: 'ch-a', contact: { displayName: '客人' } }) },
   } as never, { visibility: async () => ALL_CHANNELS });
   await assignedHandle(event('conversation.handoff', { conversationId: 'conv-1', reason: 'AI 月額度已用完，無法自動回覆' }));
@@ -140,4 +143,44 @@ test('未指派對話的新訊息：看不到該渠道的主管不會收到新�
   await branchScopedHandle()(event('message.received', { conversationId: 'conv-1' }));
   const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
   assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+// 指派給 agent-x 的渠道 ch-a 對話；hq-admin 持有 channel.view_all（change notify-visible-assignee-440）
+function assignedHandle(opts: { assigneeActive: boolean; assigneeChannels: Set<string> | typeof ALL_CHANNELS }) {
+  return setupNotificationWorker({
+    agent: {
+      findMany: async () => [{ id: 'hq-admin' }, { id: 'branch-supervisor' }],
+      findFirst: async ({ where }: { where: { id: string; isActive?: boolean } }) =>
+        where.id === 'agent-x' && (opts.assigneeActive || where.isActive !== true) ? { id: 'agent-x' } : null,
+    },
+    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '客人' } }) },
+  } as never, {
+    visibility: async (_tenantId: string, agentId: string) =>
+      agentId === 'agent-x' ? opts.assigneeChannels : agentId === 'hq-admin' ? ALL_CHANNELS : new Set(['ch-b']),
+  });
+}
+
+test('負責客服看得到渠道：只有負責客服收到新訊息通知', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-a']) })(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__agent-x`]);
+});
+
+test('負責客服失去渠道權限：負責客服不收新訊息通知，改通知看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-b']) })(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('負責客服已停用：負責客服不收轉接通知，改通知看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: false, assigneeChannels: ALL_CHANNELS })(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('負責客服看不到渠道時改通知主管：轉接通知改發給看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-b']) })(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+  assert.equal(jobs[0].data.type, 'conversation_handoff');
 });

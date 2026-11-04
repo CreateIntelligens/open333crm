@@ -37,8 +37,8 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 
 | 事件 | 通知類型 | 收件人 | 來源 |
 | --- | --- | --- | --- |
-| 客人傳訊息 | `new_message` | 對話已指派時通知負責人；未指派時通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道） | `message.received` |
-| 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派時通知負責人；未指派時通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
+| 客人傳訊息 | `new_message` | 對話已指派、且負責人仍啟用並看得到該渠道時只通知負責人；未指派，或負責人已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道） | `message.received` |
+| 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派、且負責人仍啟用並看得到該渠道時只通知負責人；未指派，或負責人已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
 | 工單被指派 | `case_assigned` | 被指派的成員 | `case.assigned` |
 | 工單升級 | `case_escalated` | 依升級對話框的勾選：所有 `ADMIN` 與 `SUPERVISOR`、升級前的負責人，見[工單](./CASES.md#升級) | `case.escalated` |
 | CSAT 兩分以下 | `csat_low_score` | 所有 `SUPERVISOR`，不含 `ADMIN` | `recordCsatScore()` |

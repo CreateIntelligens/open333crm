@@ -39,7 +39,7 @@ description: >
 
 | 來源 | 觸發 | 收件人 | 寫入路徑 | 類型 / clickUrl |
 | ---- | ---- | ------ | -------- | --------------- |
-| 客人傳訊息 | `message.received` | 對話有負責人 → 只通知負責人（**不檢查是否已停用**）；沒有 → 所有啟用中的 `ADMIN`、`SUPERVISOR`（**不看渠道可見範圍**） | `notification.worker.ts` → `notification` queue → workers | `new_message` / `/dashboard/inbox?conv=` |
+| 客人傳訊息 | `message.received` | 對話有負責人、且負責人啟用中並看得到該渠道 → 只通知負責人；沒有負責人，或負責人已停用、看不到該渠道 → 看得到該渠道的啟用中 `ADMIN`、`SUPERVISOR`（#440，`getConversationRecipients()`） | `notification.worker.ts` → `notification` queue → workers | `new_message` / `/dashboard/inbox?conv=` |
 | 工單指派 | `case.assigned`（只有 `POST /cases/:id/assign` 與自動派案發布） | 被指派人 | 同上 | `case_assigned` / `/dashboard/cases/:id` |
 | 工單升級 | `case.escalated` | `resolveEscalationRecipients`：`notifyTargets` 含 `supervisor` → 所有 ADMIN+SUPERVISOR；含 `original_assignee` → 升級前負責人；沒帶 → 只有主管；`[]` → 沒人；升級的人自己一律排除。**升級時改派的新負責人不通知** | 同上 | `case_escalated` |
 | CSAT ≤ 2 分 | `recordCsatScore()` | 只有 `SUPERVISOR`（不含 ADMIN） | API 行程直接 `createAndDispatch`（不經佇列、不重試） | `csat_low_score` / `/dashboard/cases?id=`（列表頁不讀 id） |
@@ -50,7 +50,7 @@ description: >
 | FB/IG 權杖失效 | `meta-token-health.ts` 每 6 小時；持續失效每 3 天再提醒 | 所有 `ADMIN` | API 行程 `createAndDispatch` + `sendEmail` | `channel_token_invalid` / `/dashboard/settings/channels` |
 | 資料匯出／刪除完成 | workers `data-export.handler.ts`、`data-erasure.handler.ts` | 發起人 | `enqueueNotification` | `data_export_ready`、`data_export_failed`（連到不存在的頁面，EXPORT-01）、`data_erasure_done`（無連結） |
 
-**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 已訂閱（#419，CONV-03 已修正）：類型 `conversation_handoff`，已指派通知負責人，未指派通知所有主管與管理員。
+**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 已訂閱（#419，CONV-03 已修正）：類型 `conversation_handoff`，收件人與 `message.received` 相同（`getConversationRecipients()`，#440）。
 
 **有後端、沒有前端入口**：無。**前端有、後端沒有**：無。**兩邊都沒有**：通知偏好／靜音、刪除通知、保留期限、Web Push、工單事件寄信（`docs/20_NOTIFICATION.md` 的設計未實作）。
 
