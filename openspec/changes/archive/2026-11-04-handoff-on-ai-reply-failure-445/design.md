@@ -56,7 +56,7 @@ worker 層的略過（不呼叫 agent 與知識庫，也不轉接）：非文字
 
 ### 3. 系統訊息不呼叫去識別化服務
 
-`checkAutoHandoff` 與知識庫轉接用 `prepareStoredMessageContent(..., 'system')` 遮罩系統訊息，會呼叫 2md。這次的轉接正是在 2md 故障時發生，再呼叫一次一定失敗。系統訊息的文字是「自動轉接人工客服：」加上上表的固定原因，不含顧客或租戶資料。新增 `prepareFixedSystemMessageContent()`：租戶開啟遮罩時，遮罩副本就是原文（`mode: system_fixed`），不呼叫 2md；讀取遮罩設定失敗時丟錯。
+`checkAutoHandoff` 與知識庫轉接用 `prepareStoredMessageContent(..., 'system')` 遮罩系統訊息，會呼叫 2md。這次的轉接正是在 2md 故障時發生，再呼叫一次一定失敗。系統訊息的文字是「自動轉接人工客服：」加上上表的固定原因，不含顧客或租戶資料。新增 `fixedSystemMessageContent(content, privacyEnabled)`（不讀資料庫）：flow 以 `readAiPrivacyPolicy()` 讀遮罩設定，開啟時遮罩副本就是原文（`mode: system_fixed`），不呼叫 2md；讀取遮罩設定失敗時丟錯，由佇列重試。轉接原因由 `kb-autoreply.service.ts` 的 `aiReplyFailedReason()` 產生，與既有的 `clarifyLlmFailedReason()` 共用錯誤種類判斷。
 
 不寫對話摘要：摘要要呼叫 LLM，這時多半也會失敗（LLM-05）。
 
