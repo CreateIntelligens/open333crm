@@ -34,7 +34,9 @@ API 有兩條一般用途的 Redis 連線，兩條的設定不同（#443）：
 
 ### Modified Capabilities
 
-無。登入鎖定與綁定代碼的行為不變。`auth-session` 的「計數儲存故障」scenario 在新的等待上限下仍然成立。
+- `tenant-transaction-context`：「service 直接使用 Redis 與 LLM 的數量不得增加」改為寫明目標：service 自己取得 Redis 連線的引用都要計入，包括 core 建立連線的函式。這次 core 新匯出 `createRedisClient`，原本逐一列出的寫法沒有包含它，service 可以藉此繞過檢查（review-loop 第 1 輪，Codex）。
+
+登入鎖定與綁定代碼的行為不變。`auth-session` 的「計數儲存故障」scenario 在新的等待上限下仍然成立。
 
 ## Impact
 

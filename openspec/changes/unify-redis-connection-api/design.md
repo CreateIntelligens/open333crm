@@ -110,6 +110,12 @@ core 的 `redis` 沒有其他使用者把它當成 BullMQ 的連線。只有 cha
 | `EventBus` 的訂閱連線不繼承一般用途的設定 | `packages/core/tests/unit/event-bus/event-bus.test.ts` | 檢查 `subscribe()` 回傳的連線的 `commandTimeout` 與 `maxRetriesPerRequest`。行為測試要讓 Redis 在啟動時無法使用、之後恢復，unit 測試做不到 |
 | 建立 API 應用程式時不連 Redis、關閉時關閉連線 | `apps/api/tests/unit/plugins/redis.plugin.test.ts` | 測試檔以 `vi.mock('ioredis', importOriginal)` 換回真的 ioredis，指向沒有程式監聽的 port。全域的假 Redis 永遠回報狀態 `end`，分不出「還沒連線」與「已關閉」 |
 
+### D7：ratchet 計算 service 自己取得 Redis 連線的所有方式
+
+`scripts/check-tenant-ctx.mjs` 的目標是讓 service 拿不到 Redis 連線，連線由 flow 以參數傳入。core 匯出 `createRedisClient` 之後，service 可以自己建立連線，所以腳本把它加進計數。
+
+spec 寫目標（「core 匯出的 Redis 連線、建立連線的函式或整個模組」），腳本列出目前已知的匯出名稱。以後新增取得連線的方式，只改腳本與測試，不改 spec。
+
 ## Risks / Trade-offs
 
 - [正常但較慢的指令超過 1 秒而失敗] → 一般用途的指令幾乎都是單一 key 的讀寫。例外是 `permission.service.ts` 清方案快取的 `SCAN` 迴圈：每次 `SCAN` 是一個指令，每批 100 個 key，各自受 1 秒限制。失敗時有 catch，快取靠 TTL 失效。

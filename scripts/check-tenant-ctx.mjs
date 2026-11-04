@@ -53,6 +53,9 @@ const UPDATE = process.argv.includes('--update-baseline');
 const isServiceFile = (rel) => rel.endsWith('.service.ts') || rel.startsWith('services/');
 const anyFile = () => true;
 
+/** core 匯出的 Redis 連線，與建立連線的函式 */
+const CORE_REDIS_EXPORTS = ['redis', 'createRedisClient'];
+
 const PATTERNS = [
   { name: 'TenantDb', re: /\bTenantDb\b/g, applies: anyFile },
   { name: 'request.tenantPrisma', re: /\b(?:request|req)\.tenantPrisma\b/g, applies: anyFile },
@@ -61,7 +64,8 @@ const PATTERNS = [
   { name: 'service 內的 withTenant(', re: /\bwithTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 $transaction(', re: /\$transaction\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 inTenant(', re: /\binTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
-  // Redis：core 的 redis singleton 或 namespace、ioredis 的任何值 import，或 API 共用的連線（lib/redis-client，不論有沒有寫副檔名）
+  // Redis：service 不得自己取得連線。目前已知的取得方式：core 的 redis singleton、createRedisClient 或 namespace，
+  // ioredis 的任何值 import，API 共用的連線（lib/redis-client，不論有沒有寫副檔名）。新增取得方式時加在這裡
   {
     name: 'service 直接 import Redis client',
     count: (sf) =>
@@ -69,7 +73,7 @@ const PATTERNS = [
         ({ from, names, whole }) =>
           from === 'ioredis' ||
           /(?:^|\/)lib\/redis-client(?:\.[cm]?[jt]s)?$/.test(from) ||
-          (from === '@open333crm/core' && (whole || names.includes('redis'))),
+          (from === '@open333crm/core' && (whole || names.some((n) => CORE_REDIS_EXPORTS.includes(n)))),
       ).length,
     applies: isServiceFile,
   },

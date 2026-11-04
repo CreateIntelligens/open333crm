@@ -374,8 +374,8 @@ so these functions do not change its result.
   is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
   - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
-  - a reference from a service file to a Redis client (`redis` or the whole module from
-    `@open333crm/core`, or `ioredis`) or to an LLM module (`ai/llm.service.js`, a file in
+  - a reference from a service file to a Redis client (`redis`, `createRedisClient` or the
+    whole module from `@open333crm/core`, `ioredis`, or `lib/redis-client`) or to an LLM module (`ai/llm.service.js`, a file in
     `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
     module-level clients inside the transaction, so a flow receives them as dependencies instead.
 

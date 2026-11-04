@@ -29,6 +29,11 @@
 - [x] 4.5 `node scripts/feature-impact.mjs` 列出受影響的領域（直接影響 contacts、marketing、members、channels）。綁定代碼、email 登記、領券與票券流程由既有的 feature 測試經過真的 Redis；登入鎖定以本機實際啟動的 API 驗證：同一 email 錯 5 次後第 6 次回 429 `ACCOUNT_LOCKED`，SIGTERM 後正常關閉。`node scripts/feature-impact.mjs --check` 通過
 - [x] 4.6 `node scripts/validate-openspec.mjs unify-redis-connection-api` 與 `node scripts/validate-openspec.mjs --specs` 通過
 
+## 5. review-loop 的修正
+
+- [x] 5.1 在 `apps/api/tests/unit/tenant-ctx-ratchet.test.ts` 寫 Scenario「service 檔新增建立 Redis 連線的函式的 import」，確認因斷言失敗（腳本以 exit code 0 結束）
+- [x] 5.2 `scripts/check-tenant-ctx.mjs` 把 core 的 `createRedisClient` 計入「service 直接 import Redis client」（design.md D7）。5.1 通過，`node scripts/check-tenant-ctx.mjs --strict` 通過，計數不變。AGENTS.md 結構規則 2 的 Check 一併寫明
+
 ## Workflow follow-up
 
 - 以 `pnpm exec openspec archive unify-redis-connection-api` 歸檔。新的主規格 `redis-connection` 的 Purpose 已寫好，歸檔後確認沒有「TBD」。
