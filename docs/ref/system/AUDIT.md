@@ -131,7 +131,7 @@
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
-| [AUTO-06](#auto-06) | 對話、工單與自動化 | P1 | 未處理 | 規則編輯器把純數字的條件值存成數字，「訊息內容 包含 8888」這類條件永遠不成立 | 執行時確認 |
+| [AUTO-06](#auto-06) | 對話、工單與自動化 | P1 | 已修正 | 規則編輯器把純數字的條件值存成數字，「訊息內容 包含 8888」這類條件永遠不成立 | 執行時確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
 | [AUTO-09](#auto-09) | 對話、工單與自動化 | P2 | 已修正 | 自動化的試跑與執行紀錄只驗登入，沒有 `automation.view` 的成員可以讀到規則的條件與動作全文 | 執行時確認 |
@@ -1766,6 +1766,12 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 訂單編號、選單數字（「1」「2」）、電話是最常見的關鍵字，都受影響。編輯器重新整理後仍顯示 8888，「試試看」也顯示不會觸發，管理員只會以為規則壞了。以 API 存入字串 `"7777"` 的規則正常。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-01（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/web/src/lib/automation/qb-to-engine.ts:9-16,82`、`packages/automation/src/rules/operators.ts`；在 `/dashboard/automation/new` 建「訊息內容 包含 8888」，送出的 body 是 `"value":8888`，模擬訊息「我的單號 8888」沒有觸發，`POST /rules/:id/test` 回 `matched:false`（健檢實測）。
+
+**已修正**（#418，2026-11-04，change `fix-automation-numeric-text-conditions`）：
+
+- 編輯器的 `parseValue()` 依 `AUTOMATION_FACT_MAP` 的欄位型別轉值：只有 `number` 欄位轉數字、`boolean` 欄位轉布林，文字欄位保留字串。
+- `packages/automation` 的運算子在「欄位值是字串、比較值是數字」時把數字當成文字比對（`equal`、`notEqual`、`in`、`notIn` 覆寫 json-rules-engine 內建版本，`contains` 等自訂運算子同樣處理），已存成數字的舊規則不必重存就恢復觸發。數字欄位的比對不變。
+- workers 與「試試看」都經 `evaluateRules`，結果一致。後端仍不檢查條件值的型別（#405），API 存入數字的規則靠引擎端的轉換才正常。
 
 <a id="auto-07"></a>
 ### AUTO-07：SLA 規則的執行路徑與一般規則不一致
