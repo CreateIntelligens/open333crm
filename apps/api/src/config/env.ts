@@ -24,10 +24,6 @@ const envSchema = z.object({
   WEB_BASE_URL: z.string().default('http://localhost:3000'),
   MCP_ALLOWED_ORIGINS: z.string().default(''),
   LICENSE_KEY: z.string().default('dev-license-key'),
-  CACHE_DRIVER: z.string().default('memory'),
-  CACHE_SEGMENT: z.string().default('open333crm'),
-  CACHE_REDIS_DB: z.coerce.number().int().optional(),
-  CACHE_EXPIRES_IN: z.coerce.number().int().optional(),
   // 平台持有的 Meta App（change fix-meta-webhook-page-routing 第 3 階段）：租戶以 Facebook 登入連結粉專，
   // 事件統一打到 /api/v1/webhooks/meta。四個都設定才啟用；未設定時相關端點回 503
   META_APP_ID: z.string().optional(),

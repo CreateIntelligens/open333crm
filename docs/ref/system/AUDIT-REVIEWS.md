@@ -33,6 +33,15 @@ issue #444，分支 `fix/p4-444`，change `show-csat-score-444`。以單元測�
 | CASE-05 | 部分修正 | `recordCsatScore()` 呼叫新的 `recordCsatRating(ctx: TenantCtx, …)`：問卷訊息（`contentType: 'csat'`、`metadata.caseId`、同租戶）寫入 `metadata.csatScore`／`csatRatedBy` 並再推一次 `message.new`，寫 `csat_rated` 事件；自動關閉寫 `status_changed`（`reason: 'csat_rated'`）。`csat-score-display.test.ts` 4 項、`csat-record-scope.test.ts` 新增 3 項修正前失敗。仍不經狀態機、不關閉對話、客服代評也送感謝訊息（#339） |
 | UAT 實測的評分顯示成 `csat:2:<工單 ID>` | 已修正（未列 AUDIT） | 進站攔截後 `relabelCsatReplyMessage()` 把訊息改寫成「我的評分：N 分」，原文存在 `metadata.postbackData`；有遮罩副本時副本改成同一段固定文字。`inbound-message-processing.test.ts`「評分的訊息在收件匣顯示文字」修正前失敗 |
 
+## 2026-11-04：刪除沒有呼叫端、使用 core `redis` 的檔案（LIC-02、PKG-06）
+
+issue #443 的 B，分支 `refactor/redis-connection-workers`。以 `grep` 確認沒有呼叫端後刪除，`pnpm test` 通過。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| LIC-02 | 已修正，從 `AUDIT.md` 移除 | 刪除 `packages/core/src/license/license-service.ts` 與 core 入口的匯出。整個 repo 沒有 import 它；API 的 `services/license.ts` 是另一個同名類別，不受影響。core 的 `axios` 因此沒有使用者，一併移除。LIC-01 的標題改為只描述 API 的寫死授權資料 |
+| PKG-06 | 部分修正 | 刪除 `line/worker-media-download.ts`、`worker-narrowcast-progress.ts`、`worker-insight-sync.ts`，三者都沒有被 import，也不在 `package.json` 的 `exports`。`channel-plugins` 的 `bullmq` 因此沒有使用者，一併移除。`setWebhook()`、`extensions.audience`、註冊表的輔助函式與 `telegram.ts` 未處理 |
+
 ## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
 
 issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。
