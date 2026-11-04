@@ -8,6 +8,7 @@
  * 本檔自建租戶（不動共用的 TENANT_A，避免影響同時執行的測試檔），建立與清理資料用 owner 連線，
  * 發送引擎以 app_tenant 連線執行；渠道外掛換成記錄用的替身。afterAll 刪除本檔建立的租戶與資料。
  */
+import { redis } from '@open333crm/core';
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
@@ -144,6 +145,7 @@ async function pollOnly(broadcastId: string) {
     { registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never,
     scoped,
     testIo as never,
+    redis,
     { prisma, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS },
   );
   assert.ok(poll);
@@ -186,7 +188,7 @@ describe('The Scheduler Does Not Send Broadcasts Of A Disabled Tenant', () => {
     const couponId = await coupon(`${MARK}券2`);
     const id = await dueBroadcast('佇列停用', { couponId });
     await disable();
-    const result = await createCouponBroadcastJobRunner({ prisma, adminPrisma: owner, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, id);
+    const result = await createCouponBroadcastJobRunner({ prisma, adminPrisma: owner, redis, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, id);
     const row = await owner.broadcast.findFirst({ where: { id } });
     assert.equal(row?.status, 'failed', JSON.stringify(result));
     assert.equal(row?.failureCode, 'TENANT_DISABLED');

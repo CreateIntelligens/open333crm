@@ -59,7 +59,7 @@
 
 | 快取 | 失效函式 | 位置 | 存活時間 |
 | --- | --- | --- | --- |
-| 權限天花板快取 | `invalidatePlanPermissions(prisma, planId)` | `services/permission.service.ts` | Redis，600 秒 |
+| 權限天花板快取 | `invalidatePlanPermissions(redis, planId)` | `services/permission.service.ts` | Redis，600 秒 |
 | 租戶方案快取 | `invalidateTenantPlan(tenantId)` | `services/tenant-plan.cache.ts` | 行程內，60 秒 |
 | AI 額度計數器 | `clearTokenQuotaCache(tenantId)` | `modules/trial/token-quota.service.ts` | Redis，key 帶年月，月底過期 |
 | 額度告警旗標 | `clearQuotaAlertFlags(tenantId)` | `modules/trial/token-quota.service.ts` | Redis，key 帶年月與門檻，月底過期 |

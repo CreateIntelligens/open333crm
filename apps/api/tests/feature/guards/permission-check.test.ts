@@ -15,6 +15,7 @@ import { redis } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
+import redisPlugin from '#src/plugins/redis.plugin.js';
 import authPlugin from '#src/plugins/auth.plugin.js';
 import { requirePermission, requireAnyPermission } from '#src/guards/rbac.guard.js';
 import roleRoutes from '#src/modules/role/role.routes.js';
@@ -47,6 +48,7 @@ async function createRole(permissions: string[], tenantId = A) {
 async function buildApp(caller: Caller) {
   const app = Fastify();
   await app.register(errorHandlerPlugin);
+  await app.register(redisPlugin);
   app.decorate('prisma', tenantDb);
   app.decorate('prismaAdmin', owner);
   app.decorate('authenticate', async (request: FastifyRequest) => {

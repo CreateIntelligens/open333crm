@@ -262,7 +262,7 @@ export async function bootstrap() {
   // 訂閱者從各自的佇列取得事件（change outbox-event-delivery）；job 失敗時只重試該訂閱者的 job
   const subscriberWorkers = startQueueWorkers(
     {
-      [EVENT_NOTIFICATION_QUEUE]: subscriberProcessor(setupNotificationWorker(app.prismaAdmin)),
+      [EVENT_NOTIFICATION_QUEUE]: subscriberProcessor(setupNotificationWorker(app.prismaAdmin, { visibility: agentVisibilityResolver(app.prismaAdmin, app.redis) })),
       [EVENT_AUTOMATION_QUEUE]: subscriberProcessor(setupAutomationWorker(app.prismaAdmin, app.io, app.prisma)),
       [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
@@ -270,7 +270,7 @@ export async function bootstrap() {
       [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
       // 附券廣播「立即發送」與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
       [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createCouponBroadcastJobRunner({
-        prisma: app.prisma, adminPrisma: app.prismaAdmin, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin),
+        prisma: app.prisma, adminPrisma: app.prismaAdmin, redis: app.redis, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
       })) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
@@ -284,7 +284,7 @@ export async function bootstrap() {
     queueNames: ALERTED_QUEUES,
     createQueueEvents: (name) => new QueueEvents(name, { connection: { url: config.REDIS_URL } }),
     getJob: async (queueName, jobId) => monitoredQueueByName.get(queueName)?.getJob(jobId),
-    sendAlert: (alert) => sendOpsAlert(alert),
+    sendAlert: (alert) => sendOpsAlert(alert, { redis: app.redis }),
     dashboardUrl: `${config.WEB_BASE_URL}/api/v1/platform/queues`,
   });
   app.addHook('onClose', () => failedAlerts.close());
@@ -296,10 +296,10 @@ export async function bootstrap() {
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
   setupAnalyticsScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
-  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, {
+  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, app.redis, {
     prisma: app.prisma,
     store: app.redis,
-    visibilityOf: agentVisibilityResolver(app.prismaAdmin),
+    visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
   });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);

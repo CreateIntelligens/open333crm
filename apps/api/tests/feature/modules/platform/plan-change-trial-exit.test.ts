@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict';
 import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { redis } from '@open333crm/core';
 import { approveRequest, createPlanChangeRequest } from '#src/modules/platform/plan-change.service.js';
 import { convertToPaid } from '#src/modules/platform/trial-admin.service.js';
 import { updateTenant } from '#src/modules/platform/platform-tenant.service.js';
@@ -85,7 +86,7 @@ const state = (tx: PrismaClient, id: string) =>
 
 scenario('核准試用租戶的升級申請：脫離試用', async ({ tx, paidPlan, tenant, request }) => {
   const id = await tenant({ trialEndsAt: new Date(Date.now() + 7 * DAY), isActive: true });
-  const result = await approveRequest(tx, await request(id, 'upgrade'), REVIEWER);
+  const result = await approveRequest(tx, redis, await request(id, 'upgrade'), REVIEWER);
 
   const t = await state(tx, id);
   assert.equal(t.planId, paidPlan.id);
@@ -100,7 +101,7 @@ scenario('申請審核期間試用已到期並被軟刪：核准後恢復啟用�
     isActive: false,
     purgedAt: new Date(Date.now() - 5 * DAY),
   });
-  await approveRequest(tx, await request(id, 'upgrade'), REVIEWER);
+  await approveRequest(tx, redis, await request(id, 'upgrade'), REVIEWER);
 
   const t = await state(tx, id);
   assert.equal(t.trialEndsAt, null);
@@ -110,7 +111,7 @@ scenario('申請審核期間試用已到期並被軟刪：核准後恢復啟用�
 
 scenario('核准非試用租戶的升級申請：不改變啟用狀態', async ({ tx, paidPlan, tenant, request }) => {
   const id = await tenant({ trialEndsAt: null, isActive: false });
-  const result = await approveRequest(tx, await request(id, 'upgrade'), REVIEWER);
+  const result = await approveRequest(tx, redis, await request(id, 'upgrade'), REVIEWER);
 
   const t = await state(tx, id);
   assert.equal(t.planId, paidPlan.id);
@@ -121,7 +122,7 @@ scenario('核准非試用租戶的升級申請：不改變啟用狀態', async (
 scenario('核准試用租戶的加購申請：仍在試用', async ({ tx, tenant, request }) => {
   const endsAt = new Date(Date.now() + 7 * DAY);
   const id = await tenant({ trialEndsAt: endsAt, isActive: true });
-  await approveRequest(tx, await request(id, 'token_topup'), REVIEWER);
+  await approveRequest(tx, redis, await request(id, 'token_topup'), REVIEWER);
 
   const t = await state(tx, id);
   assert.equal(t.trialEndsAt?.getTime(), endsAt.getTime());
@@ -133,7 +134,7 @@ scenario('轉付費清除軟刪標記', async ({ tx, paidPlan, tenant }) => {
     isActive: false,
     purgedAt: new Date(Date.now() - 5 * DAY),
   });
-  await convertToPaid(tx, id, paidPlan.slug);
+  await convertToPaid(tx, redis, id, paidPlan.slug);
 
   const t = await state(tx, id);
   assert.equal(t.trialEndsAt, null);
@@ -144,7 +145,7 @@ scenario('轉付費清除軟刪標記', async ({ tx, paidPlan, tenant }) => {
 scenario('平台在編輯頁改方案不脫離試用', async ({ tx, paidPlan, tenant }) => {
   const endsAt = new Date(Date.now() + 7 * DAY);
   const id = await tenant({ trialEndsAt: endsAt, isActive: true });
-  await updateTenant(tx, id, { planSlug: paidPlan.slug });
+  await updateTenant(tx, redis, id, { planSlug: paidPlan.slug });
 
   const t = await state(tx, id);
   assert.equal(t.planId, paidPlan.id);
@@ -153,7 +154,7 @@ scenario('平台在編輯頁改方案不脫離試用', async ({ tx, paidPlan, te
 
 scenario('脫離試用後不被到期排程停用', async ({ tx, tenant, request }) => {
   const id = await tenant({ trialEndsAt: new Date(Date.now() - DAY), isActive: true });
-  await approveRequest(tx, await request(id, 'upgrade'), REVIEWER);
+  await approveRequest(tx, redis, await request(id, 'upgrade'), REVIEWER);
 
   await runTrialLifecycle(tx);
 
@@ -182,7 +183,7 @@ scenario('平台核准目標為試用方案的升級申請：回應 400，租戶
   const id = await tenant({ trialEndsAt: endsAt, isActive: true });
   const requestId = await request(id, 'upgrade', trialPlan.slug);
 
-  await assert.rejects(approveRequest(tx, requestId, REVIEWER), isBadRequest);
+  await assert.rejects(approveRequest(tx, redis, requestId, REVIEWER), isBadRequest);
 
   const t = await state(tx, id);
   assert.equal(t.planId, trialPlan.id);
@@ -195,7 +196,7 @@ scenario('轉正式到試用方案：依試用政策判斷，回應 400', async 
   const endsAt = new Date(Date.now() + 7 * DAY);
   const id = await tenant({ trialEndsAt: endsAt, isActive: true });
 
-  await assert.rejects(convertToPaid(tx, id, trialPlan.slug), isBadRequest);
+  await assert.rejects(convertToPaid(tx, redis, id, trialPlan.slug), isBadRequest);
 
   const t = await state(tx, id);
   assert.equal(t.trialEndsAt?.getTime(), endsAt.getTime());

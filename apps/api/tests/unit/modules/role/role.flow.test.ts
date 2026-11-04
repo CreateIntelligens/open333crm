@@ -14,7 +14,7 @@ const log: string[] = [];
 const audits: Array<Record<string, unknown>> = [];
 vi.mock('#src/services/permission.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/services/permission.service.js')>()),
-  invalidateRolePermissions: async (roleId: string) => {
+  invalidateRolePermissions: async (_redis: unknown, roleId: string) => {
     log.push(`invalidate:${roleId}`);
   },
 }));

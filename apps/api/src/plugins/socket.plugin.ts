@@ -73,7 +73,7 @@ async function socketPlugin(fastify: FastifyInstance) {
       // roleId 供房間授權判斷 channel.view_all（總店可見全部）
       socket.data.roleId = decoded.roleId ?? null;
       // 渠道房間在連線完成前算好（issue #427）：客戶端收到 connect 時已在該在的房間，不會漏推播
-      socket.data.channelRooms = await resolveChannelRooms(fastify.prismaAdmin, {
+      socket.data.channelRooms = await resolveChannelRooms(fastify.prismaAdmin, fastify.redis, {
         tenantId: decoded.tenantId,
         agentId: decoded.agentId,
       });
@@ -90,6 +90,7 @@ async function socketPlugin(fastify: FastifyInstance) {
 
     const authorize = async (input: unknown) => authorizeSocketRoom(
       fastify.prismaAdmin,
+      fastify.redis,
       // 不用 token 裡的 roleId：連線後角色可能被改（降級），給 null 讓授權每次從資料庫讀目前的角色
       { agentId, tenantId, role: socket.data.role, roleId: null },
       input,
@@ -111,7 +112,7 @@ async function socketPlugin(fastify: FastifyInstance) {
   // 授權已經寫入，該成員重新連線時仍會依新授權加入房間
   const syncSocketChannelRooms: SocketChannelRoomSync = async (tenantId, agentId) => {
     try {
-      await syncChannelRooms(io as unknown as SyncableServer, fastify.prismaAdmin, tenantId, agentId);
+      await syncChannelRooms(io as unknown as SyncableServer, fastify.prismaAdmin, fastify.redis, tenantId, agentId);
     } catch (err) {
       fastify.log.warn({ err, tenantId, agentId }, '[Socket] 重新計算渠道房間失敗，成員重新連線後生效');
     }

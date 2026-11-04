@@ -14,7 +14,7 @@ vi.mock('#src/modules/platform/platform-audit.service.js', () => ({
 }));
 vi.mock('#src/modules/platform/plan.service.js', () => ({
   listPlans: async () => [],
-  updatePlan: async (_prisma: unknown, id: string) => ({ id }),
+  updatePlan: async (_prisma: unknown, _redis: unknown, id: string) => ({ id }),
 }));
 vi.mock('#src/modules/platform/platform-setting.service.js', () => ({
   getPlatformSetting: async () => null,
@@ -23,7 +23,7 @@ vi.mock('#src/modules/platform/platform-setting.service.js', () => ({
 vi.mock('#src/modules/platform/platform-tenant.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/platform-tenant.service.js')>()),
   provisionTenantViaApi: async () => ({ tenantId: TENANT_ID }),
-  updateTenant: async (_prisma: unknown, id: string) => ({ id }),
+  updateTenant: async (_prisma: unknown, _redis: unknown, id: string) => ({ id }),
   setTenantActive: async (_prisma: unknown, id: string) => ({ id }),
   updateTenantAgentEmail: async (_prisma: unknown, _tenantId: string, agentId: string) => ({ id: agentId }),
   resendWelcomeEmail: async () => ({ ok: true }),
@@ -33,14 +33,14 @@ const row = vi.hoisted(() => (id: string) => ({ id, type: 'upgrade', trialExited
 vi.mock('#src/modules/platform/trial-admin.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/trial-admin.service.js')>()),
   extendTrial: async (_prisma: unknown, id: string) => row(id),
-  convertToPaid: async (_prisma: unknown, id: string) => row(id),
+  convertToPaid: async (_prisma: unknown, _redis: unknown, id: string) => row(id),
   updateTenantContract: async (_prisma: unknown, id: string) => row(id),
   restorePurgedTenant: async (_prisma: unknown, id: string) => row(id),
   markSignupFailed: async (_prisma: unknown, id: string) => row(id),
 }));
 vi.mock('#src/modules/platform/plan-change.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/plan-change.service.js')>()),
-  approveRequest: async (_prisma: unknown, id: string) => row(id),
+  approveRequest: async (_prisma: unknown, _redis: unknown, id: string) => row(id),
   rejectRequest: async (_prisma: unknown, id: string) => row(id),
 }));
 vi.mock('#src/modules/platform/platform-user.service.js', async (importOriginal) => ({

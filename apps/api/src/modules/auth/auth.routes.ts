@@ -222,7 +222,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     });
     const challengeId = createPasskeyChallengeId();
 
-    await storePasskeyChallenge({
+    await storePasskeyChallenge(fastify.redis, {
       challengeId,
       challenge: options.challenge,
       purpose: 'registration',
@@ -244,7 +244,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const body = passkeyRegistrationVerifySchema.parse(request.body);
-    const challenge = await takePasskeyChallenge(body.challengeId);
+    const challenge = await takePasskeyChallenge(fastify.redis, body.challengeId);
 
     if (
       challenge.purpose !== 'registration'
@@ -350,7 +350,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     });
     const challengeId = createPasskeyChallengeId();
 
-    await storePasskeyChallenge({
+    await storePasskeyChallenge(fastify.redis, {
       challengeId,
       challenge: options.challenge,
       purpose: 'authentication',
@@ -372,7 +372,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     },
   }, async (request, reply) => {
     const body = passkeyAuthenticationVerifySchema.parse(request.body);
-    const challenge = await takePasskeyChallenge(body.challengeId);
+    const challenge = await takePasskeyChallenge(fastify.redis, body.challengeId);
     if (challenge.purpose !== 'authentication') throw invalidPasskeyError();
 
     const credential = challenge.tenantId
@@ -659,7 +659,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
   }, async (request, reply) => {
     // 前端 gating 用「使用者實際可用權限」= 角色權限 ∩ 方案天花板
     const planId = await getTenantPlanId(fastify.prismaAdmin, request.agent.tenantId);
-    const eff = await getEffectiveTenantPermissions(fastify.prismaAdmin, request.agent.roleId, planId);
+    const eff = await getEffectiveTenantPermissions(fastify.prismaAdmin, fastify.redis, request.agent.roleId, planId);
     return reply.send(success({ permissions: [...eff] }));
   });
 }

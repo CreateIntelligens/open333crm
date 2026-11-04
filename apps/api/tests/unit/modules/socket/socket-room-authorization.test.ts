@@ -64,25 +64,25 @@ function createPrisma() {
 const agentContext = { agentId: agentA, tenantId: tenantA, role: 'AGENT', roleId: null } as const;
 
 async function testRejectsArbitraryRoomNames() {
-  const result = await authorizeSocketRoom(createPrisma() as never, agentContext, 'tenant:arbitrary-room');
+  const result = await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, 'tenant:arbitrary-room');
 
   assert.deepEqual(result, { ok: false, code: 'INVALID_TARGET' });
 }
 
 async function testRejectsAnotherTenant() {
-  const result = await authorizeSocketRoom(createPrisma() as never, agentContext, `tenant:${tenantB}`);
+  const result = await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, `tenant:${tenantB}`);
 
   assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
 }
 
 async function testRejectsAnotherAgentPrivateRoom() {
-  const result = await authorizeSocketRoom(createPrisma() as never, agentContext, `agent:${agentB}`);
+  const result = await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, `agent:${agentB}`);
 
   assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
 }
 
 async function testAllowsAuthorizedConversation() {
-  const result = await authorizeSocketRoom(createPrisma() as never, agentContext, `conversation:${conversationA}`);
+  const result = await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, `conversation:${conversationA}`);
 
   assert.deepEqual(result, { ok: true, room: `conversation:${conversationA}` });
 }
@@ -97,7 +97,7 @@ async function testTeamScopedConversationDoesNotFallBackToChannelAccess() {
   });
   prisma.team.findFirst = async () => null;
 
-  const result = await authorizeSocketRoom(prisma as never, agentContext, `conversation:${conversationA}`);
+  const result = await authorizeSocketRoom(prisma as never, {} as never, agentContext, `conversation:${conversationA}`);
 
   assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
 }
@@ -106,17 +106,17 @@ test('不認得的房間名稱：類型對但 ID 不是 UUID 時回 INVALID_TARG
 
 test('不認得的房間名稱：不認得的類型、物件缺欄位時回 INVALID_TARGET', async () => {
   for (const input of [`room:${conversationA}`, { type: 'conversation' }, { type: 'secret', id: conversationA }, 42, null]) {
-    assert.deepEqual(await authorizeSocketRoom(createPrisma() as never, agentContext, input), { ok: false, code: 'INVALID_TARGET' }, JSON.stringify(input));
+    assert.deepEqual(await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, input), { ok: false, code: 'INVALID_TARGET' }, JSON.stringify(input));
   }
 });
 
 test('以物件格式訂閱：與字串格式得到相同的房間', async () => {
-  const result = await authorizeSocketRoom(createPrisma() as never, agentContext, { type: 'conversation', id: conversationA });
+  const result = await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, { type: 'conversation', id: conversationA });
   assert.deepEqual(result, { ok: true, room: `conversation:${conversationA}` });
 });
 
 test('訂閱自己的租戶房間', async () => {
-  const result = await authorizeSocketRoom(createPrisma() as never, agentContext, `tenant:${tenantA}`);
+  const result = await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, `tenant:${tenantA}`);
   assert.deepEqual(result, { ok: true, room: `tenant:${tenantA}` });
 });
 
@@ -125,7 +125,7 @@ test('沒有 channel.view_all 時訂閱其他成員的房間', testRejectsAnothe
 
 test('有 channel.view_all 時訂閱其他成員的房間', async () => {
   effective.codes = new Set(['channel.view_all']);
-  const result = await authorizeSocketRoom(createPrisma() as never, agentContext, `agent:${agentB}`);
+  const result = await authorizeSocketRoom(createPrisma() as never, {} as never, agentContext, `agent:${agentB}`);
   assert.deepEqual(result, { ok: true, room: `agent:${agentB}` });
 });
 
@@ -135,7 +135,7 @@ test('訂閱不屬於自己的團隊', async () => {
   prisma.team.findFirst = async ({ where }: { where: { id: string; tenantId: string; members?: unknown } }) => (
     where.id === teamA && where.tenantId === tenantA && !where.members ? { id: teamA } : null
   );
-  const result = await authorizeSocketRoom(prisma as never, agentContext, `team:${teamA}`);
+  const result = await authorizeSocketRoom(prisma as never, {} as never, agentContext, `team:${teamA}`);
   assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
 });
 
@@ -149,8 +149,8 @@ test('訂閱其他租戶或不存在的對話：兩種情況都回 FORBIDDEN', a
       ? { id: conversationB, teamId: null, assignedToId: null, channelId: channelA }
       : null
   );
-  const otherTenant = await authorizeSocketRoom(prisma as never, agentContext, `conversation:${conversationB}`);
-  const missing = await authorizeSocketRoom(prisma as never, agentContext, 'conversation:99999999-9999-4999-8999-999999999999');
+  const otherTenant = await authorizeSocketRoom(prisma as never, {} as never, agentContext, `conversation:${conversationB}`);
+  const missing = await authorizeSocketRoom(prisma as never, {} as never, agentContext, 'conversation:99999999-9999-4999-8999-999999999999');
   assert.deepEqual(otherTenant, { ok: false, code: 'FORBIDDEN' });
   assert.deepEqual(missing, otherTenant, '不存在與沒有權限得到相同的回應');
 });
@@ -158,7 +158,7 @@ test('訂閱其他租戶或不存在的對話：兩種情況都回 FORBIDDEN', a
 test('對話的渠道看不到：渠道沒有綁定任何團隊或成員', async () => {
   const prisma = createPrisma();
   prisma.channel.findFirst = async () => ({ agentAccesses: [], teamAccesses: [] });
-  const result = await authorizeSocketRoom(prisma as never, agentContext, `conversation:${conversationA}`);
+  const result = await authorizeSocketRoom(prisma as never, {} as never, agentContext, `conversation:${conversationA}`);
   assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
 });
 

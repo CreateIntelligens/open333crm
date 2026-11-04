@@ -12,7 +12,7 @@ const { rolePermissions, flowCalls } = vi.hoisted(() => ({
   flowCalls: [] as Array<{ tenantId: string; webBaseUrl: string; filter: unknown }>,
 }));
 vi.mock('#src/services/permission.service.js', () => ({
-  getEffectiveTenantPermissions: async (_db: unknown, roleId: string) => rolePermissions.get(roleId) ?? new Set(),
+  getEffectiveTenantPermissions: async (_db: unknown, _redis: unknown, roleId: string) => rolePermissions.get(roleId) ?? new Set(),
 }));
 vi.mock('#src/services/tenant-plan.cache.js', () => ({ getTenantPlanId: async () => null }));
 vi.mock('#src/config/env.js', () => ({ getConfig: () => ({ WEB_BASE_URL: 'https://crm.example.com' }) }));

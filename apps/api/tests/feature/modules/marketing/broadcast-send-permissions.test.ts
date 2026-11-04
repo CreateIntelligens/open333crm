@@ -7,6 +7,7 @@
  * 引擎以 app_tenant 連線執行；建立與清理資料用 owner 連線。渠道外掛換成記錄用的替身。
  * 本檔建立的資料以 MARK 標記，於 afterAll 刪除。
  */
+import { redis } from '@open333crm/core';
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -287,6 +288,7 @@ async function pollOnly(broadcastId: string) {
     { registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never,
     scoped,
     testIo as never,
+    redis,
     { prisma, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS },
   );
   assert.ok(poll);
@@ -364,7 +366,7 @@ describe('The Scheduler Rechecks The Scheduling Member\'s Permissions', () => {
 describe('The Queue Job Rechecks The Sending Member\'s Permissions', () => {
   /** 執行佇列 job，與 index.ts 的 coupon-broadcast 佇列相同的組法 */
   const runJob = (broadcastId: string) =>
-    createCouponBroadcastJobRunner({ prisma, adminPrisma: owner, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, broadcastId);
+    createCouponBroadcastJobRunner({ prisma, adminPrisma: owner, redis, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, broadcastId);
 
   it('Sender lost the coupon permission before the queued job ran', async () => {
     const couponId = await coupon(`${MARK}券8`);

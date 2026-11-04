@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 
 const { rolePermissions } = vi.hoisted(() => ({ rolePermissions: new Map<string, Set<string>>() }));
 vi.mock('#src/services/permission.service.js', () => ({
-  getEffectiveTenantPermissions: async (_db: unknown, roleId: string) => rolePermissions.get(roleId) ?? new Set(),
+  getEffectiveTenantPermissions: async (_db: unknown, _redis: unknown, roleId: string) => rolePermissions.get(roleId) ?? new Set(),
 }));
 vi.mock('#src/services/tenant-plan.cache.js', () => ({ getTenantPlanId: async () => null }));
 

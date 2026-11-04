@@ -2,6 +2,7 @@
  * 平台側試用用戶管理：列試用租戶、延長、轉正式、申請記錄操作。
  * 平台 superuser 專用（呼叫端已掛 guard）。
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { resendTrial } from '../trial/trial.service.js';
@@ -148,7 +149,7 @@ export async function extendTrial(prisma: PrismaClient, tenantId: string, addDay
 }
 
 /** 轉正式方案：改 planId + 清 trialEndsAt（脫離試用）+ 確保啟用。 */
-export async function convertToPaid(prisma: PrismaClient, tenantId: string, planSlug: string) {
+export async function convertToPaid(prisma: PrismaClient, redis: Redis, tenantId: string, planSlug: string) {
   const plan = await prisma.plan.findUnique({ where: { slug: planSlug }, select: { id: true, slug: true } });
   if (!plan) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
   await assertNotTrialPlan(prisma, plan.slug);
@@ -168,7 +169,7 @@ export async function convertToPaid(prisma: PrismaClient, tenantId: string, plan
   // 方案變動 → 失效權限天花板快取 + 租戶 plan 快取（比照 plan-change.service 升級路徑）。
   // 未失效的話 guard 會在 60s 內沿用舊 trial 天花板，把剛付費租戶的新功能誤擋 403。
   // update 非 transaction，直接在成功寫入後失效即可。
-  await invalidatePlanPermissions(prisma, plan.id);
+  await invalidatePlanPermissions(redis, plan.id);
   invalidateTenantPlan(tenantId);
 
   return updated;

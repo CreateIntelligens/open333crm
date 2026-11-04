@@ -62,7 +62,7 @@ async function isPermitted(request: FastifyRequest, code: string): Promise<boole
   const roleId = request.agent?.roleId;
   // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
   const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
-  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
+  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);
   return eff.has(code);
 }
 
@@ -130,7 +130,7 @@ export const requireAnyPermission = (codes: string[]) => {
     const roleId = request.agent?.roleId;
     // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
     const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
-    const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
+    const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);
     if (!codes.some((c) => eff.has(c))) {
       return sendForbidden(reply, PERMISSION_DENIED, { requiredAnyOf: codes });
     }

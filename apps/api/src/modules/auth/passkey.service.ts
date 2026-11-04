@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
-import { getSharedRedis } from '../../lib/redis-client.js';
 
 const PASSKEY_CHALLENGE_PREFIX = 'webauthn:challenge';
 
@@ -32,10 +31,6 @@ export interface PasskeyConfig {
   rpName: string;
   origin: string;
   challengeTtlSeconds: number;
-}
-
-function getPasskeyRedis(): PasskeyChallengeRedis {
-  return getSharedRedis();
 }
 
 export function getPasskeyChallengeKey(challengeId: string): string {
@@ -129,13 +124,14 @@ export async function consumePasskeyChallenge(
   }
 }
 
-export async function storePasskeyChallenge(challenge: PasskeyChallenge): Promise<void> {
+/** 呼叫端傳入 Redis（`fastify.redis`） */
+export async function storePasskeyChallenge(redis: PasskeyChallengeRedis, challenge: PasskeyChallenge): Promise<void> {
   const config = getPasskeyConfig();
-  await savePasskeyChallenge(getPasskeyRedis(), challenge, config.challengeTtlSeconds);
+  await savePasskeyChallenge(redis, challenge, config.challengeTtlSeconds);
 }
 
-export async function takePasskeyChallenge(challengeId: string): Promise<PasskeyChallenge> {
-  const challenge = await consumePasskeyChallenge(getPasskeyRedis(), challengeId);
+export async function takePasskeyChallenge(redis: PasskeyChallengeRedis, challengeId: string): Promise<PasskeyChallenge> {
+  const challenge = await consumePasskeyChallenge(redis, challengeId);
   if (!challenge) {
     throw new AppError('Passkey 驗證已逾時，請重新操作', 'UNAUTHORIZED', 401);
   }

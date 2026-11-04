@@ -7,7 +7,7 @@ import { verifyPassword } from '../../shared/utils/password.js';
 import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 import { loadTenantRole } from '../role/role.service.js';
-import { getEffectivePermissions } from '../../services/permission.service.js';
+import { loadRolePermissions } from '../../services/permission.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 
 // 防自鎖的權限碼（registry 動態抽 selfLock:true，比照 role.service.setRolePermissions）：
@@ -71,8 +71,8 @@ async function assertNoRoleEscalation(
     : null;
   if (assignerRole?.isSystem && assignerRole.slug === 'admin') return;
 
-  const assignerEff = await getEffectivePermissions(ctx.tx, assignerRoleId);
-  const targetEff = await getEffectivePermissions(ctx.tx, targetRoleId);
+  const assignerEff = await loadRolePermissions(ctx.tx, assignerRoleId);
+  const targetEff = await loadRolePermissions(ctx.tx, targetRoleId);
   const escalate = [...targetEff].filter((c) => !assignerEff.has(c));
   if (escalate.length) {
     throw new AppError(
@@ -107,8 +107,8 @@ async function assertTargetNotAboveActor(
     : null;
   if (actorRole?.isSystem && actorRole.slug === 'admin') return;
 
-  const actorEff = await getEffectivePermissions(ctx.tx, actorRoleId);
-  const targetEff = await getEffectivePermissions(ctx.tx, targetRoleId);
+  const actorEff = await loadRolePermissions(ctx.tx, actorRoleId);
+  const targetEff = await loadRolePermissions(ctx.tx, targetRoleId);
   const exceeded = [...targetEff].filter((c) => !actorEff.has(c));
   if (exceeded.length) {
     throw new AppError(
@@ -150,7 +150,7 @@ async function resolveRoleAssignment(
   const role = input.role ?? fallbackRole;
   const roleId = await resolveRoleId(ctx, role);
   // 該租戶缺對應 system role → 資料未正確初始化，直接擋下而非用 null 覆蓋既有 roleId
-  // （否則成員 roleId 會被清空，getEffectivePermissions(null) 回空集合把人鎖死）。
+  // （否則成員 roleId 會被清空，loadRolePermissions(null) 回空集合把人鎖死）。
   if (!roleId) {
     throw new AppError(
       '租戶缺少對應的系統角色，請重新初始化角色設定',
@@ -301,7 +301,7 @@ export async function updateAgentRole(
   // 的角色，否則該租戶將失去所有能管理角色/權限的人，只能手動改 DB 復原。
   // 僅在「目標即操作者本人」時檢查；改別人一律放行。
   if (selfAgentId && agentId === selfAgentId) {
-    const newEff = await getEffectivePermissions(ctx.tx, roleId);
+    const newEff = await loadRolePermissions(ctx.tx, roleId);
     const retainsSelfLock = SELF_LOCK_CODES.some((c) => newEff.has(c));
     if (!retainsSelfLock) {
       throw new AppError(
@@ -388,7 +388,7 @@ export async function resetAgentPassword(
  * 持 role.manage 的自訂角色算（他能把人改回管理員，租戶不會被鎖死）。
  */
 async function roleIsAdmin(ctx: TenantCtx, roleId: string | null): Promise<boolean> {
-  const eff = await getEffectivePermissions(ctx.tx, roleId);
+  const eff = await loadRolePermissions(ctx.tx, roleId);
   return SELF_LOCK_CODES.some((c) => eff.has(c));
 }
 

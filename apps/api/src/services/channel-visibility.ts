@@ -17,6 +17,7 @@
  *     原本「沒有綁定＝全員可見」的 legacy 分支已移除（change channel-visibility-fail-closed），
  *     既有渠道由 migration 20261005120000 回填給所有啟用中的成員，新渠道與新成員在建立時指定。
  */
+import type { Redis } from 'ioredis';
 import type { FastifyRequest } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../lib/tenant-db.js';
@@ -180,7 +181,7 @@ async function resolveRoleId(request: FastifyRequest): Promise<string | null> {
 async function effectivePermissionsFromRequest(request: FastifyRequest): Promise<Set<string>> {
   const roleId = await resolveRoleId(request);
   const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent.tenantId);
-  return getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
+  return getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);
 }
 
 export async function resolveChannelVisibility(
@@ -196,30 +197,32 @@ export async function resolveChannelVisibility(
  */
 export async function resolveAgentChannelVisibility(
   admin: PrismaClient,
+  redis: Redis,
   tenantId: string,
   agentId: string,
 ): Promise<AccessibleChannels> {
   const agent = await admin.agent.findFirst({ where: { id: agentId, tenantId }, select: { roleId: true } });
   if (!agent) return new Set();
   const planId = await getTenantPlanId(admin, tenantId);
-  const eff = await getEffectiveTenantPermissions(admin, agent.roleId, planId);
+  const eff = await getEffectiveTenantPermissions(admin, redis, agent.roleId, planId);
   return getAccessibleChannelIds(admin, { tenantId, agentId, hasViewAll: eff.has('channel.view_all') });
 }
 
 /** 依成員 ID 解析可見渠道的函式；背景發送（群發、附券廣播）以此依建立者判斷 */
 export type AgentVisibilityResolver = (tenantId: string, agentId: string) => Promise<AccessibleChannels>;
 
-export function agentVisibilityResolver(admin: PrismaClient): AgentVisibilityResolver {
-  return (tenantId, agentId) => resolveAgentChannelVisibility(admin, tenantId, agentId);
+export function agentVisibilityResolver(admin: PrismaClient, redis: Redis): AgentVisibilityResolver {
+  return (tenantId, agentId) => resolveAgentChannelVisibility(admin, redis, tenantId, agentId);
 }
 
 /** 帶著 BYPASSRLS 連線的物件（Fastify 實例）：route 與 MCP 不直接碰 prismaAdmin（check-prisma-admin-usage） */
 export interface AdminClientHolder {
   prismaAdmin: PrismaClient;
+  redis: Redis;
 }
 
 export function agentVisibilityResolverOf(app: AdminClientHolder): AgentVisibilityResolver {
-  return agentVisibilityResolver(app.prismaAdmin);
+  return agentVisibilityResolver(app.prismaAdmin, app.redis);
 }
 
 /** 指派範圍：全部渠道（ALL_CHANNELS），或「渠道 → 指派者自己的層級」 */
