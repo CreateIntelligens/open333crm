@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Loader2, Merge } from 'lucide-react';
-import Link from 'next/link';
+import { Loader2, Merge } from 'lucide-react';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,6 @@ import { ContactDetail } from '@/components/contact/ContactDetail';
 import { ContactTimeline } from '@/components/contact/ContactTimeline';
 import { ContactMergeModal } from '@/components/contact/ContactMergeModal';
 import { ContactConversationHistory } from '@/components/contact/ContactConversationHistory';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ContactDetailPage() {
@@ -65,7 +63,7 @@ export default function ContactDetailPage() {
   if (loading) {
     return (
       <div className="flex h-full flex-col">
-        <Topbar title="聯絡人詳情" />
+        <Topbar title="聯繫人詳情" />
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -76,42 +74,18 @@ export default function ContactDetailPage() {
   if (!contact) {
     return (
       <div className="flex h-full flex-col">
-        <Topbar title="聯絡人詳情" />
+        <Topbar title="聯繫人詳情" />
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-muted-foreground">找不到聯絡人</p>
+          <p className="text-muted-foreground">找不到聯繫人</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex h-full flex-col">
-      <Topbar title="聯絡人詳情">
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard/contacts">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              返回
-            </Button>
-          </Link>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowMergeModal(true)}
-          >
-            <Merge className="mr-1 h-4 w-4" />
-            合併聯絡人
-          </Button>
-        </div>
-      </Topbar>
-      <div className="flex-1 overflow-auto p-6">
-        <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
-          {/* Left - Contact Info */}
-          <div>
-            {emailMergeError && <p className="mb-3 text-sm text-destructive">{emailMergeError}</p>}
-            <ContactDetail
-              contact={{
+  const detailContact = {
                 id: contact.id as string,
+                createdAt: contact.createdAt as string | undefined,
+                lastSeenAt: (contact.lastActiveAt || contact.updatedAt) as string | undefined,
                 name: (contact.displayName || contact.name) as string,
                 phone: contact.phone as string | undefined,
                 email: contact.email as string | undefined,
@@ -150,43 +124,58 @@ export default function ContactDetailPage() {
                       )
                     )
                   : undefined,
-              }}
-              emailFieldKey={emailFieldKey}
-              onRequestEmailMerge={(other, email) => {
-                setEmailMergeError(null);
-                setEmailMerge({ other, email });
-                setShowMergeModal(true);
-              }}
-              onUpdate={() => {
-                fetchContact();
-                // 解除合併會把對話搬回另一位聯絡人，時間軸與對話紀錄也要跟著更新
-                fetchTimeline();
-                setHistoryKey((k) => k + 1);
-              }}
-            />
+              };
+  const detailHandlers = {
+    emailFieldKey,
+    onRequestEmailMerge: (other: { id: string; displayName: string }, email: string) => {
+      setEmailMergeError(null);
+      setEmailMerge({ other, email });
+      setShowMergeModal(true);
+    },
+    onUpdate: () => {
+      fetchContact();
+      // 解除合併會把對話搬回另一位聯絡人，時間軸與對話紀錄也要跟著更新
+      fetchTimeline();
+      setHistoryKey((k) => k + 1);
+    },
+  };
+
+  // 版面依 Claude Design「聯繫人詳情」：標題列＋合併按鈕、頂部聯繫人卡、左側活動時間軸、右側渠道身份與標籤
+  return (
+    <div className="flex h-full flex-col">
+      <Topbar title="聯繫人詳情" description="檢視互動歷程、綁定渠道與標籤，若為重複建檔可執行合併">
+        <Button variant="outline" size="lg" onClick={() => setShowMergeModal(true)}>
+          <Merge />
+          合併聯繫人
+        </Button>
+      </Topbar>
+      <div className="flex flex-1 flex-col gap-5 overflow-auto px-8 pb-8">
+        {emailMergeError && <p role="alert" className="text-sm text-destructive">{emailMergeError}</p>}
+        <ContactDetail contact={detailContact} section="profile" {...detailHandlers} />
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          {/* 左：活動時間軸／對話紀錄（Claude Design 只有時間軸，對話紀錄是原有功能，以分頁保留） */}
+          <div className="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-background p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Tabs value={rightTab} onValueChange={(v) => setRightTab(v as 'timeline' | 'messages')}>
+                <TabsList>
+                  <TabsTrigger value="timeline">活動時間軸</TabsTrigger>
+                  <TabsTrigger value="messages">對話紀錄</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {rightTab === 'timeline' && (
+                <span className="text-xs tabular-nums text-muted-foreground">{timeline.length} 筆</span>
+              )}
+            </div>
+            {rightTab === 'timeline' ? (
+              <ContactTimeline events={timeline} />
+            ) : (
+              <ContactConversationHistory key={historyKey} contactId={contactId} />
+            )}
           </div>
 
-          {/* Right - Timeline / 對話紀錄 */}
-          <div>
-            <Card>
-              <CardHeader>
-                {/* Tabs 只把選中的值傳給直接子元件，TabsList 必須是 Tabs 的直接子元件 */}
-                <Tabs value={rightTab} onValueChange={(v) => setRightTab(v as 'timeline' | 'messages')}>
-                  <TabsList>
-                    <TabsTrigger value="timeline">活動時間軸</TabsTrigger>
-                    <TabsTrigger value="messages">對話紀錄</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </CardHeader>
-              <CardContent>
-                {rightTab === 'timeline' ? (
-                  <ContactTimeline events={timeline} />
-                ) : (
-                  <ContactConversationHistory key={historyKey} contactId={contactId} />
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {/* 右：渠道身份、標籤、自訂屬性、合併紀錄 */}
+          <ContactDetail contact={detailContact} section="side" {...detailHandlers} />
         </div>
       </div>
 

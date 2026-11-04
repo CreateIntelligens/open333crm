@@ -123,11 +123,11 @@ export function ContactTimeline({ events }: ContactTimelineProps) {
             </div>
             {/* Content */}
             <div className="flex-1 pt-0.5">
-              <p className="text-sm">
+              <p className="text-sm leading-5 text-foreground">
                 {formatTimelineDescription(event)}
               </p>
               <p className="text-xs text-muted-foreground">
-                {isValidDate ? format(dateObj, 'MMM d, yyyy HH:mm') : ''}
+                {isValidDate ? format(dateObj, 'yyyy/MM/dd HH:mm') : ''}
               </p>
             </div>
           </div>
