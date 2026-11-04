@@ -109,7 +109,7 @@ P0：無。HC-ANALYTICS-02、HC-ANALYTICS-04 原列 P2，2026-10-30 使用者決
 - HC-ANALYTICS-01：訊息趨勢的 `date` 被 pivot 預設值蓋成 0（P1）。
 - HC-ANALYTICS-02：工單直接關閉不寫 `resolvedAt`、重開不清 `resolvedAt`，報表的已解決與 SLA 達成率失真（可與 HC-CASES-02 合併成一項工單狀態轉換的問題）。#417 已修正重開的部分；直接關閉依使用者決定不算已解決。
 - HC-ANALYTICS-03：報表與匯出不套用渠道可見範圍，SLA 違規表回傳整筆工單。建議加進 RBAC-04 的表格。
-- HC-ANALYTICS-04：匯出 CSV 沒有跳脫（跑欄與 CSV injection）。
+- HC-ANALYTICS-04：匯出 CSV 沒有跳脫（跑欄與 CSV injection）。已由 #423 修正（change `fix-csv-export-escaping`），ANA-03 已從 AUDIT 移除，不用再新增。
 - ANA-01 補充：「我的績效」的月份與每日彙總以伺服器時區切分；KPI 區間與趨勢分桶時區不同。
 - HC-ANALYTICS-09：CLI 報表路由沒有日期順序檢查（主規格 `analytics-reports`）。
 
