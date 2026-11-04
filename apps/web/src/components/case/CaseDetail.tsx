@@ -8,6 +8,7 @@ import {
   User,
   Clock,
   Shield,
+  Star,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ import { CaseStatusBadge } from './CaseStatusBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { TagManager } from '@/components/contact/TagManager';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { csatScoreLabel } from '@/lib/csat-labels';
 import { CASE_CATEGORY_OPTIONS, VALID_CASE_TRANSITIONS, channelDisplayName, type CaseStatus } from '@open333crm/shared';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -67,6 +69,11 @@ interface CaseDetailProps {
     slaPolicy?: string;
     slaPolicyData?: { firstResponseMinutes: number; resolutionMinutes: number } | null;
     events?: Array<{ id: string; eventType?: string; actorType?: string; createdAt: string }>;
+    /** 滿意度分數（1～5），客人回覆或客服代評後才有（issue #444） */
+    csatScore?: number | null;
+    csatComment?: string | null;
+    csatSentAt?: string | null;
+    csatRespondedAt?: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -110,7 +117,8 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate }: CaseDetai
     if (!caseData.slaPolicyData?.firstResponseMinutes || !caseData.events) return null;
     const firstAgentEvent = [...caseData.events]
       .reverse()
-      .find((e) => e.actorType === 'agent' && e.eventType !== 'created');
+      // 客服代評滿意度不是回應客人（issue #444）
+      .find((e) => e.actorType === 'agent' && e.eventType !== 'created' && e.eventType !== 'csat_rated');
     if (!firstAgentEvent) return null; // no agent response yet
     const caseCreated = new Date(caseData.createdAt).getTime();
     const firstResponse = new Date(firstAgentEvent.createdAt).getTime();
@@ -320,6 +328,46 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate }: CaseDetai
         </div>
 
         <Separator />
+
+        {/* 滿意度（issue #444）：問卷已寄出或已有分數時顯示 */}
+        {(caseData.csatScore != null || caseData.csatSentAt) && (
+          <>
+            <div data-testid="case-csat">
+              <h4 className="mb-2 text-sm font-medium text-muted-foreground">滿意度</h4>
+              {caseData.csatScore != null ? (
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-0.5" aria-hidden="true">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={
+                            star <= (caseData.csatScore ?? 0)
+                              ? 'h-4 w-4 fill-warning text-warning'
+                              : 'h-4 w-4 text-muted-foreground/30'
+                          }
+                        />
+                      ))}
+                    </div>
+                    <span className="font-medium text-foreground">{caseData.csatScore} 分</span>
+                    <span className="text-muted-foreground">{csatScoreLabel(caseData.csatScore)}</span>
+                  </div>
+                  {caseData.csatComment && (
+                    <p className="text-muted-foreground">{caseData.csatComment}</p>
+                  )}
+                  {caseData.csatRespondedAt && (
+                    <p className="text-xs text-muted-foreground">
+                      評分時間：{format(new Date(caseData.csatRespondedAt), 'yyyy/MM/dd HH:mm')}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">問卷已寄出，客人尚未評分</p>
+              )}
+            </div>
+            <Separator />
+          </>
+        )}
 
         {/* Linked Conversation */}
         {caseData.conversationId && (

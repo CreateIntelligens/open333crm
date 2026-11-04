@@ -167,6 +167,13 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScore()` 記錄，並回一則感謝訊息。每張工單只記第一次評分。客服也可以用 `POST /cases/:id/csat` 手動記錄。
 
+記錄分數之後，客服在後台看得到結果（issue #444）：
+
+- 這張工單的問卷訊息 `metadata` 寫入 `csatScore` 與 `csatRatedBy`（`customer` 或 `agent`），系統再推一次 `message.new`。收件匣的問卷卡片改成唯讀，標題顯示「客人評 N 分」或「客服代評 N 分」。
+- 客人的評分訊息存成「我的評分：N 分」（與 LINE 按鈕的 `displayText` 相同），原始的 `csat:<分數>:<工單 ID>` 存在訊息的 `metadata.postbackData`。
+- 工單時間軸寫一筆 `csat_rated`（客人評分 `actorType: 'contact'`，客服代評 `actorType: 'agent'` 並記錄客服），顯示為「客人評分：N 分（說明）」或「客服代評滿意度：N 分（說明）」。評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`），顯示為「狀態：已解決 → 已關閉（評分後自動關閉）」。
+- 工單詳情頁的「滿意度」區塊顯示分數、說明與評分時間；問卷已寄出但還沒評分時顯示「問卷已寄出，客人尚未評分」。
+
 `recordCsatScore()` 只寫入屬於收訊租戶、而且聯絡人就是傳訊者的工單；客服手動記錄時只比對租戶。不符合條件的 CSAT 訊息仍會被攔截，但不寫入、不回覆。
 
 非 LINE 渠道的提示格式不含工單 ID，攔截器認不出客人的回覆，見 `../../system/AUDIT.md` 的 CASE-02。

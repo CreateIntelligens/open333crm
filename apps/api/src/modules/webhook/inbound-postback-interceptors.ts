@@ -1,7 +1,7 @@
 import { logger } from '@open333crm/core';
 import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { eventBus } from '../../events/event-bus.js';
-import { recordCsatScore } from '../csat/csat.service.js';
+import { recordCsatScore, relabelCsatReplyMessage } from '../csat/csat.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
 import { addTagToTargetFlow } from '../tag/tag.flow.js';
@@ -58,6 +58,22 @@ async function handleCsatResponse(ctx: InboundMessageContext): Promise<boolean> 
   const score = parseInt(csatMatch[1], 10);
   const csatCaseId = csatMatch[2];
   if (score < 1 || score > 5) return false;
+
+  // 收件匣顯示客人在 LINE 上看到的「我的評分：N 分」，不顯示 csat: 代碼（issue #444）。
+  // 判斷已經用 ctx.textContent／ctx.postbackData 做完，只改寫存下來的訊息
+  if (ctx.message) {
+    try {
+      await relabelCsatReplyMessage({ tx: ctx.prisma, tenantId: ctx.tenantId }, {
+        messageId: ctx.message.id,
+        messageMetadata: ctx.message.metadata,
+        score,
+        postbackData: csatMatch[0],
+      });
+    } catch (err) {
+      // 改寫失敗只影響顯示，評分照常記錄
+      logger.error('[Webhook] CSAT 評分訊息改寫失敗:', err);
+    }
+  }
 
   // 只接受同租戶、傳訊者本人的工單；不符時仍攔截，避免偽造的評分落入 AI 與自動化（AUDIT RLS-06）
   const recorded = ctx.contactId
