@@ -113,6 +113,28 @@ function mergePages(pages: ConversationsResponse[] | undefined): ConversationRow
   return rows.sort((a, b) => getSortTime(b) - getSortTime(a));
 }
 
+/**
+ * 已載入的列是否仍符合目前的篩選（PR #449 審查）。篩選改由後端執行後，socket 推來的更新
+ * 可能讓列不再符合（讀過、改派、結案），要從列表移除。只判斷列上有欄位的條件，
+ * 與後端 listConversations 的規則相同；搜尋與 closedAfter 無法從列判斷，維持顯示。
+ */
+function matchesFilters(row: ConversationRow, filters: ConversationFilters): boolean {
+  const { status, assigneeId, unread } = filters;
+  if (status) {
+    if (status === '!CLOSED') {
+      if (row.status === 'CLOSED') return false;
+    } else if (!status.split(',').map((s) => s.trim()).includes(row.status)) {
+      return false;
+    }
+  }
+  if (assigneeId) {
+    const assigned = row.assignedToId ?? null;
+    if (assigneeId === 'unassigned' ? assigned !== null : assigned !== assigneeId) return false;
+  }
+  if (unread && (row.unreadCount ?? 0) <= 0) return false;
+  return true;
+}
+
 /** 對每一頁套用同一個列更新；排序在 mergePages 統一做，跨頁移動也正確 */
 function updatePages(
   pages: ConversationsResponse[] | undefined,
@@ -170,7 +192,14 @@ export function useConversations(
   const { data, error, isLoading, isValidating, mutate, size, setSize } =
     useSWRInfinite<ConversationsResponse>(getKey, fetcher, { revalidateFirstPage: false });
 
-  const conversations = useMemo(() => mergePages(data), [data]);
+  // 選取中的對話即使不再符合篩選也保留，避免正在看的對話從列表消失
+  const conversations = useMemo(
+    () =>
+      mergePages(data).filter(
+        (row) => row.id === selectedId || matchesFilters(row, { status, assigneeId, unread }),
+      ),
+    [data, selectedId, status, assigneeId, unread],
+  );
   const lastPage = data?.[data.length - 1];
   const meta = data?.[0]?.meta;
   const hasMore = !!lastPage?.meta && lastPage.meta.page < lastPage.meta.totalPages;

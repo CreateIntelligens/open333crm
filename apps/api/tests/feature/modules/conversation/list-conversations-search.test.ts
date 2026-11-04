@@ -187,3 +187,21 @@ test('後端只回未讀的對話：unread=true 只回未讀數大於 0 的', as
   assert.deepEqual(ids(res), [unread3.id]);
   assert.equal(res.json().meta.total, 1);
 });
+
+test('關鍵字裡的 % 與 _ 當成一般文字（PR #449 審查）', async () => {
+  // 未跳脫時 `-u_` 會把 `_` 當成任一字元，比對到 u0、u3；`退貨%<TOKEN>` 會把 `%` 當成任意字串，比對到訊息「我想退貨<TOKEN>」
+  for (const keyword of [`${MARK}-u_`, `${MARK}-u%`, `退貨%${TOKEN}`, `退_${TOKEN}`]) {
+    const res = await list(`search=${encodeURIComponent(keyword)}`);
+    assert.equal(res.statusCode, 200, res.body);
+    assert.deepEqual(ids(res), [], `關鍵字 ${keyword} 不應比對到任何對話`);
+  }
+});
+
+test('名稱含 %、_ 與反斜線時照樣找得到（PR #449 審查）', async () => {
+  const special = await createConversation(visible, `${MARK}-折扣50%_A\\B`);
+  for (const keyword of ['50%_A', '%_A\\B', `${MARK}-折扣50%`]) {
+    const res = await list(`search=${encodeURIComponent(keyword)}`);
+    assert.equal(res.statusCode, 200, res.body);
+    assert.deepEqual(ids(res), [special.id], `關鍵字 ${keyword}`);
+  }
+});

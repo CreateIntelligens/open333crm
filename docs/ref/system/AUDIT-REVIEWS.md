@@ -11,6 +11,8 @@ issue #422，change `fix-inbox-conversation-pagination`。以本機測試資料�
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
 | CONV-04（HC-INBOX-01） | 已修正，從 `AUDIT.md` 移除 | `useConversations()` 改用 `useSWRInfinite`，每頁 50 段，依 `meta.totalPages` 顯示「載入更多對話」；多頁依 `id` 去重、依 `updatedAt desc` 排序，socket 的 `message.new`、`conversation.updated` 合併到各頁。「未讀」送 `unread=true`、「我的」送 `assigneeId`，搜尋框送新的 `search` 參數（去頭尾空白後最多 100 字，比對聯絡人名稱或任一則訊息的 `content.text`，不分大小寫）。`list-conversations-search.test.ts`（feature）8 項中 6 項修正前失敗，2 項以突變驗證；`use-conversations-pagination.test.tsx` 9 項中 6 項、`conversation-list-server-filters.test.tsx` 7 項中 6 項修正前失敗，「下一頁載入失敗」在實作時補寫 |
+| HC-INBOX-08（socket 更新不套用篩選） | 已修正（PR #449 審查） | `useConversations()` 以 `matchesFilters()` 依列上的狀態、指派與未讀數重新判斷，不符合的列移除，選取中的保留；搜尋與 `closedAfter` 無法從列判斷 |
+| 搜尋關鍵字的 LIKE 萬用字元 | 已修正（PR #449 審查） | `escapeLikeKeyword()`（`apps/api/src/shared/utils/like-pattern.ts`）跳脫 `\`、`%`、`_`。聯絡人與優惠券的搜尋（`contact.service.ts`、`coupon.service.ts`）有同樣的寫法，未改 |
 | HC-INBOX-07（聊天視窗只載 50 則訊息） | 未處理 | 不在這次範圍。`useMessages().loadOlder()` 以 offset 分頁，新訊息進來時頁界會位移、失敗只寫 console，接上前要先改成以時間或序號往前取 |
 
 搜尋比對任一則訊息，不只最後一則：Prisma 無法表達「最後一則訊息」的條件（change 的 design D3）。訊息量很大的租戶搜尋可能變慢，之後需要時再加索引。

@@ -199,3 +199,61 @@ test('Selected conversation receives inbound message：選取中的對話未讀�
   assert.equal(unreadOf('c4'), '1');
   assert.ok(h.post.mock.calls.some(([url]) => url === '/conversations/c3/read'));
 });
+
+// PR #449 審查：篩選改由後端執行後，socket 更新讓對話不再符合目前篩選時，列表要移除它
+function FilteredList({ filters, selectedId = null }: { filters: Parameters<typeof useConversations>[0]; selectedId?: string | null }) {
+  const { conversations } = useConversations(filters, { selectedId });
+  return (
+    <ul>
+      {conversations.map((c) => (
+        <li key={c.id} data-testid="row">
+          {c.id}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function renderFiltered(filters: Parameters<typeof useConversations>[0], rows: unknown[], selectedId: string | null = null) {
+  h.get.mockImplementation(async () => page(rows, 1, 1, rows.length));
+  render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0, revalidateOnFocus: false }}>
+      <FilteredList filters={filters} selectedId={selectedId} />
+    </SWRConfig>,
+  );
+}
+
+test('未讀篩選：對話被讀過（unreadCount 變 0）後從列表移除', async () => {
+  renderFiltered({ status: '!CLOSED', unread: true }, [
+    { ...row(1), unreadCount: 2 },
+    { ...row(2), unreadCount: 1 },
+  ]);
+  await flush();
+  assert.deepEqual(ids(), ['c1', 'c2']);
+  await emit('conversation.updated', { id: 'c2', unreadCount: 0 });
+  assert.deepEqual(ids(), ['c1']);
+});
+
+test('我的篩選：對話改派給別人後從列表移除', async () => {
+  renderFiltered({ status: '!CLOSED', assigneeId: 'me' }, [
+    { ...row(1), assignedToId: 'me' },
+    { ...row(2), assignedToId: 'me' },
+  ]);
+  await flush();
+  await emit('conversation.updated', { id: 'c1', assignedToId: 'someone-else' });
+  assert.deepEqual(ids(), ['c2']);
+});
+
+test('進行中篩選：對話結案後從列表移除', async () => {
+  renderFiltered({ status: '!CLOSED' }, [row(1), row(2)]);
+  await flush();
+  await emit('conversation.updated', { id: 'c1', status: 'CLOSED' });
+  assert.deepEqual(ids(), ['c2']);
+});
+
+test('選取中的對話：不再符合篩選時仍留在列表，避免正在看的對話消失', async () => {
+  renderFiltered({ status: '!CLOSED', unread: true }, [{ ...row(1), unreadCount: 2 }, { ...row(2), unreadCount: 1 }], 'c2');
+  await flush();
+  await emit('conversation.updated', { id: 'c2', unreadCount: 0 });
+  assert.deepEqual(ids(), ['c1', 'c2']);
+});

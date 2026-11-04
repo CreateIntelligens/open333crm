@@ -15,6 +15,7 @@ import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload }
 import { notFound } from '../../shared/messages/resource.js';
 import { markCaseFirstResponse } from '../case/case.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -105,7 +106,8 @@ export async function listConversations(
   }
   if (filters.search) {
     // Prisma 無法表達「最後一則訊息」，改比對任一則訊息：是舊前端只比對最後一則的超集合（design D3）
-    const keyword = filters.search;
+    // % 與 _ 當成一般文字（escapeLikeKeyword，PR #449 審查）
+    const keyword = escapeLikeKeyword(filters.search);
     where.OR = [
       { contact: { displayName: { contains: keyword, mode: 'insensitive' } } },
       {
