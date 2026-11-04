@@ -1,17 +1,25 @@
 import type { RuleGroupType, RuleType } from 'react-querybuilder';
+import { AUTOMATION_FACT_MAP } from '@open333crm/automation';
 
 /**
- * Parse a string value into its appropriate JS type.
- * - "true"/"false" become booleans
- * - Numeric strings become numbers
- * - Everything else stays a string
+ * 依欄位在自動化契約的型別轉換條件值（issue #418、AUDIT AUTO-06）：
+ * - 數字欄位（例如開啟案件數）：數字字串轉成數字
+ * - 是／否欄位：「true」「false」轉成布林
+ * - 其他欄位（訊息內容、聯絡人名稱、標籤、時間，以及契約沒有定義的欄位）一律保留字串，
+ *   否則「訊息內容 包含 8888」會存成數字，文字比對永遠不成立
  */
-function parseValue(value: unknown): unknown {
+function parseValue(fact: string, value: unknown): unknown {
   if (typeof value !== 'string') return value;
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  const num = Number(value);
-  if (!Number.isNaN(num) && value.trim() !== '') return num;
+  const type = AUTOMATION_FACT_MAP.get(fact)?.type;
+  if (type === 'number') {
+    const num = Number(value);
+    if (!Number.isNaN(num) && value.trim() !== '') return num;
+    return value;
+  }
+  if (type === 'boolean') {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+  }
   return value;
 }
 
@@ -79,7 +87,7 @@ export function qbToEngine(query: RuleGroupType): Record<string, unknown> {
     return {
       fact: r.field,
       operator: qbToEngineOperator[r.operator] ?? r.operator,
-      value: parseValue(r.value),
+      value: parseValue(r.field, r.value),
     };
   });
 

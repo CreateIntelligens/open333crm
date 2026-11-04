@@ -60,7 +60,7 @@
 | HC-KNOWLEDGE-01 | KB-01（已修正並從 AUDIT 移除） | #419，已修正（change `fix-kb-clarify-handoff-419`） | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
 | HC-KNOWLEDGE-02 | [KB-02](../../system/AUDIT.md#kb-02) | #420 | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
 | HC-KNOWLEDGE-03 | [KB-03](../../system/AUDIT.md#kb-03) | #421 | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |
-| HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | #418 | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測 |
+| HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | #418，已修正（change `fix-automation-numeric-text-conditions`） | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測；修正以 unit 測試驗證 |
 | HC-ANALYTICS-01 | 未收錄 | — | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測；main 的 `093b7e75` 已修正 |
 | HC-PORTAL-01 | [PORTAL-03](../../system/AUDIT.md#portal-03) | #424 | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測；main 仍存在 |
 | HC-SETTINGS-01 | HOURS-01（已修正並從 AUDIT 移除） | #425，已修正（#337 第九批） | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測；修正（change `settings-input-validation-and-credential-audit`）以 feature 測試驗證 |
