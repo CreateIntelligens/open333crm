@@ -20,6 +20,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - BullMQ 的連線用 `'queue'`，發布 socket 事件的連線用 `'command'`，Redis 不回應時，發布在 1 秒內失敗。呼叫端處理發布失敗的方式不變。
   - 通知佇列（`lib/notification-queue.ts`）的連線改用 `'queue'`，關閉佇列時一起關閉。BullMQ 不關閉傳入的連線，原本關機時沒有關閉。
   - 刪除沒有呼叫端的 `channel-plugins/src/line/worker-*.ts` 3 個檔案與 core 的 `license/license-service.ts`（AUDIT PKG-06 部分、LIC-02），以及因此沒有使用者的依賴：core 的 `axios`、`channel-plugins` 的 `bullmq`。core 內只剩 `EventBus` 使用模組層級的 `redis`，隨 #337 階段 6 移除。
+  - 刪除沒有接上的 API `lib/cacheStore.ts`。它是 `@fastify/caching` 的 Redis 儲存後端，但 API 沒有註冊這個 plugin，也沒有任何地方 import 它。一併移除 `@fastify/caching` 依賴與 `CACHE_DRIVER`、`CACHE_SEGMENT`、`CACHE_REDIS_DB`、`CACHE_EXPIRES_IN` 環境變數。部署環境的 `.env.api` 若還有這些變數，API 不再讀取，可以刪除。
 
 ### Fixed
 
