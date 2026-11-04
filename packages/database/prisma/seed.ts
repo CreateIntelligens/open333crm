@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { systemTemplates } from './seed-data/system-templates.js';
 import { seedDemoAccounts, shouldSeedDemoAccounts } from './seed-data/demo-accounts.js';
-import { SEED_PLANS } from './seed-data/plans.js';
+import { seedPlans } from './seed-data/plans.js';
 
 const prisma = new PrismaClient();
 
@@ -13,37 +13,11 @@ async function main() {
 
   await seedModelPricing();
 
-  await seedPlans();
+  await seedPlans(prisma);
 
   console.log(
     `Seed complete: ${demo ? 'demo tenant, 3 agents, 3 system roles, 1 platform user, ' : 'demo accounts skipped, '}${systemTemplates.length} system templates, model pricing, 5 plans`,
   );
-}
-
-/**
- * 平台方案種子（全域），內容在 seed-data/plans.ts。idempotent upsert（slug 唯一）。
- * 注意：API 容器每次啟動都跑 seed，update 會把這五個方案的 name、features、limits、priceMonthly
- * 寫回這裡的值；allowedChannelTypes 與 permissionOverrides 不寫，保留平台後台的設定。
- */
-async function seedPlans() {
-  for (const p of SEED_PLANS) {
-    await prisma.plan.upsert({
-      where: { slug: p.slug },
-      update: {
-        name: p.name,
-        features: p.features as Prisma.InputJsonValue,
-        limits: p.limits as Prisma.InputJsonValue,
-        priceMonthly: p.priceMonthly,
-      },
-      create: {
-        slug: p.slug,
-        name: p.name,
-        features: p.features as Prisma.InputJsonValue,
-        limits: p.limits as Prisma.InputJsonValue,
-        priceMonthly: p.priceMonthly,
-      },
-    });
-  }
 }
 
 /**

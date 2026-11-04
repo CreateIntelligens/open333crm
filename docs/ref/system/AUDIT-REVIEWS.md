@@ -4,6 +4,28 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
+
+issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| PLAN-20 | 已修正，從 `AUDIT.md` 移除 | `seedPlans()` 移到 `packages/database/prisma/seed-data/plans.ts`，`upsert` 的 `update` 改為空物件（與 `seedModelPricing()` 相同寫法）：方案不存在時建立，已存在時不寫入（`updatedAt` 也不變）。`plans.test.ts` 的「部署後保留平台修改」兩項與「只補缺少的方案」修正前失敗（`maxAgents` 8 被改回 5 等），「方案不存在時 seed 建立」以突變驗證。拋棄式資料庫 `open333crm_test_p3_441_seed` 實跑：改 `light`、刪 `enterprise` 後再跑 seed，`light` 的欄位與 `updatedAt` 不變、`enterprise` 被補回；跑完已刪除。主規格 `tenant-plan` 補上「部署後保留平台修改」「方案不存在時 seed 建立」。程式要改既有方案改用資料 migration，規則寫在 `docs/ref/features/platform/PLANS.md` 與 skill `feature-platform-plans` |
+
+**seed 其他區段的盤點。** API 容器每次啟動都執行 `packages/database/prisma/seed.ts`（`apps/api/docker-entrypoint.sh`）。這次只修方案；其他區段的現況如下：
+
+| 區段 | 已存在時覆寫的欄位 | 對 UAT 的影響 | 建議 |
+| --- | --- | --- | --- |
+| Demo 租戶（`seedDemoAccounts`） | `tenants.name` 改回 `Demo Tenant` | `NODE_ENV=production` 時預設不執行（#394），只在設 `SEED_DEMO_ACCOUNTS=true` 時執行 | 改名的需求出現時改為 `update: {}` |
+| Demo 系統角色（`seedDemoRoles`） | `roles.name`、`isSystem`；`role_permissions` 整批刪除後依 `DEFAULT_ROLE_PERMISSIONS` 重建 | 同上，預設不執行。設了 `SEED_DEMO_ACCOUNTS=true` 時，平台或租戶對 Demo 系統角色權限的調整每次部署都被還原（RBAC-06 記載的情形） | 正式環境不要設 `SEED_DEMO_ACCOUNTS=true`；若要保留這個開關，改為只在角色不存在時建立 |
+| Demo 成員（三個） | `agents.name`、`role`、`roleId`（密碼與啟用狀態已不覆寫，#394） | 同上，預設不執行。執行時會把被改過角色的 Demo 成員改回原角色 | 同上 |
+| 開發用平台帳號 | `platform_users.name`（密碼不覆寫，#394） | 同上，預設不執行 | 影響小，維持 |
+| 系統模板（`seedSystemTemplates`） | 全部欄位，含 `isActive: true` | `systemTemplates` 目前是空陣列，沒有任何寫入 | 重新加入系統模板時，先決定是否允許租戶或平台修改，再決定是否保留 `update` |
+| 模型價目（`seedModelPricing`） | 不覆寫（`update: {}`） | 無 | 維持；改價時新增一列較新的 `effectiveFrom`（USAGE-02） |
+| 方案（`seedPlans`） | issue #441 後不覆寫 | 無 | 已修正 |
+
+UAT 是否設了 `SEED_DEMO_ACCOUNTS`，這次沒有查（不連 UAT）。
+
 ## 2026-11-03：第二優先的顧客受影響且失敗看不到的問題（KB-01、CONV-03、CASE-03、CHAN-02、AUTH-11、PLAN-14、RBAC-11）
 
 issue #410、#411、#415、#416、#419，同一個 PR。以本機測試資料庫的 unit 與 feature 測試驗證，沒有連 UAT；真機（LINE、FB）尚未驗證。
