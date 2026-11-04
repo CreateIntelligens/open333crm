@@ -16,6 +16,14 @@ issue #420，分支 `fix/p4-420`，change `fix-kb-model-guard-420`。以 unit �
 初版把偵測改成大小寫敏感，審查後恢復不分大小寫（前綴白名單已擋住非型號的編號，大小寫敏感只會讓小寫型號失去引導）；「小寫型號視同大寫」在大小寫敏感的版本上失敗。
 前綴打錯的型號（白名單沒有這個前綴）不再觸發守門，改走一般知識庫回答或追問。
 
+## 2026-11-04：知識庫匯入 CSV 的文字編碼（KB-03）
+
+issue #421，分支 `fix/p4-421`，change `fix-kb-csv-encoding-421`。以本機單元測試與手冊範例檔驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-03（HC-KNOWLEDGE-03） | 已修正，從 `AUDIT.md` 移除 | `file-parser.service.ts` 新增 `decodeCsvText()`：UTF-8 BOM 去掉後以 UTF-8 解，沒有 BOM 先嚴格 UTF-8、失敗試 Big5（Node 內建 `TextDecoder`，不新增依賴）；`readWorkbook()` 依 zip 檔頭分辨 xlsx 與 CSV，`parseSpreadsheetToQaRows()` 與單篇 CSV 匯入都經過它。兩種都解不出或含 U+FFFD 時拋 `CSV_ENCODING_UNREADABLE`（400，中文原因），上傳路由沿用每檔各自回報的結構，在該檔結果帶 `code`，該檔不寫入任何文章。`knowledge-file-parser-encoding.test.ts` 7 項中 6 項修正前以 assertion 失敗、有 BOM 的一項以突變驗證；`knowledge-upload-encoding.test.ts` 2 項修正前失敗。`apps/web/tests/fixtures/manual-kb-sample.csv`（無 BOM UTF-8）實跑拆出正確中文問答。問答表直接發布依使用者決定（2026-11-04）保留，不列為問題 |
+
 ## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
 
 issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。

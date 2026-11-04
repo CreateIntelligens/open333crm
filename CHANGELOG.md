@@ -19,6 +19,11 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **知識庫匯入 Google 試算表、Numbers 或台灣版 Excel 存的 CSV，中文不再變亂碼**（#421，change `fix-kb-csv-encoding-421`，AUDIT KB-03，健檢 HC-KNOWLEDGE-03）— 原本 CSV 沒有 UTF-8 BOM 就被當成單位元組讀，英文表頭時亂碼的問答還會直接發布。現在：
+  - `file-parser.service.ts` 新增 `decodeCsvText()`：有 BOM 去掉後以 UTF-8 解；沒有 BOM 先以嚴格 UTF-8 解，失敗再試 Big5。xlsx 依 zip 檔頭辨識，不受影響。
+  - 兩種都解不出或解出的文字含 U+FFFD 時，該檔一篇都不寫入，上傳結果標成失敗並帶 `code: CSV_ENCODING_UNREADABLE` 與中文原因（建議另存成「CSV UTF-8」）；同批其他檔案照常匯入。
+  - 匯入對話框的失敗原因改為完整換行顯示，不再截斷。
+  - 依使用者決定，問答表拆出的文章維持直接發布。
 - **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
   - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
   - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。
