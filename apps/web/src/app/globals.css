@@ -29,16 +29,16 @@
     --tertiary-foreground: 0 0% 43%;     /* #6D6D6D text/tertiary（未選中選單、圖示） */
 
     /* Figma Design System 其他狀態色 */
-    --neutral: 0 0% 57%;                 /* #919191 Status/Neutral */
+    --neutral: 0 0% 46%;                 /* #757575 中性灰（WCAG：原 #919191 對比 3.15） */
     --robot: 275 37% 45%;                /* #79489C Status/Accent（Tag Robot） */
     --online: 148 100% 34%;              /* #00AB50 Status/Online（Tag Success 實心） */
-    --control-disabled: 217 25% 82%;     /* #C6CFDD Action/Disabled（Switch 關、計數字） */
+    --control-disabled: 218 15% 60%;     /* #8A95A8 開關關閉、勾選框框線（WCAG 元件 3:1；原 #C6CFDD） */
     --disabled-solid: 0 0% 82%;          /* #D0D0D0 主要按鈕停用 */
 
     /* 主色 (品牌藍) */
-    --primary: 210 71% 54%;              /* #378ADD */
+    --primary: 210 66% 46%;              /* #2876C4 主色（WCAG：原 #378ADD 對比 3.59） */
     --primary-foreground: 0 0% 100%;     /* 白字 */
-    --primary-hover: 211 66% 46%;        /* #2876C4 hover 深藍 */
+    --primary-hover: 210 68% 37%;        /* #1F5FA0 hover */
     --primary-subtle: 214 100% 97%;      /* #EFF6FF 淡藍底 (selected/我方泡泡) */
     --primary-border: 225 100% 88%;      /* #C4D2FF 藍邊 */
 
@@ -48,24 +48,24 @@
 
     /* 靜音 / 弱化 */
     --muted: 210 40% 98%;                /* #F8FAFC 極淺灰底 */
-    --muted-foreground: 215 15% 51%;     /* #707E93 次要文字灰藍 */
+    --muted-foreground: 217 14% 43%;     /* #5F6B7E 次要文字（WCAG：原 #707E93 對比 4.12） */
 
     /* 強調 (hover 底) */
     --accent: 210 40% 96%;               /* #F1F5F9 */
     --accent-foreground: 215 25% 27%;
 
     /* 破壞 / 錯誤 (紅) */
-    --destructive: 359 84% 56%;          /* #EE3134 */
+    --destructive: 3 76% 45%;            /* #C8251B 錯誤（WCAG：原 #EE3134 對比 4.10） */
     --destructive-foreground: 0 0% 100%;
     --destructive-subtle: 356 100% 96%;  /* #FFECED 淺紅底 */
 
     /* 成功 (綠) */
-    --success: 149 100% 26%;             /* #008236 */
+    --success: 145 100% 22%;             /* #00702E 成功 */
     --success-foreground: 0 0% 100%;
     --success-subtle: 140 26% 95%;       /* #EEF5F0 淺綠底 */
 
     /* 警告 (橘) */
-    --warning: 26 100% 50%;              /* #FF6E00 */
+    --warning: 17 88% 40%;               /* #C2410C 警示（WCAG：原 #FF6E00 對比 2.81） */
     --warning-foreground: 0 0% 100%;
     --warning-subtle: 28 100% 95%;       /* #FFF0E4 淺橘底 */
 
@@ -77,8 +77,8 @@
 
     /* 邊框 / 輸入框 / focus ring */
     --border: 214 32% 91%;               /* #E2E8F0 */
-    --input: 214 32% 91%;                /* #E2E8F0 */
-    --ring: 210 71% 54%;                 /* #378ADD focus */
+    --input: 218 15% 60%;                /* #8A95A8 輸入框框線（WCAG 元件 3:1；原 #E2E8F0） */
+    --ring: 210 66% 46%;                 /* #2876C4 focus */
 
     /* 圓角 (Figma 主力 12px = 0.75rem；按鈕 8px 用 md) */
     --radius: 0.75rem;
@@ -193,4 +193,21 @@
 }
 .app-content table:not([data-plain]) tbody tr:hover {
   background-color: hsl(var(--shell));
+}
+
+/* 跳到主要內容（WCAG 2.4.1）：平常隱藏，用鍵盤 Tab 時出現在左上角 */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  border-radius: 8px;
+  background: hsl(var(--primary));
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+.skip-link:focus {
+  top: 8px;
 }
