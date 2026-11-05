@@ -24,10 +24,15 @@ import {
   unpublishRichMenu,
   type RichMenu,
 } from '@/hooks/useRichMenus';
-import { richMenuPublishConfirm, richMenuUnpublishConfirm } from '@/lib/rich-menu-confirm';
+import {
+  RICH_MENU_DEFAULT_NOT_SET_NOTICE,
+  richMenuPublishConfirm,
+  richMenuUnpublishConfirm,
+} from '@/lib/rich-menu-confirm';
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: '#94a3b8' },
+  publishing: { label: '發布中', color: '#f59e0b' },
   published: { label: '已發布', color: '#22c55e' },
   error: { label: '發布失敗', color: '#ef4444' },
 };
@@ -81,11 +86,12 @@ export default function RichMenusPage() {
   };
 
   const handlePublish = async (id: string) => {
-    const selected = Boolean(richMenus.find((m) => m.id === id)?.selected);
-    if (!confirm(richMenuPublishConfirm(selected))) return;
+    const isDefault = Boolean(richMenus.find((m) => m.id === id)?.isDefault);
+    if (!confirm(richMenuPublishConfirm(isDefault))) return;
     try {
-      await publishRichMenu(id);
+      const result = await publishRichMenu(id);
       mutate();
+      if (result?.warnings?.includes('DEFAULT_NOT_SET')) alert(RICH_MENU_DEFAULT_NOT_SET_NOTICE);
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       alert(((err as any)?.response?.data?.error?.message) ?? '發布失敗');
@@ -93,8 +99,8 @@ export default function RichMenusPage() {
   };
 
   const handleUnpublish = async (id: string) => {
-    const selected = Boolean(richMenus.find((m) => m.id === id)?.selected);
-    if (!confirm(richMenuUnpublishConfirm(selected))) return;
+    const isDefault = Boolean(richMenus.find((m) => m.id === id)?.isDefault);
+    if (!confirm(richMenuUnpublishConfirm(isDefault))) return;
     try {
       await unpublishRichMenu(id);
       mutate();
@@ -194,7 +200,8 @@ function RichMenuCard({
   const [bindOpen, setBindOpen] = useState(false);
   const statusInfo = STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
   const isPublished = richMenu.status === 'published';
-  const isDraft = richMenu.status === 'draft';
+  // 發布失敗的選單可以重新發布；發布中的選單要等它完成或中斷超過 5 分鐘
+  const canPublish = richMenu.status === 'draft' || richMenu.status === 'error';
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
@@ -222,7 +229,7 @@ function RichMenuCard({
         </div>
 
         <div className="flex items-center justify-end gap-1 pt-1">
-          {isDraft && (
+          {canPublish && (
             <Button variant="default" size="sm" onClick={() => onPublish(richMenu.id)}>
               <Send className="mr-1 h-3 w-3" />
               發布

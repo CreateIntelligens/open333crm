@@ -38,7 +38,7 @@ line-oa-laravel 以 Redis 的全域寫入鎖（`Cache::lock('richmenus:write')`�
    - 條件更新認領：`updateMany where { id, tenantId, OR: [status in (draft, error), status = publishing AND updatedAt < now - 5 分鐘] }`，改成 `publishing`。`count = 0` 時，依目前狀態回 400 `ALREADY_PUBLISHED` 或 409 `PUBLISH_IN_PROGRESS`。
    - 讀渠道憑證，回傳 access token 與選單內容。
 2. 交易外：下載背景圖、建立 LINE 選單（`selected` 送展開狀態）、上傳背景圖。`isDefault` 時設預設（D4）。這時選單仍是 `publishing`，同一個渠道的其他發布被擋下，所以設預設不會和另一個發布交錯。
-3. 交易 2：條件更新 `where { id, status: publishing }` 寫入 `published`、`lineRichMenuId`、`publishedAt`、`isDefault`。設預設成功時，同渠道其他選單的 `isDefault` 改成 false。
+3. 交易 2：條件更新 `where { id, status: publishing }` 寫入 `published`、`lineRichMenuId`、`publishedAt`、`isDefault`。設預設成功時，同渠道其他已發布選單的 `isDefault` 改成 false。草稿的 `isDefault` 是「發布時設成預設」的設定，不動，與搬遷前只清已發布選單的 `selected` 相同。
 
 advisory lock 只在交易 1 內持有，所以 LINE 呼叫期間不佔連線，也不佔鎖。「同一個渠道只有一個 `publishing`」由交易 1 的檢查保證：檢查與認領在同一把鎖內。
 
@@ -66,7 +66,7 @@ LINE 建立選單失敗時，沒有東西要刪，只寫 `error`。
 LINE 的設預設 API 會以新選單取代目前的預設。line-oa-laravel 上架時只呼叫 `setDefault()`，不先取消（`RichmenuService::updatePostCommitSteps()`）。現在的 `unsetCurrentDefault()` 先呼叫「取消全體預設」，所以設預設失敗時，所有好友都失去選單。改成：
 
 - 不呼叫取消全體預設。
-- 設預設成功：交易 2 把這個選單寫成 `isDefault = true`，同渠道其他選單寫成 false。
+- 設預設成功：交易 2 把這個選單寫成 `isDefault = true`，同渠道其他已發布選單寫成 false。
 - 設預設失敗：LINE 上原本的預設不受影響。交易 2 把這個選單寫成 `isDefault = false`，不動其他選單，回應帶 `warnings: ['DEFAULT_NOT_SET']`。資料庫與 LINE 一致，不必等對帳。
 
 line-oa-laravel 先 commit `is_default` 再呼叫 LINE，失敗時資料庫與 LINE 不一致，交給每小時的對帳。open333 的設預設在交易 2 之前，失敗時直接把結果寫進資料庫，所以不依賴對帳。
@@ -75,7 +75,7 @@ line-oa-laravel 先 commit `is_default` 再呼叫 LINE，失敗時資料庫與 L
 
 1. 交易 1：讀選單與憑證。`status` 不是 `published` 或 `error` 時回 400 `NOT_PUBLISHED`（不變）。
 2. 交易外：`isDefault` 時，先查 LINE 目前的預設（`GET /v2/bot/user/all/richmenu`），是這個選單才取消全體預設，做法同 line-oa-laravel 的下架。查詢回 404（沒有預設）時不取消。接著刪除 LINE 選單，404 視為已刪除（不變）。
-3. 交易 2：條件更新 `where { id, status in (published, error), lineRichMenuId: 讀到的值 }` 寫回 `draft`、`isDefault = false`。
+3. 交易 2：條件更新 `where { id, status in (published, error), lineRichMenuId: 讀到的值 }` 寫回 `draft`。`isDefault` 保留，重新發布時仍設成預設（搬遷前取消發布也不改 `selected`）。
 
 兩個取消發布同時執行：LINE 刪除第二次回 404，交易 2 的第二次 `count = 0`，回傳目前的選單。結果相同，所以不需要認領。
 
@@ -101,7 +101,8 @@ line-oa-laravel 的排程工作以 `expectedJobId` 做同樣的事：工作執�
 | 步驟 | 失敗時資料留在哪裡 | 誰重做 | 保證 |
 | --- | --- | --- | --- |
 | 發布交易 1 | 不變 | 管理員重按 | 不呼叫 LINE |
-| 下載圖、建立 LINE 選單 | `error` | 管理員重按 | LINE 上沒有新選單 |
+| 下載背景圖 | 回到發布前的狀態（中斷後重新發布的選單記成 `error`） | 管理員修正圖片後重按 | 不呼叫 LINE |
+| 建立 LINE 選單（含逾時、連不上） | `error` | 管理員重按 | LINE 上沒有新選單 |
 | 上傳圖、交易 2 | LINE 選單已補償刪除，`error` | 管理員重按 | LINE 上最多一個新選單；補償失敗時留下孤兒（log） |
 | 補償後寫 `error` 失敗、處理程序中途結束 | `publishing` | 5 分鐘後管理員重按 | 可能留下孤兒 |
 | 設預設 | `published`、`isDefault=false`；LINE 上原本的預設不變 | 管理員取消發布再發布 | 資料庫與 LINE 一致 |
@@ -113,7 +114,7 @@ line-oa-laravel 的排程工作以 `expectedJobId` 做同樣的事：工作執�
 
 LINE 建立選單 API 的 `selected` 是「聊天室打開時展開選單」。change `fix-rich-menu-default-safety` 把同一個欄位改成「設為所有好友的預設選單」，發布時又把它送進 LINE 的 `selected`，兩件事因此綁在一起。line-oa-laravel 曾經用 `is_default` 一個欄位，2026-06 加上 `is_select` 分開（migration `add_global_and_select_to_richmenus_table`，主規格「圖文選單展開狀態」）。
 
-- 新增欄位 `isDefault Boolean @default(false)`（`is_default`）。migration 以 `UPDATE rich_menus SET is_default = selected` 填入。既有選單在 LINE 上的展開狀態就是 `selected` 的值，所以 `selected` 不改。
+- 新增欄位 `isDefault Boolean @default(false)`。`rich_menus` 的欄位沒有 `@map`，資料庫欄位名稱就是 `isDefault`。migration 以 `UPDATE rich_menus SET "isDefault" = selected` 填入。既有選單在 LINE 上的展開狀態就是 `selected` 的值，所以 `selected` 不改。
 - `selected` 的 Prisma 預設值改成 `true`，API 建立時沒有傳入也用 `true`，與 line-oa-laravel 相同。這只影響新建的選單。
 - API 的建立、修改、複製多一個 `isDefault`；回應同時帶兩個欄位。發布、取消發布、設預設的判斷都改看 `isDefault`。
 - 編輯頁拆成兩個選項。「設為所有好友的預設選單」沿用現在的確認對話框；說明文字拿掉「好友開啟對話時也會自動展開」。新增「聊天室打開時展開選單」。
@@ -129,6 +130,6 @@ LINE 建立選單 API 的 `selected` 是「聊天室打開時展開選單」。c
 
 ## Migration Plan
 
-- 一個 migration：新增 `rich_menus.is_default`，以 `selected` 填入；`selected` 的預設值改成 `true`。migration 只加欄位與更新資料，舊版程式碼仍能執行。
+- 一個 migration：新增 `rich_menus."isDefault"`，以 `selected` 填入；`selected` 的預設值改成 `true`。migration 只加欄位與更新資料，舊版程式碼仍能執行。
 - workers 與 API 要一起部署。順序不影響：workers 先部署時，舊 API 的工作沒有 `richMenuId`，照舊執行；API 先部署時，舊 workers 忽略新欄位。
 - 回滾：還原這個 PR。`publishing` 的選單在舊程式裡不能發布、不能取消發布；回滾前確認沒有 `publishing` 的選單，或手動改回 `error`。舊程式只看 `selected`，回滾後 `isDefault` 與 `selected` 不同的選單，以 `selected` 為準。

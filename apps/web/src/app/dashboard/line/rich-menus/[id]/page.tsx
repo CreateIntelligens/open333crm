@@ -14,9 +14,10 @@ import {
   unpublishRichMenu,
 } from '@/hooks/useRichMenus';
 
-import { richMenuPublishConfirm, richMenuUnpublishConfirm } from '@/lib/rich-menu-confirm';
+import { richMenuPublishConfirm, richMenuUnpublishConfirm, RICH_MENU_DEFAULT_NOT_SET_NOTICE } from '@/lib/rich-menu-confirm';
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: '#94a3b8' },
+  publishing: { label: '發布中', color: '#f59e0b' },
   published: { label: '已發布', color: '#22c55e' },
   error: { label: '發布失敗', color: '#ef4444' },
 };
@@ -32,6 +33,8 @@ export default function EditRichMenuPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isPublished = richMenu?.status === 'published';
+  // 另一個請求正在發布：不能編輯、不能再發布，等它完成或中斷超過 5 分鐘
+  const isPublishing = richMenu?.status === 'publishing';
   const statusInfo = richMenu
     ? STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' }
     : null;
@@ -44,6 +47,7 @@ export default function EditRichMenuPage() {
       chatBarText: richMenu.chatBarText,
       size: richMenu.size,
       selected: richMenu.selected,
+      isDefault: richMenu.isDefault,
       areas: richMenu.areas,
       imageUrl: richMenu.imageUrl,
     });
@@ -59,6 +63,7 @@ export default function EditRichMenuPage() {
         chatBarText: draft.chatBarText,
         size: draft.size,
         selected: draft.selected,
+        isDefault: draft.isDefault,
         areas: draft.areas,
         imageUrl: draft.imageUrl,
       });
@@ -72,12 +77,13 @@ export default function EditRichMenuPage() {
   };
 
   const handlePublish = async () => {
-    if (!confirm(richMenuPublishConfirm(Boolean(richMenu?.selected)))) return;
+    if (!confirm(richMenuPublishConfirm(Boolean(richMenu?.isDefault)))) return;
     setBusy(true);
     setError(null);
     try {
-      await publishRichMenu(id);
+      const result = await publishRichMenu(id);
       await mutate();
+      if (result?.warnings?.includes('DEFAULT_NOT_SET')) alert(RICH_MENU_DEFAULT_NOT_SET_NOTICE);
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setError(((err as any)?.response?.data?.error?.message) ?? '發布失敗');
@@ -87,7 +93,7 @@ export default function EditRichMenuPage() {
   };
 
   const handleUnpublish = async () => {
-    if (!confirm(richMenuUnpublishConfirm(Boolean(richMenu?.selected)))) return;
+    if (!confirm(richMenuUnpublishConfirm(Boolean(richMenu?.isDefault)))) return;
     setBusy(true);
     setError(null);
     try {
@@ -127,6 +133,11 @@ export default function EditRichMenuPage() {
               此 Rich Menu 已發布到 LINE，不能直接修改。請先「取消發布」後再編輯。
             </div>
           )}
+          {isPublishing && (
+            <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-sm text-warning">
+              此 Rich Menu 正在發布到 LINE，請稍後重新整理。
+            </div>
+          )}
 
           {isLoading && <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>}
 
@@ -144,17 +155,17 @@ export default function EditRichMenuPage() {
 
           {draft && (
             <div className="space-y-4">
-              <fieldset disabled={isPublished} className={isPublished ? 'opacity-60' : ''}>
+              <fieldset disabled={isPublished || isPublishing} className={isPublished || isPublishing ? 'opacity-60' : ''}>
                 <RichMenuEditor draft={draft} onChange={setDraft} />
               </fieldset>
               <div className="sticky bottom-0 -mx-6 flex justify-end gap-2 border-t bg-white px-6 py-3">
                 <Button variant="outline" onClick={backToList}>取消</Button>
-                {!isPublished && (
+                {!isPublished && !isPublishing && (
                   <Button variant="outline" onClick={handleSave} disabled={saving || busy}>
                     {saving ? '儲存中…' : '儲存草稿'}
                   </Button>
                 )}
-                {!isPublished ? (
+                {isPublishing ? null : !isPublished ? (
                   <Button onClick={handlePublish} disabled={saving || busy}>
                     <Send className="mr-1 h-4 w-4" />
                     {busy ? '發布中…' : '發布到 LINE'}

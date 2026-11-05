@@ -5,7 +5,7 @@
 RichMenu record MUST 包含下列內容與發布狀態欄位：
 - `chatBarText` (string，使用者在 LINE 聊天列底部看到的按鈕文字，最多 14 字)
 - `size` (JSON，`{ width, height }`，必為 10 種版型其中之一的官方尺寸)
-- `isDefault` (boolean，是否為所有好友的預設選單，預設 `false`)
+- `isDefault` (boolean，預設 `false`。已發布的選單：是否為所有好友的預設選單；草稿：發布時是否設成預設。取消發布時保留)
 - `selected` (boolean，聊天室打開時是否展開選單，對應 LINE 的 `selected`，預設 `true`)
 - `areas` (JSON 陣列，每筆 `{ bounds: { x, y, width, height }, action: { type, ... } }`)
 - `imageUrl` (string，MinIO 公開 URL)
@@ -24,7 +24,7 @@ The system SHALL allow setting and cancelling a default Rich Menu shown to all f
 - **WHEN** an administrator publishes a Rich Menu whose `isDefault` is true
 - **THEN** the system calls `POST /v2/bot/user/all/richmenu/{richMenuId}` and the menu becomes the default for all followers
 - **THEN** the system does not call `DELETE /v2/bot/user/all/richmenu`
-- **THEN** other Rich Menus of the same channel have `isDefault = false`
+- **THEN** other published Rich Menus of the same channel have `isDefault = false`; drafts keep their `isDefault`
 
 #### Scenario: Cancel default
 - **WHEN** an administrator unpublishes a Rich Menu whose `isDefault` is true, and the current default on LINE (`GET /v2/bot/user/all/richmenu`) is this menu
@@ -140,7 +140,7 @@ LINE 建立選單之後，任何一步失敗（上傳背景圖失敗、寫入資
 
 #### Scenario: 設預設成功
 - **WHEN** 管理員發布 `isDefault = true` 的選單，LINE 設預設成功
-- **THEN** 這個選單的 `isDefault` 是 `true`，同渠道其他選單的 `isDefault` 是 `false`，回應沒有 `DEFAULT_NOT_SET`
+- **THEN** 這個選單的 `isDefault` 是 `true`，同渠道其他已發布選單的 `isDefault` 是 `false`，回應沒有 `DEFAULT_NOT_SET`
 
 ### Requirement: 背景綁定只綁到仍在發布中的選單
 

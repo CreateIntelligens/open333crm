@@ -54,5 +54,5 @@ line-oa-laravel 的圖文選單以「交易外建立、交易失敗就刪除、c
   - `POST /api/v1/line/rich-menus`、`PATCH .../:id`：新增 `isDefault`；`selected` 改為展開狀態。回應同時帶兩個欄位。只有本 repo 的前端呼叫這些 API，與前端同一個 PR 修改。
   - `POST /api/v1/line/rich-menus/:id/publish`：新增 HTTP 409 `PUBLISH_IN_PROGRESS`；設預設失敗時回 200，回應帶警告。
   - `POST .../bind-audience`、`.../unbind-audience`：Redis 無法使用時改回 200，由 outbox-relay 補送。
-- 資料庫：一個 migration，`rich_menus` 新增 `is_default`，以 `selected` 填入。`status` 是字串欄位，`publishing` 不需要改 schema；「停在 `publishing` 多久」以 `updatedAt` 判斷。
+- 資料庫：一個 migration，`rich_menus` 新增 `isDefault`，以 `selected` 填入。`status` 是字串欄位，`publishing` 不需要改 schema；「停在 `publishing` 多久」以 `updatedAt` 判斷。
 - 部署：搬遷前送出、還在佇列裡的綁定工作沒有選單 id，workers 照舊執行，不做檢查。

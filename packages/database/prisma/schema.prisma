@@ -1408,8 +1408,10 @@ model RichMenu {
   chatBarText    String
   // 版型尺寸 { width, height }，必為 10 種官方版型其中之一
   size           Json
-  // 預設展開選單
-  selected       Boolean   @default(false)
+  // 聊天室打開時是否展開選單（LINE 建立選單 API 的 selected）
+  selected       Boolean   @default(true)
+  // 是否為所有好友的預設選單；發布時設成 LINE 的 default rich menu
+  isDefault      Boolean   @default(false)
   // 區域陣列 [{ bounds: { x, y, width, height }, action: { type, ... } }]
   areas          Json
   // 背景圖（MinIO 公開 URL）

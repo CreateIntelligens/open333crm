@@ -39,10 +39,13 @@ export interface RichMenu {
   name: string;
   chatBarText: string;
   size: { width: number; height: number };
+  /** 聊天室打開時是否展開選單（LINE 的 selected） */
   selected: boolean;
+  /** 已發布：是否為所有好友的預設選單；草稿：發布時是否設成預設 */
+  isDefault: boolean;
   areas: RichMenuArea[];
   imageUrl: string;
-  status: 'draft' | 'published' | 'error';
+  status: 'draft' | 'publishing' | 'published' | 'error';
   lineRichMenuId: string | null;
   publishedAt: string | null;
   createdAt: string;
@@ -55,6 +58,7 @@ export interface CreateRichMenuPayload {
   chatBarText: string;
   size: { width: number; height: number };
   selected?: boolean;
+  isDefault?: boolean;
   areas: RichMenuArea[];
   imageUrl: string;
 }
@@ -64,6 +68,7 @@ export interface UpdateRichMenuPayload {
   chatBarText?: string;
   size?: { width: number; height: number };
   selected?: boolean;
+  isDefault?: boolean;
   areas?: RichMenuArea[];
   imageUrl?: string;
 }
@@ -122,7 +127,8 @@ export async function duplicateRichMenu(id: string): Promise<RichMenu> {
   return res.data.data;
 }
 
-export async function publishRichMenu(id: string): Promise<RichMenu> {
+/** 發布回應的 warnings：DEFAULT_NOT_SET 表示 LINE 設預設失敗，這張選單沒有成為所有好友的預設選單 */
+export async function publishRichMenu(id: string): Promise<RichMenu & { warnings?: string[] }> {
   const res = await api.post(`/line/rich-menus/${id}/publish`);
   return res.data.data;
 }

@@ -111,7 +111,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 驗證憑證 | `channel.service.ts` 的渠道驗證 | LINE、FB、THREADS 各一段，直接呼叫渠道 API |
 | 自動設定 webhook | `line-webhook-setup.service.ts` | LINE。外掛的 `setWebhook()` 沒有被使用 |
 | 檢查 access token 是否過期 | `fb-token-monitor.service.ts` | FB |
-| 圖文選單的建立與發布 | `line/rich-menu.service.ts`，直接呼叫 LINE API | LINE。綁定使用者則走外掛的 `extensions.ui` |
+| 圖文選單的建立與發布 | `line/rich-menu.line-api.ts`，由 `rich-menu.flow.ts` 在交易外直接呼叫 LINE API | LINE。綁定使用者則走外掛的 `extensions.ui` |
 | 重抓個人資料 | `line/line-profile.service.ts` | LINE |
 | MCP 的 LINE 工具 | `mcp.server.ts` | LINE |
 | 素材的格式檢查 | `marketing/material.service.ts`，呼叫 LINE 的訊息驗證 API | LINE。素材以自己的小寫 `channelType`（`line`、`fb`）區分，與 `Channel.channelType` 不同 |

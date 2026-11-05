@@ -41,10 +41,10 @@ description: >
 | 1 | 選 LINE 官方帳號 | `/dashboard/line/rich-menus?channelId=`，`OaSwitcher` 列出啟用中的 LINE 渠道 | `GET /channels` | 網址帶 channelId 會自動選中 | `channel.view`；側欄「渠道」群組依 `richmenu.manage` 隱藏 |
 | 2 | 建立圖文選單草稿 | 「建立 Rich Menu」→ 10 種版型 → `RichMenuEditor` | 背景圖 `POST /files/upload`（前端檢查比例、1MB、像素）；`POST /line/rich-menus` → `rich-menu.service.ts` `createRichMenu` | 只寫 DB，status `draft` | `richmenu.manage` / 頁面不擋，403 時顯示成「尚未建立任何 Rich Menu」 |
 | 3 | 編輯草稿 | 卡片「編輯」→ `rich-menus/[id]` | `PATCH /line/rich-menus/:id`；只有 `draft` 能改 | — | 同上 |
-| 4 | 發布 | 卡片「發布」或編輯頁「發布到 LINE」（發布的是**已存檔**內容） | `POST /:id/publish`：伺服器抓 `imageUrl` → LINE 建選單 → 上傳圖 → `selected` 時設預設 | 失敗變 `error`；設預設失敗只記 log | 同上；確認視窗依 `selected` 換文字（`apps/web/src/lib/rich-menu-confirm.ts`） |
-| 5 | 取消發布 | 已發布卡片「取消發布」 | `POST /:id/unpublish`：預設選單先 `DELETE /user/all/richmenu`，再刪 LINE 選單；LINE 404 視為已刪 | 回 `draft` | 同上 |
-| 6 | 綁定受眾 | 已發布卡片「綁定受眾」→ `RichMenuBindDialog`（只能選分群） | `POST /:id/bind-audience {segmentId}` → 解析 LINE uid → `rich-menu-bind` 佇列 → workers `rich-menu-bind.handler.ts` 每 500 人 bulk link | 回 `{queued}`；**失敗只在佇列**，不重試、畫面看不到 | 同上；分群清單要 `marketing.view` |
-| 7 | 複製、刪除 | 卡片「⋯」 | `POST /:id/duplicate`、`DELETE /:id`（只限 draft，硬刪） | 複製連 `selected` 一起複製 | 同上 |
+| 4 | 發布 | 卡片「發布」或編輯頁「發布到 LINE」（發布的是**已存檔**內容） | `POST /:id/publish` → `rich-menu.flow.ts` `publishRichMenuFlow`：交易內認領成 `publishing`（同選單或同渠道發布中回 409 `PUBLISH_IN_PROGRESS`，超過 5 分鐘可重新認領）→ 交易外抓 `imageUrl`、LINE 建選單、上傳圖、`isDefault` 時設預設（不先取消舊預設）→ 交易內寫 `published` | LINE 建好後失敗：補償刪除、變 `error`；下載圖失敗回原狀態；設預設失敗回 `warnings: ['DEFAULT_NOT_SET']`、不記成預設 | 同上；確認視窗依 `isDefault` 換文字（`apps/web/src/lib/rich-menu-confirm.ts`） |
+| 5 | 取消發布 | 已發布卡片「取消發布」 | `POST /:id/unpublish`：預設選單先 `GET /user/all/richmenu`，是這張才 `DELETE`，再刪 LINE 選單；LINE 404 視為已刪 | 回 `draft`，`isDefault` 保留 | 同上 |
+| 6 | 綁定受眾 | 已發布卡片「綁定受眾」→ `RichMenuBindDialog`（只能選分群） | `POST /:id/bind-audience {segmentId}` → 解析 LINE uid → 交易內 `enqueueJob`（outbox，payload 帶 `richMenuId`）→ `rich-menu-bind` 佇列 → workers `rich-menu-bind.handler.ts` 先確認選單仍 `published` 且 LINE ID 相同，再每 500 人 bulk link | 回 `{queued}`；**失敗只在佇列**，不重試、畫面看不到 | 同上；分群清單要 `marketing.view` |
+| 7 | 複製、刪除 | 卡片「⋯」 | `POST /:id/duplicate`、`DELETE /:id`（只限 draft，硬刪） | 複製連 `isDefault`、`selected` 一起複製 | 同上 |
 | 8 | 快速回覆預設組 | `/dashboard/line/quick-replies` → `PresetEditDialog` | `GET/POST/PATCH/DELETE /line/quick-reply-presets`；最多 13 顆、標籤 20 字、文字 300 字 | 收件匣 `MessageInput` 套用後附在訊息的 `quickReplies` | 讀取只驗登入；寫入 `quickreply.manage` / **建立鈕不隱藏** |
 | 9 | 收 LINE 訊息（系統） | LINE → `/api/v1/webhooks/line/:channelId` | 先驗簽（缺或錯 403、渠道類型不符 403、渠道不存在 200、憑證解不開 500）→ 回 200 → 背景 `processWebhookEvent` → `LinePlugin.parseWebhook` → `processInboundMessage` | 見下方「進站事件怎麼存」 | 公開，以 channelSecret HMAC 驗簽 |
 | 10 | LIFF／LINE Login 設定 | 渠道設定 `BotConfigForm`（渠道領域）填 LIFF ID、Login Channel ID | `PATCH /channels/:id {settings.liffConfig}`，格式 `1234567890-AbcdEfgh`、10 位數字 | 短連結在 LINE 內走 `/liff/redirect` 取 uid；優惠券以 ID token 驗身分（`apps/api/src/modules/coupon/line-id-token.ts`） | `channel.update` |
@@ -73,7 +73,7 @@ description: >
 - reply token：`selectSafeLineStrategy` 只在收到後 30 秒內用 reply，否則 push；reply 失敗補一次 push（規格 line-safe-reply）。`message.received` 事件帶 `replyToken`，對外 webhook 也會收到（AUDIT HOOK-01）。
 - 憑證：AES-256-GCM，金鑰 `CREDENTIAL_ENCRYPTION_KEY`（至少 32 字），API `apps/api/src/modules/channel/channel.service.ts` 與 workers `apps/workers/src/lib/credentials.ts` 各一份實作，**要一起改**；BYOK AI 金鑰共用同一把（AUDIT AI-01）。沒有金鑰輪替機制，換金鑰後所有渠道要重填憑證。本機從 UAT 同步的渠道憑證解不開是正常的。
 - 多個 LINE OA 要在同一個 provider，userId 才相同；LIFF 的 Login channel 也要在同一個 provider。
-- 圖文選單：只有 `draft` 能改、能刪；預設選單 LINE 一個 OA 只有一張，發布 `selected` 選單會先取消別張；綁定是快照，系統不記錄誰綁了哪張。
+- 圖文選單：只有 `draft` 能改、能刪；`isDefault`（所有好友的預設）與 `selected`（聊天室打開時展開）是兩個欄位，不要再混用；預設選單 LINE 一個 OA 只有一張，設預設由 LINE 直接取代，不要先取消全體預設；同渠道同時只有一張在發布中；綁定是快照，系統不記錄誰綁了哪張。
 - 下游轉發 `immediate` 模式會讓 CRM 完全不處理該 webhook；目標網址被擋時訊息就消失。改轉發邏輯不要拿掉 `claimForForward` 迴圈防護與 `isBlockedUrl`。
 - `/line-imagemap/*` 必須公開（LINE 匿名抓圖），寬度只允許 240／300／460／700／1040，baseUrl 不含副檔名。
 

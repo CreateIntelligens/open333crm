@@ -2,6 +2,18 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-05]
+
+### Changed
+
+- **圖文選單的發布、預設與分眾綁定改成入口開交易，預設與展開拆成兩個欄位**（#337 階段 4 第一批，change `migrate-line-tenant-ctx`）— 發布原本先呼叫 LINE、最後才寫資料庫，沒有並行控制：寫資料庫失敗時 LINE 上留下找不到的選單，同一個選單同時發布兩次會在 LINE 建出兩個。設預設前先取消全體預設，設預設失敗時所有好友都失去選單。`selected` 同時代表「所有好友的預設選單」與 LINE 的「聊天室打開時展開」，兩件事不能分開設定。現在：
+  - 發布拆成「交易內認領 → 交易外呼叫 LINE → 交易內寫入」。同一個選單或同一個渠道的其他選單正在發布時，回 HTTP 409 `PUBLISH_IN_PROGRESS`。停在發布中超過 5 分鐘視為中斷，可以重新發布。LINE 建好選單之後任何一步失敗，刪除剛建立的 LINE 選單並標成 `error`。每個 LINE 呼叫 30 秒逾時。
+  - 設預設不再先取消全體預設，由 LINE 以新選單取代。設預設失敗時，原本的預設不變，新選單不記成預設，回應的 `warnings` 帶 `DEFAULT_NOT_SET`，畫面顯示提示。下架時先查 LINE 目前的預設，是這張才取消。
+  - `rich_menus` 新增 `isDefault`（所有好友的預設選單），migration 以原本的 `selected` 填入。`selected` 改回 LINE 的原意，新建時預設展開。編輯頁拆成兩個選項；建立與修改的 API 新增 `isDefault`。
+  - 分眾綁定與解除綁定改在交易內寫進 outbox。Redis 無法使用時改回 200，由 outbox-relay 補送。workers 綁定前確認選單仍已發布、LINE 端的 ID 沒有變，否則跳過。
+  - 列表頁新增「發布中」狀態，發布失敗的選單顯示「發布」按鈕。圖文選單路由的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`。
+  - LINE 個人資料的同步改成「交易內讀取 → 交易外呼叫 LINE → 交易內寫入」，回應不變。
+
 ## [2026-11-04]
 
 ### Changed
