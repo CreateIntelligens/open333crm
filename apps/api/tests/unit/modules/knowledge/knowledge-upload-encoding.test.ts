@@ -33,9 +33,22 @@ vi.mock('#src/modules/knowledge/knowledge.service.js', () => ({
   checkOllamaHealth: async () => ({}),
   embedArticle: async () => ({}),
 }));
-vi.mock('#src/modules/upload/upload-validation.js', () => ({
-  assertUploadContent: async (input: { clientMime: string }) => ({ accepted: true, detectedMime: input.clientMime, reason: 'test' }),
-}));
+// 內容類型偵測（Magika）認不出不是 UTF-8 的文字：2026-11-04 UAT 上傳 Big5 CSV 回
+// 「File content type rejected: file content type is unknown」。假函式照這個行為，原本一律通過的
+// 假函式讓 #421 的測試沒發現 Big5 根本走不到解碼（AGENTS.md「A mock does only what the real code can do」）
+vi.mock('#src/modules/upload/upload-validation.js', async () => {
+  const { AppError } = await import('#src/shared/utils/response.js');
+  return {
+    assertUploadContent: async (input: { buffer: Buffer; clientMime: string }) => {
+      try {
+        new TextDecoder('utf-8', { fatal: true }).decode(input.buffer);
+      } catch {
+        throw new AppError('File content type rejected: file content type is unknown', 'INVALID_FILE_TYPE', 400);
+      }
+      return { accepted: true, detectedMime: input.clientMime, reason: 'test' };
+    },
+  };
+});
 vi.mock('#src/guards/rbac.guard.js', () => ({
   requirePermission: () => async () => {},
 }));
@@ -129,4 +142,14 @@ test('CSV that cannot be decoded is rejected and nothing is written', async () =
   assert.match(body.data.results[0].error ?? '', /UTF-8/);
   assert.equal(imported.length, 0);
   assert.equal(created.length, 0);
+});
+
+test('Big5 CSV from Taiwan Excel passes content detection and is split into readable QA articles', async () => {
+  // 「問題,答案\n退貨要幾天,七天內可退貨\n」的 Big5 位元組
+  const big5 = Buffer.from('b0ddc3442cb5aaaed70ab068b366ad6eb458a4d12ca443a4d1a4baa569b068b3660a', 'hex');
+  const res = await upload('faq.csv', big5);
+  assert.equal(res.statusCode, 200, res.body);
+  const body = res.json() as { data: { uploaded: number; failed: number; results: { success: boolean; error?: string }[] } };
+  assert.equal(body.data.failed, 0, JSON.stringify(body.data.results));
+  assert.deepEqual(imported, [[{ title: '退貨要幾天', content: '七天內可退貨', status: 'PUBLISHED' }]]);
 });

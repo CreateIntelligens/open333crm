@@ -89,6 +89,21 @@ export function decodeCsvText(buffer: Buffer): string {
   throw csvEncodingError();
 }
 
+/**
+ * @description 上傳的 CSV 在內容類型偵測之前先轉成 UTF-8（issue #421 後續）。
+ * 內容類型偵測（Magika）認不出 Big5 等非 UTF-8 文字，會在走到 decodeCsvText() 之前就拒絕；
+ * 先解碼成 UTF-8，偵測與解析都用同一份內容。不是 CSV 或是 xlsx（zip）時原樣回傳。
+ * 解不出時丟 CSV_ENCODING_UNREADABLE（同 decodeCsvText）。
+ * @param buffer 上傳的原始內容
+ * @param filename 上傳的檔名，以副檔名判斷是不是 CSV
+ * @returns 可交給內容類型偵測與解析的內容
+ */
+export function normalizeCsvUpload(buffer: Buffer, filename: string): Buffer {
+  if (!/\.csv$/i.test(filename)) return buffer;
+  if (buffer.subarray(0, 4).equals(Buffer.from('504b0304', 'hex'))) return buffer;
+  return Buffer.from(decodeCsvText(buffer), 'utf-8');
+}
+
 /** xlsx 是 zip（PK 開頭），其他一律當 CSV 文字：先自行解碼，不讓 XLSX 以單位元組讀 UTF-8。 */
 function readWorkbook(buffer: Buffer): XLSX.WorkBook {
   const isZip = buffer.subarray(0, 4).equals(Buffer.from('504b0304', 'hex'));

@@ -122,3 +122,33 @@ test('upload-content-detector', async () => {
     },
   );
 });
+
+// 偵測器常把列數少、內容是長中文的 CSV 判成 txt（2026-11-04 以真實 Magika 實測：一列中文 CSV 的 label 是 txt），
+// 副檔名是 .csv、政策允許 CSV 時，純文字視為 CSV（issue #421 後續）
+test('副檔名是 .csv 的純文字視為 CSV：偵測成 txt 也接受', async () => {
+  const fakeMagika = (label: string) => ({
+    identifyBytes: async () => ({ status: 'ok', prediction: { output: { label }, score: 0.99 } }),
+  });
+  const csv = Buffer.from('問題,答案\n退貨要幾天,七天內可退貨，請保留發票與完整包裝。\n', 'utf-8');
+  const accepted = await detectUploadContent(
+    { buffer: csv, filename: 'faq.csv', clientMime: 'text/csv', policy: UPLOAD_POLICIES.knowledge },
+    fakeMagika('txt'),
+  );
+  assert.equal(accepted.accepted, true, accepted.reason);
+  assert.equal(accepted.detectedMime, 'text/csv');
+
+  // 只放寬「純文字 ↔ CSV」：偵測成 HTML 的 .csv 仍拒絕
+  const html = await detectUploadContent(
+    { buffer: csv, filename: 'faq.csv', clientMime: 'text/csv', policy: UPLOAD_POLICIES.knowledge },
+    fakeMagika('html'),
+  );
+  assert.equal(html.accepted, false);
+
+  // 副檔名不是 .csv 的純文字不受影響
+  const txt = await detectUploadContent(
+    { buffer: csv, filename: 'faq.txt', clientMime: 'text/plain', policy: UPLOAD_POLICIES.knowledge },
+    fakeMagika('txt'),
+  );
+  assert.equal(txt.accepted, true);
+  assert.equal(txt.detectedMime, 'text/plain');
+});
