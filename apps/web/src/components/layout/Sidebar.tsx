@@ -221,7 +221,7 @@ function SectionLinks({ item, current, onNavigate }: { item: RailItem; current?:
               aria-current={link.id === current ? 'page' : undefined}
               className={cn(
                 'flex items-center rounded-md px-3 py-2 text-sm font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                link.id === current ? 'bg-primary-hover text-white' : 'text-tertiary-foreground hover:bg-black/5 hover:text-foreground',
+                link.id === current ? 'bg-primary text-white' : 'text-foreground hover:bg-black/5',
               )}
             >
               {link.label}
@@ -267,8 +267,8 @@ export function Sidebar() {
     cn(
       'flex h-9 w-9 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       isActive
-        ? 'bg-primary-hover text-white [--icon-cutout:hsl(var(--primary-hover))]'
-        : 'text-tertiary-foreground hover:bg-black/5 [--icon-cutout:hsl(var(--shell))]',
+        ? 'bg-primary text-white [--icon-cutout:hsl(var(--primary))]'
+        : 'text-foreground/80 hover:bg-black/5 hover:text-foreground [--icon-cutout:hsl(var(--shell))]',
     );
 
   return (
