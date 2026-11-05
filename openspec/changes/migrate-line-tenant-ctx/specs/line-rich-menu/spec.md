@@ -139,7 +139,7 @@ LINE 建立選單之後，任何一步失敗（上傳背景圖失敗、寫入資
 
 ### Requirement: 設預設失敗時保留原本的預設
 
-發布 `isDefault = true` 的選單時，LINE 設預設的 API 失敗，系統 SHALL 仍完成發布，但 MUST 把這個選單的 `isDefault` 記成 `false`，MUST NOT 修改同渠道其他選單的 `isDefault`，並在回應的 `warnings` 帶 `DEFAULT_NOT_SET`。LINE 上原本的預設選單 SHALL 不受影響。
+發布 `isDefault = true` 的選單時，LINE 設預設的 API 失敗，系統 SHALL 仍完成發布，但 MUST 把這個選單的 `isDefault` 記成 `false`，MUST NOT 修改同渠道其他選單的 `isDefault`，並在回應的 `warnings` 帶 `DEFAULT_NOT_SET`。LINE 回錯誤時，LINE 上原本的預設選單 SHALL 不受影響。逾時或連線中斷時，LINE 可能已經設好預設，系統不保證資料庫與 LINE 一致，由對帳收斂。
 
 #### Scenario: 設預設失敗
 - **WHEN** 同渠道的選單 A 是預設；管理員發布 `isDefault = true` 的選單 B，LINE 建立與上傳成功，設預設失敗

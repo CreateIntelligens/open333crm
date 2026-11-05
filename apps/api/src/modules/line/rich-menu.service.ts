@@ -389,7 +389,12 @@ export async function completeRichMenuPublish(
 }
 
 /** 發布失敗時放掉這次的認領：還沒呼叫 LINE 時回到原本的狀態，之後失敗一律是 error */
-export async function releaseRichMenuPublish(ctx: TenantCtx, id: string, claimedAt: Date, status: string) {
+export async function releaseRichMenuPublish(
+  ctx: TenantCtx,
+  id: string,
+  claimedAt: Date,
+  status: 'draft' | 'error',
+) {
   await ctx.tx.richMenu.updateMany({
     where: { id, tenantId: ctx.tenantId, status: 'publishing', updatedAt: claimedAt },
     data: { status, lineRichMenuId: null },

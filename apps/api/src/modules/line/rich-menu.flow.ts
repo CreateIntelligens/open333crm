@@ -117,7 +117,7 @@ async function compensate(
 }
 
 /** 放掉這次的認領。失敗時選單停在 publishing，5 分鐘後可以重新發布（design D3），所以只記 log */
-async function release(deps: { prisma: PrismaClient }, tenantId: string, id: string, claimedAt: Date, status: string) {
+async function release(deps: { prisma: PrismaClient }, tenantId: string, id: string, claimedAt: Date, status: 'draft' | 'error') {
   try {
     await inTenant(deps.prisma, tenantId, (scope) => releaseRichMenuPublish(scope, id, claimedAt, status));
   } catch (err) {
