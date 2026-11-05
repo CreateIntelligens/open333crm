@@ -22,4 +22,4 @@ export function richMenuUnpublishConfirm(isDefault: boolean): string {
 
 /** 發布成功但 LINE 設預設失敗（回應帶 DEFAULT_NOT_SET）時的提示 */
 export const RICH_MENU_DEFAULT_NOT_SET_NOTICE =
-  '選單已發布，但沒有設成所有好友的預設選單：LINE 設定預設時失敗。好友目前看到的選單沒有改變。請取消發布後再發布一次。';
+  '選單已發布，但沒有設成所有好友的預設選單：LINE 設定預設時失敗。好友目前看到的選單沒有改變。\n\n要設成預設，請取消發布，在編輯頁重新勾選「設為所有好友的預設選單」並儲存，再發布一次。';

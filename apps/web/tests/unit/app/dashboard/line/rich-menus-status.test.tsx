@@ -62,7 +62,10 @@ function card(name: string) {
 }
 
 test('列表頁顯示發布中與發布失敗：發布中沒有「發布」按鈕，發布失敗有', () => {
-  menus.push(menu('m1', '發布中的選單', 'publishing'), menu('m2', '發布失敗的選單', 'error'));
+  menus.push(
+    menu('m1', '發布中的選單', 'publishing', { updatedAt: new Date().toISOString() }),
+    menu('m2', '發布失敗的選單', 'error'),
+  );
   render(<RichMenusPage />);
 
   const publishing = card('發布中的選單');
@@ -82,4 +85,24 @@ test('發布回應帶 DEFAULT_NOT_SET：提示沒有設成所有好友的預設�
   fireEvent.click(within(card('預設選單')).getByRole('button', { name: /發布/ }));
   await waitFor(() => assert.equal(alertSpy.mock.calls.length, 1));
   assert.match(String(alertSpy.mock.calls[0][0]), /沒有設成.*預設/);
+  // 設預設失敗時 isDefault 記成 false，取消發布會保留 false：只取消發布再發布，不會再設預設
+  assert.match(String(alertSpy.mock.calls[0][0]), /重新勾選「設為所有好友的預設選單」/);
+});
+
+test('發布中斷的選單：發布中停留超過 5 分鐘，顯示「發布中斷」並有「發布」按鈕', () => {
+  const sixMinutesAgo = new Date(Date.now() - 6 * 60_000).toISOString();
+  const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
+  menus.push(
+    menu('m1', '中斷的選單', 'publishing', { updatedAt: sixMinutesAgo }),
+    menu('m2', '還在發布的選單', 'publishing', { updatedAt: oneMinuteAgo }),
+  );
+  render(<RichMenusPage />);
+
+  const interrupted = card('中斷的選單');
+  assert.ok(within(interrupted).getByText('發布中斷'));
+  assert.ok(within(interrupted).getByRole('button', { name: /^發布$/ }));
+
+  const running = card('還在發布的選單');
+  assert.ok(within(running).getByText('發布中'));
+  assert.ok(within(running).queryByRole('button', { name: /^發布$/ }) === null);
 });

@@ -29,6 +29,7 @@ import {
   richMenuPublishConfirm,
   richMenuUnpublishConfirm,
 } from '@/lib/rich-menu-confirm';
+import { isRichMenuPublishInterrupted } from '@/lib/rich-menu-status';
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: '#94a3b8' },
@@ -36,6 +37,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   published: { label: '已發布', color: '#22c55e' },
   error: { label: '發布失敗', color: '#ef4444' },
 };
+const INTERRUPTED_LABEL = { label: '發布中斷', color: '#ef4444' };
 
 export default function RichMenusPage() {
   const router = useRouter();
@@ -198,10 +200,13 @@ function RichMenuCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [bindOpen, setBindOpen] = useState(false);
-  const statusInfo = STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
+  const interrupted = isRichMenuPublishInterrupted(richMenu);
+  const statusInfo = interrupted
+    ? INTERRUPTED_LABEL
+    : STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
   const isPublished = richMenu.status === 'published';
-  // 發布失敗的選單可以重新發布；發布中的選單要等它完成或中斷超過 5 分鐘
-  const canPublish = richMenu.status === 'draft' || richMenu.status === 'error';
+  // 發布失敗或中斷的選單可以重新發布；還在發布中的選單要等它完成或中斷超過 5 分鐘
+  const canPublish = richMenu.status === 'draft' || richMenu.status === 'error' || interrupted;
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">

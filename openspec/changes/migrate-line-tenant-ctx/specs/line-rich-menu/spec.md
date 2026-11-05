@@ -111,7 +111,7 @@ LINE 建立選單之後，任何一步失敗（上傳背景圖失敗、寫入資
 
 ### Requirement: 發布中斷或失敗的選單可以重新發布
 
-`status` 是 `error` 的選單 SHALL 可以重新發布。`status` 是 `publishing`、而且最後更新超過 5 分鐘的選單，視為發布中斷，SHALL 可以重新發布。列表頁 SHALL 把 `publishing` 顯示成「發布中」，並為 `error` 的選單顯示「發布」按鈕。
+`status` 是 `error` 的選單 SHALL 可以重新發布。`status` 是 `publishing`、而且最後更新超過 5 分鐘的選單，視為發布中斷，SHALL 可以重新發布。中斷的請求恢復後，MUST NOT 修改另一個請求重新認領的選單。列表頁與編輯頁 SHALL 把未超過 5 分鐘的 `publishing` 顯示成「發布中」、超過 5 分鐘的顯示成「發布中斷」，並為 `error` 與發布中斷的選單顯示發布按鈕。
 
 #### Scenario: 重新發布失敗的選單
 - **WHEN** 管理員發布一個 `status=error` 的選單，LINE 都成功
@@ -125,8 +125,16 @@ LINE 建立選單之後，任何一步失敗（上傳背景圖失敗、寫入資
 - **WHEN** 選單的 `status` 是 `publishing`，最後更新是 1 分鐘前，管理員發布這個選單
 - **THEN** 回應 409 `PUBLISH_IN_PROGRESS`，不呼叫 LINE
 
+#### Scenario: 中斷的請求恢復後不改到新的認領
+- **WHEN** 請求 A 認領選單後中斷超過 5 分鐘，請求 B 重新認領同一個選單；之後請求 A 恢復，寫入發布結果或把選單改成 `error`
+- **THEN** 請求 A 的寫入不生效，選單仍是 B 認領的 `publishing`；B 寫入發布結果後，選單是 `published`，`lineRichMenuId` 是 B 建立的選單
+
+#### Scenario: 列表頁與編輯頁顯示發布中斷
+- **WHEN** 頁面載入一個 `publishing`、最後更新是 6 分鐘前的選單
+- **THEN** 狀態顯示「發布中斷」，有發布按鈕
+
 #### Scenario: 列表頁顯示發布中與發布失敗
-- **WHEN** 列表頁載入一個 `publishing` 的選單與一個 `error` 的選單
+- **WHEN** 列表頁載入一個 `publishing`、最後更新是 1 分鐘前的選單，與一個 `error` 的選單
 - **THEN** 前者的狀態顯示「發布中」，沒有「發布」按鈕；後者顯示「發布」按鈕
 
 ### Requirement: 設預設失敗時保留原本的預設

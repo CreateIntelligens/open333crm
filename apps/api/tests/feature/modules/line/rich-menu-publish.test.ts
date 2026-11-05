@@ -14,6 +14,12 @@ import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import richMenuRoutes from '#src/modules/line/rich-menu.routes.js';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
+import { inTenant } from '#src/lib/tenant-ctx.js';
+import {
+  claimRichMenuForPublish,
+  completeRichMenuPublish,
+  releaseRichMenuPublish,
+} from '#src/modules/line/rich-menu.service.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -182,5 +188,33 @@ describe('發布的認領與並行', () => {
     assert.equal(res.body.error?.code, 'PUBLISH_IN_PROGRESS');
     assert.equal(createCalls, 0);
     assert.equal(await statusOf(menu.id), 'publishing');
+  });
+});
+
+describe('認領的歸屬', () => {
+  test('中斷的請求恢復後不能改到新的認領：舊認領的放掉與寫入都不生效，新認領照常完成', async () => {
+    const menu = await newMenu((await newChannel('owner')).id);
+    const claimOf = () => inTenant(tenantDb, T, (scope) => claimRichMenuForPublish(scope, menu.id));
+
+    await claimOf();
+    // 請求 A 中斷超過 5 分鐘：它的認領時間就是停留在資料庫上的 updatedAt
+    await owner.$executeRaw`UPDATE rich_menus SET "updatedAt" = now() - interval '6 minutes' WHERE id = ${menu.id}::uuid`;
+    const staleAt = (await owner.richMenu.findUniqueOrThrow({ where: { id: menu.id } })).updatedAt;
+
+    const b = await claimOf();
+
+    await inTenant(tenantDb, T, (scope) => releaseRichMenuPublish(scope, menu.id, staleAt, 'error'));
+    assert.equal(await statusOf(menu.id), 'publishing', '舊請求把新認領改成 error');
+
+    const lateA = await inTenant(tenantDb, T, (scope) =>
+      completeRichMenuPublish(scope, menu.id, staleAt, { lineRichMenuId: 'rm-line-a', isDefault: false }),
+    );
+    assert.equal(lateA, null);
+
+    const done = await inTenant(tenantDb, T, (scope) =>
+      completeRichMenuPublish(scope, menu.id, b.claimedAt, { lineRichMenuId: 'rm-line-b', isDefault: false }),
+    );
+    assert.equal(done?.status, 'published');
+    assert.equal(done?.lineRichMenuId, 'rm-line-b');
   });
 });

@@ -51,14 +51,14 @@ export const DEFAULT_NOT_SET = 'DEFAULT_NOT_SET';
  */
 export async function publishRichMenuFlow(deps: { prisma: PrismaClient }, tenantId: string, id: string) {
   const claim = await inTenant(deps.prisma, tenantId, (scope) => claimRichMenuForPublish(scope, id));
-  const { menu, accessToken } = claim;
+  const { menu, accessToken, claimedAt } = claim;
 
   let image;
   try {
     image = await fetchRichMenuImage(menu.imageUrl);
   } catch (err) {
     // 還沒呼叫 LINE：回到發布前的狀態（中斷後重新發布的選單沒有可回去的狀態，記成 error）
-    await release(deps, tenantId, id, menu.status === 'draft' ? 'draft' : 'error');
+    await release(deps, tenantId, id, claimedAt, menu.status === 'draft' ? 'draft' : 'error');
     throw err;
   }
 
@@ -80,7 +80,7 @@ export async function publishRichMenuFlow(deps: { prisma: PrismaClient }, tenant
 
     const created = lineRichMenuId;
     const published = await inTenant(deps.prisma, tenantId, (scope) =>
-      completeRichMenuPublish(scope, id, { lineRichMenuId: created, isDefault: defaultSet }),
+      completeRichMenuPublish(scope, id, claimedAt, { lineRichMenuId: created, isDefault: defaultSet }),
     );
     if (!published) {
       throw new AppError('發布逾時，這個圖文選單已被重新發布，請重新整理後確認', 'PUBLISH_IN_PROGRESS', 409);
@@ -91,7 +91,7 @@ export async function publishRichMenuFlow(deps: { prisma: PrismaClient }, tenant
     if (lineRichMenuId) {
       await compensate(accessToken, id, lineRichMenuId, defaultSet ? claim.previousDefaultLineId : undefined);
     }
-    await release(deps, tenantId, id, 'error');
+    await release(deps, tenantId, id, claimedAt, 'error');
     throw err;
   }
 }
@@ -116,10 +116,10 @@ async function compensate(
   }
 }
 
-/** 放掉認領。失敗時選單停在 publishing，5 分鐘後可以重新發布（design D3），所以只記 log */
-async function release(deps: { prisma: PrismaClient }, tenantId: string, id: string, status: string) {
+/** 放掉這次的認領。失敗時選單停在 publishing，5 分鐘後可以重新發布（design D3），所以只記 log */
+async function release(deps: { prisma: PrismaClient }, tenantId: string, id: string, claimedAt: Date, status: string) {
   try {
-    await inTenant(deps.prisma, tenantId, (scope) => releaseRichMenuPublish(scope, id, status));
+    await inTenant(deps.prisma, tenantId, (scope) => releaseRichMenuPublish(scope, id, claimedAt, status));
   } catch (err) {
     logger.error(`[RichMenu] release publish claim failed id=${id}: ${(err as Error).message}`);
   }

@@ -311,6 +311,11 @@ export interface PublishClaim {
   accessToken: string;
   /** 發布前同渠道的預設選單在 LINE 端的 id；補償時把預設設回這個選單 */
   previousDefaultLineId: string | null;
+  /**
+   * 認領時寫入的 updatedAt，當作這次認領的憑證。完成與放掉都以它為條件：
+   * 中斷超過 5 分鐘的請求恢復後，不會改到另一個請求重新認領的選單。
+   */
+  claimedAt: Date;
 }
 
 /**
@@ -324,7 +329,8 @@ export async function claimRichMenuForPublish(ctx: TenantCtx, id: string): Promi
     throw new AppError('此 Rich Menu 已發布', 'ALREADY_PUBLISHED', 400);
   }
 
-  const staleBefore = new Date(Date.now() - STALE_PUBLISHING_MS);
+  const claimedAt = new Date();
+  const staleBefore = new Date(claimedAt.getTime() - STALE_PUBLISHING_MS);
   const busy = await ctx.tx.richMenu.count({
     where: {
       tenantId: ctx.tenantId,
@@ -342,7 +348,7 @@ export async function claimRichMenuForPublish(ctx: TenantCtx, id: string): Promi
           tenantId: ctx.tenantId,
           OR: [{ status: { in: ['draft', 'error'] } }, { status: 'publishing', updatedAt: { lt: staleBefore } }],
         },
-        data: { status: 'publishing' },
+        data: { status: 'publishing', updatedAt: claimedAt },
       });
   if (count === 0) {
     throw new AppError('這個 LINE 渠道有圖文選單正在發布，請稍後再試', 'PUBLISH_IN_PROGRESS', 409);
@@ -352,20 +358,21 @@ export async function claimRichMenuForPublish(ctx: TenantCtx, id: string): Promi
   const previousDefault = await ctx.tx.richMenu.findFirst({
     where: { tenantId: ctx.tenantId, channelId: menu.channelId, status: 'published', isDefault: true, NOT: { id } },
   });
-  return { menu, accessToken, previousDefaultLineId: previousDefault?.lineRichMenuId ?? null };
+  return { menu, accessToken, previousDefaultLineId: previousDefault?.lineRichMenuId ?? null, claimedAt };
 }
 
 /**
- * 交易 2：寫入發布結果。選單已不是 publishing（中斷後被重新認領）時回 null，呼叫端要補償。
+ * 交易 2：寫入發布結果。這次的認領已不在（中斷後被重新認領）時回 null，呼叫端要補償。
  * isDefault 是 LINE 設預設的結果；成功時同渠道其他已發布的選單不再是預設。
  */
 export async function completeRichMenuPublish(
   ctx: TenantCtx,
   id: string,
+  claimedAt: Date,
   result: { lineRichMenuId: string; isDefault: boolean },
 ) {
   const { count } = await ctx.tx.richMenu.updateMany({
-    where: { id, tenantId: ctx.tenantId, status: 'publishing' },
+    where: { id, tenantId: ctx.tenantId, status: 'publishing', updatedAt: claimedAt },
     data: { status: 'published', lineRichMenuId: result.lineRichMenuId, publishedAt: new Date(), isDefault: result.isDefault },
   });
   if (count === 0) return null;
@@ -381,10 +388,10 @@ export async function completeRichMenuPublish(
   return menu;
 }
 
-/** 發布失敗時放掉認領：還沒呼叫 LINE 時回到原本的狀態，之後失敗一律是 error */
-export async function releaseRichMenuPublish(ctx: TenantCtx, id: string, status: string) {
+/** 發布失敗時放掉這次的認領：還沒呼叫 LINE 時回到原本的狀態，之後失敗一律是 error */
+export async function releaseRichMenuPublish(ctx: TenantCtx, id: string, claimedAt: Date, status: string) {
   await ctx.tx.richMenu.updateMany({
-    where: { id, tenantId: ctx.tenantId, status: 'publishing' },
+    where: { id, tenantId: ctx.tenantId, status: 'publishing', updatedAt: claimedAt },
     data: { status, lineRichMenuId: null },
   });
 }

@@ -15,12 +15,14 @@ import {
 } from '@/hooks/useRichMenus';
 
 import { richMenuPublishConfirm, richMenuUnpublishConfirm, RICH_MENU_DEFAULT_NOT_SET_NOTICE } from '@/lib/rich-menu-confirm';
+import { isRichMenuPublishInterrupted, isRichMenuPublishing } from '@/lib/rich-menu-status';
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: '#94a3b8' },
   publishing: { label: '發布中', color: '#f59e0b' },
   published: { label: '已發布', color: '#22c55e' },
   error: { label: '發布失敗', color: '#ef4444' },
 };
+const INTERRUPTED_LABEL = { label: '發布中斷', color: '#ef4444' };
 
 export default function EditRichMenuPage() {
   const router = useRouter();
@@ -34,10 +36,15 @@ export default function EditRichMenuPage() {
   const [error, setError] = useState<string | null>(null);
   const isPublished = richMenu?.status === 'published';
   // 另一個請求正在發布：不能編輯、不能再發布，等它完成或中斷超過 5 分鐘
-  const isPublishing = richMenu?.status === 'publishing';
-  const statusInfo = richMenu
-    ? STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' }
-    : null;
+  const isPublishing = richMenu ? isRichMenuPublishing(richMenu) : false;
+  // 發布中斷：可以重新發布；狀態仍是發布中，API 不接受修改
+  const interrupted = richMenu ? isRichMenuPublishInterrupted(richMenu) : false;
+  const locked = isPublished || isPublishing || interrupted;
+  const statusInfo = !richMenu
+    ? null
+    : interrupted
+      ? INTERRUPTED_LABEL
+      : STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
 
   useEffect(() => {
     if (!richMenu) return;
@@ -138,6 +145,11 @@ export default function EditRichMenuPage() {
               此 Rich Menu 正在發布到 LINE，請稍後重新整理。
             </div>
           )}
+          {interrupted && (
+            <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-sm text-warning">
+              此 Rich Menu 的發布中斷了，請按「發布到 LINE」重新發布。
+            </div>
+          )}
 
           {isLoading && <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>}
 
@@ -155,12 +167,12 @@ export default function EditRichMenuPage() {
 
           {draft && (
             <div className="space-y-4">
-              <fieldset disabled={isPublished || isPublishing} className={isPublished || isPublishing ? 'opacity-60' : ''}>
+              <fieldset disabled={locked} className={locked ? 'opacity-60' : ''}>
                 <RichMenuEditor draft={draft} onChange={setDraft} />
               </fieldset>
               <div className="sticky bottom-0 -mx-6 flex justify-end gap-2 border-t bg-white px-6 py-3">
                 <Button variant="outline" onClick={backToList}>取消</Button>
-                {!isPublished && !isPublishing && (
+                {!locked && (
                   <Button variant="outline" onClick={handleSave} disabled={saving || busy}>
                     {saving ? '儲存中…' : '儲存草稿'}
                   </Button>

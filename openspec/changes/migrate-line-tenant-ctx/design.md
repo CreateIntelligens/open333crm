@@ -35,10 +35,11 @@ line-oa-laravel 以 Redis 的全域寫入鎖（`Cache::lock('richmenus:write')`�
 1. 交易 1（`inTenant`）：
    - 取渠道的交易級 advisory lock：`pg_advisory_xact_lock(hashtextextended('rich-menu-publish:<channelId>', 0))`，寫法同 `sla.service.ts`。
    - 同一個渠道有其他選單是 `publishing`，而且 `updatedAt` 在 5 分鐘內：回 409 `PUBLISH_IN_PROGRESS`。
-   - 條件更新認領：`updateMany where { id, tenantId, OR: [status in (draft, error), status = publishing AND updatedAt < now - 5 分鐘] }`，改成 `publishing`。`count = 0` 時，依目前狀態回 400 `ALREADY_PUBLISHED` 或 409 `PUBLISH_IN_PROGRESS`。
+   - 條件更新認領：`updateMany where { id, tenantId, OR: [status in (draft, error), status = publishing AND updatedAt < now - 5 分鐘] }`，改成 `publishing`，並把 `updatedAt` 寫成認領時間 `claimedAt`。`count = 0` 時，依目前狀態回 400 `ALREADY_PUBLISHED` 或 409 `PUBLISH_IN_PROGRESS`。
+   - `claimedAt` 是這次認領的憑證。交易 2 與放掉認領都以 `status = publishing AND updatedAt = claimedAt` 為條件：中斷超過 5 分鐘的請求恢復後，選單已被另一個請求重新認領，`updatedAt` 不同，舊請求的寫入不生效。做法同 Laravel `Cache::lock` 釋放時比對擁有者。
    - 讀渠道憑證，回傳 access token 與選單內容。
 2. 交易外：下載背景圖、建立 LINE 選單（`selected` 送展開狀態）、上傳背景圖。`isDefault` 時設預設（D4）。這時選單仍是 `publishing`，同一個渠道的其他發布被擋下，所以設預設不會和另一個發布交錯。
-3. 交易 2：條件更新 `where { id, status: publishing }` 寫入 `published`、`lineRichMenuId`、`publishedAt`、`isDefault`。設預設成功時，同渠道其他已發布選單的 `isDefault` 改成 false。草稿的 `isDefault` 是「發布時設成預設」的設定，不動，與搬遷前只清已發布選單的 `selected` 相同。
+3. 交易 2：條件更新 `where { id, status: publishing, updatedAt: claimedAt }` 寫入 `published`、`lineRichMenuId`、`publishedAt`、`isDefault`。設預設成功時，同渠道其他已發布選單的 `isDefault` 改成 false。草稿的 `isDefault` 是「發布時設成預設」的設定，不動，與搬遷前只清已發布選單的 `selected` 相同。
 
 advisory lock 只在交易 1 內持有，所以 LINE 呼叫期間不佔連線，也不佔鎖。「同一個渠道只有一個 `publishing`」由交易 1 的檢查保證：檢查與認領在同一把鎖內。
 
@@ -46,7 +47,7 @@ advisory lock 只在交易 1 內持有，所以 LINE 呼叫期間不佔連線，
 
 ### D2. 補償刪除
 
-LINE 建立選單之後，下列任一情況，flow 呼叫 LINE 刪除剛建立的選單，再以另一個交易把 `status` 改成 `error`（條件：`status = publishing`）：
+LINE 建立選單之後，下列任一情況，flow 呼叫 LINE 刪除剛建立的選單，再以另一個交易把 `status` 改成 `error`（條件：`status = publishing` 而且 `updatedAt = claimedAt`）：
 
 - 上傳背景圖失敗。
 - 交易 2 丟出錯誤，或條件更新 `count = 0`（中斷超過 5 分鐘，被另一個請求重新認領）。
@@ -104,8 +105,8 @@ line-oa-laravel 的排程工作以 `expectedJobId` 做同樣的事：工作執�
 | 下載背景圖 | 回到發布前的狀態（中斷後重新發布的選單記成 `error`） | 管理員修正圖片後重按 | 不呼叫 LINE |
 | 建立 LINE 選單（含逾時、連不上） | `error` | 管理員重按 | LINE 上沒有新選單 |
 | 上傳圖、交易 2 | LINE 選單已補償刪除，`error` | 管理員重按 | LINE 上最多一個新選單；補償失敗時留下孤兒（log） |
-| 補償後寫 `error` 失敗、處理程序中途結束 | `publishing` | 5 分鐘後管理員重按 | 可能留下孤兒 |
-| 設預設 | `published`、`isDefault=false`；LINE 上原本的預設不變 | 管理員取消發布再發布 | 資料庫與 LINE 一致 |
+| 補償後寫 `error` 失敗、處理程序中途結束 | `publishing`；5 分鐘後頁面顯示「發布中斷」 | 管理員重按發布 | 可能留下孤兒 |
+| 設預設 | `published`、`isDefault=false`；LINE 上原本的預設不變 | 管理員取消發布，重新勾選預設並儲存，再發布 | 資料庫與 LINE 一致 |
 | 取消發布的 LINE 呼叫 | 不變 | 管理員重按 | LINE 404 視為已刪除 |
 | 綁定工作送出（outbox） | outbox 列 | outbox-relay | 至少一次 |
 | 綁定工作執行 | 佇列的 failed set | BullMQ 重試、bull-board 手動重送 | 綁定是覆寫；選單已下架或已換 id 時跳過 |

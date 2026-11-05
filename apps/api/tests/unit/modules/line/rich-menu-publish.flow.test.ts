@@ -31,6 +31,7 @@ function matches(row: Row, where: Row = {}): boolean {
       if ('gte' in cond) return row[key] >= cond.gte;
       if ('not' in cond) return row[key] !== cond.not;
     }
+    if (cond instanceof Date) return row[key] instanceof Date && row[key].getTime() === cond.getTime();
     return row[key] === cond;
   });
 }
@@ -59,7 +60,8 @@ function db() {
       updateMany: async ({ where, data }: { where: Row; data: Row }) => {
         if (failWrite?.(data)) throw new Error('database down');
         const rows = menus.filter((m) => matches(m, where));
-        for (const m of rows) Object.assign(m, data, { updatedAt: new Date() });
+        // 與 Prisma 的 @updatedAt 相同：data 有寫 updatedAt 時用寫入的值
+        for (const m of rows) Object.assign(m, { updatedAt: new Date() }, data);
         return { count: rows.length };
       },
     },

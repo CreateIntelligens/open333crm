@@ -24,7 +24,7 @@
 | 狀態 | 意思 |
 | --- | --- |
 | `draft` | 只存在於本系統，LINE 上沒有 |
-| `publishing` | 發布中：已認領，正在呼叫 LINE |
+| `publishing` | 發布中：已認領，正在呼叫 LINE。停留超過 5 分鐘時畫面顯示「發布中斷」，可以重新發布 |
 | `published` | 已在 LINE 建立，`lineRichMenuId` 記錄 LINE 給的 ID |
 | `error` | 發布過程失敗，可以重新發布 |
 
@@ -45,7 +45,7 @@
 
 - 下載背景圖失敗：還沒呼叫 LINE，狀態回到發布前。
 - LINE 建好選單之後失敗（上傳失敗、寫入失敗）：刪除剛建立的 LINE 選單，狀態改成 `error`。設預設已成功時，先把預設設回原本的選單。刪除也失敗時，LINE 上留下孤兒選單，log 記下 LINE 端的 ID。
-- 設預設失敗：仍然發布，但這張選單不記成預設，LINE 上原本的預設不變，回應的 `warnings` 帶 `DEFAULT_NOT_SET`，畫面顯示提示。
+- 設預設失敗：仍然發布，但這張選單不記成預設，LINE 上原本的預設不變，回應的 `warnings` 帶 `DEFAULT_NOT_SET`，畫面顯示提示。要再設成預設，管理員取消發布、重新勾選預設並儲存，再發布。
 
 **下架**（`POST /line/rich-menus/:id/unpublish`）：預設選單先查 LINE 目前的預設，是這張才取消預設；接著從 LINE 刪除選單，狀態回到 `draft`。LINE 回 404 時視為已經不存在，照樣清掉本地狀態。`isDefault` 保留，重新發布時仍設成預設。
 

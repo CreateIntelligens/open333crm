@@ -77,3 +77,9 @@
 - [x] 9.7 更新 `docs/ref/features/`、`docs/ref/DATABASE-ERD.md` 與 `.claude/skills/feature-line/` 中描述圖文選單發布、預設與綁定的段落；另外更新 `docs/ref/modules/EVENTS.md`、`CHANNEL-PLUGINS.md` 與 AUDIT 中程式的位置
 - [x] 9.8 `node scripts/validate-openspec.mjs migrate-line-tenant-ctx` 通過；歸檔前後比較「略過 N 則」
 - [ ] 9.9 開對帳排程的 issue（草稿在 `tmp/圖文選單對帳-issue-草稿.md`，發出前給使用者確認），在 design 的已知限制補上 issue 編號
+
+## 10. review-loop 第 1 輪的修正
+
+- [x] 10.1 在 `rich-menu-publish.test.ts` 新增「中斷的請求恢復後不改到新的認領」。認領把 `updatedAt` 寫成 `claimedAt`，交易 2 與放掉認領以 `updatedAt = claimedAt` 為條件。突變驗證：放掉認領拿掉 `updatedAt` 條件、交易 2 拿掉 `updatedAt` 條件，各讓這項失敗
+- [x] 10.2 先寫會失敗的測試：`rich-menus-status.test.tsx` 新增「發布中斷的選單」；新增 `rich-menu-edit-status.test.tsx`，編輯頁發布中斷時有「發布到 LINE」、沒有「儲存草稿」，還在發布中時兩個按鈕都沒有。新增 `apps/web/src/lib/rich-menu-status.ts`，列表頁與編輯頁把超過 5 分鐘的 `publishing` 顯示成「發布中斷」並顯示發布按鈕
+- [x] 10.3 `DEFAULT_NOT_SET` 的提示改成「取消發布，重新勾選預設並儲存，再發布」：設預設失敗時 `isDefault` 記成 `false`，取消發布保留 `false`，只取消發布再發布不會再設預設。`rich-menus-status.test.tsx` 先加上提示內容的檢查，修正前以 assertion 失敗
