@@ -37,7 +37,7 @@ export default function ContactsPage() {
       <Topbar title="聯繫人" description="所有從各渠道傳訊息進來的客人，跨渠道的同一位客人會合併成一筆">
         <SearchInput placeholder="搜尋聯繫人" onSearch={handleSearch} className="w-[337px]" />
       </Topbar>
-      <div className="flex-1 overflow-auto px-8 pb-8">
+      <div className="flex-1 overflow-auto px-7 pb-7">
         <ContactList contacts={contacts} isLoading={isLoading} />
         {total > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-7 pl-3 pt-5">

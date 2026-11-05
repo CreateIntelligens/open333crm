@@ -95,7 +95,7 @@ export default function PlanPage() {
   const planHint = PLANS.find((p) => p.slug === targetPlan)?.hint ?? '';
 
   return (
-    <div className="px-8 pb-10 pt-7">
+    <div className="px-7 pb-10 pt-7">
       <div className="flex max-w-[720px] flex-col gap-5">
         {/* 標題 */}
         <div className="flex flex-col gap-1">

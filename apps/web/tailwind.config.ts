@@ -7,6 +7,16 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // 字級依設計師 11/05 決定（約 90%，大字縮小、最小 12px 不變）；改回來刪掉 fontSize 這段即可
+      fontSize: {
+        xs: ["0.75rem", { lineHeight: "1rem" }],
+        sm: ["0.8125rem", { lineHeight: "1.25rem" }],
+        base: ["0.875rem", { lineHeight: "1.375rem" }],
+        lg: ["1rem", { lineHeight: "1.5rem" }],
+        xl: ["1.125rem", { lineHeight: "1.625rem" }],
+        "2xl": ["1.375rem", { lineHeight: "1.875rem" }],
+        "3xl": ["1.625rem", { lineHeight: "2.125rem" }],
+      },
       fontFamily: {
         // 由 next/font 注入的 CSS 變數；英數走 Inter、中文走 Noto Sans TC
         sans: ['var(--font-sans)', 'var(--font-zh)', 'system-ui', 'sans-serif'],

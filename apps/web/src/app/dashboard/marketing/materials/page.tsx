@@ -86,7 +86,7 @@ export default function MaterialsListPage() {
   return (
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="行銷" />
-      <main className="flex-1 overflow-y-auto px-8 pb-8">
+      <main className="flex-1 overflow-y-auto px-7 pb-7">
         <div className="mx-auto max-w-6xl space-y-5">
           <header className="flex items-start justify-between">
             <div>

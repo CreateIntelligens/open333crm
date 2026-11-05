@@ -122,7 +122,7 @@ export default function CasesPage() {
         </Button>
       </Topbar>
 
-      <div className="flex flex-1 flex-col gap-5 overflow-auto px-8 pb-8">
+      <div className="flex flex-1 flex-col gap-5 overflow-auto px-7 pb-7">
         <CaseDashboardStats
           active={activeStat}
           onSelect={(key) => {

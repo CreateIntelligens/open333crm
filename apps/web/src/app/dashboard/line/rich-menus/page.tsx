@@ -105,11 +105,11 @@ export default function RichMenusPage() {
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
 
-      <div className="border-b bg-background px-8 py-3">
+      <div className="border-b bg-background px-7 py-3">
         <OaSwitcher value={channelId} onChange={handleOaChange} />
       </div>
 
-      <main className="flex-1 overflow-y-auto px-8 pb-8">
+      <main className="flex-1 overflow-y-auto px-7 pb-7">
         <div className="mx-auto max-w-6xl space-y-5">
           <header className="flex items-start justify-between">
             <div>

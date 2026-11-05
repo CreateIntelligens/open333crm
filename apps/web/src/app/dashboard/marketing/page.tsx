@@ -833,7 +833,7 @@ export default function MarketingPage() {
           {meta.action}
         </Button>
       </Topbar>
-      <div className="flex-1 overflow-auto px-8 pb-8">
+      <div className="flex-1 overflow-auto px-7 pb-7">
         {activeTab === 'campaigns' && <CampaignTab {...tabProps} />}
         {activeTab === 'broadcasts' && <BroadcastTab {...tabProps} />}
         {activeTab === 'segments' && <SegmentTab {...tabProps} />}

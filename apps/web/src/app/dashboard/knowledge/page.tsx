@@ -219,7 +219,7 @@ export default function KnowledgePage() {
       </Topbar>
 
       {/* Top-level page tabs: articles vs semantic search */}
-      <div className="flex-1 overflow-hidden px-8">
+      <div className="flex-1 overflow-hidden px-7">
         <Tabs value={pageTab} onValueChange={() => undefined}>
 
           {/* ── Articles Tab ──────────────────────────────────── */}
@@ -304,7 +304,7 @@ export default function KnowledgePage() {
           {/* ── Semantic Search Tab ───────────────────────────── */}
           <TabsContent value="search" className="mt-0">
             {/* 版面依 Figma 6.2.1／6.2.2 語意搜尋：搜尋框＋搜尋按鈕，結果為「標題｜匹配度」列表 */}
-            <div className="flex flex-col gap-7 pb-8">
+            <div className="flex flex-col gap-7 pb-7">
               <div className="flex max-w-[646px] items-center gap-4">
                 <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" strokeWidth={1.8} />
@@ -365,7 +365,7 @@ export default function KnowledgePage() {
           </TabsContent>
 
           {/* ── 回報調教 Tab ──────────────────────────────────── */}
-          <TabsContent value="feedback" className="mt-0 flex flex-col pb-8">
+          <TabsContent value="feedback" className="mt-0 flex flex-col pb-7">
             {/* 說明文字移到頁面標題列 */}
             <div>
               {feedbackLoading ? (
@@ -437,14 +437,14 @@ export default function KnowledgePage() {
 
           {/* ── Embedding Settings Tab ────────────────────────── */}
           <TabsContent value="embedding" className="mt-0">
-            <div className="pb-8">
+            <div className="pb-7">
               <EmbeddingSettings />
             </div>
           </TabsContent>
 
           {/* ── Chat & Prompt Settings Tab ────────────────────── */}
           <TabsContent value="chat" className="mt-0">
-            <div className="pb-8">
+            <div className="pb-7">
               <ChatPromptSettings />
             </div>
           </TabsContent>

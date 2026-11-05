@@ -45,7 +45,7 @@ export default function SettingsPage() {
 
   return (
     // 依 Figma：設定頁不再有上方標題列，內容區內距 32，最上方是麵包屑
-    <div className="flex min-h-full flex-col gap-3 p-8">
+    <div className="flex min-h-full flex-col gap-3 p-7">
       <p className="text-sm leading-5 text-foreground">設定 &gt; {SETTINGS_TABS.find((tab) => tab.key === activeTab)?.label}</p>
 
       <div>
@@ -68,7 +68,7 @@ export default function SettingsPage() {
 }
 
 function PermissionDenied() {
-  return <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">你沒有查看此設定的權限。</div>;
+  return <div className="rounded-lg border border-dashed p-7 text-center text-sm text-muted-foreground">你沒有查看此設定的權限。</div>;
 }
 
 function A2ASettings() {

@@ -19,7 +19,7 @@ export default function EditShortLinkPage() {
   }
   if (error || !link) {
     return (
-      <div className="px-8 pt-8 text-sm text-muted-foreground">
+      <div className="px-7 pt-7 text-sm text-muted-foreground">
         找不到這個短連結，可能已被刪除。
         <Link href="/dashboard/shortlinks/links" className="ml-2 text-primary hover:text-primary-hover">回連結管理</Link>
       </div>

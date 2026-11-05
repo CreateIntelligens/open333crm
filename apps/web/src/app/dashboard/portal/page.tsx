@@ -258,7 +258,7 @@ export default function PortalPage() {
           </Button>
         )}
       </Topbar>
-      <div className="flex-1 overflow-auto px-8 pb-8">
+      <div className="flex-1 overflow-auto px-7 pb-7">
         <Tabs value={tab} onValueChange={() => undefined}>
           <TabsContent value="activities" className="mt-0">
             <ActivityList dialogOpen={dialogOpen} setDialogOpen={setDialogOpen} />

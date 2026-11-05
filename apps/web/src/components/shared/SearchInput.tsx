@@ -61,7 +61,7 @@ export function SearchInput({
         onChange={handleChange}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="h-11 bg-muted pl-10 pr-3"
+        className="h-10 bg-muted pl-10 pr-3"
       />
     </div>
   );

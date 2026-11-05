@@ -339,7 +339,7 @@ export function Sidebar() {
           ref={flyoutRef}
           role="dialog"
           aria-label={`${flyout.label}選單`}
-          className="absolute left-full top-0 z-40 flex h-full w-[230px] flex-col gap-3.5 overflow-y-auto border-r border-border bg-shell py-5 pl-2 pr-4 shadow-[4px_0_16px_rgba(0,0,0,0.08)]"
+          className="absolute left-full top-0 z-40 flex h-full w-[208px] flex-col gap-3.5 overflow-y-auto border-r border-border bg-shell py-5 pl-2 pr-4 shadow-[4px_0_16px_rgba(0,0,0,0.08)]"
         >
           <SectionLinks
             item={flyout}
@@ -361,7 +361,7 @@ export function SectionNav() {
   if (!active?.sections?.length) return null;
 
   return (
-    <nav aria-label={`${active.label}選單`} className="hidden w-[230px] flex-none flex-col gap-3.5 overflow-y-auto py-5 pl-2 pr-4 lg:flex">
+    <nav aria-label={`${active.label}選單`} className="hidden w-[208px] flex-none flex-col gap-3.5 overflow-y-auto py-5 pl-2 pr-4 lg:flex">
       <SectionLinks item={active} current={activeLinkId(active.sections, pathname, active.href)} />
     </nav>
   );

@@ -109,7 +109,7 @@ export default function EditRichMenuPage() {
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
 
-      <main className="flex-1 overflow-y-auto px-8 pb-8">
+      <main className="flex-1 overflow-y-auto px-7 pb-7">
         <div className="mx-auto max-w-6xl space-y-5">
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={backToList}>

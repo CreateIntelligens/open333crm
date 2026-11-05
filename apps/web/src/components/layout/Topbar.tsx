@@ -31,7 +31,7 @@ export function Topbar({ title, description, children }: TopbarProps) {
   const heading = trail.atLink && trail.link ? trail.link.label : title;
 
   return (
-    <header className="flex flex-none flex-col gap-3 px-8 pb-6 pt-8">
+    <header className="flex flex-none flex-col gap-3 px-7 pb-6 pt-7">
       {showTrail && trail.section && (
         <nav aria-label="麵包屑" className="flex flex-wrap items-center gap-1 text-sm leading-5 text-foreground">
           <span>{trail.section.label}</span>

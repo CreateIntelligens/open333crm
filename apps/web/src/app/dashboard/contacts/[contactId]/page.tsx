@@ -149,7 +149,7 @@ export default function ContactDetailPage() {
           合併聯繫人
         </Button>
       </Topbar>
-      <div className="flex flex-1 flex-col gap-5 overflow-auto px-8 pb-8">
+      <div className="flex flex-1 flex-col gap-5 overflow-auto px-7 pb-7">
         {emailMergeError && <p role="alert" className="text-sm text-destructive">{emailMergeError}</p>}
         <ContactDetail contact={detailContact} section="profile" {...detailHandlers} />
 
