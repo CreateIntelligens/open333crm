@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-05]
+
+### Changed
+
+- **Web CRM 色票改回 Figma 設計系統**（change `restore-figma-palette`）— 2026-11-02 的 `harden-web-wcag-typography` 把色票換成較深的另一套顏色（主色 `#1D4ED8`、文字 `#0F172A`），與 Figma 不符。依使用者決定，`globals.css` 淺色 14 個、深色 18 個色彩 token 改回 Figma 原色（主色 `#378ADD`、文字 `#37404C`、AI 紫等）；字級、焦點框、44px 觸控區、略過導覽連結維持不變。主色按鈕、次要文字、刪除紅與深色模式的成功、AI 標籤對比低於 4.5:1，列為規格中的例外。
+
 ## [2026-11-04]
 
 ### Changed
