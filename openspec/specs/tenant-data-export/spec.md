@@ -116,3 +116,15 @@ worker 開始處理匯出工作時，MUST 以條件更新把請求從 `pending` 
 #### Scenario: 有 data.export 與 channel.view_all 的成員可以查詢與下載別人發起的匯出
 - **WHEN** 有 `data.export` 與 `channel.view_all` 的成員查詢並下載同租戶其他成員發起、已完成且未過期的匯出
 - **THEN** 系統回 HTTP 200 與請求狀態，下載回 HTTP 200 與下載連結
+
+### Requirement: 匯出檔的 CSV 欄位經過跳脫與公式防護
+
+資料匯出 zip 中 `csv/` 的檔案 SHALL 讓標題列與每個欄位經過與報表匯出相同的規則：含逗號、雙引號、CR 或 LF 的欄位以雙引號包住並把 `"` 改成 `""`；以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`；數字照原樣輸出；日期輸出 ISO 8601 字串。
+
+#### Scenario: 聯絡人名稱以公式開頭又含逗號
+- **WHEN** 匯出的聯絡人名稱是 `=HYPERLINK("http://evil.example","點我, 領獎")`
+- **THEN** `csv/contacts.csv` 該列欄數與標題列相同，名稱欄是 `'` 加上原名稱
+
+#### Scenario: 數字與日期欄位照原樣輸出
+- **WHEN** 某列的數字欄位是 -3、日期欄位是 2026-11-04 00:00 UTC
+- **THEN** 數字欄是 `-3`，日期欄是 `2026-11-04T00:00:00.000Z`

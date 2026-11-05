@@ -9,6 +9,7 @@
  * 若日後匯出量大需壓縮，改用 archiver（deflate + streaming）即可，介面可相容。
  */
 import { Buffer } from 'node:buffer';
+import { csvRow } from '@open333crm/shared';
 
 interface ZipEntry {
   name: string;
@@ -125,7 +126,10 @@ export class SimpleZip {
   }
 }
 
-/** 把物件陣列轉 CSV（主表扁平化，值含逗號/引號/換行時加引號跳脫）。 */
+/**
+ * 把物件陣列轉 CSV（主表扁平化）。每一欄經過 `@open333crm/shared` 的 `csvRow()`：
+ * 含逗號／引號／換行時加引號跳脫，以 = + - @ 開頭的文字加單引號防 CSV injection（#423）。
+ */
 export function toCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return '';
   const cols = Array.from(
@@ -134,17 +138,9 @@ export function toCsv(rows: Record<string, unknown>[]): string {
       return set;
     }, new Set<string>()),
   );
-  const escape = (v: unknown): string => {
-    if (v === null || v === undefined) return '';
-    let s: string;
-    if (typeof v === 'object') s = JSON.stringify(v);
-    else s = String(v);
-    if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-  const lines = [cols.join(',')];
+  const lines = [csvRow(cols)];
   for (const row of rows) {
-    lines.push(cols.map((c) => escape(row[c])).join(','));
+    lines.push(csvRow(cols.map((c) => row[c])));
   }
   return lines.join('\r\n');
 }

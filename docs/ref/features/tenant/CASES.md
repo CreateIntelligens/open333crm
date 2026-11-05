@@ -64,6 +64,19 @@
 
 各路徑允許的轉換相同，副作用也相同。`PATCH /cases/:id` 帶 `status` 時，`updateCase()` 把改成 `ESCALATED` 的請求交給 `escalateCase()`，其他狀態交給 `transitionCase()`，`updateCaseFlow()` 再依結果送出與頂部按鈕相同的推播與事件。因此從下拉選單改狀態，一樣會寫時間軸、發布事件，也會觸發通知、自動化與對外 Webhook。詳情頁的下拉選單選「已關閉」時先要求確認，選「已升級」時開啟升級對話框。
 
+### 解決時間與關閉時間
+
+`resolvedAt` 與 `closedAt` 由 `packages/shared` 的 `caseTransitionTimestamps()` 決定（#417）。上表三條路徑、指派時的自動改狀態、評分後結案、問卷逾時結案，以及自動化規則的「改工單狀態」動作（workers 的 `update_case_status`）都用這個函式：
+
+| 轉換 | `resolvedAt` | `closedAt` |
+| --- | --- | --- |
+| 轉成 `RESOLVED` | 寫入轉換時間 | 不變 |
+| `RESOLVED` → `CLOSED` | 保留 | 寫入轉換時間 |
+| 其他狀態 → `CLOSED`（直接關閉） | null，不算已解決 | 寫入轉換時間 |
+| 轉成其他狀態（重開、處理中、待處理、升級） | 清除 | 不變 |
+
+報表以 `resolvedAt` 判斷「已解決」，所以直接關閉與重開的工單不算已解決。2026-11-04 之前的資料沒有補值：當時直接關閉的工單沒有 `resolvedAt`，當時重開、之後沒有再改狀態的工單仍保留舊的 `resolvedAt`。重開不清除 `closedAt` 與 `csatSentAt`（#339）。
+
 推播（`case.updated` 等）在交易 commit 之後送出。事件與工單的變更在同一個交易寫進 outbox，保證至少送出一次，見[事件與背景工作](../../modules/EVENTS.md)。推播與事件的內容寫在 `case-effects.ts`。
 
 ## 指派
@@ -153,6 +166,13 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 | 其他渠道 | 文字提示，請客人回覆 `csat:<分數>` |
 
 客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScore()` 記錄，並回一則感謝訊息。每張工單只記第一次評分。客服也可以用 `POST /cases/:id/csat` 手動記錄。
+
+記錄分數之後，客服在後台看得到結果（issue #444）：
+
+- 這張工單的問卷訊息 `metadata` 寫入 `csatScore` 與 `csatRatedBy`（`customer` 或 `agent`），系統再推一次 `message.new`。收件匣的問卷卡片改成唯讀，標題顯示「客人評 N 分」或「客服代評 N 分」。
+- 客人的評分訊息存成「我的評分：N 分」（與 LINE 按鈕的 `displayText` 相同），原始的 `csat:<分數>:<工單 ID>` 存在訊息的 `metadata.postbackData`。
+- 工單時間軸寫一筆 `csat_rated`（客人評分 `actorType: 'contact'`，客服代評 `actorType: 'agent'` 並記錄客服），顯示為「客人評分：N 分（說明）」或「客服代評滿意度：N 分（說明）」。評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`），顯示為「狀態：已解決 → 已關閉（評分後自動關閉）」。
+- 工單詳情頁的「滿意度」區塊顯示分數、說明與評分時間；問卷已寄出但還沒評分時顯示「問卷已寄出，客人尚未評分」。
 
 `recordCsatScore()` 只寫入屬於收訊租戶、而且聯絡人就是傳訊者的工單；客服手動記錄時只比對租戶。不符合條件的 CSAT 訊息仍會被攔截，但不寫入、不回覆。
 

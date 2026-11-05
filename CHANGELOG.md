@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **Web CRM 色票改回 Figma 設計系統**（change `restore-figma-palette`）— 2026-11-02 的 `harden-web-wcag-typography` 把色票換成較深的另一套顏色（主色 `#1D4ED8`、文字 `#0F172A`），與 Figma 不符。依使用者決定，`globals.css` 淺色 14 個、深色 18 個色彩 token 改回 Figma 原色（主色 `#378ADD`、文字 `#37404C`、AI 紫等）；字級、焦點框、44px 觸控區、略過導覽連結維持不變。主色按鈕、次要文字、刪除紅與深色模式的成功、AI 標籤對比低於 4.5:1，列為規格中的例外。
 - **圖文選單的發布、預設與分眾綁定改成入口開交易，預設與展開拆成兩個欄位**（#337 階段 4 第一批，change `migrate-line-tenant-ctx`）— 發布原本先呼叫 LINE、最後才寫資料庫，沒有並行控制：寫資料庫失敗時 LINE 上留下找不到的選單，同一個選單同時發布兩次會在 LINE 建出兩個。設預設前先取消全體預設，設預設失敗時所有好友都失去選單。`selected` 同時代表「所有好友的預設選單」與 LINE 的「聊天室打開時展開」，兩件事不能分開設定。現在：
   - 發布拆成「交易內認領 → 交易外呼叫 LINE → 交易內寫入」。同一個選單或同一個渠道的其他選單正在發布時，回 HTTP 409 `PUBLISH_IN_PROGRESS`。停在發布中超過 5 分鐘視為中斷，可以重新發布。LINE 建好選單之後任何一步失敗，刪除剛建立的 LINE 選單並標成 `error`。每個 LINE 呼叫 30 秒逾時。
   - 設預設不再先取消全體預設，由 LINE 以新選單取代。設預設失敗時，原本的預設不變，新選單不記成預設，回應的 `warnings` 帶 `DEFAULT_NOT_SET`，畫面顯示提示。下架時先查 LINE 目前的預設，是這張才取消。
@@ -13,6 +14,11 @@ All notable changes to **open333CRM** will be documented in this file.
   - 分眾綁定與解除綁定改在交易內寫進 outbox。Redis 無法使用時改回 200，由 outbox-relay 補送。workers 綁定前確認選單仍已發布、LINE 端的 ID 沒有變，否則跳過。
   - 列表頁新增「發布中」狀態，發布失敗的選單顯示「發布」按鈕。發布中停留超過 5 分鐘的選單，列表頁與編輯頁顯示「發布中斷」，可以重新發布；中斷的請求恢復後不會改到重新發布的選單。圖文選單路由的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`。
   - LINE 個人資料的同步改成「交易內讀取 → 交易外呼叫 LINE → 交易內寫入」，回應不變。
+
+### Fixed
+
+- **工單詳情頁顯示滿意度分數**（#444 後續，2026-11-04 UAT 驗證發現）— #444 在 `CaseDetail` 加了「滿意度」區塊，但工單詳情頁（`/dashboard/cases/[caseId]`）傳給元件的資料沒有 `csatScore`、`csatComment`、`csatSentAt`、`csatRespondedAt`，UAT 上看不到分數。頁面補上這四個欄位，新增從頁面渲染的測試。
+- **台灣版 Excel 存的 Big5 CSV 可以匯入知識庫**（#421 後續，2026-11-04 UAT 驗證發現）— #421 的解碼在檔案內容類型偵測之後才執行，偵測（Magika）認不出 Big5 文字，上傳時回英文錯誤「File content type rejected: file content type is unknown」，走不到解碼。現在 `.csv` 檔先以 `decodeCsvText()` 轉成 UTF-8 再偵測與解析。另外偵測常把列數少、內容是長中文的 CSV 判成純文字而拒絕，副檔名是 `.csv` 且政策允許 CSV 時，純文字視為 CSV。
 
 ## [2026-11-04]
 
@@ -36,6 +42,25 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **重開的工單不再算已解決，報表的已解決數與 SLA 達成率不再失真**（#417，change `fix-case-resolved-at-417`，AUDIT CASE-04、AUTO-10，健檢 HC-ANALYTICS-02）— 原本工單解決後重開仍保留舊的 `resolvedAt`，處理中的工單被報表算成已解決；自動化規則的「改工單狀態」完全不寫 `resolvedAt`／`closedAt`。現在：
+  - `@open333crm/shared` 新增 `caseTransitionTimestamps()`，API 的狀態轉換（按鈕、狀態下拉、升級、指派時自動改狀態）、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 共用：轉成「已解決」寫入 `resolvedAt`；從「已解決」轉成「已關閉」保留；直接關閉（沒有經過「已解決」）不算已解決；轉成其他狀態（重開）清除。
+  - `update_case_status` 改成以 `tenantId` 讀目前狀態再條件更新。規則改成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查。
+  - 既有資料不補值。重開後的滿意度問卷行為不變（#339）。
+- **CSV 匯出的欄位一律跳脫並防公式注入**（#423，change `fix-csv-export-escaping`，AUDIT ANA-03，健檢 HC-ANALYTICS-04）— 報表匯出原本只替工單標題加引號，聯絡人名稱、客服姓名、分類、渠道名稱原樣輸出：名稱含逗號時後面的欄位錯位，以 `=`、`+`、`-`、`@` 開頭時 Excel 當成公式。現在：
+  - 新增共用的 `csvCell()`／`csvRow()`（`@open333crm/shared`）：含逗號、雙引號、CR／LF 的欄位以雙引號包住並把 `"` 改成 `""`；以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`；數字照原樣輸出（負數不加 `'`），日期輸出 ISO 字串。
+  - 報表匯出的四種報表（概覽、案件、客服、渠道）標題列與每一欄都經過 `csvRow()`。
+  - 優惠券序號明細改用共用函式（刪掉模組內的 `csvCell()`），輸出改成需要時才加引號，解析結果不變。
+  - 租戶資料匯出 zip 的 `csv/` 檔補上公式防護；日期欄改輸出 ISO 字串（原本是帶引號的 JSON 字串）。
+- **客人評分後，收件匣與工單看得到分數**（#444，change `show-csat-score-444`，AUDIT CASE-05 部分）— 客人評分後問卷卡片仍是空星、客服再點會 400，評分在對話裡顯示成 `csat:2:<工單 ID>`，工單時間軸與詳情頁都沒有分數。現在：
+  - 記錄分數時（客人回覆或客服代評），問卷訊息的 `metadata` 寫入 `csatScore` 與 `csatRatedBy`，並再推一次 `message.new`。卡片唯讀，顯示「客人評 N 分」或「客服代評 N 分」；客服送出失敗時卡片恢復可點。
+  - 客人的評分訊息存成「我的評分：N 分」（與 LINE 按鈕的 `displayText` 相同），原文存在 `metadata.postbackData`；攔截判斷不變。LINE 按鈕送出的評分直接改寫；客人手打的代碼要評分確實記錄才改寫，偽造或別人工單的代碼維持原文。
+  - 工單時間軸寫 `csat_rated`（客人評分或客服代評，客服代評記錄評分的客服）；評分後自動關閉寫 `status_changed`（`reason: 'csat_rated'`），顯示「（評分後自動關閉）」。工單詳情頁新增「滿意度」區塊。
+  - 仍未處理：客服代評不經狀態機、不關閉對話、也送感謝訊息（#339）。
+- **知識庫匯入 Google 試算表、Numbers 或台灣版 Excel 存的 CSV，中文不再變亂碼**（#421，change `fix-kb-csv-encoding-421`，AUDIT KB-03，健檢 HC-KNOWLEDGE-03）— 原本 CSV 沒有 UTF-8 BOM 就被當成單位元組讀，英文表頭時亂碼的問答還會直接發布。現在：
+  - `file-parser.service.ts` 新增 `decodeCsvText()`：有 BOM 去掉後以 UTF-8 解；沒有 BOM 先以嚴格 UTF-8 解，失敗再試 Big5。xlsx 依 zip 檔頭辨識，不受影響。
+  - 兩種都解不出或解出的文字含 U+FFFD 時，該檔一篇都不寫入，上傳結果標成失敗並帶 `code: CSV_ENCODING_UNREADABLE` 與中文原因（建議另存成「CSV UTF-8」）；同批其他檔案照常匯入。
+  - 匯入對話框的失敗原因改為完整換行顯示，不再截斷。
+  - 依使用者決定，問答表拆出的文章維持直接發布。
 - **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
   - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
   - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。
@@ -52,6 +77,11 @@ All notable changes to **open333CRM** will be documented in this file.
   - 建立草稿不變，仍可先建立空草稿再補內容。檢查與編輯草稿（#424）共用同一個函式。
 - **部署後保留平台後台對方案的修改**（#441 PLAN-20，change `preserve-plan-edits-on-seed-441`）— API 容器每次啟動都跑 seed，原本會把 `trial`、`light`、`standard`、`professional`、`enterprise` 五個方案的名稱、功能、上限與月費改回原始碼的值，平台在 `/admin/plans` 的修改下次部署就消失，沒有任何提示。現在 seed 只建立資料庫還沒有的方案，已存在的方案不寫入。程式要改既有方案的內容時，改用只改目標欄位、可重複執行的資料 migration（規則見 `docs/ref/features/platform/PLANS.md`）。
 - **AI 與知識庫回覆都失敗時轉接真人**（#445 KB-06，change `handoff-on-ai-reply-failure-445`）— 去識別化服務、embedding 服務或模型供應商短暫故障時，同一則客人訊息的 AI agent 回覆與知識庫回覆都失敗，原本只記 log：客人收不到任何回覆，對話停在「Bot 處理中」，客服也不知道要接手。現在 agent 沒有回覆、知識庫回覆又因錯誤失敗時，對話轉真人：狀態改為真人處理，轉接原因寫「AI 暫時無法回覆（去識別化服務無法使用）」「（AI 月額度已用完）」「（AI 服務發生錯誤）」等（不寫錯誤內容），收件匣顯示轉接系統訊息並通知客服，客人收到渠道設定的轉接訊息。轉接的系統訊息是固定文字，不需要去識別化服務。同一則訊息重送只轉接一次，已回覆過的訊息不轉接；轉接寫入失敗時交給佇列重試。關鍵字規則讓步、Bot 模式關閉、知識庫自動回覆停用等正常不回覆的情況不轉接。不會自動重送 AI 回覆，避免客人收到兩則。
+- **客人提到 Wi-Fi、e-mail、T-shirt 或訂單編號時，機器人不再回「這個型號查不到資料」**（#420 KB-02，change `fix-kb-model-guard-420`，健檢 HC-KNOWLEDGE-02）— 知識庫自動回覆的型號守門原本不分大小寫抓型號，一般英文詞與訂單編號都被當成查不到的型號，而且對沒有型號文章的租戶也生效；守門回覆不算追問，客人一直提到這類詞就一直不會轉真人。現在：
+  - 型號偵測排除 `Wi-Fi`、`e-mail`、`T-shirt`、`USB-C`、`Type-C` 等常見英文詞（不分大小寫）。型號仍不分大小寫，`tac-11p` 視同 `TAC-11P`。白名單從文章標題重建時也套用同一規則。
+  - 只攔截前綴（品類碼）出現在型號白名單的型號：知識庫沒有型號文章的租戶不守門；前綴不在白名單的編號（訂單編號）不攔截。
+  - 守門回覆計入追問次數；次數用完時改回「已為您轉接客服人員」並轉接真人（與追問用完同一條路徑）。
+  - 前綴打錯的型號（白名單沒有這個前綴）不再觸發守門，改走一般知識庫回答或追問。
 
 ## [2026-11-03]
 

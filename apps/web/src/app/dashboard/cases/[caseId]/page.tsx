@@ -200,6 +200,11 @@ export default function CaseDetailPage() {
                 slaPolicy: caseData.slaPolicy as string | undefined,
                 slaPolicyData: caseData.slaPolicyData as { firstResponseMinutes: number; resolutionMinutes: number } | null | undefined,
                 events: events,
+                // 滿意度區塊（issue #444）：分數、評語、問卷寄出與評分時間
+                csatScore: caseData.csatScore as number | null | undefined,
+                csatComment: caseData.csatComment as string | null | undefined,
+                csatSentAt: caseData.csatSentAt as string | null | undefined,
+                csatRespondedAt: caseData.csatRespondedAt as string | null | undefined,
                 createdAt: caseData.createdAt as string,
                 updatedAt: caseData.updatedAt as string,
               }}

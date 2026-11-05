@@ -47,7 +47,7 @@ description: >
 ## 不可破壞的規則
 - 回覆分流（`kb-autoreply.service.ts`）：最高相似度 ≥ 0.80 直接答；`clarifyThreshold`～0.80 答＋依 botConfig 附轉接提示；低於 `clarifyThreshold` 或沒文章就追問，次數記在 `conversation.metadata.clarifyAttempts`，成功回答歸零。
 - **`clarify_handoff` 會真的轉接**（#419）：追問用完或追問的 LLM 呼叫失敗時，`persistAndDeliver` 在 bot_reply 認領的同一個交易呼叫 `apps/api/src/modules/automation/handoff.flow.ts` 的 `handOffConversation()`（與 `checkAutoHandoff` 共用）：條件更新 `BOT_HANDLED→AGENT_HANDLED`、`handoffReason`、系統訊息、`conversation.handoff`（通知客服）、`notifyChannel` 推播；追問次數歸零。條件不成立時整筆 rollback，不送「已為您轉接」。`handoff_request` postback 仍是自己的程式（`inbound-postback-interceptors.ts`）。改轉接邏輯時改 `handoff.flow.ts`，不要在各路徑各寫一份。轉接後關鍵字規則照樣回覆（workers 不看對話狀態），KB 與 agent 不回 `AGENT_HANDLED` 的對話。
-- 型號守門對**所有租戶**生效，白名單由 `model-registry.service.ts` 從 `PUBLISHED` 文章**標題**抽出、程序內快取 10 分鐘；正規式在 `model-matcher.ts`，會誤判 `Wi-Fi`、`e-mail`（HC-KNOWLEDGE-02）。相似度 ≥ 0.85 豁免。
+- 型號守門（#420）：白名單由 `model-registry.service.ts` 從 `PUBLISHED` 文章**標題**抽出、程序內快取 10 分鐘，偵測用 `model-matcher.ts` 的 `detectModels()`（不分大小寫、結果轉大寫，排除 `WI-FI`、`E-MAIL`、`T-SHIRT` 等常見英文詞）。只攔截前綴在白名單的型號（`hasKnownPrefix()`），白名單空的租戶等於不守門。相似度 ≥ 0.85 豁免。守門回覆計入 `clarifyAttempts`，用完時走 `clarify_handoff` 轉接，不要另寫轉接。`packages/kb-ingest` 有一份複本（語音逐字稿用），停用詞要兩邊同步。
 - 每則入站訊息最多一則機器人回覆：寫入要包在 `BotReplyGuard.persist()` 交易裡，不要繞過。
 - 檢索只能取 `status = 'PUBLISHED'`（規格 `km-ingestion`「Archived Articles Excluded」）；夥伴 DELETE 是軟刪 `ARCHIVED`，網頁刪除是硬刪除。
 - 向量維度：程式寫 1024，部分環境欄位是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
@@ -64,8 +64,8 @@ description: >
 ## 回歸清單
 改到本領域時，至少重走：
 1. 新增文章 → 發布 → 確認列表綠色圖示（有 embedding 服務的環境）→ 語義搜尋找得到 → 封存後搜不到。
-2. 匯入：BOM 與無 BOM 的中文 CSV、xlsx 問答表、`.md`、JSON 陣列與一筆壞資料；確認問答表是直接發布。
-3. KB 自動回覆（需要 LLM 與 embedding）：高相似度、追問兩次後的第三則、提到不存在型號、提到 `Wi-Fi`；確認對話狀態與客服是否收到轉接。
+2. 匯入：BOM 與無 BOM 的 UTF-8 中文 CSV、台灣版 Excel 存的 Big5 CSV（中英文表頭各一）、xlsx 問答表、`.md`、JSON 陣列與一筆壞資料；確認問答表是直接發布、中文不是亂碼。再上傳一份編碼認不出的 CSV（例如 GBK 或混入非法位元組），該檔顯示「無法辨識這個 CSV 檔案的文字編碼…」且一篇都沒寫入（#421）。單元測試 `tests/unit/modules/knowledge/knowledge-file-parser-encoding.test.ts`、`knowledge-upload-encoding.test.ts`。
+3. KB 自動回覆（需要 LLM 與 embedding）：高相似度、追問兩次後的第三則、提到不存在型號（`TAC-11P`，應列相近型號）、提到 `Wi-Fi`／`e-mail`／訂單編號 `AB-12345`（不應回「型號查不到」）、小寫的不存在型號 `tac-11p`（應列相近型號）、連續三則提到不存在型號（第三則轉真人）、沒有型號文章的租戶提到型號（不守門）；確認對話狀態與客服是否收到轉接。單元測試 `tests/unit/modules/ai/kb-model-guard.test.ts`、`model-matcher.test.ts`。
 3a. AI 失敗轉接（#445）：讓 embedding 服務或去識別化服務暫時失敗（或停掉 embedding 服務），客人傳文字 → 對話變 `AGENT_HANDLED`、`handoffReason` 是「AI 暫時無法回覆（…）」、客人收到 `handoffMessage`、客服收到轉接通知；命中關鍵字、`botMode: off` 的訊息不轉接。單元測試 `tests/unit/modules/automation/ai-failure-handoff.test.ts`。
 4. 「👎 沒幫到我」→ 回報調教出現 → 編輯文章 → 標為已處理。
 5. 用 agent 與只有 `knowledge.view` 的自訂角色重走 1、2、4，確認 403 與按鈕顯示；直開 `/dashboard/knowledge/chat-prompt` 顯示「沒有權限」。
@@ -75,9 +75,9 @@ description: >
 ## 常見 bug 從哪裡查
 - 「AI 都不回」：依序查 `KB_AUTO_REPLY_ENABLED`、對話是否 `BOT_HANDLED`、渠道 `botMode`、是否命中關鍵字規則（`apps/api/src/modules/automation/keyword-yield.ts`）、embedding 是否連得上（`generateEmbedding` 失敗、agent 也沒回覆時會轉真人，原因「AI 暫時無法回覆（…）」，#445；`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回、不轉接，見 KB-06）、`PLAN_LIMIT_EXCEEDED`。
 - 「AI 說已轉接但沒人接」：`clarify_handoff` 後對話應為 `AGENT_HANDLED` 且有 `handoffReason` 與 `auto_handoff` 系統訊息（#419）；未指派的對話會通知看得到該渠道的主管與管理員（`conversation_handoff`）。若仍是 `BOT_HANDLED`，查 job 是否失敗（轉接交易失敗時整則回覆不送出、由佇列重試）。
-- 「AI 說型號查不到」：訊息 `metadata.modelGuard.unknownModel`；`GET /knowledge/models` 看白名單；`apps/api/src/modules/ai/model-matcher.ts`。
+- 「AI 說型號查不到」：訊息 `metadata.modelGuard.unknownModel`；`GET /knowledge/models` 看白名單（白名單沒有該前綴就不會守門）；`apps/api/src/modules/ai/model-matcher.ts`。
 - 「文章發布了卻搜不到」：`hasEmbedding`、Embedding 頁「未嵌入」數、`POST /knowledge/bulk-embed`；維度不符見 DB-01。
-- 「匯入後中文亂碼」：CSV 沒有 UTF-8 BOM（`apps/api/src/modules/knowledge/file-parser.service.ts` 的 `XLSX.read`）。
+- 「匯入後中文亂碼」或「CSV 被拒：無法辨識文字編碼」：CSV 由 `apps/api/src/modules/knowledge/file-parser.service.ts` 的 `decodeCsvText()` 解碼（UTF-8 去 BOM → 嚴格 UTF-8 → Big5，都不行或含 U+FFFD 就回 `CSV_ENCODING_UNREADABLE`，#421）。GBK、Shift-JIS 等其他編碼不支援，請使用者另存成「CSV UTF-8」；Big5 偶爾能把其他編碼「解成功」但字不對，這種情形不會被擋。
 - 「上傳被拒、英文錯誤」：內容偵測 `apps/api/src/modules/upload/upload-content-detector.ts` 的 `extensionMatches`。
 - 「額度用完／用量對不上」：`apps/api/src/modules/trial/token-quota.service.ts`（Redis `aiquota:{tenantId}:{YYYY-MM}`，失敗退回 DB 加總）、`apps/api/src/modules/ai/llm.service.ts` 的 `recordAiUsage`；BYOK 解密失敗退回平台金鑰見 AI-01。
 - 「設定頁顯示假資料或 403」：缺 `settings.manage`；`apps/web/src/components/knowledge/SettingsLoadError.tsx`。
