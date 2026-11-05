@@ -32,6 +32,7 @@ import {
   duplicateRichMenu,
   getRichMenu,
   listRichMenus,
+  markRichMenuDefault,
   updateRichMenu,
 } from './rich-menu.service.js';
 
@@ -46,12 +47,14 @@ export const duplicateRichMenuFlow = flowOf(duplicateRichMenu);
 export const DEFAULT_NOT_SET = 'DEFAULT_NOT_SET';
 
 /**
- * 發布：LINE 上最多建立一次選單。LINE 建好之後任何一步失敗，刪除剛建立的選單並標成 error（design D2）。
- * 設預設失敗時 LINE 上原本的預設不受影響，這個選單記成非預設，回應帶 DEFAULT_NOT_SET（design D4）。
+ * 發布：LINE 上最多建立一次選單。LINE 建好之後、寫入發布結果之前任何一步失敗，刪除剛建立的選單並標成 error（design D2）。
+ * 設預設在寫入發布結果之後，所以補償不必把預設設回舊選單。設預設失敗，或設好之後寫入預設失敗，
+ * 這個選單記成非預設，回應帶 DEFAULT_NOT_SET（design D4）。
  */
 export async function publishRichMenuFlow(deps: { prisma: PrismaClient }, tenantId: string, id: string) {
-  const claim = await inTenant(deps.prisma, tenantId, (scope) => claimRichMenuForPublish(scope, id));
-  const { menu, accessToken, claimedAt } = claim;
+  const { menu, accessToken, claimedAt } = await inTenant(deps.prisma, tenantId, (scope) =>
+    claimRichMenuForPublish(scope, id),
+  );
 
   let image;
   try {
@@ -63,7 +66,7 @@ export async function publishRichMenuFlow(deps: { prisma: PrismaClient }, tenant
   }
 
   let lineRichMenuId: string | null = null;
-  let defaultSet = false;
+  let published;
   try {
     lineRichMenuId = await createLineRichMenu(accessToken, {
       size: menu.size,
@@ -73,42 +76,37 @@ export async function publishRichMenuFlow(deps: { prisma: PrismaClient }, tenant
       areas: menu.areas,
     });
     await uploadLineRichMenuImage(accessToken, lineRichMenuId, image);
-    if (menu.isDefault) {
-      defaultSet = await setLineDefaultRichMenu(accessToken, lineRichMenuId);
-      if (!defaultSet) logger.warn(`[RichMenu] set default failed id=${id} lineRichMenuId=${lineRichMenuId}`);
-    }
 
     const created = lineRichMenuId;
-    const published = await inTenant(deps.prisma, tenantId, (scope) =>
-      completeRichMenuPublish(scope, id, claimedAt, { lineRichMenuId: created, isDefault: defaultSet }),
-    );
+    published = await inTenant(deps.prisma, tenantId, (scope) => completeRichMenuPublish(scope, id, claimedAt, created));
     if (!published) {
       throw new AppError('發布逾時，這個圖文選單已被重新發布，請重新整理後確認', 'PUBLISH_IN_PROGRESS', 409);
     }
-    logger.info(`[RichMenu] published id=${id} lineRichMenuId=${lineRichMenuId}`);
-    return { ...published, warnings: menu.isDefault && !defaultSet ? [DEFAULT_NOT_SET] : [] };
   } catch (err) {
-    if (lineRichMenuId) {
-      await compensate(accessToken, id, lineRichMenuId, defaultSet ? claim.previousDefaultLineId : undefined);
-    }
+    if (lineRichMenuId) await compensate(accessToken, id, lineRichMenuId);
     await release(deps, tenantId, id, claimedAt, 'error');
     throw err;
   }
+  logger.info(`[RichMenu] published id=${id} lineRichMenuId=${lineRichMenuId}`);
+
+  if (!menu.isDefault) return { ...published, warnings: [] };
+  const created = lineRichMenuId;
+  if (!(await setLineDefaultRichMenu(accessToken, created))) {
+    logger.warn(`[RichMenu] set default failed id=${id} lineRichMenuId=${created}`);
+    return { ...published, warnings: [DEFAULT_NOT_SET] };
+  }
+  try {
+    const marked = await inTenant(deps.prisma, tenantId, (scope) => markRichMenuDefault(scope, id, created));
+    if (marked) return { ...marked, warnings: [] };
+  } catch (err) {
+    // LINE 的預設已是這個選單，資料庫沒記到：交給對帳（#457）
+    logger.error(`[RichMenu] mark default failed id=${id} lineRichMenuId=${created}: ${(err as Error).message}`);
+  }
+  return { ...published, warnings: [DEFAULT_NOT_SET] };
 }
 
-/**
- * 刪除剛建立的 LINE 選單。設預設已成功時，先把預設設回舊選單，避免所有好友失去預設。
- * 失敗只記 log（LINE 端的 id 供對帳使用），不蓋掉原本的錯誤。
- */
-async function compensate(
-  accessToken: string,
-  id: string,
-  lineRichMenuId: string,
-  restoreDefaultLineId: string | null | undefined,
-) {
-  if (restoreDefaultLineId && !(await setLineDefaultRichMenu(accessToken, restoreDefaultLineId))) {
-    logger.error(`[RichMenu] restore default failed id=${id} previousLineRichMenuId=${restoreDefaultLineId}`);
-  }
+/** 刪除剛建立的 LINE 選單。失敗只記 log（LINE 端的 id 供對帳使用），不蓋掉原本的錯誤 */
+async function compensate(accessToken: string, id: string, lineRichMenuId: string) {
   try {
     await deleteLineRichMenu(accessToken, lineRichMenuId);
   } catch (err) {

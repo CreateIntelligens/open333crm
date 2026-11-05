@@ -309,8 +309,6 @@ async function lockChannelPublishing(tx: Prisma.TransactionClient, channelId: st
 export interface PublishClaim {
   menu: Awaited<ReturnType<typeof findRichMenu>>;
   accessToken: string;
-  /** 發布前同渠道的預設選單在 LINE 端的 id；補償時把預設設回這個選單 */
-  previousDefaultLineId: string | null;
   /**
    * 認領時寫入的 updatedAt，當作這次認領的憑證。完成與放掉都以它為條件：
    * 中斷超過 5 分鐘的請求恢復後，不會改到另一個請求重新認領的選單。
@@ -355,36 +353,39 @@ export async function claimRichMenuForPublish(ctx: TenantCtx, id: string): Promi
   }
 
   const accessToken = await getLineAccessToken(ctx.tx, menu.channelId, ctx.tenantId);
-  const previousDefault = await ctx.tx.richMenu.findFirst({
-    where: { tenantId: ctx.tenantId, channelId: menu.channelId, status: 'published', isDefault: true, NOT: { id } },
-  });
-  return { menu, accessToken, previousDefaultLineId: previousDefault?.lineRichMenuId ?? null, claimedAt };
+  return { menu, accessToken, claimedAt };
 }
 
 /**
  * 交易 2：寫入發布結果。這次的認領已不在（中斷後被重新認領）時回 null，呼叫端要補償。
- * isDefault 是 LINE 設預設的結果；成功時同渠道其他已發布的選單不再是預設。
+ * 這時還沒設預設，先記成非預設；設預設成功後由 markRichMenuDefault 改成預設（design D4）。
  */
-export async function completeRichMenuPublish(
-  ctx: TenantCtx,
-  id: string,
-  claimedAt: Date,
-  result: { lineRichMenuId: string; isDefault: boolean },
-) {
+export async function completeRichMenuPublish(ctx: TenantCtx, id: string, claimedAt: Date, lineRichMenuId: string) {
   const { count } = await ctx.tx.richMenu.updateMany({
     where: { id, tenantId: ctx.tenantId, status: 'publishing', updatedAt: claimedAt },
-    data: { status: 'published', lineRichMenuId: result.lineRichMenuId, publishedAt: new Date(), isDefault: result.isDefault },
+    data: { status: 'published', lineRichMenuId, publishedAt: new Date(), isDefault: false },
+  });
+  if (count === 0) return null;
+  return getRichMenu(ctx, id);
+}
+
+/**
+ * 交易 3：LINE 設預設成功後，把這個選單記成預設，同渠道其他已發布的選單不再是預設。
+ * 條件含 LINE 端的 id：期間已被取消發布或重新發布時不寫，回 null。
+ */
+export async function markRichMenuDefault(ctx: TenantCtx, id: string, lineRichMenuId: string) {
+  const { count } = await ctx.tx.richMenu.updateMany({
+    where: { id, tenantId: ctx.tenantId, status: 'published', lineRichMenuId },
+    data: { isDefault: true },
   });
   if (count === 0) return null;
 
   const menu = await getRichMenu(ctx, id);
-  if (result.isDefault) {
-    // 只清已發布的選單；草稿的 isDefault 是「發布時設成預設」的設定，不動
-    await ctx.tx.richMenu.updateMany({
-      where: { tenantId: ctx.tenantId, channelId: menu.channelId, status: 'published', isDefault: true, NOT: { id } },
-      data: { isDefault: false },
-    });
-  }
+  // 只清已發布的選單；草稿的 isDefault 是「發布時設成預設」的設定，不動
+  await ctx.tx.richMenu.updateMany({
+    where: { tenantId: ctx.tenantId, channelId: menu.channelId, status: 'published', isDefault: true, NOT: { id } },
+    data: { isDefault: false },
+  });
   return menu;
 }
 

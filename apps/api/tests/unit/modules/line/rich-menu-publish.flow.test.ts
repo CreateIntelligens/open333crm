@@ -147,16 +147,31 @@ test('上傳背景圖失敗：刪除剛建立的 LINE 選單，status 是 error�
   assert.equal(row('rm-new').lineRichMenuId, null);
 });
 
-test('寫入發布結果失敗：刪除 LINE 選單；設預設已成功時，先把預設設回舊選單', async () => {
+test('寫入發布結果失敗：刪除 LINE 選單，還沒設預設，不必設回舊預設', async () => {
   menus = [menu({ isDefault: true }), oldDefault()];
   failWrite = (data) => data.status === 'published';
 
   await assert.rejects(publish());
-  const restore = calls.findIndex((c) => c.method === 'POST' && c.url === SET_OLD_DEFAULT);
-  const remove = calls.findIndex((c) => c.method === 'DELETE' && c.url === DELETE_NEW);
-  assert.ok(restore >= 0, '沒有把預設設回舊選單');
-  assert.ok(remove > restore, '刪除新選單要在設回舊預設之後');
+  assert.equal(called('POST', SET_NEW_DEFAULT), false, '寫入發布結果之前不能設預設');
+  assert.equal(called('POST', SET_OLD_DEFAULT), false);
+  assert.ok(called('DELETE', DELETE_NEW), '沒有刪除 LINE 選單');
   assert.notEqual(row('rm-new').status, 'published');
+  assert.equal(row('rm-old').isDefault, true);
+});
+
+test('設預設成功、寫入預設失敗：仍是已發布，不刪除也不設回，記成非預設並回 DEFAULT_NOT_SET', async () => {
+  menus = [menu({ isDefault: true }), oldDefault()];
+  failWrite = (data) => data.isDefault === true;
+
+  const result = await publish();
+  assert.ok(called('POST', SET_NEW_DEFAULT));
+  assert.equal(called('POST', SET_OLD_DEFAULT), false);
+  assert.equal(called('DELETE', DELETE_NEW), false);
+  assert.equal(result.status, 'published');
+  assert.equal(result.isDefault, false);
+  assert.deepEqual(result.warnings, ['DEFAULT_NOT_SET']);
+  assert.equal(row('rm-new').status, 'published');
+  assert.equal(row('rm-new').isDefault, false);
   assert.equal(row('rm-old').isDefault, true);
 });
 

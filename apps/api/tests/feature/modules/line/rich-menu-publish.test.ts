@@ -207,12 +207,12 @@ describe('認領的歸屬', () => {
     assert.equal(await statusOf(menu.id), 'publishing', '舊請求把新認領改成 error');
 
     const lateA = await inTenant(tenantDb, T, (scope) =>
-      completeRichMenuPublish(scope, menu.id, staleAt, { lineRichMenuId: 'rm-line-a', isDefault: false }),
+      completeRichMenuPublish(scope, menu.id, staleAt, 'rm-line-a'),
     );
     assert.equal(lateA, null);
 
     const done = await inTenant(tenantDb, T, (scope) =>
-      completeRichMenuPublish(scope, menu.id, b.claimedAt, { lineRichMenuId: 'rm-line-b', isDefault: false }),
+      completeRichMenuPublish(scope, menu.id, b.claimedAt, 'rm-line-b'),
     );
     assert.equal(done?.status, 'published');
     assert.equal(done?.lineRichMenuId, 'rm-line-b');
