@@ -124,8 +124,9 @@ t('管理員操作：原文移到 details.upstream，message 為中文', () => {
   const cases: Array<[string, string]> = [
     ['modules/channel/channel.service.ts', 'LINE 驗證失敗，請確認 Channel Secret'],
     ['modules/channel/line-webhook-setup.service.ts', 'LINE Webhook 自動設定失敗'],
-    ['modules/line/rich-menu.service.ts', 'LINE 無法建立圖文選單'],
-    ['modules/line/line-profile.service.ts', '無法取得 LINE 使用者資料'],
+    // 呼叫 LINE 的程式在 change migrate-line-tenant-ctx 移出 service（交易外呼叫）
+    ['modules/line/rich-menu.line-api.ts', 'LINE 無法建立圖文選單'],
+    ['modules/line/line-profile.flow.ts', '無法取得 LINE 使用者資料'],
   ];
   for (const [f, msg] of cases) {
     const s = src(f);
@@ -135,9 +136,9 @@ t('管理員操作：原文移到 details.upstream，message 為中文', () => {
 });
 
 t('第三方原文不再被串進 message 字串', () => {
-  for (const f of ['modules/line/rich-menu.service.ts',
+  for (const f of ['modules/line/rich-menu.line-api.ts',
                    'modules/channel/line-webhook-setup.service.ts',
-                   'modules/line/line-profile.service.ts']) {
+                   'modules/line/line-profile.flow.ts']) {
     const s = src(f);
     // 樣式：`...${body}` 或 `LINE API error: ${msg}` 這種把原文串進訊息的寫法
     assert.ok(!/`[^`]*\$\{(body|errBody|msg)\}`,\s*\n?\s*'[A-Z_]+'/.test(s),

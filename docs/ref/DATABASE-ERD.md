@@ -128,7 +128,7 @@ erDiagram
 | `channels`              | `Channel`           | 渠道設定：類型、顯示名稱、加密後的憑證、webhook 網址、驗證時間 | `channelType` 為 `ChannelType` enum；`credentialsEncrypted` 為加密字串；`settings` 為 `Json` |
 | `channel_team_accesses` | `ChannelTeamAccess` | 哪個團隊能存取哪個渠道，以及存取層級                           | 複合主鍵 `[channelId, teamId]`                                                               |
 | `channel_usages`        | `ChannelUsage`      | 逐筆訊息用量與費用，可歸戶到團隊                               | `direction` 為 `Direction` enum；`feeAmount` 為 `Float?`                                     |
-| `rich_menus`            | `RichMenu`          | LINE 圖文選單：尺寸、點擊區域、圖片、發布狀態                  | `size`／`areas` 為 `Json`；`lineRichMenuId` 是 LINE 平台回傳的外部 ID                        |
+| `rich_menus`            | `RichMenu`          | LINE 圖文選單：尺寸、點擊區域、圖片、發布狀態                  | `size`／`areas` 為 `Json`；`lineRichMenuId` 是 LINE 平台回傳的外部 ID；`isDefault` 是所有好友的預設選單，`selected` 是聊天室打開時展開（LINE 的 `selected`） |
 | `audience_groups`       | `AudienceGroup`     | LINE 分眾受眾包，對應平台側的 audience group                   | `channelId`／`segmentId` 都是鬆耦合欄位，**沒有** FK                                         |
 | `insight_snapshots`     | `InsightSnapshot`   | 每日渠道洞察快照：粉絲數、封鎖數、觸及數、人口統計             | `demographicsJson` 為 `Json?`；`channelId` 為鬆耦合欄位                                      |
 

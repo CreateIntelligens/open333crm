@@ -843,7 +843,7 @@ UAT 上有沒有只差大小寫的成員，還沒有查過。
 <a id="sec-08"></a>
 ### SEC-08：圖文選單的背景圖網址可以打內網
 
-`rich-menu.service.ts` 發布圖文選單時以 `fetch(imageUrl)` 下載背景圖，網址只驗 `z.string().url()`，沒有呼叫 `isBlockedUrl()`（下游轉發已在用）。持 `richmenu.manage` 的成員（主管預設就有）可以讓 API 請求內網位址；錯誤訊息回傳對方的 Content-Type 或「無法取得背景圖」，可以用來探測內網服務與連接埠。整個過程發生在呼叫 LINE API 之前，不需要有效的 Access Token。Canvas 的 `API_FETCH` 節點有同樣的缺口，見 AUTO-11。
+`rich-menu.line-api.ts` 的 `fetchRichMenuImage()` 在發布圖文選單時以 `fetch(imageUrl)` 下載背景圖（change `migrate-line-tenant-ctx` 之前在 `rich-menu.service.ts`），網址只驗 `z.string().url()`，沒有呼叫 `isBlockedUrl()`（下游轉發已在用）。持 `richmenu.manage` 的成員（主管預設就有）可以讓 API 請求內網位址；錯誤訊息回傳對方的 Content-Type 或「無法取得背景圖」，可以用來探測內網服務與連接埠。整個過程發生在呼叫 LINE API 之前，不需要有效的 Access Token。Canvas 的 `API_FETCH` 節點有同樣的缺口，見 AUTO-11。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-LINE-04（[LINE 健檢](../features/health/LINE.md)）。證據：`apps/api/src/modules/line/rich-menu.service.ts:346`；草稿 `imageUrl: http://localhost:3001/health` 發布時回「背景圖格式必須是 JPEG 或 PNG（實際：application/json…）」，`localhost:5433` 回「無法取得背景圖」（健檢實測）。
 
@@ -2549,7 +2549,7 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 | `getAllChannelPlugins()`、`hasChannelPlugin()`、`getPlugin()`、`registerPlugin` | 註冊表的輔助函式與舊名稱 | 沒有 |
 | `telegram.ts` | `TelegramPlugin` 類別，由套件入口與 `./telegram` 子路徑匯出 | 沒有註冊，見 APP-02 |
 
-與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.service.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
+與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.line-api.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
 
 **主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
 

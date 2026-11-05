@@ -182,7 +182,8 @@ t('影片預覽圖套用 1MB 限制', () => {
 });
 
 t('後端發布 Rich Menu 前仍會驗圖片大小（雙層防護）', () => {
-  const code = apiSrc('modules/line/rich-menu.service.ts');
+  // 下載背景圖在 change migrate-line-tenant-ctx 移到 rich-menu.line-api.ts（交易外呼叫）
+  const code = apiSrc('modules/line/rich-menu.line-api.ts');
   assert.ok(code.includes('MAX_IMAGE_BYTES'), '發布前未驗圖片大小');
   assert.ok(code.includes('超過 LINE 限制 1MB'), '錯誤訊息未說明是 LINE 的限制');
 });

@@ -7,6 +7,13 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Changed
 
 - **Web CRM 色票改回 Figma 設計系統**（change `restore-figma-palette`）— 2026-11-02 的 `harden-web-wcag-typography` 把色票換成較深的另一套顏色（主色 `#1D4ED8`、文字 `#0F172A`），與 Figma 不符。依使用者決定，`globals.css` 淺色 14 個、深色 18 個色彩 token 改回 Figma 原色（主色 `#378ADD`、文字 `#37404C`、AI 紫等）；字級、焦點框、44px 觸控區、略過導覽連結維持不變。主色按鈕、次要文字、刪除紅與深色模式的成功、AI 標籤對比低於 4.5:1，列為規格中的例外。
+- **圖文選單的發布、預設與分眾綁定改成入口開交易，預設與展開拆成兩個欄位**（#337 階段 4 第一批，change `migrate-line-tenant-ctx`）— 發布原本先呼叫 LINE、最後才寫資料庫，沒有並行控制：寫資料庫失敗時 LINE 上留下找不到的選單，同一個選單同時發布兩次會在 LINE 建出兩個。設預設前先取消全體預設，設預設失敗時所有好友都失去選單。`selected` 同時代表「所有好友的預設選單」與 LINE 的「聊天室打開時展開」，兩件事不能分開設定。現在：
+  - 發布拆成「交易內認領 → 交易外呼叫 LINE → 交易內寫入」。同一個選單或同一個渠道的其他選單正在發布時，回 HTTP 409 `PUBLISH_IN_PROGRESS`。停在發布中超過 5 分鐘視為中斷，可以重新發布。LINE 建好選單之後任何一步失敗，刪除剛建立的 LINE 選單並標成 `error`。每個 LINE 呼叫 30 秒逾時。
+  - 設預設不再先取消全體預設，由 LINE 以新選單取代，而且在寫入發布結果之後才設，發布失敗時 LINE 的預設不受影響。設預設失敗時，新選單不記成預設；LINE 回錯誤時原本的預設不變，回應的 `warnings` 帶 `DEFAULT_NOT_SET`，畫面顯示提示。下架時先查 LINE 目前的預設，是這張才取消。
+  - `rich_menus` 新增 `isDefault`（所有好友的預設選單），migration 以原本的 `selected` 填入。`selected` 改回 LINE 的原意，新建時預設展開。編輯頁拆成兩個選項；建立與修改的 API 新增 `isDefault`。
+  - 分眾綁定與解除綁定改在交易內寫進 outbox。Redis 無法使用時改回 200，由 outbox-relay 補送。workers 綁定前確認選單仍已發布、LINE 端的 ID 沒有變，否則跳過。
+  - 列表頁新增「發布中」狀態，發布失敗的選單顯示「發布」按鈕。發布中停留超過 5 分鐘的選單，列表頁與編輯頁顯示「發布中斷」，可以重新發布；中斷的請求恢復後不會改到重新發布的選單。圖文選單路由的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`。
+  - LINE 個人資料的同步改成「交易內讀取 → 交易外呼叫 LINE → 交易內寫入」，回應不變。
 
 ### Fixed
 
