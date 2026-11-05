@@ -2,16 +2,16 @@
 
 ### Requirement: Rich Menu 草稿內容欄位
 
-RichMenu record MUST 包含下列內容與發布狀態欄位：
-- `chatBarText` (string，使用者在 LINE 聊天列底部看到的按鈕文字，最多 14 字)
+RichMenu record MUST 包含下列欄位：
+- `chatBarText` (string，聊天列底部的按鈕文字，最多 14 字)
 - `size` (JSON，`{ width, height }`，必為 10 種版型其中之一的官方尺寸)
-- `isDefault` (boolean，預設 `false`。已發布的選單：是否為所有好友的預設選單；草稿：發布時是否設成預設。取消發布時保留)
-- `selected` (boolean，聊天室打開時是否展開選單，對應 LINE 的 `selected`，預設 `true`)
-- `areas` (JSON 陣列，每筆 `{ bounds: { x, y, width, height }, action: { type, ... } }`)
+- `isDefault` (boolean，預設 `false`，取消發布時保留，意思見「Default Rich Menu」)
+- `selected` (boolean，預設 `true`，意思見「圖文選單展開狀態」)
+- `areas` (JSON 陣列，每筆含 `bounds` 與 `action`)
 - `imageUrl` (string，MinIO 公開 URL)
-- `status` (string，預設 `draft`。值為 `draft`、`publishing`（發布中）、`published`、`error`（發布失敗）之一)
-- `lineRichMenuId` (string?，LINE 端 ID，由發布流程寫入，取消發布時清空)
-- `publishedAt` (DateTime?，由發布流程寫入，取消發布時清空)
+- `status` (string，`draft`（預設）、`publishing`、`published`、`error` 之一)
+- `lineRichMenuId` (string?，LINE 端 ID，發布時寫入，取消發布時清空)
+- `publishedAt` (DateTime?，發布時寫入，取消發布時清空)
 
 #### Scenario: 建立草稿成功
 - **WHEN** 使用者 POST `/api/v1/line/rich-menus` 並提供有效的 channelId、版型 size、areas、imageUrl
