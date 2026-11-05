@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { SettingsHeader } from './SettingsHeader';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useChannels } from '@/hooks/useChannels';
@@ -322,30 +323,17 @@ export function ChannelManagement() {
 
       {/* 渠道列表 */}
       <section className="flex flex-col gap-7">
-        <div className="flex items-center gap-6">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <h1 className="text-2xl font-semibold leading-7 text-foreground">渠道管理</h1>
-            <p className="text-base leading-7 text-muted-foreground">管理您的訊息渠道連線</p>
-          </div>
-          <div className="flex flex-none items-center gap-3">
-            {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
-            <button
-              type="button"
-              onClick={() => setShowWizard(true)}
-              className="w-[140px] rounded-md border border-tertiary-foreground bg-background px-4 py-3 text-base font-medium leading-5 text-tertiary-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              設定精靈
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAddDialog(true)}
-              className="inline-flex w-[140px] items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold leading-5 text-white hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <AddIcon className="h-5 w-5" />
-              新增渠道
-            </button>
-          </div>
-        </div>
+        {/* 依 Claude Design：標題＋說明在左，設定精靈／新增渠道在右（改用共用標題區與按鈕，尺寸跟著全站規範） */}
+        <SettingsHeader title="渠道管理" description="管理您的訊息渠道連線">
+          {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
+          <Button variant="outline" size="lg" className="w-[140px]" onClick={() => setShowWizard(true)}>
+            設定精靈
+          </Button>
+          <Button size="lg" className="w-[140px]" onClick={() => setShowAddDialog(true)}>
+            <AddIcon />
+            新增渠道
+          </Button>
+        </SettingsHeader>
 
         {metaConnectError && (
           <div role="alert" className="flex items-start justify-between gap-3 rounded-md bg-destructive-subtle p-3 text-sm text-destructive">

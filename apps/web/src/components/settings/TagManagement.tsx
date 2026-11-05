@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { SettingsHeader, SegmentedTabs } from './SettingsHeader';
+import { AddIcon, DeleteIcon, EditIcon } from '@/components/icons/figma-icons';
 import {
   PageDialog,
   PageDialogContent,
@@ -43,6 +45,9 @@ const COLOR_PRESETS = [
   '#f97316', '#eab308', '#22c55e', '#14b8a6',
   '#3b82f6', '#6b7280',
 ];
+
+// 欄寬依 Claude Design：標籤名稱、類型、描述、操作
+const TAG_COLS = 'grid grid-cols-[minmax(160px,1fr)_120px_minmax(0,2fr)_96px] items-center gap-4 px-5';
 
 export function TagManagement() {
   const [tags, setTags] = useState<Tag[]>([]);
@@ -151,81 +156,67 @@ export function TagManagement() {
   }
 
   return (
-    <div className="mt-4 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">標籤管理</h2>
-          <p className="text-sm text-muted-foreground">
-            管理聯絡人、對話和案件的分類標籤
-          </p>
-        </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="mr-1 h-4 w-4" />
+    // 版面依 Claude Design「標籤管理」：標題區＋新增、範圍篩選（附數量）、標籤列表、總數；依 Figma 微調
+    <div className="flex flex-col gap-5">
+      <SettingsHeader title="標籤管理" description="管理聯繫人、對話和案件的分類標籤">
+        <Button size="lg" className="w-[140px]" onClick={openCreate}>
+          <AddIcon />
           新增標籤
         </Button>
-      </div>
+      </SettingsHeader>
 
-      {/* Scope filter */}
-      <div className="flex gap-2">
-        {(['ALL', 'CONTACT', 'CONVERSATION', 'CASE', 'MATERIAL'] as const).map((scope) => (
-          <button
-            key={scope}
-            onClick={() => setFilterScope(scope)}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              filterScope === scope
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
-          >
-            {scope === 'ALL' ? '全部' : SCOPE_LABELS[scope]}{' '}
-            {scope === 'ALL' ? tags.length : tags.filter((t) => t.scope === scope).length}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        label="標籤範圍"
+        value={filterScope}
+        onChange={setFilterScope}
+        items={(['ALL', 'CONTACT', 'CONVERSATION', 'CASE', 'MATERIAL'] as const).map((scope) => ({
+          value: scope,
+          label: scope === 'ALL' ? '全部' : SCOPE_LABELS[scope],
+          count: scope === 'ALL' ? tags.length : tags.filter((t) => t.scope === scope).length,
+        }))}
+      />
 
-      {/* Tag list */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div role="table" aria-label="標籤列表" className="overflow-hidden rounded-lg border border-border">
+        <div role="row" className={`${TAG_COLS} border-b border-border bg-muted py-2 text-sm font-medium leading-7 text-muted-foreground`}>
+          <span role="columnheader">標籤名稱</span>
+          <span role="columnheader">類型</span>
+          <span role="columnheader">描述</span>
+          <span role="columnheader" className="text-right">操作</span>
+        </div>
         {filtered.map((tag) => (
-          <div
-            key={tag.id}
-            className="flex items-center justify-between rounded-lg border p-3"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <Badge color={tag.color} className="shrink-0">{tag.name}</Badge>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted-foreground">
-                    {SCOPE_LABELS[tag.scope]}
-                  </span>
-                </div>
-                {tag.description && (
-                  <p className="truncate text-xs text-muted-foreground">
-                    {tag.description}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-1 shrink-0 ml-2">
-              <Button size="sm" variant="ghost" onClick={() => openEdit(tag)}>
-                <Pencil className="h-3.5 w-3.5" />
+          <div key={tag.id} role="row" className={`${TAG_COLS} border-b border-border bg-background py-3.5 text-sm transition-colors last:border-b-0 hover:bg-surface-hover`}>
+            <span role="cell" className="min-w-0">
+              <span
+                className="inline-flex h-6 max-w-full items-center truncate rounded-full px-3 text-xs font-medium text-white"
+                style={{ backgroundColor: tag.color || 'hsl(var(--primary))' }}
+              >
+                {tag.name}
+              </span>
+            </span>
+            <span role="cell" className="text-muted-foreground">{SCOPE_LABELS[tag.scope]}</span>
+            <span role="cell" className="truncate text-muted-foreground" title={tag.description}>{tag.description || '—'}</span>
+            <span role="cell" className="flex items-center justify-end gap-1">
+              <Button size="icon-sm" variant="ghost" onClick={() => openEdit(tag)} aria-label={`編輯「${tag.name}」`} title="編輯">
+                <EditIcon />
               </Button>
               <Button
-                size="sm"
+                size="icon-sm"
                 variant="ghost"
                 onClick={() => handleDelete(tag.id)}
-                className="text-destructive hover:text-destructive"
+                className="text-destructive"
+                aria-label={`刪除「${tag.name}」`}
+                title="刪除"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <DeleteIcon />
               </Button>
-            </div>
+            </span>
           </div>
         ))}
         {filtered.length === 0 && (
-          <div className="col-span-full py-8 text-center text-sm text-muted-foreground">
-            尚未建立標籤
-          </div>
+          <div className="py-10 text-center text-sm text-muted-foreground">此範圍目前沒有標籤</div>
         )}
       </div>
+      {filtered.length > 0 && <p className="text-sm text-muted-foreground">共 {filtered.length} 個標籤</p>}
 
       {/* Create/Edit Dialog */}
       <PageDialog section="設定" parent="標籤管理" open={showDialog} onOpenChange={setShowDialog}>

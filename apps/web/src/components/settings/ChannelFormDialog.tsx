@@ -13,12 +13,13 @@ import { CHANNEL_TYPE } from '@open333crm/shared';
 import { ChannelFieldGuide } from './ChannelFieldGuide';
 import { ChannelTeamAssignment } from './ChannelTeamAssignment';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogDescription,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 
 interface ChannelFormDialogProps {
   open: boolean;
@@ -226,18 +227,22 @@ export function ChannelFormDialog({
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{isEditing ? '編輯渠道' : '新增渠道'}</DialogTitle>
-        </DialogHeader>
+    {/* 依 Claude Design「新增渠道」：改為下一頁式表單（原本是跳出視窗） */}
+    <PageDialog open={open} onOpenChange={onOpenChange} section="設定" parent="渠道管理">
+      <PageDialogContent>
+        <PageDialogHeader>
+          <PageDialogTitle>{isEditing ? '編輯渠道' : '新增渠道'}</PageDialogTitle>
+          <PageDialogDescription>
+            {isEditing ? '更新渠道名稱或憑證，憑證欄位留空表示不更新' : '選擇渠道類型並填入該平台的認證資訊，儲存後可立即測試連線'}
+          </PageDialogDescription>
+        </PageDialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5">
             {/* Channel Type */}
             <div>
               <label className="mb-1.5 block text-sm font-medium">
-                渠道類型
+                渠道類型<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
               </label>
               <Select
                 value={effectiveType}
@@ -250,7 +255,7 @@ export function ChannelFormDialog({
             {/* Display Name */}
             <div>
               <label className="mb-1.5 block text-sm font-medium">
-                顯示名稱
+                顯示名稱<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
               </label>
               <Input
                 value={displayName}
@@ -275,7 +280,7 @@ export function ChannelFormDialog({
                   className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                 >
                   <HelpCircle className="h-4 w-4" />
-                  欄位說明：這些值要去哪裡取得？
+                  這些值要去哪裡取得？
                 </button>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
@@ -313,7 +318,7 @@ export function ChannelFormDialog({
                   className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                 >
                   <HelpCircle className="h-4 w-4" />
-                  欄位說明：這些值要去哪裡取得？
+                  這些值要去哪裡取得？
                 </button>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
@@ -549,7 +554,7 @@ export function ChannelFormDialog({
             )}
           </div>
 
-          <DialogFooter>
+          <PageDialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -568,10 +573,10 @@ export function ChannelFormDialog({
                 '儲存'
               )}
             </Button>
-          </DialogFooter>
+          </PageDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </PageDialogContent>
+    </PageDialog>
 
     <ChannelFieldGuide
       open={showFieldGuide}

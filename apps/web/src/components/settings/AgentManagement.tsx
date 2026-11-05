@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AccessChecklist, channelToItem } from './AccessChecklist';
-import { Loader2, Plus, Pencil, KeyRound } from 'lucide-react';
+import { Loader2, KeyRound } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth, usePermission } from '@/providers/AuthProvider';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
+import { SettingsHeader, SegmentedTabs } from './SettingsHeader';
+import { AddIcon, EditIcon } from '@/components/icons/figma-icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -597,6 +599,9 @@ function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps)
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+// 欄寬依 Claude Design：姓名、角色、開啟案件、操作
+const AGENT_COLS = 'grid grid-cols-[minmax(220px,1fr)_140px_110px_96px] items-center gap-4 px-5';
+
 export function AgentManagement() {
   const { agent: currentAgent } = useAuth();
   // 權限 gating（前端 UX；後端 requirePermission 為權威）
@@ -690,99 +695,75 @@ export function AgentManagement() {
   }
 
   return (
-    <div className="mt-4 space-y-6">
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          {(['ALL', 'ADMIN', 'SUPERVISOR', 'AGENT'] as const).map((role) => (
-            <button
-              key={role}
-              onClick={() => setFilterRole(role)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                filterRole === role
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
-            >
-              {role === 'ALL' ? '全部' : role} {counts[role]}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setChangePasswordOpen(true)}
-          >
-            <KeyRound className="mr-1.5 h-4 w-4" />
-            修改密碼
+    // 版面依 Claude Design「人員管理」：標題區＋修改密碼／新增人員、角色分頁（附數量）、人員列表；依 Figma 微調
+    <div className="flex flex-col gap-5">
+      <SettingsHeader title="人員管理" description="管理團隊成員與角色權限，設定可存取的模組與操作範圍">
+        <Button variant="outline" size="lg" onClick={() => setChangePasswordOpen(true)}>
+          <KeyRound />
+          修改密碼
+        </Button>
+        {canCreate && (
+          <Button size="lg" className="w-[140px]" onClick={() => setCreateOpen(true)}>
+            <AddIcon />
+            新增人員
           </Button>
-          {canCreate && (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              新增人員
-            </Button>
-          )}
-        </div>
-      </div>
+        )}
+      </SettingsHeader>
 
-      {/* Agent list */}
-      <div className="rounded-lg border">
-        <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b px-4 py-2 text-xs font-medium text-muted-foreground">
-          <span>姓名</span>
-          <span className="w-24 text-center">角色</span>
-          <span className="w-20 text-center">開啟案件</span>
-          <span className="w-16 text-center">操作</span>
+      <SegmentedTabs
+        label="角色篩選"
+        value={filterRole}
+        onChange={setFilterRole}
+        items={(['ALL', 'ADMIN', 'SUPERVISOR', 'AGENT'] as const).map((role) => ({
+          value: role,
+          label: role === 'ALL' ? '全部' : role === 'ADMIN' ? 'Admin' : role === 'SUPERVISOR' ? 'Supervisor' : 'Agent',
+          count: counts[role],
+        }))}
+      />
+
+      <div role="table" aria-label="人員列表" className="overflow-hidden rounded-lg border border-border">
+        <div role="row" className={`${AGENT_COLS} border-b border-border bg-muted py-2 text-sm font-medium leading-7 text-muted-foreground`}>
+          <span role="columnheader">姓名</span>
+          <span role="columnheader">角色</span>
+          <span role="columnheader">開啟案件</span>
+          <span role="columnheader" className="text-right">操作</span>
         </div>
         {filtered.map((agent) => {
           const rc = roleBadgeForAgent(agent);
           return (
-            <div
-              key={agent.id}
-              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b px-4 py-3 last:border-b-0"
-            >
-              <div className="flex items-center gap-3 min-w-0">
+            <div key={agent.id} role="row" className={`${AGENT_COLS} border-b border-border bg-background py-3.5 text-sm transition-colors last:border-b-0 hover:bg-surface-hover`}>
+              <span role="cell" className="flex min-w-0 items-center gap-3">
                 <Avatar alt={agent.name} src={agent.avatarUrl} size="sm" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {agent.name}
-                    {!agent.isActive && (
-                      <Badge color="gray" className="ml-2 align-middle">已停用</Badge>
-                    )}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
+                <span className="flex min-w-0 flex-col">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-semibold text-foreground">{agent.name}</span>
+                    {!agent.isActive && <Badge variant="secondary">已停用</Badge>}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
                     {agent.email}
                     {!agent.isActive && <span className="ml-1">・email 仍被佔用</span>}
-                  </p>
-                </div>
-              </div>
-              <div className="w-24 text-center">
-                <Badge color={rc.color}>{rc.label}</Badge>
-              </div>
-              <div className="w-20 text-center text-sm">
-                {agent._count.assignedCases > 0 ? `${agent._count.assignedCases} 件` : '—'}
-              </div>
-              <div className="w-16 flex justify-center">
+                  </span>
+                </span>
+              </span>
+              <span role="cell"><Badge color={rc.color}>{rc.label}</Badge></span>
+              <span role="cell" className="tabular-nums text-foreground">
+                {agent._count.assignedCases > 0 ? `${agent._count.assignedCases} 件` : <span className="text-muted-foreground">—</span>}
+              </span>
+              <span role="cell" className="flex justify-end">
                 {canEdit ? (
-                  <button
-                    title="編輯角色"
-                    onClick={() => setEditAgent(agent)}
-                    className="flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
-                    <Pencil className="h-3 w-3" />
+                  <Button variant="ghost" size="xs" onClick={() => setEditAgent(agent)} aria-label={`編輯「${agent.name}」`}>
+                    <EditIcon />
                     編輯
-                  </button>
+                  </Button>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
                 )}
-              </div>
+              </span>
             </div>
           );
         })}
         {filtered.length === 0 && (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            沒有符合條件的人員
-          </div>
+          <div className="py-10 text-center text-sm text-muted-foreground">此角色目前沒有成員</div>
         )}
       </div>
 
@@ -805,7 +786,7 @@ export function AgentManagement() {
       )}
 
       {/* Role descriptions */}
-      <div className="rounded-lg border bg-muted/50 p-4 text-xs text-muted-foreground">
+      <div className="rounded-lg border border-border bg-muted p-4 text-sm leading-6 text-muted-foreground">
         <p><strong>Admin</strong>：完整設定權限，可新增任何角色</p>
         <p><strong>Supervisor</strong>：可查看所有對話/案件，可新增 Agent 與 Supervisor</p>
         <p><strong>Agent</strong>：只能看自己負責的對話/案件</p>

@@ -16,6 +16,7 @@ import { Loader2, Plus, Pencil, Trash2, ChevronDown, Search, Lock, Info } from '
 import api from '@/lib/api';
 import { usePermission } from '@/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
+import { SettingsHeader } from './SettingsHeader';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -337,18 +338,21 @@ export function RolePermissionMatrix() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">角色與權限</h2>
-        <p className="text-sm text-muted-foreground">
-          選左側角色，右側依功能領域勾選可用權限。
-          {!canManage && '（你沒有「管理角色權限」權限，此頁為唯讀）'}
-        </p>
-      </div>
+    // 版面依 Claude Design「角色與權限」：標題區、左欄角色清單、右欄依分類的權限；依 Figma 微調
+    <div className="flex flex-col gap-5">
+      <SettingsHeader
+        title="角色權限"
+        description={
+          <>
+            以角色管理成員可操作的功能，系統內建角色的權限不可修改，可複製後調整
+            {!canManage && '（你沒有「管理角色權限」權限，此頁為唯讀）'}
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-[220px_1fr] gap-4">
+      <div className="grid grid-cols-[260px_minmax(0,1fr)] gap-5">
         {/* 左欄：角色清單 */}
-        <div className="rounded-xl border bg-card p-2 shadow-soft h-fit">
+        <div className="h-fit rounded-lg border border-border bg-background p-2">
           <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             角色
           </div>

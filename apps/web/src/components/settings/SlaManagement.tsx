@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { CasePriorityBadge } from '@/components/case/CasePriorityBadge';
+import { SettingsHeader } from './SettingsHeader';
+import { AddIcon, DeleteIcon, EditIcon } from '@/components/icons/figma-icons';
 import {
   PageDialog,
   PageDialogContent,
@@ -48,6 +51,9 @@ function formatDuration(minutes: number): string {
   const remainHours = hours % 24;
   return remainHours > 0 ? `${days} 天 ${remainHours} 小時` : `${days} 天`;
 }
+
+// 欄寬依 Claude Design：政策名稱、優先級、首回、解決、預警、操作
+const SLA_COLS = 'grid grid-cols-[minmax(180px,1.4fr)_100px_110px_110px_130px_96px] items-center gap-4 px-5';
 
 export function SlaManagement() {
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
@@ -156,83 +162,49 @@ export function SlaManagement() {
   }
 
   return (
-    <div className="mt-4 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">SLA 政策</h2>
-          <p className="text-sm text-muted-foreground">
-            設定不同優先級的服務等級承諾
-          </p>
-        </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="mr-1 h-4 w-4" />
+    // 版面依 Claude Design「SLA 政策」：標題區＋建立、政策列表（名稱＋預設、優先級、首回、解決、預警、操作）；依 Figma 微調
+    <div className="flex flex-col gap-5">
+      <SettingsHeader title="SLA 政策" description="設定不同優先級的服務等級承諾">
+        <Button size="lg" onClick={openCreate}>
+          <AddIcon />
           建立 SLA 政策
         </Button>
-      </div>
+      </SettingsHeader>
 
-      {/* Policy table */}
-      <div className="rounded-lg border">
-        <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-4 border-b px-4 py-2 text-xs font-medium text-muted-foreground">
-          <span>政策名稱</span>
-          <span className="w-20 text-center">優先級</span>
-          <span className="w-24 text-center">首回時間</span>
-          <span className="w-24 text-center">解決時間</span>
-          <span className="w-20 text-center">預警</span>
-          <span className="w-20 text-center">操作</span>
+      <div role="table" aria-label="SLA 政策列表" className="overflow-hidden rounded-lg border border-border">
+        <div role="row" className={`${SLA_COLS} border-b border-border bg-muted py-2 text-sm font-medium leading-7 text-muted-foreground`}>
+          <span role="columnheader">政策名稱</span>
+          <span role="columnheader">優先級</span>
+          <span role="columnheader">首回時間</span>
+          <span role="columnheader">解決時間</span>
+          <span role="columnheader">預警</span>
+          <span role="columnheader" className="text-right">操作</span>
         </div>
-        {policies.map((policy) => {
-          const pc = PRIORITY_CONFIG[policy.priority] || PRIORITY_CONFIG.MEDIUM;
-          return (
-            <div
-              key={policy.id}
-              className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-4 border-b px-4 py-3 last:border-b-0"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="truncate text-sm font-medium">{policy.name}</span>
-                {policy.isDefault && (
-                  <Badge variant="outline" className="text-[10px] shrink-0">預設</Badge>
-                )}
-              </div>
-              <div className="w-20 text-center">
-                <Badge color={pc.color}>{pc.label}</Badge>
-              </div>
-              <div className="w-24 text-center text-sm">
-                {formatDuration(policy.firstResponseMinutes)}
-              </div>
-              <div className="w-24 text-center text-sm">
-                {formatDuration(policy.resolutionMinutes)}
-              </div>
-              <div className="w-20 text-center text-sm">
-                {formatDuration(policy.warningBeforeMinutes)}
-              </div>
-              <div className="w-20 flex items-center justify-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => openEdit(policy)}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleDelete(policy.id)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          );
-        })}
-        {policies.length === 0 && (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            尚未建立 SLA 政策
+        {policies.map((policy) => (
+          <div key={policy.id} role="row" className={`${SLA_COLS} border-b border-border bg-background py-3.5 text-sm transition-colors last:border-b-0 hover:bg-surface-hover`}>
+            <span role="cell" className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-semibold text-foreground">{policy.name}</span>
+              {policy.isDefault && <Badge variant="outline-primary">預設</Badge>}
+            </span>
+            <span role="cell"><CasePriorityBadge priority={policy.priority} /></span>
+            <span role="cell" className="tabular-nums text-foreground">{formatDuration(policy.firstResponseMinutes)}</span>
+            <span role="cell" className="tabular-nums text-foreground">{formatDuration(policy.resolutionMinutes)}</span>
+            <span role="cell" className="tabular-nums text-muted-foreground">到期前 {formatDuration(policy.warningBeforeMinutes)}</span>
+            <span role="cell" className="flex items-center justify-end gap-1">
+              <Button size="icon-sm" variant="ghost" onClick={() => openEdit(policy)} aria-label={`編輯「${policy.name}」`} title="編輯">
+                <EditIcon />
+              </Button>
+              <Button size="icon-sm" variant="ghost" onClick={() => handleDelete(policy.id)} className="text-destructive" aria-label={`刪除「${policy.name}」`} title="刪除">
+                <DeleteIcon />
+              </Button>
+            </span>
           </div>
+        ))}
+        {policies.length === 0 && (
+          <div className="py-10 text-center text-sm text-muted-foreground">尚未建立 SLA 政策</div>
         )}
       </div>
 
-      {/* Create/Edit Dialog */}
       <PageDialog section="設定" parent="SLA 政策" open={showDialog} onOpenChange={setShowDialog}>
         <PageDialogContent>
           <PageDialogHeader>
