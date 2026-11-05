@@ -76,7 +76,7 @@
 - [x] 9.6 CHANGELOG 的 `Changed` 新增一條，寫明可觀察的差異：發布的 409、設預設不再先取消全體預設與失敗時的警告、`isDefault` 與 `selected` 分開、Redis 無法使用時綁定改回 200
 - [x] 9.7 更新 `docs/ref/features/`、`docs/ref/DATABASE-ERD.md` 與 `.claude/skills/feature-line/` 中描述圖文選單發布、預設與綁定的段落；另外更新 `docs/ref/modules/EVENTS.md`、`CHANNEL-PLUGINS.md` 與 AUDIT 中程式的位置
 - [x] 9.8 `node scripts/validate-openspec.mjs migrate-line-tenant-ctx` 通過；歸檔前後比較「略過 N 則」
-- [ ] 9.9 開對帳排程的 issue（草稿在 `tmp/圖文選單對帳-issue-草稿.md`，發出前給使用者確認），在 design 的已知限制補上 issue 編號
+- [x] 9.9 開對帳排程的 issue：#457。design 的非目標、D2 與 D8 改成指向 #457
 
 ## 10. review-loop 第 1 輪的修正
 

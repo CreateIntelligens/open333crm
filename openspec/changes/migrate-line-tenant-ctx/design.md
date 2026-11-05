@@ -20,7 +20,7 @@
 
 **Non-Goals:**
 
-- LINE 與資料庫的定期對帳（另開 issue）。
+- LINE 與資料庫的定期對帳（#457）。
 - Rich Menu alias、排程上下架、單一聯絡人綁定（`CHANNEL_UI_SWITCH`）。
 - `services/channel-visibility.ts` 的搬遷。`line-profile.routes.ts` 仍在 flow 之外呼叫 `resolveChannelVisibility(request)`，隨階段 4 的 `channel-visibility` 處理。
 
@@ -52,11 +52,11 @@ LINE 建立選單之後，下列任一情況，flow 呼叫 LINE 刪除剛建立�
 - 上傳背景圖失敗。
 - 交易 2 丟出錯誤，或條件更新 `count = 0`（中斷超過 5 分鐘，被另一個請求重新認領）。
 
-刪除失敗時寫 error log，帶 LINE 端的選單 id 與選單 id，供對帳 issue 使用。寫 `error` 的交易也失敗時，選單停在 `publishing`，5 分鐘後可以重新發布（D3）。
+刪除失敗時寫 error log，帶 LINE 端的選單 id 與選單 id，供對帳（#457）使用。寫 `error` 的交易也失敗時，選單停在 `publishing`，5 分鐘後可以重新發布（D3）。
 
 LINE 建立選單失敗時，沒有東西要刪，只寫 `error`。
 
-設預設已經成功、之後交易 2 失敗時，LINE 的預設指向即將刪除的選單。補償時先把 LINE 的預設設回交易 1 讀到的舊預設選單（同渠道 `isDefault = true` 的 `lineRichMenuId`），再刪除新選單；沒有舊預設時，刪除新選單後 LINE 沒有預設，與資料庫一致。設回失敗時寫 error log，由對帳 issue 收斂。
+設預設已經成功、之後交易 2 失敗時，LINE 的預設指向即將刪除的選單。補償時先把 LINE 的預設設回交易 1 讀到的舊預設選單（同渠道 `isDefault = true` 的 `lineRichMenuId`），再刪除新選單；沒有舊預設時，刪除新選單後 LINE 沒有預設，與資料庫一致。設回失敗時寫 error log，由對帳（#457）收斂。
 
 ### D3. 中斷的發布以 `updatedAt` 判斷
 
@@ -103,7 +103,7 @@ line-oa-laravel 的排程工作以 `expectedJobId` 做同樣的事：工作執�
 | --- | --- | --- | --- |
 | 發布交易 1 | 不變 | 管理員重按 | 不呼叫 LINE |
 | 下載背景圖 | 回到發布前的狀態（中斷後重新發布的選單記成 `error`） | 管理員修正圖片後重按 | 不呼叫 LINE |
-| 建立 LINE 選單（含逾時、連不上） | `error` | 管理員重按 | LINE 回錯誤或連不上時沒有新選單；逾時時 LINE 可能已建立，系統不知道它的 id，留下孤兒（對帳 issue） |
+| 建立 LINE 選單（含逾時、連不上） | `error` | 管理員重按 | LINE 回錯誤或連不上時沒有新選單；逾時時 LINE 可能已建立，系統不知道它的 id，留下孤兒（對帳 #457） |
 | 上傳圖、交易 2 | LINE 選單已補償刪除，`error` | 管理員重按 | LINE 上最多一個新選單；補償失敗時留下孤兒（log） |
 | 補償後寫 `error` 失敗、處理程序中途結束 | `publishing`；5 分鐘後頁面顯示「發布中斷」 | 管理員重按發布 | 可能留下孤兒 |
 | 設預設 | `published`、`isDefault=false`；LINE 上原本的預設不變 | 管理員取消發布，重新勾選預設並儲存，再發布 | 資料庫與 LINE 一致 |
