@@ -52,10 +52,10 @@ export function TrackingSettings() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="flex max-w-[760px] flex-col gap-5">
       <div>
-        <h2 className="text-lg font-semibold mb-4">追蹤設定</h2>
-        <p className="text-sm text-muted-foreground mb-4">
+        <h1 className="text-2xl font-semibold leading-7 text-foreground">追蹤設定</h1>
+        <p className="mt-1 text-base text-muted-foreground">
           設定外部追蹤服務的 ID，短連結的 redirect
           頁面會自動注入對應的追蹤腳本。
           設定後，所有短連結的點擊數據會同步發送到 GA4 和 Meta Business Suite。

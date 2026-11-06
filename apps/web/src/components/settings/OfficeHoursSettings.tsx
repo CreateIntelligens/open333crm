@@ -126,10 +126,10 @@ export function OfficeHoursSettings() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="flex max-w-[760px] flex-col gap-5">
       <div>
-        <h2 className="text-lg font-semibold mb-4">營業時間設定</h2>
-        <p className="text-sm text-muted-foreground mb-4">
+        <h1 className="text-2xl font-semibold leading-7 text-foreground">營業時間</h1>
+        <p className="mt-1 text-base text-muted-foreground">
           設定營業時間後，非營業時間收到的訊息將自動回覆提示訊息。
         </p>
       </div>

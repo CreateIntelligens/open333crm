@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Save, Check, Eye, EyeOff } from 'lucide-react';
+import { SettingsHeader } from './SettingsHeader';
 
 /** 與後端 changePasswordSchema 的 min(8) 對齊，避免前端放行後端才擋 */
 const MIN_PASSWORD_LENGTH = 8;
@@ -112,7 +113,9 @@ export function GeneralSettings() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 py-4">
+    // 與其他設定子頁一致：靠左、寬 760、共用標題區（原本置中）
+    <div className="flex max-w-[760px] flex-col gap-5">
+      <SettingsHeader title="一般設定" description="管理你的個人資料與登入密碼" />
       {/* 個人資料 */}
       <Card>
         <CardHeader>

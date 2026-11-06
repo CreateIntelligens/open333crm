@@ -100,11 +100,11 @@ export function CliSessionManagement() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="flex max-w-[760px] flex-col gap-5">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold">CLI / LLM 連線</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold leading-7 text-foreground">CLI 連線</h1>
+          <p className="mt-1 text-base text-muted-foreground">
             產生 CLI token 讓 LLM 或{" "}
             <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
               open333

@@ -109,17 +109,17 @@ export function IdentityBindingSettings() {
     Object.entries(fieldErrors).find(([path]) => path === key || path.startsWith(`${key}.`))?.[1];
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="flex max-w-[760px] flex-col gap-5">
       <div>
-        <h2 className="mb-2 text-lg font-semibold">跨渠道綁定</h2>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-2xl font-semibold leading-7 text-foreground">跨渠道綁定</h1>
+        <p className="mt-1 text-base text-muted-foreground">
           讓同一位顧客在 LINE、Facebook、Instagram 的帳號合併成同一位聯絡人。顧客在任一渠道傳送綁定關鍵字，
           系統會回覆其他渠道的專屬連結與一次性代碼；顧客點連結到另一個渠道送出代碼，並回覆「確認綁定」後，兩個帳號即合併，
           對話紀錄、標籤、點數會集中在同一位聯絡人底下。
         </p>
       </div>
 
-      <label className="flex items-start gap-3 rounded-lg border p-4">
+      <label className="flex items-start gap-3 rounded-lg border border-border bg-background p-4">
         <Checkbox checked={enabled} onCheckedChange={setEnabled} className="mt-0.5" />
         <span className="space-y-1">
           <span className="block text-sm font-medium">啟用跨渠道綁定</span>
@@ -155,7 +155,7 @@ export function IdentityBindingSettings() {
             並在雙方的對話中通知；顧客可在 7 天內傳送解除關鍵字自行解除。客服也可以在收件匣代顧客傳送登記連結。
           </p>
         </div>
-        <label className="flex items-start gap-3 rounded-lg border p-4">
+        <label className="flex items-start gap-3 rounded-lg border border-border bg-background p-4">
           <Checkbox checked={emailEnabled} onCheckedChange={setEmailEnabled} className="mt-0.5" />
           <span className="space-y-1">
             <span className="block text-sm font-medium">啟用 email 登記</span>

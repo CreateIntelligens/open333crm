@@ -107,11 +107,11 @@ export function PasskeyManagement() {
   };
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="flex max-w-[760px] flex-col gap-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Passkey 登入</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold leading-7 text-foreground">Passkey 登入</h1>
+          <p className="mt-1 text-base text-muted-foreground">
             使用 Touch ID、Face ID、Windows Hello 或裝置 PIN 登入，不需要輸入密碼。
           </p>
         </div>

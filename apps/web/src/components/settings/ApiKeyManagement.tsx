@@ -75,11 +75,11 @@ export function ApiKeyManagement() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="flex max-w-[760px] flex-col gap-5">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Partner API 金鑰</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold leading-7 text-foreground">API 金鑰</h1>
+          <p className="mt-1 text-base text-muted-foreground">
             提供給合作方（產品 / 行銷 / 客服）長期使用的 API 金鑰，僅可呼叫 <code className="rounded bg-muted px-1.5 py-0.5 text-xs">POST /knowledge/partner-ingest</code> 推送知識庫文件。
           </p>
         </div>
