@@ -11,5 +11,5 @@
 
 - [x] 3.1 `pnpm test` 通過；knowledge 與 auth 的 feature 測試通過
 - [x] 3.2 `node scripts/check-tenant-ctx.mjs --strict`、`check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
-- [x] 3.3 `CHANGELOG.md` 加上 Fixed 條目；AUDIT AUTH-06 改成已修正，RBAC-02 的段落、AUDIT-REVIEWS、`AUTHENTICATION.md`、`PERMISSIONS.md`、`feature-knowledge` skill 一起更新
+- [x] 3.3 `CHANGELOG.md` 加上 Fixed 條目；AUDIT 移除 AUTH-06，RBAC-02 的段落、AUDIT-REVIEWS、`AUTHENTICATION.md`、`PERMISSIONS.md`、`docs/ref/features/tenant/KNOWLEDGE.md`、`feature-map.json`、`feature-knowledge` skill 一起更新
 - [x] 3.4 `node scripts/validate-openspec.mjs fix-partner-ingest-jwt-role` 通過

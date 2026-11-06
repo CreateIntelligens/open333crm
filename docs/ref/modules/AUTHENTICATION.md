@@ -61,7 +61,7 @@ Passkey 不是另一種 token。Passkey 驗證成功後，系統發出的是一�
 | `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | JWT 分支是 token 的 `roleId`；金鑰分支不填 | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
 | `authenticatePlatformSuperuser` | 平台 JWT | 寫入 `request.platformUser`，不寫 `request.agent` | | | | | `/api/v1/platform/*` |
 
-「JWT 或其他憑證」的裝飾器與 `authenticate` 的 JWT 分支都呼叫 `attachAgentFromAccessToken()`，填入相同的欄位。這三份程式原本各寫一份，只有 `authenticate` 帶 `roleId`（`../system/AUDIT.md` 的 AUTH-06，已修正）。
+「JWT 或其他憑證」的裝飾器與 `authenticate` 的 JWT 分支都呼叫 `attachAgentFromAccessToken()`，填入相同的欄位。這三份程式原本各寫一份，只有 `authenticate` 帶 `roleId`（AUTH-06，2026-11-06 修正，見 `../system/AUDIT-REVIEWS.md`）。
 
 驗證之後，下列程式讀這些欄位：
 

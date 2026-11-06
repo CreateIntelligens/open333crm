@@ -10,8 +10,8 @@
 
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
-| AUTH-06 | 已修正 | UAT：admin 的角色有 `knowledge.admin`（資料庫與 Redis 權限快取都確認），JWT 呼叫回 403，`details.requiredPermission` 是 `knowledge.admin`。本機：`partner-ingest-jwt.test.ts`「有知識庫進階權限的成員推送文件」修正前回 403，失敗在斷言上；修正後通過。「沒有知識庫進階權限的成員推送文件」以 mutation 驗證：把路由的權限改成 `knowledge.view`，測試失敗 |
-| RBAC-02 的「JWT 失效關閉」 | 只修了 JWT 的一半 | `authenticateJwtOrCliSession` 的 JWT 分支現在帶 `roleId`；`requirePermission()` 對 CLI 直接放行的部分未處理 |
+| AUTH-06 | 已修正，從 `AUDIT.md` 移除 | UAT：admin 的角色有 `knowledge.admin`（資料庫與 Redis 權限快取都確認），JWT 呼叫回 403，`details.requiredPermission` 是 `knowledge.admin`。本機：`partner-ingest-jwt.test.ts`「有知識庫進階權限的成員推送文件」修正前回 403，失敗在斷言上；修正後通過。「沒有知識庫進階權限的成員推送文件」以 mutation 驗證：把路由的權限改成 `knowledge.view`，測試失敗 |
+| RBAC-02 | 維持未處理，只更新說明 | RBAC-02 的說明提到「`authenticateJwtOrCliSession` 的 JWT 分支沒有 `roleId`」，這是 AUTH-06 的一部分，已隨 AUTH-06 修正，說明已改寫，也拿掉對 AUTH-06 的引用。RBAC-02 本身（CLI token 只看 scope、`requirePermission()` 對 CLI 直接放行）沒有改 |
 
 ## 2026-11-06：知識庫的讀取權限（RBAC-01）
 
