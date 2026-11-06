@@ -28,16 +28,16 @@ description: >
 
 | # | 流程 | 入口 | API → 後端 | 副作用 | 權限 |
 | - | ---- | ---- | ---------- | ------ | ---- |
-| 1 | 文章列表、篩選 | `/dashboard/knowledge/articles`（舊網址 `/dashboard/knowledge?tab=` 仍相容） | `GET /knowledge?status&category&source&tag&q&page&limit=50`、`/knowledge/categories`、`/knowledge/sources` → `knowledge.service.ts` `listArticles` | 以 raw SQL 補 `hasEmbedding`（標題前綠色圖示） | 只驗登入（RBAC-01）；側欄依 `knowledge.view` 隱藏 |
-| 2 | 新增、編輯文章 | 「新增文章」、列上鉛筆 → `ArticleFormDialog` | `POST /knowledge`、`GET /knowledge/:id`（`viewCount+1`）、`PATCH /knowledge/:id` | 新建一律 `DRAFT`；改標題/內容/摘要時背景重新向量化，失敗只記 log | `knowledge.manage` / **不隱藏** |
-| 3 | 發布、封存、刪除 | 列上地球、箱子、垃圾桶 | `POST /knowledge/:id/publish`、`/archive`、`DELETE /knowledge/:id` | 發布時沒有向量就背景補；刪除是**硬刪除** | `knowledge.manage` / **不隱藏** |
-| 4 | 匯入 | 「匯入文章」→ `ImportDialog` | 非 JSON：`POST /knowledge/upload`（multipart，內容偵測 `upload-content-detector.ts`）；JSON：前端 `JSON.parse` 後送 `POST /knowledge/import {articles}` | CSV/xlsx 有問答欄 → 一列一篇、**直接 `PUBLISHED`**；其他檔案一篇草稿；JSON 依 `status` | `knowledge.manage` / **不隱藏** |
-| 5 | 語義搜尋 | `/dashboard/knowledge/search` | `POST /knowledge/search {query}` → `semanticSearch` → `generateEmbedding` + `searchSimilarArticles` | 只搜 `PUBLISHED` 且有向量；用 Embedding 設定的 `topK`、`threshold` | 只驗登入 |
+| 1 | 文章列表、篩選 | `/dashboard/knowledge/articles`（舊網址 `/dashboard/knowledge?tab=` 仍相容） | `GET /knowledge?status&category&source&tag&q&page&limit=50`、`/knowledge/categories`、`/knowledge/sources` → `knowledge.service.ts` `listArticles` | 以 raw SQL 補 `hasEmbedding`（標題前綠色圖示）；`page`、`limit`（1～100，預設 50）不合法回 400 | `knowledge.view`；側欄依 `knowledge.view` 隱藏 |
+| 2 | 新增、編輯文章 | 「新增文章」、列上鉛筆 → `ArticleFormDialog` | `POST /knowledge`、`GET /knowledge/:id`（`viewCount+1`）、`PATCH /knowledge/:id` | 新建一律 `DRAFT`；改標題/內容/摘要時在 commit 之後開始重新向量化，不等結果，失敗只記 log | 讀取 `knowledge.view`、寫入 `knowledge.manage` / **不隱藏** |
+| 3 | 發布、封存、刪除 | 列上地球、箱子、垃圾桶 | `POST /knowledge/:id/publish`、`/archive`、`DELETE /knowledge/:id` | 發布時沒有向量就在 commit 之後補；刪除是**硬刪除**，commit 之後刪掉附件在 S3 上的檔案 | `knowledge.manage` / **不隱藏** |
+| 4 | 匯入 | 「匯入文章」→ `ImportDialog` | 非 JSON：`POST /knowledge/upload`（multipart，內容偵測 `upload-content-detector.ts`）；JSON：前端 `JSON.parse` 後送 `POST /knowledge/import {articles}` | CSV/xlsx 有問答欄 → 一列一篇、**直接 `PUBLISHED`**；其他檔案一篇草稿；JSON 只保留 `status: 'PUBLISHED'`，其他值（含 `ARCHIVED`）一律 `DRAFT`。每篇各自一個交易，一篇失敗不影響其他篇 | `knowledge.manage` / **不隱藏** |
+| 5 | 語義搜尋 | `/dashboard/knowledge/search` | `POST /knowledge/search {query}` → `semanticSearch` → `generateEmbedding` + `searchSimilarArticles` | 只搜 `PUBLISHED` 且有向量；用 Embedding 設定的 `topK`、`threshold` | `knowledge.view` |
 | 6 | 回報調教 | `/dashboard/knowledge/feedback` | `GET /knowledge/feedback?status=open`、`PATCH /knowledge/feedback/:id/resolve` | 標記 `resolved` 後從清單消失，不能復原 | resolve 要 `knowledge.admin` / 有隱藏 |
 | 7 | Embedding 設定 | `/dashboard/knowledge/embedding` | `GET/PUT /settings/embedding`、`POST /settings/embedding/health`、`POST /knowledge/bulk-embed` | 寫 `TenantSettings`、租戶稽核；bulk-embed 背景跑 | `settings.manage`（整個 settings 模組）/ 側欄隱藏、直開顯示「沒有權限」 |
 | 8 | Chat & Prompt、自備金鑰 | `/dashboard/knowledge/chat-prompt` | `GET/PUT /settings/chat`、`GET /settings/chat/models`、`POST /settings/chat/health`、`GET/PUT /settings/gemini-key`、`POST /knowledge/models/refresh` | 寫 `TenantSettings`、稽核；金鑰加密存 `geminiApiKeyEnc` | `settings.manage`；refresh 要 `knowledge.admin` |
 | 9 | KB 自動回覆（系統） | 客人在 `botMode` 為 `llm`/`keyword_then_llm` 的渠道傳文字 | `automation.worker.ts`：`checkAutoHandoff` → 讓步關鍵字規則 → Agent（`AGENTIC_LLM_ENABLED`）→ `kb-autoreply.service.ts` `attemptKbAutoReply` | 寫 BOT 訊息（與 `bot_reply` 認領同交易）、`botRepliesCount+1`、socket `message.new`、`deliverToChannel`；命中文章附「👎 沒幫到我」postback | 無 |
-| 10 | 客人回報（系統） | 客人點「👎 沒幫到我」 | 進站攔截 `inbound-postback-interceptors.ts` `handleKbFeedback` → `recordKbFeedback` | 寫 `KbArticleFeedback`，回「感謝您的回報」 | 無 |
+| 10 | 客人回報（系統） | 客人點「👎 沒幫到我」 | 進站攔截 `inbound-postback-interceptors.ts` `handleKbFeedback` → `recordKbFeedbackFlow` | 寫 `KbArticleFeedback`，回「感謝您的回報」 | 無 |
 | 11 | AI 工具（收件匣、素材） | 收件匣 AI 建議/摘要、素材潤稿 | `/ai/suggest-reply`、`/ai/summarize`、`/ai/rewrite`、`/ai/privacy/status` | 計入月額度、寫 `AiUsage` | 只驗登入（PLAN-12）；建議與摘要檢查渠道可見範圍 |
 
 **有後端、沒有前端入口**：`POST /knowledge/:id/embed`、`GET /knowledge/embedding-status`、`GET /knowledge/models`（只有重建鈕）、`GET /knowledge/feedback/counts`（hook `useKbFeedbackCounts` 沒人用）、`/ai/classify`、`/ai/analyze-sentiment`、`/ai/agent/run`、`/ai/agent/runs/:id`、`POST /knowledge/partner-ingest`（給夥伴系統，網頁 JWT 一律 403，AUTH-06）。
@@ -50,6 +50,8 @@ description: >
 - 型號守門（#420）：白名單由 `model-registry.service.ts` 從 `PUBLISHED` 文章**標題**抽出、程序內快取 10 分鐘，偵測用 `model-matcher.ts` 的 `detectModels()`（不分大小寫、結果轉大寫，排除 `WI-FI`、`E-MAIL`、`T-SHIRT` 等常見英文詞）。只攔截前綴在白名單的型號（`hasKnownPrefix()`），白名單空的租戶等於不守門。相似度 ≥ 0.85 豁免。守門回覆計入 `clarifyAttempts`，用完時走 `clarify_handoff` 轉接，不要另寫轉接。`packages/kb-ingest` 有一份複本（語音逐字稿用），停用詞要兩邊同步。
 - 每則入站訊息最多一則機器人回覆：寫入要包在 `BotReplyGuard.persist()` 交易裡，不要繞過。
 - 檢索只能取 `status = 'PUBLISHED'`（規格 `km-ingestion`「Archived Articles Excluded」）；夥伴 DELETE 是軟刪 `ARCHIVED`，網頁刪除是硬刪除。
+- 向量化與刪除附件檔案都在 commit 之後開始，最多一次，不等結果（`knowledge-effects.ts` 的 `startEmbedAfterCommit`、`removeFilesAfterCommit`，change `migrate-knowledge-tenant-ctx`）。不要在交易內呼叫 `embedArticle()` 或儲存服務：向量化服務與 S3 都是外部呼叫。處理程序中途結束時文章沒有向量，由重新向量化補上。
+- 夥伴推送分三段（`knowledge.flow.ts` 的 `ingestPartnerDocFlow`）：交易 1 判斷 `cmd` 與 `Ver` → 交易外上傳附件 → 交易 2 以 `FOR UPDATE` 鎖住文章，用同一個 `decidePartnerWrite()` 重新判斷再寫入。確定沒有寫入時（`skipped`、寫入途中丟錯）刪除這次上傳的檔案；寫入都做完而 commit 回錯誤時保留檔案，因為資料庫可能已經寫入。UAT 在這個改動之前已有約 46 個這樣的檔案（`media/kb/` 比 `km_article_attachments` 多出的數量，推測，2026-11-06）。
 - 向量維度：程式寫 1024，部分環境欄位是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
 - 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply` 超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback：依文章回答的路徑改送文章原文（HC-KNOWLEDGE-04），追問路徑回「已為您轉接」並真的轉接（`handoffReason`「AI 月額度已用完，無法自動回覆」）。
 - 個資遮罩啟用時，所有模型輸入與 `generateEmbedding` 都先經 2md 去識別化；失敗就停止，不可用原文當 fallback。

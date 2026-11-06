@@ -3,7 +3,7 @@ import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { eventBus } from '../../events/event-bus.js';
 import { recordCsatScore, relabelCsatReplyMessage } from '../csat/csat.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
+import { recordKbFeedbackFlow } from '../knowledge/knowledge.flow.js';
 import { addTagToTargetFlow } from '../tag/tag.flow.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig } from './inbound-message.types.js';
@@ -105,7 +105,7 @@ async function handleKbFeedback(ctx: InboundMessageContext): Promise<boolean> {
   const articleId = fbMatch[2];
   const fbMessageId = fbMatch[3];
   try {
-    await recordKbFeedback(ctx.prisma, ctx.tenantId, {
+    await recordKbFeedbackFlow({ prisma: ctx.prisma }, ctx.tenantId, {
       rating,
       articleId,
       messageId: fbMessageId,

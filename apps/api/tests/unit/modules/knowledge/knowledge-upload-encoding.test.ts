@@ -1,7 +1,7 @@
 /**
  * 知識庫上傳路由對 CSV 編碼的處理（issue #421，AUDIT KB-03，
  * spec km-ingestion「CSV import decodes UTF-8 and Big5 text」「CSV import rejects text that cannot be decoded」）。
- * 解析器用真的；寫入文章的 service 換成記錄呼叫的假函式，用來確認亂碼檔整批不寫入。
+ * 解析器用真的；寫入文章的 flow 換成記錄呼叫的假函式，用來確認亂碼檔整批不寫入。
  */
 import assert from 'node:assert/strict';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -11,27 +11,15 @@ import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 const imported: { title: string; content: string; status?: string }[][] = [];
 const created: { title: string; content: string }[] = [];
 
-vi.mock('#src/modules/knowledge/knowledge.service.js', () => ({
-  listArticles: async () => ({ articles: [], total: 0, page: 1, limit: 50 }),
-  listSources: async () => [],
-  getArticle: async () => ({ id: 'article-1' }),
-  createArticle: async (_db: unknown, _tenantId: string, _agentId: string, input: { title: string; content: string }) => {
+vi.mock('#src/modules/knowledge/knowledge.flow.js', () => ({
+  createArticleFlow: async (_deps: unknown, _actor: unknown, input: { title: string; content: string }) => {
     created.push(input);
     return { id: 'article-1' };
   },
-  updateArticle: async () => ({}),
-  deleteArticle: async () => ({}),
-  publishArticle: async () => ({}),
-  archiveArticle: async () => ({}),
-  listCategories: async () => [],
-  semanticSearch: async () => [],
-  batchImportArticles: async (_db: unknown, _tenantId: string, _agentId: string, articles: { title: string; content: string }[]) => {
+  importArticlesFlow: async (_deps: unknown, _actor: unknown, articles: { title: string; content: string }[]) => {
     imported.push(articles);
     return { imported: articles.length, failed: 0, errors: [] };
   },
-  bulkReembed: async () => ({}),
-  checkOllamaHealth: async () => ({}),
-  embedArticle: async () => ({}),
 }));
 // 內容類型偵測（Magika）認不出不是 UTF-8 的文字：2026-11-04 UAT 上傳 Big5 CSV 回
 // 「File content type rejected: file content type is unknown」。假函式照這個行為，原本一律通過的
@@ -53,17 +41,7 @@ vi.mock('#src/guards/rbac.guard.js', () => ({
   requirePermission: () => async () => {},
 }));
 vi.mock('#src/modules/knowledge/partner-ingest.service.js', () => ({
-  ingestPartnerDoc: async () => ({}),
   parseCmd: () => 'CREATE',
-}));
-vi.mock('#src/modules/knowledge/kb-feedback.service.js', () => ({
-  listFeedback: async () => ({ items: [], total: 0 }),
-  getFeedbackCounts: async () => ({}),
-  resolveFeedback: async () => ({}),
-}));
-vi.mock('#src/modules/ai/model-registry.service.js', () => ({
-  refreshModelKeys: async () => [],
-  getKnownModelKeys: async () => [],
 }));
 
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
