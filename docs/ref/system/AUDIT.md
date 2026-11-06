@@ -52,7 +52,7 @@
 | [RLS-08](#rls-08) | 租戶隔離與權限 | P2 | 已定方向 | service 收到的 client 決定了它的 RLS 與交易保證；背景工作多半傳 `prismaAdmin`，沒有 RLS | 靜態確認 |
 | [RLS-09](#rls-09) | 租戶隔離與權限 | P3 | 已定方向 | Socket 房間只有 `tenant:` 帶租戶 ID，推播端無法檢查 `conversation:`、`agent:` 等房間屬於哪個租戶 | 靜態確認 |
 | [RLS-10](#rls-10) | 租戶隔離與權限 | P3 | 部分修正 | 租戶連線 `app_tenant` 對平台層資料表的寫入權限與 `platform_users` 等表的讀取已收回（#412）；仍讀得到 `platform_settings` 全部的鍵，包含其他租戶的 `ai.privacy.*` 開關 | 執行時確認 |
-| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 執行時確認 |
+| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | `agent.delete`、`billing.view` 沒有強制點（知識庫的讀取路由已改為檢查 `knowledge.view`） | 執行時確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 部分修正 | 工單自動指派、通知收件人（含權杖失效通知）看舊的角色列舉，不看細粒度角色；持 `agent.manage` 的非管理員可以建立列舉為 `ADMIN` 的成員 | 執行時確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 `GET /cases/stats`、資料刪除、新訊息通知沒有套用；聯絡人的對話、工單、時間軸（`481452a`）、AI 輔助端點、`POST /cases`（#281）、`POST /cases/from-conversation/:id`，以及聯絡人清單與合併、報表與匯出、工單與對話詳情（#430）、socket 推播（#427）與資料匯出（#428）已修正 | 執行時確認 |
@@ -331,18 +331,19 @@ RLS 是租戶隔離的第二道防線；對這幾張表，第二道防線不存�
 | --- | --- |
 | `481452a`（2026-09-30） | `contact.routes.ts` 的每一條路由 |
 | `efbd5f0`（#207，2026-10-02） | `case`、`conversation`、`tag`、`shortlink` 四個模組的每一條路由。改負責人或團隊另外要求 `case.assign`，改成 `ESCALATED` 另外要求 `case.escalate` |
+| change `migrate-knowledge-tenant-ctx`（2026-11-06） | `knowledge.routes.ts` 的 9 條讀取路由要求 `knowledge.view`（`knowledge-routes.test.ts`「讀取知識庫需要檢視權限」） |
 
 `packages/shared/src/rbac/permissions.ts`（2026-10-29 從 `packages/core` 搬來）宣告 62 個權限碼（2026-10-30 功能健檢核對，本機與 UAT 的 `/roles/matrix` 都是 62 個；2026-10-02 核對時是 56 個）。其中 3 個在 `apps/api/src` 完全沒有出現：
 
 | 權限碼 | 現況 |
 | --- | --- |
-| `knowledge.view` | `knowledge.routes.ts` 以 `addHook('preHandler')` 只檢查登入。寫入路由另外要求 `knowledge.manage` 或 `knowledge.admin`，但 9 條讀取路由（文章列表、單篇、來源、分類、搜尋、embedding 狀態、模型、回饋數量、回饋列表）沒有權限碼檢查 |
+| `knowledge.view` | **已修正（change `migrate-knowledge-tenant-ctx`）。** 原本 `knowledge.routes.ts` 以 `addHook('preHandler')` 只檢查登入，9 條讀取路由（文章列表、單篇、來源、分類、搜尋、embedding 狀態、模型、回饋數量、回饋列表）沒有權限碼檢查。現在每條讀取路由要求 `knowledge.view` |
 | `agent.delete` | 註冊表標示「已淘汰，改用 `agent.deactivate` / `agent.purge`」 |
 | `billing.view` | 描述是「租戶站內方案/用量頁」，但這個頁面不存在：租戶端的 `/dashboard/plan` 只有升級與加購的申請表，以及自己的申請列表（見 PLAN-10） |
 
 2026-10-30 功能健檢實測重現：只有 `inbox.view` 的成員讀文章列表、單篇、分類、來源、型號、回報清單與回報數都回 200（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。`agent.delete` 仍在註冊表，角色頁顯示「刪除成員（舊）」（[MEMBERS 健檢](../features/health/MEMBERS.md)）。
 
-知識庫的讀取路由因此有兩個後果：
+修正之前，知識庫的讀取路由有兩個後果：
 
 - 角色設定取消勾選「檢視知識庫」，成員仍然讀得到文章。
 - 方案的功能天花板不含 `knowledge` 時，租戶的成員仍然讀得到文章。寫入路由會被天花板擋下。

@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-06：知識庫的讀取權限（RBAC-01）
+
+#337 階段 4 第三批，分支 `refactor/337-stage4-knowledge`，change `migrate-knowledge-tenant-ctx`。以本機 feature 測試資料庫（`app_tenant` 連線）驗證；影響範圍查了 UAT 的資料庫（唯讀）。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-01 的 `knowledge.view` | 已修正，RBAC-01 維持部分修正（`agent.delete`、`billing.view` 未處理） | `knowledge-routes.test.ts`「角色沒有檢視權限」修正前回 200，失敗在斷言上。UAT 上沒有 `knowledge.view` 的自訂角色都沒有啟用中的成員，不含知識庫的方案沒有租戶使用 |
+
 ## 2026-11-06：Canvas 手動觸發的檢查（AUTO-11、RLS-01、IDENT-01）
 
 #337 階段 4 第二批，分支 `refactor/337-stage4-canvas`，change `migrate-canvas-tenant-ctx`。以單元測試與本機 feature 測試資料庫（`app_tenant` 連線）驗證，沒有連 UAT；UAT 沒有 Canvas 流程。
