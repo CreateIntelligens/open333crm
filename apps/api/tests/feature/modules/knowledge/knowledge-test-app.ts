@@ -6,10 +6,12 @@
  */
 import Fastify, { type FastifyRequest } from 'fastify';
 import multipart from '@fastify/multipart';
+import cookie from '@fastify/cookie';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
+import authPlugin from '#src/plugins/auth.plugin.js';
 import knowledgeRoutes from '#src/modules/knowledge/knowledge.routes.js';
 import type { KnowledgeEffects, UploadFile } from '#src/modules/knowledge/knowledge-effects.js';
 
@@ -73,8 +75,11 @@ export async function createKnowledgeFixture(name: string) {
     return { id: agent.id, tenantId, roleId: role.id };
   }
 
-  /** 以指定權限的成員建立只註冊 knowledge 路由的 app */
-  async function buildApp(tenantId: string, roleName: string, codes: string[] = ALL_KNOWLEDGE) {
+  /**
+   * 以指定權限的成員建立只註冊 knowledge 路由的 app。
+   * `realAuth` 時改用真實的 auth.plugin，回傳的 `token` 是該成員的 access token
+   */
+  async function buildApp(tenantId: string, roleName: string, codes: string[] = ALL_KNOWLEDGE, opts: { realAuth?: boolean } = {}) {
     const agent = await makeAgent(tenantId, roleName, codes);
     const { rec, effects } = recordingEffects();
     const app = Fastify();
@@ -82,16 +87,24 @@ export async function createKnowledgeFixture(name: string) {
     await app.register(errorHandlerPlugin);
     app.decorate('prisma', tenantDb);
     app.decorate('prismaAdmin', owner);
-    const authenticate = async (request: FastifyRequest) => {
-      request.agent = { id: agent.id, tenantId, role: 'ADMIN', roleId: agent.roleId } as never;
-      (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(tenantDb, tenantId);
-    };
-    app.decorate('authenticate', authenticate);
-    app.decorate('authenticateJwtOrPartnerKey', authenticate);
+    if (opts.realAuth) {
+      await app.register(cookie);
+      await app.register(authPlugin);
+    } else {
+      const authenticate = async (request: FastifyRequest) => {
+        request.agent = { id: agent.id, tenantId, role: 'ADMIN', roleId: agent.roleId } as never;
+        (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(tenantDb, tenantId);
+      };
+      app.decorate('authenticate', authenticate);
+      app.decorate('authenticateJwtOrPartnerKey', authenticate);
+    }
     await app.register(knowledgeRoutes, { prefix: '/api/v1/knowledge', effects });
     await app.ready();
     apps.push(app);
-    return { app, agentId: agent.id, rec };
+    const token = opts.realAuth
+      ? app.jwt.sign({ agentId: agent.id, tenantId, role: 'AGENT', roleId: agent.roleId, typ: 'access' } as never)
+      : undefined;
+    return { app, agentId: agent.id, rec, token };
   }
 
   const articleOf = (tenantId: string, label: string, data: Partial<{ status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'; category: string; externalDocId: string; externalVer: number }> = {}) =>

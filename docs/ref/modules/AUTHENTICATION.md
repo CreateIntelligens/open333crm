@@ -57,11 +57,11 @@ Passkey 不是另一種 token。Passkey 驗證成功後，系統發出的是一�
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `authenticate` | 以 `JWT_SECRET` 簽發的任何 JWT | token 的 `agentId` | token 的 `tenantId` | token 的 `role` | token 的 `roleId` | 無 | 租戶後台的絕大多數路由 |
 | `authenticateCliSession` | CLI token | 成員 ID | 成員的租戶 | 成員的 `role` | **不填** | `isCliSession`、`cliSession`（含 scope） | `cli.routes.ts`、`POST /auth/cli/logout` |
-| `authenticateJwtOrCliSession` | `cli_` 開頭走 CLI，其他走 JWT | CLI 分支是成員 ID | CLI 分支是成員的租戶 | CLI 分支是成員的 `role` | **兩個分支都不填** | CLI 分支有 `isCliSession`、`cliSession` | `GET /auth/me`、MCP 端點 |
-| `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | **兩個分支都不填** | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
+| `authenticateJwtOrCliSession` | `cli_` 開頭走 CLI，其他走 JWT | CLI 分支是成員 ID | CLI 分支是成員的租戶 | CLI 分支是成員的 `role` | JWT 分支是 token 的 `roleId`；CLI 分支不填 | CLI 分支有 `isCliSession`、`cliSession` | `GET /auth/me`、MCP 端點 |
+| `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | JWT 分支是 token 的 `roleId`；金鑰分支不填 | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
 | `authenticatePlatformSuperuser` | 平台 JWT | 寫入 `request.platformUser`，不寫 `request.agent` | | | | | `/api/v1/platform/*` |
 
-「JWT 或其他憑證」的裝飾器，JWT 分支填入的 `id`、`tenantId`、`role` 與 `authenticate` 相同，只少了 `roleId`，見 `../system/AUDIT.md` 的 AUTH-06。
+「JWT 或其他憑證」的裝飾器與 `authenticate` 的 JWT 分支都呼叫 `attachAgentFromAccessToken()`，填入相同的欄位。這三份程式原本各寫一份，只有 `authenticate` 帶 `roleId`（`../system/AUDIT.md` 的 AUTH-06，已修正）。
 
 驗證之後，下列程式讀這些欄位：
 
@@ -182,7 +182,6 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員無法以密碼登入 | SEC-06 |
 | CLI token 只看 scope，不看角色與方案天花板；`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 停用租戶不中斷 socket 連線，也不影響 CLI token 與 Partner API 金鑰 | AUTH-02 |
-| `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支不填 `roleId`，網頁登入的成員即使有權限也呼叫不了 `partner-ingest` | AUTH-06 |
 | 登出、改密碼或重設密碼都不會讓已發出的 refresh token 失效 | AUTH-08 |
 | 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | AUTH-10 |
 | `config/env.ts` 的 `JWT_EXPIRES_IN` 沒有讀取端 | AUTH-07 |

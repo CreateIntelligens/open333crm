@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-06：成員以 JWT 呼叫合作方推送（AUTH-06）
+
+分支 `fix/partner-ingest-jwt-role`，change `fix-partner-ingest-jwt-role`。#337 階段 4 第三批部署後，在 UAT 以 admin 帳號呼叫 `POST /knowledge/partner-ingest` 時重現。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTH-06 | 已修正 | UAT：admin 的角色有 `knowledge.admin`（資料庫與 Redis 權限快取都確認），JWT 呼叫回 403，`details.requiredPermission` 是 `knowledge.admin`。本機：`partner-ingest-jwt.test.ts`「有知識庫進階權限的成員推送文件」修正前回 403，失敗在斷言上；修正後通過。「沒有知識庫進階權限的成員推送文件」以 mutation 驗證：把路由的權限改成 `knowledge.view`，測試失敗 |
+| RBAC-02 的「JWT 失效關閉」 | 只修了 JWT 的一半 | `authenticateJwtOrCliSession` 的 JWT 分支現在帶 `roleId`；`requirePermission()` 對 CLI 直接放行的部分未處理 |
+
 ## 2026-11-06：知識庫的讀取權限（RBAC-01）
 
 #337 階段 4 第三批，分支 `refactor/337-stage4-knowledge`，change `migrate-knowledge-tenant-ctx`。以本機 feature 測試資料庫（`app_tenant` 連線）驗證；影響範圍查了 UAT 的資料庫（唯讀）。

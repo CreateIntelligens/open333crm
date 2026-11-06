@@ -66,7 +66,7 @@
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
-| [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
+| [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已修正 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403；change `fix-partner-ingest-jwt-role` 改成三個裝飾器共用同一個函式 | 執行時確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
 | [AUTH-10](#auth-10) | 帳號與登入 | P3 | 未處理 | 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | 執行時確認 |
@@ -398,7 +398,7 @@ CLI token 與網頁登入走兩套授權，兩套之間沒有對應：
 
 **後果二：MCP 工具不受方案限制。** MCP 端點要求 token 帶 `mcp:read`，個別工具再依 `requiredMcpScopeForTool()` 要求 `mcp:line:read`、`mcp:line:send` 或 `mcp:line:broadcast`。`mcp.server.ts` 的工具（查聯繫人與案件、報表、LINE 對話、直接發送、群發）都不檢查角色權限或方案天花板。只有持 `settings.manage` 的人能發出帶這些 scope 的 token，但發出之後，方案不含 `marketing` 的租戶也能透過 MCP 群發。
 
-**`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。對照之下，`authenticateJwtOrCliSession` 的 JWT 分支沒有設定 `roleId`，網頁使用者在同一條路由上會拿到空的權限集合而被擋下。同一條路由，JWT 失效關閉，CLI 失效開放。
+**`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。對照之下，`authenticateJwtOrCliSession` 的 JWT 分支原本沒有設定 `roleId`，網頁使用者在同一條路由上會拿到空的權限集合而被擋下：同一條路由，JWT 失效關閉，CLI 失效開放。AUTH-06 修正後，JWT 分支依角色權限判斷，CLI 的失效開放仍在。
 
 **規格依據。** 主規格 `rbac` 的「CLI token 的授權」規定：CLI 路由與 MCP 工具 SHALL 同時檢查 token 的 scope 與成員的有效權限集合；權限檢查的 guard MUST NOT 直接放行 CLI token。後果一、後果二與失效開放的程式碼都違反這條需求。這條需求依 issue #217 的決定寫入（CLI 選項 A）。
 
@@ -689,6 +689,8 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 `partner-ingest` 的設計對象是外部夥伴系統，網頁前端沒有呼叫它，所以目前只有以 JWT 測試這條路由的人會遇到。但任何新路由改用這兩個裝飾器、同時掛 `requirePermission()`，網頁使用者都會被擋下；CLI 分支則因為 `requirePermission()` 對 CLI 直接放行而完全不受檢查，見 RBAC-02。
 
 **修正方向**：三個裝飾器的 JWT 分支共用一個函式，由它寫入完整的 `request.agent`，包括 `roleId`。
+
+**已修正（2026-11-06，change `fix-partner-ingest-jwt-role`）**：三個裝飾器的 JWT 分支改成呼叫 `attachAgentFromAccessToken()`，都帶 `roleId`。有 `knowledge.admin` 的成員以 JWT 推送回 200，沒有的回 403（`tests/feature/modules/knowledge/partner-ingest-jwt.test.ts`）。上面的表與段落是修正前的狀態。
 
 <a id="auth-07"></a>
 ### AUTH-07：`JWT_EXPIRES_IN` 沒有讀取端
