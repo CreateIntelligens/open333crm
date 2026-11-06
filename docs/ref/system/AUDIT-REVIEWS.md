@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-06：移除已完全修正的項目（TRIAL-05、TRIAL-06、AUTO-06、AUTO-09、CI-04）
+
+2026-09-30 定下的規則（一項完全修正之後從 `AUDIT.md` 移除）只記在本文件，`AGENTS.md` 的完成檢查只寫「update that item」，所以這 5 項修正後標成「已修正」留在 `AUDIT.md`。這次把規則寫進 `AGENTS.md` Step 4 與 `AUDIT.md` 開頭，並移除這 5 項。
+
+| 項目 | 結果 | 修正 |
+| --- | --- | --- |
+| TRIAL-05 | 已修正，從 `AUDIT.md` 移除 | #407，change `trial-set-password-after-verify`：申請不收密碼，驗證後才設定。原內文附註「修正前已開通的試用站台，管理員密碼可能已被他人覆寫過，沒有清查」，使用者 2026-11-06 決定不當作未修的部分 |
+| TRIAL-06 | 已修正，從 `AUDIT.md` 移除 | #407：待驗證的申請再送一次時走重寄節流 |
+| AUTO-06 | 已修正，從 `AUDIT.md` 移除 | #418，change `fix-automation-numeric-text-conditions`。原內文的「後端仍不檢查條件值的型別」由 #405 追蹤 |
+| AUTO-09 | 已修正，從 `AUDIT.md` 移除 | `8899e280`（#426）：試跑與執行紀錄改為 `requirePermission('automation.view')` |
+| CI-04 | 已修正，從 `AUDIT.md` 移除 | #407：主規格 `trial-application` 的每個 scenario 都有同名測試 |
+
+程式碼註解與測試仍引用這些 ID，用來說明來歷，不改。
+
 ## 2026-11-06：成員以 JWT 呼叫合作方推送（AUTH-06）
 
 分支 `fix/partner-ingest-jwt-role`，change `fix-partner-ingest-jwt-role`。#337 階段 4 第三批部署後，在 UAT 以 admin 帳號呼叫 `POST /knowledge/partner-ingest` 時重現。
