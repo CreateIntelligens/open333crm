@@ -110,6 +110,8 @@ scope.afterCommit('canvas.flow-run', () => {
 - [引擎仍用 singleton] → 搬遷後，execution 在 commit 之後才交給引擎，引擎讀得到。`DATABASE_URL` 指向 `app_tenant` 時，引擎仍讀不到任何列（RLS-01），與搬遷前相同。
 - [`/:id/analytics` 是長讀取的端點，搬進交易後佔連線的時間變長] → 搬遷前後各量一次回應時間（規劃 6.3）。UAT 沒有流程，所以在本機用 seed 加上產生的執行紀錄量測。
 
+- [手動觸發不排除已封存的聯絡人（被合併掉的一方）] → 這是搬遷前就有的行為，spec 也只要求聯絡人屬於本租戶。被合併的聯絡人已經沒有對話與渠道身分，送訊息節點會寫 warn 並跳過，貼標節點會把標籤貼在已封存的聯絡人身上。不會讓資料流到其他租戶。Canvas 能串接節點之後（AUTO-11）再決定是否改成 404（review-loop 第 1 輪記錄）。
+
 ## Migration Plan
 
 沒有 migration。部署之後不需要額外步驟。回復時 revert 這個 PR 即可。
