@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { afterAll, describe, test } from 'vitest';
+import { backendPid, waitUntilBlockedBy } from '#tests/support/wait-for-lock-wait.js';
 import { PDF, createKnowledgeFixture, partnerForm } from './knowledge-test-app.js';
 
 const fx = await createKnowledgeFixture('partner');
@@ -58,14 +59,56 @@ describe('合作方推送的附件在交易外上傳', () => {
       return original(...args);
     }) as typeof rec.uploadImpl;
     try {
+      const uploadedBefore = rec.uploaded.length;
       const res = await ingest({ cmd: 'UPDATE', DocID: id, Ver: '2', IsAttached: 'true' }, [{ filename: 'v2.pdf', content: PDF }]);
       assert.equal(res.status, 200, JSON.stringify(res.body));
       assert.equal(res.body.data.status, 'skipped');
       const after = await fx.owner.kmArticle.findUniqueOrThrow({ where: { id: article.id } });
       assert.equal(after.externalVer, 5);
       assert.equal(after.title, 'Ver 5 的標題');
+      // spec「回 skipped 時刪除這次上傳的檔案」
+      const thisUpload = rec.uploaded.slice(uploadedBefore);
+      assert.equal(thisUpload.length, 1);
+      assert.ok(rec.removed.includes(thisUpload[0]), '沒有刪除這次上傳的檔案');
     } finally {
       rec.uploadImpl = original;
+    }
+  });
+
+  test('兩個推送同時寫入同一篇文章', async () => {
+    const id = docId('concurrent');
+    const article = await fx.articleOf(fx.A, 'concurrent', { status: 'PUBLISHED', externalDocId: id, externalVer: 1 });
+
+    // 模擬 Ver 3 的推送：在交易內鎖住文章、寫成 Ver 3，停在 commit 之前
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    let pidReady!: (pid: number) => void;
+    const pid = new Promise<number>((r) => (pidReady = r));
+    const ver3 = fx.owner.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM km_articles WHERE id = ${article.id}::uuid FOR UPDATE`;
+        await tx.kmArticle.update({ where: { id: article.id }, data: { externalVer: 3, title: 'Ver 3 的標題' } });
+        pidReady(await backendPid(tx));
+        await released;
+      },
+      { timeout: 20_000 },
+    );
+
+    try {
+      const blocker = await pid;
+      const ver2 = ingest({ cmd: 'UPDATE', DocID: id, Ver: '2', AI_Q: 'Ver 2 的標題' });
+      await waitUntilBlockedBy(fx.owner, blocker);
+      release();
+      await ver3;
+      const res = await ver2;
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.equal(res.body.data.status, 'skipped');
+      const after = await fx.owner.kmArticle.findUniqueOrThrow({ where: { id: article.id } });
+      assert.equal(after.externalVer, 3);
+      assert.equal(after.title, 'Ver 3 的標題');
+    } finally {
+      release();
+      await ver3.catch(() => {});
     }
   });
 
@@ -82,8 +125,8 @@ describe('合作方推送的附件在交易外上傳', () => {
       assert.equal(res.status, 500);
       assert.equal(res.body.error?.code, 'INGEST_FAILED');
       assert.equal(await fx.owner.kmArticle.count({ where: { tenantId: fx.A, externalDocId: id } }), 0);
-      assert.equal(rec.uploaded.length, uploadedBefore + 1, '檔案已上傳，留在儲存服務');
-      assert.equal(rec.removed.length, removedBefore, '沒有刪除檔案');
+      assert.equal(rec.uploaded.length, uploadedBefore + 1, '檔案已上傳');
+      assert.deepEqual(rec.removed.slice(removedBefore), [`bad\u0000key-${id}`], '刪除這次上傳的檔案');
       assert.equal(rec.embedded.length, embeddedBefore, '沒有開始向量化');
     } finally {
       rec.uploadImpl = original;

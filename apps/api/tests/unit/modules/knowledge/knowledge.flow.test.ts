@@ -110,6 +110,7 @@ const partnerInput = {
 /** 合作方推送：既有的文章 Ver 1、有附件 old-key；交易 2 寫入文章時丟錯 */
 function partnerTx(log: FlowLog, opts: { failWrite?: boolean } = {}) {
   return {
+    $queryRaw: async () => [],
     kmArticle: {
       findUnique: async () => ({ id: 'article-1', externalVer: 1, status: 'PUBLISHED' }),
       update: async () => {
@@ -137,9 +138,10 @@ test('寫入文章失敗', async () => {
   );
 
   assert.equal(upload.mock.calls.length, 1, '附件在交易外上傳');
-  assert.equal(remove.mock.calls.length, 0, '沒有刪除檔案');
+  // 寫入的交易丟錯 rollback，確定沒有寫入：刪掉這次上傳的檔案，舊附件的檔案不動
+  assert.deepEqual(remove.mock.calls.map((c) => c[0]), ['k']);
   assert.equal(embed.mock.calls.length, 0, '沒有開始向量化');
-  assert.deepEqual(log.entries, ['commit', 'update', 'rollback']);
+  assert.deepEqual(log.entries, ['commit', 'update', 'rollback', 'remove:k'], 'rollback 之後才刪檔');
 });
 
 test('刪除檔案失敗', async () => {
@@ -185,4 +187,27 @@ test('寫入失敗時不刪除舊檔案', async () => {
   assert.deepEqual(log.entries, ['commit', 'update', 'rollback']);
   assert.equal(remove.mock.calls.length, 0);
   assert.equal(embed.mock.calls.length, 0);
+});
+
+test('commit 結果不明時保留檔案', async () => {
+  const log = createFlowLog();
+  const { effects, remove } = recordingEffects(log);
+  vi.spyOn(logger, 'info').mockImplementation(() => logger);
+  const logged = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+
+  // 交易 2 的 callback 都跑完之後 commit 回錯誤：資料庫可能已經寫入
+  let txCount = 0;
+  const prisma = {
+    async $transaction(cb: (t: unknown) => Promise<unknown>) {
+      txCount++;
+      const result = await cb({ $executeRaw: async () => 1, ...partnerTx(log) });
+      if (txCount === 2) throw new Error('connection lost during commit');
+      return result;
+    },
+  } as never;
+
+  await assert.rejects(ingestPartnerDocFlow({ prisma, effects }, actor, partnerInput), /connection lost/);
+
+  assert.equal(remove.mock.calls.length, 0, '沒有刪除任何檔案');
+  assert.ok(logged.mock.calls.some((c) => /k/.test(String(c[0]))), '錯誤寫進 log');
 });

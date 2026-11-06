@@ -109,7 +109,19 @@ function deriveSummary(content: string, max = 200): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
 }
 
-export async function findPartnerDoc(ctx: TenantCtx, docId: string): Promise<PartnerDocSnapshot | null> {
+/**
+ * 讀同一個 DocID 的既有文章。lock 為 true 時先以 FOR UPDATE 鎖住這一列，直到交易結束：
+ * 同一個 DocID 的另一個推送要等這個交易 commit 之後才讀得到，所以兩個推送不會以同一個舊版本判斷
+ * （spec「兩個推送同時寫入同一篇文章」）。文章還不存在時沒有列可以鎖，由 (tenantId, externalDocId) 唯一索引擋下。
+ */
+export async function findPartnerDoc(
+  ctx: TenantCtx,
+  docId: string,
+  opts: { lock?: boolean } = {},
+): Promise<PartnerDocSnapshot | null> {
+  if (opts.lock) {
+    await ctx.tx.$queryRaw`SELECT id FROM km_articles WHERE "tenantId" = ${ctx.tenantId}::uuid AND "externalDocId" = ${docId} FOR UPDATE`;
+  }
   return ctx.tx.kmArticle.findUnique({
     where: { tenantId_externalDocId: { tenantId: ctx.tenantId, externalDocId: docId } },
     select: { id: true, externalVer: true, status: true },

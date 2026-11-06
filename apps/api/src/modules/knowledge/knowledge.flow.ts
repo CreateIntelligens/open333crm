@@ -17,7 +17,7 @@ import { getKnownModelKeys, refreshModelKeys } from '../ai/model-registry.servic
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { AppError } from '../../shared/utils/response.js';
-import { removeFilesAfterCommit, startEmbedAfterCommit, type KnowledgeEffects } from './knowledge-effects.js';
+import { removeFilesAfterCommit, removeFilesNow, startEmbedAfterCommit, type KnowledgeEffects } from './knowledge-effects.js';
 import {
   archivePartnerDoc,
   decidePartnerWrite,
@@ -228,16 +228,37 @@ export async function ingestPartnerDocFlow(
   if (decided) return decided;
 
   const attachments = await uploadPartnerAttachments(deps.effects.storage, actor.tenantId, input);
+  const uploadedKeys = attachments.map((a) => a.storageKey);
 
-  return inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    // 上傳期間另一個推送可能已經寫入：再讀一次，以同一個函式重新判斷。結果不同時以這次為準，
-    // 剛上傳的檔案留在儲存服務（spec「上傳期間另一個推送寫入較新的版本」）
-    const existing = await findPartnerDoc(scope, input.docId);
-    const skipped = decidePartnerWrite(input, existing);
-    if (skipped) return skipped;
-    const { result, removedKeys } = await writePartnerArticle(scope, actor.agentId, input, existing, attachments);
-    removeFilesAfterCommit(scope, deps.effects.storage.remove, removedKeys);
-    startEmbedAfterCommit(scope, deps.effects.embed, result.articleId);
-    return result;
-  });
+  // 寫入都做完、只差 commit 時才設為 true。之後 commit 回錯誤時資料庫可能已經寫入，不能刪檔
+  let commitPending = false;
+  let written: { result: PartnerIngestResult; wrote: boolean };
+  try {
+    written = await inTenant(deps.prisma, actor.tenantId, async (scope) => {
+      // 上傳期間另一個推送可能已經寫入：鎖住文章再讀一次，以同一個函式重新判斷，結果不同時以這次為準
+      // （spec「上傳期間另一個推送寫入較新的版本」「兩個推送同時寫入同一篇文章」）
+      const existing = await findPartnerDoc(scope, input.docId, { lock: true });
+      const skipped = decidePartnerWrite(input, existing);
+      if (skipped) return { result: skipped, wrote: false };
+      const { result, removedKeys } = await writePartnerArticle(scope, actor.agentId, input, existing, attachments);
+      removeFilesAfterCommit(scope, deps.effects.storage.remove, removedKeys);
+      startEmbedAfterCommit(scope, deps.effects.embed, result.articleId);
+      commitPending = true;
+      return { result, wrote: true };
+    });
+  } catch (err) {
+    if (commitPending) {
+      logger.error(
+        `[PartnerIngest] DocID ${input.docId} 寫入的交易 commit 結果不明，保留這次上傳的檔案（${uploadedKeys.join(', ')}）`,
+        err,
+      );
+    } else {
+      // 交易在寫入途中丟錯而 rollback，確定沒有寫入（spec「合作方推送沒有寫入時刪除這次上傳的檔案」）
+      removeFilesNow(deps.effects.storage.remove, uploadedKeys);
+    }
+    throw err;
+  }
+
+  if (!written.wrote) removeFilesNow(deps.effects.storage.remove, uploadedKeys);
+  return written.result;
 }

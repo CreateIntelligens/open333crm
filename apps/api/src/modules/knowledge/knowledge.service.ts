@@ -114,7 +114,7 @@ export async function getArticle(ctx: TenantCtx, id: string) {
   return { ...article, viewCount: article.viewCount + 1 };
 }
 
-/** 建立一篇文章。status 只有匯入可以指定 PUBLISHED，其他一律 DRAFT */
+/** 建立一篇文章，沒給 status 時是 DRAFT。要不要直接發布由 flow 決定：只有批次匯入傳 PUBLISHED */
 export async function createArticle(
   ctx: TenantCtx,
   agentId: string,

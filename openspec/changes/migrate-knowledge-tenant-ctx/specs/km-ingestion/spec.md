@@ -45,21 +45,38 @@
 - **THEN** 系統沒有開始向量化
 
 ### Requirement: 合作方推送的附件在交易外上傳
-合作方推送 SHALL 在寫入文章的交易開始之前上傳附件，交易內 MUST NOT 呼叫儲存服務。單一附件的內容偵測或上傳失敗時，系統 SHALL 略過這個附件，照樣寫入文章，`attachmentsLinked` 不計算這個附件。寫入文章的交易失敗時，已上傳的檔案 SHALL 留在儲存服務，系統 MUST NOT 刪除它們。
+合作方推送 SHALL 在寫入文章的交易開始之前上傳附件，交易內 MUST NOT 呼叫儲存服務。單一附件的內容偵測或上傳失敗時，系統 SHALL 略過這個附件，照樣寫入文章，`attachmentsLinked` 不計算這個附件。
 
-寫入的交易 SHALL 再檢查一次 `Ver`。這時文章的 `externalVer` 已經大於或等於這次的 `Ver` 時，系統 SHALL 回 `skipped`，MUST NOT 修改文章。
+寫入的交易 SHALL 先鎖住同一個 DocID 的既有文章，再檢查一次 `Ver`。這時文章的 `externalVer` 已經大於或等於這次的 `Ver` 時，系統 SHALL 回 `skipped`，MUST NOT 修改文章。
 
 #### Scenario: 一個附件上傳失敗
 - **WHEN** 合作方以 `IsAttached=true` 推送兩個附件，其中一個上傳失敗
 - **THEN** 系統回 200，文章寫入，`data.attachmentsLinked` 是 1，文章只有成功的那個附件
 
-#### Scenario: 寫入文章失敗
-- **WHEN** 附件上傳成功之後，寫入文章的交易失敗
-- **THEN** 系統回 500 `INGEST_FAILED`，資料庫沒有這次的文章與附件資料列，已上傳的檔案留在儲存服務
-
 #### Scenario: 上傳期間另一個推送寫入較新的版本
 - **WHEN** 這次推送的附件上傳期間，同一個 DocID 的另一個推送以較大的 `Ver` 寫入完成
 - **THEN** 這次推送回 200 `data.status="skipped"`，文章維持另一個推送寫入的內容
+
+#### Scenario: 兩個推送同時寫入同一篇文章
+- **WHEN** 文章是 Ver 1，Ver 3 的推送在寫入的交易內、還沒 commit 時，Ver 2 的推送進入寫入的交易
+- **THEN** Ver 2 的推送等 Ver 3 commit 之後才判斷，回 200 `data.status="skipped"`；文章是 Ver 3 的內容
+
+### Requirement: 合作方推送沒有寫入時刪除這次上傳的檔案
+合作方推送確定沒有寫入文章時，系統 SHALL 從儲存服務刪除這次上傳的檔案，每個檔案最多刪除一次。確定沒有寫入的情況是：寫入的交易回 `skipped`、寫入的交易丟出錯誤之後 rollback。刪除失敗時，系統 SHALL 寫 log，回應不受影響。
+
+寫入的交易都執行完、commit 卻回錯誤時，資料庫可能已經寫入，系統 MUST NOT 刪除這些檔案。開始寫入之前處理程序結束時，檔案留在儲存服務。
+
+#### Scenario: 寫入文章失敗
+- **WHEN** 附件上傳成功之後，寫入文章的交易丟出錯誤
+- **THEN** 系統回 500 `INGEST_FAILED`，資料庫沒有這次的文章與附件資料列，系統從儲存服務刪除這次上傳的檔案
+
+#### Scenario: 回 skipped 時刪除這次上傳的檔案
+- **WHEN** 這次推送上傳附件之後，寫入的交易判斷版本不夠新，回 `skipped`
+- **THEN** 系統從儲存服務刪除這次上傳的檔案
+
+#### Scenario: commit 結果不明時保留檔案
+- **WHEN** 寫入的交易都執行完，commit 回錯誤
+- **THEN** 系統沒有刪除這次上傳的檔案，錯誤寫進 log
 
 ### Requirement: 刪除附件資料列之後刪除 S3 上的檔案
 合作方推送以新版本覆蓋文章，或成員以 `DELETE /api/v1/knowledge/:id` 刪除文章時，系統 SHALL 在交易 commit 之後，從儲存服務刪除被刪掉的附件資料列的檔案。每個檔案 SHALL 最多刪除一次。刪除失敗時，系統 SHALL 寫 log，回應不受影響，檔案留在儲存服務。交易 rollback 時，系統 MUST NOT 刪除檔案。

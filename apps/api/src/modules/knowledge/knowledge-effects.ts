@@ -45,6 +45,18 @@ export function startEmbedAfterCommit(scope: TenantScope, embed: EmbedArticle, a
 }
 
 /**
+ * 馬上從儲存服務刪除檔案，不等結果，每個最多一次；失敗只記 log。
+ * 用在確定沒有寫入資料庫、沒有資料參照這些檔案的時候（spec「合作方推送沒有寫入時刪除這次上傳的檔案」）。
+ */
+export function removeFilesNow(remove: RemoveFile, keys: string[]): void {
+  for (const key of keys) {
+    remove(key).catch((err: unknown) => {
+      logger.error(`[Knowledge] 刪除附件檔案失敗（key ${key}）`, err);
+    });
+  }
+}
+
+/**
  * commit 之後從儲存服務刪除檔案，每個最多一次；rollback 時不刪（spec km-ingestion）。
  * 不等刪除完成：檔案是否刪除，呼叫端看不到。刪除失敗只記 log，檔案留在儲存服務。
  */

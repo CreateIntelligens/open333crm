@@ -32,6 +32,12 @@
 - [x] 4.3 在 `knowledge.flow.test.ts` 先寫會失敗的測試「刪除檔案失敗」（`remove` reject 時 flow 仍回傳結果，log 有錯誤）與「寫入失敗時不刪除舊檔案」（交易 2 丟錯時 `remove` 沒有被呼叫）。結果：「刪除檔案失敗」失敗在斷言上；「寫入失敗時不刪除舊檔案」在沒有刪檔時本來就通過，改讓交易 2 的 commit 失敗（寫入都完成、拿到舊附件的 key 之後才 rollback），4.4 之後以突變驗證：改成在交易內直接刪檔時失敗
 - [x] 4.4 `deleteArticle` 與寫入附件資料列的 service 回傳舊附件的 `storageKey`；flow 呼叫 `removeFilesAfterCommit`（D3）。4.1～4.3 通過。結果：知識庫的 feature 29 項、單元 21 項通過
 
+## 4A. PR #463 審查後的修正
+
+- [x] 4A.1 先寫會失敗的測試：`partner-ingest.test.ts`「兩個推送同時寫入同一篇文章」（以 owner 連線的交易鎖住文章、寫成 Ver 3、停在 commit 之前，以 `waitUntilBlockedBy` 確認 Ver 2 的推送卡在鎖上）；「上傳期間另一個推送寫入較新的版本」與「寫入文章失敗」改斷言這次上傳的檔案被刪除；`knowledge.flow.test.ts` 新增「commit 結果不明時保留檔案」，「寫入文章失敗」改斷言 rollback 之後才刪檔。結果：都失敗在斷言上，併發的那一項回 `updated`（Ver 2 蓋掉 Ver 3）
+- [x] 4A.2 `findPartnerDoc` 加上 `lock` 選項（`FOR UPDATE`），交易 2 鎖住文章再判斷；flow 以 `commitPending` 旗標區分「確定沒有寫入」與「commit 結果不明」，前者以 `removeFilesNow` 刪除這次上傳的檔案（design D4）。4A.1 通過；突變驗證：交易 2 不上鎖時併發的那一項失敗，commit 結果不明時也刪檔時「commit 結果不明時保留檔案」失敗
+- [x] 4A.3 spec 拆出「合作方推送沒有寫入時刪除這次上傳的檔案」，更新 design D4、Risks、proposal、CHANGELOG 與 `feature-knowledge` skill。機器人另外指出的文字問題一起修正：skill 寫「JSON 依 `status`」改成只保留 `PUBLISHED`；`createArticle` 的註解改成狀態由 flow 決定
+
 ## 5. 完成條件
 
 - [x] 5.1 `pnpm test` 與 `pnpm test:feature` 通過。結果：`pnpm test` 17 個 turbo 任務都成功（api 單元 1660 項）；`pnpm test:feature` 7 個任務都成功（1309 項）

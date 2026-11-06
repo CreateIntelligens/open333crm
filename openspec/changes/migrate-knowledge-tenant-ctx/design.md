@@ -26,7 +26,7 @@
 - 向量化改成至少一次（D2）。
 - 清理已經留在 S3 上的孤兒檔案。
 
-**審查基準：** 向量化與刪除檔案達到 Laravel `DB::afterCommit()` 的水準：commit 之後最多開始一次，處理程序中斷時遺失。上傳後交易失敗留下的孤兒檔案，達到 Laravel `Storage` 的水準：Laravel 的檔案也不隨交易 rollback。Laravel 專案也會有的情況，記錄在「Risks / Trade-offs」，不另外處理。
+**審查基準：** 向量化與刪除檔案達到 Laravel `DB::afterCommit()` 的水準：commit 之後最多開始一次，處理程序中斷時遺失。上傳後交易失敗時，確定沒有寫入才刪檔（D4），其餘留下的孤兒檔案達到 Laravel `Storage` 的水準：Laravel 的檔案也不隨交易 rollback。Laravel 專案也會有的情況，記錄在「Risks / Trade-offs」，不另外處理。
 
 ## Decisions
 
@@ -93,11 +93,15 @@ export function removeFilesAfterCommit(scope: TenantScope, remove: RemoveFile, k
 | --- | --- | --- | --- |
 | 1 | 交易 1 | 讀既有的文章，依 `cmd` 與 `Ver` 決定結果。`DELETE`、衝突、找不到、`skipped` 在這裡結束 | 回錯誤，沒有寫入 |
 | 2 | 交易外 | 逐一偵測內容並上傳附件，失敗的附件略過 | 只略過那個附件 |
-| 3 | 交易 2 | 再讀一次既有的文章，以步驟 1 的同一個函式重新決定結果。通過之後寫文章、讀出並刪除舊附件的資料列、寫新附件的資料列；`afterCommit` 刪除舊檔案、開始向量化 | rollback；步驟 2 的檔案留在 S3（孤兒） |
+| 3 | 交易 2 | 以 `FOR UPDATE` 鎖住既有的文章再讀一次，以步驟 1 的同一個函式重新決定結果。通過之後寫文章、讀出並刪除舊附件的資料列、寫新附件的資料列；`afterCommit` 刪除舊檔案、開始向量化 | 回 `skipped` 或在寫入途中丟錯 rollback：刪除步驟 2 上傳的檔案。寫入都做完、commit 回錯誤：保留檔案，寫 log |
 
 步驟 1 與 3 呼叫同一個 service 函式判斷 `cmd` 與 `Ver`，所以兩次的規則不會分歧。步驟 3 的結果與步驟 1 不同時（另一個推送在步驟 2 期間寫入），以步驟 3 為準，例如回 `skipped` 或 `DOCID_CONFLICT`。
 
-沒有附件要上傳時（`IsAttached=false`，或 `cmd=DELETE`），步驟 2 沒有事要做，步驟 1 判斷通過之後直接進步驟 3。兩個交易的代價是多讀一次文章。
+`cmd=DELETE` 在步驟 1 就封存並結束。沒有附件要上傳時（`IsAttached=false`），步驟 2 沒有事要做，步驟 1 判斷通過之後直接進步驟 3。兩個交易的代價是多讀一次文章。
+
+**步驟 3 為什麼要鎖（PR #463 機器人意見，review 後加上）：** PostgreSQL 預設的 READ COMMITTED 之下，一般的 `SELECT` 不等別的交易的寫入。同一個 DocID 的 Ver 3 與 Ver 2 同時進入步驟 3 時，兩個都讀到舊的 Ver 1 而通過判斷，後寫入的 Ver 2 蓋掉 Ver 3。`FOR UPDATE` 讓第二個交易等第一個 commit，再讀到 Ver 3 而回 `skipped`。鎖只鎖這一篇文章，只持有到交易 2 結束；交易 2 不呼叫外部服務。
+
+**步驟 3 失敗時清理上傳的檔案（使用者 2026-11-06 決定，改掉原本「一律留下孤兒檔案」）：** 確定沒有寫入時，馬上刪除步驟 2 上傳的檔案，不等結果、失敗只記 log。這些檔案的 key 都含新的 UUID，沒有其他資料參照。flow 在寫入都做完、只差 commit 時設一個旗標：之後 commit 回錯誤時，資料庫可能已經寫入（例如連線在送出 COMMIT 之後斷掉），刪檔會讓附件連結失效，所以保留檔案、只寫 log。仍會留下孤兒檔案的情況：上傳之後、交易 2 結束之前處理程序結束；刪除失敗；commit 結果不明。
 
 同一個 DocID 的兩個 `CREATE` 同時進入步驟 3 時，第二個違反 `(tenantId, externalDocId)` 的唯一索引，交易 rollback，回 500 `INGEST_FAILED`。搬遷前的結果相同。合作方以 `Ver` 遞增重送，下一次推送會走 `UPDATE`。
 
@@ -144,7 +148,7 @@ flow 對每篇文章各呼叫一次 `inTenant()`，接住這次的錯誤，記�
 
 - [處理程序在 commit 之後、向量化完成之前結束] → 文章沒有新的向量，自動回覆與語意搜尋找不到它。列表的 `hasEmbedding` 顯示，管理員用重新向量化補上。行為和搬遷前相同（D2）。
 - [處理程序在 commit 之後、刪除檔案之前結束，或刪除失敗] → 舊檔案留在 S3，佔用空間，不影響功能。log 有失敗的 key。
-- [合作方推送在上傳之後交易失敗] → 新上傳的檔案留在 S3（使用者決定接受）。
+- [合作方推送上傳之後，處理程序在交易 2 結束之前結束，或 commit 結果不明，或刪除失敗] → 新上傳的檔案留在 S3（D4）。確定沒有寫入的其他情況，檔案會被刪除。
 - [`POST /models` 快取命中時仍開交易] → 多一個短交易。隨 `ai` 搬遷時修正（D6）。
 - [`tenantScopedClient()` 是要刪除的舊寫法] → 只在 flow 呼叫還沒搬的 `embedding` 函式時使用。`check-tenant-ctx.mjs` 不數這個寫法，搬 `embedding` 時以 `grep tenantScopedClient` 找出這些呼叫。
 - [文章列表的 `q` 上限 200 字、`category` 上限 100 字（D8）] → 搜尋框沒有長度限制，輸入超過 200 字時從「查無結果」變成 400。合作方推送的 `Source` 寫進 `category`，長度沒有限制，超過 100 字的分類在下拉選單選了之後會回 400。2026-11-06 查 UAT，分類與來源最長 16 字。review-loop 第 1 輪記錄，不修。
