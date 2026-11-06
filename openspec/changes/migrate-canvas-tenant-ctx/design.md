@@ -27,6 +27,8 @@
   - 在 AUDIT IDENT-01 補記這兩個差異。
 - 引擎、webhook 觸發、等待節點的恢復（RLS-01、APP-07）。
 
+**審查基準：** 手動觸發達到 Laravel `DB::afterCommit()`、`ShouldDispatchAfterCommit` 的水準：commit 之後最多啟動一次，處理程序中斷時遺失。Laravel 專案也會有的情況，記錄在「Risks / Trade-offs」，不另外處理。Canvas 引擎本身（singleton 連線、節點不冪等、自動觸發）屬於階段 6，只記錄不修。
+
 ## Decisions
 
 ### D1. 手動觸發的檢查放在 service，與建立 execution 在同一個交易
