@@ -238,7 +238,6 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 功能天花板只在掛了 `requirePermission()` 的路由生效；行銷、知識庫、粉絲活動仍有路由沒掛 | PLAN-04 |
 | AI 不在功能天花板內 | PLAN-12 |
 | 團隊沒有建立的途徑；`Conversation.teamId` 沒有寫入端 | TEAM-01 |
-| 「JWT 或其他憑證」裝飾器的 JWT 分支沒有 `roleId`，有效權限為空 | AUTH-06 |
 
 ## 自己驗證的方法
 

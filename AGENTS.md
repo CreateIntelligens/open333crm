@@ -547,9 +547,18 @@ request:
       characters. Many main specs have such requirements, and until they are split, `--strict`
       always fails on them. In a change, the script does not ignore this warning. Split a new
       requirement that is too long.
-- [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, update
-      that item, add an entry to `docs/ref/system/AUDIT-REVIEWS.md`, and update each feature or
-      module document under `docs/ref/` that describes the changed behavior.
+- [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, add an
+      entry to `docs/ref/system/AUDIT-REVIEWS.md` that names the fix (change or commit). Then do
+      one of these:
+      - The item is fixed completely: remove its row and its section from `AUDIT.md`. Do not keep
+        it with the status "已修正". In the entry, write "已修正，從 `AUDIT.md` 移除". Remove or
+        update each link to the item in other files (`grep -rn "<ID>"`), for example
+        `docs/ref/features/feature-map.json` and the limit tables in `docs/ref/`.
+      - The item is fixed in part: keep it, set the status to "部分修正", and write in the item
+        which part is fixed and which part is not.
+
+      Also update each feature or module document under `docs/ref/` that describes the changed
+      behavior.
 
 ## Multi-Tenancy: Two Enforcement Layers (Critical)
 

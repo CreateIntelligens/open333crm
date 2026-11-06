@@ -678,7 +678,6 @@
       ],
       "audit": [
         "RBAC-01",
-        "AUTH-06",
         "PLAN-12",
         "PLAN-02",
         "PLAN-13",
@@ -1661,7 +1660,6 @@
         "PLAN-03",
         "PLAN-08",
         "AUTH-01",
-        "AUTH-06",
         "AUTH-08",
         "AUTH-10",
         "SEC-06",

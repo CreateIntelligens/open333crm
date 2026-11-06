@@ -2,6 +2,8 @@
 
 本文件集中記錄系統盤點時發現的實作落差，只描述各項的現況。其他系統文件只描述主要結構，不重複問題細節；每一項怎麼查證、在哪一次盤點發現，記在[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
 
+一項完全修正之後，從本文件移除這一項的摘要列與內文，在複查紀錄寫明修正它的 change 或 commit。部分修正的項目留在本文件，狀態寫「部分修正」，內文寫明已修與未修的部分（規則見 `AGENTS.md` Step 4）。
+
 摘要表依章節排列，順序與內文相同。點 ID 可跳到該項的內文。
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
@@ -66,7 +68,6 @@
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
-| [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
 | [AUTH-10](#auth-10) | 帳號與登入 | P3 | 未處理 | 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | 執行時確認 |
@@ -83,8 +84,6 @@
 | [TRIAL-02](#trial-02) | 試用 | P2 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效；通用端點也能寫壞租戶的個資遮罩設定，讓該租戶所有訊息寫入失敗 | 執行時確認 |
 | [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
 | [TRIAL-04](#trial-04) | 試用 | P3 | 部分修正 | 租戶頁啟用已過期的試用租戶，只維持到下一輪排程，並重寄到期信；啟用不清除軟刪標記。延長試用已改為清除標記（`9f3c6c1a`） | 執行時確認 |
-| [TRIAL-05](#trial-05) | 試用 | P1 | 已修正 | 同一 email 待驗證時再申請一次會覆寫密碼，申請人點信後站台以他人密碼開通；#407 改為申請不收密碼、驗證後才設定 | 執行時確認 |
-| [TRIAL-06](#trial-06) | 試用 | P2 | 已修正 | 再送一次試用申請會繞過重寄節流，換 IP 就能對任意信箱無限寄驗證信；#407 改為待驗證時走重寄節流 | 執行時確認 |
 | [TRIAL-07](#trial-07) | 試用 | P2 | 未處理 | 手動開通表單預設「免費試用」方案但不設試用到期日，這類租戶永遠停在試用方案，也不出現在試用管理頁 | 執行時確認 |
 | [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | [PLAN-02](#plan-02) | 方案與額度 | P3 | 未處理 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
@@ -128,10 +127,8 @@
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
-| [AUTO-06](#auto-06) | 對話、工單與自動化 | P1 | 已修正 | 規則編輯器把純數字的條件值存成數字，「訊息內容 包含 8888」這類條件永遠不成立 | 執行時確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
-| [AUTO-09](#auto-09) | 對話、工單與自動化 | P2 | 已修正 | 自動化的試跑與執行紀錄只驗登入，沒有 `automation.view` 的成員可以讀到規則的條件與動作全文 | 執行時確認 |
 | [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫工單事件、不通知被指派的人，`assign_agent`、`escalate_case` 的查詢不帶 `tenantId`；`update_case_status` 的 `resolvedAt`／`closedAt` 與 `tenantId` #417 已修正 | 執行時確認 |
 | [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 部分修正 | Canvas 用 API 建不出串接的節點；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網。手動觸發不再接受草稿、封存的流程與不存在的聯絡人 | 執行時確認 |
 | [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 未處理 | 自動化動作的參數只檢查有填，不檢查值：狀態可存 `"FOO"`，負責人可存其他租戶的成員 | 執行時確認 |
@@ -212,7 +209,6 @@
 | [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
 | [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
-| [CI-04](#ci-04) | CI 與測試 | P2 | 已修正 | 試用申請與開通完全沒有自動測試，主規格 `trial-application` 的 9 個 scenario 都沒有測試；#407 為每個 scenario 補上同名測試 | 靜態確認 |
 
 ## 租戶隔離與權限
 
@@ -398,7 +394,7 @@ CLI token 與網頁登入走兩套授權，兩套之間沒有對應：
 
 **後果二：MCP 工具不受方案限制。** MCP 端點要求 token 帶 `mcp:read`，個別工具再依 `requiredMcpScopeForTool()` 要求 `mcp:line:read`、`mcp:line:send` 或 `mcp:line:broadcast`。`mcp.server.ts` 的工具（查聯繫人與案件、報表、LINE 對話、直接發送、群發）都不檢查角色權限或方案天花板。只有持 `settings.manage` 的人能發出帶這些 scope 的 token，但發出之後，方案不含 `marketing` 的租戶也能透過 MCP 群發。
 
-**`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。對照之下，`authenticateJwtOrCliSession` 的 JWT 分支沒有設定 `roleId`，網頁使用者在同一條路由上會拿到空的權限集合而被擋下。同一條路由，JWT 失效關閉，CLI 失效開放。
+**`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。同一條路由上，網頁使用者的 JWT 依角色權限判斷（2026-11-06 起，change `fix-partner-ingest-jwt-role`），CLI token 卻不受檢查。
 
 **規格依據。** 主規格 `rbac` 的「CLI token 的授權」規定：CLI 路由與 MCP 工具 SHALL 同時檢查 token 的 scope 與成員的有效權限集合；權限檢查的 guard MUST NOT 直接放行 CLI token。後果一、後果二與失效開放的程式碼都違反這條需求。這條需求依 issue #217 的決定寫入（CLI 選項 A）。
 
@@ -674,22 +670,6 @@ B 手上的 token 在過期前仍然可用（見 AUTH-03），過期後 B 就登
 
 A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽核歸屬：之後的操作都記在 B 名下。事後的線索只有一條，就是第一步留下的 `platform_user.update` 稽核，payload 記著新的 email。第二、三步的忘記密碼與重設沒有稽核（見 SEC-02）。
 
-<a id="auth-06"></a>
-### AUTH-06：兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`
-
-`auth.plugin.ts` 有兩個裝飾器同時接受 JWT 與另一種憑證。兩者的 JWT 分支都只寫入 `id`、`tenantId` 與 `role`，沒有寫入 `roleId`：
-
-| 裝飾器 | 另一種憑證 | 使用的路由 | JWT 分支的後果 |
-| --- | --- | --- | --- |
-| `authenticateJwtOrCliSession` | CLI token | `GET /auth/me`、MCP 端點 | 目前沒有影響：`/auth/me` 不檢查權限，MCP 會先擋下不是 CLI token 的請求 |
-| `authenticateJwtOrPartnerKey` | Partner API 金鑰 | `POST /knowledge/partner-ingest` | 這條路由掛 `requirePermission('knowledge.admin')`。`roleId` 為空時權限集合為空，**網頁登入的成員即使有 `knowledge.admin` 也一律 403** |
-
-`authenticate` 本身有填 `roleId`。三個裝飾器的 JWT 分支是各自複製的程式碼，後來 `authenticate` 加上 `roleId` 時，另外兩份沒有跟著改。
-
-`partner-ingest` 的設計對象是外部夥伴系統，網頁前端沒有呼叫它，所以目前只有以 JWT 測試這條路由的人會遇到。但任何新路由改用這兩個裝飾器、同時掛 `requirePermission()`，網頁使用者都會被擋下；CLI 分支則因為 `requirePermission()` 對 CLI 直接放行而完全不受檢查，見 RBAC-02。
-
-**修正方向**：三個裝飾器的 JWT 分支共用一個函式，由它寫入完整的 `request.agent`，包括 `roleId`。
-
 <a id="auth-07"></a>
 ### AUTH-07：`JWT_EXPIRES_IN` 沒有讀取端
 
@@ -963,32 +943,6 @@ PlatformSetting（KV，不知道型別）
 
 **修正方向**：暫時維持現狀。之後要處理時，可以考慮讓啟用一併清除 `purgedAt`，或對試用已過期的租戶拒絕啟用，提示改用「延長」。
 
-<a id="trial-05"></a>
-### TRIAL-05：再次申請試用會覆寫待驗證申請的密碼
-
-`trial.service.ts` 的 `requestTrial()` 遇到同一 email 已有待驗證的申請時，直接以新送的值覆寫 `passwordHash` 與 `siteName`，並寄一封新的驗證信給該 email（舊連結失效）。開通時沿用 `signupRow.passwordHash`。
-
-因此任何人知道申請人的 email，就能在對方點信之前再送一次申請：申請人點最新那封信，租戶以攻擊者的密碼開通。攻擊者可以登入這個站台的 ADMIN 帳號，看到申請人之後放進去的客戶資料；申請人自己的密碼反而登不進去。攻擊者也可以對從未申請的 email 先送申請，對方點信就落入同一個情況。申請人唯一看得出異狀的地方，是第二封信主旨帶著攻擊者填的站台名稱。
-
-正式環境可以被利用：2026-10-30 以平台 API 唯讀查詢，UAT（即正式環境，APP-10）的 `trial.enabled` 是 `true`，公開試用申請開放中。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-01（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`apps/api/src/modules/trial/trial.service.ts:87-101`、`:200`；兩個 IP 以同一 email、不同密碼申請，點第二封信開通後，第一個密碼登入 401、第二個密碼 200（健檢實測）。
-
-**已修正**（#407，change `trial-set-password-after-verify`）：申請時不收密碼，`POST /trial/signups` 帶來的 `password` 忽略不存，`trial_signups.passwordHash` 已由 migration 移除。`GET /trial/verify` 只確認連結、不開通；驗證頁送出密碼（`POST /trial/verify`）後，才在同一個交易內消耗 token、以這次送出的密碼建立管理員。待驗證的申請再送一次不改站台名稱，驗證頁也可以修改站台名稱。測試：`apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`「搶先申請的人無法決定管理員密碼」「待驗證時以不同站台名稱再申請」「申請時送出的密碼被忽略」。
-
-修正前已開通的試用站台，管理員密碼可能已被他人覆寫過。這次修正沒有清查既有站台。
-
-<a id="trial-06"></a>
-### TRIAL-06：再送一次試用申請繞過重寄節流
-
-`/resend` 有「間隔 60 秒、最多 5 次」的節流，但 `/signups` 遇到待驗證的申請時每次都換 token 寄信，只受「每個 IP 每 10 分鐘 5 次」的速率限制。換 IP 就能對任意信箱無限寄驗證信，以平台名義寄信轟炸，也會耗掉寄信額度與網域信譽。UAT 的 `trial.enabled` 是 `true`（2026-10-30 平台 API 唯讀確認），正式環境可以被利用。健檢在本機以 `X-Forwarded-For` 換 IP；正式環境只採信 nginx 附加的來源 IP（`apps/api/src/lib/trust-proxy.ts`），要換真實的來源 IP。
-
-**規格依據。** 主規格 `trial-application` 的「防枚舉統一回應」規定：待驗證且未過期的申請再送一次時，依節流規則重寄。現況違反這條需求。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-02（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`apps/api/src/modules/trial/trial.service.ts:87-118`（節流只在 `:131-135` 的 `resendTrial`）；7 個不同的 `X-Forwarded-For` 對同一信箱送申請，幾秒內寄出 7 封驗證信（健檢實測）。
-
-**已修正**（#407，change `trial-set-password-after-verify`）：`requestTrial()` 遇到待驗證的申請時改呼叫 `resendTrial()`，與 `/resend` 共用「間隔 60 秒、最多 5 封」的節流，並寄到原申請的 email。測試：`trial-signup-verify.test.ts`「待驗證時連續再申請受重寄節流」。
-
 <a id="trial-07"></a>
 ### TRIAL-07：手動開通預設試用方案，卻不設到期日
 
@@ -1088,7 +1042,7 @@ PlatformSetting（KV，不知道型別）
 
 | feature | 路由層的覆蓋情況 | 關掉這個 feature |
 | --- | --- | --- |
-| `automation` | `canvas` 11 條全有、`automation` 7 條中 5 條（沒有檢查的試跑與執行紀錄已由 `8899e280` 補上，見 AUTO-09） | 大致擋得住 |
+| `automation` | `canvas` 11 條全有、`automation` 7 條中 5 條（沒有檢查的試跑與執行紀錄已由 `8899e280` 補上） | 大致擋得住 |
 | `analytics` | 9 條路由、10 處檢查 | 擋得住 |
 | `channels` | `channel` 19 條中 17 條 | 大致擋得住 |
 | `marketing` | 36 條中 21 條 | 大部分擋得住，仍有未檢查的路由 |
@@ -1743,21 +1697,6 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 **目前的緩解。** 2026-10-05 起，契約以 `dispatched: false` 標出上表 6 種事件（change `improve-automation-page-readability`）：規則編輯器的選單顯示「（目前不會觸發）」，選了之後警告規則不會執行，試跑也說明條件符合仍不會執行。API 與 CLI、MCP 仍然可以建立這些事件的規則，事件本身也仍然沒有送出。
 
-<a id="auto-06"></a>
-### AUTO-06：規則編輯器把純數字的條件值存成數字
-
-`apps/web/src/lib/automation/qb-to-engine.ts` 的 `parseValue()` 把看起來像數字的條件值轉成數字存檔。`packages/automation/src/rules/operators.ts` 的 `contains` 遇到非字串的比較值回 `false`，因此「訊息內容」「聯絡人名稱」「聯絡人標籤」這類字串欄位的條件永遠不成立。
-
-訂單編號、選單數字（「1」「2」）、電話是最常見的關鍵字，都受影響。編輯器重新整理後仍顯示 8888，「試試看」也顯示不會觸發，管理員只會以為規則壞了。以 API 存入字串 `"7777"` 的規則正常。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-01（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/web/src/lib/automation/qb-to-engine.ts:9-16,82`、`packages/automation/src/rules/operators.ts`；在 `/dashboard/automation/new` 建「訊息內容 包含 8888」，送出的 body 是 `"value":8888`，模擬訊息「我的單號 8888」沒有觸發，`POST /rules/:id/test` 回 `matched:false`（健檢實測）。
-
-**已修正**（#418，2026-11-04，change `fix-automation-numeric-text-conditions`）：
-
-- 編輯器的 `parseValue()` 依 `AUTOMATION_FACT_MAP` 的欄位型別轉值：只有 `number` 欄位轉數字、`boolean` 欄位轉布林，文字欄位保留字串。
-- `packages/automation` 的運算子在「欄位值是字串、比較值是數字」時把數字當成文字比對（`equal`、`notEqual`、`in`、`notIn` 覆寫 json-rules-engine 內建版本，`contains` 等自訂運算子同樣處理），已存成數字的舊規則不必重存就恢復觸發。數字欄位的比對不變。
-- workers 與「試試看」都經 `evaluateRules`，結果一致。後端仍不檢查條件值的型別（#405），API 存入數字的規則靠引擎端的轉換才正常。
-
 <a id="auto-07"></a>
 ### AUTO-07：SLA 規則的執行路徑與一般規則不一致
 
@@ -1779,15 +1718,6 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 - 重複貼同一個標籤時，`addTagToTarget()` 以 upsert 回 201，並再寫一筆 `contact.tagged` 到 outbox。前端選單不列已貼的標籤，所以主要來自 API、自動化與短連結。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-03（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）、HC-CONTACTS-09（[CONTACTS 健檢](../features/health/CONTACTS.md)）。證據：`apps/api/src/modules/automation/automation.worker.ts:479`、`packages/automation/src/contracts/facts.ts`、`apps/api/src/modules/tag/tag.flow.ts:36-43`、`tagging.service.ts:146`；貼 tagM 觸發通知後再貼無關的 tagN，又收到一次通知；同一個標籤 `POST` 兩次，outbox 多兩筆 `contact.tagged`（健檢實測）。
-
-<a id="auto-09"></a>
-### AUTO-09：自動化的試跑與執行紀錄只驗登入
-
-`automation.routes.ts` 的 `POST /automation/rules/:id/test` 與 `GET /automation/logs` 只掛 `fastify.authenticate`。沒有 `automation.view` 的成員（例如 seed 的 agent）可以用規則 ID 呼叫試跑，拿到規則的名稱、條件與動作全文（含通知文字、素材 ID、客服 ID）。權限註冊表寫 `automation.view` 涵蓋「logs、test」。方案不含 `automation` 時，這兩條路由同樣不受天花板限制（PLAN-04 的「7 條中 5 條」）。
-
-**已修正**（`8899e280`，#426）：兩條路由都改為 `requirePermission('automation.view')`。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-04（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/api/src/modules/automation/automation.routes.ts:196,210`、`packages/shared/src/rbac/permissions.ts:70`；agent 的 `GET /automation/rules` 回 403，但 `/rules/<id>/test` 回 200 並含 `rule.conditions`、`rule.actions`（健檢實測）。
 
 <a id="auto-10"></a>
 ### AUTO-10：workers 的工單類動作繞過工單模組
@@ -2735,15 +2665,6 @@ grep -cE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update
 ### CI-02：沒有 CI 執行 lint
 
 `eslint.config.js` 與 `pnpm lint` 已存在，但沒有任何 CI workflow 執行 lint。
-
-<a id="ci-04"></a>
-### CI-04：試用申請與開通沒有自動測試
-
-主規格 `trial-application` 的 9 個 scenario（總開關、關閉後仍可開通、防枚舉、gmail 別名、過期 token、重寄後舊連結失效、開通成功、中途失敗可重試、email 已被建走）都找不到測試。`trial.service.ts`、`email-normalizer.ts`、`trial.routes.ts` 沒有任何測試引用。TRIAL-05 與 TRIAL-06 都發生在這段沒有測試的程式。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-04（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`git ls-files apps/*/tests` 搜尋 `requestTrial`、`verifyAndProvision`、`normalizeEmail`、`trial/signups` 都沒有結果（讀程式）。
-
-**已修正**（#407，與 TRIAL-05 同一個 change）：主規格 `trial-application` 的每個 scenario（含這次新增的）都有同名測試，在 `apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`；路由的輸入驗證在 `apps/api/tests/unit/modules/trial/trial-routes.test.ts`，驗證頁在 `apps/web/tests/unit/app/trial/verify-page.test.tsx`。`email-normalizer.ts` 的非 gmail 網域行為（HC-PLATFORM-TRIALS-14）仍沒有測試。
 
 ## 已查證後排除的項目
 
