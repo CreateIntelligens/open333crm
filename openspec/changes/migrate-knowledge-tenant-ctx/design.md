@@ -147,6 +147,7 @@ flow 對每篇文章各呼叫一次 `inTenant()`，接住這次的錯誤，記�
 - [合作方推送在上傳之後交易失敗] → 新上傳的檔案留在 S3（使用者決定接受）。
 - [`POST /models` 快取命中時仍開交易] → 多一個短交易。隨 `ai` 搬遷時修正（D6）。
 - [`tenantScopedClient()` 是要刪除的舊寫法] → 只在 flow 呼叫還沒搬的 `embedding` 函式時使用。`check-tenant-ctx.mjs` 不數這個寫法，搬 `embedding` 時以 `grep tenantScopedClient` 找出這些呼叫。
+- [文章列表的 `q` 上限 200 字、`category` 上限 100 字（D8）] → 搜尋框沒有長度限制，輸入超過 200 字時從「查無結果」變成 400。合作方推送的 `Source` 寫進 `category`，長度沒有限制，超過 100 字的分類在下拉選單選了之後會回 400。2026-11-06 查 UAT，分類與來源最長 16 字。review-loop 第 1 輪記錄，不修。
 - [`feat/claude-design-skin` 依賴現在的回應格式] → feature 測試斷言回應的欄位（`data`、`meta.total`、`meta.limit`、`imported`、`failed`、`errors`、`attachmentsLinked`）。
 
 ## Migration Plan
