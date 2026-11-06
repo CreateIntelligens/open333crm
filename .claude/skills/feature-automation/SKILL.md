@@ -22,7 +22,7 @@ description: >
 - 手冊：`apps/web/public/manual/ch05-automation.html`（關鍵字回覆另見 `apps/web/public/manual/ch10-line.html`）
 - 影響分析：`node scripts/feature-impact.mjs --domain automation`
 
-路由前綴：`/api/v1/automation`（規則 CRUD、試跑、logs）、`/api/v1/canvas`（Canvas）。同一個 `canvas.routes.ts` 另外匯出 `/api/v1/identity`（合併建議，屬聯絡人領域）。
+路由前綴：`/api/v1/automation`（規則 CRUD、試跑、logs）、`/api/v1/canvas`（Canvas）。`/api/v1/identity`（合併建議）屬聯絡人領域，路由在 `contact/merge-suggestion.routes.ts`。
 
 ## 執行路徑（一定要先懂）
 1. 業務模組發布事件 → outbox / eventBus → API 的 `event-automation` 訂閱佇列。
@@ -120,3 +120,4 @@ description: >
 - 「規則改成已解決，客人沒收到滿意度調查」：#417 起 `update_case_status` 會寫 `resolvedAt`；仍沒收到時查工單有沒有關聯對話、租戶是否停用、`csatSentAt` 是否已寫入。
 - 「執行紀錄空白」：AUTO-02，沒有程式寫入。
 - 「Canvas 流程跑完一步就失敗」：節點 `nextNodeId` 無法指到同一請求建立的節點；執行紀錄 `errorMessage` 會是 `Node … not found in flow`。
+- 「Canvas 手動觸發回 404／409」：觸發前檢查流程屬於本租戶而且是 `ACTIVE`（409 `FLOW_NOT_ACTIVE`），也檢查聯絡人屬於本租戶（404）。引擎在 commit 之後才開始執行。觸發回 202、execution 卻一直停在 `RUNNING` 時，查 API log 的 `[Canvas] 流程執行失敗`。

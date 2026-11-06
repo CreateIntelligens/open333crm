@@ -29,6 +29,7 @@ export const RESOURCE_LABELS = {
   conversationTag: '對話標籤',
   coupon: '優惠券',
   fbChannel: 'Facebook 渠道',
+  flow: '互動流程',
   lineChannel: 'LINE 渠道',
   material: '素材',
   notification: '通知',

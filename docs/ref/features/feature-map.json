@@ -22,7 +22,6 @@
         "apps/api/src/modules/identity-binding/*",
         "apps/api/src/modules/ai/other-channel-context.ts",
         "apps/api/src/modules/line/line-profile.*",
-        "apps/api/src/modules/canvas/canvas.routes.ts",
         "packages/core/src/identity/*",
         "packages/core/src/contacts/contact-service.ts"
       ],

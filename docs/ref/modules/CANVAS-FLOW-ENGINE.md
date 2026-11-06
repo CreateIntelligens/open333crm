@@ -80,9 +80,19 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | 來源 | 路徑 |
 | --- | --- |
 | 渠道訊息進來 | `webhook` 收到訊息 → `inbound-side-effects.ts` 的 `triggerWebhookFlow()` → `canvas.webhook.ts` 的 `handleWebhookFlowTrigger()` |
-| 手動呼叫 | `POST /api/v1/canvas/:id/trigger` → `canvas.service.ts` 的 `triggerFlow()` |
+| 手動呼叫 | `POST /api/v1/canvas/:id/trigger` → `canvas.flow.ts` 的 `triggerFlowFlow()` → `canvas.service.ts` 的 `triggerFlow()` |
 
-`handleWebhookFlowTrigger()` 查出所有 `status` 為 `ACTIVE`、`triggerType` 為 `webhook` 的流程，再逐一比對 `triggerConfig` 的 `channelType`、`eventType` 與 `postbackPattern`。比對成立時，這個函式建立一份 `FlowExecution` 並啟動流程。
+`handleWebhookFlowTrigger()` 查出所有 `status` 為 `ACTIVE`、`triggerType` 為 `webhook` 的流程，再逐一比對 `triggerConfig` 的 `channelType`、`eventType` 與 `postbackPattern`。比對成立時，這個函式以 singleton 建立一份 `FlowExecution`，馬上啟動流程。
+
+手動觸發在一個租戶交易內依序執行：
+
+1. `assertFlowTriggerable()` 檢查流程屬於本租戶而且是 `ACTIVE`，也檢查聯絡人屬於本租戶。流程或聯絡人找不到時回 404，流程不是 `ACTIVE` 時回 409 `FLOW_NOT_ACTIVE`。外鍵檢查不套用 RLS，`flow_executions.contactId` 也沒有外鍵，所以這一步不能省。
+2. `createFlowExecution()` 建立 `RUNNING` 的 execution。
+3. `canvas-effects.ts` 的 `startFlowAfterCommit()` 在 commit 之後呼叫 `FlowRunner.run()`，不等流程執行完。每次觸發最多開始一次；rollback 時不開始。執行失敗時寫 error log。
+
+commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNNING`。輪詢器只恢復 `WAITING`，所以沒有程式會再執行它。
+
+`createFlowExecution()` 與 `startFlowAfterCommit()` 寫成自動觸發之後也能用的函式。自動觸發改走租戶交易時，改用這兩個函式（change `migrate-canvas-tenant-ctx` design D6）。
 
 ### 推進
 
@@ -109,8 +119,10 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 
 | 檔案 | 職責 |
 | --- | --- |
-| `apps/api/src/modules/canvas/canvas.routes.ts` | `/api/v1/canvas` 的 CRUD、啟用、觸發、執行紀錄與成效查詢；同一個檔案另外匯出 `/api/v1/identity` 的路由 |
-| `apps/api/src/modules/canvas/canvas.service.ts` | 流程 CRUD 與 `getFlowAnalytics()`，全部收 `TenantDb` |
+| `apps/api/src/modules/canvas/canvas.routes.ts` | `/api/v1/canvas` 的 CRUD、啟用、觸發、執行紀錄與成效查詢，每條路由呼叫 flow |
+| `apps/api/src/modules/canvas/canvas.flow.ts` | 開租戶交易，呼叫 service；手動觸發在 commit 之後交給引擎 |
+| `apps/api/src/modules/canvas/canvas.service.ts` | 流程 CRUD、`getFlowAnalytics()`、觸發前的檢查與建立 execution，全部收 `TenantCtx` |
+| `apps/api/src/modules/canvas/canvas-effects.ts` | `startFlowAfterCommit()`：commit 之後開始執行流程 |
 | `apps/api/src/modules/canvas/canvas.webhook.ts` | 比對 webhook 事件與流程的 `triggerConfig` |
 | `apps/api/src/modules/canvas/canvas.worker.ts` | 訂閱 `crm:events`，實際發訊息、寄信、貼標籤 |
 | `apps/api/src/modules/canvas/canvas.scheduler.ts` | 每 60 秒輪詢到期的 `WAITING` 執行 |
@@ -121,11 +133,11 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | `packages/core/src/canvas/smart-window.ts` | 安靜時段順延 |
 | `packages/core/src/canvas/types.ts` | `FlowContext`、`FlowNode` 等共用型別 |
 
-`/api/v1/identity` 與 Canvas 共用 `canvas.routes.ts` 這個檔案，但它是另一項功能：人工審核系統自動產生的聯繫人合併建議，實作在 `packages/core/src/identity/merge-suggestion-service.ts`。
+`/api/v1/identity`（人工審核聯絡人合併建議）原本也寫在 `canvas.routes.ts`，現在在 `apps/api/src/modules/contact/merge-suggestion.routes.ts`。它與 Canvas 無關。
 
 ### 權限
 
-`/api/v1/canvas` 全部要求 `canvas.use`；`/api/v1/identity` 全部要求 `identity.review`。兩組路由都先經過 `fastify.authenticate`。
+`/api/v1/canvas` 全部要求 `canvas.use`，先經過 `fastify.authenticate`。
 
 ## 目前的限制
 
@@ -135,5 +147,5 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | `AI_GEN` 節點無法運作 | 節點呼叫 `BRAIN_SERVICE_URL` 的 `/api/generate`。這個環境變數在 repo 內沒有任何地方設定，預設值 `http://localhost:3001` 指向 API 自己，而 API 沒有這個路由。節點會拋錯，該次執行轉為 `FAILED`。相關項目見 `../system/AUDIT.md` 的 PKG-03 |
 | `ACTION` 只支援 `add_tag` | 其他 `actionType` 會被 `canvas.worker.ts` 直接忽略，不會報錯 |
 | `schedule` 與 `event` 兩種 `triggerType` 沒有觸發來源 | Zod schema 接受這兩個值，但沒有程式會依它們啟動流程 |
-| 引擎不走租戶連線 | `flow-runner.ts` 使用未綁租戶的 `prisma` singleton，查詢以主鍵定位且不帶 `tenantId`。詳見 `../system/AUDIT.md` 的 RLS-01 |
+| 引擎與自動觸發不走租戶連線 | `flow-runner.ts` 與 `canvas.webhook.ts` 使用未綁租戶的 `prisma` singleton，引擎的查詢以主鍵定位且不帶 `tenantId`。詳見 `../system/AUDIT.md` 的 RLS-01 |
 | `CONDITION` 沒有數值或日期比較 | 運算子只有 `eq`、`neq`、`contains`、`exists`，比較一律以字串進行 |
