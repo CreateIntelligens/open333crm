@@ -1,41 +1,48 @@
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+/**
+ * 知識庫文章 — 收 TenantCtx（change migrate-knowledge-tenant-ctx，AGENTS.md 結構規則 2）。
+ *
+ * 不呼叫向量化服務：寫入之後要不要向量化，以回傳值告訴 flow，由 flow 在 commit 之後開始（design D2）。
+ */
+import type { Prisma } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
-import { logger } from '@open333crm/core';
-import {
-  embedArticle,
-  generateEmbedding,
-  searchSimilarArticles,
-  bulkReembed as bulkReembedArticles,
-  checkOllamaHealth,
-} from '../embedding/embedding.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+
+export interface ArticleInput {
+  title: string;
+  content: string;
+  summary?: string;
+  category?: string;
+  tags?: string[];
+}
+
+export interface ArticleListFilters {
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  category?: string;
+  source?: string;
+  tag?: string;
+  q?: string;
+  page: number;
+  limit: number;
+}
+
+async function findArticleOrThrow(ctx: TenantCtx, id: string) {
+  const article = await ctx.tx.kmArticle.findFirst({ where: { id, tenantId: ctx.tenantId } });
+  if (!article) throw new AppError(notFound('article'), 'NOT_FOUND', 404);
+  return article;
+}
 
 // --- Article CRUD ---
 
-export async function listArticles(
-  prisma: TenantDb,
-  tenantId: string,
-  filters: {
-    status?: string;
-    category?: string;
-    source?: string;
-    tag?: string;
-    q?: string;
-    page?: number;
-    limit?: number;
-  } = {},
-) {
-  const { status, category, source, tag, q, page = 1, limit = 50 } = filters;
+export async function listArticles(ctx: TenantCtx, filters: ArticleListFilters) {
+  const { status, category, source, tag, q, page, limit } = filters;
 
-  const where: Record<string, unknown> = { tenantId };
+  const where: Prisma.KmArticleWhereInput = { tenantId: ctx.tenantId };
   if (status) where.status = status;
   if (category) where.category = category;
   if (tag) where.tags = { has: tag };
   // source: '__manual__' 代表手動建立（externalSource 為空），其餘為精確比對
-  if (source) {
-    where.externalSource = source === '__manual__' ? null : source;
-  }
+  if (source) where.externalSource = source === '__manual__' ? null : source;
   if (q) {
     where.OR = [
       { title: { contains: q, mode: 'insensitive' } },
@@ -47,8 +54,8 @@ export async function listArticles(
   }
 
   const [articles, total] = await Promise.all([
-    prisma.kmArticle.findMany({
-      where: where as any,
+    ctx.tx.kmArticle.findMany({
+      where,
       orderBy: { updatedAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -71,289 +78,130 @@ export async function listArticles(
         _count: { select: { attachments: true } },
       },
     }),
-    prisma.kmArticle.count({ where: where as any }),
+    ctx.tx.kmArticle.count({ where }),
   ]);
 
-  // Supplement with embedding status via raw SQL
-  if (articles.length > 0) {
-    const ids = articles.map((a) => a.id);
-    const embeddingStatus = await prisma.$queryRawUnsafe<{ id: string; has_embedding: boolean }[]>(
-      `SELECT id, (embedding IS NOT NULL) AS has_embedding FROM km_articles WHERE id = ANY($1::text[]::uuid[])`,
-      ids,
-    );
-    const statusMap = new Map(embeddingStatus.map((r) => [r.id, r.has_embedding]));
-    const enriched = articles.map((a) => ({
-      ...a,
-      hasEmbedding: statusMap.get(a.id) ?? false,
-    }));
-    return { articles: enriched, total, page, limit };
-  }
+  if (articles.length === 0) return { articles, total, page, limit };
 
-  return { articles, total, page, limit };
+  // embedding 是 Unsupported 欄位，Prisma 讀不到，以 SQL 補上有沒有向量
+  const embeddingStatus = await ctx.tx.$queryRawUnsafe<{ id: string; has_embedding: boolean }[]>(
+    `SELECT id, (embedding IS NOT NULL) AS has_embedding FROM km_articles WHERE id = ANY($1::text[]::uuid[]) AND "tenantId" = $2::uuid`,
+    articles.map((a) => a.id),
+    ctx.tenantId,
+  );
+  const statusMap = new Map(embeddingStatus.map((r) => [r.id, r.has_embedding]));
+  return {
+    articles: articles.map((a) => ({ ...a, hasEmbedding: statusMap.get(a.id) ?? false })),
+    total,
+    page,
+    limit,
+  };
 }
 
-export async function getArticle(prisma: TenantDb, id: string, tenantId: string) {
-  const article = await prisma.kmArticle.findFirst({
-    where: { id, tenantId },
+export async function getArticle(ctx: TenantCtx, id: string) {
+  const article = await ctx.tx.kmArticle.findFirst({
+    where: { id, tenantId: ctx.tenantId },
     include: {
       attachments: {
-        select: {
-          id: true,
-          filename: true,
-          url: true,
-          mimeType: true,
-          sizeBytes: true,
-          createdAt: true,
-        },
+        select: { id: true, filename: true, url: true, mimeType: true, sizeBytes: true, createdAt: true },
         orderBy: { createdAt: 'asc' },
       },
     },
   });
+  if (!article) throw new AppError(notFound('article'), 'NOT_FOUND', 404);
 
-  if (!article) {
-    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
-  }
-
-  // Increment view count
-  await prisma.kmArticle.update({
-    where: { id },
-    data: { viewCount: { increment: 1 } },
-  });
-
+  await ctx.tx.kmArticle.update({ where: { id }, data: { viewCount: { increment: 1 } } });
   return { ...article, viewCount: article.viewCount + 1 };
 }
 
+/** 建立一篇文章。status 只有匯入可以指定 PUBLISHED，其他一律 DRAFT */
 export async function createArticle(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
-  data: {
-    title: string;
-    content: string;
-    summary?: string;
-    category?: string;
-    tags?: string[];
-  },
+  data: ArticleInput & { status?: 'DRAFT' | 'PUBLISHED' },
 ) {
-  const article = await prisma.kmArticle.create({
+  return ctx.tx.kmArticle.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       createdById: agentId,
       title: data.title,
       content: data.content,
       summary: data.summary || '',
       category: data.category || '一般',
       tags: data.tags || [],
-      status: 'DRAFT',
+      status: data.status ?? 'DRAFT',
     },
   });
-
-  // Fire-and-forget embedding generation
-  embedArticle(prisma, article.id).catch((err) => {
-    logger.error(`[Knowledge] Failed to embed new article ${article.id}:`, err);
-  });
-
-  return article;
 }
 
-export async function updateArticle(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-  data: {
-    title?: string;
-    content?: string;
-    summary?: string;
-    category?: string;
-    tags?: string[];
-  },
-) {
-  const article = await prisma.kmArticle.findFirst({
-    where: { id, tenantId },
-  });
+/** 修改文章。標題、內容或摘要有改時 needsEmbedding 是 true */
+export async function updateArticle(ctx: TenantCtx, id: string, data: Partial<ArticleInput>) {
+  await findArticleOrThrow(ctx, id);
 
-  if (!article) {
-    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
-  }
-
-  const updateData: Record<string, unknown> = {};
+  const updateData: Prisma.KmArticleUpdateInput = {};
   if (data.title !== undefined) updateData.title = data.title;
   if (data.content !== undefined) updateData.content = data.content;
   if (data.summary !== undefined) updateData.summary = data.summary;
   if (data.category !== undefined) updateData.category = data.category;
   if (data.tags !== undefined) updateData.tags = data.tags;
 
-  const updated = await prisma.kmArticle.update({
-    where: { id },
-    data: updateData,
-  });
-
-  // Re-embed if title, content, or summary changed
-  if (data.title !== undefined || data.content !== undefined || data.summary !== undefined) {
-    embedArticle(prisma, id).catch((err) => {
-      logger.error(`[Knowledge] Failed to re-embed article ${id}:`, err);
-    });
-  }
-
-  return updated;
+  const article = await ctx.tx.kmArticle.update({ where: { id }, data: updateData });
+  const needsEmbedding = data.title !== undefined || data.content !== undefined || data.summary !== undefined;
+  return { article, needsEmbedding };
 }
 
-export async function deleteArticle(prisma: TenantDb, id: string, tenantId: string) {
-  const article = await prisma.kmArticle.findFirst({
-    where: { id, tenantId },
-  });
-
-  if (!article) {
-    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
-  }
-
-  await prisma.kmArticle.delete({ where: { id } });
-
-  return { deleted: true };
+/** 刪除文章，附件資料列跟著 cascade 刪除。removedKeys 是這些附件的檔案，由 flow 在 commit 之後刪除 */
+export async function deleteArticle(ctx: TenantCtx, id: string) {
+  await findArticleOrThrow(ctx, id);
+  const attachments = await ctx.tx.kmArticleAttachment.findMany({ where: { articleId: id }, select: { storageKey: true } });
+  await ctx.tx.kmArticle.delete({ where: { id } });
+  return { deleted: true as const, removedKeys: attachments.map((a) => a.storageKey) };
 }
 
-export async function publishArticle(prisma: TenantDb, id: string, tenantId: string) {
-  const article = await prisma.kmArticle.findFirst({
-    where: { id, tenantId },
-  });
+/** 發布文章。文章還沒有向量時 needsEmbedding 是 true */
+export async function publishArticle(ctx: TenantCtx, id: string) {
+  const current = await findArticleOrThrow(ctx, id);
+  if (current.status === 'PUBLISHED') throw new AppError('此文章已發布', 'INVALID_STATE', 400);
 
-  if (!article) {
-    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
-  }
-
-  if (article.status === 'PUBLISHED') {
-    throw new AppError('此文章已發布', 'INVALID_STATE', 400);
-  }
-
-  // Update status FIRST so the HTTP response returns quickly. Embedding is
-  // a slow LLM call (Ollama pulls model into memory on first use, takes
-  // 30+ seconds and can trip Caddy's gateway timeout) so we fire-and-forget.
-  // Worst case: article shows as PUBLISHED but lacks embedding — operator
-  // can use "批次重新嵌入" to backfill.
-  const updated = await prisma.kmArticle.update({
-    where: { id },
-    data: { status: 'PUBLISHED' },
-  });
-
-  const [embCheck] = await prisma.$queryRawUnsafe<{ has: boolean }[]>(
+  const article = await ctx.tx.kmArticle.update({ where: { id }, data: { status: 'PUBLISHED' } });
+  const [embCheck] = await ctx.tx.$queryRawUnsafe<{ has: boolean }[]>(
     `SELECT (embedding IS NOT NULL) AS has FROM km_articles WHERE id = $1::uuid`,
     id,
   );
-  if (!embCheck?.has) {
-    embedArticle(prisma, id).catch((err) => {
-      logger.error(`[Knowledge] Background embedding failed for ${id}:`, err);
-    });
-  }
-
-  return updated;
+  return { article, needsEmbedding: !embCheck?.has };
 }
 
-export async function archiveArticle(prisma: TenantDb, id: string, tenantId: string) {
-  const article = await prisma.kmArticle.findFirst({
-    where: { id, tenantId },
-  });
-
-  if (!article) {
-    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
-  }
-
-  if (article.status === 'ARCHIVED') {
-    throw new AppError('此文章已封存', 'INVALID_STATE', 400);
-  }
-
-  const updated = await prisma.kmArticle.update({
-    where: { id },
-    data: { status: 'ARCHIVED' },
-  });
-
-  return updated;
+export async function archiveArticle(ctx: TenantCtx, id: string) {
+  const current = await findArticleOrThrow(ctx, id);
+  if (current.status === 'ARCHIVED') throw new AppError('此文章已封存', 'INVALID_STATE', 400);
+  return ctx.tx.kmArticle.update({ where: { id }, data: { status: 'ARCHIVED' } });
 }
 
-export async function listCategories(prisma: TenantDb, tenantId: string) {
-  const results = await prisma.kmArticle.findMany({
-    where: { tenantId },
+/** 重新向量化之前確認文章屬於本租戶（spec「重新向量化不存在或另一個租戶的文章」） */
+export async function assertArticleExists(ctx: TenantCtx, id: string): Promise<void> {
+  await findArticleOrThrow(ctx, id);
+}
+
+export async function countPublishedArticles(ctx: TenantCtx): Promise<number> {
+  return ctx.tx.kmArticle.count({ where: { tenantId: ctx.tenantId, status: 'PUBLISHED' } });
+}
+
+export async function listCategories(ctx: TenantCtx) {
+  const results = await ctx.tx.kmArticle.findMany({
+    where: { tenantId: ctx.tenantId },
     select: { category: true },
     distinct: ['category'],
     orderBy: { category: 'asc' },
   });
-
   return results.map((r) => r.category);
 }
 
-export async function listSources(prisma: TenantDb, tenantId: string) {
-  const results = await prisma.kmArticle.findMany({
-    where: { tenantId, externalSource: { not: null } },
+export async function listSources(ctx: TenantCtx) {
+  const results = await ctx.tx.kmArticle.findMany({
+    where: { tenantId: ctx.tenantId, externalSource: { not: null } },
     select: { externalSource: true },
     distinct: ['externalSource'],
     orderBy: { externalSource: 'asc' },
   });
-
   return results.map((r) => r.externalSource).filter(Boolean) as string[];
 }
-
-// ─── Semantic Search ────────────────────────────────────────────────────────
-
-export async function semanticSearch(
-  prisma: TenantDb,
-  tenantId: string,
-  query: string,
-  options: { topK?: number; threshold?: number } = {},
-) {
-  const queryEmbedding = await generateEmbedding(prisma, tenantId, query);
-  const results = await searchSimilarArticles(prisma, queryEmbedding, tenantId, options);
-  return results;
-}
-
-// ─── Batch Import ───────────────────────────────────────────────────────────
-
-export async function batchImportArticles(
-  prisma: TenantDb,
-  tenantId: string,
-  agentId: string,
-  articles: {
-    title: string;
-    content: string;
-    summary?: string;
-    category?: string;
-    tags?: string[];
-    status?: string;
-  }[],
-): Promise<{ imported: number; failed: number; errors: string[] }> {
-  let imported = 0;
-  let failed = 0;
-  const errors: string[] = [];
-
-  for (const data of articles) {
-    try {
-      const article = await prisma.kmArticle.create({
-        data: {
-          tenantId,
-          createdById: agentId,
-          title: data.title,
-          content: data.content,
-          summary: data.summary || '',
-          category: data.category || '一般',
-          tags: data.tags || [],
-          status: (data.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT') as any,
-        },
-      });
-
-      // Fire-and-forget embedding
-      embedArticle(prisma, article.id).catch((err) => {
-        logger.error(`[Knowledge] Import embed failed for ${article.id}:`, err);
-      });
-
-      imported++;
-    } catch (err) {
-      failed++;
-      errors.push(`"${data.title}": ${(err as Error).message}`);
-    }
-  }
-
-  return { imported, failed, errors };
-}
-
-// ─── Re-exports for routes ──────────────────────────────────────────────────
-
-export { bulkReembedArticles as bulkReembed };
-export { checkOllamaHealth, embedArticle };

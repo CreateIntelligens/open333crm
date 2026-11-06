@@ -7,38 +7,34 @@ import assert from 'node:assert/strict';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 
-vi.mock('#src/modules/knowledge/knowledge.service.js', () => ({
-  listArticles: async () => ({ articles: [], total: 0, page: 1, limit: 50 }),
-  listSources: async () => [],
-  getArticle: async () => ({ id: 'article-1' }),
-  createArticle: async () => ({}),
-  updateArticle: async () => ({}),
-  deleteArticle: async () => ({}),
-  publishArticle: async () => ({}),
-  archiveArticle: async () => ({}),
-  listCategories: async () => [],
-  semanticSearch: async () => [],
-  batchImportArticles: async () => ({}),
-  bulkReembed: async () => ({}),
-  checkOllamaHealth: async () => ({}),
-  embedArticle: async () => ({}),
+vi.mock('#src/modules/knowledge/knowledge.flow.js', () => ({
+  archiveArticleFlow: async () => ({}),
+  bulkEmbedFlow: async () => ({}),
+  createArticleFlow: async () => ({}),
+  deleteArticleFlow: async () => ({}),
+  embedArticleNowFlow: async () => ({}),
+  embeddingStatusFlow: async () => ({}),
+  getArticleFlow: async () => ({}),
+  getFeedbackCountsFlow: async () => ({}),
+  importArticlesFlow: async () => ({}),
+  ingestPartnerDocFlow: async () => ({}),
+  listArticlesFlow: async () => ({}),
+  listCategoriesFlow: async () => ({}),
+  listFeedbackFlow: async () => ({}),
+  listKnownModelsFlow: async () => ({}),
+  listSourcesFlow: async () => ({}),
+  publishArticleFlow: async () => ({}),
+  refreshKnownModelsFlow: async () => ({}),
+  resolveFeedbackFlow: async () => ({}),
+  semanticSearchFlow: async () => ({}),
+  updateArticleFlow: async () => ({}),
 }));
 vi.mock('#src/modules/knowledge/file-parser.service.js', () => ({
   parseFileToMarkdown: async () => '',
   parseSpreadsheetToQaRows: async () => [],
 }));
 vi.mock('#src/modules/knowledge/partner-ingest.service.js', () => ({
-  ingestPartnerDoc: async () => ({}),
   parseCmd: () => 'CREATE',
-}));
-vi.mock('#src/modules/knowledge/kb-feedback.service.js', () => ({
-  listFeedback: async () => ({ items: [], total: 0 }),
-  getFeedbackCounts: async () => ({}),
-  resolveFeedback: async () => ({}),
-}));
-vi.mock('#src/modules/ai/model-registry.service.js', () => ({
-  refreshModelKeys: async () => [],
-  getKnownModelKeys: async () => [],
 }));
 
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';

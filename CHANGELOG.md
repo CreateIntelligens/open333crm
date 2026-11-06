@@ -6,6 +6,14 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **知識庫改成入口開交易，向量化與刪除附件檔案在 commit 之後才開始**（#337 階段 4 第三批，change `migrate-knowledge-tenant-ctx`）— 文章的建立、修改、發布、匯入與合作方推送，原本寫入之後馬上呼叫向量化，不等結果。合作方推送在寫入的過程中上傳附件。覆蓋文章或刪除文章時，附件的資料列刪除了，S3 上的檔案卻留著。現在：
+  - 向量化在寫入的交易 commit 之後才開始，每次寫入最多開始一次，不等結果；交易 rollback 時不開始。處理程序中途結束時文章沒有向量，與之前相同，由重新向量化補上。
+  - 合作方推送（`POST /api/v1/knowledge/partner-ingest`）分成三段：先在交易內判斷 `cmd` 與 `Ver`，再在交易外上傳附件，最後開交易寫入，寫入前再檢查一次 `Ver`。上傳期間有另一個推送寫入較新的版本時，這次回 `skipped`。寫入失敗時，已上傳的檔案留在 S3。
+  - 合作方覆蓋文章與後台刪除文章時，在 commit 之後刪除舊附件在 S3 上的檔案。刪除失敗只記 log。
+  - 批次匯入與上傳 QA 表的每篇文章各自一個交易，一篇失敗不影響其他篇，回應不變。
+  - `POST /api/v1/knowledge/:id/embed` 收到不存在或另一個租戶的文章時回 404，原本回 500。
+  - 文章與回報的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`，原本回 `DATABASE_ERROR`。文章列表的 `page` 小於 1 或 `limit` 超過 100 時回 400，原本 `page=0` 回 500、`limit` 沒有上限；`limit` 預設仍是 50。回報列表的 `status` 只收 `open`、`resolved`。
+
 - **Canvas 的流程管理與手動觸發改成入口開交易，觸發前檢查流程與聯絡人**（#337 階段 4 第二批，change `migrate-canvas-tenant-ctx`）— 手動觸發（`POST /api/v1/canvas/:id/trigger`）原本不檢查流程與聯絡人屬於哪個租戶。外鍵檢查不套用 RLS，所以呼叫端傳入另一個租戶的流程 id 時，API 也回 202，並在呼叫端的租戶建立 execution。草稿與封存的流程也能觸發，不存在的聯絡人也回 202。引擎在建立 execution 的同一個請求裡就開始執行。引擎執行失敗時，系統不寫 log。現在：
   - 觸發前在交易內檢查流程屬於本租戶而且是 `ACTIVE`，聯絡人屬於本租戶。流程或聯絡人找不到時回 404，流程不是 `ACTIVE` 時回 409 `FLOW_NOT_ACTIVE`。搬遷前，不存在的流程回 400。
   - 流程引擎在 execution commit 之後才開始執行，每次觸發最多開始一次；交易 rollback 時不執行。引擎執行失敗時寫 error log，回應仍是 202。
@@ -14,6 +22,10 @@ All notable changes to **open333CRM** will be documented in this file.
   - Canvas 路由的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`。
   - 身分合併建議的路由（`/api/v1/identity/suggestions`）從 canvas 模組搬到 contact 模組。路徑、權限與回應不變；核准後的 `contact.merged` 推播改經 `notifyTenant()`，仍在 commit 之後送出。
   - 收到訊息時的自動觸發（`canvas.webhook.ts`）與流程引擎不變，仍用 singleton 連線（AUDIT RLS-01）。
+
+### Fixed
+
+- **知識庫的讀取路由要求 `knowledge.view`**（AUDIT RBAC-01，change `migrate-knowledge-tenant-ctx`）— 文章列表、單篇、來源、分類、搜尋、embedding 狀態、型號、回報數與回報列表原本只檢查登入。角色沒有勾選「檢視知識庫」，或方案不含知識庫時，成員仍然讀得到文章。現在這 9 條路由回 403 `FORBIDDEN`，`details.requiredPermission` 是 `knowledge.view`。系統預設的三個角色都有這個權限。
 
 ## [2026-11-05]
 

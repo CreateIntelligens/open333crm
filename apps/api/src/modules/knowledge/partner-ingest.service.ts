@@ -10,16 +10,15 @@
  *
  * 詳細行為矩陣見：
  *   openspec/changes/2026-05-13-partner-ingest-cmd/design.md
+ *
+ * 收 TenantCtx，不呼叫儲存服務（change migrate-knowledge-tenant-ctx，design D4）。附件由 flow 在交易外
+ * 上傳，這裡只寫附件的資料列；向量化由 flow 在 commit 之後開始。
  */
 
-import type { PrismaClient, Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { uploadFile } from '../storage/storage.service.js';
-import { embedArticle } from '../embedding/embedding.service.js';
+import type { Prisma } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { logger } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
-import { assertUploadContent } from '../upload/upload-validation.js';
-import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 export type PartnerCmd = 'CREATE' | 'UPDATE' | 'DELETE';
 
@@ -48,6 +47,21 @@ export type PartnerIngestStatus =
   | 'deleted'
   | 'revived'
   | 'skipped';
+
+/** flow 在交易外上傳成功的附件 */
+export interface UploadedAttachment {
+  filename: string;
+  storageKey: string;
+  url: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface PartnerDocSnapshot {
+  id: string;
+  externalVer: number;
+  status: string;
+}
 
 export interface PartnerIngestResult {
   status: PartnerIngestStatus;
@@ -95,25 +109,21 @@ function deriveSummary(content: string, max = 200): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
 }
 
-export async function ingestPartnerDoc(
-  prisma: TenantDb,
-  tenantId: string,
-  agentId: string,
-  input: PartnerDocInput,
-): Promise<PartnerIngestResult> {
-  if (!input.docId) {
-    throw new AppError('請提供文件識別碼', 'BAD_REQUEST', 400);
-  }
-
-  const existing = await prisma.kmArticle.findUnique({
-    where: { tenantId_externalDocId: { tenantId, externalDocId: input.docId } },
+export async function findPartnerDoc(ctx: TenantCtx, docId: string): Promise<PartnerDocSnapshot | null> {
+  return ctx.tx.kmArticle.findUnique({
+    where: { tenantId_externalDocId: { tenantId: ctx.tenantId, externalDocId: docId } },
     select: { id: true, externalVer: true, status: true },
   });
+}
 
-  if (input.cmd === 'DELETE') {
-    return handleDelete(prisma, input, existing);
-  }
-
+/**
+ * CREATE / UPDATE 依既有的文章決定結果。衝突與找不到時丟 AppError；版本不夠新時回 skipped 的結果；
+ * 可以寫入時回 null。交易 1 與交易 2 都呼叫這個函式，所以兩次判斷的規則相同（design D4）。
+ */
+export function decidePartnerWrite(
+  input: PartnerDocInput,
+  existing: PartnerDocSnapshot | null,
+): PartnerIngestResult | null {
   // CREATE 要求 DocID 不存在或處於 ARCHIVED（復活）；既有且 PUBLISHED 視為衝突。
   if (input.cmd === 'CREATE' && existing && existing.status !== 'ARCHIVED') {
     throw new AppError(
@@ -144,13 +154,14 @@ export async function ingestPartnerDoc(
     };
   }
 
-  return writeArticle(prisma, tenantId, agentId, input, existing);
+  return null;
 }
 
-async function handleDelete(
-  prisma: TenantDb,
+/** cmd=DELETE：軟刪除，附件保留（主規格「Partner Doc Mutation Command」） */
+export async function archivePartnerDoc(
+  ctx: TenantCtx,
   input: PartnerDocInput,
-  existing: { id: string; externalVer: number; status: string } | null,
+  existing: PartnerDocSnapshot | null,
 ): Promise<PartnerIngestResult> {
   // 不存在 → idempotent，當作已刪除
   if (!existing) {
@@ -178,14 +189,8 @@ async function handleDelete(
   }
 
   // 軟刪：標記為 ARCHIVED + 清空向量（避免被檢索吐回）
-  await prisma.kmArticle.update({
-    where: { id: existing.id },
-    data: { status: 'ARCHIVED' },
-  });
-  await prisma.$executeRawUnsafe(
-    `UPDATE km_articles SET embedding = NULL WHERE id = $1::uuid`,
-    existing.id,
-  );
+  await ctx.tx.kmArticle.update({ where: { id: existing.id }, data: { status: 'ARCHIVED' } });
+  await ctx.tx.$executeRawUnsafe(`UPDATE km_articles SET embedding = NULL WHERE id = $1::uuid`, existing.id);
 
   logger.info(`[PartnerIngest] DELETE (soft) DocID=${input.docId} articleId=${existing.id}`);
   return {
@@ -197,13 +202,17 @@ async function handleDelete(
   };
 }
 
-async function writeArticle(
-  prisma: TenantDb,
-  tenantId: string,
+/**
+ * CREATE / UPDATE 寫入文章與附件的資料列。既有的文章整批覆蓋附件；先前是 ARCHIVED 時視為復活。
+ * removedKeys 是被刪掉的附件資料列的檔案，由 flow 在 commit 之後刪除（design D3）。
+ */
+export async function writePartnerArticle(
+  ctx: TenantCtx,
   agentId: string,
   input: PartnerDocInput,
-  existing: { id: string; externalVer: number; status: string } | null,
-): Promise<PartnerIngestResult> {
+  existing: PartnerDocSnapshot | null,
+  attachments: UploadedAttachment[],
+): Promise<{ result: PartnerIngestResult; removedKeys: string[] }> {
   const { spec, specRaw } = parseSpec(input.spec);
   const importedAt = parseVerCreatTime(input.verCreatTime);
   const summary = deriveSummary(input.aiA);
@@ -222,87 +231,39 @@ async function writeArticle(
     externalSource: input.source,
     spec: spec as Prisma.InputJsonValue | undefined,
     importedAt,
-    metadata: Object.keys(metadataExtras).length > 0
-      ? (metadataExtras as Prisma.InputJsonValue)
-      : undefined,
+    metadata: Object.keys(metadataExtras).length > 0 ? (metadataExtras as Prisma.InputJsonValue) : undefined,
   };
 
   let articleId: string;
   let status: PartnerIngestStatus;
+  let removedKeys: string[] = [];
 
   if (existing) {
-    // 既有 → 整批覆蓋附件 + 更新內容；若先前是 ARCHIVED 視為復活
-    await prisma.kmArticleAttachment.deleteMany({ where: { articleId: existing.id } });
-    await prisma.kmArticle.update({
-      where: { id: existing.id },
-      data: dataCommon,
-    });
+    const old = await ctx.tx.kmArticleAttachment.findMany({ where: { articleId: existing.id }, select: { storageKey: true } });
+    removedKeys = old.map((a) => a.storageKey);
+    await ctx.tx.kmArticleAttachment.deleteMany({ where: { articleId: existing.id } });
+    await ctx.tx.kmArticle.update({ where: { id: existing.id }, data: dataCommon });
     articleId = existing.id;
     status = existing.status === 'ARCHIVED' ? 'revived' : 'updated';
   } else {
-    const created = await prisma.kmArticle.create({
-      data: {
-        tenantId,
-        createdById: agentId,
-        ...dataCommon,
-      },
+    const created = await ctx.tx.kmArticle.create({
+      data: { tenantId: ctx.tenantId, createdById: agentId, ...dataCommon },
       select: { id: true },
     });
     articleId = created.id;
     status = 'created';
   }
 
-  let attachmentsLinked = 0;
-  if (input.isAttached && input.attachments.length > 0) {
-    for (const att of input.attachments) {
-      try {
-        const detected = await assertUploadContent(
-          { buffer: att.buffer, filename: att.filename, clientMime: att.mimeType },
-          UPLOAD_POLICIES.partnerAttachment,
-        );
-        const detectedMime = detected.detectedMime ?? att.mimeType;
-        const { key, url } = await uploadFile(
-          att.buffer,
-          att.filename,
-          detectedMime,
-          tenantId,
-          'media',
-          `kb/${input.docId}`,
-        );
-        await prisma.kmArticleAttachment.create({
-          data: {
-            articleId,
-            filename: att.filename,
-            storageKey: key,
-            url,
-            mimeType: detectedMime,
-            sizeBytes: att.buffer.length,
-          },
-        });
-        attachmentsLinked++;
-      } catch (err) {
-        logger.error(
-          `[PartnerIngest] Failed to upload attachment "${att.filename}" for DocID ${input.docId}: ${(err as Error).message}`,
-        );
-      }
-    }
+  if (attachments.length > 0) {
+    await ctx.tx.kmArticleAttachment.createMany({
+      data: attachments.map((att) => ({ articleId, ...att })),
+    });
   }
 
-  embedArticle(prisma, articleId).catch((err) => {
-    logger.error(
-      `[PartnerIngest] Embedding failed for article ${articleId} (DocID ${input.docId}): ${(err as Error).message}`,
-    );
-  });
-
-  logger.info(
-    `[PartnerIngest] ${status} DocID=${input.docId} ver=${input.ver} attachments=${attachmentsLinked}`,
-  );
+  logger.info(`[PartnerIngest] ${status} DocID=${input.docId} ver=${input.ver} attachments=${attachments.length}`);
 
   return {
-    status,
-    articleId,
-    externalDocId: input.docId,
-    externalVer: input.ver,
-    attachmentsLinked,
+    result: { status, articleId, externalDocId: input.docId, externalVer: input.ver, attachmentsLinked: attachments.length },
+    removedKeys,
   };
 }
