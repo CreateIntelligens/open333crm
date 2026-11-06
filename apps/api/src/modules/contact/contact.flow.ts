@@ -1,13 +1,14 @@
 /**
- * contact 的 flow（#337 階段 3，AGENTS.md 結構規則 2）：聯絡人的查詢、修改，以及客服手動合併與解除合併。
+ * contact 的 flow（#337 階段 3，AGENTS.md 結構規則 2）：聯絡人的查詢、修改、客服手動合併、合併建議的審核，以及解除合併。
  *
  * - 合併、解除合併的稽核與資料一起 commit；稽核寫入失敗時整筆 rollback（主規格 tenant-audit-log）。
  * - contact.merged、contact.merge_reverted 推播在 commit 之後送出，rollback 時丟棄。
- * - 綁定代碼、email／手機登記、合併建議也會合併聯絡人，它們尚未搬遷，各自開交易與推播。
+ * - 綁定代碼、email／手機登記也會合併聯絡人，它們尚未搬遷，各自開交易與推播。
  */
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
-import { flowOf, inTenant } from '../../lib/tenant-ctx.js';
+import { claimSuggestionForApproval, listSuggestions, rejectMerge } from '@open333crm/core';
+import { flowOf, inTenant, type TenantCtx, type TenantScope } from '../../lib/tenant-ctx.js';
 import type { RequestActor } from '../../lib/request-actor.js';
 import type { AccessibleChannels } from '../../services/channel-visibility.js';
 import { notifyTenant } from '../../events/socket-push.js';
@@ -43,6 +44,18 @@ export const getContactTimelineFlow = flowOf(getContactTimeline);
 export const getMergePreviewFlow = flowOf(getMergePreview);
 export const listMergeLogsFlow = flowOf(listMergeLogs);
 
+/** contact.merged 的推播內容。手動合併與核准合併建議共用 */
+function notifyContactMerged(
+  scope: TenantScope,
+  io: Server,
+  ids: { primaryContactId: string; secondaryContactId: string },
+  result: { survivor: { displayName: string | null }; merged: { displayName: string | null } },
+) {
+  const names = { primaryName: result.survivor.displayName, secondaryName: result.merged.displayName };
+  notifyTenant(scope, io, 'contact.merged', { ...ids, ...names });
+  return names;
+}
+
 export function mergeContactsFlow(
   deps: ContactFlowDeps,
   actor: RequestActor,
@@ -68,8 +81,7 @@ export function mergeContactsFlow(
       payload: { primaryContactId, secondaryContactId },
       ip: actor.ip,
     });
-    const names = { primaryName: result.survivor.displayName, secondaryName: result.merged.displayName };
-    notifyTenant(scope, deps.io, 'contact.merged', { primaryContactId, secondaryContactId, ...names });
+    const names = notifyContactMerged(scope, deps.io, { primaryContactId, secondaryContactId }, result);
     return { primaryContactId, secondaryContactId, ...names, mergeLogId: result.mergeLogId };
   });
 }
@@ -101,3 +113,31 @@ export function revertMergeFlow(
     return result;
   });
 }
+
+// ── 合併建議 ──────────────────────────────────────────────────────────────────
+// 建議找不到、已處理時，core 丟 SuggestionNotFoundError、SuggestionNotPendingError，由路由轉成 HTTP 錯誤。
+
+export const listMergeSuggestionsFlow = flowOf(
+  (ctx: TenantCtx, status: Parameters<typeof listSuggestions>[2], opts: { page: number; limit: number }) =>
+    listSuggestions(ctx.tx, ctx.tenantId, status, opts),
+);
+
+/** 認領建議與合併在同一個交易：合併失敗時建議維持 PENDING（主規格 identity-stitching-engine） */
+export function approveMergeSuggestionFlow(deps: ContactFlowDeps, actor: RequestActor, suggestionId: string) {
+  return inTenant(deps.prisma, actor.tenantId, async (scope) => {
+    const ids = await claimSuggestionForApproval(scope.tx, scope.tenantId, suggestionId, actor.agentId);
+    const result = await mergeContacts(scope, {
+      survivorId: ids.primaryContactId,
+      mergedId: ids.secondaryContactId,
+      source: 'SUGGESTION',
+      actorAgentId: actor.agentId,
+    });
+    notifyContactMerged(scope, deps.io, ids, result);
+    return { mergeLogId: result.mergeLogId };
+  });
+}
+
+export const rejectMergeSuggestionFlow = flowOf((ctx: TenantCtx, agentId: string, suggestionId: string) =>
+  rejectMerge(ctx.tx, ctx.tenantId, suggestionId, agentId),
+);
+

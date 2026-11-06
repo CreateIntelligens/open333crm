@@ -18,6 +18,7 @@
 
 - 流程管理的 8 條路由改成呼叫 flow，service 改收 `TenantCtx`。除了下面列出的差異，路由的回應不變。
 - 執行紀錄的列表先確認流程屬於本租戶，與其他流程端點一樣回 404。
+- 執行紀錄的 `status` 篩選改收 execution 的狀態（`RUNNING`、`WAITING`、`COMPLETED`、`FAILED`）。搬遷前收的是流程的狀態（`DRAFT`、`ACTIVE`、`ARCHIVED`），任何篩選值都會失敗。
 - 手動觸發：
   - 在交易內檢查流程屬於本租戶而且是 `ACTIVE`，也檢查聯絡人屬於本租戶。檢查通過才建立 execution。
   - 流程不存在或屬於另一個租戶時，回 404。流程不是 `ACTIVE` 時，回 409 `FLOW_NOT_ACTIVE`。聯絡人不存在或屬於另一個租戶時，回 404。
@@ -39,6 +40,7 @@
 
 - `interaction-canvas`：
   - 新增「流程管理只作用在本租戶的流程」（ADDED）。
+  - 新增「執行紀錄依執行狀態篩選」（ADDED）。
   - 新增「手動觸發只接受本租戶啟用中的流程與本租戶的聯絡人」（ADDED）。
   - 新增「手動觸發在 execution commit 之後才開始執行」（ADDED）。
 
@@ -52,7 +54,7 @@
   - `apps/api/src/index.ts`：`identityRoutes` 改從 `contact` 模組 import。
 - API：
   - `POST /api/v1/canvas/:id/trigger`：新增 404 與 409 `FLOW_NOT_ACTIVE`。搬遷前，不存在的流程回 400（外鍵錯誤），不存在的聯絡人回 202。沒有前端呼叫 Canvas 的路由。
-  - `GET /api/v1/canvas/:id/executions`：流程不存在或屬於另一個租戶時，改回 404。搬遷前回 200 與空陣列。
+  - `GET /api/v1/canvas/:id/executions`：流程不存在或屬於另一個租戶時，改回 404。搬遷前回 200 與空陣列。`status` 改收 execution 的狀態。
   - 其他路由的路徑、權限與回應不變。`:id` 不是 UUID 時回 400。
 - 測試：`tests/feature/modules/canvas/`、`tests/unit/modules/canvas/` 新增。`tests/feature/modules/contact/contact-merge-same-channel.test.ts` 改從新的路由檔 import。
 - 文件：`docs/ref/features/feature-map.json`、`docs/ref/modules/CANVAS-FLOW-ENGINE.md`、`docs/ref/system/AUDIT.md`（AUTO-11、RLS-01）。

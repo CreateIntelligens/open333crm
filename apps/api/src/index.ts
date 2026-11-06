@@ -96,7 +96,8 @@ import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
 import cliRoutes from './modules/cli/cli.routes.js';
 import mcpRoutes from './modules/mcp/mcp.routes.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
-import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
+import canvasRoutes from './modules/canvas/canvas.routes.js';
+import mergeSuggestionRoutes from './modules/contact/merge-suggestion.routes.js';
 import { createBullJobScheduler } from './lib/job-scheduler.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
 import { setupTrialScheduler } from './modules/trial/trial.scheduler.js';
@@ -238,7 +239,7 @@ export async function bootstrap() {
   await app.register(shortlinkRedirectRoutes, { prefix: '/s' });
   await app.register(lineImagemapRoutes, { prefix: '/line-imagemap' });
   await app.register(canvasRoutes, { prefix: '/api/v1/canvas' });
-  await app.register(identityRoutes, { prefix: '/api/v1/identity' });
+  await app.register(mergeSuggestionRoutes, { prefix: '/api/v1/identity' });
   await app.register(webchatRoutes, { prefix: '/api/v1/webchat' });
   await app.register(chatboxRoutes, { prefix: '/api/v1/chatbox' });
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });

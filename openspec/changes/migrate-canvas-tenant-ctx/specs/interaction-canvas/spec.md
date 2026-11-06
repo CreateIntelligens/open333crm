@@ -19,6 +19,17 @@
 - **WHEN** 成員以不是 UUID 的值當作 `:id` 呼叫任一個流程端點
 - **THEN** 系統回 400 `VALIDATION_ERROR`
 
+### Requirement: 執行紀錄依執行狀態篩選
+`GET /api/v1/canvas/:id/executions` 的 `status` 參數 SHALL 接受 execution 的狀態 `RUNNING`、`WAITING`、`COMPLETED`、`FAILED`，回應 SHALL 只包含這個狀態的 execution。其他值 SHALL 回 400 `VALIDATION_ERROR`。
+
+#### Scenario: 依執行狀態篩選
+- **WHEN** 流程有 `COMPLETED` 與 `FAILED` 的 execution，成員以 `status=COMPLETED` 呼叫執行紀錄
+- **THEN** 系統回 200，回應只包含 `COMPLETED` 的 execution，`total` 只計算這些 execution
+
+#### Scenario: 篩選值不是執行狀態
+- **WHEN** 成員以 `status=ACTIVE` 呼叫執行紀錄
+- **THEN** 系統回 400 `VALIDATION_ERROR`
+
 ### Requirement: 手動觸發只接受本租戶啟用中的流程與本租戶的聯絡人
 `POST /api/v1/canvas/:id/trigger` SHALL 先檢查流程屬於操作者的租戶、流程狀態是 `ACTIVE`，以及聯絡人屬於操作者的租戶。任一項檢查失敗時，系統 MUST NOT 建立 execution，MUST NOT 開始執行流程。
 

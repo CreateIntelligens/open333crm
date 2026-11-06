@@ -2,6 +2,19 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-06]
+
+### Changed
+
+- **Canvas 的流程管理與手動觸發改成入口開交易，觸發前檢查流程與聯絡人**（#337 階段 4 第二批，change `migrate-canvas-tenant-ctx`）— 手動觸發（`POST /api/v1/canvas/:id/trigger`）原本不檢查流程與聯絡人屬於哪個租戶。外鍵檢查不套用 RLS，所以呼叫端傳入另一個租戶的流程 id 時，API 也回 202，並在呼叫端的租戶建立 execution。草稿與封存的流程也能觸發，不存在的聯絡人也回 202。引擎在建立 execution 的同一個請求裡就開始執行。引擎執行失敗時，系統不寫 log。現在：
+  - 觸發前在交易內檢查流程屬於本租戶而且是 `ACTIVE`，聯絡人屬於本租戶。流程或聯絡人找不到時回 404，流程不是 `ACTIVE` 時回 409 `FLOW_NOT_ACTIVE`。搬遷前，不存在的流程回 400。
+  - 流程引擎在 execution commit 之後才開始執行，每次觸發最多開始一次；交易 rollback 時不執行。引擎執行失敗時寫 error log，回應仍是 202。
+  - `GET /api/v1/canvas/:id/executions` 在流程不存在或屬於另一個租戶時回 404，與其他流程端點一致。搬遷前回 200 與空陣列。
+  - 執行紀錄的 `status` 篩選改收 execution 的狀態（`RUNNING`、`WAITING`、`COMPLETED`、`FAILED`）。原本收的是流程的狀態（`DRAFT`、`ACTIVE`、`ARCHIVED`），送到資料庫時一律回 400，篩選無法使用。
+  - Canvas 路由的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`。
+  - 身分合併建議的路由（`/api/v1/identity/suggestions`）從 canvas 模組搬到 contact 模組。路徑、權限與回應不變；核准後的 `contact.merged` 推播改經 `notifyTenant()`，仍在 commit 之後送出。
+  - 收到訊息時的自動觸發（`canvas.webhook.ts`）與流程引擎不變，仍用 singleton 連線（AUDIT RLS-01）。
+
 ## [2026-11-05]
 
 ### Changed
