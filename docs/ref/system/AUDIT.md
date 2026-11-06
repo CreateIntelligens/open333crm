@@ -133,7 +133,7 @@
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
 | [AUTO-09](#auto-09) | 對話、工單與自動化 | P2 | 已修正 | 自動化的試跑與執行紀錄只驗登入，沒有 `automation.view` 的成員可以讀到規則的條件與動作全文 | 執行時確認 |
 | [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫工單事件、不通知被指派的人，`assign_agent`、`escalate_case` 的查詢不帶 `tenantId`；`update_case_status` 的 `resolvedAt`／`closedAt` 與 `tenantId` #417 已修正 | 執行時確認 |
-| [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 未處理 | Canvas 用 API 建不出串接的節點，草稿也能觸發；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網 | 執行時確認 |
+| [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 部分修正 | Canvas 用 API 建不出串接的節點；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網。手動觸發不再接受草稿、封存的流程與不存在的聯絡人 | 執行時確認 |
 | [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 未處理 | 自動化動作的參數只檢查有填，不檢查值：狀態可存 `"FOO"`，負責人可存其他租戶的成員 | 執行時確認 |
 | [AUTO-13](#auto-13) | 對話、工單與自動化 | P2 | 未處理 | 「短連結被點擊」的觸發說明可以依連結決定動作，但契約沒有連結的條件欄位，用到時存檔被拒 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
@@ -234,7 +234,14 @@
 
 **等待節點也受影響。** Canvas 的等待節點只靠 `canvas.scheduler.ts` 每 60 秒呼叫 `processResumeQueue()` 恢復，BullMQ 路徑從來沒有成功過（[APP-07](#app-07)）。`processResumeQueue()` 也用 singleton，所以同樣受上面兩種情況影響。修正 RLS-01 時，一併處理 APP-07。
 
-**優先順序。** 安全面是 P2：進入 Canvas 的路徑都不接受外部指定的 ID。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，`FlowRunner` 的 `executionId` 由租戶連線建立，因此即使 singleton 繞過 RLS，資料也不會流到其他租戶。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`，而且 `interaction_flows` 與 `flow_executions` 都是 0 筆（2026-10-02），沒有租戶使用 Canvas，因此維持 P2。
+**優先順序。** 安全面是 P2。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，流程 id 由這個函式自己查出，不接受外部指定的 ID。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`，而且 `interaction_flows` 與 `flow_executions` 都是 0 筆（2026-10-02），沒有租戶使用 Canvas，因此維持 P2。
+
+**更正與手動觸發的修正**（2026-11-06，change `migrate-canvas-tenant-ctx`）：上一段原本寫「進入 Canvas 的路徑都不接受外部指定的 ID」，這句不正確。手動觸發 `POST /api/v1/canvas/:id/trigger` 的流程 id 與聯絡人 id 都由呼叫端指定：
+
+- PostgreSQL 的外鍵檢查不套用 RLS。呼叫端傳入另一個租戶的流程 id 時，API 也回 202，並在呼叫端的租戶建立 execution。之後引擎執行另一個租戶的流程節點。本機以 `app_tenant` 連線實測，結果相同。
+- `flow_executions.contactId` 沒有外鍵，任何 UUID 都能寫入。
+
+現在手動觸發在租戶交易內先檢查流程與聯絡人屬於本租戶，再建立 execution，commit 之後才交給引擎（見 AUTO-11）。引擎、`processResumeQueue()` 與 `canvas.webhook.ts` 仍用 singleton，本項的其他部分未處理。
 
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
@@ -1800,11 +1807,12 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 ### AUTO-11：Canvas 無法串接節點，權限與網址檢查過寬
 
 - 節點的 `nextNodeId` 必須是 UUID，但節點 ID 由資料庫產生，`PATCH /canvas/:id` 也不收 `nodes`（回 200 但節點不變），所以用 API 建不出兩個以上互相串接的節點。
-- 草稿（`DRAFT`）流程也能觸發；`contactId` 不存在也回 202。
 - `agent` 系統角色預設有 `canvas.use`。
 - `API_FETCH` 節點直接 `fetch()` 任意網址，沒有 `isBlockedUrl()` 檢查。目前因為無法串接而走不到；串接修好之後，成員就能讓伺服器請求內網網址（同 SEC-08）。
 
 RLS-01 與 APP-07 記錄的是 Canvas 引擎的連線與喚醒，與這一項不同。
+
+**已修正的部分**（2026-11-06，change `migrate-canvas-tenant-ctx`）：原本草稿（`DRAFT`）流程也能觸發，`contactId` 不存在也回 202。現在手動觸發在交易內先檢查流程屬於本租戶而且是 `ACTIVE`、聯絡人屬於本租戶：流程或聯絡人找不到回 404，流程不是 `ACTIVE` 回 409 `FLOW_NOT_ACTIVE`，都不建立 execution。測試：`apps/api/tests/feature/modules/canvas/canvas-trigger.test.ts`。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-06（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/api/src/modules/canvas/canvas.routes.ts:37,51-58,137`、`canvas.service.ts:69-79,230-250`、`packages/core/src/canvas/api-fetch-node.ts:51`、`packages/shared/src/rbac/default-roles.ts:65`；agent 建立 TRIGGER→API_FETCH→ACTION 的草稿流程並觸發，回 202，執行紀錄 `FAILED`、`Node … not found in flow`（健檢實測）；SSRF 為讀程式。
 
@@ -1830,6 +1838,8 @@ RLS-01 與 APP-07 記錄的是 Canvas 引擎的連線與喚醒，與這一項不
 ### IDENT-01：合併建議沒有產生端
 
 `packages/core/src/identity/identity-stitcher.ts` 的 `detectPhoneDuplicates()` 是唯一會建立 `MergeSuggestion` 的函式，它沒有任何呼叫端；同一個檔案的 `stitchByPhone()` 與 `stitchByLiffCookie()` 也沒有。`/api/v1/identity` 的審核端點因此永遠沒有資料可審。
+
+審核端點與客服手動合併有兩點不同（2026-11-06 搬到 `contact/merge-suggestion.routes.ts` 時記錄，行為沒有改）：核准合併建議不寫租戶稽核，也不檢查兩位聯絡人的渠道可見範圍。客服手動合併兩者都做。系統開始產生合併建議之前，產品要決定核准是否比照手動合併。
 
 **規格依據。** 主規格 `identity-stitching-engine` 的「AI 合併建議」規定：系統發現不同渠道的聯絡人有相同手機號碼時，必須產生一筆合併建議，交給管理員核准。現況沒有任何程式產生建議，違反這條需求，因此由 P4 調為 P2。
 

@@ -4,6 +4,16 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-06：Canvas 手動觸發的檢查（AUTO-11、RLS-01、IDENT-01）
+
+#337 階段 4 第二批，分支 `refactor/337-stage4-canvas`，change `migrate-canvas-tenant-ctx`。以單元測試與本機 feature 測試資料庫（`app_tenant` 連線）驗證，沒有連 UAT；UAT 沒有 Canvas 流程。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-11 的「草稿也能觸發、不存在的聯絡人回 202」 | 已修正，AUTO-11 改為部分修正 | `canvas-trigger.test.ts` 的 5 個失敗情境在修正前都失敗在斷言上：另一個租戶的流程回 202、不存在的流程回 400、草稿與封存回 202、另一個租戶與不存在的聯絡人回 202 |
+| RLS-01 的「進入 Canvas 的路徑都不接受外部指定的 ID」 | 更正 | 手動觸發接受呼叫端指定的流程 id 與聯絡人 id；外鍵檢查不套用 RLS，修正前實測另一個租戶的流程 id 回 202。手動觸發已修正，引擎與自動觸發仍用 singleton，RLS-01 維持未處理 |
+| IDENT-01 | 補記，未修正 | 核准合併建議不寫稽核、不檢查渠道可見範圍，與客服手動合併不同。路由搬到 contact 模組，行為不變（`merge-suggestion-routes.test.ts`） |
+
 ## 2026-11-04：直接關閉與重開的工單在報表算錯已解決（CASE-04、AUTO-10）
 
 issue #417，分支 `fix/p4-417`，change `fix-case-resolved-at-417`。以單元測試與測試資料庫 `open333crm_test_p4_417` 的 feature 測試驗證，沒有連 UAT。
