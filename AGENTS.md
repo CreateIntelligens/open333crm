@@ -435,6 +435,41 @@ cannot send messages from automation rules.
   Do not copy them. `docs/ref/modules/CHANNEL-PLUGINS.md` tells where they are and how to add a
   channel.
 
+#### When to consider a new structure
+
+A structure is a new layer, a new file type, a shared object, a registry or a shared function.
+The signals below tell you when to stop and evaluate a structure. A signal does not decide
+the result. The evaluation decides it.
+
+| Signal | What it can show | Structure to evaluate |
+| ------ | ---------------- | --------------------- |
+| The same rule or query is in two or more modules | The rule has no owner. A fix reaches one copy only | One shared function. Examples: `createOrFindExisting()` and `claimOne()` in `packages/core/src/db/db-invariants.ts` |
+| Two or more review comments on one pull request are about the same part of the code | The guarantee of that code is not defined | First write the guarantee in the spec, for example "at most once" or "at least once". Then evaluate the code again |
+| One change needs edits in many locations, and a missed location shows no error | The behavior has no single point of control | A registry or a shared function. Example: the channel plugin registry (structure rule 5) |
+
+To evaluate a structure, answer these questions in the proposal or the pull request:
+
+1. Which file paths have the problem now? A problem that can occur only in the future is not
+   a reason.
+2. How many callers use the structure now? With only one caller, the structure can be more
+   design than the problem needs. An open change or an issue can name the second caller.
+3. What is the smallest form that solves the problem? Compare a rule in this file, a function
+   and a check script with a new object or a new layer.
+4. How difficult is it to remove the structure? If the structure changes many files, try it in
+   one or two modules first. Review the result. Then apply the structure to the other modules.
+   Example: #337 stage 2 tried `TenantCtx` in `role` and `agent`. The review of that stage
+   added the flow layer.
+
+Earlier evaluations rejected these structures. Evaluate one again when its reason is no longer
+true:
+
+| Structure | Reason |
+| --------- | ------ |
+| A generic repository layer | A generic repository loses the result type of each Prisma query. The other jobs of a repository have a different owner in this repo. Tenant isolation is the job of the two enforcement layers in the Multi-Tenancy section. The transaction boundary is the job of `TenantCtx` |
+| Event listeners that a service registers | A person who reads the service cannot see its side effects |
+| A method on `TenantCtx` or `TenantScope` for each side effect | See structure rule 2 |
+| One transaction for each aggregate, with events between aggregates | Many operations must write several tables together, for example a contact merge. With one transaction for each aggregate, a failure can leave only part of the operation written |
+
 #### Appendix: which SOLID principle each rule is
 
 These names are labels for the rules above. They do not give an order to apply the rules. No
