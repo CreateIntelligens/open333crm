@@ -17,11 +17,20 @@ const PRESETS = [
   { label: '90 天', days: 90 },
 ] as const;
 
+const toInput = (d: Date) => (Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
+
+/**
+ * 日期範圍 — 依 Claude Design「報表總覽」：快捷分段按鈕（單選）＋起訖日期。
+ * 選快捷時帶入日期；手動改日期時取消快捷選中。
+ * 日期清空或起日晚於迄日時不送出、顯示錯誤（原本清空日期會把 Invalid Date 往上傳，整頁當掉）。
+ */
 export function DateRangePicker({ from, to, onChange, className }: DateRangePickerProps) {
   const [activePreset, setActivePreset] = React.useState<number | null>(30);
+  const [error, setError] = React.useState<string | null>(null);
 
   function handlePreset(days: number) {
     setActivePreset(days);
+    setError(null);
     const now = new Date();
     const start = days === 0
       ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -29,47 +38,69 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
     onChange(start, now);
   }
 
-  function handleFromChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleDate(which: 'from' | 'to', value: string) {
     setActivePreset(null);
-    onChange(new Date(e.target.value), to);
-  }
-
-  function handleToChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setActivePreset(null);
-    onChange(from, new Date(e.target.value));
+    const d = new Date(value);
+    if (!value || Number.isNaN(d.getTime())) {
+      setError('請輸入完整日期');
+      return;
+    }
+    const nextFrom = which === 'from' ? d : from;
+    const nextTo = which === 'to' ? d : to;
+    if (nextFrom > nextTo) {
+      setError('開始日期不能晚於結束日期');
+      return;
+    }
+    setError(null);
+    onChange(nextFrom, nextTo);
   }
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-2', className)}>
-      {PRESETS.map((p) => (
-        <button
-          key={p.days}
-          onClick={() => handlePreset(p.days)}
-          className={cn(
-            'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-            activePreset === p.days
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-accent',
-          )}
-        >
-          {p.label}
-        </button>
-      ))}
-      <div className="flex items-center gap-1 text-sm">
+    <div className={cn('flex flex-wrap items-center gap-3', className)}>
+      <div role="radiogroup" aria-label="日期範圍" className="flex h-10 items-center gap-1 rounded-md border border-border bg-muted p-1">
+        {PRESETS.map((p) => {
+          const on = activePreset === p.days;
+          return (
+            <button
+              key={p.days}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => handlePreset(p.days)}
+              className={cn(
+                'flex h-8 items-center rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                on ? 'bg-primary font-semibold text-white' : 'text-foreground hover:bg-black/5',
+              )}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor="range-from" className="sr-only">開始日期</label>
         <input
+          id="range-from"
           type="date"
-          value={from.toISOString().slice(0, 10)}
-          onChange={handleFromChange}
-          className="h-8 rounded-md border bg-background px-2 text-xs"
+          value={toInput(from)}
+          onChange={(e) => handleDate('from', e.target.value)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'range-error' : undefined}
+          className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:border-primary focus-visible:outline-none aria-[invalid=true]:border-destructive"
         />
-        <span className="text-muted-foreground">~</span>
+        <span aria-hidden="true" className="text-muted-foreground">～</span>
+        <label htmlFor="range-to" className="sr-only">結束日期</label>
         <input
+          id="range-to"
           type="date"
-          value={to.toISOString().slice(0, 10)}
-          onChange={handleToChange}
-          className="h-8 rounded-md border bg-background px-2 text-xs"
+          value={toInput(to)}
+          onChange={(e) => handleDate('to', e.target.value)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'range-error' : undefined}
+          className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:border-primary focus-visible:outline-none aria-[invalid=true]:border-destructive"
         />
       </div>
+      {error && <span id="range-error" role="alert" className="text-xs text-destructive">{error}</span>}
     </div>
   );
 }

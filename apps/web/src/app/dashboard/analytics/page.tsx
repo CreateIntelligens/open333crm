@@ -2,6 +2,8 @@
 
 import React, { useState, useCallback } from 'react';
 import { Download, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { usePermission } from '@/providers/AuthProvider';
 import { Topbar } from '@/components/layout/Topbar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DateRangePicker } from '@/components/analytics/DateRangePicker';
@@ -25,6 +27,9 @@ export default function AnalyticsPage() {
   const [from, setFrom] = useState(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
   const [to, setTo] = useState(() => new Date());
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  // 後端 POST /analytics/export 需要 analytics.export：沒有權限就不顯示按鈕（權限仍由後端把關）
+  const canExport = usePermission('analytics.export');
 
   const handleDateChange = useCallback((f: Date, t: Date) => {
     setFrom(f);
@@ -48,6 +53,7 @@ export default function AnalyticsPage() {
     };
     const reportType = typeMap[tab] || 'overview';
     setExporting(true);
+    setExportError(null);
     try {
       const res = await api.post(
         '/analytics/export',
@@ -62,7 +68,8 @@ export default function AnalyticsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      // silent
+      // 原本失敗時什麼都不顯示，使用者不知道沒有匯出成功
+      setExportError('匯出失敗，請稍後再試');
     } finally {
       setExporting(false);
     }
@@ -70,20 +77,22 @@ export default function AnalyticsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <Topbar title="數據報表">
+      {/* 版面依 Claude Design「報表總覽」：標題列右側為日期範圍＋匯出，下方底線分頁；概覽為 KPI → 趨勢 → 分類／TOP 5 */}
+      <Topbar title="總覽" description="檢視訊息量、案件、客服績效與 SLA 達成狀況">
         <DateRangePicker from={from} to={to} onChange={handleDateChange} />
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="ml-2 flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {exporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-          匯出 CSV
-        </button>
+        {canExport && (
+          <Button variant="outline" size="lg" onClick={handleExport} disabled={exporting} loading={exporting}>
+            {!exporting && <Download />}
+            {exporting ? '匯出中…' : '匯出 CSV'}
+          </Button>
+        )}
       </Topbar>
 
-      <div className="flex-1 overflow-auto p-6">
-        <Tabs value={tab} onValueChange={setTab}>
+      <div className="flex-1 overflow-auto px-7 pb-7">
+        {exportError && (
+          <p role="alert" className="mb-4 rounded-md bg-destructive-subtle px-4 py-3 text-sm text-destructive">{exportError}</p>
+        )}
+        <Tabs value={tab} onValueChange={setTab} variant="underline">
           <TabsList>
             <TabsTrigger value="overview">概覽</TabsTrigger>
             <TabsTrigger value="cases">案件報表</TabsTrigger>
@@ -92,20 +101,25 @@ export default function AnalyticsPage() {
           </TabsList>
 
           {/* Tab 1: Overview */}
-          <TabsContent value="overview">
-            <div className="space-y-6">
-              <KpiCards data={overview.data} isLoading={overview.isLoading} />
-              <MessageTrendChart data={trend.data} isLoading={trend.isLoading} />
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <TabsContent value="overview" className="mt-5">
+            <div className="flex flex-col gap-5">
+              <KpiCards data={overview.data} isLoading={overview.isLoading} error={overview.error} onRetry={() => overview.mutate()} />
+              <MessageTrendChart data={trend.data} isLoading={trend.isLoading} error={trend.error} onRetry={() => trend.mutate()} />
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
                 <CaseCategoryPieChart
                   data={caseData.data?.categoryDistribution || []}
                   isLoading={caseData.isLoading}
+                  error={caseData.error}
+                  onRetry={() => caseData.mutate()}
                 />
                 <AgentPerformanceTable
                   data={agents.data}
                   isLoading={agents.isLoading}
+                  error={agents.error}
+                  onRetry={() => agents.mutate()}
                   limit={5}
                   title="客服績效 TOP 5"
+                  onViewAll={() => setTab('agents')}
                 />
               </div>
             </div>

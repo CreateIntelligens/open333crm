@@ -22,55 +22,55 @@ function buildParams(from?: Date, to?: Date, extra?: Record<string, string>) {
 
 export function useOverviewStats(from?: Date, to?: Date) {
   const qs = buildParams(from, to);
-  const { data, error, isLoading } = useSWR(`/analytics/overview?${qs}`, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(`/analytics/overview?${qs}`, fetcher, {
     refreshInterval: 60000,
   });
-  return { data: data?.data, isLoading, error };
+  return { data: data?.data, isLoading, error, mutate };
 }
 
 export function useMessageTrend(from?: Date, to?: Date, groupBy: string = 'day') {
   const qs = buildParams(from, to, { groupBy });
-  const { data, error, isLoading } = useSWR(`/analytics/message-trend?${qs}`, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(`/analytics/message-trend?${qs}`, fetcher, {
     refreshInterval: 60000,
   });
-  return { data: data?.data || [], isLoading, error };
+  return { data: data?.data || [], isLoading, error, mutate };
 }
 
 export function useCaseAnalytics(from?: Date, to?: Date) {
   const qs = buildParams(from, to);
-  const { data, error, isLoading } = useSWR(`/analytics/cases?${qs}`, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(`/analytics/cases?${qs}`, fetcher, {
     refreshInterval: 60000,
   });
-  return { data: data?.data, isLoading, error };
+  return { data: data?.data, isLoading, error, mutate };
 }
 
 export function useAgentPerformance(from?: Date, to?: Date) {
   const qs = buildParams(from, to);
-  const { data, error, isLoading } = useSWR(`/analytics/agents?${qs}`, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(`/analytics/agents?${qs}`, fetcher, {
     refreshInterval: 60000,
   });
-  return { data: data?.data || [], isLoading, error };
+  return { data: data?.data || [], isLoading, error, mutate };
 }
 
 export function useChannelAnalytics(from?: Date, to?: Date) {
   const qs = buildParams(from, to);
-  const { data, error, isLoading } = useSWR(`/analytics/channels?${qs}`, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(`/analytics/channels?${qs}`, fetcher, {
     refreshInterval: 60000,
   });
-  return { data: data?.data, isLoading, error };
+  return { data: data?.data, isLoading, error, mutate };
 }
 
 export function useContactAnalytics(from?: Date, to?: Date) {
   const qs = buildParams(from, to);
-  const { data, error, isLoading } = useSWR(`/analytics/contacts?${qs}`, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(`/analytics/contacts?${qs}`, fetcher, {
     refreshInterval: 60000,
   });
-  return { data: data?.data, isLoading, error };
+  return { data: data?.data, isLoading, error, mutate };
 }
 
 export function useMyPerformance() {
-  const { data, error, isLoading } = useSWR('/analytics/my', fetcher, {
+  const { data, error, isLoading, mutate } = useSWR('/analytics/my', fetcher, {
     refreshInterval: 60000,
   });
-  return { data: data?.data, isLoading, error };
+  return { data: data?.data, isLoading, error, mutate };
 }
