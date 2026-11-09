@@ -235,6 +235,10 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
                   <Plus className="h-3 w-3 mr-1" /> 新增
                 </Button>
               </div>
+              {/* 後端發布時會擋沒有正確答案的競猜（#471）；草稿可以先存 */}
+              {type === 'QUIZ' && (
+                <p className="mb-2 text-xs text-muted-foreground">發布前至少勾選一個正確答案</p>
+              )}
               <div className="space-y-2">
                 {options.map((opt, i) => (
                   <div key={i} className="flex items-center gap-2">
