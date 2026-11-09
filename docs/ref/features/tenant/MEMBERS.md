@@ -38,7 +38,7 @@
 | 停用 | `POST /agents/:id/deactivate` | `isActive` 設為 `false`。帳號保留，email 仍被佔用 |
 | 查詢停用的成員 | `GET /agents/inactive` | 列出本租戶停用的成員，要 `agent.deactivate` |
 | 重新啟用 | `POST /agents/:id/reactivate` | `isActive` 改回 `true`，角色維持停用前。要 `agent.deactivate`，並套用方案的客服人數上限 |
-| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值 |
+| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值。稽核與資料匯出、刪除請求的操作者欄位也改成空值，刪除前先把名稱與 email 存進快照欄位（issue #414，見[稽核](GOVERNANCE.md#租戶稽核日誌)） |
 
 兩個動作都不能套用在租戶內最後一位啟用中的管理員（422 `LAST_ADMIN_PROTECTED`），避免租戶沒有人能管理；把最後一位管理員改成不含 `role.manage` 的角色也一樣。「管理員」依權限判斷：角色的有效權限含 `role.manage`（標記 `selfLock` 的權限碼）就算，不看舊的角色列舉 `role`。永久刪除不要求先停用。
 
