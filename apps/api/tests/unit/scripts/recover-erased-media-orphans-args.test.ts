@@ -45,3 +45,10 @@ test('--expect-objects 要是整數；不認得的參數拒絕', () => {
   assert.throws(() => parseArgs(['--expect-objects', 'abc']), /整數/);
   assert.throws(() => parseArgs(['--cutoff', 'x']), /不認得的參數/);
 });
+
+test('--apply 不接受值：--apply=false、--apply=true 都拒絕，避免以為是預覽卻真的刪除', () => {
+  for (const arg of ['--apply=false', '--apply=true']) {
+    assert.throws(() => parseArgs([arg, '--expect-objects', '1']), /--apply 不接受值/);
+  }
+  assert.equal(parseArgs(['--apply', '--expect-objects', '1']).apply, true);
+});

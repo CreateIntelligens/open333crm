@@ -25,7 +25,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **回收 #329 修正前匿名化留下的媒體孤兒檔**（issue #474）— #329 之前，匿名化把進站訊息改成 `{ redacted: true }` 時沒有先讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫找不到。新增一次性腳本 `scripts/recover-erased-media-orphans.mjs`（SQL 在 `scripts/sql/recover-erased-media-orphans.sql`），不需要 migration：
   - 找出已完成匿名化的聯絡人目前的對話，列出 `{tenantId}/media/{conversationId}/` 底下的物件，扣掉同租戶任何訊息仍引用的 key，只刪 uuid 檔名格式的物件；硬刪除的請求只列筆數。
-  - 預設只預覽；`--apply` 一定要帶 `--expect-objects`，筆數不同就不刪；刪除前把清單寫成 CSV；每個 key 最多刪一次，失敗時以非零結束。`--tenant` 可以重複。
+  - 預設只預覽；`--apply` 不接受值（`--apply=false` 之類直接報錯，避免以為是預覽卻真的刪除）；`--apply` 一定要帶 `--expect-objects`，筆數不同就不刪；刪除前把清單寫成 CSV；每個 key 最多刪一次，失敗時以非零結束。`--tenant` 可以重複。
   - 媒體 key 的格式檢查移到 `@open333crm/core` 的 `isConversationMediaKey()`，資料刪除 worker 與腳本共用；`MinioStorageProvider` 新增 `list()`。
   - 物件儲存的連線設定與 api 相同（`S3_*`），見下一條 STO-01。
   - 操作手冊見 `docs/ref/features/tenant/GOVERNANCE.md`「回收 #329 前匿名化留下的媒體檔」。各環境尚未執行。
@@ -44,6 +44,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。
   - 通知：只刪對應到要刪除的重複事件的英文標題 SLA 通知（依工單、類型與時間配對，每筆被刪事件、每位成員最多一則）；其他期限週期的通知與配對不到的通知不動。`--notifications=skip` 不處理通知。
   - 只刪 `--cutoff` 之前寫入的列。預設只預覽（各租戶筆數、英文通知的配對數、cutoff 之後的重複數、沒有 key 的列數、重複最多的工單、依 `sla.breachCount` 判斷的啟用中規則）。`--apply` 在單一交易內刪除：刪除前把整列匯出成 CSV（文件附還原步驟），cutoff 之後仍有重複、筆數與 `--expect-events`／`--expect-notifications` 或預覽不一致時回滾並以非零結束。
+  - `--apply`、`--find-cutoff` 不接受值：`--apply=false` 之類的寫法直接報錯，不會被當成 `--apply`（PR #490 審查）。
   - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
   - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
 
