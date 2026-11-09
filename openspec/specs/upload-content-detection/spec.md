@@ -55,8 +55,8 @@
 
 #### Scenario: Content that does not match the extension
 
-- **WHEN** 上傳內容是 PNG、檔名是 `document.pdf`
-- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「檔案內容（PNG）與副檔名不符，請確認檔案格式或改正副檔名」，`details.reason` 保留英文原因
+- **WHEN** 上傳內容是 PNG、檔名是 `document.pdf`，不論 client MIME 宣告為 `image/png` 或 `application/pdf`
+- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「檔案內容（PNG）與副檔名不符，請確認檔案格式或改正副檔名」，`details.reason` 保留英文原因；副檔名不符優先於宣告的類型不符
 
 #### Scenario: Content that does not match the declared MIME type
 

@@ -236,11 +236,12 @@ export async function detectUploadContent(
   if (!input.policy.allowedMimes.includes(detectedMime)) {
     return { accepted: false, rejection: 'type_not_allowed', detectedMime, label, confidence, reason: `type ${detectedMime} is not allowed for ${input.policy.name}` };
   }
-  if (!GENERIC_MIMES.has(clientMime) && clientMime !== detectedMime) {
-    return { accepted: false, rejection: 'mime_mismatch', detectedMime, label, confidence, reason: `client MIME ${clientMime} does not match detected MIME ${detectedMime}` };
-  }
+  // 副檔名先檢查：副檔名也不符時要提示改副檔名；只有副檔名相符、宣告的 MIME 不符才算 mime_mismatch（PR #492 review）
   if (!extensionMatches(detectedMime, input.filename)) {
     return { accepted: false, rejection: 'extension_mismatch', detectedMime, label, confidence, reason: `filename extension does not match ${detectedMime}` };
+  }
+  if (!GENERIC_MIMES.has(clientMime) && clientMime !== detectedMime) {
+    return { accepted: false, rejection: 'mime_mismatch', detectedMime, label, confidence, reason: `client MIME ${clientMime} does not match detected MIME ${detectedMime}` };
   }
 
   return { accepted: true, detectedMime, label, confidence, reason: 'content type validated' };
