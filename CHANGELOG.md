@@ -26,6 +26,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **知識庫的讀取路由要求 `knowledge.view`**（AUDIT RBAC-01，change `migrate-knowledge-tenant-ctx`）— 文章列表、單篇、來源、分類、搜尋、embedding 狀態、型號、回報數與回報列表原本只檢查登入。角色沒有勾選「檢視知識庫」，或方案不含知識庫時，成員仍然讀得到文章。現在這 9 條路由回 403 `FORBIDDEN`，`details.requiredPermission` 是 `knowledge.view`。系統預設的三個角色都有這個權限。
+- **成員以 JWT 呼叫合作方推送不再一律 403**（AUDIT AUTH-06，change `fix-partner-ingest-jwt-role`）— `POST /api/v1/knowledge/partner-ingest` 接受 Partner API 金鑰，也接受成員的 access token。走 access token 時，認證沒有帶角色，`knowledge.admin` 的檢查查不到權限，有這個權限的成員也回 403。現在依成員角色的有效權限判斷。三個認證函式的 JWT 路徑改成共用同一個函式（`auth.plugin.ts`），`/auth/me` 與 MCP 的 JWT 路徑也一起帶上角色，兩者目前不讀角色，行為不變。Partner API 金鑰的行為不變。
 
 ## [2026-11-05]
 

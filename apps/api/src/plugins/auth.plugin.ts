@@ -192,17 +192,25 @@ async function authPlugin(fastify: FastifyInstance) {
     if (!isAgentAccessToken(user as Record<string, unknown>)) throw new Error('INVALID_TOKEN_PURPOSE');
   }
 
+  /**
+   * 驗證 access token，掛上成員身分。三個認證函式的 JWT 路徑都呼叫這裡：
+   * 原本各寫一份，只有 authenticate() 帶 roleId，合作方推送的成員因此一律 403（change fix-partner-ingest-jwt-role）
+   */
+  async function attachAgentFromAccessToken(request: FastifyRequest): Promise<void> {
+    await request.jwtVerify();
+    assertAgentAccessToken(request.user);
+    const payload = request.user;
+    request.agent = {
+      id: payload.agentId,
+      tenantId: payload.tenantId,
+      role: payload.role,
+      roleId: payload.roleId ?? null,
+    };
+  }
+
   fastify.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
     try {
-      await request.jwtVerify();
-      assertAgentAccessToken(request.user);
-      const payload = request.user;
-      request.agent = {
-        id: payload.agentId,
-        tenantId: payload.tenantId,
-        role: payload.role,
-        roleId: payload.roleId ?? null,
-      };
+      await attachAgentFromAccessToken(request);
     } catch (err) {
       reply.status(401).send({
         success: false,
@@ -257,14 +265,7 @@ async function authPlugin(fastify: FastifyInstance) {
       }
 
       try {
-        await request.jwtVerify();
-        assertAgentAccessToken(request.user);
-        const payload = request.user;
-        request.agent = {
-          id: payload.agentId,
-          tenantId: payload.tenantId,
-          role: payload.role,
-        };
+        await attachAgentFromAccessToken(request);
       } catch (err) {
         reply.status(401).send({
           success: false,
@@ -308,14 +309,7 @@ async function authPlugin(fastify: FastifyInstance) {
 
       // Fall back to JWT
       try {
-        await request.jwtVerify();
-        assertAgentAccessToken(request.user);
-        const payload = request.user;
-        request.agent = {
-          id: payload.agentId,
-          tenantId: payload.tenantId,
-          role: payload.role,
-        };
+        await attachAgentFromAccessToken(request);
       } catch (err) {
         reply.status(401).send({
           success: false,
