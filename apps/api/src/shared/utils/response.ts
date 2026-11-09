@@ -19,8 +19,19 @@ export class AppError extends Error {
 
 export function success<T>(
   data: T,
-  /** 分頁資訊；個別端點可附加其他欄位（例如聯絡人對話清單的 hiddenCount） */
-  meta?: { total: number; page: number; limit: number; totalPages: number; hiddenCount?: number },
+  /**
+   * 分頁資訊；個別端點可附加其他欄位（例如聯絡人對話清單的 hiddenCount）。
+   * 以游標分頁的回應沒有 page、totalPages，改帶 hasMore、nextCursor（對話訊息，change fix-chat-window-load-older-468）
+   */
+  meta?: {
+    total: number;
+    page?: number;
+    limit: number;
+    totalPages?: number;
+    hiddenCount?: number;
+    hasMore?: boolean;
+    nextCursor?: string | null;
+  },
 ) {
   const response: { success: true; data: T; meta?: typeof meta } = {
     success: true,

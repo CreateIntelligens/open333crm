@@ -17,6 +17,8 @@ import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { addPointTransaction, getLatestPointEntry, lockPointLedgers } from '../portal/points.service.js';
+import { findCompletedErasure } from '../data-erasure/data-erasure.service.js';
+import { lockContactsForMerge } from './contact.service.js';
 
 export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL' | 'PHONE';
 
@@ -445,6 +447,26 @@ export async function mergeContacts(ctx: TenantCtx, input: MergeContactsInput): 
   };
 }
 
+/**
+ * 鎖住被合併方與 survivor 的合併鏈，回傳鎖住之後的鏈（解除合併用）。
+ * 鏈要在取得鎖之後重新解析：等鎖期間另一筆合併可能把鏈上的聯絡人再併入新的聯絡人（它鎖住了我們在等的列），
+ * commit 之後鏈多了一位。出現新的聯絡人就鎖住它們再解析，直到鏈不再變動；每批依 lockContactsForMerge 的
+ * id 排序加鎖。鎖住之後，鏈上的聯絡人要再併入別人都得等這個交易結束，鏈不會再變。
+ */
+async function lockHolderChain(ctx: TenantCtx, mergedId: string, survivorId: string): Promise<string[]> {
+  const locked = new Set<string>();
+  let chain = await resolveMergeChain(ctx, survivorId);
+  // 合併鏈最多 20 層（resolveMergeChain），每輪至少多鎖一位
+  for (let round = 0; round < 22; round++) {
+    const pending = [mergedId, ...chain].filter((id) => !locked.has(id));
+    if (pending.length === 0) return chain;
+    await lockContactsForMerge(ctx, pending);
+    for (const id of pending) locked.add(id);
+    chain = await resolveMergeChain(ctx, survivorId);
+  }
+  return chain;
+}
+
 export interface RevertMergeInput {
   mergeLogId: string;
   /** agentId，或顧客自助解除時為 'customer' */
@@ -462,6 +484,11 @@ export interface RevertMergeResult {
 /**
  * 解除一次合併：取消封存被合併方，把當次搬走且仍在 survivor（或其後續合併對象）身上的
  * 渠道身分、對話、案件、活動報名、點數、身分對應搬回。標籤與屬性不回收。
+ *
+ * 被合併方或合併鏈上任何一位已完成資料刪除時回 409 CONTACT_ERASED（#473）：刪除已清掉被合併方的個資，
+ * 解除合併會讓他以「[已刪除]」或舊資料重新出現。檢查前先鎖住這些聯絡人，與資料刪除的交易互相等待：
+ * 刪除先鎖住時，這裡等它 commit 之後讀到 completed；這裡先鎖住時，刪除等解除合併 commit，
+ * 之後被恢復的聯絡人已不在合併鏈上，不會被刪除。
  */
 export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Promise<RevertMergeResult> {
   const { tx: db, tenantId } = ctx;
@@ -470,6 +497,12 @@ export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Prom
   const log = await db.contactMergeLog.findFirst({ where: { id: mergeLogId, tenantId } });
   if (!log) throw new AppError('找不到此合併紀錄', 'NOT_FOUND', 404);
   if (log.revertedAt) throw new AppError('此合併已經解除過了', 'CONFLICT', 409);
+
+  // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈，鎖住後再檢查
+  const holderChain = await lockHolderChain(ctx, log.mergedId, log.survivorId);
+  if (await findCompletedErasure(ctx, [log.mergedId, ...holderChain])) {
+    throw new AppError('這位聯絡人的個資已依資料刪除請求清除，無法解除合併', 'CONTACT_ERASED', 409);
+  }
 
   const restored = await db.contact.findFirst({ where: { id: log.mergedId, tenantId } });
   if (!restored) throw new AppError('被合併的聯絡人已不存在，無法解除', 'NOT_FOUND', 404);
@@ -481,9 +514,6 @@ export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Prom
     data: { revertedAt: new Date(), revertedBy },
   });
   if (claimed.count === 0) throw new AppError('此合併已經解除過了', 'CONFLICT', 409);
-
-  // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈
-  const holderChain = await resolveMergeChain(ctx, log.survivorId);
 
   const moved = log.movedRecords as unknown as Partial<MovedRecords>;
   const back = { contactId: log.mergedId };

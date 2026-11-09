@@ -37,6 +37,8 @@ description: >
 
 **通知從哪裡來（系統流程，沒有操作入口）**
 
+下表所有來源寫入前都會檢查收件成員：已被永久刪除或已停用的成員被略過（#484），工單指派、SLA 預警的負責人停用時沒有人收到。
+
 | 來源 | 觸發 | 收件人 | 寫入路徑 | 類型 / clickUrl |
 | ---- | ---- | ------ | -------- | --------------- |
 | 客人傳訊息 | `message.received` | 對話有負責人、且負責人啟用中並看得到該渠道 → 只通知負責人；沒有負責人，或負責人已停用、看不到該渠道 → 看得到該渠道的啟用中 `ADMIN`、`SUPERVISOR`（#440，`getConversationRecipients()`） | `notification.worker.ts` → `notification` queue → workers | `new_message` / `/dashboard/inbox?conv=` |
@@ -60,6 +62,7 @@ description: >
 - 站內通知的寫入只在 workers（`apps/workers/src/handlers/notification.handler.ts`）；API 的 `notification.worker.ts` 只送 job（規格 `standalone-worker-runtime`「Notification Job Consumer」）。CSAT 與權杖失效是現存例外，不要再新增 `createAndDispatch` 的呼叫端。
 - 同一個事件不重複通知：job id 一律 `<事件 id>__<成員 id>`（自動化是 `<事件 id>__<規則 id>#<序號>__<成員 id>`）。新增收件人邏輯時沿用 `enqueueDispatch`，不要自己 `add` 沒有 jobId 的 job。
 - 推播失敗只記 log、job 照常完成；寫入失敗要丟錯讓 BullMQ 重試（3 次、指數退避 5 秒）。不要把寫入失敗吞掉。
+- 只寫給同租戶、仍啟用的成員：每個寫入 `notifications` 的地方都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入（workers `notification.handler.ts`、`createAndDispatch`、`recordExportNotice`），它是一條條件寫入，回 `null` 表示略過。不符合時寫 info log、不丟錯（永久刪除的成員會撞外鍵，丟錯只會重試三次再失敗）；重新啟用不補送（#484）。不要改回「先查再 `notification.create`」：查完到寫入之間成員可能被刪除；也不要 catch P2003，交易內接住後交易已中止（PR #489 審查）。新增寫入點要沿用同一個函式。
 - 用量告警不可阻擋 AI 回覆：整段 fire-and-forget；告警信一定經佇列，不在訂閱者內直接寄。
 - 告警信與權杖失效信的使用者輸入（租戶名稱、渠道名稱）要 HTML 轉義。
 - 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、CSAT、用量告警、權杖失效七個地方。
@@ -83,10 +86,11 @@ description: >
 - E2E：`apps/web/tests/e2e-uat/tenant-misc.spec.ts` 的 `@notifications`。
 
 ## 常見 bug 從哪裡查
-- 「主管說沒收到新訊息通知」：先看對話是否已指派（已指派只通知負責人）；負責人是不是已停用（停用不會解除指派，通知只寫給停用的人，見健檢 HC-NOTIFICATIONS-02）；再看主管的 `Agent.role` 是不是 `SUPERVISOR`/`ADMIN`（自訂角色沿用原本的列舉，RBAC-03）。
+- 「主管說沒收到新訊息通知」：先看對話是否已指派（已指派只通知負責人；負責人已停用或看不到渠道時改通知主管，#440）；再看主管的 `Agent.role` 是不是 `SUPERVISOR`/`ADMIN`（自訂角色沿用原本的列舉，RBAC-03）。
 - 「指派對話後對方沒收到通知」：設計上就沒有（CONV-02），不是佇列壞掉。
 - 「建立工單時選了負責人，對方沒收到」：只有 `/cases/:id/assign` 發 `case.assigned`；升級時改派也一樣不通知（HC-NOTIFICATIONS-03、04）。
 - 「通知點了找不到頁面」：查 `clickUrl` 是誰寫的（上表）。CSAT 到列表、資料匯出到不存在的頁面、權杖失效到渠道管理。
+- 「成員說沒收到通知」：先查他是不是停用中（`isActive=false`），停用期間的通知被略過，重新啟用也不補送；workers log 有「略過通知」。
 - 「通知類型顯示『通知』」：`apps/web/src/app/dashboard/notifications/page.tsx` 的 `TYPE_CONFIG` 沒有那個 type；鈴鐺的圖示表在 `NotificationBell.tsx`，兩份要一起改。
 - 「通知寫進資料庫但沒即時跳」：Redis `socket:emit` → `apps/api/src/plugins/socket.plugin.ts` 的訂閱轉送；前端 `apps/web/src/hooks/useNotifications.ts` 監聽 `notification.new`。推播是盡力而為，60 秒輪詢會補上。
 - 「AI 用量告警沒寄」：`USAGE_QUOTA_ALERTS_ENABLED`、Redis 旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 是否已存在（換方案後不重發，PLAN-13）、BYOK 不計、`usage-alert-email` 佇列失敗紀錄、`EMAIL_DELIVERY_MODE`（`apps/api/src/modules/email/email.service.ts`）。

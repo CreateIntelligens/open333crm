@@ -31,7 +31,7 @@ description: >
 | # | 流程 | 入口 | API → 後端 | 副作用 | 權限 |
 | - | ---- | ---- | ---------- | ------ | ---- |
 | 1 | 列表、分頁籤、搜尋、進階篩選、載入更多 | `/dashboard/inbox` 左欄（`ConversationList.tsx`、`FilterDrawer.tsx`） | `GET /conversations?status=!CLOSED\|CLOSED\|A,B&channelType&assigneeId&unread&search&closedAfter&page=N&limit=50` → `listConversations`（依 `resolveChannelVisibility` 過濾） | 無。`useSWRInfinite` 依 `meta.totalPages` 載入更多；「未讀」送 `unread=true`、「我的」送 `assigneeId`、搜尋送 `search`（後端比對聯絡人名稱或任一則訊息文字，#422） | `inbox.view` + 渠道可見 / 不隱藏 |
-| 2 | 開對話、讀訊息、標已讀 | 點列表列；或網址 `?conv=<id>`（通知的 clickUrl） | `GET /conversations/:id`、`GET /:id/messages?page=1&limit=50&order=desc`、`POST /:id/read` | `read` 推 `conversation.updated`。**只載最近 50 則**；從網址直接開不會標已讀 | `inbox.view` + `read_only` |
+| 2 | 開對話、讀訊息、標已讀 | 點列表列；或網址 `?conv=<id>`（通知的 clickUrl） | `GET /conversations/:id`、`GET /:id/messages?limit=50&order=desc`（更早的頁帶 `before=<meta.nextCursor>`）、`POST /:id/read` | `read` 推 `conversation.updated`。先載最近 50 則，「載入更早的訊息」以游標往前取，保持捲動位置（#468）；從網址直接開不會標已讀 | `inbox.view` + `read_only` |
 | 3 | 送文字（快速回覆、模板、AI 採用、個資遮罩） | 輸入框 Enter（`MessageInput.tsx`）；Bot 處理中或已關閉時輸入框鎖住 | `POST /:id/messages {contentType:'text', content:{text, quickReplies?}, privacyMode?}` → `sendMessage` | 先寫 OUTBOUND 再經渠道外掛送；失敗寫 `metadata.deliveryFailed` 並再推一次 `message.new`；有工單時寫首次回應；發 `message.sent` | `inbox.reply` + `reply_only` / **不隱藏** |
 | 4 | 送圖片 | 迴紋針（PNG/JPG ≤20MB） | `POST /:id/send-image`（multipart）→ `handleSendMedia` → MinIO → `sendMessage` | 同上。LINE、FB、WebChat 可；前端也讓 Instagram 送，後端回 501（英文訊息） | `inbox.reply` + `reply_only` |
 | 5 | 接管對話 | 「Bot 自動處理中」橫幅或輸入框上的「接管對話」 | `POST /:id/handoff {}` → `handoffConversation` | `BOT_HANDLED→AGENT_HANDLED`、指派給自己、送轉接訊息給顧客、寫系統訊息；只發 `conversation.updated`（不發 `conversation.handoff`） | `inbox.manage` + `full` / 不隱藏 |
@@ -47,7 +47,7 @@ description: >
 | 15 | 機器人回覆、自動轉真人（系統） | `message.received` → `automation.worker.ts` | `checkAutoHandoff`（次數上限、`handoffKeywords`、媒體）→ AI agent → `kb-autoreply.service.ts`（追問用完或 LLM 失敗也轉接）；兩者共用 `automation/handoff.flow.ts` 的 `handOffConversation()` | 以 `bot-reply-guard.ts` 認領，每則入站訊息最多一則機器人回覆；轉接寫在同一個認領交易 | — |
 | 16 | 閒置自動關閉（系統） | 每 5 分鐘 `inactivity-close.worker.ts` | `closeConversation(source:'inactivity')` | 時限 `TenantSettings.inactivityCloseHours`，沒有介面（CONV-01） | — |
 
-**有後端、沒有前端入口**：`POST /:id/send-video`；`POST /:id/typing`（前端不呼叫，`TypingIndicator` 也收不到，因為事件只發到沒人訂閱的 `conversation:` 房間）；`HandoffModal`（指定接手人、自訂轉接訊息）在頁面上永遠不會開啟；`POST /:id/case`；列表的 `assigneeId=<其他成員>`；`useMessages` 的 `loadOlder`（載入更早訊息）沒有被 `ChatWindow` 使用；`PATCH` 的 `status: BOT_HANDLED`。
+**有後端、沒有前端入口**：`POST /:id/send-video`；`POST /:id/typing`（前端不呼叫，`TypingIndicator` 也收不到，因為事件只發到沒人訂閱的 `conversation:` 房間）；`HandoffModal`（指定接手人、自訂轉接訊息）在頁面上永遠不會開啟；`POST /:id/case`；列表的 `assigneeId=<其他成員>`；`PATCH` 的 `status: BOT_HANDLED`。
 
 **前端實際送出的值**：狀態篩選 `ACTIVE|BOT_HANDLED|AGENT_HANDLED|CLOSED` 以逗號串接，或 `!CLOSED`；`channelType` 取自 `GET /channels` 的類型；`assigneeId` 只送自己的 id 或 `unassigned`；`unread` 只送 `true`；`search` 是搜尋框去頭尾空白後的文字（後端上限 100 字）；`closedAfter` 是 ISO 字串（今天往前 7/30/90 天）；狀態下拉只送 `ACTIVE`、`AGENT_HANDLED`；結案 `{reason?}`（空白不送）；接管 `{}`；訊息 `contentType:'text'`。後端 Zod 全部接受。注意 `unread=false` 會被 `z.coerce.boolean` 當成 `true`（前端不送 false）。
 
@@ -73,7 +73,7 @@ description: >
 2. 指派、改狀態、重新開啟、對話標籤，重新整理後讀回一致。
 3. 用自訂角色（只有 `inbox.view`）與三種存取層級的成員（`read_only`、`reply_only`、`full`，直接寫 `agent_channel_accesses`）重走 1–2，確認 403／404 與畫面訊息；沒有任何渠道的成員看不到對話。
 4. socket：以看不到某渠道的成員連線，確認收不到該渠道的 `message.new`、`conversation.updated`；有授權的成員與總店收得到；後台改該成員的可用渠道後，不重新整理就開始（或停止）收到（feature 測試 `modules/socket/socket-channel-rooms`）。
-5. 進行中超過 50 段時按「載入更多對話」、在第 2 頁的對話收到新訊息時移到最上面且不重複；搜尋第 51 段以後的聯絡人名稱找得到。單一對話超過 50 則時目前只顯示 50 則（HC-INBOX-07）。
+5. 進行中超過 50 段時按「載入更多對話」、在第 2 頁的對話收到新訊息時移到最上面且不重複；搜尋第 51 段以後的聯絡人名稱找得到。單一對話超過 50 則時按「載入更早的訊息」看得到最早的一則，畫面不跳回底部；之後收到新訊息時捲到底，已載入的訊息不消失（#468）。
 6. AI 與知識庫回覆都失敗（#445）：去識別化服務或 embedding 服務失敗時，`BOT_HANDLED` 對話的文字訊息轉真人，收件匣即時顯示轉接系統訊息與原因，客服收到轉接通知；同一則訊息重送不重複轉接（`ai-failure-handoff.test.ts`）。
 7. 進站訊息未遮罩（#466）：開啟遮罩、讓去識別化服務回 503，客人傳文字 → 收件匣看得到原文訊息、對話轉真人、系統訊息寫「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」、模型沒有被呼叫；點「轉接客服」按鈕照常轉接（feature 測試 `modules/webhook/inbound-deidentification-fallback`）。
 - 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/conversation tests/unit/modules/socket tests/unit/services/channel-visibility auto-handoff ai-failure-handoff bot-reply-claim return-to-bot ai-routes-channel-scope`；`pnpm --filter @open333crm/web test -- tests/unit/components/inbox tests/unit/lib/inbox tests/unit/lib/socket`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/channel/channel-scoped-visibility route-permission-guards modules/webhook/inbound-message-processing modules/socket/socket-channel-rooms`。

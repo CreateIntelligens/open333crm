@@ -115,7 +115,7 @@
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
 | [CONV-05](#conv-05) | 對話、工單與自動化 | P2 | 未處理 | 重新開啟已關閉的對話，不檢查同一聯絡人在同一渠道是否已有未關閉的對話，造成兩段同時進行 | 執行時確認 |
-| [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 未處理 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440） | 執行時確認 |
+| [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440；所有通知不再寫給停用成員，#484，但工單指派與 SLA 預警因此沒有人收到） | 執行時確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷已可送出（#416） | 靜態確認 |
 | [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 部分修正 | 工單狀態轉換不維護 `csatSentAt`：重開再解決的工單 1 分鐘內被自動結案；`resolvedAt` 的部分（重開保留舊值，報表的已解決數與 SLA 達成率失真）#417 已修正 | 執行時確認 |
 | [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 部分修正 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息；時間軸已有紀錄（#444） | 執行時確認 |
@@ -129,9 +129,9 @@
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
-| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫工單事件、不通知被指派的人，`assign_agent`、`escalate_case` 的查詢不帶 `tenantId`；`update_case_status` 的 `resolvedAt`／`closedAt` 與 `tenantId` #417 已修正 | 執行時確認 |
+| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的 `assign_agent` 不通知被指派的人，`assign_agent`、`escalate_case`、`set_case_priority` 的更新不帶 `tenantId`；`update_case_status` 已依狀態轉換規則並寫工單事件（#417、#469） | 執行時確認 |
 | [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 部分修正 | Canvas 用 API 建不出串接的節點；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網。手動觸發不再接受草稿、封存的流程與不存在的聯絡人 | 執行時確認 |
-| [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 未處理 | 自動化動作的參數只檢查有填，不檢查值：狀態可存 `"FOO"`，負責人可存其他租戶的成員 | 執行時確認 |
+| [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 部分修正 | 自動化動作的負責人、通知對象可存非 UUID、不存在或其他租戶的成員；下拉參數的值 #469 已檢查 | 執行時確認 |
 | [AUTO-13](#auto-13) | 對話、工單與自動化 | P2 | 未處理 | 「短連結被點擊」的觸發說明可以依連結決定動作，但契約沒有連結的條件欄位，用到時存檔被拒 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
 | [IDENT-03](#ident-03) | 聯絡人、行銷與報表 | P2 | 部分修正 | 一位聯絡人在同一個渠道可以有兩個身分，回覆會送給另一位客人，進站訊息會放進另一段對話；合併已改為拒絕（`89014327`）；UAT 有 8 位 WebChat 測試聯絡人有兩個身分，是修正前 E2E 測試的合併產生；資料庫沒有限制 | 執行時確認 |
@@ -168,7 +168,7 @@
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、渠道憑證變更、優惠券與行銷、匯出下載、對外 Webhook 訂閱等操作 | 執行時確認 |
 | [AUD-03](#aud-03) | 渠道、稽核與資料權利 | P1 | 部分修正 | 永久刪除成員時已保存名稱與 email 快照，排隊中的刪除、匯出請求完成時也記下快照（#414）；依 `actorId` 篩選稽核查不到已刪除成員的紀錄 | 執行時確認 |
 | [AUD-04](#aud-04) | 渠道、稽核與資料權利 | P2 | 未處理 | `agent.create` 稽核只記舊的角色列舉，不記實際指派的角色與可見渠道 | 執行時確認 |
-| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留表單答案（客人傳的媒體檔已改為刪除，#329）；被合併的聯絡人的姓名、電話、email、outbox 與 Webhook 送出紀錄兩種模式都保留；刪除後解除合併會讓被併入的人重新出現 | 執行時確認 |
+| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留表單答案（客人傳的媒體檔已改為刪除，#329；被合併的封存聯絡人一併刪除、刪除後不能解除合併，#473）；outbox 與 Webhook 送出紀錄兩種模式都保留 | 執行時確認 |
 | [ERASE-02](#erase-02) | 渠道、稽核與資料權利 | P2 | 未處理 | 資料刪除沒有防誤刪機制：一次 API 呼叫就執行硬刪除，沒有預覽、確認、冷靜期或取消 | 執行時確認 |
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體；打包時間長時，同一個請求可能被兩次執行同時處理 | 靜態確認 |
 | [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 部分修正 | 對外 Webhook 轉送所有內部事件：已有對外事件清單，但第一版等於所有事件；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
@@ -194,7 +194,6 @@
 | [PKG-05](#pkg-05) | 共用套件 | P4 | 部分修正 | `core` 匯出沒有呼叫端的服務；`CaseService` 與 `AutomationEngine` 已刪除（#327） | 靜態確認 |
 | [PKG-06](#pkg-06) | 共用套件 | P4 | 未處理 | `channel-plugins` 有沒有呼叫端的方法、擴充與檔案 | 靜態確認 |
 | [ARCH-01](#arch-01) | 架構規則 | P4 | 未處理 | route 檔直接查詢資料庫 | 靜態確認 |
-| [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 租戶的 Chat 與 Embedding 設定預設使用 Ollama，但組織不部署 Ollama | 靜態確認 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P4 | 未處理 | 兩個 Compose 檔仍有 `ollama` 服務 | 靜態確認 |
 | [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `OLLAMA_*` 環境變數與 Chat 的位址補救已無作用 | 靜態確認 |
@@ -1554,7 +1553,7 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 | --- | --- |
 | 對話：`PATCH /conversations/:id` 的 `assignedToId`、`/handoff` 的 `assignToId` | 停用的成員、看不到該渠道的成員都能被指派。指派給停用成員時，負責人下拉顯示「未指派」；指派給看不到渠道的成員時，他的「我的」分頁是空的，收到新訊息通知但點開 404 |
 | 工單：`/assign`、`PATCH assigneeId`、建立時帶 `assigneeId`、升級時改派 | 不檢查負責人看不看得到工單的渠道。被指派的人收到通知，點進去 404，工單也不在他的列表。自動指派有這個檢查，手動沒有；負責人下拉列出租戶全部成員 |
-| 停用成員 | `deactivateAgent()` 不解除指派。`case.assigned` 與 SLA 通知不檢查 `isActive`。對話的「收到新訊息」與「轉接真人」通知已由 #440 修正：負責人停用或看不到渠道時，改通知看得到該渠道的主管與管理員（change `notify-visible-assignee-440`） |
+| 停用成員 | `deactivateAgent()` 不解除指派。對話的「收到新訊息」與「轉接真人」通知已由 #440 修正：負責人停用或看不到渠道時，改通知看得到該渠道的主管與管理員（change `notify-visible-assignee-440`）。**部分修正（#484）**：所有站內通知寫入前檢查收件成員，停用的成員不再收到 `case.assigned` 與 SLA 通知（change `skip-inactive-notification-recipient-484`）；但這兩種通知不會改發主管，負責人停用時沒有人收到。停用不解除指派、指派不驗證負責人仍未處理 |
 
 指派他租戶的成員見 CASE-07。
 
@@ -1732,6 +1731,8 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 
 **部分修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`update_case_status` 改成先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，`resolvedAt`／`closedAt` 用 API 共用的 `caseTransitionTimestamps()`（CASE-04）。因此規則改成「已解決」的工單會有 `resolvedAt`，問卷排程會照常寄滿意度調查。仍未處理：不檢查轉換是否合法、不寫工單事件、不發 `case.resolved`／`case.closed`、`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`。
 
+**部分修正**（#469，2026-11-09，change `fix-automation-case-status-469`）：`update_case_status` 寫入前用 `@open333crm/shared` 的 `canTransition()`。不合法（含不存在的狀態值）時不改工單，工單時間軸寫 `automation_status_skipped`（規則名稱、原狀態、目標狀態）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫 `status_changed`（`actorType: 'automation'`、`source: 'automation'`）與 `case.resolved`／`case.closed`（outbox，內容與手動轉換共用 `caseStatusOutcomeEvent()`），socket 的 `source` 改成 `automation`。仍未處理：`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`，這兩個動作的 socket `source` 仍寫 `sla_worker`。
+
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-05（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/workers/src/lib/automation-actions.ts:295-305,385-428`；`case.created` 規則設定 URGENT、指派、改成 RESOLVED 之後 `resolvedAt` 為 null、`case_events` 只有 `created`、被指派的人沒有通知（健檢實測）。
 
 <a id="auto-11"></a>
@@ -1751,6 +1752,8 @@ RLS-01 與 APP-07 記錄的是 Canvas 引擎的連線與喚醒，與這一項不
 ### AUTO-12：自動化動作的參數不檢查值
 
 `packages/automation/src/contracts/validation.ts` 只檢查動作參數「有填」：`update_case_status` 可以存 `status: "FOO"`，`assign_agent`、`notify` 的 `agentId` 可以存非 UUID、不存在或其他租戶的成員。規則編輯器用下拉選單，不會送出這些值；API、CLI、MCP 可以。執行時才在 workers 失敗，而且只寫 log。
+
+**部分修正**（#469，2026-11-09，change `fix-automation-case-status-469`）：`validateActionParams()` 檢查 `type: 'select'` 的參數值必須是選項之一（空白的選填參數照常通過），存規則時回 400，API、CLI、MCP 都走這裡。`update_case_status` 的狀態選項加入「待處理（PENDING）」。仍未處理：`assign_agent`、`notify` 的 `agentId` 不檢查格式、是否存在與租戶。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-07（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`packages/automation/src/contracts/validation.ts:147-160`、`apps/api/src/modules/automation/automation.service.ts:205-209`；`POST /automation/rules` 帶上述值都回 201（健檢實測，規則建成停用、未執行）。
 
@@ -2166,7 +2169,9 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 - `anonymize`（預設）：清空聯絡人的個人欄位，刪除屬性、渠道身分、`IdentityMap` 與長期記憶，把進站訊息的內容換成 `{ redacted: true }`，並刪除進站訊息的媒體檔。
 - `hard_delete`：刪除聯絡人與他的對話、訊息、工單、積分、活動提交與媒體檔。
 
-**部分修正（2026-11-09，#329，change `erase-inbound-media-on-anonymize`）：** `anonymize` 原本在改寫進站訊息前沒有讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫也找不到。現在改寫前讀出、交易 commit 之後刪除，兩種模式只刪 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，刪除失敗的筆數記在 `affected.mediaObjectsFailed`。修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。下表其他列都還沒有修正。
+**部分修正（2026-11-09，#329，change `erase-inbound-media-on-anonymize`）：** `anonymize` 原本在改寫進站訊息前沒有讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫也找不到。現在改寫前讀出、交易 commit 之後刪除，兩種模式只刪 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，刪除失敗的筆數記在 `affected.mediaObjectsFailed`。修正之前已匿名化的客人，媒體檔仍留在物件儲存：一次性腳本 `scripts/recover-erased-media-orphans.mjs`（#474）可以找出並刪除，各環境還沒有執行，操作手冊見 [GOVERNANCE](../features/tenant/GOVERNANCE.md)「回收 #329 前匿名化留下的媒體檔」。
+
+**部分修正（2026-11-09，#473，change `erase-merged-contacts`）：** 兩種模式沿 `mergedIntoId` 逐層找出併入目標的封存聯絡人，套用與目標相同的規則（匿名化清空個人欄位、刪除子資料與頭像檔；硬刪除連同資料一起刪除），筆數記在 `affected.mergedContacts`。被併入方或合併鏈上任何一位有完成的刪除請求時，解除合併回 409 `CONTACT_ERASED`。下表其他列都還沒有修正。
 
 沒有涵蓋的資料：
 
@@ -2178,21 +2183,18 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 | 工單標題、描述、備註、CSAT 留言 | 保留 | 刪除 |
 | `ClickLog`（含 IP、User-Agent、LINE uid） | 保留 | 保留 |
 | `BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` | 保留 | 保留 |
-| 被合併到這位聯絡人的封存聯絡人（姓名、電話、email、頭像網址與頭像檔） | 保留 | 保留 |
 | `Outbox.payload`（已送出的列不清除，例如 `case.created` 帶工單標題）、`WebhookDelivery.payload`（事件原文，含訊息內容）（2026-10-30 健檢） | 保留 | 保留 |
 | 刪除前產生、7 天內仍可下載的匯出檔（2026-10-30 健檢） | 保留 | 保留 |
 
 `ClickLog`、`BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` 只存 `contactId` 字串，沒有外鍵，兩種模式都不處理。預設模式保留了表單答案，最可能含個人資料。
 
-最後一列來自聯絡人合併。`contact-merge.service.ts` 合併兩位聯絡人時，被併入的聯絡人只設定 `isArchived` 與 `mergedIntoId`，個人欄位不變。刪除的 handler 只處理請求指定的 `contactId`，不沿 `mergedIntoId` 找被併入的聯絡人。同一位客人在多個渠道各有一位聯絡人、後來合併時，刪除保留下來的那一位，其他渠道留下的姓名、電話與 email 仍在資料庫。封存的聯絡人可以另外以自己的 ID 發起刪除，但後台不列出封存的聯絡人，操作者不容易知道它們存在。
-
-**刪除後仍可解除合併，被刪除的人重新出現（2026-10-30 功能健檢）。** `contact-merge.service.ts` 的解除合併只檢查紀錄與被併入方存在，刪除的 handler 也不處理 `ContactMergeLog`。匿名化主要聯絡人之後，合併紀錄的「解除合併」照樣成功，被併入的封存聯絡人恢復成一般聯絡人，姓名與 email 都在，回到聯絡人清單。硬刪除主要聯絡人之後，解除合併也回 200，被併入的那位同樣恢復。
+被合併的封存聯絡人與刪除後解除合併（2026-10-30 健檢 HC-GOVERNANCE-06）已由 #473 修正，見上方的部分修正說明。刪除完成之後才併入的聯絡人不處理：合併引擎不檢查保留方是否已刪除，之後併入的封存聯絡人保有自己的個人欄位。
 
 `Outbox`、`WebhookDelivery` 與匯出檔三者都沒有保留期限或清除排程（匯出檔除外，7 天）。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-GOVERNANCE-06（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-08（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）。證據：`apps/api/src/modules/contact/contact-merge.service.ts:466-475`、`apps/workers/src/handlers/data-erasure.handler.ts`、`apps/api/src/modules/webhook-subscriptions/webhook-dispatcher.ts:90-96, 195-197`；匿名化 D 之後 `POST /contacts/merge-logs/<log>/revert` 回 200、E 恢復且名稱與 email 原樣；匿名化 A 之後 outbox 仍有帶工單標題的 `case.created`（健檢實測）；WebhookDelivery 為讀程式。
 
-**修正方向**：發起刪除時，一併處理 `mergedIntoId` 指向目標聯絡人的封存聯絡人（逐層往下找），並讓刪除後的合併紀錄不能再解除；清除或遮蔽 outbox 與 Webhook 送出紀錄裡的個人資料。
+**修正方向**：清除或遮蔽 outbox 與 Webhook 送出紀錄裡的個人資料；決定匿名化是否處理表單答案與工單內容。
 
 <a id="erase-02"></a>
 ### ERASE-02：資料刪除沒有防誤刪機制
@@ -2500,13 +2502,6 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 **主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
 
 ## Storage、LLM 與資料庫
-
-<a id="sto-01"></a>
-### STO-01：Workers 無法連線 MinIO
-
-Workers 的 `MinioStorageProvider` 讀取 `MINIO_*`，但 `.env.workers` 提供 `S3_*`。`STORAGE_PROVIDER` 也沒有程式讀取。Provider 最後採用 `localhost:9000`，在 Workers 容器內會連回自己。
-
-執行時呼叫 `listBuckets()` 已重現 `ECONNREFUSED`。
 
 <a id="llm-01"></a>
 ### LLM-01：AI 設定預設使用 Ollama

@@ -29,14 +29,14 @@
 
 ### Requirement: 匿名化聯絡人
 
-`anonymize` 模式 SHALL 在同一個交易內：
+`anonymize` 模式 SHALL 在同一個交易內，對目標聯絡人與併入他的封存聯絡人（沿 `mergedIntoId` 逐層往下找到的 `isArchived` 聯絡人）套用相同的規則：
 
 - 把聯絡人的 `displayName` 改成 `[已刪除]`，`avatarUrl`、`phone`、`email` 清成 `null`。
-- 刪除該聯絡人的屬性、渠道身分、`IdentityMap` 與長期記憶。
+- 刪除這些聯絡人的屬性、渠道身分、`IdentityMap` 與長期記憶。
 - 在改寫進站訊息之前，讀出這些進站訊息 `content.storageKey` 指向的媒體檔。
-- 把該聯絡人對話裡所有進站訊息的 `content` 改成 `{ redacted: true }`。
+- 把這些聯絡人對話裡所有進站訊息的 `content` 改成 `{ redacted: true }`。
 
-交易成功後，系統 SHALL 依「刪除訊息媒體檔的範圍」刪除進站訊息的媒體檔，並依「刪除頭像檔的範圍」刪除聯絡人的 `avatarUrl` 與渠道身分的 `profilePic` 在物件儲存的頭像檔。刪除失敗依「物件儲存的檔案刪除失敗時記錄筆數」處理。
+封存聯絡人的筆數 SHALL 記在 `affected.mergedContacts`。交易成功後，系統 SHALL 依「刪除訊息媒體檔的範圍」刪除進站訊息的媒體檔，並依「刪除頭像檔的範圍」刪除這些聯絡人的 `avatarUrl` 與渠道身分的 `profilePic` 在物件儲存的頭像檔。刪除失敗依「物件儲存的檔案刪除失敗時記錄筆數」處理。
 
 對話、工單、出站訊息、出站訊息的媒體檔與聯絡人本身 SHALL 保留，報表的數字因此不變。這個模式不處理的資料列在 `docs/ref/system/AUDIT.md` 的 ERASE-01。
 
@@ -56,11 +56,19 @@
 - **WHEN** worker 以 `anonymize` 處理一位聯絡人，客服在他的對話傳過一張圖片（出站訊息帶 `storageKey`）
 - **THEN** 這個媒體檔不刪，出站訊息的內容不變
 
+#### Scenario: 匿名化一併清除併入的封存聯絡人
+- **WHEN** 聯絡人 A 併入 B、C 先前併入 A（`C.mergedIntoId` 是 A，兩層），A 與 C 有名稱、電話、email、本租戶 `avatars` 目錄的頭像與屬性，worker 以 `anonymize` 處理 B
+- **THEN** A 與 C 的名稱是 `[已刪除]`，電話、email、頭像是 `null`，屬性已刪除，頭像檔已從物件儲存刪除，A 與 C 仍封存，`affected.mergedContacts` 是 2
+
+#### Scenario: 匿名化不處理未封存的聯絡人
+- **WHEN** 另一位沒有封存的聯絡人與 B 無關，worker 以 `anonymize` 處理 B
+- **THEN** 那位聯絡人的名稱、電話與 email 不變
+
 ### Requirement: 硬刪除聯絡人
 
-`hard_delete` 模式 SHALL 在同一個交易內刪除該聯絡人的對話與訊息、工單、活動提交、積分紀錄，以及聯絡人本身。聯絡人的屬性、渠道身分、`IdentityMap`、長期記憶、標籤與聯絡人關係隨聯絡人一起刪除。交易成功後，系統 SHALL 依「刪除訊息媒體檔的範圍」刪除這些訊息在物件儲存的媒體檔，並依「刪除頭像檔的範圍」刪除聯絡人與渠道身分的頭像檔。刪除失敗依「物件儲存的檔案刪除失敗時記錄筆數」處理。
+`hard_delete` 模式 SHALL 在同一個交易內刪除目標聯絡人與併入他的封存聯絡人（沿 `mergedIntoId` 逐層往下找到的 `isArchived` 聯絡人）的對話與訊息、工單、活動提交、積分紀錄，以及這些聯絡人本身。聯絡人的屬性、渠道身分、`IdentityMap`、長期記憶、標籤與聯絡人關係隨聯絡人一起刪除。封存聯絡人的筆數 SHALL 記在 `affected.mergedContacts`，`affected.contacts` 是目標加封存聯絡人的筆數。交易成功後，系統 SHALL 依「刪除訊息媒體檔的範圍」刪除這些訊息在物件儲存的媒體檔，並依「刪除頭像檔的範圍」刪除這些聯絡人與渠道身分的頭像檔。刪除失敗依「物件儲存的檔案刪除失敗時記錄筆數」處理。
 
-硬刪除 SHALL 只刪除目標聯絡人的資料。目標與其他聯絡人之間的關係只刪除關係本身，其他聯絡人與他們的資料保留。
+硬刪除 SHALL 只刪除目標聯絡人與併入他的封存聯絡人的資料。他們與其他聯絡人之間的關係只刪除關係本身，其他聯絡人與他們的資料保留。
 
 #### Scenario: 硬刪除連帶刪除對話與工單
 - **WHEN** worker 以 `hard_delete` 處理一位有對話、訊息（含媒體檔）、工單、活動提交與積分紀錄的聯絡人
@@ -74,12 +82,16 @@
 - **WHEN** 被硬刪除的聯絡人與另一位聯絡人之間有聯絡人關係
 - **THEN** 關係已刪除，另一位聯絡人與他的對話仍在
 
+#### Scenario: 硬刪除一併刪除併入的封存聯絡人
+- **WHEN** 聯絡人 A 併入 B、C 先前併入 A（兩層），A 有合併時轉出點數的積分紀錄與本租戶 `avatars` 目錄的頭像，worker 以 `hard_delete` 處理 B
+- **THEN** A、C 與他們的積分紀錄已從資料庫刪除，A 的頭像檔已從物件儲存刪除，`affected.mergedContacts` 是 2，`affected.contacts` 是 3
+
 ### Requirement: 刪除頭像檔的範圍
 
 兩種模式刪除頭像檔時，系統 SHALL 只刪除同時符合下列條件的檔案：
 
 - 網址的來源等於 workers 的 `S3_PUBLIC_URL` 的來源，路徑是 `{S3_PUBLIC_URL 的路徑}/{bucket}/{tenantId}/avatars/{uuid}.{jpg|png|webp|gif}`。查詢字串與 fragment 不算在路徑內。
-- 同租戶沒有其他聯絡人的 `avatarUrl` 或其他聯絡人的渠道身分的 `profilePic` 還在用這個網址。
+- 同租戶這次刪除處理的聯絡人（目標與併入他的封存聯絡人）以外，沒有其他聯絡人的 `avatarUrl` 或其他聯絡人的渠道身分的 `profilePic` 還在用這個網址。
 
 系統 SHALL 在讀取頭像時鎖住聯絡人與渠道身分，讓刪除期間背景補存寫回的頭像也被刪除。`S3_PUBLIC_URL` 沒有設定或來源不同時，系統 SHALL NOT 刪除格式符合的檔案，並把筆數記在 `affected.avatarObjectsSkipped`；其他人還在用而保留的筆數記在 `affected.avatarObjectsShared`。
 
@@ -98,6 +110,10 @@
 #### Scenario: 沒有設定 S3_PUBLIC_URL 時不刪頭像檔
 - **WHEN** workers 沒有設定 `S3_PUBLIC_URL`，被刪除的聯絡人有本租戶 `avatars` 目錄的頭像
 - **THEN** 刪除照常完成，頭像檔不刪，`affected.avatarObjectsSkipped` 記一筆
+
+#### Scenario: 合併時沿用的頭像檔一起刪除
+- **WHEN** 聯絡人 A 併入 B，合併時 B 沿用 A 的頭像網址，兩位的 `avatarUrl` 是同一個檔案，worker 刪除 B
+- **THEN** 這個頭像檔已從物件儲存刪除，`affected.avatarObjectsShared` 是 0
 
 ### Requirement: 刪除完成時記錄結果
 
@@ -192,3 +208,23 @@ worker 開始處理刪除工作時，MUST 以條件更新把請求從 `pending` 
 #### Scenario: 發起的成員已被永久刪除時，完成稽核記下快照、不送通知
 - **WHEN** 成員 X 發起刪除，請求還是 `pending` 時 X 被永久刪除，之後 worker 處理這個請求
 - **THEN** 請求是 `completed`，有一筆 `data.erasure.complete` 稽核，`actorId` 是空值，`actorName` 與 `actorEmail` 是 X 的名稱與 email，系統沒有送出通知
+
+### Requirement: 刪除期間完成的進站媒體下載不寫回
+
+進站媒體下載完成（或失敗）後，系統 SHALL 在一個交易內先以 `FOR SHARE` 鎖住訊息的對話，只在訊息內容仍等於下載前讀到的內容時寫回。條件不成立（例如已被匿名化或刪除）時，系統 SHALL NOT 寫入、SHALL NOT 推送 `message.new`，並 SHALL 刪除剛上傳的物件，最多一次，失敗寫進 log。
+
+#### Scenario: 下載完成時訊息沒有變動
+- **WHEN** 進站圖片下載完成時，訊息內容與下載前相同
+- **THEN** 訊息寫入 `storageKey`、`url` 與 `mediaUrl`，物件不刪
+
+#### Scenario: 下載期間訊息被匿名化
+- **WHEN** 進站圖片下載期間，worker 把這則訊息改成 `{ redacted: true }`，之後下載完成
+- **THEN** 訊息仍是 `{ redacted: true }`，剛上傳的物件已刪除
+
+#### Scenario: 匿名化的交易進行中下載完成
+- **WHEN** 匿名化的交易已鎖住對話並讀完訊息、還沒改寫時，進站圖片下載完成
+- **THEN** 寫回等匿名化 commit，之後不寫入，訊息是 `{ redacted: true }`，剛上傳的物件已刪除
+
+#### Scenario: 下載失敗時訊息已被匿名化
+- **WHEN** 進站圖片下載失敗時，訊息已是 `{ redacted: true }`
+- **THEN** 訊息仍是 `{ redacted: true }`，不寫入原文與 `mediaError`

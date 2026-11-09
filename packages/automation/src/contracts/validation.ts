@@ -151,10 +151,15 @@ function validateActionParams(
   errors: string[],
 ): void {
   for (const param of actionDef.params ?? []) {
-    if (!param.required) continue;
     const value = params[param.key];
     if (value === undefined || value === null || value === '') {
-      errors.push(`${position}「${actionDef.label}」必須填寫「${param.label}」`);
+      if (param.required) errors.push(`${position}「${actionDef.label}」必須填寫「${param.label}」`);
+      continue;
+    }
+    // 下拉參數只收選項內的值（issue #469，AUDIT AUTO-12）：編輯器只送選項，API、CLI、MCP 可以送任何值，
+    // 原本要到 workers 執行時才因 Prisma enum 錯誤失敗、只寫 log
+    if (param.type === 'select' && param.values && !param.values.some((option) => option.value === value)) {
+      errors.push(`${position}「${actionDef.label}」的「${param.label}」不能是「${String(value)}」，請從選項中選擇`);
     }
   }
 }

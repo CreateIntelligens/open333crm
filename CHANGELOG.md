@@ -33,11 +33,64 @@ All notable changes to **open333CRM** will be documented in this file.
   - 進站訊息降級時以 `sendOpsAlert()` 發維運告警（合併鍵 `deidentification-unavailable`，10 分鐘內只送一則，帶上期間內未送出的次數），只帶租戶 ID、渠道類型與原因代碼。告警失敗只寫 log。
   - 服務恢復後不會補做遮罩；2md 網址仍寫在程式裡，沒有備援服務。
 
+- **workers 改讀與 api 相同的物件儲存設定，容器內不再連回自己**（AUDIT STO-01，已修正並從 `AUDIT.md` 移除）— `@open333crm/core` 的 `MinioStorageProvider` 原本只讀 `MINIO_*`，但 `.env.workers` 與 UAT 的 workers 只提供 `S3_*`，所以連到 `localhost:9000`：在容器內連回自己，資料匯出的上傳、資料刪除的媒體檔與頭像檔刪除都會失敗（UAT 目前沒有完成的刪除請求）。現在連線設定由新的 `resolveMinioConfig()` 決定：
+  - 有 `MINIO_ENDPOINT` 時沿用 `MINIO_*`（相容舊設定）。
+  - 否則從 `S3_ENDPOINT` 解析主機、port（沒寫時 http 80、https 443）與 SSL，金鑰用 `S3_ACCESS_KEY`、`S3_SECRET_KEY`；格式錯誤時丟出說明的錯誤。
+  - 兩邊都沒設定時維持本機預設值（`localhost:9000`、`minioadmin`），但每個行程寫一次 warn log。
+  - bucket 本來就一致：workers 的匯出與刪除都用 `S3_BUCKET`（預設 `open333crm`），與 api 上傳相同。
+  - 移除沒有程式讀取的 `STORAGE_PROVIDER`（`.env.api.example`、`.env.workers.example`、`apps/api/.env.example`）。
+  - `scripts/recover-erased-media-orphans.mjs` 不再自行換算，直接用 core 的設定。
+
+- **回收 #329 修正前匿名化留下的媒體孤兒檔**（issue #474）— #329 之前，匿名化把進站訊息改成 `{ redacted: true }` 時沒有先讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫找不到。新增一次性腳本 `scripts/recover-erased-media-orphans.mjs`（SQL 在 `scripts/sql/recover-erased-media-orphans.sql`），不需要 migration：
+  - 找出已完成匿名化的聯絡人目前的對話，列出 `{tenantId}/media/{conversationId}/` 底下的物件，扣掉同租戶任何訊息仍引用的 key，只刪 uuid 檔名格式的物件；硬刪除的請求只列筆數。
+  - 預設只預覽；`--apply` 不接受值（`--apply=false` 之類直接報錯，避免以為是預覽卻真的刪除）；`--apply` 一定要帶 `--expect-objects`，筆數不同就不刪；刪除前把清單寫成 CSV；每個 key 最多刪一次，失敗時以非零結束。`--tenant` 可以重複。
+  - 媒體 key 的格式檢查移到 `@open333crm/core` 的 `isConversationMediaKey()`，資料刪除 worker 與腳本共用；`MinioStorageProvider` 新增 `list()`。
+  - 物件儲存的連線設定與 api 相同（`S3_*`），見下一條 STO-01。
+  - 操作手冊見 `docs/ref/features/tenant/GOVERNANCE.md`「回收 #329 前匿名化留下的媒體檔」。各環境尚未執行。
+
+- **匿名化剛好碰上進站媒體下載時，下載完成不再把原文寫回訊息**（issue #475，change `skip-media-write-after-erasure`）— 進站媒體在背景下載，完成後用下載前讀到的內容加上 `storageKey` 覆寫訊息。下載期間對這位客人執行匿名化時，`{ redacted: true }` 會被原文蓋回，剛上傳的媒體檔也留在物件儲存。現在寫回在交易內先以 `FOR SHARE` 鎖住對話，只在訊息內容仍是下載前那份時寫入；內容已改變（匿名化）或訊息已刪除（硬刪除）時不寫入、不推送 `message.new`，並以 `deleteFile()` 刪除剛上傳的物件。下載失敗寫回 `mediaError` 也走同一個條件。寫回會等同一個對話正在進行的刪除交易結束。
+
+- **資料刪除一併處理被合併的封存聯絡人，刪除後不能再解除合併**（issue #473，AUDIT ERASE-01 部分修正，change `erase-merged-contacts`）— 合併聯絡人時，被併入的聯絡人只封存，姓名、電話、email 與頭像都還在；資料刪除只處理請求指定的聯絡人，刪除之後解除合併還會讓被併入的人原樣回到聯絡人清單。現在：
+  - `anonymize` 與 `hard_delete` 沿 `mergedIntoId` 逐層找出併入目標的封存聯絡人（含舊版合併留下的多層），套用與目標相同的規則：匿名化清空個人欄位、刪除屬性、渠道身分、`IdentityMap`、長期記憶，改寫進站訊息並刪除媒體檔與頭像檔，聯絡人維持封存；硬刪除連同他們的對話、工單、活動提交、積分紀錄一起刪除。筆數記在 `affected.mergedContacts`，硬刪除的 `affected.contacts` 也包含他們。
+  - 頭像檔的「其他聯絡人還在用」改成這次刪除處理的聯絡人以外：合併時主聯絡人沿用被併入那位的頭像，兩位一起刪除時檔案也刪。
+  - 交易內先依 id 排序鎖住目標與封存聯絡人（與合併引擎相同的排序），再鎖對話、讀訊息。
+  - 被併入方或合併鏈上任何一位有 `completed` 的刪除請求時，解除合併（客服與顧客自助）回 409 `CONTACT_ERASED`，不改任何資料。檢查前先鎖住這些聯絡人，與刪除的交易互相等待；取得鎖之後重新解析合併鏈，等鎖期間保留方又被併入別人時，鎖住新出現的聯絡人並重算到鏈不再變動（PR #490 審查）。刪除還在排隊時可以解除。
+  - 未修：刪除完成之後才併入的聯絡人不處理（合併引擎不檢查保留方是否已刪除）。
+
+- **上傳被拒時的錯誤訊息改成中文，並說明原因**（issue #470，change `localize-upload-error-messages`）— 上傳的檔案被內容偵測拒絕時，畫面原本顯示英文的 `File content type rejected: file content type is unknown`。現在 `message` 依原因顯示中文：檔案是空的、無法辨識檔案內容（列出允許的格式）、這裡不接受某種檔案（說出偵測到的格式與允許的格式）、檔案內容與副檔名不符、檔案內容與上傳時標示的檔案類型不符（副檔名正確時不提副檔名）；偵測暫時無法使用（503）也改成中文。英文原因放在 `details.reason`，並寫進 log（不含檔名與內容）。錯誤碼與 HTTP 狀態不變。同時處理：
+  - 收件匣傳圖片、影片的 `Unsupported file type…`、`File exceeds N MB limit` 改成中文，並列出允許的格式。
+  - 網站聊天室背景圖的 `{ "error": "No file uploaded" }`、`{ "error": "Unsupported background image type" }` 改用 `AppError`，回應變成標準格式的中文訊息。
+  - 直傳超過上限的訊息改用同一個函式（`apps/api/src/shared/messages/upload.ts`），多了「請壓縮後再上傳」。
+  - 素材的圖片、影片欄位（`CompactImageField`、`CompactVideoField`）改用 `getApiErrorMessage()`：後端沒回訊息時（例如代理伺服器的 413）顯示「檔案過大，請換小一點的檔案」，不再顯示「上傳失敗」或英文的 `Request failed with status code 413`。
+- **收件匣聊天視窗可以載入更早的訊息**（issue #468，健檢 HC-INBOX-07，change `fix-chat-window-load-older-468`）— 聊天視窗原本只載入最近 50 則，長對話看不到前面的內容。
+  - `GET /api/v1/conversations/:id/messages` 新增 `before` 參數：上一頁回傳的 `meta.nextCursor`，與 `GET /contacts/:id/messages` 用同一種游標。訊息依 `createdAt` 再 `id` 排序，同一毫秒的多則訊息不重複也不遺漏。回應 `meta` 加 `hasMore`、`nextCursor`。不帶 `before` 時 `page`／`limit`／`order` 照舊。`before` 搭配 `page` 不是 1 或 `order=asc` 時回 400。
+  - 查詢條件補上 `conversation.tenantId`（多租戶第一層）。`getMessages()` 改收 `TenantCtx`，路由改呼叫 `conversation.flow.ts` 的 `getMessagesFlow`。游標的編碼、解碼與查詢條件移到 `apps/api/src/shared/utils/message-cursor.ts`，聯絡人端點也改用它。
+  - 訊息區頂端新增「載入更早的訊息」按鈕。往上載入時，畫面停在原本看的那則訊息。只有最新一則改變時（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出的訊息留在畫面上。
+  - 最新訊息或更早的訊息載入失敗時，畫面顯示原因與「重試」。原本只寫 `console.error`，最新一頁失敗時還會顯示「尚無訊息」。
+  - 已載入的更早訊息、游標、錯誤與被擠出訊息的紀錄都以對話為鍵：切換對話後的第一次 render 不會出現上一段對話的訊息；切換前送出的「載入更早的訊息」在切換後才回來時會丟棄，不寫進新對話（PR #491 審查）。
+
+- **自動化「更新工單狀態」依工單的狀態轉換規則，時間軸看得到結果**（issue #469，AUDIT AUTO-10、AUTO-12 部分修正，change `fix-automation-case-status-469`）— 規則原本能把「開啟」直接改成「已解決」（客服手動操作會回 422），時間軸沒有紀錄，推播的 `source` 寫成 `sla_worker`，對外 webhook 收不到 `case.resolved`／`case.closed`；用 API、CLI、MCP 也能存 `status: "FOO"` 的規則，觸發時才失敗、只寫 log。現在：
+  - workers 的 `update_case_status` 寫入前用 `canTransition()`。不允許的轉換（含不存在的狀態值）不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）。目標狀態等於目前狀態時不改也不寫。
+  - 允許的轉換在同一個交易寫 `status_changed`（`actorType: 'automation'`，時間軸顯示規則名稱），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox；推播 `case.updated` 的 `source` 改成 `automation`。
+  - `case.resolved`／`case.closed` 的內容改由 `@open333crm/shared` 的 `caseStatusOutcomeEvent()` 組，API 手動轉換與 workers 共用。目前系統內只有對外 webhook 訂閱這兩個事件，自動化不訂閱，不會造成規則迴圈。
+  - 契約驗證檢查下拉參數（目標狀態、優先級、新優先級、分類）的值必須是選項之一，存規則回 400；選填的下拉留空照常通過。
+  - 「更新工單狀態」的選項加入「待處理」（使用者 2026-11-09 決定）。
+  - 影響既有規則：「建立工單時改成已解決」這類規則之後不再改狀態，只在時間軸留下略過紀錄；存了選項外下拉值的規則會被 workers 整條略過，規則列表標示「規則不會執行」。
+  - 未修：`assign_agent` 不通知、`assign_agent`／`escalate_case`／`set_case_priority` 的更新不帶 `tenantId`；`agentId` 不檢查。
+
+- **站內通知不再寫給已被永久刪除或已停用的成員**（issue #484，change `skip-inactive-notification-recipient-484`）— 通知是非同步的：排進佇列時收件成員還在，worker 處理時他可能已被永久刪除，`notifications.agentId` 的外鍵讓寫入失敗，佇列重試三次後進入 failed set，佇列監控多出失敗紀錄。已停用（`isActive: false`）的成員也仍然收到新通知。現在：
+  - 三個寫入通知的地方在寫入前以 `tenantId` 查收件成員：workers 的 `notification:dispatch`（工單指派、升級、SLA、新訊息、轉接、自動化、AI 用量、資料匯出與刪除完成）、API 的 `createAndDispatch`（CSAT 低分、權杖失效）、序號明細背景匯出的完成與失敗通知。
+  - 成員不存在或已停用時略過這則通知、寫 info log，不丟錯、不重試；重新啟用後不補送停用期間的通知。
+  - 三處共用 `packages/core` 的 `createNotificationForActiveAgent()`：一條條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`），不先查再寫，查完才被永久刪除的競爭也不撞外鍵，在交易內也不會讓交易中止（PR #489 審查）；停用的競爭（判斷之後才停用）照樣寫入，可以接受；PR #483 的 `requesterExists()` 改用同一個查詢（`agentExistsInTenant()`，只看存在，停用的成員仍可當稽核的 actorId）。
+  - 收件人計算不變（#440 的「負責客服停用改通知主管」照舊）。工單指派、SLA 預警的收件人是已停用的負責人時，這則通知現在被略過、沒有人收到（原本只寫給停用的人）；改發主管見 AUDIT CONV-06。
+
+- **後台搜尋不再把 `%`、`_` 當成萬用字元**（issue #467）— Prisma 的 `contains` 把搜尋字包成 `%值%` 交給 PostgreSQL 的 ILIKE，但不跳脫值裡的 `%`、`_`：搜 `_` 或 `%` 會列出全部資料，搜 email `a_b@x.com` 會連 `axb@x.com` 一起出現；搜含反斜線的字串（例如 `C:\dir`）則找不到原字串。收件匣已在 PR #449 修好，這次其他搜尋也先以 `escapeLikeKeyword()`（`apps/api/src/shared/utils/like-pattern.ts`）跳脫：聯絡人（名稱、電話、email）、優惠券列表（券名、券號）、優惠券序號明細（顧客名稱，以及序號的原生 SQL `LIKE`）、知識庫文章（標題、摘要、內文；標籤原本就是完整比對）、行銷範本（名稱、說明）、素材庫（名稱、說明）、短連結（標題、代碼、目標網址）。仍不分大小寫。新增 feature 測試在真實資料庫逐欄驗證 `_`、`%`、反斜線三種輸入，並補 `escapeLikeKeyword` 的單元測試。
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
 - **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。
   - 通知：只刪對應到要刪除的重複事件的英文標題 SLA 通知（依工單、類型與時間配對，每筆被刪事件、每位成員最多一則）；其他期限週期的通知與配對不到的通知不動。`--notifications=skip` 不處理通知。
   - 只刪 `--cutoff` 之前寫入的列。預設只預覽（各租戶筆數、英文通知的配對數、cutoff 之後的重複數、沒有 key 的列數、重複最多的工單、依 `sla.breachCount` 判斷的啟用中規則）。`--apply` 在單一交易內刪除：刪除前把整列匯出成 CSV（文件附還原步驟），cutoff 之後仍有重複、筆數與 `--expect-events`／`--expect-notifications` 或預覽不一致時回滾並以非零結束。
+  - `--apply`、`--find-cutoff` 不接受值：`--apply=false` 之類的寫法直接報錯，不會被當成 `--apply`（PR #490 審查）。
   - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
   - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
 

@@ -5,7 +5,6 @@ import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   listConversations,
   getConversation,
-  getMessages,
   markConversationRead,
   sendMessage,
   updateConversation,
@@ -14,6 +13,7 @@ import {
   returnConversationToBot,
 } from './conversation.service.js';
 import { createCaseFromConversationFlow } from '../case/case.flow.js';
+import { getMessagesFlow } from './conversation.flow.js';
 import { actorOf } from '../../lib/request-actor.js';
 import { addTagToTargetFlow, removeTagFromTargetFlow } from '../tag/tag.flow.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
@@ -23,6 +23,7 @@ import { uploadFile } from '../storage/storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { fileTooLargeMessage, unsupportedFileTypeMessage } from '../../shared/messages/upload.js';
 import { validateOutboundMessage } from '@open333crm/shared';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { caseAssignIfAssigning } from '../case/case-permission.js';
@@ -61,12 +62,15 @@ async function handleSendMedia(
   if (!file) throw new AppError('請選擇要上傳的檔案', 'BAD_REQUEST', 400);
 
   if (!config.allowedMimes.includes(file.mimetype)) {
-    throw new AppError(`Unsupported file type. Allowed: ${config.allowedMimes.join(', ')}`, 'BAD_REQUEST', 400);
+    throw new AppError(unsupportedFileTypeMessage(config.allowedMimes), 'BAD_REQUEST', 400, {
+      mimeType: file.mimetype,
+      allowedMimes: config.allowedMimes,
+    });
   }
 
   const buffer = await file.toBuffer();
   if (buffer.length > config.maxBytes) {
-    throw new AppError(`File exceeds ${Math.round(config.maxBytes / 1024 / 1024)} MB limit`, 'BAD_REQUEST', 400);
+    throw new AppError(fileTooLargeMessage(config.maxBytes), 'BAD_REQUEST', 400, { maxBytes: config.maxBytes });
   }
 
   const detected = await assertUploadContent(
@@ -160,11 +164,17 @@ const addTagSchema = z.object({
   tagId: z.string().uuid(),
 });
 
-const messagesQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(50),
-  order: z.enum(['asc', 'desc']).default('desc'),
-});
+// before：上一頁回傳的 nextCursor，只往更早的方向翻，不可與 page、升冪混用（change fix-chat-window-load-older-468）
+const messagesQuerySchema = paginationSchema
+  .extend({
+    limit: paginationSchema.shape.limit.removeDefault().default(50),
+    order: z.enum(['asc', 'desc']).default('desc'),
+    before: z.string().min(1).max(200).optional(),
+  })
+  .refine((q) => !q.before || (q.order === 'desc' && q.page === 1), {
+    message: '分頁游標只能搭配由新到舊排序，且不可同時指定頁碼',
+    path: ['before'],
+  });
 
 const createCaseFromConvSchema = z.object({
   title: z.string().min(1),
@@ -296,15 +306,18 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const query = messagesQuerySchema.parse(request.query);
     await assertConversationChannelVisible(request, request.params.id, 'read_only'); // CM-173：渠道不可見不得讀訊息歷史
 
-    const { messages, total } = await getMessages(
-      request.tenantPrisma,
+    const { messages, total, hasMore, nextCursor } = await getMessagesFlow(
+      fastify,
+      actorOf(request).tenantId,
       request.params.id,
-      query.page,
-      query.limit,
-      query.order,
+      query,
     );
 
-    return reply.send(paginated(messages, total, query.page, query.limit));
+    // 帶游標時沒有頁碼；不帶時保留舊的 page、totalPages，現有呼叫端不變
+    const pageMeta = query.before
+      ? {}
+      : { page: query.page, totalPages: Math.ceil(total / query.limit) };
+    return reply.send(success(messages, { total, limit: query.limit, ...pageMeta, hasMore, nextCursor }));
   });
 
   // POST /api/v1/conversations/:id/messages
