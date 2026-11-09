@@ -58,6 +58,6 @@ export async function exportInstancesFlow(
 export async function notifyExportResult(deps: { prisma: PrismaClient; io: Server }, notice: ExportNotice): Promise<void> {
   await inTenant(deps.prisma, notice.tenantId, async (scope) => {
     const notification = await recordExportNotice(scope, notice);
-    notifyAgent(scope, deps.io, notice.agentId, 'notification.new', notification);
+    if (notification) notifyAgent(scope, deps.io, notice.agentId, 'notification.new', notification);
   });
 }

@@ -21,8 +21,18 @@ const jobData = {
 
 const job = { id: 'n1', name: 'notification:dispatch', data: jobData } as unknown as Job;
 
-function makePrisma(create: (args: { data: Record<string, unknown> }) => Promise<unknown>) {
-  return { notification: { create } } as unknown as PrismaClient;
+type Recipient = 'active' | 'inactive' | 'deleted';
+
+/** agent.findFirst 依 where 回應：只有同租戶、同 ID 的成員查得到；where 帶 isActive 時要符合 */
+function makePrisma(create: (args: { data: Record<string, unknown> }) => Promise<unknown>, recipient: Recipient = 'active') {
+  const findFirst = async ({ where }: { where: { id?: string; tenantId?: string; isActive?: boolean } }) => {
+    if (recipient === 'deleted') return null;
+    if (where.id !== jobData.agentId || where.tenantId !== jobData.tenantId) return null;
+    const isActive = recipient === 'active';
+    if (where.isActive !== undefined && where.isActive !== isActive) return null;
+    return { id: jobData.agentId };
+  };
+  return { notification: { create }, agent: { findFirst } } as unknown as PrismaClient;
 }
 
 function makeRedis(publish: (channel: string, message: string) => Promise<number>) {
@@ -101,4 +111,30 @@ describe('handleNotificationJob', () => {
     assert.equal(created.length, 2);
     assert.deepEqual(created[0], created[1]);
   });
+
+  // issue #484：通知排隊期間收件成員被永久刪除或停用，寫入會撞外鍵或送給不該收的人
+  for (const recipient of ['deleted', 'inactive'] as const) {
+    const name = recipient === 'deleted' ? '收件成員已被永久刪除' : '收件成員已停用';
+    test(name, async () => {
+      const infoLog = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+      let createCalls = 0;
+      let publishCalls = 0;
+      const prisma = makePrisma(async ({ data }) => {
+        createCalls++;
+        // 真實資料庫：刪除的成員會撞 notifications.agentId 外鍵；停用的成員寫得進去
+        if (recipient === 'deleted') throw new Error('Foreign key constraint violated: notifications_agent_id_fkey');
+        return { id: 'notif-1', ...data };
+      }, recipient);
+      const redis = makeRedis(async () => {
+        publishCalls++;
+        return 1;
+      });
+
+      await assert.doesNotReject(handleNotificationJob(job, prisma, redis));
+
+      assert.equal(createCalls, 0);
+      assert.equal(publishCalls, 0);
+      assert.ok(infoLog.mock.calls.some(([msg]) => /a1/.test(String(msg)) && /略過/.test(String(msg))));
+    });
+  }
 });

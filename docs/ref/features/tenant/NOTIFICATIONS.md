@@ -28,6 +28,8 @@
 
 AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理員送一個工作進 `usage-alert-email` queue，工作的 id 是 `<事件 id>__<成員 ID>`，由 API 行程的 `usage-alert-email.worker.ts` 寄出。所以事件重送時不會重寄；寄送失敗時，BullMQ 重試，共 3 次。
 
+**收件成員已被永久刪除或已停用時不寫入。** 每個寫入通知的地方（workers 的通知工作、API 的 `createAndDispatch()`、序號明細背景匯出的通知）寫入前都以 `tenantId` 查收件成員，用的是 `packages/core` 的 `isNotifiableAgent()`。成員不存在或 `isActive` 為 `false` 時，這則通知被略過：不寫入、不推送，寫一行 info log，工作正常完成，不重試。成員重新啟用後，停用期間略過的通知不會補送（issue #484）。
+
 下列來源不經過上面的流程：
 
 - **CSAT 低分**：`csat.service.ts` 的 `recordCsatScore()` 直接呼叫 `createAndDispatch()`，在 API 行程寫入並推送。
@@ -53,6 +55,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 - **未指派對話的每一則訊息都通知全部主管。** 機器人負責的對話也一樣。客人連傳十則，每位看得到該渠道的 `ADMIN` 與 `SUPERVISOR` 各收到十筆通知。
 - **指派對話不會通知。** 通知模組訂閱了 `conversation.assigned`，但 API 行程沒有任何地方發布這個事件，見 `../../system/AUDIT.md` 的 CONV-02。
 - **建立工單時直接指定負責人不會通知。** 只有 `POST /cases/:id/assign` 發布 `case.assigned`，見[工單](./CASES.md#指派)。
+- **負責人已停用時，工單指派與 SLA 預警沒有人收到。** 這兩種通知的收件人是負責人本人，收件人計算不會改發主管；寫入前的檢查略過停用的負責人。對話的新訊息與轉接通知不受影響，負責人停用時改通知主管（#440）。見 `../../system/AUDIT.md` 的 CONV-06。
 - **SLA 的兩個訂閱者不會觸發。** 通知模組也訂閱了 `sla.warning` 與 `sla.breached`，但這兩個事件在 API 行程沒有發布端，SLA 通知實際由 workers 直接送出，見 `../../system/AUDIT.md` 的 APP-05。
 
 ## 讀取與保留

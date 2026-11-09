@@ -5,7 +5,7 @@
  * 產生失敗也發通知（失敗不能只寫 log）。下載只允許匯出者本人與同租戶。
  */
 import { randomBytes } from 'node:crypto';
-import { logger } from '@open333crm/core';
+import { isNotifiableAgent, logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import { exportInstancesCsv, type RunInTenant } from './coupon-stats.service.js';
@@ -44,8 +44,15 @@ export interface BackgroundExportDeps {
   beforeGenerate?: () => Promise<void>;
 }
 
-/** 寫入站內通知，回傳寫入的通知；推播給匯出者由 flow 登記（coupon-export.flow.ts） */
-export function recordExportNotice(ctx: TenantCtx, notice: ExportNotice) {
+/**
+ * 寫入站內通知，回傳寫入的通知；推播給匯出者由 flow 登記（coupon-export.flow.ts）。
+ * 匯出者在產生期間被永久刪除或停用時不寫入，回傳 null（#484）。
+ */
+export async function recordExportNotice(ctx: TenantCtx, notice: ExportNotice) {
+  if (!(await isNotifiableAgent(ctx.tx, ctx.tenantId, notice.agentId))) {
+    logger.info(`[CouponExport] 略過通知 ${notice.type}：匯出者 ${notice.agentId} 已不存在或已停用（tenant ${ctx.tenantId}）`);
+    return null;
+  }
   return ctx.tx.notification.create({
     data: {
       tenantId: ctx.tenantId,

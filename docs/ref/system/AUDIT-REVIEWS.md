@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：站內通知只寫給仍啟用的成員（CONV-06 部分修正）
+
+issue #484，分支 `fix/notify-recipient-check-484`，change `skip-inactive-notification-recipient-484`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CONV-06 的「`case.assigned` 與 SLA 通知不檢查 `isActive`」 | 部分修正，CONV-06 改為部分修正 | 三個寫入點（workers `notification.handler.ts`、`createAndDispatch`、`recordExportNotice`）寫入前呼叫 `packages/core` 的 `isNotifiableAgent()`。workers 單元「收件成員已被永久刪除」「收件成員已停用」修正前失敗在斷言上（沒有拒絕、仍寫入）；feature `notification-recipient.test.ts` 的刪除情境修正前丟 `notifications_agent_id_fkey` 外鍵錯誤，停用、重新啟用不補送與匯出情境失敗在斷言上。mutation：拿掉 `isNotifiableAgent()` 的 `isActive: true`，workers「已停用」與 feature 三項停用情境失敗；拿掉 handler 的檢查，workers 兩項失敗；拿掉 `createAndDispatch` 與 `recordExportNotice` 的檢查，feature 五項失敗。未處理：工單指派與 SLA 預警的負責人停用時不改發主管（現在沒有人收到）、停用不解除指派、指派不驗證負責人 |
+
 ## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
 
 issue #414 後續，分支 `fix/erasure-export-deleted-requester-414`，change `keep-completion-audit-for-purged-requester`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
