@@ -194,7 +194,6 @@
 | [PKG-05](#pkg-05) | 共用套件 | P4 | 部分修正 | `core` 匯出沒有呼叫端的服務；`CaseService` 與 `AutomationEngine` 已刪除（#327） | 靜態確認 |
 | [PKG-06](#pkg-06) | 共用套件 | P4 | 未處理 | `channel-plugins` 有沒有呼叫端的方法、擴充與檔案 | 靜態確認 |
 | [ARCH-01](#arch-01) | 架構規則 | P4 | 未處理 | route 檔直接查詢資料庫 | 靜態確認 |
-| [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 租戶的 Chat 與 Embedding 設定預設使用 Ollama，但組織不部署 Ollama | 靜態確認 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P4 | 未處理 | 兩個 Compose 檔仍有 `ollama` 服務 | 靜態確認 |
 | [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `OLLAMA_*` 環境變數與 Chat 的位址補救已無作用 | 靜態確認 |
@@ -2499,13 +2498,6 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 **主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
 
 ## Storage、LLM 與資料庫
-
-<a id="sto-01"></a>
-### STO-01：Workers 無法連線 MinIO
-
-Workers 的 `MinioStorageProvider` 讀取 `MINIO_*`，但 `.env.workers` 提供 `S3_*`。`STORAGE_PROVIDER` 也沒有程式讀取。Provider 最後採用 `localhost:9000`，在 Workers 容器內會連回自己。
-
-執行時呼叫 `listBuckets()` 已重現 `ECONNREFUSED`。
 
 <a id="llm-01"></a>
 ### LLM-01：AI 設定預設使用 Ollama

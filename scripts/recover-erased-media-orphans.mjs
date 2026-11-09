@@ -20,8 +20,8 @@
  *     清單只是紀錄。每個 key 最多刪一次、不重試，失敗的 key 印出來並以非零結束。
  *   - 需要能略過 RLS 的資料庫連線：優先用 MIGRATE_DATABASE_URL，否則 DATABASE_URL。
  *     連線身分不能略過 RLS 時直接失敗，不會因為看不到資料而回報 0 筆。
- *   - 物件儲存：用 @open333crm/core 的 MinioStorageProvider（讀 MINIO_*）。沒有設定 MINIO_ENDPOINT 時，
- *     從 api 的 S3_ENDPOINT、S3_ACCESS_KEY、S3_SECRET_KEY 換算（AUDIT STO-01）。bucket 是 S3_BUCKET，預設 open333crm。
+ *   - 物件儲存：用 @open333crm/core 的 MinioStorageProvider，連線設定與 api 相同（S3_ENDPOINT、S3_ACCESS_KEY、
+ *     S3_SECRET_KEY；有 MINIO_ENDPOINT 時優先用 MINIO_*，見 core 的 resolveMinioConfig）。bucket 是 S3_BUCKET，預設 open333crm。
  *
  * 用法（在 repo 根目錄，或把 scripts/ 整個資料夾複製到 API 容器的 /app/scripts/ 後在 /app 執行）：
  *   node scripts/recover-erased-media-orphans.mjs [--tenant <id> ...]
@@ -86,25 +86,6 @@ export function parseArgs(argv) {
     throw new Error(`--apply 要帶 --expect-objects（先執行 dry-run 確認要刪的筆數）。物件刪除無法還原。\n${USAGE}`);
   }
   return opts;
-}
-
-/**
- * @description 沒有設定 MINIO_ENDPOINT 時，從 S3_* 換算 MinioStorageProvider 讀的 MINIO_*（AUDIT STO-01）。
- *   已有 MINIO_ENDPOINT 時不動。回傳要補上的變數（不直接改 env，方便測試）。
- * @param {Record<string, string | undefined>} env
- */
-export function minioEnvFromS3(env) {
-  if (env.MINIO_ENDPOINT || !env.S3_ENDPOINT) return {};
-  const url = new URL(env.S3_ENDPOINT);
-  const useSSL = url.protocol === 'https:';
-  const out = {
-    MINIO_ENDPOINT: url.hostname,
-    MINIO_PORT: url.port || (useSSL ? '443' : '80'),
-    MINIO_USE_SSL: useSSL ? 'true' : 'false',
-  };
-  if (env.S3_ACCESS_KEY && !env.MINIO_ACCESS_KEY) out.MINIO_ACCESS_KEY = env.S3_ACCESS_KEY;
-  if (env.S3_SECRET_KEY && !env.MINIO_SECRET_KEY) out.MINIO_SECRET_KEY = env.S3_SECRET_KEY;
-  return out;
 }
 
 /** @description 讀出 SQL 檔，以 `-- @名稱` 切成段落 */
@@ -242,7 +223,6 @@ async function main() {
     console.error('請設定 MIGRATE_DATABASE_URL 或 DATABASE_URL');
     process.exit(1);
   }
-  Object.assign(process.env, minioEnvFromS3(process.env));
   const { PrismaClient } = requireFromApi('@prisma/client');
   const core = await import(pathToFileURL(requireFromApi.resolve('@open333crm/core')).href);
   const prisma = new PrismaClient({ datasourceUrl: url });

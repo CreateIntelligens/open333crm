@@ -54,7 +54,7 @@
 - **完成通知連到不存在的頁面。** 通知的連結是 `/dashboard/settings/data-export/<申請 ID>`，前端沒有這一頁。
 - **`scope` 參數沒有作用。** 申請可以帶 `scope`，系統會存下來，但打包時不讀它，一律匯出聯絡人、對話、訊息與工單。
 - **資料全部讀進記憶體。** 打包時把租戶的聯絡人、對話、訊息與工單各自累積在陣列裡再寫成 JSON，資料量大的租戶可能讓 workers 記憶體不足。
-- **workers 連不上物件儲存時會失敗。** 開發環境的 workers 讀錯環境變數，見 `../../system/AUDIT.md` 的 STO-01。
+- **workers 的物件儲存設定與 api 相同。** workers 讀 `S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY` 與 `S3_BUCKET`（有 `MINIO_ENDPOINT` 時優先用 `MINIO_*`）。兩邊都沒設定時連本機預設的 `localhost:9000`，並寫一次 warn log；容器內這樣會連回自己，上傳與刪除失敗。
 
 ## 資料刪除
 
@@ -104,7 +104,7 @@
 以下指令在 repo 根目錄執行；在 API 容器內，把 `scripts/` 整個資料夾（含 `sql/`）複製到 `/app/scripts/`，在 `/app` 執行。
 
 - 資料庫連線需要能略過 RLS 的身分：優先用 `MIGRATE_DATABASE_URL`（owner），否則用 `DATABASE_URL`。身分不能略過 RLS 時，腳本直接失敗，不會回報 0 筆。
-- 物件儲存用 `@open333crm/core` 的 `MinioStorageProvider`，讀 `MINIO_ENDPOINT`、`MINIO_PORT`、`MINIO_USE_SSL`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`。沒有設定 `MINIO_ENDPOINT` 時，腳本從 api 的 `S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY` 換算（`../../system/AUDIT.md` 的 STO-01）。bucket 是 `S3_BUCKET`，預設 `open333crm`。
+- 物件儲存用 `@open333crm/core` 的 `MinioStorageProvider`，連線設定與 api 相同：`S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`（有 `MINIO_ENDPOINT` 時優先用 `MINIO_*`）。bucket 是 `S3_BUCKET`，預設 `open333crm`。在 API 容器內執行時，這些變數都已設定。
 
 1. **本機演練**：用 `scripts/sync-uat-db.sh` 把 UAT 資料拉回本機，在本機執行預覽（物件儲存是本機的 MinIO，通常沒有對應的檔案，用來確認對話清單與流程）。
 2. **UAT 預覽**（dry-run，預設模式；只讀資料庫與列出物件，不刪除）：

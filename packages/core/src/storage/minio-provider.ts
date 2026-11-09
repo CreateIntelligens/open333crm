@@ -1,18 +1,24 @@
 import * as Minio from 'minio';
 import { StorageProvider } from './index.js';
 import { logger } from '../logger/index.js';
+import { resolveMinioConfig } from './minio-config.js';
+
+/** 兩邊都沒設定時，每個行程只警告一次 */
+let warnedDefault = false;
 
 export class MinioStorageProvider implements StorageProvider {
   private client: Minio.Client;
 
   constructor() {
-    this.client = new Minio.Client({
-      endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-      port: parseInt(process.env.MINIO_PORT || '9000'),
-      useSSL: process.env.MINIO_USE_SSL === 'true',
-      accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-      secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
-    });
+    const { source, ...connection } = resolveMinioConfig();
+    if (source === 'default' && !warnedDefault) {
+      warnedDefault = true;
+      logger.warn(
+        '[storage] 沒有設定 S3_ENDPOINT（或 MINIO_ENDPOINT），MinIO 連線使用本機預設值 localhost:9000 與 minioadmin。' +
+          '容器內會連回自己，請設定與 api 相同的 S3_ENDPOINT、S3_ACCESS_KEY、S3_SECRET_KEY（原 AUDIT STO-01，已修正）',
+      );
+    }
+    this.client = new Minio.Client(connection);
   }
 
   async upload(

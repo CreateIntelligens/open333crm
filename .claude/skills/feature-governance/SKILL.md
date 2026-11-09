@@ -78,7 +78,7 @@ description: >
 ## 常見 bug 從哪裡查
 - 「稽核查不到某個操作」：先對照 `docs/ref/features/health/GOVERNANCE.md` 的盤點表，很多敏感操作本來就沒寫（AUD-01、HC-GOVERNANCE-03、04、09）。有寫的話查該模組的 flow 是否在交易內呼叫 `recordTenantAudit`。
 - 「稽核的操作者是空的」：操作者被永久刪除了，看 `actorSnapshot`（2026-11-09 之前刪除的成員沒有快照）；或是系統排程寫的（`actorSnapshot` 也是 null）。刪除請求排隊中、發起人被永久刪除時，`data.erasure.complete` 的 `actorId` 是空值、快照取自請求的 `requestedByName`／`requestedByEmail`，而且不送通知（change `keep-completion-audit-for-purged-requester`）。
-- 「匯出一直 pending」：workers 有沒有在跑、`data-export` 佇列；容器內 workers 連不上 MinIO 見 STO-01。失敗原因在 `data_export_requests.error`。
+- 「匯出一直 pending」：workers 有沒有在跑、`data-export` 佇列；workers 連不上 MinIO 時看 workers 的 `S3_ENDPOINT`／`S3_ACCESS_KEY`／`S3_SECRET_KEY`（`@open333crm/core` 的 `resolveMinioConfig()`；沒設定時 log 有 `[storage] 沒有設定 S3_ENDPOINT` 的 warn）。失敗原因在 `data_export_requests.error`。
 - 「匯出內容只要聯絡人卻全部都有」：`scope` 沒作用（EXPORT-01）。
 - 「刪除後客人資料還在」：查 ERASE-01 的保留清單、刪除完成之後才併入的聯絡人（`mergedIntoId`）、outbox 與 `webhook_deliveries` 的 payload（HC-GOVERNANCE-08）。
 - 「刪除失敗」：看 `data_erasure_requests.error`；硬刪除失敗多半是新加的 `Restrict` 關聯沒在 `hardDelete()` 先刪。

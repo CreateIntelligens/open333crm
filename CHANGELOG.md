@@ -15,11 +15,19 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **workers 改讀與 api 相同的物件儲存設定，容器內不再連回自己**（AUDIT STO-01，已修正並從 `AUDIT.md` 移除）— `@open333crm/core` 的 `MinioStorageProvider` 原本只讀 `MINIO_*`，但 `.env.workers` 與 UAT 的 workers 只提供 `S3_*`，所以連到 `localhost:9000`：在容器內連回自己，資料匯出的上傳、資料刪除的媒體檔與頭像檔刪除都會失敗（UAT 目前沒有完成的刪除請求）。現在連線設定由新的 `resolveMinioConfig()` 決定：
+  - 有 `MINIO_ENDPOINT` 時沿用 `MINIO_*`（相容舊設定）。
+  - 否則從 `S3_ENDPOINT` 解析主機、port（沒寫時 http 80、https 443）與 SSL，金鑰用 `S3_ACCESS_KEY`、`S3_SECRET_KEY`；格式錯誤時丟出說明的錯誤。
+  - 兩邊都沒設定時維持本機預設值（`localhost:9000`、`minioadmin`），但每個行程寫一次 warn log。
+  - bucket 本來就一致：workers 的匯出與刪除都用 `S3_BUCKET`（預設 `open333crm`），與 api 上傳相同。
+  - 移除沒有程式讀取的 `STORAGE_PROVIDER`（`.env.api.example`、`.env.workers.example`、`apps/api/.env.example`）。
+  - `scripts/recover-erased-media-orphans.mjs` 不再自行換算，直接用 core 的設定。
+
 - **回收 #329 修正前匿名化留下的媒體孤兒檔**（issue #474）— #329 之前，匿名化把進站訊息改成 `{ redacted: true }` 時沒有先讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫找不到。新增一次性腳本 `scripts/recover-erased-media-orphans.mjs`（SQL 在 `scripts/sql/recover-erased-media-orphans.sql`），不需要 migration：
   - 找出已完成匿名化的聯絡人目前的對話，列出 `{tenantId}/media/{conversationId}/` 底下的物件，扣掉同租戶任何訊息仍引用的 key，只刪 uuid 檔名格式的物件；硬刪除的請求只列筆數。
   - 預設只預覽；`--apply` 一定要帶 `--expect-objects`，筆數不同就不刪；刪除前把清單寫成 CSV；每個 key 最多刪一次，失敗時以非零結束。`--tenant` 可以重複。
   - 媒體 key 的格式檢查移到 `@open333crm/core` 的 `isConversationMediaKey()`，資料刪除 worker 與腳本共用；`MinioStorageProvider` 新增 `list()`。
-  - 物件儲存沒有設定 `MINIO_ENDPOINT` 時，腳本從 `S3_*` 換算（STO-01）。
+  - 物件儲存的連線設定與 api 相同（`S3_*`），見下一條 STO-01。
   - 操作手冊見 `docs/ref/features/tenant/GOVERNANCE.md`「回收 #329 前匿名化留下的媒體檔」。各環境尚未執行。
 
 - **匿名化剛好碰上進站媒體下載時，下載完成不再把原文寫回訊息**（issue #475，change `skip-media-write-after-erasure`）— 進站媒體在背景下載，完成後用下載前讀到的內容加上 `storageKey` 覆寫訊息。下載期間對這位客人執行匿名化時，`{ redacted: true }` 會被原文蓋回，剛上傳的媒體檔也留在物件儲存。現在寫回在交易內先以 `FOR SHARE` 鎖住對話，只在訊息內容仍是下載前那份時寫入；內容已改變（匿名化）或訊息已刪除（硬刪除）時不寫入、不推送 `message.new`，並以 `deleteFile()` 刪除剛上傳的物件。下載失敗寫回 `mediaError` 也走同一個條件。寫回會等同一個對話正在進行的刪除交易結束。

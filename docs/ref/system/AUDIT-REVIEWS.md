@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：workers 改讀 S3_* 的物件儲存設定（STO-01）
+
+分支 `fix/erasure-followups-473`。以單元測試驗證，沒有連 UAT。UAT 已確認 workers 容器沒有任何 `MINIO_*`，`S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`、`S3_BUCKET`、`S3_PUBLIC_URL` 都有設定。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| STO-01 | 已修正，從 `AUDIT.md` 移除 | `packages/core/tests/unit/storage/minio-config.test.ts`：只有 `S3_*` 時的解析、https 的 SSL 與預設 port、格式錯誤、provider 建立 client 與警告一次，修正前 4 個失敗在斷言上；`MINIO_*` 優先與兩邊都沒設定的預設值是相容行為，修正前就通過。沒有程式讀取的 `STORAGE_PROVIDER` 從三個 env 範例移除。bucket 本來就一致（`S3_BUCKET`）。部署後要在 UAT 實測 workers 的匯出上傳 |
+
 ## 2026-11-09：匿名化與媒體下載的競態、#329 前的媒體孤兒檔（ERASE-01）
 
 issue #475（change `skip-media-write-after-erasure`）與 #474，分支 `fix/erasure-followups-473`。以本機 feature 測試資料庫、單元測試與假的物件儲存驗證，沒有連 UAT。
