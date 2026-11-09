@@ -11,6 +11,15 @@ All notable changes to **open333CRM** will be documented in this file.
   - 移除一個判斷：假資料庫沒有 `platformSetting` 時，函式把政策當作關閉。這個判斷只為舊的單元測試存在。單元測試改用 `tests/support/ai-privacy.ts` 提供政策。
   - 這一批不改遮罩的時機，呼叫端仍在原本的位置遮罩。各呼叫端的模組搬到 flow 時，再把遮罩移到交易之前。
 
+- **向量化改成交易外呼叫 Ollama，向量化期間文章被修改時不寫入**（#337 階段 4 第五批，change `migrate-embedding-tenant-ctx`）— `embedding` 模組與向量化設定改成入口開交易：交易內讀設定、遮罩政策與文章，交易外遮罩並呼叫 Ollama（新檔 `embedding/embedding-client.ts`），交易內寫入向量。可觀察的差異如下：
+  - 寫入向量前鎖住文章，重組向量化的文字，與向量化之前的文字比對。向量化期間文章的標題、內容等向量化文字被修改，或文章被刪除時，這次的向量不寫入，寫一筆 warn log。只有發布、封存或瀏覽次數改變時照樣寫入。原本文章連改兩次時，舊內容的向量可能蓋掉新內容的向量。
+  - `POST /api/v1/knowledge/:id/embed` 碰到上述情況時回 409 `ARTICLE_CHANGED`，原本回 200 並寫入舊內容的向量。
+  - `embeddingModel` 記下實際產生向量的模型。原本向量化之後才讀設定，設定在這段期間被修改時會記錯。
+  - 讀向量化設定（`GET /api/v1/settings/embedding`、向量化、搜尋、健康檢查）時，沒有設定列就回預設值，不建立設定列。`PUT /api/v1/settings/embedding` 改用 upsert 建立或修改設定列。
+  - `PUT /api/v1/settings/embedding` 的設定與稽核在同一個交易寫入：稽核寫入失敗時，請求失敗、設定不變。原本稽核失敗只記 log，設定照樣寫入。
+  - 兩個健康檢查合成一個 `probeEmbeddingService()`。`GET /api/v1/settings/embedding` 只呼叫一次 Ollama 的 `/api/tags`，原本呼叫兩次。`GET /api/v1/knowledge/embedding-status` 的回應格式不變，`error` 的文字改成與 `POST /api/v1/settings/embedding/health` 相同。
+  - 知識庫自動回覆與建議回覆，每次處理只讀一次向量化設定。原本知識庫自動回覆每則訊息讀 3 次。
+
 - **競猜活動發布前要求至少一個正確答案**（#471，change `fix-portal-quiz-requires-correct-answer`）— 競猜原本可以沒有標任何正確答案就發布，每個人都是 0 分，平均分數與作答列表全是 0。現在 `POST /api/v1/portal/activities/:id/publish` 對沒有正確答案的競猜回 400「競猜活動至少要有一個正確答案」，活動維持草稿。建立與編輯草稿時不檢查，草稿可以先存再補正確答案；投票不受影響。後台活動表單的競猜選項區加上「發布前至少勾選一個正確答案」的說明。開獎不變，仍從全部未中獎的作答隨機抽出，不看分數。
 
 ### Fixed

@@ -2,13 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod/v3";
 import { AppError, success } from "../../shared/utils/response.js";
 import {
-  getEmbeddingSettings,
-  updateEmbeddingSettings,
-  checkOllamaHealth,
-  listOllamaModels,
-  getEmbeddingStats,
-  EMBEDDING_VECTOR_DIM,
-} from "./embedding-settings.service.js";
+  checkEmbeddingHealthFlow,
+  getEmbeddingSettingsPageFlow,
+  updateEmbeddingSettingsFlow,
+} from "./embedding-settings.flow.js";
+import { actorOf } from "../../lib/request-actor.js";
 import {
   getChatSettings,
   updateChatSettings,
@@ -130,52 +128,18 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // ─── Embedding Settings ──────────────────────────────────────────────────
   // GET /api/v1/settings/embedding — settings + Ollama health + models + stats
   fastify.get("/embedding", async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    const settings = await getEmbeddingSettings(request.tenantPrisma, tenantId);
-    const [health, models, stats] = await Promise.all([
-      checkOllamaHealth(settings.baseUrl, settings.model),
-      listOllamaModels(settings.baseUrl),
-      getEmbeddingStats(request.tenantPrisma, tenantId),
-    ]);
-    return reply.send(
-      success({
-        settings,
-        health,
-        models,
-        stats,
-        vectorDim: EMBEDDING_VECTOR_DIM,
-      }),
-    );
+    return reply.send(success(await getEmbeddingSettingsPageFlow(fastify, actorOf(request).tenantId)));
   });
 
   // PUT /api/v1/settings/embedding — update settings (returns modelChanged hint)
   fastify.put("/embedding", async (request, reply) => {
     const patch = embeddingSettingsSchema.parse(request.body);
-    const result = await updateEmbeddingSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      patch,
-    );
-    // 稽核：變更 Embedding 設定（只記變更的欄位名，不放 baseUrl 等值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "embedding", keys: Object.keys(patch) },
-      ip: request.ip,
-    });
-    return reply.send(success(result));
+    return reply.send(success(await updateEmbeddingSettingsFlow(fastify, actorOf(request), patch)));
   });
 
   // POST /api/v1/settings/embedding/health — re-check health on demand
   fastify.post("/embedding/health", async (request, reply) => {
-    const settings = await getEmbeddingSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-    );
-    const health = await checkOllamaHealth(settings.baseUrl, settings.model);
-    return reply.send(success(health));
+    return reply.send(success(await checkEmbeddingHealthFlow(fastify, actorOf(request).tenantId)));
   });
 
   // ─── Chat Settings ───────────────────────────────────────────────────────

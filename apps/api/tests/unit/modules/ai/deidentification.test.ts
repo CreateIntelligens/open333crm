@@ -26,12 +26,18 @@ vi.mock('#src/modules/trial/token-quota.service.js', () => ({ isMonthlyTokenExce
 vi.mock('#src/modules/ai/agent/tool-registry.js', () => ({ getAgentToolDefinitions: () => [], executeAgentTool: mocks.executeTool }));
 
 import { generateReply } from '#src/modules/ai/llm.service.js';
-import { generateEmbedding } from '#src/modules/embedding/embedding.service.js';
+import { readEmbeddingInputs } from '#src/modules/embedding/embedding.service.js';
+import { embedText } from '#src/modules/embedding/embedding-client.js';
 import { runAgentReply } from '#src/modules/ai/agent/agent.service.js';
 import { loadEnvConfig } from '#src/config/env.js';
 
 loadEnvConfig();
 const TENANT = '11111111-1111-4111-8111-111111111111';
+/** 呼叫端的寫法：先讀設定與遮罩政策，再向量化（change migrate-embedding-tenant-ctx，design D5） */
+async function generateEmbedding(prisma: never, tenantId: string, text: string) {
+  const { settings, policy } = await readEmbeddingInputs({ tx: prisma, tenantId });
+  return embedText(settings, policy, text);
+}
 const PHONE = '0912345678';
 const EMAIL = 'qa@example.invalid';
 const sanitize = (text: string) => text.replaceAll(PHONE, '[手機]').replaceAll(EMAIL, '[電子郵件]');

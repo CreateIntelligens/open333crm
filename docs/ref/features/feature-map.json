@@ -640,6 +640,7 @@
         "apps/api/src/modules/ai/agent/*",
         "apps/api/src/modules/settings/chat-settings.service.ts",
         "apps/api/src/modules/settings/embedding-settings.service.ts",
+        "apps/api/src/modules/settings/embedding-settings.flow.ts",
         "apps/api/src/modules/trial/token-quota.service.ts",
         "apps/api/src/modules/trial/usage-alert-emails.ts"
       ],
@@ -716,6 +717,9 @@
         "apps/api/tests/unit/modules/ai/two-md-client-resilience.test.ts",
         "apps/api/tests/unit/modules/ai/usage-quota.test.ts",
         "apps/api/tests/feature/modules/trial/token-quota-alert.test.ts",
+        "apps/api/tests/feature/modules/knowledge/**",
+        "apps/api/tests/feature/modules/embedding/**",
+        "apps/api/tests/feature/modules/settings/embedding-settings.test.ts",
         "apps/web/tests/unit/app/knowledge-feedback-page.test.tsx",
         "apps/web/tests/unit/components/knowledge/**"
       ],
