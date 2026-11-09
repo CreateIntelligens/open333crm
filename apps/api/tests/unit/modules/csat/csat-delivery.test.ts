@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const fb = vi.hoisted(() => ({ delivered: true }));
 
@@ -58,6 +59,7 @@ function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean; t
   const caseUpdates: unknown[] = [];
   const messagesCreated: Array<Record<string, unknown>> = [];
   const db = {
+    ...disabledAiPrivacy,
     case: {
       findUnique: async () => ({
         id: CASE_ID,

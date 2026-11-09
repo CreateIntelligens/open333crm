@@ -14,6 +14,7 @@ import {
   buildMessageNewPayload,
   emitToConversationChannel,
 } from './inbound-socket-presenter.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 const outsideHoursReplyCache = new Map<string, number>();
 const OUTSIDE_HOURS_DEDUP_MS = 30 * 60 * 1000; // 30 minutes
@@ -186,7 +187,7 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
       const lastReply = outsideHoursReplyCache.get(ctx.contactId);
       if (!lastReply || ctx.now.getTime() - lastReply > OUTSIDE_HOURS_DEDUP_MS) {
         outsideHoursReplyCache.set(ctx.contactId, ctx.now.getTime());
-        const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: outsideMsg }, 'tenant_template');
+        const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: outsideMsg }, 'tenant_template');
 
         const autoReply = await ctx.prisma.message.create({
           data: {
@@ -280,7 +281,7 @@ export async function sendFirstContactGreeting(
       logger.warn('[Webhook] First-contact greeting variable render failed, sending raw template', err);
     }
 
-    const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: greeting }, 'tenant_template');
+    const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: greeting }, 'tenant_template');
     const message = await ctx.prisma.message.create({
       data: {
         conversationId: ctx.conversation.id,

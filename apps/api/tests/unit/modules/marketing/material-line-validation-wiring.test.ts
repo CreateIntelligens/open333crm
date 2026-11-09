@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 vi.mock('#src/modules/channel/channel.service.js', () => ({
   decryptCredentials: () => ({ channelAccessToken: 'test-token' }),
@@ -29,6 +30,7 @@ afterEach(() => vi.unstubAllGlobals());
 function fakeDb() {
   const writes: Array<Record<string, unknown>> = [];
   const db = {
+    ...disabledAiPrivacy,
     channel: { findFirst: async () => ({ credentialsEncrypted: 'x' }) },
     material: {
       create: async ({ data }: { data: Record<string, unknown> }) => {

@@ -7,10 +7,11 @@
  */
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({ deliverToChannel: async () => true }));
 vi.mock('#src/modules/ai/deidentification.service.js', () => ({
-  prepareStoredMessageContent: async (_p: unknown, _t: string, content: unknown) => ({ content, metadata: {} }),
+  prepareStoredMessageContent: async (_policy: unknown, content: unknown) => ({ content, metadata: {} }),
 }));
 vi.mock('#src/events/event-bus.js', () => ({ eventBus: { publish: () => {} } }));
 
@@ -33,6 +34,7 @@ test('handoff_request 的 message.new 送到渠道房間與總店房間', async 
     assignedToId: null, unreadCount: 0, lastMessageAt: now, updatedAt: now,
   };
   const prisma = {
+    ...disabledAiPrivacy,
     message: {
       create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'm-1', ...data, createdAt: now }),
     },

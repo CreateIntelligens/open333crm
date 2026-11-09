@@ -16,6 +16,7 @@ import { notFound } from '../../shared/messages/resource.js';
 import { markCaseFirstResponse } from '../case/case.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -356,8 +357,7 @@ export async function sendMessage(
   }) + 1;
   const stored = data.contentType === 'text'
     ? await prepareStoredMessageContent(
-        prisma,
-        tenantId,
+        await readAiPrivacyPolicy(prisma, tenantId),
         data.content,
         data.privacyMode === 'original' ? 'agent_original' : 'agent_default',
       )
@@ -608,7 +608,7 @@ export async function returnConversationToBot(
 
   const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
   const now = new Date();
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system_template');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -698,7 +698,7 @@ export async function handoffConversation(
   // Send handoff system message
   const handoffText = data.handoffMessage || '稍等，正在為您轉接客服人員';
   // 座席自填的轉接訊息維持遮罩；系統預設文案是固定字串，原文送出（避免 2md 誤判一般詞）
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: handoffText }, data.handoffMessage ? 'system' : 'system_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: handoffText }, data.handoffMessage ? 'system' : 'system_template');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,

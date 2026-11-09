@@ -5,12 +5,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createMaterial, restoreMaterialVersion, updateMaterial } from '#src/modules/marketing/material.service.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const T = 'tenant-a';
 
 function fakeDb(existingBody: Record<string, unknown> = { title: '舊標題' }) {
   const writes: Array<Record<string, unknown>> = [];
   const db = {
+    ...disabledAiPrivacy,
     material: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         writes.push(data);

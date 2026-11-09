@@ -11,6 +11,7 @@ import { emitToChannel } from '../../events/socket-push.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, caseTransitionTimestamps, type CaseStatus } from '@open333crm/shared';
 import { fixedSystemMessageContent, prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 /**
  * 客人按下問卷分數後看到的文字：LINE 按鈕的 displayText，以及收件匣顯示的客人訊息（issue #444）。
@@ -119,7 +120,7 @@ export async function sendCsatSurvey(
   }
 
   // Create CSAT system message in conversation
-  const storedCsat = await prepareStoredMessageContent(prisma, caseRecord.tenantId, { text: '滿意度調查', caseId }, 'system_template');
+  const storedCsat = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, caseRecord.tenantId), { text: '滿意度調查', caseId }, 'system_template');
   const csatMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -450,7 +451,7 @@ export async function recordCsatScore(
   const followUp = getFollowUpMessage(score);
 
   if (conversation && conversationId) {
-    const storedFollowUp = await prepareStoredMessageContent(prisma, scope.tenantId, { text: followUp }, 'system_template');
+    const storedFollowUp = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, scope.tenantId), { text: followUp }, 'system_template');
     // Create follow-up message in conversation
     const followUpMsg = await prisma.message.create({
       data: {

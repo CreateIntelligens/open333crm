@@ -5,6 +5,7 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { sendEmail } from '../email/email.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { emitToChannel } from '../../events/socket-push.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 interface SocketTarget {
   emit(event: string, payload: unknown): void;
@@ -105,7 +106,7 @@ export async function handleCanvasSendMessage(
   }
 
   const outboundText = text ?? '';
-  const storedContent = await prepareStoredMessageContent(prisma as never, tenantId, { text: outboundText }, 'tenant_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma as never, tenantId), { text: outboundText }, 'tenant_template');
   const credentials = decryptCredentials(conversation.channel.credentialsEncrypted);
   const sendResult = await plugin.sendMessage(
     identity.uid,

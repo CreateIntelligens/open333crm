@@ -35,7 +35,7 @@ vi.mock('#src/modules/ai/ai.service.js', () => ({
   },
 }));
 vi.mock('#src/modules/ai/deidentification.service.js', () => ({
-  prepareStoredMessageContent: async (_p: unknown, _t: string, content: unknown) => ({ content, metadata: {} }),
+  prepareStoredMessageContent: async (_policy: unknown, content: unknown) => ({ content, metadata: {} }),
 }));
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async (_p: unknown, _c: string, payload: unknown) => {

@@ -13,6 +13,7 @@ import {
   buildMessageNewPayload,
   emitToConversationChannel,
 } from './inbound-socket-presenter.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export async function runInboundPostbackInterceptors(ctx: InboundMessageContext): Promise<boolean> {
   // 點擊貼標：附加語意，不短路（貼完標仍讓該 postback 走後續 CSAT/KB/handoff 與正常訊息流程）。
@@ -139,7 +140,7 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       });
     } else if (ctx.conversation.status === 'BOT_HANDLED') {
       const reason = 'user_requested_handoff';
-      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '使用者主動點按按鈕轉接人工客服' }, 'system_template');
+      const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: '使用者主動點按按鈕轉接人工客服' }, 'system_template');
       const systemMessage = await ctx.prisma.message.create({
         data: {
           conversationId: ctx.conversation.id,

@@ -6,6 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 process.env.DATABASE_URL ||= 'postgresql://user:pass@localhost:5432/open333crm';
 process.env.JWT_SECRET ||= 'test-material-sample-urls-secret';
@@ -38,6 +39,7 @@ afterEach(() => vi.unstubAllGlobals());
 function fakeDb(existing?: Record<string, unknown>) {
   const writes: Array<Record<string, unknown>> = [];
   const db = {
+    ...disabledAiPrivacy,
     channel: { findFirst: async () => ({ credentialsEncrypted: 'x' }) },
     material: {
       findFirst: async () => existing ?? null,

@@ -11,6 +11,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-inbound-dedup-jwt-secre
 import { test } from 'vitest';
 import { eventBus, type AppEvent } from '#src/events/event-bus.js';
 import { processInboundMessage } from '#src/modules/webhook/webhook.service.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const EXISTING = { id: 'message-existing', conversationId: 'conversation-1', channelMsgId: 'm-1', contentType: 'text', content: { text: '在嗎' } };
 
@@ -22,6 +23,7 @@ function setup(message: Record<string, unknown>) {
     status: 'BOT_HANDLED', assignedToId: null, unreadCount: 0, lastMessageAt: null, updatedAt: new Date(),
   };
   const prisma = {
+    ...disabledAiPrivacy,
     // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
     tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: { findUnique: async () => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } }) },
