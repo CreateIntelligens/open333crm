@@ -20,6 +20,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 查詢條件補上 `conversation.tenantId`（多租戶第一層）。`getMessages()` 改收 `TenantCtx`，路由改呼叫 `conversation.flow.ts` 的 `getMessagesFlow`。游標的編碼、解碼與查詢條件移到 `apps/api/src/shared/utils/message-cursor.ts`，聯絡人端點也改用它。
   - 訊息區頂端新增「載入更早的訊息」按鈕。往上載入時，畫面停在原本看的那則訊息。只有最新一則改變時（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出的訊息留在畫面上。
   - 最新訊息或更早的訊息載入失敗時，畫面顯示原因與「重試」。原本只寫 `console.error`，最新一頁失敗時還會顯示「尚無訊息」。
+  - 已載入的更早訊息、游標、錯誤與被擠出訊息的紀錄都以對話為鍵：切換對話後的第一次 render 不會出現上一段對話的訊息；切換前送出的「載入更早的訊息」在切換後才回來時會丟棄，不寫進新對話（PR #491 審查）。
 
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
 - **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：

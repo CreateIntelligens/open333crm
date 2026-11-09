@@ -119,7 +119,7 @@
 
 ## 聊天視窗的訊息
 
-`GET /api/v1/conversations/:id/messages` 依 `createdAt` 再 `id` 由新到舊回傳，查詢限定在這段對話與目前的租戶（`conversation.tenantId`）。聊天視窗先請求 `limit=50&order=desc`。回應 `meta.hasMore` 為 `true` 時，訊息區頂端顯示「載入更早的訊息」；按下以 `before=<meta.nextCursor>` 往前取 50 則（游標與 `GET /contacts/:id/messages` 相同，`apps/api/src/shared/utils/message-cursor.ts`），同一毫秒的多則訊息不重複也不遺漏。往上載入時畫面停在原本那則訊息，只有最新一則改變（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出最新一頁的訊息留在畫面上。最新一頁或更早的訊息載入失敗時，訊息區顯示原因與「重試」，更早的訊息用同一個游標重試（issue #468）。不帶 `before` 時照舊可用 `page`；`before` 搭配 `page` 不是 1 或 `order=asc` 回 400。
+`GET /api/v1/conversations/:id/messages` 依 `createdAt` 再 `id` 由新到舊回傳，查詢限定在這段對話與目前的租戶（`conversation.tenantId`）。聊天視窗先請求 `limit=50&order=desc`。回應 `meta.hasMore` 為 `true` 時，訊息區頂端顯示「載入更早的訊息」；按下以 `before=<meta.nextCursor>` 往前取 50 則（游標與 `GET /contacts/:id/messages` 相同，`apps/api/src/shared/utils/message-cursor.ts`），同一毫秒的多則訊息不重複也不遺漏。往上載入時畫面停在原本那則訊息，只有最新一則改變（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出最新一頁的訊息留在畫面上。最新一頁或更早的訊息載入失敗時，訊息區顯示原因與「重試」，更早的訊息用同一個游標重試（issue #468）。已載入的更早訊息與游標以對話為鍵，切換對話時不會帶到新對話；切換前送出的請求在切換後才回來時丟棄。不帶 `before` 時照舊可用 `page`；`before` 搭配 `page` 不是 1 或 `order=asc` 回 400。
 
 ## 客服回覆怎麼送出
 

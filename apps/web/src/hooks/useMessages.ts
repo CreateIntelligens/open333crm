@@ -43,6 +43,22 @@ function mergeById<T extends MessageLike>(...lists: T[][]): T[] {
   return merged;
 }
 
+interface OlderState {
+  forConversationId: string | null;
+  messages: MessageLike[];
+  /** undefined：還沒載入過更早的頁，游標用最新一頁的 nextCursor；null：已經沒有更早的訊息 */
+  cursor: string | null | undefined;
+  error: string | null;
+  loading: boolean;
+}
+
+const NO_MESSAGES: MessageLike[] = [];
+
+function emptyOlder(forConversationId: string | null): OlderState {
+  // 共用同一個空陣列，下面的 useMemo 不會因此每次重算
+  return { forConversationId, messages: NO_MESSAGES, cursor: undefined, error: null, loading: false };
+}
+
 /**
  * 對話訊息：SWR 抓最新一頁，更早的頁由 loadOlder() 以游標 before 往前取（change fix-chat-window-load-older-468）。
  * 最新一頁因新訊息重新抓取時，被擠出最新一頁的訊息仍留在回傳的訊息裡，已載入範圍不會出現缺口（design D4）。
@@ -50,12 +66,19 @@ function mergeById<T extends MessageLike>(...lists: T[][]): T[] {
 export function useMessages(conversationId: string | null, filters: MessageFilters = {}) {
   const { limit = 50 } = filters;
   const { socket } = useSocket();
-  const [olderMessages, setOlderMessages] = useState<MessageLike[]>([]);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [olderError, setOlderError] = useState<string | null>(null);
-  // undefined：還沒載入過更早的頁，游標用最新一頁的 nextCursor；null：已經沒有更早的訊息
-  const [olderCursor, setOlderCursor] = useState<string | null | undefined>(undefined);
-  const loadingOlderRef = useRef(false);
+  // 更早的頁的狀態以對話為鍵：render 時 forConversationId 與目前對話不同就視為空，
+  // 切換對話後的第一次 render 不會帶出上一段對話的訊息、游標或錯誤（PR #491 審查）
+  const [olderState, setOlderState] = useState<OlderState>(() => emptyOlder(conversationId));
+  const older = olderState.forConversationId === conversationId ? olderState : emptyOlder(conversationId);
+  const olderMessages = older.messages;
+  const olderCursor = older.cursor;
+  const olderError = older.error;
+  const loadingOlder = older.loading;
+  // 正在載入更早訊息的對話；同一段對話一次只發一個請求
+  const loadingOlderRef = useRef<string | null>(null);
+  // 目前顯示的對話，給非同步回應比對用
+  const currentConversationRef = useRef(conversationId);
+  currentConversationRef.current = conversationId;
 
   const params = new URLSearchParams();
   params.set('limit', String(limit));
@@ -76,13 +99,9 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
   const debouncedMutate = useMemo(() => createTrailingThrottle(() => mutateRef.current(), 500), []);
   useEffect(() => () => debouncedMutate.cancel(), [debouncedMutate]);
 
-  // Reset older messages when conversation changes
+  // 切換對話時丟掉上一段對話的更早訊息（render 時已視為空，這裡把狀態本身也清掉）
   useEffect(() => {
-    setOlderMessages([]);
-    setOlderCursor(undefined);
-    setOlderError(null);
-    loadingOlderRef.current = false;
-    setLoadingOlder(false);
+    setOlderState((prev) => (prev.forConversationId === conversationId ? prev : emptyOlder(conversationId)));
   }, [conversationId]);
 
   // Listen for new messages via WebSocket
@@ -105,28 +124,42 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
   const cursor = olderCursor === undefined ? latestMeta?.nextCursor ?? null : olderCursor;
   const hasMore = Boolean(cursor);
 
-  // 以游標往前取一頁；失敗時記下原因，重試用同一個游標。回傳是否取得更早的訊息
+  // 以游標往前取一頁；失敗時記下原因，重試用同一個游標。回傳是否取得更早的訊息。
+  // 回應回來時已經切到別的對話，就丟棄，不寫進新對話
   const loadOlder = useCallback(async (): Promise<boolean> => {
-    if (!conversationId || loadingOlderRef.current || !cursor) return false;
+    const requestConversationId = conversationId;
+    if (!requestConversationId || loadingOlderRef.current === requestConversationId || !cursor) return false;
 
-    loadingOlderRef.current = true;
-    setLoadingOlder(true);
-    setOlderError(null);
+    const isCurrent = () => currentConversationRef.current === requestConversationId;
+    // 只更新仍屬於這次請求那段對話的狀態
+    const update = (fn: (prev: OlderState) => OlderState) =>
+      setOlderState((prev) => (prev.forConversationId === requestConversationId ? fn(prev) : prev));
+
+    loadingOlderRef.current = requestConversationId;
+    setOlderState((prev) => ({
+      ...(prev.forConversationId === requestConversationId ? prev : emptyOlder(requestConversationId)),
+      loading: true,
+      error: null,
+    }));
     try {
       const res = await api.get(
-        `/conversations/${conversationId}/messages?limit=${limit}&order=desc&before=${encodeURIComponent(cursor)}`
+        `/conversations/${requestConversationId}/messages?limit=${limit}&order=desc&before=${encodeURIComponent(cursor)}`
       );
-      const older: MessageLike[] = res.data.data || [];
+      if (!isCurrent()) return false;
+      const page: MessageLike[] = res.data.data || [];
       const meta: MessagePageMeta | undefined = res.data.meta;
-      setOlderMessages((prev) => mergeById(prev, older));
-      setOlderCursor(meta?.nextCursor ?? null);
-      return older.length > 0;
+      update((prev) => ({
+        ...prev,
+        messages: mergeById(prev.messages, page),
+        cursor: meta?.nextCursor ?? null,
+      }));
+      return page.length > 0;
     } catch (err) {
-      setOlderError(getApiErrorMessage(err, '請稍後重試'));
+      if (isCurrent()) update((prev) => ({ ...prev, error: getApiErrorMessage(err, '請稍後重試') }));
       return false;
     } finally {
-      loadingOlderRef.current = false;
-      setLoadingOlder(false);
+      if (loadingOlderRef.current === requestConversationId) loadingOlderRef.current = null;
+      update((prev) => ({ ...prev, loading: false }));
     }
   }, [conversationId, limit, cursor]);
 
@@ -182,7 +215,7 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
   const allMessages = useMemo(
     () => mergeById(latest, olderMessages, [...seenLatest.values()]),
     // seenLatest 只在 latest 改變時增加，不必列為依賴
-    [latest, olderMessages],
+    [latest, olderMessages, conversationId],
   );
 
   return {
