@@ -71,6 +71,8 @@
 
 訊息的媒體檔只刪 `{tenantId}/media/{這位客人的對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，客服回覆的出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。檔案在交易 commit 之後刪，每個最多刪一次、不重試；刪除失敗時申請仍是完成，筆數記在 `affected.mediaObjectsFailed` 與 `affected.avatarObjectsFailed`，失敗的 key 寫進 workers 的 log。
 
+**刪除期間完成的媒體下載不寫回（#475）。** 進站媒體在 API 背景下載，下載完成或失敗後才寫回訊息。寫回在交易內先以 `FOR SHARE` 鎖住對話，只在訊息內容仍是下載前那份時寫入；資料刪除以 `FOR UPDATE` 鎖住對話才讀訊息，兩者互相等待。內容已被匿名化（或訊息已被硬刪除）時不寫入、不推送，並刪除剛上傳的物件（最多一次，失敗寫 api 的 log）。
+
 **兩種模式都有沒涵蓋的資料：**
 
 | 資料 | `anonymize` | `hard_delete` |

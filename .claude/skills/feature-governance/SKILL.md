@@ -52,6 +52,7 @@ description: >
 - 發起匯出／刪除的「請求、稽核、佇列工作」一起成立或一起 rollback；worker 以請求狀態認領（`pending|processing` → `processing`），已結束的請求不重做。改 handler 不要拿掉認領與 `markCompleted` 的列鎖。
 - 刪除的 `payload`、佇列工作不含 `reason`；完成稽核只有 `contactId`、`mode`、`affected`。
 - 刪除只能動目標聯絡人與併入他的封存聯絡人（`lockErasureContacts()` 沿 `mergedIntoId` 逐層往下找，#473）；頭像檔只刪本租戶 `avatars/` 目錄、且這批聯絡人以外沒有其他聯絡人在用的檔案。鎖的順序：聯絡人（依 id 排序，與合併引擎相同）→ 對話 → 讀訊息，不要改。
+- 進站媒體寫回（`apps/api/src/modules/webhook/inbound-side-effects.ts` 的 `resolveInboundMedia()`）在交易內先 `FOR SHARE` 鎖對話，再以「內容仍是下載前那份」條件更新；不成立時刪除剛上傳的物件（#475）。改寫回或改刪除的鎖時兩邊一起看。
 - `revertMerge()` 在被併入方或合併鏈上任何一位有 `completed` 刪除請求時回 409 `CONTACT_ERASED`，檢查前先 `lockContactsForMerge()`。新的解除合併入口一律經過 `revertMerge()`。
 - 訊息媒體檔只刪 `{tenantId}/media/{本次對話}/{uuid}.ext` 格式的 key（`isConversationMediaKey`）；`anonymize` 只刪進站訊息的，出站訊息還在引用的保留。`anonymize` 要在改寫進站訊息**之前**讀出 `storageKey`，改寫之後就找不到了（#329）。物件刪除在 commit 之後、每個最多一次，失敗筆數記在 `affected.mediaObjectsFailed`／`avatarObjectsFailed`，不要只寫 log。
 - **新增掛在 Contact、Conversation、Case 上的資料表時**：決定 `anonymize` 與 `hard_delete` 要不要處理它，`Restrict` 關聯一定要在 `hardDelete()` 刪 Contact 之前顯式刪除，否則硬刪除會失敗。只存 `contactId` 字串、沒有外鍵的表（ClickLog、BroadcastRecipient、KbArticleFeedback、FlowExecution）兩種模式都不處理（ERASE-01）。

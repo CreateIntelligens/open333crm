@@ -15,6 +15,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **匿名化剛好碰上進站媒體下載時，下載完成不再把原文寫回訊息**（issue #475，change `skip-media-write-after-erasure`）— 進站媒體在背景下載，完成後用下載前讀到的內容加上 `storageKey` 覆寫訊息。下載期間對這位客人執行匿名化時，`{ redacted: true }` 會被原文蓋回，剛上傳的媒體檔也留在物件儲存。現在寫回在交易內先以 `FOR SHARE` 鎖住對話，只在訊息內容仍是下載前那份時寫入；內容已改變（匿名化）或訊息已刪除（硬刪除）時不寫入、不推送 `message.new`，並以 `deleteFile()` 刪除剛上傳的物件。下載失敗寫回 `mediaError` 也走同一個條件。寫回會等同一個對話正在進行的刪除交易結束。
+
 - **資料刪除一併處理被合併的封存聯絡人，刪除後不能再解除合併**（issue #473，AUDIT ERASE-01 部分修正，change `erase-merged-contacts`）— 合併聯絡人時，被併入的聯絡人只封存，姓名、電話、email 與頭像都還在；資料刪除只處理請求指定的聯絡人，刪除之後解除合併還會讓被併入的人原樣回到聯絡人清單。現在：
   - `anonymize` 與 `hard_delete` 沿 `mergedIntoId` 逐層找出併入目標的封存聯絡人（含舊版合併留下的多層），套用與目標相同的規則：匿名化清空個人欄位、刪除屬性、渠道身分、`IdentityMap`、長期記憶，改寫進站訊息並刪除媒體檔與頭像檔，聯絡人維持封存；硬刪除連同他們的對話、工單、活動提交、積分紀錄一起刪除。筆數記在 `affected.mergedContacts`，硬刪除的 `affected.contacts` 也包含他們。
   - 頭像檔的「其他聯絡人還在用」改成這次刪除處理的聯絡人以外：合併時主聯絡人沿用被併入那位的頭像，兩位一起刪除時檔案也刪。
