@@ -447,6 +447,26 @@ export async function mergeContacts(ctx: TenantCtx, input: MergeContactsInput): 
   };
 }
 
+/**
+ * 鎖住被合併方與 survivor 的合併鏈，回傳鎖住之後的鏈（解除合併用）。
+ * 鏈要在取得鎖之後重新解析：等鎖期間另一筆合併可能把鏈上的聯絡人再併入新的聯絡人（它鎖住了我們在等的列），
+ * commit 之後鏈多了一位。出現新的聯絡人就鎖住它們再解析，直到鏈不再變動；每批依 lockContactsForMerge 的
+ * id 排序加鎖。鎖住之後，鏈上的聯絡人要再併入別人都得等這個交易結束，鏈不會再變。
+ */
+async function lockHolderChain(ctx: TenantCtx, mergedId: string, survivorId: string): Promise<string[]> {
+  const locked = new Set<string>();
+  let chain = await resolveMergeChain(ctx, survivorId);
+  // 合併鏈最多 20 層（resolveMergeChain），每輪至少多鎖一位
+  for (let round = 0; round < 22; round++) {
+    const pending = [mergedId, ...chain].filter((id) => !locked.has(id));
+    if (pending.length === 0) return chain;
+    await lockContactsForMerge(ctx, pending);
+    for (const id of pending) locked.add(id);
+    chain = await resolveMergeChain(ctx, survivorId);
+  }
+  return chain;
+}
+
 export interface RevertMergeInput {
   mergeLogId: string;
   /** agentId，或顧客自助解除時為 'customer' */
@@ -478,9 +498,8 @@ export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Prom
   if (!log) throw new AppError('找不到此合併紀錄', 'NOT_FOUND', 404);
   if (log.revertedAt) throw new AppError('此合併已經解除過了', 'CONFLICT', 409);
 
-  // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈
-  const holderChain = await resolveMergeChain(ctx, log.survivorId);
-  await lockContactsForMerge(ctx, [log.mergedId, ...holderChain]);
+  // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈，鎖住後再檢查
+  const holderChain = await lockHolderChain(ctx, log.mergedId, log.survivorId);
   if (await findCompletedErasure(ctx, [log.mergedId, ...holderChain])) {
     throw new AppError('這位聯絡人的個資已依資料刪除請求清除，無法解除合併', 'CONTACT_ERASED', 409);
   }

@@ -81,6 +81,10 @@ const purger = await owner.agent.create({
 const channel = await owner.channel.create({
   data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch`, credentialsEncrypted: 'x' },
 });
+// 第三個渠道：合併鏈再往下併一次時用（解除合併等鎖期間的合併）
+const channel3 = await owner.channel.create({
+  data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch3`, credentialsEncrypted: 'x' },
+});
 // 合併的雙方不能在同一個渠道都有身分（SAME_CHANNEL_CONFLICT），被併入的聯絡人放在第二個渠道
 const channel2 = await owner.channel.create({
   data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch2`, credentialsEncrypted: 'x' },
@@ -818,4 +822,41 @@ test('刪除請求還沒完成時可以解除合併', async () => {
   const restored = await owner.contact.findUniqueOrThrow({ where: { id: a.contact.id } });
   assert.equal(restored.isArchived, false);
   assert.equal(restored.displayName, PII.displayName);
+});
+
+test('解除合併等鎖期間保留方又被併入已刪除的聯絡人：取得鎖後重新解析合併鏈，回 409', async () => {
+  // A 併入 B。解除 A→B 時，另一個交易正把 B 併入 C（還沒 commit，鎖住 B），C 已完成資料刪除。
+  // 解除合併在鎖之前讀到的鏈只有 B；等到鎖時 B 已併入 C，要重新解析才看得到 C 的刪除。
+  const { b, merge } = await createMergedChain();
+  const c = await createSubject({ channelId: channel3.id });
+  await createRequest(c.contact.id, 'anonymize').then((r) =>
+    owner.dataErasureRequest.update({ where: { id: r.id }, data: { status: 'completed' } }),
+  );
+
+  let merged!: () => void;
+  const lockHeld = new Promise<void>((resolve) => (merged = resolve));
+  let revertSent!: () => void;
+  const sent = new Promise<void>((resolve) => (revertSent = resolve));
+  const otherMerge = owner.$transaction(
+    async (tx) => {
+      await mergeContacts({ tx, tenantId: A } as never, { survivorId: c.contact.id, mergedId: b.contact.id, source: 'MANUAL' });
+      merged();
+      await sent;
+      await new Promise((r) => setTimeout(r, 300)); // 解除合併此時應在等 B 的鎖
+    },
+    { timeout: 10_000 },
+  );
+
+  await lockHeld;
+  const revert = revertAsAgent(merge.mergeLogId);
+  revertSent();
+  await otherMerge;
+
+  await assert.rejects(revert, (err: { code?: string; statusCode?: number }) => {
+    assert.equal(err.statusCode, 409);
+    assert.equal(err.code, 'CONTACT_ERASED');
+    return true;
+  });
+  const log = await owner.contactMergeLog.findUniqueOrThrow({ where: { id: merge.mergeLogId } });
+  assert.equal(log.revertedAt, null, '合併紀錄維持未解除');
 });
