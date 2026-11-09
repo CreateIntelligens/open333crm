@@ -13,7 +13,7 @@ import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import authPlugin from '#src/plugins/auth.plugin.js';
 import knowledgeRoutes from '#src/modules/knowledge/knowledge.routes.js';
-import type { KnowledgeEffects, UploadFile } from '#src/modules/knowledge/knowledge-effects.js';
+import { createKnowledgeEffects, type KnowledgeEffects, type UploadFile } from '#src/modules/knowledge/knowledge-effects.js';
 
 loadEnvConfig();
 
@@ -79,9 +79,17 @@ export async function createKnowledgeFixture(name: string) {
    * 以指定權限的成員建立只註冊 knowledge 路由的 app。
    * `realAuth` 時改用真實的 auth.plugin，回傳的 `token` 是該成員的 access token
    */
-  async function buildApp(tenantId: string, roleName: string, codes: string[] = ALL_KNOWLEDGE, opts: { realAuth?: boolean } = {}) {
+  async function buildApp(
+    tenantId: string,
+    roleName: string,
+    codes: string[] = ALL_KNOWLEDGE,
+    opts: { realAuth?: boolean; realEffects?: boolean } = {},
+  ) {
     const agent = await makeAgent(tenantId, roleName, codes);
-    const { rec, effects } = recordingEffects();
+    const recording = recordingEffects();
+    const rec = recording.rec;
+    // realEffects：用實際的向量化實作，搭配 tests/support/fake-ollama.ts 換掉向量化服務
+    const effects = opts.realEffects ? createKnowledgeEffects(tenantDb) : recording.effects;
     const app = Fastify();
     await app.register(multipart);
     await app.register(errorHandlerPlugin);

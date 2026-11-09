@@ -74,7 +74,7 @@ vi.mock('#src/modules/settings/chat-settings.service.js', () => ({
 vi.mock('#src/modules/settings/embedding-settings.service.js', () => ({
   getEmbeddingSettings: async () => ({ baseUrl: 'http://embed.test', model: 'bge-m3', topK: 3, threshold: 0.5 }),
 }));
-// 向量檢索是資料庫的 raw query；generateEmbedding 用真的
+// 向量檢索是資料庫的 raw query；向量化（readEmbeddingInputs、embedText）用真的
 vi.mock('#src/modules/embedding/embedding.service.js', async (orig) => ({
   ...(await orig<object>()),
   searchSimilarArticles: async () => calls.searchResults,
