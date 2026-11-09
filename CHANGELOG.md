@@ -24,6 +24,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **收件匣聊天視窗可以載入更早的訊息**（issue #468，健檢 HC-INBOX-07，change `fix-chat-window-load-older-468`）— 聊天視窗原本只載入最近 50 則，長對話看不到前面的內容。
+  - `GET /api/v1/conversations/:id/messages` 新增 `before` 參數：上一頁回傳的 `meta.nextCursor`，與 `GET /contacts/:id/messages` 用同一種游標。訊息依 `createdAt` 再 `id` 排序，同一毫秒的多則訊息不重複也不遺漏。回應 `meta` 加 `hasMore`、`nextCursor`。不帶 `before` 時 `page`／`limit`／`order` 照舊。`before` 搭配 `page` 不是 1 或 `order=asc` 時回 400。
+  - 查詢條件補上 `conversation.tenantId`（多租戶第一層）。`getMessages()` 改收 `TenantCtx`，路由改呼叫 `conversation.flow.ts` 的 `getMessagesFlow`。游標的編碼、解碼與查詢條件移到 `apps/api/src/shared/utils/message-cursor.ts`，聯絡人端點也改用它。
+  - 訊息區頂端新增「載入更早的訊息」按鈕。往上載入時，畫面停在原本看的那則訊息。只有最新一則改變時（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出的訊息留在畫面上。
+  - 最新訊息或更早的訊息載入失敗時，畫面顯示原因與「重試」。原本只寫 `console.error`，最新一頁失敗時還會顯示「尚無訊息」。
+  - 已載入的更早訊息、游標、錯誤與被擠出訊息的紀錄都以對話為鍵：切換對話後的第一次 render 不會出現上一段對話的訊息；切換前送出的「載入更早的訊息」在切換後才回來時會丟棄，不寫進新對話（PR #491 審查）。
+
 - **自動化「更新工單狀態」依工單的狀態轉換規則，時間軸看得到結果**（issue #469，AUDIT AUTO-10、AUTO-12 部分修正，change `fix-automation-case-status-469`）— 規則原本能把「開啟」直接改成「已解決」（客服手動操作會回 422），時間軸沒有紀錄，推播的 `source` 寫成 `sla_worker`，對外 webhook 收不到 `case.resolved`／`case.closed`；用 API、CLI、MCP 也能存 `status: "FOO"` 的規則，觸發時才失敗、只寫 log。現在：
   - workers 的 `update_case_status` 寫入前用 `canTransition()`。不允許的轉換（含不存在的狀態值）不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）。目標狀態等於目前狀態時不改也不寫。
   - 允許的轉換在同一個交易寫 `status_changed`（`actorType: 'automation'`，時間軸顯示規則名稱），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox；推播 `case.updated` 的 `source` 改成 `automation`。

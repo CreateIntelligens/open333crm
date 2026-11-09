@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { encodeMessageCursor, MESSAGE_NEWEST_FIRST, olderThanCursor, parseMessageCursor } from '../../shared/utils/message-cursor.js';
 import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 import { ALL_CHANNELS, channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
@@ -350,17 +351,6 @@ export async function updateContact(
   return updated;
 }
 
-/** 跨渠道訊息的游標：最後一則的時間與 id（同一毫秒有多則時以 id 區分，不重複也不遺漏） */
-function encodeMessageCursor(createdAt: Date, id: string): string {
-  return Buffer.from(`${createdAt.toISOString()}|${id}`).toString('base64url');
-}
-
-function decodeMessageCursor(cursor: string): { createdAt: Date; id: string } | null {
-  const [iso, id] = Buffer.from(cursor, 'base64url').toString().split('|');
-  const createdAt = new Date(iso ?? '');
-  return id && !Number.isNaN(createdAt.getTime()) ? { createdAt, id } : null;
-}
-
 /**
  * 聯絡人在所有可見渠道的訊息，依時間排成一條（change add-email-identity-merge，design D9）。
  * 每頁取最新的 limit 則、以由舊到新回傳；`before` 為上一頁回傳的 nextCursor。
@@ -377,18 +367,15 @@ export async function getContactMessages(
   if (!contact) throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
 
   const channelId = channelIdWhereFilter(accessibleChannels);
-  const cursor = opts.before ? decodeMessageCursor(opts.before) : null;
-  if (opts.before && !cursor) throw new AppError('分頁參數格式錯誤', 'VALIDATION_ERROR', 400);
+  const cursor = parseMessageCursor(opts.before);
 
   const [rows, hiddenConversationCount] = await Promise.all([
     prisma.message.findMany({
       where: {
         conversation: { contactId, tenantId, ...(channelId ? { channelId } : {}) },
-        ...(cursor
-          ? { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] }
-          : {}),
+        ...olderThanCursor(cursor),
       },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: MESSAGE_NEWEST_FIRST,
       take: opts.limit + 1,
       select: {
         id: true,
