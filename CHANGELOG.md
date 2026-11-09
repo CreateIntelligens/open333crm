@@ -15,6 +15,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **資料刪除一併處理被合併的封存聯絡人，刪除後不能再解除合併**（issue #473，AUDIT ERASE-01 部分修正，change `erase-merged-contacts`）— 合併聯絡人時，被併入的聯絡人只封存，姓名、電話、email 與頭像都還在；資料刪除只處理請求指定的聯絡人，刪除之後解除合併還會讓被併入的人原樣回到聯絡人清單。現在：
+  - `anonymize` 與 `hard_delete` 沿 `mergedIntoId` 逐層找出併入目標的封存聯絡人（含舊版合併留下的多層），套用與目標相同的規則：匿名化清空個人欄位、刪除屬性、渠道身分、`IdentityMap`、長期記憶，改寫進站訊息並刪除媒體檔與頭像檔，聯絡人維持封存；硬刪除連同他們的對話、工單、活動提交、積分紀錄一起刪除。筆數記在 `affected.mergedContacts`，硬刪除的 `affected.contacts` 也包含他們。
+  - 頭像檔的「其他聯絡人還在用」改成這次刪除處理的聯絡人以外：合併時主聯絡人沿用被併入那位的頭像，兩位一起刪除時檔案也刪。
+  - 交易內先依 id 排序鎖住目標與封存聯絡人（與合併引擎相同的排序），再鎖對話、讀訊息。
+  - 被併入方或合併鏈上任何一位有 `completed` 的刪除請求時，解除合併（客服與顧客自助）回 409 `CONTACT_ERASED`，不改任何資料。檢查前先鎖住這些聯絡人，與刪除的交易互相等待。刪除還在排隊時可以解除。
+  - 未修：刪除完成之後才併入的聯絡人不處理（合併引擎不檢查保留方是否已刪除）。
+
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
 - **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。

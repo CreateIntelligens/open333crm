@@ -2294,7 +2294,7 @@
       "dependsOn": [
         {
           "domain": "contacts",
-          "why": "資料刪除以聯絡人為單位，處理 Contact、ChannelIdentity、IdentityMap；合併留下的封存聯絡人不處理（ERASE-01），解除合併可讓已刪除的人重新出現"
+          "why": "資料刪除以聯絡人為單位，處理 Contact、ChannelIdentity、IdentityMap，並沿 mergedIntoId 一併處理併入的封存聯絡人；刪除完成後解除合併回 409 CONTACT_ERASED（#473）"
         },
         {
           "domain": "inbox",

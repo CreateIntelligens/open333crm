@@ -65,7 +65,9 @@
 | `anonymize`（預設） | 聯絡人的名稱改成佔位字串，清空頭像、電話與 email；刪除屬性、渠道身分、`IdentityMap` 與長期記憶；把客人傳進來的訊息內容換成 `{ redacted: true }`；刪除這些訊息在物件儲存的媒體檔與頭像檔。對話、工單與客服上傳的媒體檔保留，報表數字不變 |
 | `hard_delete` | 刪除聯絡人本身，以及他的對話、訊息、工單、積分、活動提交，並刪除物件儲存裡的媒體檔與頭像檔 |
 
-兩種模式都刪除這位聯絡人在物件儲存的頭像檔，但同租戶其他聯絡人還在用的檔案保留（合併時主聯絡人會沿用被併入那位的頭像）。workers 要設定與 api 相同的 `S3_PUBLIC_URL`；沒設定或不同時頭像檔不刪，筆數記在申請的 `affected.avatarObjectsSkipped`。
+**被合併的封存聯絡人一起處理（#473）。** 兩種模式沿 `mergedIntoId` 逐層往下，找出併入這位聯絡人的封存聯絡人（含舊版合併留下的多層），套用相同的規則：匿名化清空名稱、電話、email、頭像並刪除子資料，聯絡人維持封存；硬刪除連同他們的資料一起刪除。筆數記在 `affected.mergedContacts`（硬刪除的 `affected.contacts` 也包含他們）。刪除完成之後，這些合併紀錄不能再解除：被併入方或合併鏈上任何一位有 `completed` 的刪除請求時，`POST /contacts/merge-logs/:id/revert` 與顧客自助解除都回 409 `CONTACT_ERASED`。刪除還在排隊（`pending`）時可以解除，解除之後被恢復的聯絡人不在合併鏈上，不會被刪除。
+
+兩種模式都刪除這些聯絡人在物件儲存的頭像檔，但這次刪除處理的聯絡人以外、同租戶其他聯絡人還在用的檔案保留。合併時主聯絡人沿用被併入那位的頭像，兩位一起刪除，所以檔案也會刪。workers 要設定與 api 相同的 `S3_PUBLIC_URL`；沒設定或不同時頭像檔不刪，筆數記在申請的 `affected.avatarObjectsSkipped`。
 
 訊息的媒體檔只刪 `{tenantId}/media/{這位客人的對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，客服回覆的出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。檔案在交易 commit 之後刪，每個最多刪一次、不重試；刪除失敗時申請仍是完成，筆數記在 `affected.mediaObjectsFailed` 與 `affected.avatarObjectsFailed`，失敗的 key 寫進 workers 的 log。
 
@@ -79,9 +81,8 @@
 | 工單標題、描述、備註與 CSAT 留言 | 保留 | 刪除 |
 | 點擊紀錄（`ClickLog`，含 IP、User-Agent、LINE uid） | 保留 | 保留 |
 | 群發收件紀錄、知識庫回報、Canvas 執行紀錄 | 保留 | 保留 |
-| 被合併到這位聯絡人的封存聯絡人（名稱、電話、email、頭像與頭像檔） | 保留 | 保留 |
 
-點擊紀錄、群發收件紀錄、知識庫回報與 Canvas 執行紀錄的資料表只存 `contactId`，沒有外鍵，兩種模式都不處理。合併聯絡人時，被併入的聯絡人只會封存，個人欄位留著；刪除只處理指定的那一位，不會找到這些封存的聯絡人。見 `../../system/AUDIT.md` 的 ERASE-01。
+點擊紀錄、群發收件紀錄、知識庫回報與 Canvas 執行紀錄的資料表只存 `contactId`，沒有外鍵，兩種模式都不處理。刪除完成之後才併入的聯絡人也不處理。見 `../../system/AUDIT.md` 的 ERASE-01。
 
 ## 對外 Webhook
 

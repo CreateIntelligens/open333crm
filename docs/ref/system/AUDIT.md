@@ -168,7 +168,7 @@
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、渠道憑證變更、優惠券與行銷、匯出下載、對外 Webhook 訂閱等操作 | 執行時確認 |
 | [AUD-03](#aud-03) | 渠道、稽核與資料權利 | P1 | 部分修正 | 永久刪除成員時已保存名稱與 email 快照，排隊中的刪除、匯出請求完成時也記下快照（#414）；依 `actorId` 篩選稽核查不到已刪除成員的紀錄 | 執行時確認 |
 | [AUD-04](#aud-04) | 渠道、稽核與資料權利 | P2 | 未處理 | `agent.create` 稽核只記舊的角色列舉，不記實際指派的角色與可見渠道 | 執行時確認 |
-| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留表單答案（客人傳的媒體檔已改為刪除，#329）；被合併的聯絡人的姓名、電話、email、outbox 與 Webhook 送出紀錄兩種模式都保留；刪除後解除合併會讓被併入的人重新出現 | 執行時確認 |
+| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留表單答案（客人傳的媒體檔已改為刪除，#329；被合併的封存聯絡人一併刪除、刪除後不能解除合併，#473）；outbox 與 Webhook 送出紀錄兩種模式都保留 | 執行時確認 |
 | [ERASE-02](#erase-02) | 渠道、稽核與資料權利 | P2 | 未處理 | 資料刪除沒有防誤刪機制：一次 API 呼叫就執行硬刪除，沒有預覽、確認、冷靜期或取消 | 執行時確認 |
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體；打包時間長時，同一個請求可能被兩次執行同時處理 | 靜態確認 |
 | [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 部分修正 | 對外 Webhook 轉送所有內部事件：已有對外事件清單，但第一版等於所有事件；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
@@ -2166,7 +2166,9 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 - `anonymize`（預設）：清空聯絡人的個人欄位，刪除屬性、渠道身分、`IdentityMap` 與長期記憶，把進站訊息的內容換成 `{ redacted: true }`，並刪除進站訊息的媒體檔。
 - `hard_delete`：刪除聯絡人與他的對話、訊息、工單、積分、活動提交與媒體檔。
 
-**部分修正（2026-11-09，#329，change `erase-inbound-media-on-anonymize`）：** `anonymize` 原本在改寫進站訊息前沒有讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫也找不到。現在改寫前讀出、交易 commit 之後刪除，兩種模式只刪 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，刪除失敗的筆數記在 `affected.mediaObjectsFailed`。修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。下表其他列都還沒有修正。
+**部分修正（2026-11-09，#329，change `erase-inbound-media-on-anonymize`）：** `anonymize` 原本在改寫進站訊息前沒有讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫也找不到。現在改寫前讀出、交易 commit 之後刪除，兩種模式只刪 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，刪除失敗的筆數記在 `affected.mediaObjectsFailed`。修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。
+
+**部分修正（2026-11-09，#473，change `erase-merged-contacts`）：** 兩種模式沿 `mergedIntoId` 逐層找出併入目標的封存聯絡人，套用與目標相同的規則（匿名化清空個人欄位、刪除子資料與頭像檔；硬刪除連同資料一起刪除），筆數記在 `affected.mergedContacts`。被併入方或合併鏈上任何一位有完成的刪除請求時，解除合併回 409 `CONTACT_ERASED`。下表其他列都還沒有修正。
 
 沒有涵蓋的資料：
 
@@ -2178,21 +2180,18 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 | 工單標題、描述、備註、CSAT 留言 | 保留 | 刪除 |
 | `ClickLog`（含 IP、User-Agent、LINE uid） | 保留 | 保留 |
 | `BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` | 保留 | 保留 |
-| 被合併到這位聯絡人的封存聯絡人（姓名、電話、email、頭像網址與頭像檔） | 保留 | 保留 |
 | `Outbox.payload`（已送出的列不清除，例如 `case.created` 帶工單標題）、`WebhookDelivery.payload`（事件原文，含訊息內容）（2026-10-30 健檢） | 保留 | 保留 |
 | 刪除前產生、7 天內仍可下載的匯出檔（2026-10-30 健檢） | 保留 | 保留 |
 
 `ClickLog`、`BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` 只存 `contactId` 字串，沒有外鍵，兩種模式都不處理。預設模式保留了表單答案，最可能含個人資料。
 
-最後一列來自聯絡人合併。`contact-merge.service.ts` 合併兩位聯絡人時，被併入的聯絡人只設定 `isArchived` 與 `mergedIntoId`，個人欄位不變。刪除的 handler 只處理請求指定的 `contactId`，不沿 `mergedIntoId` 找被併入的聯絡人。同一位客人在多個渠道各有一位聯絡人、後來合併時，刪除保留下來的那一位，其他渠道留下的姓名、電話與 email 仍在資料庫。封存的聯絡人可以另外以自己的 ID 發起刪除，但後台不列出封存的聯絡人，操作者不容易知道它們存在。
-
-**刪除後仍可解除合併，被刪除的人重新出現（2026-10-30 功能健檢）。** `contact-merge.service.ts` 的解除合併只檢查紀錄與被併入方存在，刪除的 handler 也不處理 `ContactMergeLog`。匿名化主要聯絡人之後，合併紀錄的「解除合併」照樣成功，被併入的封存聯絡人恢復成一般聯絡人，姓名與 email 都在，回到聯絡人清單。硬刪除主要聯絡人之後，解除合併也回 200，被併入的那位同樣恢復。
+被合併的封存聯絡人與刪除後解除合併（2026-10-30 健檢 HC-GOVERNANCE-06）已由 #473 修正，見上方的部分修正說明。刪除完成之後才併入的聯絡人不處理：合併引擎不檢查保留方是否已刪除，之後併入的封存聯絡人保有自己的個人欄位。
 
 `Outbox`、`WebhookDelivery` 與匯出檔三者都沒有保留期限或清除排程（匯出檔除外，7 天）。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-GOVERNANCE-06（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-08（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）。證據：`apps/api/src/modules/contact/contact-merge.service.ts:466-475`、`apps/workers/src/handlers/data-erasure.handler.ts`、`apps/api/src/modules/webhook-subscriptions/webhook-dispatcher.ts:90-96, 195-197`；匿名化 D 之後 `POST /contacts/merge-logs/<log>/revert` 回 200、E 恢復且名稱與 email 原樣；匿名化 A 之後 outbox 仍有帶工單標題的 `case.created`（健檢實測）；WebhookDelivery 為讀程式。
 
-**修正方向**：發起刪除時，一併處理 `mergedIntoId` 指向目標聯絡人的封存聯絡人（逐層往下找），並讓刪除後的合併紀錄不能再解除；清除或遮蔽 outbox 與 Webhook 送出紀錄裡的個人資料。
+**修正方向**：清除或遮蔽 outbox 與 Webhook 送出紀錄裡的個人資料；決定匿名化是否處理表單答案與工單內容。
 
 <a id="erase-02"></a>
 ### ERASE-02：資料刪除沒有防誤刪機制

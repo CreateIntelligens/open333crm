@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：資料刪除一併處理被合併的封存聯絡人（ERASE-01）
+
+issue #473，分支 `fix/erasure-followups-473`，change `erase-merged-contacts`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ERASE-01 的「被合併到這位聯絡人的封存聯絡人」與「刪除後仍可解除合併」（HC-GOVERNANCE-06） | 已修正，ERASE-01 維持部分修正（表單答案、工單內容、`ClickLog` 等、outbox 與 Webhook 送出紀錄、刪除完成之後才併入的聯絡人未處理） | `data-erasure-flow.test.ts`「匿名化一併清除併入的封存聯絡人」「硬刪除一併刪除併入的封存聯絡人」、兩個「合併時沿用的頭像檔一起刪除」、兩個「刪除後不能解除合併」修正前都失敗在斷言上。mutation：只找一層封存聯絡人，兩個「一併…」失敗；不看請求狀態，「刪除請求還沒完成時可以解除合併」失敗；把封存聯絡人的起點改成整個租戶，「匿名化一併清除…」失敗 |
+
 ## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
 
 issue #414 後續，分支 `fix/erasure-export-deleted-requester-414`，change `keep-completion-audit-for-purged-requester`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
