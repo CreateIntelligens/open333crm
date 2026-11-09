@@ -5,7 +5,25 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { resolveInboundMediaAsync } from '#src/modules/webhook/inbound-side-effects.js';
+import { resolveInboundMedia, resolveInboundMediaAsync } from '#src/modules/webhook/inbound-side-effects.js';
+
+/**
+ * 假的 prisma：寫回在交易內以條件更新（#475），條件成立時把寫入的內容交給 onWrite。
+ * matched 為 false 時模擬「訊息在下載期間被改寫」：更新 0 筆。
+ */
+function fakePrisma(onWrite: (content: Record<string, unknown>) => void, matched = true) {
+  const tx = {
+    $queryRaw: async () => [],
+    message: {
+      updateMany: async (args: { data: { content: Record<string, unknown> } }) => {
+        if (!matched) return { count: 0 };
+        onWrite(args.data.content);
+        return { count: 1 };
+      },
+    },
+  };
+  return { $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) };
+}
 
 function run(resolveInboundMedia: () => Promise<unknown>, content: Record<string, unknown>) {
   let resolveUpdate!: (content: Record<string, unknown>) => void;
@@ -19,14 +37,7 @@ function run(resolveInboundMedia: () => Promise<unknown>, content: Record<string
     tenantId: 'tenant-1',
     conversation: { id: 'conv-1' },
     message: { id: 'msg-1', conversationId: 'conv-1', content, createdAt: new Date(0) },
-    prisma: {
-      message: {
-        update: async (args: { data: { content: Record<string, unknown> } }) => {
-          resolveUpdate(args.data.content);
-          return {};
-        },
-      },
-    },
+    prisma: fakePrisma(resolveUpdate),
     io: { to: () => ({ emit: (event: string) => emitted.push(event) }) },
   } as never);
   return { updated, emitted };
@@ -47,14 +58,7 @@ test('Image downloaded on receive / Media URL never expires：mediaUrl 改為儲
     tenantId: 'tenant-1',
     conversation: { id: 'conv-1' },
     message: { id: 'msg-1', conversationId: 'conv-1', content, createdAt: new Date(0) },
-    prisma: {
-      message: {
-        update: async (args: { data: { content: Record<string, unknown> } }) => {
-          resolveUpdate(args.data.content);
-          return {};
-        },
-      },
-    },
+    prisma: fakePrisma(resolveUpdate),
     io: { to: () => ({ emit: () => undefined }) },
   } as never);
 
@@ -87,4 +91,23 @@ test('訊息內容是字串時：包成 { text } 再寫入，不展開成逐字�
     throw new Error('LINE 內容下載失敗（404）');
   }, 'hi' as never);
   assert.deepEqual(await updated, { text: 'hi', mediaError: 'LINE 內容下載失敗（404）' });
+});
+
+test('訊息在下載期間被改寫（條件更新 0 筆）：不推送 message.new', async () => {
+  const content = { text: '[檔案] a.pdf', contentId: 'm3' };
+  const emitted: string[] = [];
+  const writes: unknown[] = [];
+  await resolveInboundMedia({
+    plugin: { resolveInboundMedia: async () => ({ url: 'https://cdn.example.com/a.pdf', storageKey: 'media/a.pdf' }) },
+    content,
+    contentType: 'file',
+    credentials: {},
+    tenantId: 'tenant-1',
+    conversation: { id: 'conv-1' },
+    message: { id: 'msg-1', conversationId: 'conv-1', content, createdAt: new Date(0) },
+    prisma: fakePrisma((c) => writes.push(c), false),
+    io: { to: () => ({ emit: (event: string) => emitted.push(event) }) },
+  } as never);
+  assert.deepEqual(writes, []);
+  assert.deepEqual(emitted, [], '沒有寫入就不推送');
 });

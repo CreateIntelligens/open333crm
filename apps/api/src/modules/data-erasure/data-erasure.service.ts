@@ -79,6 +79,18 @@ export async function preserveRequester(ctx: TenantCtx, input: { agentId: string
 }
 
 /**
+ * 這些聯絡人之中，有已完成（completed）的資料刪除請求時回傳其中一筆，否則回 null。
+ * 解除合併前檢查用（#473）：刪除完成後解除合併會讓被併入的人重新出現。
+ */
+export async function findCompletedErasure(ctx: TenantCtx, contactIds: string[]) {
+  if (contactIds.length === 0) return null;
+  return ctx.tx.dataErasureRequest.findFirst({
+    where: { tenantId: ctx.tenantId, contactId: { in: contactIds }, status: 'completed' },
+    select: { id: true, contactId: true },
+  });
+}
+
+/**
  * 查單筆刪除請求狀態（一律 tenantId scoped）。
  *
  * @returns DataErasureRequest 或 null（不存在/非本租戶）

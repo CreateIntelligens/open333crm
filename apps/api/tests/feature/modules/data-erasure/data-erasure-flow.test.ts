@@ -34,6 +34,10 @@ const { createOutboxPublisher } = await import('#src/events/outbox-publisher.js'
 type EventPublisher = import('#src/events/outbox-publisher.js').EventPublisher;
 const { handleDataErasureJob } = await import('../../../../../workers/src/handlers/data-erasure.handler.js');
 const { purgeAgentFlow } = await import('#src/modules/agent/agent.flow.js');
+const { inTenant } = await import('#src/lib/tenant-ctx.js');
+const { mergeContacts } = await import('#src/modules/contact/contact-merge.service.js');
+const { revertMergeFlow } = await import('#src/modules/contact/contact.flow.js');
+const { ALL_CHANNELS } = await import('#src/services/channel-visibility.js');
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -77,6 +81,14 @@ const purger = await owner.agent.create({
 const channel = await owner.channel.create({
   data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch`, credentialsEncrypted: 'x' },
 });
+// 第三個渠道：合併鏈再往下併一次時用（解除合併等鎖期間的合併）
+const channel3 = await owner.channel.create({
+  data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch3`, credentialsEncrypted: 'x' },
+});
+// 合併的雙方不能在同一個渠道都有身分（SAME_CHANNEL_CONFLICT），被併入的聯絡人放在第二個渠道
+const channel2 = await owner.channel.create({
+  data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch2`, credentialsEncrypted: 'x' },
+});
 const foreignContact = await owner.contact.create({ data: { tenantId: tenantB.id, displayName: `${MARK}-其他租戶` } });
 const tag = await owner.tag.create({ data: { tenantId: A, name: `${MARK}-tag` } });
 const activity = await owner.portalActivity.create({
@@ -89,14 +101,15 @@ const PII = { displayName: '王小明', phone: '0912345678', email: 'ming@exampl
  * 建一位聯絡人，帶齊規格提到的資料：渠道身分、屬性、IdentityMap、長期記憶、標籤、活動提交、積分紀錄、
  * 對話（進站與出站訊息，進站訊息帶媒體檔）與工單。回傳的 storageKey 是這位聯絡人的媒體檔。
  */
-async function createSubject(avatars: { contact?: string; identity?: string } = {}) {
+async function createSubject(avatars: { contact?: string | null; identity?: string; channelId?: string } = {}) {
   seq += 1;
   const uid = `${MARK}-uid-${seq}`;
+  const channelId = avatars.channelId ?? channel.id;
   const contact = await owner.contact.create({
-    data: { tenantId: A, ...PII, ...(avatars.contact ? { avatarUrl: avatars.contact } : {}) },
+    data: { tenantId: A, ...PII, ...(avatars.contact !== undefined ? { avatarUrl: avatars.contact } : {}) },
   });
   await owner.channelIdentity.create({
-    data: { contactId: contact.id, channelId: channel.id, channelType: 'LINE', uid, profilePic: avatars.identity ?? null },
+    data: { contactId: contact.id, channelId, channelType: 'LINE', uid, profilePic: avatars.identity ?? null },
   });
   await owner.contactAttribute.create({ data: { contactId: contact.id, key: 'birthday', value: '1990-01-01' } });
   await owner.identityMap.create({ data: { tenantId: A, contactId: contact.id, channelType: 'LINE', uid, source: 'MANUAL' } });
@@ -107,7 +120,7 @@ async function createSubject(avatars: { contact?: string; identity?: string } = 
   });
   await owner.pointTransaction.create({ data: { tenantId: A, contactId: contact.id, amount: 10, balance: 10, type: 'earn' } });
   const conversation = await owner.conversation.create({
-    data: { tenantId: A, contactId: contact.id, channelId: channel.id, channelType: 'LINE' },
+    data: { tenantId: A, contactId: contact.id, channelId, channelType: 'LINE' },
   });
   // 格式與進站媒體上傳時相同：{tenantId}/media/{conversationId}/{uuid}.{ext}
   const storageKey = mediaKey(A, conversation.id);
@@ -123,7 +136,7 @@ async function createSubject(avatars: { contact?: string; identity?: string } = 
   await owner.message.create({
     data: { conversationId: conversation.id, senderType: 'AGENT', direction: 'OUTBOUND', contentType: 'text', content: { text: '收到' } },
   });
-  const kase = await owner.case.create({ data: { tenantId: A, contactId: contact.id, channelId: channel.id, title: `${MARK}-工單` } });
+  const kase = await owner.case.create({ data: { tenantId: A, contactId: contact.id, channelId, title: `${MARK}-工單` } });
   return { contact, conversation, kase, storageKey };
 }
 
@@ -212,6 +225,7 @@ afterAll(async () => {
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
     await owner.outbox.deleteMany({ where: { tenantId } });
     await owner.dataErasureRequest.deleteMany({ where: { tenantId } });
+    await owner.contactMergeLog.deleteMany({ where: { tenantId } });
     await owner.portalSubmission.deleteMany({ where: { tenantId } });
     await owner.pointTransaction.deleteMany({ where: { tenantId } });
     await owner.case.deleteMany({ where: { tenantId } });
@@ -685,4 +699,164 @@ test('聯絡人已不存在時記錄失敗', async () => {
   const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
   assert.equal(stored.status, 'failed');
   assert.match(stored.error ?? '', /not found/);
+});
+
+// ── 併入的封存聯絡人（#473） ─────────────────────────────────────────────
+
+/** 以正式的合併引擎把 mergedId 併入 survivorId（客服手動合併） */
+const mergeInto = (survivorId: string, mergedId: string) =>
+  inTenant(tenantDb, A, (scope) => mergeContacts(scope, { survivorId, mergedId, source: 'MANUAL', actorAgentId: eraser.id }));
+
+/**
+ * B 是目標聯絡人。A（第二個渠道、帶本租戶的頭像檔）以合併引擎併入 B；C 是舊版合併留下的兩層鏈
+ * （C.mergedIntoId 是 A，新版合併會把它改指 B，所以直接建立），帶頭像檔與屬性。
+ */
+async function createMergedChain() {
+  const b = await createSubject();
+  const aAvatar = storedAvatar(A, 'merged-a');
+  const a = await createSubject({ contact: aAvatar.url, channelId: channel2.id });
+  const merge = await mergeInto(b.contact.id, a.contact.id);
+  const cAvatar = storedAvatar(A, 'merged-c');
+  const c = await owner.contact.create({
+    data: { tenantId: A, ...PII, avatarUrl: cAvatar.url, isArchived: true, mergedIntoId: a.contact.id },
+  });
+  await owner.contactAttribute.create({ data: { contactId: c.id, key: 'birthday', value: '1990-01-01' } });
+  return { b, a, c, merge, aAvatar, cAvatar };
+}
+
+const fakeIo = { to: () => ({ emit: () => true }) } as never;
+const revertAsAgent = (mergeLogId: string) =>
+  revertMergeFlow(
+    { prisma: tenantDb, io: fakeIo },
+    { tenantId: A, agentId: eraser.id, roleId: eraserRole.id, ip: '127.0.0.1' },
+    mergeLogId,
+    ALL_CHANNELS,
+  );
+
+test('匿名化一併清除併入的封存聯絡人', async () => {
+  const { b, a, c, aAvatar, cAvatar } = await createMergedChain();
+  const unrelated = await owner.contact.create({ data: { tenantId: A, ...PII } });
+  const request = await createRequest(b.contact.id, 'anonymize');
+  await runJob(request);
+
+  for (const id of [a.contact.id, c.id]) {
+    const after = await owner.contact.findUniqueOrThrow({ where: { id } });
+    assert.equal(after.displayName, '[已刪除]');
+    assert.equal(after.phone, null);
+    assert.equal(after.email, null);
+    assert.equal(after.avatarUrl, null);
+    assert.equal(after.isArchived, true, '仍封存');
+  }
+  assert.equal(await owner.contactAttribute.count({ where: { contactId: c.id } }), 0, '封存聯絡人的屬性');
+  assert.ok(removedKeys().includes(aAvatar.key), '刪除 A 的頭像檔');
+  assert.ok(removedKeys().includes(cAvatar.key), '刪除 C 的頭像檔');
+  const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stored.status, 'completed', stored.error ?? '');
+  assert.equal((stored.affected as Record<string, number>).mergedContacts, 2);
+  // 匿名化不處理未封存的聯絡人
+  const kept = await owner.contact.findUniqueOrThrow({ where: { id: unrelated.id } });
+  assert.equal(kept.displayName, PII.displayName);
+  assert.equal(kept.email, PII.email);
+});
+
+test('硬刪除一併刪除併入的封存聯絡人', async () => {
+  const { b, a, c, aAvatar } = await createMergedChain();
+  assert.ok(
+    (await owner.pointTransaction.count({ where: { contactId: a.contact.id } })) > 0,
+    '前提：A 有合併時轉出點數的積分紀錄',
+  );
+  const request = await createRequest(b.contact.id, 'hard_delete');
+  await runJob(request);
+
+  const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stored.status, 'completed', stored.error ?? '');
+  for (const id of [b.contact.id, a.contact.id, c.id]) {
+    assert.equal(await owner.contact.findUnique({ where: { id } }), null);
+    assert.equal(await owner.pointTransaction.count({ where: { contactId: id } }), 0);
+  }
+  assert.ok(removedKeys().includes(aAvatar.key), '刪除 A 的頭像檔');
+  const affected = stored.affected as Record<string, number>;
+  assert.equal(affected.mergedContacts, 2);
+  assert.equal(affected.contacts, 3);
+});
+
+for (const mode of ['anonymize', 'hard_delete'] as const) {
+  test(`合併時沿用的頭像檔一起刪除（${mode}）`, async () => {
+    // B 沒有頭像，合併時沿用 A 的頭像網址，兩位共用同一個檔案
+    const avatar = storedAvatar(A, `${mode}-inherited`);
+    const b = await createSubject({ contact: null });
+    const a = await createSubject({ contact: avatar.url, channelId: channel2.id });
+    await mergeInto(b.contact.id, a.contact.id);
+    assert.equal((await owner.contact.findUniqueOrThrow({ where: { id: b.contact.id } })).avatarUrl, avatar.url, '前提：B 沿用 A 的頭像');
+    const request = await createRequest(b.contact.id, mode);
+    await runJob(request);
+
+    assert.ok(removedKeys().includes(avatar.key), '兩位都被刪除，頭像檔也刪');
+    assert.equal((await affectedOf(request.id)).avatarObjectsShared, 0);
+  });
+}
+
+for (const mode of ['anonymize', 'hard_delete'] as const) {
+  test(`刪除後不能解除合併（${mode}）`, async () => {
+    const { b, a, merge } = await createMergedChain();
+    await runJob(await createRequest(b.contact.id, mode));
+
+    await assert.rejects(revertAsAgent(merge.mergeLogId), (err: { code?: string; statusCode?: number }) => {
+      assert.equal(err.statusCode, 409);
+      assert.equal(err.code, 'CONTACT_ERASED');
+      return true;
+    });
+    const log = await owner.contactMergeLog.findUniqueOrThrow({ where: { id: merge.mergeLogId } });
+    assert.equal(log.revertedAt, null, '合併紀錄維持未解除');
+    const restored = await owner.contact.findUnique({ where: { id: a.contact.id } });
+    if (mode === 'anonymize') assert.equal(restored?.isArchived, true, 'A 仍封存');
+    else assert.equal(restored, null);
+  });
+}
+
+test('刪除請求還沒完成時可以解除合併', async () => {
+  const { b, a, merge } = await createMergedChain();
+  await createRequest(b.contact.id, 'anonymize');
+
+  await revertAsAgent(merge.mergeLogId);
+  const restored = await owner.contact.findUniqueOrThrow({ where: { id: a.contact.id } });
+  assert.equal(restored.isArchived, false);
+  assert.equal(restored.displayName, PII.displayName);
+});
+
+test('解除合併等鎖期間保留方又被併入已刪除的聯絡人：取得鎖後重新解析合併鏈，回 409', async () => {
+  // A 併入 B。解除 A→B 時，另一個交易正把 B 併入 C（還沒 commit，鎖住 B），C 已完成資料刪除。
+  // 解除合併在鎖之前讀到的鏈只有 B；等到鎖時 B 已併入 C，要重新解析才看得到 C 的刪除。
+  const { b, merge } = await createMergedChain();
+  const c = await createSubject({ channelId: channel3.id });
+  await createRequest(c.contact.id, 'anonymize').then((r) =>
+    owner.dataErasureRequest.update({ where: { id: r.id }, data: { status: 'completed' } }),
+  );
+
+  let merged!: () => void;
+  const lockHeld = new Promise<void>((resolve) => (merged = resolve));
+  let revertSent!: () => void;
+  const sent = new Promise<void>((resolve) => (revertSent = resolve));
+  const otherMerge = owner.$transaction(
+    async (tx) => {
+      await mergeContacts({ tx, tenantId: A } as never, { survivorId: c.contact.id, mergedId: b.contact.id, source: 'MANUAL' });
+      merged();
+      await sent;
+      await new Promise((r) => setTimeout(r, 300)); // 解除合併此時應在等 B 的鎖
+    },
+    { timeout: 10_000 },
+  );
+
+  await lockHeld;
+  const revert = revertAsAgent(merge.mergeLogId);
+  revertSent();
+  await otherMerge;
+
+  await assert.rejects(revert, (err: { code?: string; statusCode?: number }) => {
+    assert.equal(err.statusCode, 409);
+    assert.equal(err.code, 'CONTACT_ERASED');
+    return true;
+  });
+  const log = await owner.contactMergeLog.findUniqueOrThrow({ where: { id: merge.mergeLogId } });
+  assert.equal(log.revertedAt, null, '合併紀錄維持未解除');
 });

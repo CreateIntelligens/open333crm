@@ -8,14 +8,15 @@
  *  - hard_delete：在 transaction 內先算 affected 計數，再連鎖刪除該聯絡人的所有資料與聯絡人本身，
  *    並刪除對應的 MinIO 媒體附件。
  *
- * 刪除只影響目標 contactId，不波及同租戶其他聯絡人。
+ * 刪除影響目標 contactId 與併入他的封存聯絡人（沿 mergedIntoId 逐層往下，#473），兩者套用相同的規則；
+ * 不波及同租戶其他聯絡人。
  * 刪除的交易內更新 status/affected、寫租戶稽核（payload 只含 contactId/mode/affected 計數，絕不含 PII），
  * commit 之後通知發起者。發起者已被永久刪除時稽核記下請求上的名稱與 email 快照，不送通知。
  */
 import type { Job } from 'bullmq';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
-import { claimOne, logger, MinioStorageProvider } from '@open333crm/core';
+import { claimOne, isConversationMediaKey, logger, MinioStorageProvider } from '@open333crm/core';
 import { enqueueNotification } from '../lib/notification-queue.js';
 import { requesterExists } from '../lib/requester.js';
 
@@ -61,21 +62,6 @@ interface MessageMediaObjects {
   shared: number;
   /** 不是本租戶、本次對話媒體目錄格式的 key，沒刪的檔案數 */
   skipped: number;
-}
-
-/**
- * 是否為本次刪除對話的媒體檔：{tenantId}/media/{conversationId}/{uuid}{.ext}
- * （apps/api storage.service buildStorageKey 的格式；寫法比照 isTenantQuarantineKey）。
- */
-function isConversationMediaKey(key: string, tenantId: string, convIds: Set<string>): boolean {
-  const parts = key.split('/');
-  return (
-    parts.length === 4 &&
-    parts[0] === tenantId &&
-    parts[1] === 'media' &&
-    convIds.has(parts[2]) &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.\w+)?$/.test(parts[3])
-  );
 }
 
 /**
@@ -159,21 +145,61 @@ function collectAvatarKeys(
   return { byKey, skipped };
 }
 
+/** 併入 contactId 的封存聯絡人（沿 mergedIntoId 逐層往下；UNION 去重，資料有環也會結束），不含 contactId 本身 */
+async function findMergedContacts(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    WITH RECURSIVE merged AS (
+      SELECT id FROM contacts
+      WHERE "mergedIntoId" = ${contactId}::uuid AND "tenantId" = ${tenantId}::uuid AND "isArchived" = true
+      UNION
+      SELECT c.id FROM contacts c
+      JOIN merged m ON c."mergedIntoId" = m.id
+      WHERE c."tenantId" = ${tenantId}::uuid AND c."isArchived" = true
+    )
+    SELECT id FROM merged WHERE id <> ${contactId}::uuid`;
+  return rows.map((r) => r.id);
+}
+
+/** 依 id 排序以 FOR UPDATE 鎖住聯絡人列（與合併引擎、lockContactsForMerge 相同的排序，避免死結） */
+async function lockContacts(tx: Prisma.TransactionClient, tenantId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await tx.$queryRaw`
+    SELECT id FROM contacts
+    WHERE id = ANY(${[...new Set(ids)].sort()}::uuid[]) AND "tenantId" = ${tenantId}::uuid
+    ORDER BY id
+    FOR UPDATE`;
+}
+
 /**
- * 交易內讀出聯絡人與渠道身分的頭像檔（刪除前讀，刪除後就找不到了）。
- * 以 FOR UPDATE 鎖住這幾筆：背景補存頭像（apps/api inbound-avatar-refresh）正要寫回時，
- * 刪除會等它寫完、讀到新的檔案；刪除先鎖住時，補存寫回找不到身分，會自己刪掉剛上傳的檔案。
- * 同租戶其他聯絡人或渠道身分還在用的檔案保留：合併時主聯絡人會沿用被併入那位的頭像網址。
+ * 交易內找出這次刪除處理的聯絡人並鎖住：目標聯絡人與併入他的封存聯絡人（#473）。回傳 [目標, ...封存聯絡人]。
+ * 先讀出封存聯絡人，與目標一起依 id 排序鎖住；鎖住之後再讀一次（READ COMMITTED 新的語句快照），
+ * 讀的期間剛 commit 的合併帶來的封存聯絡人也鎖住，已解除合併而不再屬於這條鏈的不處理。
+ * 之後的合併與解除合併都要先鎖目標或這些聯絡人，會等這個交易結束。
  */
-async function readAvatarObjects(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<AvatarObjects> {
+async function lockErasureContacts(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<string[]> {
+  const before = await findMergedContacts(tx, tenantId, contactId);
+  await lockContacts(tx, tenantId, [contactId, ...before]);
+  const merged = await findMergedContacts(tx, tenantId, contactId);
+  await lockContacts(tx, tenantId, merged.filter((id) => !before.includes(id)));
+  return [contactId, ...merged];
+}
+
+/**
+ * 交易內讀出這批聯絡人與渠道身分的頭像檔（刪除前讀，刪除後就找不到了）。呼叫前聯絡人列已由 lockErasureContacts 鎖住。
+ * 以 FOR UPDATE 鎖住渠道身分：背景補存頭像（apps/api inbound-avatar-refresh）正要寫回時，
+ * 刪除會等它寫完、讀到新的檔案；刪除先鎖住時，補存寫回找不到身分，會自己刪掉剛上傳的檔案。
+ * 這批聯絡人以外，同租戶其他聯絡人或渠道身分還在用的檔案保留。合併時主聯絡人會沿用被併入那位的頭像網址，
+ * 被併入那位也在這批裡，所以一起刪除。
+ */
+async function readAvatarObjects(tx: Prisma.TransactionClient, tenantId: string, contactIds: string[]): Promise<AvatarObjects> {
   const contacts = await tx.$queryRaw<{ avatarUrl: string | null }[]>`
     SELECT "avatarUrl" FROM contacts
-    WHERE id = ${contactId}::uuid AND "tenantId" = ${tenantId}::uuid
+    WHERE id = ANY(${contactIds}::uuid[]) AND "tenantId" = ${tenantId}::uuid
     FOR UPDATE`;
   const identities = await tx.$queryRaw<{ profilePic: string | null }[]>`
     SELECT ci."profilePic" FROM channel_identities ci
     JOIN contacts c ON c.id = ci."contactId"
-    WHERE ci."contactId" = ${contactId}::uuid AND c."tenantId" = ${tenantId}::uuid
+    WHERE ci."contactId" = ANY(${contactIds}::uuid[]) AND c."tenantId" = ${tenantId}::uuid
     FOR UPDATE OF ci`;
   const { byKey, skipped } = collectAvatarKeys(tenantId, [
     ...contacts.map((c) => c.avatarUrl),
@@ -184,11 +210,11 @@ async function readAvatarObjects(tx: Prisma.TransactionClient, tenantId: string,
   const urls = [...byKey.values()];
   const [otherContacts, otherIdentities] = await Promise.all([
     tx.contact.findMany({
-      where: { tenantId, id: { not: contactId }, avatarUrl: { in: urls } },
+      where: { tenantId, id: { notIn: contactIds }, avatarUrl: { in: urls } },
       select: { avatarUrl: true },
     }),
     tx.channelIdentity.findMany({
-      where: { contactId: { not: contactId }, contact: { tenantId }, profilePic: { in: urls } },
+      where: { contactId: { notIn: contactIds }, contact: { tenantId }, profilePic: { in: urls } },
       select: { profilePic: true },
     }),
   ]);
@@ -198,17 +224,18 @@ async function readAvatarObjects(tx: Prisma.TransactionClient, tenantId: string,
 }
 
 /**
- * 交易內鎖住這位聯絡人的對話並回傳 id（呼叫前聯絡人列必須已由 readAvatarObjects 以 FOR UPDATE 鎖住）。
+ * 交易內鎖住這批聯絡人的對話並回傳 id（呼叫前聯絡人列必須已由 lockErasureContacts 以 FOR UPDATE 鎖住）。
  * 鎖的順序：聯絡人 → 對話 → 讀訊息。
  *  - 聯絡人已鎖：插入新對話時外鍵檢查要對聯絡人取 FOR KEY SHARE，會等這個交易結束，不會有漏掉的新對話。
  *  - 對話 FOR UPDATE：插入訊息時外鍵檢查要對對話取 FOR KEY SHARE。已在進行、還沒 commit 的插入，
  *    這裡會等它 commit；之後才開始的插入會等這個交易結束。
  *  - 之後讀訊息是新的語句快照（READ COMMITTED），看得到剛 commit 的進站訊息，媒體 key 不會漏收。
  */
-async function lockContactConversations(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<string[]> {
+async function lockContactConversations(tx: Prisma.TransactionClient, tenantId: string, contactIds: string[]): Promise<string[]> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT id FROM conversations
-    WHERE "contactId" = ${contactId}::uuid AND "tenantId" = ${tenantId}::uuid
+    WHERE "contactId" = ANY(${contactIds}::uuid[]) AND "tenantId" = ${tenantId}::uuid
+    ORDER BY id
     FOR UPDATE`;
   return rows.map((r) => r.id);
 }
@@ -432,8 +459,8 @@ async function recordCompletion(
 }
 
 /**
- * 匿名化：抹去 PII 但保留統計骨架。
- *  - Contact：displayName→佔位、avatarUrl/phone/email→null
+ * 匿名化：抹去 PII 但保留統計骨架。目標聯絡人與併入他的封存聯絡人套用相同的規則（#473）。
+ *  - Contact：displayName→佔位、avatarUrl/phone/email→null（封存聯絡人維持封存）
  *  - 刪 ContactAttribute / ChannelIdentity / IdentityMap / LongTermMemory（可識別子資料）
  *  - inbound 訊息 content 改為 redacted 佔位（保留 Conversation/Case/Message 骨架不刪）；
  *    改寫前先讀出 storageKey，否則資料庫再也找不到這些媒體檔（#329）
@@ -450,28 +477,33 @@ async function anonymize(
   let media: MessageMediaObjects = { keys: [], shared: 0, skipped: 0 };
   const committed = await prisma.$transaction(async (tx) => {
     await markCompleted(tx, request);
-    avatars = await readAvatarObjects(tx, tenantId, contactId);
+    // 鎖的順序：聯絡人（目標與封存聯絡人）→ 對話 → 讀訊息
+    const contactIds = await lockErasureContacts(tx, tenantId, contactId);
+    const mergedIds = contactIds.slice(1);
+    const ofContacts = { in: contactIds };
+    avatars = await readAvatarObjects(tx, tenantId, contactIds);
 
     // 抹 Contact PII
-    await tx.contact.update({
-      where: { id: contactId },
-      data: {
-        displayName: REDACTED,
-        avatarUrl: null,
-        phone: null,
-        email: null,
-      },
-    });
+    const redactedFields = {
+      displayName: REDACTED,
+      avatarUrl: null,
+      phone: null,
+      email: null,
+    };
+    await tx.contact.update({ where: { id: contactId }, data: redactedFields });
+    if (mergedIds.length > 0) {
+      await tx.contact.updateMany({ where: { id: { in: mergedIds }, tenantId }, data: redactedFields });
+    }
 
-    // 刪可識別的子資料（都只綁在此 contactId）
-    const attrs = await tx.contactAttribute.deleteMany({ where: { contactId } });
-    const identities = await tx.channelIdentity.deleteMany({ where: { contactId } });
-    const identityMaps = await tx.identityMap.deleteMany({ where: { contactId, tenantId } });
-    const memories = await tx.longTermMemory.deleteMany({ where: { contactId } });
+    // 刪可識別的子資料（只綁在這批聯絡人）
+    const attrs = await tx.contactAttribute.deleteMany({ where: { contactId: ofContacts } });
+    const identities = await tx.channelIdentity.deleteMany({ where: { contactId: ofContacts } });
+    const identityMaps = await tx.identityMap.deleteMany({ where: { contactId: ofContacts, tenantId } });
+    const memories = await tx.longTermMemory.deleteMany({ where: { contactId: ofContacts } });
 
-    // 抹 inbound 訊息內容（只此聯絡人所屬對話的入站訊息；保留骨架）。
+    // 抹 inbound 訊息內容（只這批聯絡人所屬對話的入站訊息；保留骨架）。
     // 先鎖對話，等並行寫入的進站訊息 commit，再讀訊息與改寫（見 lockContactConversations）
-    const convIds = await lockContactConversations(tx, tenantId, contactId);
+    const convIds = await lockContactConversations(tx, tenantId, contactIds);
     let messagesRedacted = 0;
     if (convIds.length > 0) {
       // 改寫內容前讀出媒體檔：進站訊息的要刪，保留下來的出站訊息還在引用的不刪
@@ -493,6 +525,7 @@ async function anonymize(
     }
 
     const counts = {
+      mergedContacts: mergedIds.length,
       contactAttributes: attrs.count,
       channelIdentities: identities.count,
       identityMaps: identityMaps.count,
@@ -515,10 +548,10 @@ async function anonymize(
 }
 
 /**
- * 硬刪：連鎖刪除該聯絡人的所有資料 + 聯絡人本身，並刪 MinIO 媒體附件。
+ * 硬刪：連鎖刪除該聯絡人與併入他的封存聯絡人（#473）的所有資料 + 這些聯絡人本身，並刪 MinIO 媒體附件。
  *
  * 刪除順序（因部分關聯為 Restrict，需在刪 Contact 前顯式刪）：
- *   1. 收集訊息 storageKey（只留本租戶這些對話的 media 目錄）與頭像檔 key（供刪 MinIO）
+ *   1. 鎖住目標與封存聯絡人，收集訊息 storageKey（只留本租戶這些對話的 media 目錄）與頭像檔 key（供刪 MinIO）
  *   2. 刪 Conversation（Cascade 帶走 Message / ConversationTag / ChatboxSession）
  *   3. 刪 Case（Conversation 已刪，caseId Restrict 已解除；Cascade 帶走 CaseEvent/CaseNote/CaseTag/CaseRelation）
  *   4. 刪 PortalSubmission / PointTransaction（Restrict，需顯式刪）
@@ -537,9 +570,12 @@ async function hardDelete(
   let avatars: AvatarObjects = { keys: [], shared: 0, skipped: 0 };
   const committed = await prisma.$transaction(async (tx) => {
     await markCompleted(tx, request);
-    // 鎖的順序：聯絡人（readAvatarObjects）→ 對話 → 讀訊息，並行寫入的進站訊息也會收到（見 lockContactConversations）
-    avatars = await readAvatarObjects(tx, tenantId, contactId);
-    const convIds = await lockContactConversations(tx, tenantId, contactId);
+    // 鎖的順序：聯絡人（目標與封存聯絡人）→ 對話 → 讀訊息，並行寫入的進站訊息也會收到（見 lockContactConversations）
+    const contactIds = await lockErasureContacts(tx, tenantId, contactId);
+    const mergedIds = contactIds.slice(1);
+    const ofContacts = { in: contactIds };
+    avatars = await readAvatarObjects(tx, tenantId, contactIds);
+    const convIds = await lockContactConversations(tx, tenantId, contactIds);
     const mediaMessages =
       convIds.length > 0
         ? await tx.message.findMany({
@@ -564,23 +600,26 @@ async function hardDelete(
       convIds.length > 0
         ? tx.message.count({ where: { conversationId: { in: convIds } } })
         : Promise.resolve(0),
-      tx.case.count({ where: { contactId, tenantId } }),
-      tx.contactAttribute.count({ where: { contactId } }),
-      tx.channelIdentity.count({ where: { contactId } }),
-      tx.identityMap.count({ where: { contactId, tenantId } }),
-      tx.longTermMemory.count({ where: { contactId } }),
-      tx.portalSubmission.count({ where: { contactId, tenantId } }),
-      tx.pointTransaction.count({ where: { contactId, tenantId } }),
+      tx.case.count({ where: { contactId: ofContacts, tenantId } }),
+      tx.contactAttribute.count({ where: { contactId: ofContacts } }),
+      tx.channelIdentity.count({ where: { contactId: ofContacts } }),
+      tx.identityMap.count({ where: { contactId: ofContacts, tenantId } }),
+      tx.longTermMemory.count({ where: { contactId: ofContacts } }),
+      tx.portalSubmission.count({ where: { contactId: ofContacts, tenantId } }),
+      tx.pointTransaction.count({ where: { contactId: ofContacts, tenantId } }),
     ]);
 
     // 2. 刪 Conversation（Cascade：Message / ConversationTag / ChatboxSession）
-    const convDel = await tx.conversation.deleteMany({ where: { contactId, tenantId } });
+    const convDel = await tx.conversation.deleteMany({ where: { contactId: ofContacts, tenantId } });
     // 3. 刪 Case（Cascade：CaseEvent / CaseNote / CaseTag / CaseRelation）
-    const caseDel = await tx.case.deleteMany({ where: { contactId, tenantId } });
-    // 4. Restrict 關聯需顯式刪
-    await tx.portalSubmission.deleteMany({ where: { contactId, tenantId } });
-    await tx.pointTransaction.deleteMany({ where: { contactId, tenantId } });
+    const caseDel = await tx.case.deleteMany({ where: { contactId: ofContacts, tenantId } });
+    // 4. Restrict 關聯需顯式刪（封存聯絡人有合併時轉出點數的積分紀錄）
+    await tx.portalSubmission.deleteMany({ where: { contactId: ofContacts, tenantId } });
+    await tx.pointTransaction.deleteMany({ where: { contactId: ofContacts, tenantId } });
     // 5. 刪 Contact（Cascade 帶走 ContactAttribute/ChannelIdentity/IdentityMap/LongTermMemory/ContactTag/ContactRelation）
+    if (mergedIds.length > 0) {
+      await tx.contact.deleteMany({ where: { id: { in: mergedIds }, tenantId } });
+    }
     await tx.contact.delete({ where: { id: contactId } });
 
     const counts = {
@@ -593,7 +632,8 @@ async function hardDelete(
       longTermMemories: memoryCount,
       portalSubmissions: portalSubmissionCount,
       pointTransactions: pointTxCount,
-      contacts: 1,
+      contacts: 1 + mergedIds.length,
+      mergedContacts: mergedIds.length,
       mediaObjects: media.keys.length,
       mediaObjectsSkipped: media.skipped,
       mediaObjectsFailed: 0,

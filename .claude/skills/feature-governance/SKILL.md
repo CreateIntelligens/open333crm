@@ -51,7 +51,10 @@ description: >
 - 搬到 `TenantCtx` 的模組在**同一個交易**內呼叫 `recordTenantAudit()`；`writeTenantAudit()` 不能在交易內呼叫（接住錯誤後交易已失效）。
 - 發起匯出／刪除的「請求、稽核、佇列工作」一起成立或一起 rollback；worker 以請求狀態認領（`pending|processing` → `processing`），已結束的請求不重做。改 handler 不要拿掉認領與 `markCompleted` 的列鎖。
 - 刪除的 `payload`、佇列工作不含 `reason`；完成稽核只有 `contactId`、`mode`、`affected`。
-- 刪除只能動目標聯絡人；頭像檔只刪本租戶 `avatars/` 目錄、且沒有其他聯絡人在用的檔案。
+- 刪除只能動目標聯絡人與併入他的封存聯絡人（`lockErasureContacts()` 沿 `mergedIntoId` 逐層往下找，#473）；頭像檔只刪本租戶 `avatars/` 目錄、且這批聯絡人以外沒有其他聯絡人在用的檔案。鎖的順序：聯絡人（依 id 排序，與合併引擎相同）→ 對話 → 讀訊息，不要改。
+- 訊息媒體檔 key 的格式檢查是 `@open333crm/core` 的 `isConversationMediaKey()`，worker 與回收腳本 `scripts/recover-erased-media-orphans.mjs`（#474）共用，不要各寫一份。
+- 進站媒體寫回（`apps/api/src/modules/webhook/inbound-side-effects.ts` 的 `resolveInboundMedia()`）在交易內先 `FOR SHARE` 鎖對話，再以「內容仍是下載前那份」條件更新；不成立時刪除剛上傳的物件（#475）。改寫回或改刪除的鎖時兩邊一起看。
+- `revertMerge()` 在被併入方或合併鏈上任何一位有 `completed` 刪除請求時回 409 `CONTACT_ERASED`，檢查前先 `lockContactsForMerge()`。新的解除合併入口一律經過 `revertMerge()`。
 - 訊息媒體檔只刪 `{tenantId}/media/{本次對話}/{uuid}.ext` 格式的 key（`isConversationMediaKey`）；`anonymize` 只刪進站訊息的，出站訊息還在引用的保留。`anonymize` 要在改寫進站訊息**之前**讀出 `storageKey`，改寫之後就找不到了（#329）。物件刪除在 commit 之後、每個最多一次，失敗筆數記在 `affected.mediaObjectsFailed`／`avatarObjectsFailed`，不要只寫 log。
 - **新增掛在 Contact、Conversation、Case 上的資料表時**：決定 `anonymize` 與 `hard_delete` 要不要處理它，`Restrict` 關聯一定要在 `hardDelete()` 刪 Contact 之前顯式刪除，否則硬刪除會失敗。只存 `contactId` 字串、沒有外鍵的表（ClickLog、BroadcastRecipient、KbArticleFeedback、FlowExecution）兩種模式都不處理（ERASE-01）。
 - `TenantAuditLog.actor`、`DataExportRequest.requester`、`DataErasureRequest.requester` 是 `onDelete: SetNull`。`purgeAgent()` 在刪除成員之前、同一個交易內呼叫 `preserveAuditActor()` 與兩個 `preserveRequester()`，把名稱與 email 存進 `actorName`／`actorEmail`、`requestedByName`／`requestedByEmail`（#414）。新增以 SetNull 參照 `agents`、又需要問責的表時，也要在 `purgeAgent` 加快照。請求快照要在稽核快照之前寫（資料刪除 worker 先鎖請求列再寫完成稽核）。背景工作用工作內容裡的成員 ID 寫稽核或送通知前，先以 `requesterExists()`（`apps/workers/src/lib/requester.ts`，底層是 `packages/core` 的 `agentExistsInTenant()`）確認成員還在。通知本身另由 `notification:dispatch` 的 `createNotificationForActiveAgent()` 擋掉已停用或已刪除的成員（#484）。`GET /tenant/audit-logs` 的 `actor` 格式不能改，快照放在 `actorSnapshot`。
@@ -67,7 +70,7 @@ description: >
 1. 用有 `audit.view` 的帳號查 `GET /tenant/audit-logs`，確認你新增或改動的操作有寫一筆，`payload` 不含個資，`ip` 有值。
 2. 發起匯出 → 等 `completed` → 下載 zip，檢查 manifest.json 筆數與 CSV 內容（以 `=` 開頭的名稱前面有 `'`、日期是 ISO 字串；`toCsv()` 共用 `@open333crm/shared` 的 `csvRow()`，#423）。
 3. 對自建的測試聯絡人（名稱加前綴）各跑一次 `anonymize` 與 `hard_delete`，用 psql 確認 `affected` 與實際刪除一致，其他聯絡人不受影響。**UAT 不做匯出與刪除。**
-4. 合併兩位測試聯絡人 → 刪除主要聯絡人 → 檢查被併入的封存聯絡人與合併紀錄（ERASE-01、HC-GOVERNANCE-06）。
+4. 合併兩位測試聯絡人 → 刪除主要聯絡人 → 確認被併入的封存聯絡人也被匿名化或刪除、`affected.mergedContacts` 有筆數，解除合併回 409 `CONTACT_ERASED`（#473）。
 5. 沒有 `audit.view`／`data.export`／`data.erase`／`webhook.manage` 的角色各打一次，確認 403 的 `requiredPermission`；另用有 `data.export`、沒有 `channel.view_all` 的角色打匯出，確認 `requiredPermission` 是 `channel.view_all`。
 - 自動測試：`pnpm --filter @open333crm/api test -- tenant-audit data-export data-erasure webhook-subscription webhook-dispatcher`；`pnpm --filter @open333crm/workers test -- data-erasure data-export`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/tenant-audit modules/data-export modules/data-erasure modules/webhook-subscriptions`。
 - E2E：沒有。
@@ -75,8 +78,8 @@ description: >
 ## 常見 bug 從哪裡查
 - 「稽核查不到某個操作」：先對照 `docs/ref/features/health/GOVERNANCE.md` 的盤點表，很多敏感操作本來就沒寫（AUD-01、HC-GOVERNANCE-03、04、09）。有寫的話查該模組的 flow 是否在交易內呼叫 `recordTenantAudit`。
 - 「稽核的操作者是空的」：操作者被永久刪除了，看 `actorSnapshot`（2026-11-09 之前刪除的成員沒有快照）；或是系統排程寫的（`actorSnapshot` 也是 null）。刪除請求排隊中、發起人被永久刪除時，`data.erasure.complete` 的 `actorId` 是空值、快照取自請求的 `requestedByName`／`requestedByEmail`，而且不送通知（change `keep-completion-audit-for-purged-requester`）。
-- 「匯出一直 pending」：workers 有沒有在跑、`data-export` 佇列；容器內 workers 連不上 MinIO 見 STO-01。失敗原因在 `data_export_requests.error`。
+- 「匯出一直 pending」：workers 有沒有在跑、`data-export` 佇列；workers 連不上 MinIO 時看 workers 的 `S3_ENDPOINT`／`S3_ACCESS_KEY`／`S3_SECRET_KEY`（`@open333crm/core` 的 `resolveMinioConfig()`；沒設定時 log 有 `[storage] 沒有設定 S3_ENDPOINT` 的 warn）。失敗原因在 `data_export_requests.error`。
 - 「匯出內容只要聯絡人卻全部都有」：`scope` 沒作用（EXPORT-01）。
-- 「刪除後客人資料還在」：查 ERASE-01 的保留清單、被合併的封存聯絡人（`mergedIntoId`）、outbox 與 `webhook_deliveries` 的 payload（HC-GOVERNANCE-08）。
+- 「刪除後客人資料還在」：查 ERASE-01 的保留清單、刪除完成之後才併入的聯絡人（`mergedIntoId`）、outbox 與 `webhook_deliveries` 的 payload（HC-GOVERNANCE-08）。
 - 「刪除失敗」：看 `data_erasure_requests.error`；硬刪除失敗多半是新加的 `Restrict` 關聯沒在 `hardDelete()` 先刪。
 - 「外部收不到 Webhook」：事件名稱打錯（HOOK-01，不報錯）、網址被 `isBlockedUrl` 擋、看 `GET /webhook-subscriptions/:id/deliveries` 的 `statusCode` 與 `errorMessage`。

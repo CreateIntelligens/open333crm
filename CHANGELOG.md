@@ -24,6 +24,30 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **workers 改讀與 api 相同的物件儲存設定，容器內不再連回自己**（AUDIT STO-01，已修正並從 `AUDIT.md` 移除）— `@open333crm/core` 的 `MinioStorageProvider` 原本只讀 `MINIO_*`，但 `.env.workers` 與 UAT 的 workers 只提供 `S3_*`，所以連到 `localhost:9000`：在容器內連回自己，資料匯出的上傳、資料刪除的媒體檔與頭像檔刪除都會失敗（UAT 目前沒有完成的刪除請求）。現在連線設定由新的 `resolveMinioConfig()` 決定：
+  - 有 `MINIO_ENDPOINT` 時沿用 `MINIO_*`（相容舊設定）。
+  - 否則從 `S3_ENDPOINT` 解析主機、port（沒寫時 http 80、https 443）與 SSL，金鑰用 `S3_ACCESS_KEY`、`S3_SECRET_KEY`；格式錯誤時丟出說明的錯誤。
+  - 兩邊都沒設定時維持本機預設值（`localhost:9000`、`minioadmin`），但每個行程寫一次 warn log。
+  - bucket 本來就一致：workers 的匯出與刪除都用 `S3_BUCKET`（預設 `open333crm`），與 api 上傳相同。
+  - 移除沒有程式讀取的 `STORAGE_PROVIDER`（`.env.api.example`、`.env.workers.example`、`apps/api/.env.example`）。
+  - `scripts/recover-erased-media-orphans.mjs` 不再自行換算，直接用 core 的設定。
+
+- **回收 #329 修正前匿名化留下的媒體孤兒檔**（issue #474）— #329 之前，匿名化把進站訊息改成 `{ redacted: true }` 時沒有先讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫找不到。新增一次性腳本 `scripts/recover-erased-media-orphans.mjs`（SQL 在 `scripts/sql/recover-erased-media-orphans.sql`），不需要 migration：
+  - 找出已完成匿名化的聯絡人目前的對話，列出 `{tenantId}/media/{conversationId}/` 底下的物件，扣掉同租戶任何訊息仍引用的 key，只刪 uuid 檔名格式的物件；硬刪除的請求只列筆數。
+  - 預設只預覽；`--apply` 不接受值（`--apply=false` 之類直接報錯，避免以為是預覽卻真的刪除）；`--apply` 一定要帶 `--expect-objects`，筆數不同就不刪；刪除前把清單寫成 CSV；每個 key 最多刪一次，失敗時以非零結束。`--tenant` 可以重複。
+  - 媒體 key 的格式檢查移到 `@open333crm/core` 的 `isConversationMediaKey()`，資料刪除 worker 與腳本共用；`MinioStorageProvider` 新增 `list()`。
+  - 物件儲存的連線設定與 api 相同（`S3_*`），見下一條 STO-01。
+  - 操作手冊見 `docs/ref/features/tenant/GOVERNANCE.md`「回收 #329 前匿名化留下的媒體檔」。各環境尚未執行。
+
+- **匿名化剛好碰上進站媒體下載時，下載完成不再把原文寫回訊息**（issue #475，change `skip-media-write-after-erasure`）— 進站媒體在背景下載，完成後用下載前讀到的內容加上 `storageKey` 覆寫訊息。下載期間對這位客人執行匿名化時，`{ redacted: true }` 會被原文蓋回，剛上傳的媒體檔也留在物件儲存。現在寫回在交易內先以 `FOR SHARE` 鎖住對話，只在訊息內容仍是下載前那份時寫入；內容已改變（匿名化）或訊息已刪除（硬刪除）時不寫入、不推送 `message.new`，並以 `deleteFile()` 刪除剛上傳的物件。下載失敗寫回 `mediaError` 也走同一個條件。寫回會等同一個對話正在進行的刪除交易結束。
+
+- **資料刪除一併處理被合併的封存聯絡人，刪除後不能再解除合併**（issue #473，AUDIT ERASE-01 部分修正，change `erase-merged-contacts`）— 合併聯絡人時，被併入的聯絡人只封存，姓名、電話、email 與頭像都還在；資料刪除只處理請求指定的聯絡人，刪除之後解除合併還會讓被併入的人原樣回到聯絡人清單。現在：
+  - `anonymize` 與 `hard_delete` 沿 `mergedIntoId` 逐層找出併入目標的封存聯絡人（含舊版合併留下的多層），套用與目標相同的規則：匿名化清空個人欄位、刪除屬性、渠道身分、`IdentityMap`、長期記憶，改寫進站訊息並刪除媒體檔與頭像檔，聯絡人維持封存；硬刪除連同他們的對話、工單、活動提交、積分紀錄一起刪除。筆數記在 `affected.mergedContacts`，硬刪除的 `affected.contacts` 也包含他們。
+  - 頭像檔的「其他聯絡人還在用」改成這次刪除處理的聯絡人以外：合併時主聯絡人沿用被併入那位的頭像，兩位一起刪除時檔案也刪。
+  - 交易內先依 id 排序鎖住目標與封存聯絡人（與合併引擎相同的排序），再鎖對話、讀訊息。
+  - 被併入方或合併鏈上任何一位有 `completed` 的刪除請求時，解除合併（客服與顧客自助）回 409 `CONTACT_ERASED`，不改任何資料。檢查前先鎖住這些聯絡人，與刪除的交易互相等待；取得鎖之後重新解析合併鏈，等鎖期間保留方又被併入別人時，鎖住新出現的聯絡人並重算到鏈不再變動（PR #490 審查）。刪除還在排隊時可以解除。
+  - 未修：刪除完成之後才併入的聯絡人不處理（合併引擎不檢查保留方是否已刪除）。
+
 - **上傳被拒時的錯誤訊息改成中文，並說明原因**（issue #470，change `localize-upload-error-messages`）— 上傳的檔案被內容偵測拒絕時，畫面原本顯示英文的 `File content type rejected: file content type is unknown`。現在 `message` 依原因顯示中文：檔案是空的、無法辨識檔案內容（列出允許的格式）、這裡不接受某種檔案（說出偵測到的格式與允許的格式）、檔案內容與副檔名不符、檔案內容與上傳時標示的檔案類型不符（副檔名正確時不提副檔名）；偵測暫時無法使用（503）也改成中文。英文原因放在 `details.reason`，並寫進 log（不含檔名與內容）。錯誤碼與 HTTP 狀態不變。同時處理：
   - 收件匣傳圖片、影片的 `Unsupported file type…`、`File exceeds N MB limit` 改成中文，並列出允許的格式。
   - 網站聊天室背景圖的 `{ "error": "No file uploaded" }`、`{ "error": "Unsupported background image type" }` 改用 `AppError`，回應變成標準格式的中文訊息。
@@ -57,6 +81,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。
   - 通知：只刪對應到要刪除的重複事件的英文標題 SLA 通知（依工單、類型與時間配對，每筆被刪事件、每位成員最多一則）；其他期限週期的通知與配對不到的通知不動。`--notifications=skip` 不處理通知。
   - 只刪 `--cutoff` 之前寫入的列。預設只預覽（各租戶筆數、英文通知的配對數、cutoff 之後的重複數、沒有 key 的列數、重複最多的工單、依 `sla.breachCount` 判斷的啟用中規則）。`--apply` 在單一交易內刪除：刪除前把整列匯出成 CSV（文件附還原步驟），cutoff 之後仍有重複、筆數與 `--expect-events`／`--expect-notifications` 或預覽不一致時回滾並以非零結束。
+  - `--apply`、`--find-cutoff` 不接受值：`--apply=false` 之類的寫法直接報錯，不會被當成 `--apply`（PR #490 審查）。
   - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
   - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
 

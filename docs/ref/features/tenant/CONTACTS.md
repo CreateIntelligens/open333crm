@@ -70,7 +70,7 @@
 - 被合併的聯絡人改為封存（`isArchived`），`mergedIntoId` 指向主要聯絡人，不刪除。
 - 搬到主要聯絡人的資料：渠道身分、對話、工單、標籤、屬性、長期記憶、活動提交、積分、`IdentityMap`、點擊紀錄、互動流程執行、知識庫回饋、群發收件紀錄，以及聯絡人關係。主要聯絡人空白的基本欄位，以被合併者的值補上。
 - 兩位聯絡人在同一個渠道都有身分時，合併被拒絕，回 409 `SAME_CHANNEL_CONFLICT`，`details.channels` 列出衝突的渠道，資料不變。檢查在鎖定雙方之後執行，兩個合併同時併入同一位聯絡人時也擋得住。合併後同一個渠道有兩個身分，回覆會送錯人，見 `../../system/AUDIT.md` 的 IDENT-03。email、手機登記與綁定代碼遇到這種情況時回覆客人「同一渠道只能綁定一個帳號」。
-- 每次合併寫一筆 `ContactMergeLog`，記錄搬了哪些資料。客服可以從 `GET /contacts/:id/merge-logs` 查看，以 `POST /contacts/merge-logs/:logId/revert` 解除合併，資料會搬回去。
+- 每次合併寫一筆 `ContactMergeLog`，記錄搬了哪些資料。客服可以從 `GET /contacts/:id/merge-logs` 查看，以 `POST /contacts/merge-logs/:logId/revert` 解除合併，資料會搬回去。被併入方或合併鏈上任何一位已完成資料刪除時，解除合併回 409 `CONTACT_ERASED`，不改任何資料（#473）：資料刪除會一併清除併入的封存聯絡人，解除合併會讓他重新出現。
 - 合併之後，被合併方從同一平台的另一個渠道進站時，收訊依 `IdentityMap` 把新的渠道身分直接掛到合併後的聯絡人，並把這筆身分記進把這個 uid 帶進來、且資料目前由這位聯絡人持有的每一筆未解除合併紀錄（`recordStitchedIdentity()`；連環合併時可能不只一筆）。解除合併時它跟著搬回，連同它在合併後開的對話與工單；顧客在這個渠道回覆「解除綁定」也找得到綁定。這筆身分的名稱與頭像向該平台讀取，讀不到就留空，不沿用聯絡人的資料。
 
 客服手動合併與解除合併各寫一筆租戶稽核紀錄（`contact.merge`、`contact.merge_revert`），與資料在同一個交易寫入；稽核寫入失敗時，合併或解除合併不生效。commit 之後，系統推播 `contact.merged` 或 `contact.merge_reverted` 給租戶的所有客服。

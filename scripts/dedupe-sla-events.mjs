@@ -71,6 +71,12 @@ export function parseArgs(argv) {
     const arg = argv[i];
     const eq = arg.indexOf('=');
     const name = arg.startsWith('--') && eq > 0 ? arg.slice(0, eq) : arg;
+    // 不帶值的旗標：`--apply=false` 之類的寫法一律拒絕，避免以為是預覽卻真的執行
+    const noValue = () => {
+      if (eq > 0) {
+        throw new Error(name === '--apply' ? '--apply 不接受值；預覽請不要加 --apply' : `${name} 不接受值`);
+      }
+    };
     const takeValue = () => {
       if (eq > 0) return arg.slice(eq + 1);
       const next = argv[i + 1];
@@ -86,9 +92,11 @@ export function parseArgs(argv) {
 
     switch (name) {
       case '--find-cutoff':
+        noValue();
         opts.mode = 'find-cutoff';
         break;
       case '--apply':
+        noValue();
         opts.apply = true;
         break;
       case '--cutoff':

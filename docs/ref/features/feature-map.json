@@ -2249,7 +2249,10 @@
         "apps/workers/src/handlers/data-export.handler.ts",
         "apps/workers/src/handlers/data-erasure.handler.ts",
         "apps/workers/src/lib/requester.ts",
-        "apps/workers/src/lib/simple-zip.ts"
+        "apps/workers/src/lib/simple-zip.ts",
+        "packages/core/src/storage/media-key.ts",
+        "scripts/recover-erased-media-orphans.mjs",
+        "scripts/sql/recover-erased-media-orphans.sql"
       ],
       "pages": [],
       "tables": [
@@ -2279,7 +2282,6 @@
         "EXPORT-01",
         "HOOK-01",
         "RBAC-02",
-        "STO-01",
         "TRIAL-03"
       ],
       "manual": [],
@@ -2295,12 +2297,15 @@
         "apps/api/tests/feature/modules/webhook-subscriptions/**",
         "apps/workers/tests/unit/handlers/data-export.handler.test.ts",
         "apps/workers/tests/unit/handlers/data-erasure.handler.test.ts",
+        "apps/api/tests/unit/scripts/recover-erased-media-orphans-args.test.ts",
+        "apps/api/tests/feature/scripts/recover-erased-media-orphans.test.ts",
+        "packages/core/tests/unit/storage/media-key.test.ts",
         "apps/workers/tests/unit/lib/data-export-zip.test.ts"
       ],
       "dependsOn": [
         {
           "domain": "contacts",
-          "why": "資料刪除以聯絡人為單位，處理 Contact、ChannelIdentity、IdentityMap；合併留下的封存聯絡人不處理（ERASE-01），解除合併可讓已刪除的人重新出現"
+          "why": "資料刪除以聯絡人為單位，處理 Contact、ChannelIdentity、IdentityMap，並沿 mergedIntoId 一併處理併入的封存聯絡人；刪除完成後解除合併回 409 CONTACT_ERASED（#473）"
         },
         {
           "domain": "inbox",

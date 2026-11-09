@@ -4,6 +4,30 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：workers 改讀 S3_* 的物件儲存設定（STO-01）
+
+分支 `fix/erasure-followups-473`。以單元測試驗證，沒有連 UAT。UAT 已確認 workers 容器沒有任何 `MINIO_*`，`S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`、`S3_BUCKET`、`S3_PUBLIC_URL` 都有設定。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| STO-01 | 已修正，從 `AUDIT.md` 移除 | `packages/core/tests/unit/storage/minio-config.test.ts`：只有 `S3_*` 時的解析、https 的 SSL 與預設 port、格式錯誤、provider 建立 client 與警告一次，修正前 4 個失敗在斷言上；`MINIO_*` 優先與兩邊都沒設定的預設值是相容行為，修正前就通過。沒有程式讀取的 `STORAGE_PROVIDER` 從三個 env 範例移除。bucket 本來就一致（`S3_BUCKET`）。部署後要在 UAT 實測 workers 的匯出上傳 |
+
+## 2026-11-09：匿名化與媒體下載的競態、#329 前的媒體孤兒檔（ERASE-01）
+
+issue #475（change `skip-media-write-after-erasure`）與 #474，分支 `fix/erasure-followups-473`。以本機 feature 測試資料庫、單元測試與假的物件儲存驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 匿名化期間完成的進站媒體下載把原文寫回（#475） | 已修正 | `inbound-media-erasure.test.ts` 的三個匿名化情境修正前失敗在斷言上。mutation：拿掉 `FOR SHARE`，「匿名化的交易進行中下載完成」失敗（剛上傳的物件沒刪）；拿掉內容相等的條件，三個匿名化情境失敗 |
+| ERASE-01 的「#329 前已匿名化的客人留下的媒體檔」（#474） | 已有回收腳本，尚未在任何環境執行；ERASE-01 維持部分修正 | `recover-erased-media-orphans.test.ts`（真資料庫、假物件儲存）與參數單元測試。mutation：拿掉引用檢查、拿掉格式檢查、拿掉 `--expect-objects` 比對，各有對應的測試失敗 |
+
+## 2026-11-09：資料刪除一併處理被合併的封存聯絡人（ERASE-01）
+
+issue #473，分支 `fix/erasure-followups-473`，change `erase-merged-contacts`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ERASE-01 的「被合併到這位聯絡人的封存聯絡人」與「刪除後仍可解除合併」（HC-GOVERNANCE-06） | 已修正，ERASE-01 維持部分修正（表單答案、工單內容、`ClickLog` 等、outbox 與 Webhook 送出紀錄、刪除完成之後才併入的聯絡人未處理） | `data-erasure-flow.test.ts`「匿名化一併清除併入的封存聯絡人」「硬刪除一併刪除併入的封存聯絡人」、兩個「合併時沿用的頭像檔一起刪除」、兩個「刪除後不能解除合併」修正前都失敗在斷言上。mutation：只找一層封存聯絡人，兩個「一併…」失敗；不看請求狀態，「刪除請求還沒完成時可以解除合併」失敗；把封存聯絡人的起點改成整個租戶，「匿名化一併清除…」失敗 |
 ## 2026-11-09：收件匣聊天視窗載入更早的訊息（HC-INBOX-07）
 
 issue #468，分支 `fix/chat-load-older-468`，change `fix-chat-window-load-older-468`。以本機 feature 測試資料庫（`open333crm_test_p6f`）與單元測試驗證，沒有連 UAT。
