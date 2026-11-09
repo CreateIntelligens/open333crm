@@ -37,10 +37,10 @@ vi.mock('#src/modules/ai/llm.service.js', async (orig) => ({
 }));
 // 知識庫沒有能回答的文章：一律走追問
 vi.mock('#src/modules/embedding/embedding.service.js', () => ({
-  generateEmbedding: async () => [0.1],
+  readEmbeddingInputs: async () => ({ settings: { baseUrl: 'http://embed.test', model: 'bge-m3', topK: 3, threshold: 0.5 }, policy: { enabled: false } }),
   searchSimilarArticles: async () => [],
 }));
-vi.mock('#src/modules/settings/embedding-settings.service.js', () => ({ getEmbeddingSettings: async () => ({ topK: 3, threshold: 0.5 }) }));
+vi.mock('#src/modules/embedding/embedding-client.js', () => ({ embedText: async () => [0.1] }));
 vi.mock('#src/modules/settings/chat-settings.service.js', () => ({
   getChatSettings: async () => ({ clarifyThreshold: 0.5, clarifyMaxAttempts: 2 }),
 }));

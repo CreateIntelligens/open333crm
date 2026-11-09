@@ -37,7 +37,7 @@
 
 ### Modified Capabilities
 
-- `km-ingestion`：「Automated Vectorization and Indexing」改成現況，並加上寫入向量時的條件（文章在向量化期間被修改就不寫入），以及單篇重新向量化回 409 的情況。
+- `km-ingestion`：「Automated Vectorization and Indexing」改成現況，並加上寫入向量時的條件（文章在向量化期間被修改就不寫入），以及單篇重新向量化回 409 的情況。「Archived Articles Excluded from Retrieval」原本以函式名稱 `semanticSearch`、`bulkReembed` 描述，`bulkReembed` 這次移除，改成以端點與功能描述，行為不變。
 
 ## Impact
 

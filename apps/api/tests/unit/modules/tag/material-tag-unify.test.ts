@@ -235,7 +235,7 @@ t('DB 層有大小寫不敏感的唯一索引（應用層查詢擋不住併發�
 });
 
 t('embed 重試改用型別化錯誤，不靠解析訊息文字', () => {
-  const code = src('modules/embedding/embedding.service.ts');
+  const code = src('modules/embedding/embedding-client.ts');
   assert.ok(code.includes('class EmbedHttpError'), '未定義帶 status 的錯誤型別');
   assert.ok(
     /err instanceof EmbedHttpError && \(err\.status === 502/.test(code),

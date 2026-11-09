@@ -17,7 +17,7 @@
 
 - 一般 AI 回覆、摘要、分類、情緒分析、文字改寫與 Flex 產生所經過的 `generateReply`：包含最終組裝的系統提示、知識庫／跨渠道上下文、本次訊息及歷史。
 - Agent 每輪送往模型的訊息、工具結果與巢狀工具參數的文字值。保留角色、工具名稱、呼叫 ID 與非文字參數。OCR／文件擷取結果在進入後續模型時亦套用。
-- `generateEmbedding` 的文字輸入，涵蓋客戶查詢及新產生的知識庫向量。既有向量保留，啟用可能影響檢索排序。
+- 向量化（`embedding-client.ts` 的 `embedText()`）的文字輸入，涵蓋客戶查詢及新產生的知識庫向量。既有向量保留，啟用可能影響檢索排序。
 
 傳輸憑證不會送給去識別化服務。2md 回傳的 mapping、CSV 與隱私分數會被丟棄；此功能只消費遮罩文字，並不提供還原。每批處理最多並行 4 個請求、共用 10 秒逾時，每段文字最多 100,000 字元、每個回應最多 1 MiB，不跟隨重新導向，也不使用跨租戶或跨作業的文字快取。
 
@@ -30,7 +30,7 @@
 | 模組 | 負責什麼 |
 | --- | --- |
 | `knowledge` | 文章的 CRUD、發布與封存、檔案匯入、批次產生向量、語意搜尋、型號白名單、客人回報、夥伴系統匯入 |
-| `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由 |
+| `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由。`embedding-client.ts` 呼叫 Ollama，不碰資料庫；`embedding.flow.ts` 把向量化拆成「交易 → 交易外呼叫 Ollama → 交易」 |
 | `ai` 的 `kb-autoreply.service.ts` | 機器人依知識庫回覆 |
 | `ai` 的 `agent/` | AI agent：可以呼叫工具（搜尋網頁、讀網頁、OCR、解析文件、查天氣、發布 Wiki）的多輪回覆 |
 | `ai` 的 `llm.service.ts`、`providers/` | 呼叫 LLM。支援 Ollama 與 Gemini；組織不部署 Ollama，因此只能用 Gemini |
@@ -53,6 +53,8 @@
 `DELETE /knowledge/:id` 是硬刪除。
 
 **向量什麼時候產生。** 建立文章、以及改了標題、內容或摘要時，系統在背景重新產生向量；發布時若還沒有向量，也會在背景補產生。這三個時機都不等待結果，失敗只記 log。因此文章可能顯示為已發布，卻因為沒有向量而檢索不到。`GET /knowledge/embedding-status` 列出向量的狀態，`POST /knowledge/bulk-embed` 與 `POST /knowledge/:id/embed` 可以補產生。
+
+**向量化期間文章被修改時不寫入。** 系統讀文章時記下 `updatedAt`，呼叫 Ollama 之後只在 `updatedAt` 沒變時寫入向量（change `migrate-embedding-tenant-ctx`）。文章在這段期間被修改、封存或刪除時，這次的向量不寫入，只記 warn log；改了內容的那次寫入會自己再產生向量。`POST /knowledge/:id/embed` 碰到這種情況回 409 `ARTICLE_CHANGED`。只改分類或標籤時不會重新產生向量，所以那篇文章保留舊向量，要手動重新向量化。
 
 向量的維度有已知落差：程式與 schema 用 1024 維，部分環境的資料庫欄位是 1536 維，寫入會被拒絕，見 `../../system/AUDIT.md` 的 DB-01。
 
@@ -104,7 +106,7 @@
 
 ## AI 設定
 
-Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。第一次讀取時，若該租戶還沒有這一列，會以預設值建立。
+Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該租戶還沒有這一列時，讀 Chat 設定會以預設值建立一列；讀 Embedding 設定只回預設值、不建立，修改 Embedding 設定時才建立（change `migrate-embedding-tenant-ctx`）。修改 Embedding 設定與稽核紀錄在同一個交易寫入。
 
 | 設定 | 欄位 | 預設值的位置 |
 | --- | --- | --- |

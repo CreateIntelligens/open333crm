@@ -12,6 +12,19 @@
 - **WHEN** 系統向量化一篇已有向量的文章，向量化服務回錯誤或逾時
 - **THEN** 文章的向量與 `embeddingModel` 不變
 
+### Requirement: Archived Articles Excluded from Retrieval
+
+語意搜尋（`POST /api/v1/knowledge/search`）、知識庫自動回覆、建議回覆與批次重新向量化（`POST /api/v1/knowledge/bulk-embed`）SHALL 只處理 `status = 'PUBLISHED'` 的文章。`status = 'ARCHIVED'` 的文章即使有向量，也 MUST NOT 出現在搜尋與 AI 的結果中。
+
+#### Scenario: ARCHIVED article is not returned by semantic search
+- **GIVEN** a `KmArticle` with `status=ARCHIVED` whose content semantically matches the query
+- **WHEN** a user calls `POST /api/v1/knowledge/search`
+- **THEN** the article does not appear in the returned results
+
+#### Scenario: ARCHIVED article is skipped by bulk re-embed
+- **WHEN** `POST /api/v1/knowledge/bulk-embed` runs
+- **THEN** only articles with `status=PUBLISHED` are counted and re-embedded; ARCHIVED articles are skipped
+
 ## ADDED Requirements
 
 ### Requirement: 向量化期間文章被修改時不寫入向量

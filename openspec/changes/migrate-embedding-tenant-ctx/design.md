@@ -51,7 +51,7 @@
 - `embedText(target: { baseUrl, model }, policy: AiPrivacyPolicy, text)`：遮罩，然後呼叫 `/api/embed`。逾時與重試沿用搬遷前的值（25 秒，重試 1 次）。
 - `probeEmbeddingService(baseUrl, model)`：呼叫 `/api/tags`，回傳連線狀態、模型是否存在與模型清單。
 
-兩個 `checkOllamaHealth()` 與 `listOllamaModels()` 都改成呼叫 `probeEmbeddingService()`，再各自轉成原本的回應格式。這樣 `GET /settings/embedding` 只呼叫一次 `/api/tags`，原本會呼叫兩次。
+兩個 `checkOllamaHealth()` 與 `listOllamaModels()` 移除，改成由 flow 呼叫 `probeEmbeddingService()`，再各自轉成原本的回應格式：`settings/embedding-settings.flow.ts` 轉成設定頁的 `health` 與 `models`，`embedding/embedding.flow.ts` 轉成 `embedding-status` 的 `{ ok, model?, error? }`。這樣 `GET /settings/embedding` 只呼叫一次 `/api/tags`，原本會呼叫兩次。
 
 不放在 service 檔：結構規則 2 規定 service 不呼叫外部服務。用戶端檔不收 `TenantCtx`，所以呼叫端在交易內呼叫 `embedText()` 時，型別檢查擋不住。這一點由 code review 與規劃檔 5.2 的檢查清單把關。
 
