@@ -3,8 +3,8 @@
  *
  * 兩種模式：
  *  - anonymize（預設）：抹去 Contact 的 PII 欄位、刪除可識別的子資料（ContactAttribute /
- *    ChannelIdentity / IdentityMap / LongTermMemory）、抹去 inbound 訊息內容，但保留
- *    Conversation / Case 統計骨架（讓報表數字不變）。
+ *    ChannelIdentity / IdentityMap / LongTermMemory）、抹去 inbound 訊息內容並刪除其 MinIO 媒體檔，
+ *    但保留 Conversation / Case 統計骨架（讓報表數字不變）與客服上傳的出站媒體檔。
  *  - hard_delete：在 transaction 內先算 affected 計數，再連鎖刪除該聯絡人的所有資料與聯絡人本身，
  *    並刪除對應的 MinIO 媒體附件。
  *
@@ -46,6 +46,52 @@ function collectStorageKeys(messages: { content: Prisma.JsonValue }[]): string[]
   return [...keys];
 }
 
+interface MessageMediaObjects {
+  /** 要刪除的 key */
+  keys: string[];
+  /** 同一批對話裡保留下來的訊息還在引用、所以保留的檔案數 */
+  shared: number;
+  /** 不是本租戶、本次對話媒體目錄格式的 key，沒刪的檔案數 */
+  skipped: number;
+}
+
+/**
+ * 是否為本次刪除對話的媒體檔：{tenantId}/media/{conversationId}/{uuid}{.ext}
+ * （apps/api storage.service buildStorageKey 的格式；寫法比照 isTenantQuarantineKey）。
+ */
+function isConversationMediaKey(key: string, tenantId: string, convIds: Set<string>): boolean {
+  const parts = key.split('/');
+  return (
+    parts.length === 4 &&
+    parts[0] === tenantId &&
+    parts[1] === 'media' &&
+    convIds.has(parts[2]) &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.\w+)?$/.test(parts[3])
+  );
+}
+
+/**
+ * 從要刪除（或改寫）的訊息挑出可以刪的媒體檔：只留本租戶、本次對話媒體目錄的 key；
+ * 保留下來的訊息（例如匿名化時的出站訊息）還在引用的 key 不刪。
+ */
+function selectMessageMedia(
+  tenantId: string,
+  convIds: string[],
+  removed: { content: Prisma.JsonValue }[],
+  kept: { content: Prisma.JsonValue }[],
+): MessageMediaObjects {
+  const convSet = new Set(convIds);
+  const candidates = collectStorageKeys(removed);
+  const valid = candidates.filter((key) => isConversationMediaKey(key, tenantId, convSet));
+  const skipped = candidates.length - valid.length;
+  if (skipped > 0) {
+    logger.warn(`[data-erasure] ${skipped} 個訊息媒體檔不在本租戶這些對話的 media 目錄，沒有刪除`);
+  }
+  const inUse = new Set(collectStorageKeys(kept));
+  const keys = valid.filter((key) => !inUse.has(key));
+  return { keys, shared: valid.length - keys.length, skipped };
+}
+
 /**
  * 物件儲存公開網址的來源與路徑前綴。格式是 {S3_PUBLIC_URL}/{bucket}/{key}（apps/api s3.provider，path-style），
  * S3_PUBLIC_URL 可以帶路徑前綴，要與 api 的設定相同。沒設定或格式錯誤時回 null：無法確認是自己的檔案，就不刪。
@@ -80,7 +126,7 @@ function collectAvatarKeys(
   urls: (string | null | undefined)[],
 ): { byKey: Map<string, string>; skipped: number } {
   const base = storagePublicBase();
-  const keyPattern = new RegExp(`^${tenantId}/avatars/[0-9a-f-]{36}\\.(?:jpg|png|webp|gif)$`);
+  const keyPattern = new RegExp(`^${tenantId}/avatars/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:jpg|png|webp|gif)$`);
   const byKey = new Map<string, string>();
   let skipped = 0;
   for (const url of urls) {
@@ -143,16 +189,71 @@ async function readAvatarObjects(tx: Prisma.TransactionClient, tenantId: string,
   return { keys, shared: byKey.size - keys.length, skipped };
 }
 
-/** 刪除一批 MinIO 物件（單顆失敗只 log，不阻斷刪除流程）。 */
-async function deleteMediaObjects(keys: string[]): Promise<void> {
-  if (keys.length === 0) return;
+/**
+ * 交易內鎖住這位聯絡人的對話並回傳 id（呼叫前聯絡人列必須已由 readAvatarObjects 以 FOR UPDATE 鎖住）。
+ * 鎖的順序：聯絡人 → 對話 → 讀訊息。
+ *  - 聯絡人已鎖：插入新對話時外鍵檢查要對聯絡人取 FOR KEY SHARE，會等這個交易結束，不會有漏掉的新對話。
+ *  - 對話 FOR UPDATE：插入訊息時外鍵檢查要對對話取 FOR KEY SHARE。已在進行、還沒 commit 的插入，
+ *    這裡會等它 commit；之後才開始的插入會等這個交易結束。
+ *  - 之後讀訊息是新的語句快照（READ COMMITTED），看得到剛 commit 的進站訊息，媒體 key 不會漏收。
+ */
+async function lockContactConversations(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM conversations
+    WHERE "contactId" = ${contactId}::uuid AND "tenantId" = ${tenantId}::uuid
+    FOR UPDATE`;
+  return rows.map((r) => r.id);
+}
+
+/**
+ * 刪除一批 MinIO 物件，每個 key 最多刪一次、不重試。單顆失敗不阻斷刪除流程：
+ * 失敗的 key 寫 log，筆數回傳給呼叫端記進請求的 affected。
+ */
+async function deleteMediaObjects(keys: string[]): Promise<{ deleted: number; failed: number }> {
+  if (keys.length === 0) return { deleted: 0, failed: 0 };
   const storage = new MinioStorageProvider();
+  let failed = 0;
   for (const key of keys) {
     try {
       await storage.delete(MEDIA_BUCKET, key);
     } catch (err) {
+      failed += 1;
       logger.error(`[data-erasure] MinIO delete failed key=${key}:`, err);
     }
+  }
+  return { deleted: keys.length - failed, failed };
+}
+
+/**
+ * 交易 commit 之後刪除訊息媒體檔與頭像檔，有失敗時把筆數補寫進請求的 affected。
+ * 交易內已把 mediaObjectsFailed / avatarObjectsFailed 寫成 0，沒有失敗就不用再寫。
+ * 補寫失敗時回傳請求保存的 affected（失敗筆數是 0），讓完成稽核與請求一致；失敗筆數只留在 error log。
+ */
+async function deleteObjectsAfterCommit(
+  prisma: PrismaClient,
+  request: ErasureRequestRef,
+  affected: Record<string, number>,
+  mediaKeys: string[],
+  avatarKeys: string[],
+): Promise<Record<string, number>> {
+  const media = await deleteMediaObjects(mediaKeys);
+  const avatars = await deleteMediaObjects(avatarKeys);
+  if (media.failed === 0 && avatars.failed === 0) return affected;
+
+  const updated = { ...affected, mediaObjectsFailed: media.failed, avatarObjectsFailed: avatars.failed };
+  try {
+    await prisma.dataErasureRequest.updateMany({
+      where: { id: request.requestId, tenantId: request.tenantId },
+      data: { affected: updated as Prisma.InputJsonValue },
+    });
+    return updated;
+  } catch (err) {
+    logger.error(
+      `[data-erasure] failed to record object delete failures for ${request.requestId} ` +
+        `(mediaObjectsFailed=${media.failed}, avatarObjectsFailed=${avatars.failed}):`,
+      err,
+    );
+    return affected;
   }
 }
 
@@ -275,8 +376,10 @@ async function writeAffected(tx: Prisma.TransactionClient, request: ErasureReque
  * 匿名化：抹去 PII 但保留統計骨架。
  *  - Contact：displayName→佔位、avatarUrl/phone/email→null
  *  - 刪 ContactAttribute / ChannelIdentity / IdentityMap / LongTermMemory（可識別子資料）
- *  - inbound 訊息 content 改為 redacted 佔位（保留 Conversation/Case/Message 骨架不刪）
- *  - 交易後刪除聯絡人與渠道身分在物件儲存的頭像檔（IDENT-06 起頭像存在 avatars 目錄）
+ *  - inbound 訊息 content 改為 redacted 佔位（保留 Conversation/Case/Message 骨架不刪）；
+ *    改寫前先讀出 storageKey，否則資料庫再也找不到這些媒體檔（#329）
+ *  - 交易後刪除 inbound 訊息的媒體檔（出站訊息還在引用的保留），以及聯絡人與渠道身分在物件儲存的
+ *    頭像檔（IDENT-06 起頭像存在 avatars 目錄）
  */
 async function anonymize(
   prisma: PrismaClient,
@@ -285,6 +388,7 @@ async function anonymize(
   request: ErasureRequestRef,
 ): Promise<Record<string, number>> {
   let avatars: AvatarObjects = { keys: [], shared: 0, skipped: 0 };
+  let media: MessageMediaObjects = { keys: [], shared: 0, skipped: 0 };
   const affected = await prisma.$transaction(async (tx) => {
     await markCompleted(tx, request);
     avatars = await readAvatarObjects(tx, tenantId, contactId);
@@ -306,14 +410,22 @@ async function anonymize(
     const identityMaps = await tx.identityMap.deleteMany({ where: { contactId, tenantId } });
     const memories = await tx.longTermMemory.deleteMany({ where: { contactId } });
 
-    // 抹 inbound 訊息內容（只此聯絡人所屬對話的入站訊息；保留骨架）
-    const convs = await tx.conversation.findMany({
-      where: { contactId, tenantId },
-      select: { id: true },
-    });
-    const convIds = convs.map((c) => c.id);
+    // 抹 inbound 訊息內容（只此聯絡人所屬對話的入站訊息；保留骨架）。
+    // 先鎖對話，等並行寫入的進站訊息 commit，再讀訊息與改寫（見 lockContactConversations）
+    const convIds = await lockContactConversations(tx, tenantId, contactId);
     let messagesRedacted = 0;
     if (convIds.length > 0) {
+      // 改寫內容前讀出媒體檔：進站訊息的要刪，保留下來的出站訊息還在引用的不刪
+      const messages = await tx.message.findMany({
+        where: { conversationId: { in: convIds } },
+        select: { direction: true, content: true },
+      });
+      media = selectMessageMedia(
+        tenantId,
+        convIds,
+        messages.filter((m) => m.direction === 'INBOUND'),
+        messages.filter((m) => m.direction !== 'INBOUND'),
+      );
       const res = await tx.message.updateMany({
         where: { conversationId: { in: convIds }, direction: 'INBOUND' },
         data: { content: { redacted: true } as Prisma.InputJsonValue },
@@ -327,29 +439,33 @@ async function anonymize(
       identityMaps: identityMaps.count,
       longTermMemories: memories.count,
       messagesRedacted,
+      mediaObjects: media.keys.length,
+      mediaObjectsShared: media.shared,
+      mediaObjectsSkipped: media.skipped,
+      mediaObjectsFailed: 0,
       avatarObjects: avatars.keys.length,
       avatarObjectsShared: avatars.shared,
       avatarObjectsSkipped: avatars.skipped,
+      avatarObjectsFailed: 0,
     };
     await writeAffected(tx, request, counts);
     return counts;
   });
 
-  // 頭像檔在交易外刪（best-effort），與硬刪除的媒體檔相同
-  await deleteMediaObjects(avatars.keys);
-  return affected;
+  // 媒體檔與頭像檔在交易 commit 之後刪，與硬刪除相同
+  return deleteObjectsAfterCommit(prisma, request, affected, media.keys, avatars.keys);
 }
 
 /**
  * 硬刪：連鎖刪除該聯絡人的所有資料 + 聯絡人本身，並刪 MinIO 媒體附件。
  *
  * 刪除順序（因部分關聯為 Restrict，需在刪 Contact 前顯式刪）：
- *   1. 收集訊息 storageKey 與頭像檔 key（供刪 MinIO）
+ *   1. 收集訊息 storageKey（只留本租戶這些對話的 media 目錄）與頭像檔 key（供刪 MinIO）
  *   2. 刪 Conversation（Cascade 帶走 Message / ConversationTag / ChatboxSession）
  *   3. 刪 Case（Conversation 已刪，caseId Restrict 已解除；Cascade 帶走 CaseEvent/CaseNote/CaseTag/CaseRelation）
  *   4. 刪 PortalSubmission / PointTransaction（Restrict，需顯式刪）
  *   5. 刪 Contact（Cascade 帶走 ContactAttribute/ChannelIdentity/IdentityMap/LongTermMemory/ContactTag/ContactRelation）
- *   6. 刪 MinIO 媒體物件（transaction 外，best-effort）
+ *   6. 刪 MinIO 媒體物件（transaction 外，每個最多一次，失敗筆數記進 affected）
  */
 async function hardDelete(
   prisma: PrismaClient,
@@ -359,15 +475,13 @@ async function hardDelete(
 ): Promise<Record<string, number>> {
   // storageKey 收集移進 transaction 內：與後續刪除共用同一交易快照，避免「收集後、刪除前」
   // 期間新增的對話/訊息其 MinIO 物件漏收（媒體洩漏）。DB 讀取在交易內、MinIO 刪除留到交易外。
-  let storageKeys: string[] = [];
+  let media: MessageMediaObjects = { keys: [], shared: 0, skipped: 0 };
   let avatars: AvatarObjects = { keys: [], shared: 0, skipped: 0 };
   const affected = await prisma.$transaction(async (tx) => {
     await markCompleted(tx, request);
-    const conversations = await tx.conversation.findMany({
-      where: { contactId, tenantId },
-      select: { id: true },
-    });
-    const convIds = conversations.map((c) => c.id);
+    // 鎖的順序：聯絡人（readAvatarObjects）→ 對話 → 讀訊息，並行寫入的進站訊息也會收到（見 lockContactConversations）
+    avatars = await readAvatarObjects(tx, tenantId, contactId);
+    const convIds = await lockContactConversations(tx, tenantId, contactId);
     const mediaMessages =
       convIds.length > 0
         ? await tx.message.findMany({
@@ -375,8 +489,8 @@ async function hardDelete(
             select: { content: true },
           })
         : [];
-    storageKeys = collectStorageKeys(mediaMessages);
-    avatars = await readAvatarObjects(tx, tenantId, contactId);
+    // 訊息全部刪除，沒有保留下來的訊息會引用
+    media = selectMessageMedia(tenantId, convIds, mediaMessages, []);
 
     // 先算 affected 計數（刪除前）
     const [
@@ -422,17 +536,18 @@ async function hardDelete(
       portalSubmissions: portalSubmissionCount,
       pointTransactions: pointTxCount,
       contacts: 1,
-      mediaObjects: storageKeys.length,
+      mediaObjects: media.keys.length,
+      mediaObjectsSkipped: media.skipped,
+      mediaObjectsFailed: 0,
       avatarObjects: avatars.keys.length,
       avatarObjectsShared: avatars.shared,
       avatarObjectsSkipped: avatars.skipped,
+      avatarObjectsFailed: 0,
     };
     await writeAffected(tx, request, counts);
     return counts;
   });
 
-  // 6. 刪 MinIO 媒體物件（transaction 外，best-effort）。交易 commit 之後行程結束時，檔案會留下
-  await deleteMediaObjects([...storageKeys, ...avatars.keys]);
-
-  return affected;
+  // 6. 刪 MinIO 媒體物件（transaction 外）。交易 commit 之後行程結束時，檔案會留下
+  return deleteObjectsAfterCommit(prisma, request, affected, media.keys, avatars.keys);
 }

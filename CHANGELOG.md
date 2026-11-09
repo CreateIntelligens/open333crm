@@ -24,6 +24,13 @@ All notable changes to **open333CRM** will be documented in this file.
   - migration `20261109100000_preserve_audit_actor_snapshot` 只加可為空值的欄位，不回填：之前刪除的成員留下的紀錄沒有快照。
   - 未修：刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 稽核會違反外鍵，等 #329 合併後另補。
 
+- **資料刪除的匿名化也刪除客人傳來的媒體檔，兩種模式只刪本次對話的媒體檔**（#329，AUDIT ERASE-01 部分修正，change `erase-inbound-media-on-anonymize`）— 匿名化（預設模式）把進站訊息的內容改成 `{ redacted: true }`，改寫前沒有讀出 `storageKey`，客人傳來的圖片、影片與檔案留在物件儲存，而且資料庫再也找不到這些檔案。硬刪除只要 `storageKey` 是字串就照刪，不確認檔案屬於哪個租戶或哪個對話。物件刪除失敗時只寫 log。現在：
+  - 匿名化在同一個交易內、改寫進站訊息前讀出媒體檔，交易 commit 之後刪除。客服上傳的出站訊息媒體檔保留。
+  - 兩種模式只刪除 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。
+  - 每個檔案最多刪一次、不重試。刪除失敗時請求仍是 `completed`，失敗筆數記在 `affected.mediaObjectsFailed`（訊息媒體檔）與 `affected.avatarObjectsFailed`（頭像檔），完成稽核的 `affected` 相同，失敗的 key 寫進 log。
+  - 刪除開始時還沒 commit 的進站訊息也會處理（change `lock-conversations-during-erasure`）：讀訊息前依序鎖住聯絡人與他的對話，收訊的寫入會等刪除交易結束。原本這則訊息在匿名化時不會改寫，硬刪除時隨對話刪掉，兩種模式都留下媒體檔。
+  - 這次修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。
+
 ### Security
 
 - **升級三個有安全警示的間接依賴**（Dependabot #179、#180、#181）— 根目錄 `pnpm.overrides` 原本把前兩個套件釘在有漏洞的版本，Dependabot 無法自動升級：

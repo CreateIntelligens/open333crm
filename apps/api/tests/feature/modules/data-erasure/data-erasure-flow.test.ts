@@ -79,7 +79,6 @@ const PII = { displayName: '王小明', phone: '0912345678', email: 'ming@exampl
 async function createSubject(avatars: { contact?: string; identity?: string } = {}) {
   seq += 1;
   const uid = `${MARK}-uid-${seq}`;
-  const storageKey = `${MARK}/photo-${seq}.jpg`;
   const contact = await owner.contact.create({
     data: { tenantId: A, ...PII, ...(avatars.contact ? { avatarUrl: avatars.contact } : {}) },
   });
@@ -97,6 +96,8 @@ async function createSubject(avatars: { contact?: string; identity?: string } = 
   const conversation = await owner.conversation.create({
     data: { tenantId: A, contactId: contact.id, channelId: channel.id, channelType: 'LINE' },
   });
+  // 格式與進站媒體上傳時相同：{tenantId}/media/{conversationId}/{uuid}.{ext}
+  const storageKey = mediaKey(A, conversation.id);
   await owner.message.create({
     data: {
       conversationId: conversation.id,
@@ -111,6 +112,24 @@ async function createSubject(avatars: { contact?: string; identity?: string } = 
   });
   const kase = await owner.case.create({ data: { tenantId: A, contactId: contact.id, channelId: channel.id, title: `${MARK}-工單` } });
   return { contact, conversation, kase, storageKey };
+}
+
+/** 訊息媒體檔的 key（storage.service buildStorageKey 的格式） */
+function mediaKey(tenantId: string, conversationId: string, ext = '.jpg') {
+  return `${tenantId}/media/${conversationId}/${randomUUID()}${ext}`;
+}
+
+/** 在對話裡加一則帶媒體檔的訊息 */
+function addMediaMessage(conversationId: string, direction: 'INBOUND' | 'OUTBOUND', storageKey: string) {
+  return owner.message.create({
+    data: {
+      conversationId,
+      senderType: direction === 'INBOUND' ? 'CONTACT' : 'AGENT',
+      direction,
+      contentType: 'image',
+      content: { url: `https://files.example.test/x/${storageKey}`, storageKey },
+    },
+  });
 }
 
 /** 物件儲存裡頭像檔的 key 與公開網址（網址格式同 S3 provider：{publicUrl}/{bucket}/{key}） */
@@ -313,6 +332,81 @@ test('匿名化後無法從聯絡人與進站訊息識別客人', async () => {
   assert.ok(await owner.case.findUnique({ where: { id: kase.id } }), '工單保留');
 });
 
+const affectedOf = async (requestId: string) =>
+  (await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: requestId } })).affected as Record<string, number>;
+
+test('匿名化刪除進站訊息的媒體檔', async () => {
+  const { contact, storageKey } = await createSubject();
+  const request = await createRequest(contact.id, 'anonymize');
+  await runJob(request);
+
+  assert.ok(removedKeys().includes(storageKey), '刪除進站訊息的媒體檔');
+  assert.equal((await affectedOf(request.id)).mediaObjects, 1);
+});
+
+test('匿名化保留出站訊息的媒體檔', async () => {
+  const { contact, conversation, storageKey } = await createSubject();
+  const agentKey = mediaKey(A, conversation.id, '.png');
+  const outbound = await addMediaMessage(conversation.id, 'OUTBOUND', agentKey);
+  await runJob(await createRequest(contact.id, 'anonymize'));
+
+  assert.ok(!removedKeys().includes(agentKey), '客服上傳的媒體檔保留');
+  assert.ok(removedKeys().includes(storageKey), '進站的照樣刪');
+  const after = await owner.message.findUniqueOrThrow({ where: { id: outbound.id } });
+  assert.deepEqual(after.content, outbound.content, '出站訊息的內容不變');
+});
+
+for (const mode of ['anonymize', 'hard_delete'] as const) {
+  test(`不刪本租戶媒體目錄以外的檔案（${mode}）`, async () => {
+    const { contact, conversation, storageKey } = await createSubject();
+    const other = await createSubject();
+    const outside = [
+      mediaKey(tenantB.id, conversation.id), // 其他租戶
+      mediaKey(A, other.conversation.id), // 本租戶其他聯絡人的對話
+      `${A}/avatars/${randomUUID()}.jpg`, // media 以外的目錄
+      `${A}/media/${conversation.id}/report.csv`, // 檔名不是 uuid
+      `${A}/media/${conversation.id}/${randomUUID()}.jpg/../../${other.conversation.id}/x.jpg`, // 多層路徑
+    ];
+    for (const key of outside) await addMediaMessage(conversation.id, 'INBOUND', key);
+    const request = await createRequest(contact.id, mode);
+    await runJob(request);
+
+    for (const key of outside) assert.ok(!removedKeys().includes(key), `不刪 ${key}`);
+    assert.ok(removedKeys().includes(storageKey), '格式符合的照樣刪');
+    const affected = await affectedOf(request.id);
+    assert.equal(affected.mediaObjectsSkipped, outside.length);
+    assert.equal(affected.mediaObjects, 1);
+  });
+}
+
+test('仍被保留訊息引用的媒體檔保留', async () => {
+  // 客服把客人傳來的圖片轉傳回去時，出站訊息帶同一個 storageKey
+  const { contact, conversation, storageKey } = await createSubject();
+  await addMediaMessage(conversation.id, 'OUTBOUND', storageKey);
+  const request = await createRequest(contact.id, 'anonymize');
+  await runJob(request);
+
+  assert.ok(!removedKeys().includes(storageKey), '出站訊息還在用，不刪');
+  const affected = await affectedOf(request.id);
+  assert.equal(affected.mediaObjectsShared, 1);
+  assert.equal(affected.mediaObjects, 0);
+});
+
+test('物件刪除失敗時請求仍然完成', async () => {
+  const { contact, storageKey } = await createSubject();
+  mocks.remove.mockRejectedValue(new Error('minio down'));
+  const request = await createRequest(contact.id, 'anonymize');
+  await runJob(request);
+
+  assert.equal(mocks.remove.mock.calls.filter(([, key]) => key === storageKey).length, 1, '最多刪一次，不重試');
+  const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stored.status, 'completed');
+  assert.equal((stored.affected as Record<string, number>).mediaObjectsFailed, 1);
+  const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.erasure.complete', targetId: contact.id } });
+  assert.equal(logs.length, 1);
+  assert.deepEqual((logs[0].payload as { affected: unknown }).affected, stored.affected, '稽核與請求的 affected 相同');
+});
+
 test('硬刪除連帶刪除對話與工單', async () => {
   const { contact, conversation, kase, storageKey } = await createSubject();
   await runJob(await createRequest(contact.id, 'hard_delete'));
@@ -342,6 +436,49 @@ for (const mode of ['anonymize', 'hard_delete'] as const) {
     assert.ok(removedKeys().includes(contactAvatar.key), '刪除聯絡人的頭像檔');
     assert.ok(removedKeys().includes(identityAvatar.key), '刪除渠道身分的頭像檔');
   });
+}
+
+for (const mode of ['anonymize', 'hard_delete'] as const) {
+  test(`刪除期間並行寫入的進站訊息也會被處理（${mode}）`, async () => {
+    // 模擬收訊：刪除開始時，另一個交易正在這位客人的對話插入一則帶媒體檔、尚未 commit 的進站訊息
+    const { contact, conversation } = await createSubject();
+    const lateKey = mediaKey(A, conversation.id);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let inserted!: (id: string) => void;
+    const insertedId = new Promise<string>((resolve) => (inserted = resolve));
+    const ingest = owner.$transaction(
+      async (tx) => {
+        const message = await tx.message.create({
+          data: {
+            conversationId: conversation.id,
+            senderType: 'CONTACT',
+            direction: 'INBOUND',
+            contentType: 'image',
+            content: { text: '剛傳來的照片', storageKey: lateKey },
+          },
+        });
+        inserted(message.id);
+        await gate;
+      },
+      { timeout: 10_000 },
+    );
+    const messageId = await insertedId;
+
+    const job = runJob(await createRequest(contact.id, mode));
+    await new Promise((resolve) => setTimeout(resolve, 300)); // 讓刪除先開始
+    release();
+    await ingest;
+    await job;
+
+    assert.ok(removedKeys().includes(lateKey), '並行寫入的進站訊息的媒體檔也刪除');
+    const late = await owner.message.findUnique({ where: { id: messageId } });
+    if (mode === 'anonymize') {
+      assert.deepEqual(late?.content, { redacted: true }, '並行寫入的進站訊息也改寫');
+    } else {
+      assert.equal(late, null);
+    }
+  }, 20_000);
 }
 
 test('刪除期間才寫回的頭像檔也會刪除', async () => {
@@ -377,7 +514,7 @@ test('刪除期間才寫回的頭像檔也會刪除', async () => {
 test('不刪物件儲存以外或其他租戶的檔案', async () => {
   const foreign = storedAvatar(tenantB.id, 'foreign');
   const own = storedAvatar(A, 'crafted');
-  const { contact } = await createSubject({
+  const subject = await createSubject({
     // 網址的路徑不是 avatars 檔案、只在查詢字串帶到本租戶的 key，也不算
     contact: `https://platform-lookaside.fbsbx.com/platform/profilepic/?x=/${BUCKET}/${own.key}`,
     identity: foreign.url,
@@ -390,11 +527,16 @@ test('不刪物件儲存以外或其他租戶的檔案', async () => {
     identity: `https://files.example.test/x/${BUCKET}/${own.key}`,
   });
   const before = mocks.remove.mock.calls.length;
-  await runJob(await createRequest(contact.id, 'anonymize'));
+  await runJob(await createRequest(subject.contact.id, 'anonymize'));
   await runJob(await createRequest(odd.contact.id, 'anonymize'));
   await runJob(await createRequest(elsewhere.contact.id, 'anonymize'));
 
-  assert.equal(mocks.remove.mock.calls.length, before, '平台網址、其他租戶與不符格式的檔案都不刪');
+  // 匿名化會刪進站訊息的媒體檔（#329），頭像檔一個都不刪
+  assert.deepEqual(
+    removedKeys().slice(before).sort(),
+    [subject.storageKey, odd.storageKey, elsewhere.storageKey].sort(),
+    '平台網址、其他租戶與不符格式的頭像檔都不刪',
+  );
 });
 
 for (const mode of ['anonymize', 'hard_delete'] as const) {
