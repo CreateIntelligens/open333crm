@@ -55,6 +55,7 @@ description: >
 - 向量維度：程式寫 1024，部分環境欄位是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
 - 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply` 超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback：依文章回答的路徑改送文章原文（HC-KNOWLEDGE-04），追問路徑回「已為您轉接」並真的轉接（`handoffReason`「AI 月額度已用完，無法自動回覆」）。
 - 個資遮罩啟用時，所有模型輸入與 `generateEmbedding` 都先經 2md 去識別化；失敗就停止，不可用原文當 fallback。
+- 進站訊息在 2md 無法使用時存原文、標 `metadata.privacy.mode: 'inbound_unmasked'`（#466）。新增任何讀訊息內容送模型的地方，都要經 `readModelMessageContent()`／`toAiHistory()` 或先檢查 `isUnmaskedInbound()`，不可讀 `content` 原文。
 - 設定路由在 `settings.routes.ts`，整個模組掛 `requirePermission('settings.manage')`；`baseUrl` 用 `httpUrlSchema`（只許 http/https，但內網要放行，Ollama 就在內網）。
 - 本機不要為了測試把共用租戶的 Chat/Embedding 改指向外部付費服務；UAT 不可觸發 AI 回覆。
 

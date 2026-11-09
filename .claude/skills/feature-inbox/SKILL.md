@@ -75,6 +75,7 @@ description: >
 4. socket：以看不到某渠道的成員連線，確認收不到該渠道的 `message.new`、`conversation.updated`；有授權的成員與總店收得到；後台改該成員的可用渠道後，不重新整理就開始（或停止）收到（feature 測試 `modules/socket/socket-channel-rooms`）。
 5. 進行中超過 50 段時按「載入更多對話」、在第 2 頁的對話收到新訊息時移到最上面且不重複；搜尋第 51 段以後的聯絡人名稱找得到。單一對話超過 50 則時目前只顯示 50 則（HC-INBOX-07）。
 6. AI 與知識庫回覆都失敗（#445）：去識別化服務或 embedding 服務失敗時，`BOT_HANDLED` 對話的文字訊息轉真人，收件匣即時顯示轉接系統訊息與原因，客服收到轉接通知；同一則訊息重送不重複轉接（`ai-failure-handoff.test.ts`）。
+7. 進站訊息未遮罩（#466）：開啟遮罩、讓去識別化服務回 503，客人傳文字 → 收件匣看得到原文訊息、對話轉真人、系統訊息寫「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」、模型沒有被呼叫；點「轉接客服」按鈕照常轉接（feature 測試 `modules/webhook/inbound-deidentification-fallback`）。
 - 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/conversation tests/unit/modules/socket tests/unit/services/channel-visibility auto-handoff ai-failure-handoff bot-reply-claim return-to-bot ai-routes-channel-scope`；`pnpm --filter @open333crm/web test -- tests/unit/components/inbox tests/unit/lib/inbox tests/unit/lib/socket`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/channel/channel-scoped-visibility route-permission-guards modules/webhook/inbound-message-processing modules/socket/socket-channel-rooms`。
 - E2E：`apps/web/tests/e2e-uat/tenant-inbox.spec.ts`。
 

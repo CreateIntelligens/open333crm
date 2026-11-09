@@ -72,6 +72,7 @@
 | 自動轉真人 | 機器人回覆次數達到 `maxBotReplies`、訊息含 `handoffKeywords`，或客人傳圖片、檔案或影片 | `automation.worker.ts` 的 `checkAutoHandoff()` | 不指派 |
 | 知識庫追問用完 | 知識庫自動回覆的追問次數達到 `clarifyMaxAttempts`，或追問的 LLM 呼叫失敗（含月額度用完） | `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` | 不指派 |
 | AI 回覆失敗 | AI agent 沒有回覆，知識庫回覆又因錯誤失敗（例如去識別化服務、embedding 服務或模型供應商故障） | `automation/ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()` | 不指派 |
+| 進站訊息未遮罩 | 去識別化服務無法使用，進站訊息沒有遮罩副本，而這則訊息原本會交給 AI agent 或知識庫自動回覆 | `automation.worker.ts` 呼叫 `handOffAfterAiFailure()`（固定原因） | 不指派 |
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
 每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求、自動轉真人與 AI 回覆失敗送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人、知識庫追問用完與 AI 回覆失敗會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派、且負責客服仍啟用並看得到該渠道時通知負責的客服；沒有指派，或負責客服已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。
@@ -87,6 +88,8 @@
 - 也走 `handOffConversation()`，並以 `bot_reply` 認領：同一則訊息只轉接一次，這則訊息已有機器人回覆時不轉接。轉接的交易失敗時，處理失敗、由佇列重試。
 - 正常的不回覆不轉接：關鍵字規則讓步、`botMode` 為 `off` 或 `keyword`、`KB_AUTO_REPLY_ENABLED` 關閉、這則訊息已有機器人回覆、對話已不是 `BOT_HANDLED`。`KB_AUTO_REPLY_ENABLED` 關閉時，agent 失敗的訊息仍然沒有回覆（KB-06）。
 - 不自動重試 AI 回覆：重試可能讓客人收到兩則回覆。
+
+**進站訊息未遮罩時轉真人（issue #466）。** 租戶開啟 AI 個資遮罩、去識別化服務重試後仍無法使用時，進站訊息照常存入收件匣（原文，`metadata.privacy.mode` 為 `inbound_unmasked`），不送模型。原本會交給 AI 時改轉真人：`handoffReason` 與系統訊息寫「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」，系統訊息的 `metadata.source` 是 `inbound_unmasked`，其餘（認領、`handoffMessage`、通知、不轉接的情況）與 AI 回覆失敗相同。自動轉真人的系統訊息在遮罩失敗時捨棄對話摘要，只寫「自動轉接人工客服：<原因>」，轉接照常完成。客人點「轉接客服」按鈕與客服接手時的預設轉接訊息是固定文字，不呼叫去識別化服務，所以服務無法使用時也能轉接。
 
 客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 
