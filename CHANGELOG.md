@@ -4,7 +4,25 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-09]
 
+### Changed
+
+- **競猜活動發布前要求至少一個正確答案**（#471，change `fix-portal-quiz-requires-correct-answer`）— 競猜原本可以沒有標任何正確答案就發布，每個人都是 0 分，平均分數與作答列表全是 0。現在 `POST /api/v1/portal/activities/:id/publish` 對沒有正確答案的競猜回 400「競猜活動至少要有一個正確答案」，活動維持草稿。建立與編輯草稿時不檢查，草稿可以先存再補正確答案；投票不受影響。後台活動表單的競猜選項區加上「發布前至少勾選一個正確答案」的說明。開獎不變，仍從全部未中獎的作答隨機抽出，不看分數。
+
 ### Fixed
+
+- **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
+  - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。
+  - 通知：只刪對應到要刪除的重複事件的英文標題 SLA 通知（依工單、類型與時間配對，每筆被刪事件、每位成員最多一則）；其他期限週期的通知與配對不到的通知不動。`--notifications=skip` 不處理通知。
+  - 只刪 `--cutoff` 之前寫入的列。預設只預覽（各租戶筆數、英文通知的配對數、cutoff 之後的重複數、沒有 key 的列數、重複最多的工單、依 `sla.breachCount` 判斷的啟用中規則）。`--apply` 在單一交易內刪除：刪除前把整列匯出成 CSV（文件附還原步驟），cutoff 之後仍有重複、筆數與 `--expect-events`／`--expect-notifications` 或預覽不一致時回滾並以非零結束。
+  - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
+  - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
+
+- **永久刪除成員後，稽核與資料匯出、刪除請求仍查得到是誰做的**（issue #414，AUDIT AUD-03 部分修正，change `preserve-audit-actor-on-agent-purge`）— 稽核的 `actorId` 與匯出、刪除請求的 `requestedBy` 外鍵是 `ON DELETE SET NULL`，成員被永久刪除後全部變成空值，和系統排程寫的紀錄分不出來，「誰匯出了全租戶資料」查不到。現在：
+  - `DELETE /api/v1/agents/:id` 在刪除成員之前、同一個交易內，把名稱與 email 寫進他當操作者的稽核（新欄位 `actorName`、`actorEmail`），以及他發起的資料匯出與刪除請求（新欄位 `requestedByName`、`requestedByEmail`）。刪除被拒（404、最後一位管理員、權限比操作者高）時不寫。
+  - `GET /api/v1/tenant/audit-logs` 每筆多回 `actorSnapshot: { name, email } | null`，`actor` 的格式不變。
+  - `agent.purge` 稽核的 `payload` 記下被刪成員的名稱（`{ name }`），不記 email。
+  - migration `20261109100000_preserve_audit_actor_snapshot` 只加可為空值的欄位，不回填：之前刪除的成員留下的紀錄沒有快照。
+  - 未修：刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 稽核會違反外鍵，等 #329 合併後另補。
 
 - **資料刪除的匿名化也刪除客人傳來的媒體檔，兩種模式只刪本次對話的媒體檔**（#329，AUDIT ERASE-01 部分修正，change `erase-inbound-media-on-anonymize`）— 匿名化（預設模式）把進站訊息的內容改成 `{ redacted: true }`，改寫前沒有讀出 `storageKey`，客人傳來的圖片、影片與檔案留在物件儲存，而且資料庫再也找不到這些檔案。硬刪除只要 `storageKey` 是字串就照刪，不確認檔案屬於哪個租戶或哪個對話。物件刪除失敗時只寫 log。現在：
   - 匿名化在同一個交易內、改寫進站訊息前讀出媒體檔，交易 commit 之後刪除。客服上傳的出站訊息媒體檔保留。
@@ -12,6 +30,13 @@ All notable changes to **open333CRM** will be documented in this file.
   - 每個檔案最多刪一次、不重試。刪除失敗時請求仍是 `completed`，失敗筆數記在 `affected.mediaObjectsFailed`（訊息媒體檔）與 `affected.avatarObjectsFailed`（頭像檔），完成稽核的 `affected` 相同，失敗的 key 寫進 log。
   - 刪除開始時還沒 commit 的進站訊息也會處理（change `lock-conversations-during-erasure`）：讀訊息前依序鎖住聯絡人與他的對話，收訊的寫入會等刪除交易結束。原本這則訊息在匿名化時不會改寫，硬刪除時隨對話刪掉，兩種模式都留下媒體檔。
   - 這次修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。
+
+### Security
+
+- **升級三個有安全警示的間接依賴**（Dependabot #179、#180、#181）— 根目錄 `pnpm.overrides` 原本把前兩個套件釘在有漏洞的版本，Dependabot 無法自動升級：
+  - `follow-redirects` 1.16.1 → 1.16.2（GHSA-mrwp-f3q8-3g9p，高風險：重新導向時自訂的認證標頭可能被帶到其他網站）。axios 與 LINE SDK 使用。
+  - `decode-uri-component` 0.5.0 → 0.5.1（GHSA-qr28-fpjm-wq7f，高風險：特定 percent-encoding 字串造成 CPU 阻斷）。minio 使用。
+  - `@fastify/static` 10.1.7 → 10.1.10，連帶把 `glob` 13.0.6 換成 14.0.4（GHSA-3g3m-2fjr-6pw4，中風險：取消逾時後仍可能繼續掃描檔案）。bull-board 的佇列監控頁使用。
 
 ## [2026-11-06]
 

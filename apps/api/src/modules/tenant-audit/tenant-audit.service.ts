@@ -55,6 +55,25 @@ export async function writeTenantAudit(prisma: TenantDb, input: TenantAuditInput
   }
 }
 
+/** 操作者的名稱與 email 快照（成員被永久刪除時保存，issue #414） */
+export interface ActorSnapshotInput {
+  agentId: string;
+  name: string;
+  email: string;
+}
+
+/**
+ * 永久刪除成員之前，把他的名稱與 email 寫進本租戶以他為操作者的稽核。
+ * actorId 的外鍵是 ON DELETE SET NULL，刪除成員後 actorId 變成空值，只剩這兩個欄位查得到是誰。
+ * 必須與刪除成員在同一個交易（agent-lifecycle「永久刪除成員」）。
+ */
+export async function preserveAuditActor(ctx: TenantCtx, input: ActorSnapshotInput): Promise<void> {
+  await ctx.tx.tenantAuditLog.updateMany({
+    where: { tenantId: ctx.tenantId, actorId: input.agentId },
+    data: { actorName: input.name, actorEmail: input.email },
+  });
+}
+
 export interface ListAuditParams {
   action?: string;
   actorId?: string;
@@ -92,10 +111,21 @@ export async function listTenantAudit({ tx, tenantId }: TenantCtx, params: ListA
         ip: true,
         createdAt: true,
         actor: { select: { id: true, name: true, email: true } },
+        actorName: true,
+        actorEmail: true,
       },
     }),
     tx.tenantAuditLog.count({ where }),
   ]);
 
-  return { rows, total, page, pageSize };
+  // actor 的格式不變；操作者被永久刪除後 actor 是 null，名稱與 email 改由 actorSnapshot 回傳
+  return {
+    rows: rows.map(({ actorName, actorEmail, ...row }) => ({
+      ...row,
+      actorSnapshot: actorName !== null || actorEmail !== null ? { name: actorName, email: actorEmail } : null,
+    })),
+    total,
+    page,
+    pageSize,
+  };
 }

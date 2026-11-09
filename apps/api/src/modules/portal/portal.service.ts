@@ -115,17 +115,26 @@ async function lockActivity(ctx: TenantCtx, id: string) {
 }
 
 /**
- * 檢查活動有可作答的內容：投票與競猜至少一個選項，表單至少一個欄位。
+ * 檢查活動有可作答的內容：投票與競猜至少一個選項，表單至少一個欄位，競猜至少一個正確答案。
  *
- * 編輯（#424）與發布（#447）共用。數量傳 undefined 表示這部分不檢查：編輯沒帶 options／fields 時不動，
+ * 編輯（#424）與發布（#447、#471）共用。數量傳 undefined 表示這部分不檢查：編輯沒帶 options／fields 時不動，
  * 不需檢查；發布時傳資料庫裡的實際數量。建立草稿不呼叫這支，草稿可以先存再分次補內容。
+ * 正確答案數只有發布時傳：編輯只會發生在草稿（updateActivity 擋掉非草稿），草稿可以還沒勾正確答案。
  */
-function assertActivityAnswerable(type: string, optionCount: number | undefined, fieldCount: number | undefined) {
+function assertActivityAnswerable(
+  type: string,
+  optionCount: number | undefined,
+  fieldCount: number | undefined,
+  correctOptionCount?: number,
+) {
   if ((type === 'POLL' || type === 'QUIZ') && optionCount === 0) {
     throw new AppError('投票與競猜活動至少要有一個選項', 'ACTIVITY_OPTIONS_REQUIRED', 400);
   }
   if (type === 'FORM' && fieldCount === 0) {
     throw new AppError('表單活動至少要有一個欄位', 'ACTIVITY_FIELDS_REQUIRED', 400);
+  }
+  if (type === 'QUIZ' && correctOptionCount === 0) {
+    throw new AppError('競猜活動至少要有一個正確答案', 'ACTIVITY_CORRECT_ANSWER_REQUIRED', 400);
   }
 }
 
@@ -226,7 +235,9 @@ export async function publishActivity(ctx: TenantCtx, id: string) {
   // 已鎖住活動列，編輯要等這個交易結束，數到的選項與欄位就是發布時的內容。
   const optionCount = await prisma.portalOption.count({ where: { activityId: id } });
   const fieldCount = await prisma.portalField.count({ where: { activityId: id } });
-  assertActivityAnswerable(activity.type, optionCount, fieldCount);
+  // 競猜沒有正確答案時每個人都是 0 分，發布前要求至少一個正確答案（#471）。開獎仍從全部作答隨機抽出。
+  const correctOptionCount = await prisma.portalOption.count({ where: { activityId: id, isCorrect: true } });
+  assertActivityAnswerable(activity.type, optionCount, fieldCount, correctOptionCount);
   return prisma.portalActivity.update({
     where: { id },
     data: { status: 'PUBLISHED', publishedAt: new Date() },

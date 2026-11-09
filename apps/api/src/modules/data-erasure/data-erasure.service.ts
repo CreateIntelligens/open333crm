@@ -67,6 +67,18 @@ export async function createErasureRequest(ctx: TenantCtx, input: CreateErasureR
 }
 
 /**
+ * 永久刪除成員之前，把他的名稱與 email 寫進他發起的刪除請求（issue #414）。
+ * requestedBy 的外鍵是 ON DELETE SET NULL，刪除成員後只剩這兩個欄位查得到發起者。
+ * 必須與刪除成員在同一個交易。
+ */
+export async function preserveRequester(ctx: TenantCtx, input: { agentId: string; name: string; email: string }) {
+  await ctx.tx.dataErasureRequest.updateMany({
+    where: { tenantId: ctx.tenantId, requestedBy: input.agentId },
+    data: { requestedByName: input.name, requestedByEmail: input.email },
+  });
+}
+
+/**
  * 查單筆刪除請求狀態（一律 tenantId scoped）。
  *
  * @returns DataErasureRequest 或 null（不存在/非本租戶）

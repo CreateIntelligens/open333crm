@@ -166,7 +166,7 @@
 | [CHAN-10](#chan-10) | 渠道、稽核與資料權利 | P2 | 未處理 | 圖文選單綁定受眾的背景工作失敗時不重試、不通知，畫面只顯示「已送出」 | 執行時確認 |
 | [CHAN-11](#chan-11) | 渠道、稽核與資料權利 | P2 | 未處理 | 圖文選單的區域動作切成「日期時間選擇」時，模式下拉顯示有值卻沒有寫入，儲存回 400 | 執行時確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、渠道憑證變更、優惠券與行銷、匯出下載、對外 Webhook 訂閱等操作 | 執行時確認 |
-| [AUD-03](#aud-03) | 渠道、稽核與資料權利 | P1 | 未處理 | 永久刪除成員後，他在稽核紀錄裡的操作都變成沒有操作者，無法再查出是誰做的 | 執行時確認 |
+| [AUD-03](#aud-03) | 渠道、稽核與資料權利 | P1 | 部分修正 | 永久刪除成員時已保存名稱與 email 快照（#414）；刪除請求排隊中、發起人被刪除時，worker 寫完成稽核違反外鍵、錯誤被吞掉，完成通知也失敗 | 執行時確認 |
 | [AUD-04](#aud-04) | 渠道、稽核與資料權利 | P2 | 未處理 | `agent.create` 稽核只記舊的角色列舉，不記實際指派的角色與可見渠道 | 執行時確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留表單答案（客人傳的媒體檔已改為刪除，#329）；被合併的聯絡人的姓名、電話、email、outbox 與 Webhook 送出紀錄兩種模式都保留；刪除後解除合併會讓被併入的人重新出現 | 執行時確認 |
 | [ERASE-02](#erase-02) | 渠道、稽核與資料權利 | P2 | 未處理 | 資料刪除沒有防誤刪機制：一次 API 呼叫就執行硬刪除，沒有預覽、確認、冷靜期或取消 | 執行時確認 |
@@ -2137,12 +2137,13 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 <a id="aud-03"></a>
 ### AUD-03：永久刪除成員後，稽核紀錄失去操作者
 
-`TenantAuditLog.actor` 的外鍵是 `onDelete: SetNull`，`agent.purge` 的稽核又只記 `targetId`，不記被刪成員是誰。成員被永久刪除之後：
+**狀態：部分修正**（2026-11-09，issue #414，change `preserve-audit-actor-on-agent-purge`）。
 
-- 他在稽核紀錄裡的所有操作變成 `actor: null`，與系統排程寫的紀錄無法區分。
-- 資料匯出請求的 `requestedBy` 也變成 null。「誰匯出了全租戶資料」在這位成員被刪除後完全查不到。
+`TenantAuditLog.actor`、`DataExportRequest.requester`、`DataErasureRequest.requester` 的外鍵是 `onDelete: SetNull`。修正前，成員被永久刪除之後，他在稽核紀錄裡的所有操作變成 `actor: null`，與系統排程寫的紀錄無法區分；資料匯出與刪除請求的 `requestedBy` 也變成 null；`agent.purge` 的稽核只記 `targetId`。永久刪除是釋放 email 的標準做法，UAT 已有 52 筆 `agent.purge`。
 
-永久刪除是釋放 email 的標準做法，UAT 已有 52 筆 `agent.purge`。
+**已修正：** `purgeAgent()` 在刪除成員之前、同一個交易內，把名稱與 email 寫進他當操作者的稽核（`actorName`、`actorEmail`）與他發起的匯出、刪除請求（`requestedByName`、`requestedByEmail`）。`GET /tenant/audit-logs` 每筆多回 `actorSnapshot`。`agent.purge` 的 `payload` 記下被刪成員的名稱。修正前已刪除的成員留下的紀錄沒有快照，無法回復。
+
+**未修正：** 刪除請求還在排隊時發起人被永久刪除，`apps/workers/src/handlers/data-erasure.handler.ts` 以 job 資料裡的 `requestedBy` 寫 `data.erasure.complete` 稽核，違反外鍵；錯誤被 `.catch()` 吞掉，只記 log，完成通知也會失敗。這個 handler 由 #329 修改中，等 #329 合併後另補。依 `actorId` 篩選稽核查不到已刪除成員的紀錄。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-GOVERNANCE-01（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）。證據：`packages/database/prisma/schema.prisma:2132, 2156, 2178`、`apps/api/src/modules/agent/agent.flow.ts:150-160`；成員 X 發起資料匯出後被停用並刪除，同一筆 `data.export.request` 稽核的 `actorId` 變成 NULL（健檢實測）。
 

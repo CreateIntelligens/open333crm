@@ -2313,7 +2313,7 @@
         },
         {
           "domain": "members",
-          "why": "稽核的 actor 外鍵 SetNull：永久刪除成員後，他做過的操作在稽核裡變成沒有操作者"
+          "why": "稽核與匯出、刪除請求的操作者外鍵 SetNull：永久刪除成員前 purgeAgent 寫入名稱與 email 快照（actorName、requestedByName 等，#414）"
         },
         {
           "domain": "settings",
