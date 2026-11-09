@@ -110,3 +110,17 @@ test('刪除被拒時不寫快照：目標權限比操作者高（403 TARGET_OUT
   await assert.rejects(purgeAgent(createMockTenantCtx(tx, TENANT).ctx, TARGET.id, 'role-actor'), (err: { code?: string }) => err.code === 'TARGET_OUTRANKS_ACTOR');
   assert.deepEqual(log.filter((l) => SNAPSHOT_WRITES.includes(l)), []);
 });
+
+/**
+ * 順序是並行時的保證，行為測試碰不到（change keep-completion-audit-for-purged-requester）：
+ * 資料刪除 worker 的交易先鎖住刪除請求列，再寫完成稽核。永久刪除先更新請求快照，會等那個交易 commit，
+ * 之後才寫稽核快照，這時看得到剛寫入的完成稽核；反過來的話，那筆稽核在成員刪除後沒有操作者也沒有快照。
+ */
+test('請求的快照在稽核的快照之前寫入', async () => {
+  const { tx, log } = mockTx();
+  await purgeAgent(createMockTenantCtx(tx, TENANT).ctx, TARGET.id, 'role-actor');
+
+  const auditAt = log.indexOf('tenantAuditLog.updateMany');
+  assert.ok(log.indexOf('dataErasureRequest.updateMany') < auditAt, '刪除請求的快照在稽核快照之前');
+  assert.ok(log.indexOf('dataExportRequest.updateMany') < auditAt, '匯出請求的快照在稽核快照之前');
+});

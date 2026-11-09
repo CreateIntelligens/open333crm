@@ -2242,6 +2242,7 @@
         "apps/api/src/modules/webhook-subscriptions/*",
         "apps/workers/src/handlers/data-export.handler.ts",
         "apps/workers/src/handlers/data-erasure.handler.ts",
+        "apps/workers/src/lib/requester.ts",
         "apps/workers/src/lib/simple-zip.ts"
       ],
       "pages": [],

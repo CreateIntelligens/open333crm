@@ -3,12 +3,15 @@
  * 「worker 不重新處理已結束的刪除請求」）。
  *
  * 第一個測試重現 bug：同一個硬刪除工作執行兩次時，第二次把 completed 改成 failed。
- * 資料庫是記憶體裡的假實作：沒有特別處理的查詢回傳空結果；交易丟錯時還原請求與聯絡人。
+ * 完成稽核與通知（change keep-completion-audit-for-purged-requester）：稽核在刪除交易內寫入、
+ * 發起的成員已被永久刪除時記下快照不送通知、通知送不進佇列時工作不失敗。
+ * 資料庫是記憶體裡的假實作：沒有特別處理的查詢回傳空結果；交易丟錯時還原請求、聯絡人與稽核。
  */
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 
 const notified = vi.hoisted(() => [] as string[]);
+const queue = vi.hoisted(() => ({ down: false }));
 const storage = vi.hoisted(() => ({ remove: async (_bucket: string, _key: string): Promise<void> => undefined }));
 vi.mock('@open333crm/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@open333crm/core')>()),
@@ -18,6 +21,7 @@ vi.mock('@open333crm/core', async (importOriginal) => ({
 }));
 vi.mock('#src/lib/notification-queue.js', () => ({
   enqueueNotification: async (input: { type: string }) => {
+    if (queue.down) throw new Error('redis down');
     notified.push(input.type);
   },
 }));
@@ -29,14 +33,37 @@ const REQUEST = 'f0000000-0000-0000-0000-00000000000f';
 const CONTACT = 'c0000000-0000-0000-0000-00000000000c';
 const CONVERSATION = 'd0000000-0000-0000-0000-00000000000d';
 
+const REQUESTER = 'b0000000-0000-0000-0000-00000000000b';
+
+interface AuditRow {
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  payload: unknown;
+}
+
 interface State {
-  request: { id: string; tenantId: string; status: string; error: string | null; affected: unknown };
+  request: {
+    id: string;
+    tenantId: string;
+    status: string;
+    error: string | null;
+    affected: unknown;
+    requestedByName: string | null;
+    requestedByEmail: string | null;
+  };
   contact: { id: string; tenantId: string; displayName: string } | null;
+  /** 發起的成員還在（同租戶的 agents 有這筆） */
+  requesterExists: boolean;
   audits: string[];
   auditPayloads: unknown[];
+  auditRows: AuditRow[];
   messages: { direction: string; content: unknown }[];
   /** 交易 commit 之後補寫 affected 的 updateMany 丟錯 */
   failAffectedWriteBack?: boolean;
+  /** 寫完成稽核時丟錯 */
+  failAuditCreate?: boolean;
 }
 
 function matchesStatus(status: string, where: { status?: string | { in: string[] } }) {
@@ -62,7 +89,8 @@ function fakeDb(state: State) {
       dataErasureRequest: {
         updateMany: async ({ where, data }: { where: { id: string; tenantId: string; status?: string | { in: string[] } }; data: Record<string, unknown> }) => {
           await yieldOnce();
-          if (state.failAffectedWriteBack && journal === null && 'affected' in data) throw new Error('db down');
+          // 交易內寫 affected 用 update；updateMany 帶 affected 只有 commit 之後的補寫
+          if (state.failAffectedWriteBack && 'affected' in data) throw new Error('db down');
           const r = state.request;
           if (r.id !== where.id || r.tenantId !== where.tenantId || !matchesStatus(r.status, where)) return { count: 0 };
           const prev = { ...r };
@@ -75,6 +103,19 @@ function fakeDb(state: State) {
           record(() => Object.assign(state.request, prev));
           return Object.assign(state.request, data);
         },
+        findFirst: async ({ where }: { where: { id: string; tenantId: string } }) => {
+          const r = state.request;
+          return r.id === where.id && r.tenantId === where.tenantId
+            ? { requestedByName: r.requestedByName, requestedByEmail: r.requestedByEmail }
+            : null;
+        },
+      },
+      agent: {
+        // 同 Prisma：where 的 id 是 undefined 時不篩選，回傳同租戶的任何一位成員
+        findFirst: async ({ where }: { where: { id?: string; tenantId: string } }) =>
+          where.tenantId === TENANT && (where.id === undefined || (state.requesterExists && where.id === REQUESTER))
+            ? { id: where.id ?? 'other-agent' }
+            : null,
       },
       contact: {
         findFirst: async () => {
@@ -96,10 +137,36 @@ function fakeDb(state: State) {
       },
       message: emptyModel({ findMany: async () => state.messages }),
       tenantAuditLog: {
-        create: async ({ data }: { data: { action: string; payload: unknown } }) => {
+        create: async ({ data }: { data: AuditRow }) => {
+          if (state.failAuditCreate) throw new Error('audit write failed');
+          const index = state.audits.length;
           state.audits.push(data.action);
           state.auditPayloads.push(data.payload);
-          return data;
+          state.auditRows.push({
+            action: data.action,
+            actorId: data.actorId ?? null,
+            actorName: data.actorName ?? null,
+            actorEmail: data.actorEmail ?? null,
+            payload: data.payload,
+          });
+          record(() => {
+            state.audits.splice(index, 1);
+            state.auditPayloads.splice(index, 1);
+            state.auditRows.splice(index, 1);
+          });
+          return { id: `audit-${index}` };
+        },
+        updateMany: async ({ where, data }: { where: { id: string; tenantId: string }; data: { payload: unknown } }) => {
+          const index = Number(where.id.replace('audit-', ''));
+          if (where.tenantId !== TENANT || !state.auditRows[index]) return { count: 0 };
+          const prev = state.auditPayloads[index];
+          record(() => {
+            state.auditPayloads[index] = prev;
+            state.auditRows[index].payload = prev;
+          });
+          state.auditPayloads[index] = data.payload;
+          state.auditRows[index].payload = data.payload;
+          return { count: 1 };
         },
       },
     };
@@ -133,15 +200,17 @@ function fakeDb(state: State) {
 }
 
 function job(mode: 'hard_delete' | 'anonymize') {
-  return { data: { requestId: REQUEST, tenantId: TENANT, contactId: CONTACT, mode, requestedBy: 'agent-1' } } as never;
+  return { data: { requestId: REQUEST, tenantId: TENANT, contactId: CONTACT, mode, requestedBy: REQUESTER } } as never;
 }
 
 function state(status: string, contact = true): State {
   return {
-    request: { id: REQUEST, tenantId: TENANT, status, error: null, affected: null },
+    request: { id: REQUEST, tenantId: TENANT, status, error: null, affected: null, requestedByName: null, requestedByEmail: null },
     contact: contact ? { id: CONTACT, tenantId: TENANT, displayName: '王小明' } : null,
+    requesterExists: true,
     audits: [],
     auditPayloads: [],
+    auditRows: [],
     messages: [],
   };
 }
@@ -150,6 +219,7 @@ const redis = { publish: async () => 1 } as never;
 
 beforeEach(() => {
   notified.length = 0;
+  queue.down = false;
   storage.remove = async () => undefined;
 });
 
@@ -239,4 +309,62 @@ test('檔名不是標準 UUID 的媒體檔不刪：只有 36 個連字號或段�
   const affected = s.request.affected as Record<string, number>;
   assert.equal(affected.mediaObjects, 1);
   assert.equal(affected.mediaObjectsSkipped, 2);
+});
+
+test('發起的成員還在時記下他並通知他：稽核的 actorId 是發起的成員，快照欄位是空值', async () => {
+  const s = state('pending');
+  await handleDataErasureJob(job('anonymize'), fakeDb(s) as never, redis);
+
+  assert.equal(s.request.status, 'completed');
+  assert.equal(s.auditRows.length, 1);
+  assert.equal(s.auditRows[0].actorId, REQUESTER);
+  assert.equal(s.auditRows[0].actorName, null);
+  assert.equal(s.auditRows[0].actorEmail, null);
+  assert.deepEqual(notified, ['data_erasure_done']);
+});
+
+test('發起的成員已被永久刪除時，完成稽核記下快照、不送通知', async () => {
+  const s = state('pending');
+  s.requesterExists = false;
+  s.request.requestedByName = '發起者';
+  s.request.requestedByEmail = 'requester@example.test';
+  await handleDataErasureJob(job('hard_delete'), fakeDb(s) as never, redis);
+
+  assert.equal(s.request.status, 'completed');
+  assert.equal(s.contact, null);
+  assert.deepEqual(s.auditRows.map((r) => [r.action, r.actorId, r.actorName, r.actorEmail]), [
+    ['data.erasure.complete', null, '發起者', 'requester@example.test'],
+  ]);
+  assert.deepEqual(notified, []);
+});
+
+test('工作內容沒有 requestedBy 時視為發起的成員不在，不拿同租戶其他成員當操作者', async () => {
+  const s = state('pending');
+  const noRequester = { data: { requestId: REQUEST, tenantId: TENANT, contactId: CONTACT, mode: 'anonymize' } } as never;
+  await handleDataErasureJob(noRequester, fakeDb(s) as never, redis);
+
+  assert.equal(s.request.status, 'completed');
+  assert.equal(s.auditRows[0].actorId, null);
+  assert.deepEqual(notified, []);
+});
+
+test('完成稽核寫不進去時：刪除 rollback，請求是 failed，不送通知', async () => {
+  const s = state('pending');
+  s.failAuditCreate = true;
+  await assert.rejects(handleDataErasureJob(job('anonymize'), fakeDb(s) as never, redis), /audit write failed/);
+
+  assert.equal(s.contact!.displayName, '王小明', '匿名化與稽核一起 rollback');
+  assert.equal(s.request.status, 'failed');
+  assert.match(s.request.error ?? '', /audit write failed/);
+  assert.deepEqual(s.audits, []);
+  assert.deepEqual(notified, []);
+});
+
+test('完成通知送不進佇列時：工作不失敗，請求與稽核已經 commit', async () => {
+  const s = state('pending');
+  queue.down = true;
+  await assert.doesNotReject(handleDataErasureJob(job('anonymize'), fakeDb(s) as never, redis));
+
+  assert.equal(s.request.status, 'completed');
+  assert.deepEqual(s.audits, ['data.erasure.complete']);
 });

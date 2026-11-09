@@ -2,6 +2,8 @@
  * data-export worker 不重新處理已結束的請求（change outbox-event-delivery：tenant-data-export
  * 「worker 不重新處理已結束的匯出請求」）。
  *
+ * 發起的成員已被永久刪除時不送通知（change keep-completion-audit-for-purged-requester）。
+ *
  * 物件儲存與通知換成記錄呼叫的假實作；資料庫是記憶體裡的假實作，匯出的資料表都是空的。
  */
 import assert from 'node:assert/strict';
@@ -42,8 +44,14 @@ function matchesStatus(status: string, where: { status?: string | { in: string[]
   return typeof where.status === 'string' ? where.status === status : where.status.in.includes(status);
 }
 
-function fakeDb(request: Request) {
+const REQUESTER = 'b0000000-0000-0000-0000-00000000000b';
+
+function fakeDb(request: Request, requesterExists = true) {
   const models: Record<string, unknown> = {
+    agent: {
+      findFirst: async ({ where }: { where: { id: string; tenantId: string } }) =>
+        requesterExists && where.id === REQUESTER && where.tenantId === TENANT ? { id: REQUESTER } : null,
+    },
     dataExportRequest: {
       findFirst: async () => ({ id: request.id, status: request.status }),
       updateMany: async ({ where, data }: { where: { id: string; tenantId: string; status?: string | { in: string[] } }; data: Record<string, unknown> }) => {
@@ -64,7 +72,7 @@ function request(status: string, fileKey: string | null = null): Request {
   return { id: REQUEST, tenantId: TENANT, status, fileKey, expiresAt: fileKey ? new Date('2026-11-01T00:00:00Z') : null };
 }
 
-const job = { data: { requestId: REQUEST, tenantId: TENANT, requestedBy: 'agent-1' } } as never;
+const job = { data: { requestId: REQUEST, tenantId: TENANT, requestedBy: REQUESTER } } as never;
 const redis = { publish: async () => 1 } as never;
 
 beforeEach(() => {
@@ -97,4 +105,12 @@ test('兩次同時執行：請求是 completed，只送出一則完成通知', a
   await Promise.all([handleDataExportJob(job, db as never, redis), handleDataExportJob(job, db as never, redis)]);
   assert.equal(r.status, 'completed');
   assert.deepEqual(calls.notified, ['data_export_ready']);
+});
+
+test('發起的成員已被永久刪除時完成匯出、不送通知', async () => {
+  const r = request('pending');
+  await handleDataExportJob(job, fakeDb(r, false) as never, redis);
+  assert.equal(r.status, 'completed');
+  assert.equal(r.fileKey, `export/${TENANT}/${REQUEST}.zip`);
+  assert.deepEqual(calls.notified, []);
 });
