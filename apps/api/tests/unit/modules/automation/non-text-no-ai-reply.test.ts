@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeAll, beforeEach, test, vi } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const calls = vi.hoisted(() => ({ kb: [] as string[], agent: [] as string[], enqueued: 0 }));
 
@@ -43,6 +44,8 @@ const { setupAutomationWorker } = await import('#src/modules/automation/automati
 const conversation = { id: 'conv-1', status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null as string | null, updatedAt: new Date() };
 
 const prisma = {
+
+  ...disabledAiPrivacy,
   conversation: {
     findFirst: async ({ where }: { where: { status?: string } }) =>
       where.status && where.status !== conversation.status

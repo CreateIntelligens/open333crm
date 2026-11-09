@@ -6,8 +6,11 @@ import { AppError } from '../../shared/utils/response.js';
 const policySchema = z.object({ enabled: z.boolean() }).strict();
 const policyKey = (tenantId: string) => `ai.privacy.${tenantId}`;
 
+/** 租戶的 AI 個資遮罩政策。遮罩函式收這個值，不收資料庫（deidentification.service.ts）。 */
+export type AiPrivacyPolicy = { enabled: boolean };
+
 /** Runtime policy read uses the caller's executor and the explicit tenant key. */
-export async function readAiPrivacyPolicy(prisma: TenantDb, tenantId: string): Promise<{ enabled: boolean }> {
+export async function readAiPrivacyPolicy(prisma: TenantDb, tenantId: string): Promise<AiPrivacyPolicy> {
   try {
     const row = await prisma.platformSetting.findUnique({ where: { key: policyKey(tenantId) }, select: { value: true } });
     return row ? policySchema.parse(row.value) : { enabled: false };

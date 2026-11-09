@@ -11,6 +11,7 @@ import { buildMessageNewPayload, emitToConversationChannel } from '../webhook/in
 import type { BindingStore } from './binding-code.js';
 import { BINDING_TEXT } from './binding-links.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface BindingDeps {
   store: BindingStore;
@@ -60,7 +61,7 @@ export async function sendBindingMessage(
   text: string,
   kind: string,
 ): Promise<boolean> {
-  const storedContent = await prepareStoredMessageContent(db, tenantId, { text }, 'system_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(db, tenantId), { text }, 'system_template');
   const operationalText = storedContent.content.text as string;
   const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, operationalText);
   if (!ok) logger.warn('[IdentityBinding] 綁定訊息送出失敗', { conversationId, kind });

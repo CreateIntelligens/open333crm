@@ -43,6 +43,7 @@ import type { BotReplyGuard } from '../automation/bot-reply-guard.js';
 import { handOffConversation } from '../automation/handoff.flow.js';
 import type { EventPublisher } from '../../events/outbox-publisher.js';
 import { AppError } from '../../shared/utils/response.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 const CLARIFY_HANDOFF_FALLBACK =
   '不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。';
@@ -480,10 +481,11 @@ async function persistAndDeliver(input: {
   // 綁定代碼只能由綁定流程產生：回覆含代碼（KB 內容或 LLM 生成）就整則換成固定說明
   const guarded = await guardAiReplyForTenant(prisma, tenantId, kbReply.text, { conversationId, source: 'kb_autoreply' });
   const finalText = guarded.text;
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: finalText }, 'system');
+  const privacy = await readAiPrivacyPolicy(prisma, tenantId);
+  const storedContent = await prepareStoredMessageContent(privacy, { text: finalText }, 'system');
   // 轉接的系統訊息也在交易外遮罩（與自動轉接相同的文字格式）
   const handoffContent = handoff
-    ? await prepareStoredMessageContent(prisma, tenantId, { text: `自動轉接人工客服：${handoff.reason}` }, 'system')
+    ? await prepareStoredMessageContent(privacy, { text: `自動轉接人工客服：${handoff.reason}` }, 'system')
     : null;
 
   // 寫入 BOT 訊息並更新對話：與 bot_reply 認領在同一個交易，認領失敗就不寫入、不送出

@@ -6,6 +6,11 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **AI 個資遮罩函式改收遮罩政策，不再讀資料庫**（#337 階段 4 第四批）— `ai/deidentification.service.ts` 有 5 個遮罩函式：`prepareStoredMessageContent`、`prepareStoredMaterialBody`、`getPrivacyAwareChatProvider`、`deidentifyTenantText`、`deidentifyTenantData`。這些函式原本收資料庫連線，先讀租戶的遮罩政策，再呼叫 2md（外部的個資遮罩服務）。呼叫 2md 是外部呼叫，不能放在交易內。函式收資料庫連線時，呼叫端搬到 flow 之後無法在交易外遮罩。現在這些函式改收遮罩政策（`AiPrivacyPolicy`）。呼叫端先以 `readAiPrivacyPolicy()` 讀出政策，再傳給遮罩函式。行為不變：政策關閉時，系統不呼叫 2md；讀取政策失敗時，API 仍回 503 `AI_PRIVACY_POLICY_UNAVAILABLE`。差異如下：
+  - 一個流程遮罩多次時，系統只讀一次政策。AI Agent 回覆在執行開始時讀一次政策，使用者訊息、工具呼叫紀錄與最終回覆都用這份政策。知識庫自動回覆的回覆訊息與轉接訊息也共用一份政策。原本每次遮罩都重讀政策。
+  - 移除一個判斷：假資料庫沒有 `platformSetting` 時，函式把政策當作關閉。這個判斷只為舊的單元測試存在。單元測試改用 `tests/support/ai-privacy.ts` 提供政策。
+  - 這一批不改遮罩的時機，呼叫端仍在原本的位置遮罩。各呼叫端的模組搬到 flow 時，再把遮罩移到交易之前。
+
 - **競猜活動發布前要求至少一個正確答案**（#471，change `fix-portal-quiz-requires-correct-answer`）— 競猜原本可以沒有標任何正確答案就發布，每個人都是 0 分，平均分數與作答列表全是 0。現在 `POST /api/v1/portal/activities/:id/publish` 對沒有正確答案的競猜回 400「競猜活動至少要有一個正確答案」，活動維持草稿。建立與編輯草稿時不檢查，草稿可以先存再補正確答案；投票不受影響。後台活動表單的競猜選項區加上「發布前至少勾選一個正確答案」的說明。開獎不變，仍從全部未中獎的作答隨機抽出，不看分數。
 
 ### Fixed

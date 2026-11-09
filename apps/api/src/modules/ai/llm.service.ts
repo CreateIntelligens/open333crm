@@ -26,6 +26,7 @@ import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
 import { getPrivacyAwareChatProvider } from './deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export type { HistoryMessage } from './providers/index.js';
 
@@ -286,7 +287,7 @@ export async function generateReply(
 
   let result;
   try {
-    const protectedProvider = await getPrivacyAwareChatProvider(prisma, tenantId, provider);
+    const protectedProvider = getPrivacyAwareChatProvider(await readAiPrivacyPolicy(prisma, tenantId), provider);
     result = await protectedProvider.generate({
       // 知識庫約束在此組裝完成，provider 只負責傳輸（CM-178）
       systemPrompt: buildSystemPrompt(withOtherChannelContext(systemPrompt, options.otherChannelContext ?? ''), kbContext),

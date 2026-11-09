@@ -1,8 +1,13 @@
+/**
+ * 送去 2md 遮罩個資的函式。遮罩是外部 HTTP 呼叫，所以這裡的函式不讀資料庫，也不收 TenantCtx
+ * （AGENTS.md 結構規則 2：交易內不呼叫外部服務）。
+ * 呼叫端先以 readAiPrivacyPolicy() 讀出租戶的政策，再把政策傳進來。
+ * 呼叫端搬遷到 flow 時，要在開交易之前遮罩，交易內只寫入遮罩的結果。
+ */
 import { z } from 'zod/v3';
 import type { Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
-import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import type { AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 import type { ChatProvider } from './providers/types.js';
 
 const DEID_URL = 'https://2md.aiurl.tw/api/deid';
@@ -170,16 +175,11 @@ export interface PreparedStoredMaterialBody {
 
 /** Prepare a material body for storage and delivery with an explicit per-save mode. */
 export async function prepareStoredMaterialBody(
-  prisma: TenantDb,
-  tenantId: string,
+  policy: AiPrivacyPolicy,
   body: Record<string, unknown>,
   requestedMode: 'mask' | 'original' = 'mask',
 ): Promise<PreparedStoredMaterialBody> {
-  // Structural DB doubles used by older unit tests do not expose this model.
-  if (!('platformSetting' in (prisma as object))) {
-    return { body: body as Prisma.InputJsonObject, maskedBody: null, privacyMode: null };
-  }
-  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) {
+  if (!policy.enabled) {
     return { body: body as Prisma.InputJsonObject, maskedBody: null, privacyMode: null };
   }
 
@@ -198,16 +198,11 @@ export async function prepareStoredMaterialBody(
  * UI payloads keep their existing shape. All model readers use this copy.
  */
 export async function prepareStoredMessageContent(
-  prisma: TenantDb,
-  tenantId: string,
+  policy: AiPrivacyPolicy,
   content: Record<string, unknown>,
   source: StoredMessagePrivacySource,
 ): Promise<PreparedStoredMessageContent> {
-  // Unit doubles built before the platform policy existed omit platformSetting.
-  // A real TenantDb always provides this Prisma model; treating a structural test
-  // double as disabled keeps unrelated behavior tests focused on their subject.
-  if (!('platformSetting' in (prisma as object))) return { content: content as Prisma.InputJsonObject, metadata: {} };
-  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return { content: content as Prisma.InputJsonObject, metadata: {} };
+  if (!policy.enabled) return { content: content as Prisma.InputJsonObject, metadata: {} };
 
   const maskedContent = await maskStructuredContent(content);
   const mode: StoredMessagePrivacy['mode'] = source === 'agent_default'
@@ -251,12 +246,11 @@ export function readModelMessageContent(content: unknown, metadata: unknown): st
 }
 
 /** One wrapper per operation. A disabled policy returns the exact original provider. */
-export async function getPrivacyAwareChatProvider(
-  prisma: TenantDb,
-  tenantId: string,
+export function getPrivacyAwareChatProvider(
+  policy: AiPrivacyPolicy,
   provider: ChatProvider,
-): Promise<ChatProvider> {
-  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return provider;
+): ChatProvider {
+  if (!policy.enabled) return provider;
   return {
     ...provider,
     async generate(options) {
@@ -294,14 +288,14 @@ export async function getPrivacyAwareChatProvider(
   };
 }
 
-export async function deidentifyTenantText(prisma: TenantDb, tenantId: string, text: string): Promise<string> {
-  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return text;
+export async function deidentifyTenantText(policy: AiPrivacyPolicy, text: string): Promise<string> {
+  if (!policy.enabled) return text;
   return (await maskTexts([text]))[0];
 }
 
 /** De-identify every string value in a JSON trace before it is persisted. */
-export async function deidentifyTenantData(prisma: TenantDb, tenantId: string, value: unknown): Promise<unknown> {
-  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return value;
+export async function deidentifyTenantData(policy: AiPrivacyPolicy, value: unknown): Promise<unknown> {
+  if (!policy.enabled) return value;
   const strings: string[] = [];
   mapStrings(value, (text) => {
     strings.push(text);

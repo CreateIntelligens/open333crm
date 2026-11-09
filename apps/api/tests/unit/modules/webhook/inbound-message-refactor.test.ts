@@ -12,6 +12,7 @@ import { processInboundMessage } from '#src/modules/webhook/webhook.service.js';
 import { apiSrc } from '#tests/support/paths.js';
 
 import { test } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {
@@ -93,6 +94,7 @@ async function captureEvents(run: () => Promise<unknown>) {
 async function testMissingContactUidShortCircuits() {
   const { io, events } = createIoMock();
   const prisma = {
+    ...disabledAiPrivacy,
     channelIdentity: { findUnique: mockFn(() => assert.fail('channelIdentity should not be queried')) },
   };
 
@@ -126,6 +128,7 @@ async function testDuplicateClientMessageReturnsExistingMessage() {
   const messageCreate = mockFn(() => assert.fail('duplicate path must not create message'));
   const conversationUpdate = mockFn(() => assert.fail('duplicate path must not update conversation'));
   const prisma = {
+    ...disabledAiPrivacy,
     // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
     tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
@@ -176,6 +179,7 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
   const conversation = createConversation();
   const inboundMessage = createInboundMessage({ content: { text: 'csat:5:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
   const prisma = {
+    ...disabledAiPrivacy,
     // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
     tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
@@ -237,6 +241,7 @@ async function testCsatLookupScopedToTenantAndSender() {
   const caseId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const inboundMessage = createInboundMessage({ content: { text: `csat:1:${caseId}` } });
   const prisma = {
+    ...disabledAiPrivacy,
     // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
     tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {

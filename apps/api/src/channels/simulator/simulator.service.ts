@@ -7,6 +7,7 @@ import { emitToChannel } from '../../events/socket-push.js';
 import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { prepareStoredMessageContent } from '../../modules/ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../../modules/platform/ai-privacy.service.js';
 
 export interface SimulatorMessageInput {
   channelType: string;
@@ -117,7 +118,7 @@ export async function simulateInboundMessage(
   }
 
   const now = new Date();
-  const storedContent = await prepareStoredMessageContent(prisma as never, tenantId, content, 'inbound');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma as never, tenantId), content, 'inbound');
 
   // 4. Create Message (INBOUND, CONTACT)
   const message = await prisma.message.create({

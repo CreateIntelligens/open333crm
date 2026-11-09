@@ -10,6 +10,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { logger } from '@open333crm/core';
 import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
 import { deidentifyTenantText } from '../ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export async function generateEmbedding(
 ): Promise<number[]> {
   const settings = await getEmbeddingSettings(prisma, tenantId);
   const url = `${settings.baseUrl}/api/embed`;
-  const protectedText = await deidentifyTenantText(prisma, tenantId, text);
+  const protectedText = await deidentifyTenantText(await readAiPrivacyPolicy(prisma, tenantId), text);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= EMBED_COLD_START_RETRIES; attempt++) {

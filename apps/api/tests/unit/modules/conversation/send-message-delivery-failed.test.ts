@@ -11,6 +11,7 @@ process.env.CREDENTIAL_ENCRYPTION_KEY ||= 'test-credential-encryption-key-32-byt
 import { registerChannelPlugin } from '@open333crm/channel-plugins';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { sendMessage } from '#src/modules/conversation/conversation.service.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const CHANNEL_ID = '11111111-1111-4111-8111-111111111111';
 let pluginResult: { success: boolean; error?: string };
@@ -28,6 +29,7 @@ let emitted: Array<{ room: string; event: string; payload: any }>;
 function setup(opts: { isActive?: boolean; identity?: boolean } = {}) {
   const conversation = { id: 'conv-1', tenantId: 'tenant-1', channelId: CHANNEL_ID, caseId: null };
   const prisma = {
+    ...disabledAiPrivacy,
     conversation: {
       findFirst: async () => conversation,
       update: async () => ({}),

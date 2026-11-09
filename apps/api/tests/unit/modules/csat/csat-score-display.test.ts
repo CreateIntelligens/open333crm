@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async () => true,
@@ -37,6 +38,7 @@ const io = {
 
 function createDb() {
   return {
+    ...disabledAiPrivacy,
     case: {
       findFirst: async () => ({
         id: CASE_ID,

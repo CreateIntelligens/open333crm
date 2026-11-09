@@ -26,6 +26,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-inbound-first-contact-s
 
 import { eventBus, type AppEvent } from '#src/events/event-bus.js';
 import { resolveInboundContact } from '#src/modules/webhook/inbound-contact-resolver.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 type AnyRecord = Record<string, any>;
 
@@ -198,6 +199,7 @@ async function run() {
 
     let identityRow: AnyRecord | null = null;
     const db: AnyRecord = {
+      ...disabledAiPrivacy,
       channelIdentity: {
         async findUnique() {
           return identityRow;
@@ -284,6 +286,7 @@ test('stitched 身分寫入合併紀錄失敗時，建立身分在同一個交�
   const calls: string[] = [];
   let rolledBack = false;
   const tx: AnyRecord = {
+    ...disabledAiPrivacy,
     channelIdentity: {
       async create({ data }: AnyRecord) {
         calls.push('tx.create');

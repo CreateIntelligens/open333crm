@@ -32,6 +32,7 @@ import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { ClaimTransactionError, createBotReplyGuard } from './bot-reply-guard.js';
 import { handOffAfterAiFailure } from './ai-failure-handoff.flow.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -147,7 +148,7 @@ async function checkAutoHandoff(
   const systemText = summary
     ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
     : `自動轉接人工客服：${reason}`;
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: systemText }, 'system');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: systemText }, 'system');
 
   // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領。
   // 轉接本身（狀態、原因、系統訊息、conversation.handoff、渠道推播）與 KB 追問用完共用 handOffConversation()

@@ -15,6 +15,7 @@ import {
   readPhoneRegistration,
 } from '#src/modules/identity-binding/phone-registration.service.js';
 import type { BindingActor } from '#src/modules/identity-binding/binding-common.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 // ── 號碼格式 ────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ test('只啟用手機登記時也處理解除關鍵字', async () => {
   // 有可解除的手機歸戶時攔截：查詢合併紀錄的條件要包含 PHONE
   const sources: unknown[] = [];
   const db = {
+    ...disabledAiPrivacy,
     tenantSettings: { findFirst: async () => ({ identityBinding: { phoneEnabled: true } }) },
     contactMergeLog: {
       findMany: async (args: { where: { source: unknown } }) => {
@@ -109,6 +111,7 @@ function issueFixture() {
   const store = memBindingStore(clock);
   const sent: Array<{ conversationId: string; text: string }> = [];
   const db = {
+    ...disabledAiPrivacy,
     message: { create: async ({ data }: { data: object }) => ({ id: 'm1', createdAt: new Date(), ...data }) },
     conversation: { updateMany: async () => ({ count: 1 }) },
   } as unknown as TenantDb;

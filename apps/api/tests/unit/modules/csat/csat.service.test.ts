@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const delivered = vi.hoisted(() => [] as unknown[][]);
 const delivery = vi.hoisted(() => ({ error: undefined as Error | undefined }));
@@ -36,6 +37,7 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
   const messageCreateCalls: unknown[] = [];
   const failureRecords: string[] = [];
   const db = {
+    ...disabledAiPrivacy,
     case: {
       findUnique: async () => ({
         id: CASE_ID,
@@ -168,6 +170,7 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
   try {
     const created: Array<Record<string, unknown>> = [];
     const db = {
+      ...disabledAiPrivacy,
       platformSetting: { findUnique: async () => ({ value: { enabled: true } }) },
       case: {
         findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, csatScore: null, conversations: [{ id: 'conv-1', channelId: 'ch-1' }] }),
@@ -205,6 +208,7 @@ async function closeUpdateAfterScore(status: string) {
   delivered.length = 0;
   const updates: Array<Record<string, unknown>> = [];
   const db = {
+    ...disabledAiPrivacy,
     platformSetting: { findUnique: async () => null },
     case: {
       findFirst: async () => ({
