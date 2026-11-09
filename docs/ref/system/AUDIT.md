@@ -203,7 +203,7 @@
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
 | [KB-05](#kb-05) | Storage、LLM 與資料庫 | P2 | 未處理 | 型號守門命中後寫進對話的 `modelGuard` 永遠不清除，之後的回覆都沿用舊值 | 執行時確認 |
 | [KB-06](#kb-06) | Storage、LLM 與資料庫 | P3 | 部分修正 | AI 與知識庫回覆都失敗時客人收不到回覆；知識庫失敗時已改為轉真人（#445），`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆、不轉接 | 執行時確認 |
-| [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
+| [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 向量維度不一致：migration 建立 1536 維，schema 與 UAT 是 1024 維 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
 | [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
 | [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
@@ -2540,7 +2540,7 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 <a id="llm-04"></a>
 ### LLM-04：Embedding 只能呼叫 Ollama
 
-`tenant_settings` 的 Chat 設定有 `chatProvider`，可以選 Ollama 或 Gemini。Embedding 設定沒有對應的供應商欄位。`embedding.service.ts` 的 `embedOnce()` 一律以 Ollama 的 embed API 格式呼叫 `embeddingBaseUrl`；`embedding-settings.service.ts` 的健康檢查與模型清單也只查 Ollama。
+`tenant_settings` 的 Chat 設定有 `chatProvider`，可以選 Ollama 或 Gemini。Embedding 設定沒有對應的供應商欄位。`embedding/embedding-client.ts` 的 `embedText()` 一律以 Ollama 的 embed API 格式呼叫 `embeddingBaseUrl`；同一個檔案的 `probeEmbeddingService()`（健康檢查與模型清單）也只查 Ollama 的 `/api/tags`。
 
 組織決定不部署 Ollama。拿掉 Ollama 之後，所有產生向量的路徑都會失敗：
 
@@ -2548,14 +2548,22 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 | --- | --- |
 | 知識庫自動回覆（`kb-autoreply.service.ts` 的 `attemptKbAutoReply()`） | 回傳 `failed`，agent 也沒回覆時轉真人，原因「AI 暫時無法回覆（AI 服務發生錯誤）」（KB-06，#445）。客人收不到 AI 回覆 |
 | AI 建議回覆（`ai.service.ts` 的 `suggestReply()`） | 回傳空的建議清單 |
-| 知識庫語意搜尋（`knowledge.service.ts` 的 `semanticSearch()`） | 拋出錯誤 |
-| 建立或修改文章時產生向量（`embedArticle()`） | 在背景失敗，只記 log。文章仍可發布，但不會被檢索到 |
+| 知識庫語意搜尋（`embedding.flow.ts` 的 `searchArticlesByTextFlow()`） | 拋出錯誤 |
+| 建立或修改文章時產生向量（`embedding.flow.ts` 的 `embedArticleFlow()`） | 在背景失敗，只記 log。文章仍可發布，但不會被檢索到 |
 
 自動回覆的失敗原本最不容易察覺：客人收不到回覆，對話也沒有轉給客服。#445 之後改為轉真人，但每則文字訊息都會轉給客服（KB-06）。
 
 **UAT 目前仍正常產生向量（2026-10-30 功能健檢）。** UAT Demo 租戶的 `GET /knowledge/embedding-status` 回 `{ok: true, model: "bge-m3:latest"}`，1180 篇已發布文章抽查前 200 篇都有向量。UAT 靠 Compose 內仍在執行的 Ollama 服務（LLM-02）運作。「Embedding 只能呼叫 Ollama」仍然成立；上表是拿掉 Ollama 之後的結果，不是 UAT 目前的現況。原本這裡寫成「所有產生向量的路徑都會失敗」，依健檢改成條件式（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。
 
 改用其他 embedding 服務時，資料庫欄位的維度要配合新的模型，與 DB-01 一起處理。
+
+**一起評估：在文章記下產生向量的文字雜湊（`embeddingSourceHash`）。** change `migrate-embedding-tenant-ctx` 審查時討論過，決定等這一項再做（2026-11-09，使用者決定）：
+
+- 存「產生目前向量的文字 + 模型名稱」的雜湊。雜湊要包含模型：只存文字時，換模型後的批次重新向量化會把每一篇都當成沒變而略過。
+- 用途一：找出過期的向量。現在只改分類或標籤時不重新向量化，文章保留舊向量（spec `km-ingestion`「向量化期間文章被修改時不寫入向量」的已知限制）。比對雜湊就能列出需要重新向量化的文章，批次重新向量化也可以只處理這些文章。
+- 用途二：文字沒變時不呼叫 embedding 服務。換成付費的 embedding API 之後才省得到錢，這是等這一項的理由。
+- 換模型時本來就要改欄位維度（migration）並重新向量化所有文章，一起加欄位只要一個 migration，重新向量化時也順便寫入每篇的雜湊。
+- 和「向量化期間文章被修改就不寫入」的比對互不影響：那個比對在寫入向量的交易內重組文字比較，判斷的是向量化期間有沒有被改；雜湊判斷的是目前的向量和目前的內容對不對得上。
 
 <a id="llm-05"></a>
 ### LLM-05：AI 摘要失敗時回傳固定範本
@@ -2597,7 +2605,13 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 <a id="db-01"></a>
 ### DB-01：向量維度不一致
 
-Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embedding` 與 `long_term_memories.embedding` 欄位都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，直接寫入會被資料庫拒絕。
+Prisma schema 與程式常數使用 1024 維。唯一建立這兩個欄位的 migration（`20260323021754_init`）用的是 `vector(1536)`，之後沒有任何 ALTER。由 migration 建立的資料庫（本機開發資料庫、feature 測試資料庫），`km_articles.embedding` 與 `long_term_memories.embedding` 都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，寫入這些資料庫會被拒絕。
+
+**UAT 的欄位已經是 1024 維**（2026-11-09 唯讀查詢）。UAT 的 `km_articles.embedding` 是 `vector(1024)`，與 schema 一致，所以 UAT 可以正常寫入 `bge-m3` 的向量（見 LLM-04 的 UAT 健檢）。UAT 的欄位是怎麼改成 1024 維的，migration 與 git 歷史都沒有紀錄，應該是有人直接在資料庫上手動修改過。`long_term_memories.embedding` 沒有查。
+
+因此這一項真正的問題是 migration 歷史落後於 UAT：
+- 依 migration 新建的資料庫（新環境、本機、測試）是 1536 維，和 UAT 不同。feature 測試的假向量因此用 1536 維（`apps/api/tests/support/fake-ollama.ts`）。
+- 補 migration 對齊時，不能假設每個環境都是 1536 維。先在每個環境查實際的維度（`format_type(atttypid, atttypmod)` 與 `vector_dims(embedding)`），UAT 上的 ALTER 不能清掉已有的向量。
 
 組織不部署 Ollama 之後，`bge-m3` 不再是可用的模型。正確的維度要等 LLM-04 選定新的 embedding 模型才能決定。
 

@@ -6,11 +6,10 @@
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import type { TenantScope } from '../../lib/tenant-ctx.js';
-import { tenantScopedClient } from '../../lib/tenant-db.js';
-import { embedArticle } from '../embedding/embedding.service.js';
+import { embedArticleFlow, type EmbedArticleResult } from '../embedding/embedding.flow.js';
 import { deleteFile, uploadFile } from '../storage/storage.service.js';
 
-export type EmbedArticle = (tenantId: string, articleId: string) => Promise<void>;
+export type EmbedArticle = (tenantId: string, articleId: string) => Promise<EmbedArticleResult>;
 export type UploadFile = typeof uploadFile;
 export type RemoveFile = (key: string) => Promise<void>;
 
@@ -19,13 +18,10 @@ export interface KnowledgeEffects {
   storage: { upload: UploadFile; remove: RemoveFile };
 }
 
-/**
- * 實際的實作。embedArticle() 還沒搬（收舊的 client 型別），而且要在交易外呼叫向量化服務，所以以 tenantScopedClient() 呼叫
- * （同 coupon-claim.flow.ts 呼叫 deliverToChannel()）。embedding 模組搬遷時，這裡改成三段，flow 不變。
- */
+/** 實際的實作。向量化是「交易 → 交易外呼叫向量化服務 → 交易」（change migrate-embedding-tenant-ctx，design D2） */
 export function createKnowledgeEffects(prisma: PrismaClient): KnowledgeEffects {
   return {
-    embed: (tenantId, articleId) => embedArticle(tenantScopedClient(prisma, tenantId), articleId),
+    embed: (tenantId, articleId) => embedArticleFlow({ prisma }, tenantId, articleId),
     storage: { upload: uploadFile, remove: deleteFile },
   };
 }
