@@ -38,7 +38,7 @@ description: >
 | 1 | 活動列表 | `/dashboard/portal/activities`（三個子路由共用 `apps/web/src/app/dashboard/portal/page.tsx`，依網址最後一段切分頁） | `GET /portal/activities`（`fetchAllPages` 逐頁取完）→ `listActivities`；預設排除 `ARCHIVED`，「查看已封存」帶 `status=ARCHIVED` | 無 | `portal.view` |
 | 2 | 建立活動 | 「建立活動」→ `ActivityFormDialog` | `POST /portal/activities` → `createActivity`；日期 `datetime-local` 經 `toIsoForApi` 轉 ISO | 無事件、無稽核 | `portal.manage` / **不隱藏** |
 | 3 | 編輯草稿 | 草稿卡「編輯」→ 對話框先 `GET /portal/activities/:id` 取完整活動，載入完成前與失敗時不能儲存 | `PATCH /portal/activities/:id` → `updateActivity`（只有 DRAFT 可改；`options`/`fields` 沒帶就不動，有送就整批刪除重建；投票、競猜的空 `options` 與表單的空 `fields` 回 400） | 無事件、無稽核（HC-PORTAL-01 已由 #424 修正） | `portal.manage` / **不隱藏** |
-| 4 | 發布、結束 | 卡片「發布」（DRAFT）、「結束」（PUBLISHED），不再確認；發布失敗以 alert 顯示後端訊息 | `POST /:id/publish`（投票、競猜沒有選項或表單沒有欄位時回 400，活動維持草稿，#447）、`/:id/end` | 發布寫 `publishedAt` | `portal.manage` / **不隱藏** |
+| 4 | 發布、結束 | 卡片「發布」（DRAFT）、「結束」（PUBLISHED），不再確認；發布失敗以 alert 顯示後端訊息 | `POST /:id/publish`（投票、競猜沒有選項或表單沒有欄位時回 400，競猜沒有正確答案時也回 400，活動維持草稿，#447、#471）、`/:id/end` | 發布寫 `publishedAt` | `portal.manage` / **不隱藏** |
 | 5 | 封存、取消封存 | ENDED 卡「封存」（有 confirm）；「查看已封存」→「取消封存」 | `POST /:id/archive`（DRAFT、ENDED 可封存）、`/:id/unarchive`（一律回到 ENDED） | 提交紀錄保留 | `portal.manage` / **不隱藏** |
 | 6 | 刪除草稿 | 草稿卡「刪除」（confirm） | `DELETE /:id`；只有 DRAFT | 硬刪，選項、欄位 cascade | `portal.manage` / **不隱藏** |
 | 7 | 提交紀錄 | `/dashboard/portal/submissions`，下拉選活動（不含已封存） | `GET /:id/submissions` → `listSubmissions` | 無；答案摘要只顯示數量 | `portal.view` |
@@ -91,6 +91,7 @@ description: >
 2. 編輯該草稿只改標題 → `GET /portal/activities/:id` 選項與正確答案仍在（#424 修正，feature 測試「只改標題時，選項、正確答案與表單欄位都保留」）。
 3. 發布 → 結束 → 封存 → 查看已封存 → 取消封存，每一步按鈕與狀態正確；已發布的活動 PATCH、DELETE 被拒。
 3a. 建立沒有選項的投票草稿（可以建立）→ 按「發布」→ alert「投票與競猜活動至少要有一個選項」，仍是草稿；補上選項後可以發布。表單沒有欄位同理（#447，feature 測試「發布沒有選項的投票或競猜回 400，活動仍是草稿」）。
+3b. 建立競猜草稿、選項都沒勾「正確」（可以建立與儲存）→ 按「發布」→ alert「競猜活動至少要有一個正確答案」，仍是草稿；勾一個正確答案後可以發布。投票不受影響（#471，feature 測試「發布沒有正確答案的競猜回 400，活動仍是草稿」）。
 4. 粉絲端（以票券夾取得的 fanToken，或測試中以 `signFanToken` 簽發）：列表不含草稿、送出加點、重複送出被拒、結果不含 `isCorrect`。
 5. 積分：同一位聯絡人並行加點 10 次，餘額等於交易總和；合併兩位有點數的聯絡人後再解除，點數正確。
 6. 用只有 `portal.view` 的自訂角色重走 1–3、抽獎、調整：後端 403（`details.requiredPermission: portal.manage`），按鈕應隱藏。
