@@ -7,7 +7,7 @@
  *   3. 產 JSON（保關聯完整性）+ CSV（主表扁平化），打包成 zip
  *   4. 上傳 MinIO（key: export/{tenantId}/{requestId}.zip），更新 status=completed / fileKey / fileSizeBytes / expiresAt
  *   5. 失敗則 status=failed + error
- *   6. 完成（成功/失敗）經 Redis pub/sub 發站內通知給發起者
+ *   6. 完成（成功/失敗）經 Redis pub/sub 發站內通知給發起者；發起者已被永久刪除時不送（沒有收件人）
  *
  * 隔離：所有查詢一律以 tenantId 限定；Message/Case 透過 Conversation/Contact 的 tenantId 間接限定。
  */
@@ -16,7 +16,8 @@ import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import { claimOne, logger, MinioStorageProvider } from '@open333crm/core';
 import { SimpleZip, toCsv } from '../lib/simple-zip.js';
-import { enqueueNotification } from '../lib/notification-queue.js';
+import { enqueueNotification, type NotificationDispatchInput } from '../lib/notification-queue.js';
+import { requesterExists } from '../lib/requester.js';
 
 interface DataExportJobData {
   requestId: string;
@@ -217,7 +218,7 @@ export async function handleDataExportJob(
       `[data-export] Completed request ${requestId}: ${buffer.length} bytes, key=${fileKey}`,
     );
 
-    await enqueueNotification({
+    await notifyRequester(prisma, requestId, {
       tenantId,
       agentId: requestedBy,
       type: 'data_export_ready',
@@ -241,14 +242,31 @@ export async function handleDataExportJob(
     // 另一個執行已經完成這個請求：不覆蓋，也不通知失敗
     if (!markedFailed) return;
 
-    await enqueueNotification({
+    await notifyRequester(prisma, requestId, {
       tenantId,
       agentId: requestedBy,
       type: 'data_export_failed',
       title: '資料匯出失敗',
       body: '很抱歉，您的資料匯出未能完成，請稍後重試或聯絡管理員。',
       clickUrl: `/dashboard/settings/data-export/${requestId}`,
-    }).catch((e) => logger.error('[data-export] Failed to enqueue failure notification', { e }));
+    });
+  }
+}
+
+/**
+ * 通知發起者。請求的狀態已經 commit（claim 已成立），重試時 worker 直接結束、不會補送，
+ * 所以通知最多送一次：發起者已被永久刪除時不送，查詢或送進佇列失敗只寫 log，不讓工作失敗或重試
+ * （AGENTS.md 結構規則 2）。
+ */
+async function notifyRequester(prisma: PrismaClient, requestId: string, input: NotificationDispatchInput): Promise<void> {
+  try {
+    if (!(await requesterExists(prisma, input.tenantId, input.agentId))) {
+      logger.info(`[data-export] Requester ${input.agentId} of request ${requestId} no longer exists, skipping ${input.type} notification`);
+      return;
+    }
+    await enqueueNotification(input);
+  } catch (err) {
+    logger.error(`[data-export] Failed to enqueue ${input.type} notification for ${requestId}`, { err });
   }
 }
 

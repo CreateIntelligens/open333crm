@@ -500,11 +500,13 @@ export async function purgeAgent(
   await tx.notification.deleteMany({ where: { agentId } });
   await tx.cliSession.deleteMany({ where: { agentId } });
   await tx.passkeyCredential.deleteMany({ where: { agentId } });
-  // 刪除後 actorId、requestedBy 會被清成空值，先保留操作者快照
+  // 刪除後 actorId、requestedBy 會被清成空值，先保留操作者快照。
+  // 先寫請求、再寫稽核：資料刪除 worker 的交易鎖住請求列後才寫完成稽核，這裡更新請求時會等它 commit，
+  // 之後寫稽核快照才看得到那筆完成稽核
   const snapshot = { agentId, name: existing.name, email: existing.email };
-  await preserveAuditActor(ctx, snapshot);
   await preserveExportRequester(ctx, snapshot);
   await preserveErasureRequester(ctx, snapshot);
+  await preserveAuditActor(ctx, snapshot);
   // 再刪 Agent（agent_team_members 會 CASCADE、cases/conversations/messages 等 SET NULL）
   await tx.agent.delete({ where: { id: agentId } });
   return { name: existing.name };

@@ -22,12 +22,21 @@ All notable changes to **open333CRM** will be documented in this file.
   - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
   - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
 
+- **刪除或匯出請求排隊中、發起的成員被永久刪除時，完成稽核不再遺失，也不送沒有收件人的通知**（issue #414 後續，AUDIT AUD-03 部分修正，change `keep-completion-audit-for-purged-requester`）— 永久刪除成員後，請求的 `requestedBy` 變成空值，但工作內容仍帶原本的成員 ID。資料刪除 worker 用這個 ID 寫 `data.erasure.complete` 稽核，違反外鍵；稽核在刪除 commit 之後才寫，錯誤只寫 log，完成稽核無聲遺失。兩個 worker 的完成、失敗通知也送給這個 ID，通知佇列重試三次後失敗。現在：
+  - `data.erasure.complete` 稽核改在刪除的同一個交易寫入，與請求的 `completed` 一起 commit。稽核寫不進去時刪除 rollback，請求改為 `failed`。
+  - 寫稽核前以 `tenantId` 查發起的成員。還在時行為不變；已被永久刪除時 `actorId` 寫空值，`actorName`、`actorEmail` 帶入請求的 `requestedByName`、`requestedByEmail`，不送通知，寫一行 log。
+  - 物件儲存刪除失敗時，請求與稽核的 `affected` 在同一個交易補寫，兩者仍然相同。
+  - 資料匯出 worker 送完成、失敗通知前也查發起的成員，已被永久刪除時不送；查詢或送進佇列失敗只寫 log，請求狀態不受影響。
+  - 刪除的完成通知送不進佇列時只寫 log，工作不再失敗（請求已經 commit，重試也不會補送）。
+  - `purgeAgent` 改成先寫請求快照、再寫稽核快照：刪除與永久刪除同時進行時，剛寫入的完成稽核也會有快照。
+  - 未修：依 `actorId` 篩選稽核查不到已刪除成員的紀錄。
+
 - **永久刪除成員後，稽核與資料匯出、刪除請求仍查得到是誰做的**（issue #414，AUDIT AUD-03 部分修正，change `preserve-audit-actor-on-agent-purge`）— 稽核的 `actorId` 與匯出、刪除請求的 `requestedBy` 外鍵是 `ON DELETE SET NULL`，成員被永久刪除後全部變成空值，和系統排程寫的紀錄分不出來，「誰匯出了全租戶資料」查不到。現在：
   - `DELETE /api/v1/agents/:id` 在刪除成員之前、同一個交易內，把名稱與 email 寫進他當操作者的稽核（新欄位 `actorName`、`actorEmail`），以及他發起的資料匯出與刪除請求（新欄位 `requestedByName`、`requestedByEmail`）。刪除被拒（404、最後一位管理員、權限比操作者高）時不寫。
   - `GET /api/v1/tenant/audit-logs` 每筆多回 `actorSnapshot: { name, email } | null`，`actor` 的格式不變。
   - `agent.purge` 稽核的 `payload` 記下被刪成員的名稱（`{ name }`），不記 email。
   - migration `20261109100000_preserve_audit_actor_snapshot` 只加可為空值的欄位，不回填：之前刪除的成員留下的紀錄沒有快照。
-  - 未修：刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 稽核會違反外鍵，等 #329 合併後另補。
+  - 未修：刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 稽核會違反外鍵，等 #329 合併後另補（已由上一條修正）。
 
 - **資料刪除的匿名化也刪除客人傳來的媒體檔，兩種模式只刪本次對話的媒體檔**（#329，AUDIT ERASE-01 部分修正，change `erase-inbound-media-on-anonymize`）— 匿名化（預設模式）把進站訊息的內容改成 `{ redacted: true }`，改寫前沒有讀出 `storageKey`，客人傳來的圖片、影片與檔案留在物件儲存，而且資料庫再也找不到這些檔案。硬刪除只要 `storageKey` 是字串就照刪，不確認檔案屬於哪個租戶或哪個對話。物件刪除失敗時只寫 log。現在：
   - 匿名化在同一個交易內、改寫進站訊息前讀出媒體檔，交易 commit 之後刪除。客服上傳的出站訊息媒體檔保留。
