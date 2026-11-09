@@ -15,6 +15,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **後台搜尋不再把 `%`、`_` 當成萬用字元**（issue #467）— Prisma 的 `contains` 把搜尋字包成 `%值%` 交給 PostgreSQL 的 ILIKE，但不跳脫值裡的 `%`、`_`：搜 `_` 或 `%` 會列出全部資料，搜 email `a_b@x.com` 會連 `axb@x.com` 一起出現；搜含反斜線的字串（例如 `C:\dir`）則找不到原字串。收件匣已在 PR #449 修好，這次其他搜尋也先以 `escapeLikeKeyword()`（`apps/api/src/shared/utils/like-pattern.ts`）跳脫：聯絡人（名稱、電話、email）、優惠券列表（券名、券號）、優惠券序號明細（顧客名稱，以及序號的原生 SQL `LIKE`）、知識庫文章（標題、摘要、內文；標籤原本就是完整比對）、行銷範本（名稱、說明）、素材庫（名稱、說明）、短連結（標題、代碼、目標網址）。仍不分大小寫。新增 feature 測試在真實資料庫逐欄驗證 `_`、`%`、反斜線三種輸入，並補 `escapeLikeKeyword` 的單元測試。
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
 - **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。

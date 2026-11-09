@@ -12,6 +12,7 @@ import { logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { OgSnapshot } from './og-scraper.js';
 import { addTagToTarget, type ContactTagged } from '../tag/tagging.service.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -59,10 +60,12 @@ export async function listShortLinks(
   const where: Record<string, unknown> = { tenantId };
   if (filters.isActive !== undefined) where.isActive = filters.isActive === 'true';
   if (filters.q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(filters.q);
     where.OR = [
-      { title: { contains: filters.q, mode: 'insensitive' } },
-      { slug: { contains: filters.q, mode: 'insensitive' } },
-      { targetUrl: { contains: filters.q, mode: 'insensitive' } },
+      { title: { contains: keyword, mode: 'insensitive' } },
+      { slug: { contains: keyword, mode: 'insensitive' } },
+      { targetUrl: { contains: keyword, mode: 'insensitive' } },
     ];
   }
 
