@@ -203,7 +203,7 @@
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
 | [KB-05](#kb-05) | Storage、LLM 與資料庫 | P2 | 未處理 | 型號守門命中後寫進對話的 `modelGuard` 永遠不清除，之後的回覆都沿用舊值 | 執行時確認 |
 | [KB-06](#kb-06) | Storage、LLM 與資料庫 | P3 | 部分修正 | AI 與知識庫回覆都失敗時客人收不到回覆；知識庫失敗時已改為轉真人（#445），`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆、不轉接 | 執行時確認 |
-| [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
+| [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 向量維度不一致：migration 建立 1536 維，schema 與 UAT 是 1024 維 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
 | [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
 | [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
@@ -2603,7 +2603,13 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 <a id="db-01"></a>
 ### DB-01：向量維度不一致
 
-Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embedding` 與 `long_term_memories.embedding` 欄位都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，直接寫入會被資料庫拒絕。
+Prisma schema 與程式常數使用 1024 維。唯一建立這兩個欄位的 migration（`20260323021754_init`）用的是 `vector(1536)`，之後沒有任何 ALTER。由 migration 建立的資料庫（本機開發資料庫、feature 測試資料庫），`km_articles.embedding` 與 `long_term_memories.embedding` 都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，寫入這些資料庫會被拒絕。
+
+**UAT 的欄位已經是 1024 維**（2026-11-09 唯讀查詢）。UAT 的 `km_articles.embedding` 是 `vector(1024)`，與 schema 一致，所以 UAT 可以正常寫入 `bge-m3` 的向量（見 LLM-04 的 UAT 健檢）。UAT 的欄位是怎麼改成 1024 維的，migration 與 git 歷史都沒有紀錄，應該是有人直接在資料庫上手動修改過。`long_term_memories.embedding` 沒有查。
+
+因此這一項真正的問題是 migration 歷史落後於 UAT：
+- 依 migration 新建的資料庫（新環境、本機、測試）是 1536 維，和 UAT 不同。feature 測試的假向量因此用 1536 維（`apps/api/tests/support/fake-ollama.ts`）。
+- 補 migration 對齊時，不能假設每個環境都是 1536 維。先在每個環境查實際的維度（`format_type(atttypid, atttypmod)` 與 `vector_dims(embedding)`），UAT 上的 ALTER 不能清掉已有的向量。
 
 組織不部署 Ollama 之後，`bge-m3` 不再是可用的模型。正確的維度要等 LLM-04 選定新的 embedding 模型才能決定。
 
