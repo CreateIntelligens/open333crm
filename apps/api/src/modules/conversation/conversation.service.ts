@@ -14,7 +14,7 @@ import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { notFound } from '../../shared/messages/resource.js';
 import { markCaseFirstResponse } from '../case/case.service.js';
-import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { fixedSystemMessageContent, prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
@@ -697,8 +697,11 @@ export async function handoffConversation(
 
   // Send handoff system message
   const handoffText = data.handoffMessage || '稍等，正在為您轉接客服人員';
-  // 座席自填的轉接訊息維持遮罩；系統預設文案是固定字串，原文送出（避免 2md 誤判一般詞）
-  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: handoffText }, data.handoffMessage ? 'system' : 'system_template');
+  // 座席自填的轉接訊息遮罩；預設文案是固定字串，不呼叫去識別化服務（issue #466）
+  const privacy = await readAiPrivacyPolicy(prisma, tenantId);
+  const storedContent = data.handoffMessage
+    ? await prepareStoredMessageContent(privacy, { text: handoffText }, 'system')
+    : fixedSystemMessageContent({ text: handoffText }, privacy.enabled);
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,

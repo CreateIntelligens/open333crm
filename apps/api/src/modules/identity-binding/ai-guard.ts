@@ -11,6 +11,7 @@ import { logger } from '@open333crm/core';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { IdentityBindingSettings } from './binding-links.js';
 import { getIdentityBindingSettingsCached } from './identity-binding.service.js';
+import { isUnmaskedInbound } from '../ai/deidentification.service.js';
 
 /** 寬鬆比對：AI 編的代碼長度、大小寫不一定正確，也可能藏在網址編碼裡；前面接英文字母的（如 REBIND-）不算 */
 const LOOSE_CODE_PATTERN = /(?<![A-Za-z])BIND-[0-9A-Za-z]{4,}/gi;
@@ -41,6 +42,8 @@ export interface HistoryRow {
 }
 
 function modelText(row: HistoryRow): string {
+  // 去識別化服務無法使用時保存的進站訊息沒有遮罩副本，不給 AI 看（issue #466）
+  if (isUnmaskedInbound(row.metadata)) return '';
   const masked = (row.metadata as { privacy?: { maskedContent?: { text?: unknown } } } | null)?.privacy?.maskedContent?.text;
   if (typeof masked === 'string') return masked;
   const text = typeof row.content === 'object' && row.content !== null ? ((row.content as { text?: unknown }).text ?? '') : '';

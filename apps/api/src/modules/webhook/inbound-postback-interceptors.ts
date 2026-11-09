@@ -7,7 +7,7 @@ import { recordKbFeedbackFlow } from '../knowledge/knowledge.flow.js';
 import { addTagToTargetFlow } from '../tag/tag.flow.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig } from './inbound-message.types.js';
-import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { fixedSystemMessageContent } from '../ai/deidentification.service.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
@@ -140,7 +140,8 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       });
     } else if (ctx.conversation.status === 'BOT_HANDLED') {
       const reason = 'user_requested_handoff';
-      const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: '使用者主動點按按鈕轉接人工客服' }, 'system_template');
+      // 固定文字不呼叫去識別化服務：服務無法使用時客人仍能轉接人工（issue #466）
+      const storedContent = fixedSystemMessageContent({ text: '使用者主動點按按鈕轉接人工客服' }, (await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId)).enabled);
       const systemMessage = await ctx.prisma.message.create({
         data: {
           conversationId: ctx.conversation.id,

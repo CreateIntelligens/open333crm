@@ -15,6 +15,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **去識別化服務連不上時，客人的訊息不再整則消失**（issue #466，change `fix-deid-inbound-fallback-466`）— 租戶開啟 AI 個資遮罩時，進站訊息在存入前要先呼叫 2md（外部的個資遮罩服務）。2md 連不上就丟出 `AI_DEIDENTIFICATION_UNAVAILABLE`，整個進站處理中止：訊息沒有存、機器人不回、對話不轉接，後台只有一行 log（2026-11-05 UAT）。現在：
+  - 呼叫 2md 遇到逾時、連線或 DNS 錯誤、5xx 時，等 300 毫秒重試一次。每次嘗試的逾時從整批 10 秒改為 6 秒，最壞約 12.3 秒。4xx、回應格式不符、回應過大不重試。錯誤的 `details.reason` 帶原因代碼，不帶上游回應或原文。
+  - 重試後仍失敗時，進站訊息存原文，`metadata.privacy` 記 `{ mode: 'inbound_unmasked', reason }`（沒有遮罩副本），不丟出例外；收件匣照常收到，`message.received` 帶 `privacyUnmasked: true`。網站聊天室模擬器也一樣。
+  - 未遮罩的訊息不送模型：原本會交給 AI agent 或知識庫自動回覆時，改用 `handOffAfterAiFailure()`（`handOffConversation()`）轉真人，`handoffReason` 與系統訊息寫「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」（`metadata.source` 是 `inbound_unmasked`），送出渠道的轉接訊息。關鍵字規則讓步、`botMode` 不跑 AI 時照舊不轉接。情緒分析只用關鍵字判斷。模型讀對話紀錄的地方（AI 建議回覆、摘要、agent 與知識庫的歷史、其他渠道脈絡、工單自動分類）都略過未遮罩的訊息。
+  - 自動轉接（轉接關鍵字、回覆次數上限、客人傳圖片）的系統訊息含對話摘要，2md 失敗時原本整個處理失敗、對話轉不出去。現在捨棄摘要，以固定文字「自動轉接人工客服：<原因>」照常轉接。
+  - 程式固定、不含顧客輸入的系統文字不再呼叫 2md（遮罩副本就是原文，`privacy.mode` 為 `system_fixed`）：按鈕轉接人工、跨渠道綁定失敗的內部提示、滿意度調查與評分後的回覆、座席轉接時的預設轉接訊息。
+  - 進站訊息降級時以 `sendOpsAlert()` 發維運告警（合併鍵 `deidentification-unavailable`，10 分鐘內只送一則，帶上期間內未送出的次數），只帶租戶 ID、渠道類型與原因代碼。告警失敗只寫 log。
+  - 服務恢復後不會補做遮罩；2md 網址仍寫在程式裡，沒有備援服務。
+
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
 - **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。

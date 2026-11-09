@@ -13,15 +13,39 @@ import type { ChatProvider } from './providers/types.js';
 const DEID_URL = 'https://2md.aiurl.tw/api/deid';
 const MAX_TEXT_CHARS = 100_000;
 const MAX_RESPONSE_BYTES = 1_048_576;
-const TIMEOUT_MS = 10_000;
+/** 每次嘗試的逾時。短暫故障重試一次，兩次加上退避約 12.3 秒（issue #466） */
+const ATTEMPT_TIMEOUT_MS = 6_000;
+const RETRY_BACKOFF_MS = 300;
 const CONCURRENCY = 4;
 const responseSchema = z.object({
   code: z.literal(200),
   data: z.object({ status: z.literal('ok'), text: z.string().min(1) }),
 });
 
-function privacyFailure(): AppError {
-  return new AppError('AI 去識別化服務暫時無法使用，請稍後重試', 'AI_DEIDENTIFICATION_UNAVAILABLE', 503);
+/**
+ * 去識別化失敗的原因代碼（issue #466）。只描述失敗的種類，不含上游回應或原文。
+ * timeout、network、upstream_5xx 是短暫故障，會重試一次。
+ */
+export type DeidentificationFailureReason =
+  | 'timeout' | 'network' | 'upstream_5xx' | 'upstream_rejected' | 'invalid_response' | 'too_large';
+
+const TRANSIENT_REASONS: ReadonlySet<DeidentificationFailureReason> = new Set(['timeout', 'network', 'upstream_5xx']);
+
+class DeidentificationAttemptError extends Error {
+  constructor(readonly reason: DeidentificationFailureReason) {
+    super(reason);
+  }
+}
+
+function privacyFailure(reason: DeidentificationFailureReason = 'invalid_response'): AppError {
+  return new AppError('AI 去識別化服務暫時無法使用，請稍後重試', 'AI_DEIDENTIFICATION_UNAVAILABLE', 503, { reason });
+}
+
+/** 去識別化失敗的原因代碼；不是去識別化失敗時回傳 undefined */
+export function deidentificationFailureReason(err: unknown): DeidentificationFailureReason | undefined {
+  if (!(err instanceof AppError) || err.code !== 'AI_DEIDENTIFICATION_UNAVAILABLE') return undefined;
+  const reason = (err.details as { reason?: unknown } | undefined)?.reason;
+  return typeof reason === 'string' ? (reason as DeidentificationFailureReason) : 'invalid_response';
 }
 
 async function maskText(text: string, signal: AbortSignal): Promise<string> {
@@ -32,9 +56,13 @@ async function maskText(text: string, signal: AbortSignal): Promise<string> {
     redirect: 'error',
     signal,
   });
-  if (!response.ok || Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES || !response.body) {
+  if (!response.ok) {
     await response.body?.cancel();
-    throw privacyFailure();
+    throw new DeidentificationAttemptError(response.status >= 500 ? 'upstream_5xx' : 'upstream_rejected');
+  }
+  if (Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES || !response.body) {
+    await response.body?.cancel();
+    throw new DeidentificationAttemptError(response.body ? 'too_large' : 'invalid_response');
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -46,7 +74,7 @@ async function maskText(text: string, signal: AbortSignal): Promise<string> {
       bytes += value.byteLength;
       if (bytes > MAX_RESPONSE_BYTES) {
         await reader.cancel();
-        throw privacyFailure();
+        throw new DeidentificationAttemptError('too_large');
       }
       chunks.push(value);
     }
@@ -55,16 +83,36 @@ async function maskText(text: string, signal: AbortSignal): Promise<string> {
   }
   // The upstream envelope also contains restoration mappings with original values.
   // Extract only the validated text; keep no response cache or mapping store.
-  return responseSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8'))).data.text;
+  const parsed = responseSchema.safeParse(safeJson(Buffer.concat(chunks).toString('utf8')));
+  if (!parsed.success) throw new DeidentificationAttemptError('invalid_response');
+  return parsed.data.data.text;
 }
 
-async function maskTexts(texts: string[]): Promise<string[]> {
-  if (texts.length > 2_048 || texts.some((text) => text.length > MAX_TEXT_CHARS)) throw privacyFailure();
-  const unique = [...new Set(texts.filter(Boolean))];
-  if (unique.length === 0) return texts.slice();
+function safeJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+}
+
+/** 一次嘗試的錯誤歸類：自己的逾時、fetch 的逾時或中止算 timeout，fetch 丟出的其他錯誤（DNS、連線）算 network */
+function attemptFailureReason(err: unknown, timedOut: boolean): DeidentificationFailureReason {
+  if (err instanceof DeidentificationAttemptError) return err.reason;
+  if (timedOut) return 'timeout';
+  const name = (err as { name?: unknown } | null)?.name;
+  if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
+  return 'network';
+}
+
+async function maskTextsOnce(unique: string[]): Promise<Map<string, string>> {
   const masked = new Map<string, string>();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ATTEMPT_TIMEOUT_MS);
   let cursor = 0;
   try {
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, unique.length) }, async () => {
@@ -75,19 +123,40 @@ async function maskTexts(texts: string[]): Promise<string[]> {
       }
     }));
     controller.signal.throwIfAborted();
-    return texts.map((text) => text ? masked.get(text)! : '');
-  } catch {
+    return masked;
+  } catch (err) {
     controller.abort();
-    // A fixed error prevents upstream echo bodies, mappings and source text from
-    // reaching provider error logging or usage records.
-    throw privacyFailure();
+    throw new DeidentificationAttemptError(attemptFailureReason(err, timedOut));
   } finally {
     clearTimeout(timer);
   }
 }
 
+async function maskTexts(texts: string[]): Promise<string[]> {
+  if (texts.length > 2_048 || texts.some((text) => text.length > MAX_TEXT_CHARS)) throw privacyFailure('too_large');
+  const unique = [...new Set(texts.filter(Boolean))];
+  if (unique.length === 0) return texts.slice();
+  let masked: Map<string, string>;
+  try {
+    masked = await maskTextsOnce(unique);
+  } catch (first) {
+    const reason = (first as DeidentificationAttemptError).reason;
+    // 逾時、連線錯誤與 5xx 是短暫故障：短暫等待後重試一次（issue #466）
+    if (!TRANSIENT_REASONS.has(reason)) throw privacyFailure(reason);
+    await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+    try {
+      masked = await maskTextsOnce(unique);
+    } catch (second) {
+      // A fixed error prevents upstream echo bodies, mappings and source text from
+      // reaching provider error logging or usage records.
+      throw privacyFailure((second as DeidentificationAttemptError).reason);
+    }
+  }
+  return texts.map((text) => text ? masked.get(text)! : '');
+}
+
 function mapStrings(value: unknown, transform: (text: string) => string, depth = 0): unknown {
-  if (depth > 32) throw privacyFailure();
+  if (depth > 32) throw privacyFailure('too_large');
   if (typeof value === 'string') return transform(value);
   if (Array.isArray(value)) return value.map((item) => mapStrings(item, transform, depth + 1));
   if (value !== null && typeof value === 'object') {
@@ -107,7 +176,7 @@ const MATERIAL_PROTOCOL_KEYS = new Set([...MESSAGE_PROTOCOL_KEYS].filter((key) =
 ].includes(key)));
 
 function mapMessageStrings(value: unknown, transform: (text: string) => string, key = '', depth = 0): unknown {
-  if (depth > 32) throw privacyFailure();
+  if (depth > 32) throw privacyFailure('too_large');
   if (typeof value === 'string') return MESSAGE_PROTOCOL_KEYS.has(key) ? value : transform(value);
   if (Array.isArray(value)) return value.map((item) => mapMessageStrings(item, transform, key, depth + 1));
   if (value !== null && typeof value === 'object') {
@@ -117,7 +186,7 @@ function mapMessageStrings(value: unknown, transform: (text: string) => string, 
 }
 
 function mapMaterialStrings(value: unknown, transform: (text: string) => string, key = '', depth = 0): unknown {
-  if (depth > 32) throw privacyFailure();
+  if (depth > 32) throw privacyFailure('too_large');
   if (typeof value === 'string') return MATERIAL_PROTOCOL_KEYS.has(key) ? value : transform(value);
   if (Array.isArray(value)) return value.map((item) => mapMaterialStrings(item, transform, key, depth + 1));
   if (value !== null && typeof value === 'object') {
@@ -151,15 +220,31 @@ async function maskStructuredContent(
  * - `tenant_template`：租戶預先寫好、由系統自動發給顧客的文字（營業時間外回覆、首次歡迎詞、Canvas 訊息節點），
  *   保留原文送出與保存；歡迎詞帶入的顧客姓名、電話、email 只送給該顧客本人，模型只讀遮罩副本。
  * 兩種 template 來源仍呼叫 2md 建立遮罩副本，2md 失敗時與其他來源一樣丟出 AI_DEIDENTIFICATION_UNAVAILABLE。
+ * 進站訊息在 2md 無法使用時改用 prepareInboundMessageContent() 降級（issue #466）；
+ * 不含顧客輸入或名稱的固定文字用 fixedSystemMessageContent()，不呼叫 2md。
  */
 export type StoredMessagePrivacySource =
   | 'inbound' | 'agent_default' | 'agent_original' | 'system' | 'system_template' | 'tenant_template';
 
-export interface StoredMessagePrivacy {
-  version: 1;
-  /** inbound keeps channel content; mask is the tenant default; original is an explicit agent choice. */
-  mode: 'inbound' | 'mask' | 'original' | 'system' | 'system_template' | 'tenant_template' | 'system_fixed';
-  maskedContent: Record<string, unknown>;
+export type StoredMessagePrivacy =
+  | {
+    version: 1;
+    /** inbound keeps channel content; mask is the tenant default; original is an explicit agent choice. */
+    mode: 'inbound' | 'mask' | 'original' | 'system' | 'system_template' | 'tenant_template' | 'system_fixed';
+    maskedContent: Record<string, unknown>;
+  }
+  | {
+    version: 1;
+    /** 2md 無法使用時保存的進站訊息：沒有遮罩副本，模型不可讀（issue #466） */
+    mode: 'inbound_unmasked';
+    reason: DeidentificationFailureReason;
+  };
+
+/** 訊息是不是 2md 無法使用時保存、沒有遮罩副本的進站訊息（issue #466）。模型讀取訊息前都要先排除它 */
+export function isUnmaskedInbound(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object') return false;
+  const privacy = (metadata as { privacy?: { mode?: unknown } }).privacy;
+  return privacy?.mode === 'inbound_unmasked';
 }
 
 export interface PreparedStoredMessageContent {
@@ -205,7 +290,7 @@ export async function prepareStoredMessageContent(
   if (!policy.enabled) return { content: content as Prisma.InputJsonObject, metadata: {} };
 
   const maskedContent = await maskStructuredContent(content);
-  const mode: StoredMessagePrivacy['mode'] = source === 'agent_default'
+  const mode = source === 'agent_default'
     ? 'mask'
     : source === 'agent_original'
       ? 'original'
@@ -218,13 +303,36 @@ export async function prepareStoredMessageContent(
 }
 
 /**
+ * 進站訊息的保存內容（issue #466）。遮罩政策開啟時呼叫 2md（短暫故障重試一次）；
+ * 仍無法遮罩時不丟錯，存原文並標記 `inbound_unmasked`（沒有遮罩副本），回傳 unmaskedReason 讓呼叫端發維運告警。
+ * 只給進站訊息用：其他來源的寫入仍用 prepareStoredMessageContent()，2md 失敗就不寫入。
+ */
+export async function prepareInboundMessageContent(
+  policy: AiPrivacyPolicy,
+  content: Record<string, unknown>,
+): Promise<PreparedStoredMessageContent & { unmaskedReason?: DeidentificationFailureReason }> {
+  try {
+    return await prepareStoredMessageContent(policy, content, 'inbound');
+  } catch (err) {
+    const reason = deidentificationFailureReason(err);
+    if (!reason) throw err;
+    const privacy: StoredMessagePrivacy = { version: 1, mode: 'inbound_unmasked', reason };
+    return {
+      content: content as Prisma.InputJsonObject,
+      metadata: { privacy: privacy as unknown as Prisma.InputJsonValue },
+      unmaskedReason: reason,
+    };
+  }
+}
+
+/**
  * 程式內固定、不含顧客或租戶資料的系統訊息（例如 AI 失敗時的轉接原因，issue #445）。
  * 遮罩副本就是原文，不呼叫 2md：這種訊息常在 2md 故障時寫入，呼叫一定失敗。
  * privacyEnabled 由呼叫端以 readAiPrivacyPolicy() 讀取。
  * 不可用在含顧客輸入、模型輸出或租戶設定文字的內容。
  */
 export function fixedSystemMessageContent(
-  content: { text: string },
+  content: { text: string } & Record<string, string>,
   privacyEnabled: boolean,
 ): PreparedStoredMessageContent {
   if (!privacyEnabled) return { content, metadata: {} };
@@ -234,8 +342,12 @@ export function fixedSystemMessageContent(
   };
 }
 
-/** Model-facing readers use the stored masked text when a Message has one. */
+/**
+ * Model-facing readers use the stored masked text when a Message has one.
+ * 沒有遮罩副本的未遮罩進站訊息回傳空字串：呼叫端略過空字串，模型讀不到原文（issue #466）。
+ */
 export function readModelMessageContent(content: unknown, metadata: unknown): string {
+  if (isUnmaskedInbound(metadata)) return '';
   const privacy = metadata && typeof metadata === 'object'
     ? (metadata as { privacy?: { maskedContent?: unknown } }).privacy
     : undefined;

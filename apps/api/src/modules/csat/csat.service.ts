@@ -10,7 +10,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { emitToChannel } from '../../events/socket-push.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, caseTransitionTimestamps, type CaseStatus } from '@open333crm/shared';
-import { fixedSystemMessageContent, prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { fixedSystemMessageContent } from '../ai/deidentification.service.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 /**
@@ -120,7 +120,8 @@ export async function sendCsatSurvey(
   }
 
   // Create CSAT system message in conversation
-  const storedCsat = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, caseRecord.tenantId), { text: '滿意度調查', caseId }, 'system_template');
+  // 固定文字不呼叫去識別化服務（issue #466）；caseId 是協定欄位
+  const storedCsat = fixedSystemMessageContent({ text: '滿意度調查', caseId }, (await readAiPrivacyPolicy(prisma, caseRecord.tenantId)).enabled);
   const csatMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -451,7 +452,8 @@ export async function recordCsatScore(
   const followUp = getFollowUpMessage(score);
 
   if (conversation && conversationId) {
-    const storedFollowUp = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, scope.tenantId), { text: followUp }, 'system_template');
+    // 評分後的回覆是程式固定的三種文字之一，不呼叫去識別化服務（issue #466）
+    const storedFollowUp = fixedSystemMessageContent({ text: followUp }, (await readAiPrivacyPolicy(prisma, scope.tenantId)).enabled);
     // Create follow-up message in conversation
     const followUpMsg = await prisma.message.create({
       data: {
