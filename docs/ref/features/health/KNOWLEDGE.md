@@ -102,6 +102,7 @@
 - 真實 LLM（Gemini）下的型號守門文案：「Wi-Fi」被當型號時客人實際看到的內容。
 - 月額度用完時客人實際收到的內容（HC-KNOWLEDGE-04）。
 - AI 失敗轉接（#445）：UAT 開啟遮罩的租戶在去識別化服務失敗時，LINE 客人收到 `handoffMessage`、收件匣顯示轉接原因與通知（目前只有單元測試）。
+- 進站訊息未遮罩（#466）：UAT 開啟遮罩的租戶在去識別化服務無法使用時，LINE 客人的訊息出現在收件匣、對話轉真人並顯示「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」、客人收到 `handoffMessage`、維運收到 `deidentification-unavailable` 告警（目前只有 feature 與單元測試）。
 - UAT 的 Chat & Prompt、Embedding 設定頁畫面（本次只做 API 唯讀，沒有開頁面，避免觸發 Gemini 健康檢查）。
 - 夥伴系統以 `pk_` 金鑰推送 CREATE／UPDATE／DELETE。
 

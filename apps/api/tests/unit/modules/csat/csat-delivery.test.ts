@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
-import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
+import { disabledAiPrivacy, enabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const fb = vi.hoisted(() => ({ delivered: true }));
 
@@ -49,7 +49,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean; tenantActive?: boolean } = {}) {
+function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean; tenantActive?: boolean; privacyEnabled?: boolean } = {}) {
   const emits: Array<{ event: string; data: { message: { metadata?: Record<string, unknown> } } }> = [];
   const io = {
     to: () => ({ emit: (event: string, data: never) => emits.push({ event, data }) }),
@@ -59,7 +59,7 @@ function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean; t
   const caseUpdates: unknown[] = [];
   const messagesCreated: Array<Record<string, unknown>> = [];
   const db = {
-    ...disabledAiPrivacy,
+    ...(opts.privacyEnabled ? enabledAiPrivacy : disabledAiPrivacy),
     case: {
       findUnique: async () => ({
         id: CASE_ID,
@@ -183,4 +183,30 @@ test('失敗紀錄只更新這個租戶的問卷訊息（PR #440 審查）', asy
   await sendCsatSurvey(h.db, h.io, CASE_ID);
 
   assert.deepEqual(h.messageUpdates[0].where, { id: 'msg-csat', conversation: { tenantId: TENANT_ID } });
+});
+
+/**
+ * 去識別化服務無法使用時問卷照常送出（change fix-deid-inbound-fallback-466，
+ * bot-handoff-config「程式固定的系統文字不呼叫去識別化服務」）：問卷是固定文字，遮罩副本就是原文。
+ */
+test('去識別化服務無法使用時滿意度調查照常送出', async () => {
+  const deidRequests: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).includes('2md.aiurl.tw')) {
+      deidRequests.push(String(init?.body));
+      return new Response('upstream unavailable', { status: 503 });
+    }
+    lineBodies.push(JSON.parse(String(init?.body)));
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  const h = createHarness('FB', { privacyEnabled: true });
+
+  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), true);
+
+  assert.equal(deidRequests.length, 0, '沒有呼叫去識別化服務');
+  assert.equal(h.messagesCreated.length, 1);
+  const created = h.messagesCreated[0] as { content: unknown; metadata: { privacy: { mode: string; maskedContent: unknown } } };
+  assert.deepEqual(created.content, { text: '滿意度調查', caseId: CASE_ID });
+  assert.equal(created.metadata.privacy.mode, 'system_fixed');
+  assert.deepEqual(created.metadata.privacy.maskedContent, created.content);
 });

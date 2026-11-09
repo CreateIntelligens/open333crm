@@ -6,7 +6,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { isUnmaskedInbound, prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig, getChannelSettings } from './inbound-message.types.js';
 import { renderTemplateBody } from '../marketing/template-renderer.js';
@@ -177,6 +177,8 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
       messageContent: (ctx.content.text as string) ?? '',
       replyToken,
       receivedAt: ctx.now.toISOString(),
+      // 去識別化服務無法使用時保存的訊息沒有遮罩副本：AI 不讀它、改轉真人（issue #466）
+      ...(isUnmaskedInbound(ctx.message.metadata) ? { privacyUnmasked: true } : {}),
       // 只有加入好友事件帶：自動化據此另外以「加入好友」（contact.followed）評估規則
       ...(typeof ctx.isFirstFollow === 'boolean' ? { isFirstFollow: ctx.isFirstFollow } : {}),
     },

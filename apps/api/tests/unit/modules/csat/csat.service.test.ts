@@ -157,13 +157,16 @@ test('送到客人的渠道失敗', async () => {
 });
 
 /**
- * 啟用 AI 去識別化的租戶：系統固定的感謝訊息原文送出、原文存入對話，遮罩版另存給模型
+ * 啟用 AI 去識別化的租戶：系統固定的感謝訊息原文送出、原文存入對話
  * （spec ai-input-deidentification「System template message keeps its authored text」）。
- * 只替換最低層的 HTTP 呼叫，模擬 2md 把「好評」誤判成人名。
+ * 評分後的回覆是程式固定的文字，遮罩副本就是原文，不呼叫 2md（change fix-deid-inbound-fallback-466，
+ * bot-handoff-config「程式固定的系統文字不呼叫去識別化服務」）。只替換最低層的 HTTP 呼叫。
  */
 test('System template message keeps its authored text: CSAT follow-up', async () => {
   delivered.length = 0;
+  let deidRequests = 0;
   vi.stubGlobal('fetch', async (_url: string, options: RequestInit) => {
+    deidRequests += 1;
     const { text } = JSON.parse(options.body as string) as { text: string };
     return Response.json({ code: 200, data: { status: 'ok', text: text.replace('好評', '[姓名]') } });
   });
@@ -194,7 +197,8 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
     assert.equal(text, '非常感謝您的好評！您的肯定是我們最大的動力，期待再次為您服務！');
     assert.equal(delivered[0][2], text, '送給顧客的與紀錄相同');
     const privacy = (created[0].metadata as { privacy: { maskedContent: { text: string } } }).privacy;
-    assert.match(privacy.maskedContent.text, /\[姓名\]/);
+    assert.equal(privacy.maskedContent.text, text, '遮罩副本就是原文');
+    assert.equal(deidRequests, 0, '沒有呼叫去識別化服務');
   } finally {
     vi.unstubAllGlobals();
   }

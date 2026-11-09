@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { generateReply } from './llm.service.js';
+import { isUnmaskedInbound } from './deidentification.service.js';
 import { logger } from '@open333crm/core';
 
 export interface ClassifyResult {
@@ -111,8 +112,10 @@ export async function autoClassifyNewCase(
   const latest = await prisma.message.findFirst({
     where: { conversationId, conversation: { tenantId }, direction: 'INBOUND' },
     orderBy: { createdAt: 'desc' },
-    select: { content: true },
+    select: { content: true, metadata: true },
   });
+  // 去識別化服務無法使用時保存的進站訊息沒有遮罩副本，不交給模型分類（issue #466）
+  if (isUnmaskedInbound(latest?.metadata)) return null;
   const text = (latest?.content as Record<string, unknown> | null)?.text;
   if (typeof text !== 'string' || !text) return null;
   const result = await classify(prisma, tenantId, text);

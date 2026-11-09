@@ -202,8 +202,11 @@ test('Privacy timeout aborts request before model dispatch', async () => {
     options.signal!.addEventListener('abort', () => reject(new Error('aborted')));
   }));
   const pending = assert.rejects(generateReply(db() as never, TENANT, PHONE), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
-  await vi.advanceTimersByTimeAsync(10_001);
+  // 每次嘗試 6 秒逾時，短暫故障重試一次（change fix-deid-inbound-fallback-466）：6 秒 + 300 毫秒 + 6 秒
+  await vi.advanceTimersByTimeAsync(12_301);
   await pending;
+  // 系統指示與客人訊息各一個請求，兩次嘗試
+  assert.equal(fetchMock.mock.calls.length, 4, '逾時後重試一次');
   assert.equal(mocks.generate.mock.calls.length, 0);
 });
 

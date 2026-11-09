@@ -50,7 +50,10 @@ export async function analyzeSentiment(
   prisma: TenantDb,
   tenantId: string,
   text: string,
+  /** modelAllowed: false 時只用關鍵字判斷，不呼叫模型（沒有遮罩副本的進站訊息，issue #466） */
+  options: { modelAllowed?: boolean } = {},
 ): Promise<SentimentResult> {
+  if (options.modelAllowed === false) return keywordFallback(text);
   try {
     const raw = await generateReply(prisma, tenantId, text, '', {
       overrideSystemPrompt: SENTIMENT_SYSTEM_PROMPT,

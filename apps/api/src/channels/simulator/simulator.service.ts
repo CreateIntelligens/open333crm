@@ -6,7 +6,8 @@ import { eventBus } from '../../events/event-bus.js';
 import { emitToChannel } from '../../events/socket-push.js';
 import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { prepareStoredMessageContent } from '../../modules/ai/deidentification.service.js';
+import { prepareInboundMessageContent } from '../../modules/ai/deidentification.service.js';
+import { alertInboundUnmasked } from '../../modules/ai/deidentification-alert.js';
 import { readAiPrivacyPolicy } from '../../modules/platform/ai-privacy.service.js';
 
 export interface SimulatorMessageInput {
@@ -118,7 +119,8 @@ export async function simulateInboundMessage(
   }
 
   const now = new Date();
-  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma as never, tenantId), content, 'inbound');
+  // 與渠道進站相同：去識別化服務無法使用時存原文並標記未遮罩，不丟錯（issue #466）
+  const storedContent = await prepareInboundMessageContent(await readAiPrivacyPolicy(prisma as never, tenantId), content);
 
   // 4. Create Message (INBOUND, CONTACT)
   const message = await prisma.message.create({
@@ -134,6 +136,10 @@ export async function simulateInboundMessage(
       createdAt: now,
     },
   });
+
+  if (storedContent.unmaskedReason) {
+    await alertInboundUnmasked({ tenantId, channelType, reason: storedContent.unmaskedReason });
+  }
 
   // 5. Update conversation lastMessageAt and increment unreadCount
   await prisma.conversation.update({
@@ -196,6 +202,7 @@ export async function simulateInboundMessage(
       channelType,
       content,
       messageContent: (content.text as string) ?? '',
+      ...(storedContent.unmaskedReason ? { privacyUnmasked: true } : {}),
     },
   });
 
