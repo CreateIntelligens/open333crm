@@ -211,7 +211,7 @@ async function deleteMediaObjects(keys: string[]): Promise<{ deleted: number; fa
 /**
  * 交易 commit 之後刪除訊息媒體檔與頭像檔，有失敗時把筆數補寫進請求的 affected。
  * 交易內已把 mediaObjectsFailed / avatarObjectsFailed 寫成 0，沒有失敗就不用再寫。
- * 補寫失敗只寫 log：請求已經 completed，回傳的 affected 仍帶失敗筆數，會寫進完成稽核。
+ * 補寫失敗時回傳請求保存的 affected（失敗筆數是 0），讓完成稽核與請求一致；失敗筆數只留在 error log。
  */
 async function deleteObjectsAfterCommit(
   prisma: PrismaClient,
@@ -225,13 +225,20 @@ async function deleteObjectsAfterCommit(
   if (media.failed === 0 && avatars.failed === 0) return affected;
 
   const updated = { ...affected, mediaObjectsFailed: media.failed, avatarObjectsFailed: avatars.failed };
-  await prisma.dataErasureRequest
-    .updateMany({
+  try {
+    await prisma.dataErasureRequest.updateMany({
       where: { id: request.requestId, tenantId: request.tenantId },
       data: { affected: updated as Prisma.InputJsonValue },
-    })
-    .catch((err) => logger.error(`[data-erasure] failed to record object delete failures for ${request.requestId}:`, err));
-  return updated;
+    });
+    return updated;
+  } catch (err) {
+    logger.error(
+      `[data-erasure] failed to record object delete failures for ${request.requestId} ` +
+        `(mediaObjectsFailed=${media.failed}, avatarObjectsFailed=${avatars.failed}):`,
+      err,
+    );
+    return affected;
+  }
 }
 
 export async function handleDataErasureJob(

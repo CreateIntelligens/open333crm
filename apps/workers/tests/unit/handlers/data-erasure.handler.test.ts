@@ -35,6 +35,8 @@ interface State {
   audits: string[];
   auditPayloads: unknown[];
   messages: { direction: string; content: unknown }[];
+  /** 交易 commit 之後補寫 affected 的 updateMany 丟錯 */
+  failAffectedWriteBack?: boolean;
 }
 
 function matchesStatus(status: string, where: { status?: string | { in: string[] } }) {
@@ -60,6 +62,7 @@ function fakeDb(state: State) {
       dataErasureRequest: {
         updateMany: async ({ where, data }: { where: { id: string; tenantId: string; status?: string | { in: string[] } }; data: Record<string, unknown> }) => {
           await yieldOnce();
+          if (state.failAffectedWriteBack && journal === null && 'affected' in data) throw new Error('db down');
           const r = state.request;
           if (r.id !== where.id || r.tenantId !== where.tenantId || !matchesStatus(r.status, where)) return { count: 0 };
           const prev = { ...r };
@@ -197,5 +200,21 @@ test('物件刪除失敗時請求仍然完成：affected.mediaObjectsFailed 記�
   assert.equal(affected.mediaObjects, 1);
   assert.equal(affected.mediaObjectsFailed, 1);
   assert.equal(affected.avatarObjectsFailed, 0);
+  assert.deepEqual((s.auditPayloads[0] as { affected: unknown }).affected, affected);
+});
+
+test('物件刪除失敗、補寫失敗筆數也失敗時：完成稽核的 affected 與請求保存的 affected 相同', async () => {
+  const s = state('pending');
+  const key = `${TENANT}/media/${CONVERSATION}/e0000000-0000-0000-0000-00000000000e.jpg`;
+  s.messages = [{ direction: 'INBOUND', content: { storageKey: key } }];
+  s.failAffectedWriteBack = true;
+  storage.remove = async () => {
+    throw new Error('minio down');
+  };
+  await handleDataErasureJob(job('anonymize'), fakeDb(s) as never, redis);
+
+  assert.equal(s.request.status, 'completed');
+  const affected = s.request.affected as Record<string, number>;
+  assert.equal(affected.mediaObjectsFailed, 0, '補寫沒有成功，請求保存的仍是交易內寫入的 0');
   assert.deepEqual((s.auditPayloads[0] as { affected: unknown }).affected, affected);
 });
