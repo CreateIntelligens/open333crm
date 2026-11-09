@@ -190,8 +190,9 @@ export function buildInviteText(links: BindingLink[], code: string): string {
     if (link.channelType === 'LINE') {
       return `${title}\n1. 先加入好友：${link.addFriendUrl}\n2. 加入後點此送出綁定代碼：${link.sendCodeUrl}`;
     }
+    // 已有的 IG 對話點 ig.me 不會帶 ref（2026-11-02 UAT 實測），只有顧客自己送出代碼才會綁定
     if (link.channelType === 'THREADS') {
-      return `${title}\n點此開啟：${link.sendCodeUrl}\n（僅支援手機 App；開啟後請傳送任一訊息）`;
+      return `${title}\n點此開啟：${link.sendCodeUrl}\n（僅支援手機 App；開啟後請傳送這組代碼：${code}）`;
     }
     return `${title}\n點此開啟：${link.sendCodeUrl}\n（開啟後若沒有反應，請傳送任一訊息）`;
   });

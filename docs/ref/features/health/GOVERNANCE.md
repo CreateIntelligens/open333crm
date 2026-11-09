@@ -127,7 +127,8 @@
 ## 建議新增到 AUDIT.md 的項目
 
 - HC-GOVERNANCE-01：稽核的 actor 在成員永久刪除後變 null（P1）。修正方向：稽核另存操作者名稱與 email 快照，或改成成員有稽核紀錄時不可硬刪除。
-  - 2026-11-09 部分修正（#414，change `preserve-audit-actor-on-agent-purge`）：採快照做法，刪除前把名稱與 email 存進稽核與匯出、刪除請求，`GET /tenant/audit-logs` 回 `actorSnapshot`，主規格 `agent-lifecycle`、`tenant-audit-log` 已涵蓋。worker 寫 `data.erasure.complete` 的外鍵問題見 AUD-03 未修正的部分。
+  - 2026-11-09 部分修正（#414，change `preserve-audit-actor-on-agent-purge`）：採快照做法，刪除前把名稱與 email 存進稽核與匯出、刪除請求，`GET /tenant/audit-logs` 回 `actorSnapshot`，主規格 `agent-lifecycle`、`tenant-audit-log` 已涵蓋。
+  - 2026-11-09 後續（change `keep-completion-audit-for-purged-requester`）：刪除或匯出請求排隊中、發起人被永久刪除時，`data.erasure.complete` 稽核改在刪除的交易內寫入，`actorId` 寫空值並帶入請求的快照，不送通知；匯出也不送通知。依 `actorId` 篩選查不到已刪除成員的紀錄仍未修（AUD-03）。
 - HC-GOVERNANCE-02、05：資料匯出與刪除不受渠道可見範圍限制（可併入 RBAC-04 表格）。
 - HC-GOVERNANCE-03、04、09：AUD-01 的未涵蓋清單補「下載匯出檔」「Webhook 訂閱增刪改與測試」「修改聯絡人 email／電話」「門市帳號」「會員綁定」「SLA 政策」。
 - HC-GOVERNANCE-06、08：ERASE-01 補「刪除後仍可解除合併，讓被併入的聯絡人復活」與「outbox、webhook 送出紀錄、舊匯出檔」。

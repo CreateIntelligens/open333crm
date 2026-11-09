@@ -33,6 +33,7 @@ const { default: dataErasureRoutes } = await import('#src/modules/data-erasure/d
 const { createOutboxPublisher } = await import('#src/events/outbox-publisher.js');
 type EventPublisher = import('#src/events/outbox-publisher.js').EventPublisher;
 const { handleDataErasureJob } = await import('../../../../../workers/src/handlers/data-erasure.handler.js');
+const { purgeAgentFlow } = await import('#src/modules/agent/agent.flow.js');
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -60,6 +61,18 @@ const eraser = await owner.agent.create({
 });
 const plain = await owner.agent.create({
   data: { tenantId: A, roleId: plainRole.id, email: `${MARK}-plain@example.test`, name: '一般成員', passwordHash: 'x' },
+});
+// 永久刪除成員的操作者：權限包含刪除者的權限，才能刪除刪除者（RBAC-09）
+const purgerRole = await owner.role.create({
+  data: {
+    tenantId: A,
+    slug: `${MARK}-purger`,
+    name: 'purger',
+    permissions: { create: [{ permissionCode: 'data.erase' }, { permissionCode: 'contact.view' }, { permissionCode: 'agent.purge' }] },
+  },
+});
+const purger = await owner.agent.create({
+  data: { tenantId: A, roleId: purgerRole.id, email: `${MARK}-purger@example.test`, name: '管理者', passwordHash: 'x' },
 });
 const channel = await owner.channel.create({
   data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch`, credentialsEncrypted: 'x' },
@@ -143,15 +156,27 @@ function storedAvatar(tenantId: string, name: string) {
 }
 const removedKeys = () => mocks.remove.mock.calls.map(([, key]) => key);
 
-async function createRequest(contactId: string, mode: 'anonymize' | 'hard_delete') {
-  return owner.dataErasureRequest.create({ data: { tenantId: A, requestedBy: eraser.id, contactId, mode, status: 'pending' } });
+async function createRequest(contactId: string, mode: 'anonymize' | 'hard_delete', requestedBy = eraser.id) {
+  return owner.dataErasureRequest.create({ data: { tenantId: A, requestedBy, contactId, mode, status: 'pending' } });
 }
-const runJob = (request: { id: string; contactId: string; mode: string }) =>
+/** 工作內容與發起時寫進 outbox 的相同：requestedBy 是發起的成員 ID，成員被永久刪除後仍是這個值 */
+const runJob = (request: { id: string; contactId: string; mode: string }, requestedBy = eraser.id) =>
   handleDataErasureJob(
-    { data: { requestId: request.id, tenantId: A, contactId: request.contactId, mode: request.mode, requestedBy: eraser.id } } as never,
+    { data: { requestId: request.id, tenantId: A, contactId: request.contactId, mode: request.mode, requestedBy } } as never,
     owner,
     {} as never,
   );
+
+/** 建立一位有 data.erase 的成員（之後會被永久刪除） */
+async function createRequester() {
+  seq += 1;
+  return owner.agent.create({
+    data: { tenantId: A, roleId: eraserRole.id, email: `${MARK}-requester-${seq}@example.test`, name: `發起者${seq}`, passwordHash: 'x' },
+  });
+}
+/** 以永久刪除成員的正式流程刪除（會先把名稱與 email 寫進他發起的請求） */
+const purge = (agentId: string) =>
+  purgeAgentFlow({ prisma: tenantDb }, { tenantId: A, agentId: purger.id, roleId: purgerRole.id, ip: '127.0.0.1' }, agentId);
 
 /** 寫進真的 outbox，commit 後不送進 Redis */
 const outboxOnly: EventPublisher = { write: createOutboxPublisher(tenantDb).write, dispatch: async () => {} };
@@ -607,6 +632,44 @@ test('完成稽核不含個人資料', async () => {
   for (const value of [PII.displayName, PII.phone, PII.email]) assert.ok(!text.includes(value), `payload 不含 ${value}`);
   assert.equal(mocks.notify.mock.calls.length, 1);
   assert.equal(mocks.notify.mock.calls[0][0].type, 'data_erasure_done');
+});
+
+test('發起的成員還在時記下他並通知他', async () => {
+  const requester = await createRequester();
+  const { contact } = await createSubject();
+  const request = await createRequest(contact.id, 'anonymize', requester.id);
+  await runJob(request, requester.id);
+
+  const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.erasure.complete', targetId: contact.id } });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].actorId, requester.id);
+  assert.equal(logs[0].actorName, null);
+  assert.equal(logs[0].actorEmail, null);
+  assert.deepEqual(
+    mocks.notify.mock.calls.map(([input]) => [input.agentId, input.type]),
+    [[requester.id, 'data_erasure_done']],
+  );
+});
+
+test('發起的成員已被永久刪除時，完成稽核記下快照、不送通知', async () => {
+  const requester = await createRequester();
+  const { contact } = await createSubject();
+  const request = await createRequest(contact.id, 'hard_delete', requester.id);
+  await purge(requester.id);
+  assert.equal(await owner.agent.count({ where: { id: requester.id } }), 0, '發起的成員已被永久刪除');
+
+  await runJob(request, requester.id);
+
+  const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stored.status, 'completed', stored.error ?? '');
+  assert.equal(stored.requestedBy, null);
+  const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.erasure.complete', targetId: contact.id } });
+  assert.equal(logs.length, 1, '完成稽核要寫入');
+  assert.equal(logs[0].actorId, null);
+  assert.equal(logs[0].actorName, requester.name);
+  assert.equal(logs[0].actorEmail, requester.email);
+  assert.deepEqual((logs[0].payload as { affected: unknown }).affected, stored.affected);
+  assert.equal(mocks.notify.mock.calls.length, 0, '沒有收件人，不送通知');
 });
 
 test('聯絡人已不存在時記錄失敗', async () => {

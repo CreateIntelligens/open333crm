@@ -12,6 +12,14 @@
 | --- | --- | --- |
 | DB-01 | 未處理，描述修正 | UAT 的 `km_articles.embedding` 是 `vector(1024)`（`format_type(atttypid, atttypmod)`），與 schema 一致。原本寫「執行中的欄位都是 `vector(1536)`」，只在由 migration 建立的本機與測試資料庫成立。改寫成「migration 歷史落後於 UAT」，並註明補 migration 前要查每個環境的實際維度。`long_term_memories.embedding` 沒有查 |
 
+## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
+
+issue #414 後續，分支 `fix/erasure-export-deleted-requester-414`，change `keep-completion-audit-for-purged-requester`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUD-03 的「worker 寫完成稽核違反外鍵、通知失敗」 | 已修正，AUD-03 維持部分修正（依 `actorId` 篩選查不到已刪除成員的紀錄未處理） | `data-erasure-flow.test.ts`「發起的成員已被永久刪除時，完成稽核記下快照、不送通知」修正前失敗在斷言上（稽核筆數 0，log 有 `tenant_audit_logs_actorId_fkey`）；`data-export-flow.test.ts` 兩個「發起的成員已被永久刪除時…不送通知」修正前失敗在斷言上（送了通知）；`agent-purge.test.ts`「請求的快照在稽核的快照之前寫入」修正前失敗。mutation：發起者還在時改成不記他、不通知，「發起的成員還在時記下他並通知他」失敗；補寫失敗筆數時不更新稽核，feature 與單元的「物件刪除失敗時請求仍然完成」失敗；拿掉 `requesterExists` 的空值防護，單元「工作內容沒有 requestedBy 時…」失敗；匯出拿掉發起者檢查，單元與 feature 的「已被永久刪除…不送通知」失敗 |
+
 ## 2026-11-09：匿名化刪除客人傳來的媒體檔（ERASE-01）
 
 #329，分支 `fix/erase-media-329`，change `erase-inbound-media-on-anonymize`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。

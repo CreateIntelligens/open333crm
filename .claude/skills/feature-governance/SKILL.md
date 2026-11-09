@@ -35,7 +35,7 @@ description: >
 | 3 | 發起匯出 | `POST /tenant/data-export {scope?}` → `apps/api/src/modules/data-export/data-export.flow.ts` `requestExportFlow` | 同一交易：建 `pending` 請求、寫 `data.export.request`、匯出工作寫 outbox → `data-export` 佇列 → `apps/workers/src/handlers/data-export.handler.ts` 打包 zip 上傳 MinIO、通知發起人 | `data.export` 加 `channel.view_all` |
 | 4 | 查狀態、下載 | `GET /tenant/data-export/:id`、`GET /:id/download` → 15 分鐘 presigned URL | `downloadCount++`；**不寫稽核**（已知問題，見下） | `data.export` 加 `channel.view_all` |
 | 5 | 匯出清理 | workers 每小時 `data-export-cleanup` | 過期（7 天）刪 MinIO 物件、請求改 `expired` | — |
-| 6 | 發起刪除 | `POST /tenant/data-erasure {contactId, mode: anonymize\|hard_delete, reason?}` → `apps/api/src/modules/data-erasure/data-erasure.flow.ts` `requestErasureFlow` | 同一交易：驗聯絡人同租戶、建請求、寫 `data.erasure.request`（payload 不含 reason）、工作寫 outbox → `apps/workers/src/handlers/data-erasure.handler.ts`；完成寫 `data.erasure.complete`、通知發起人 | `data.erase`（依賴 `contact.view`）；**不檢查渠道可見範圍** |
+| 6 | 發起刪除 | `POST /tenant/data-erasure {contactId, mode: anonymize\|hard_delete, reason?}` → `apps/api/src/modules/data-erasure/data-erasure.flow.ts` `requestErasureFlow` | 同一交易：驗聯絡人同租戶、建請求、寫 `data.erasure.request`（payload 不含 reason）、工作寫 outbox → `apps/workers/src/handlers/data-erasure.handler.ts`；完成時在刪除交易內寫 `data.erasure.complete`，commit 後通知發起人（發起人已被永久刪除時不送） | `data.erase`（依賴 `contact.view`）；**不檢查渠道可見範圍** |
 | 7 | 查刪除狀態 | `GET /tenant/data-erasure/:id` | 無。沒有列表端點 | `data.erase` |
 | 8 | Webhook 訂閱 | `GET/POST /webhook-subscriptions`、`GET/PATCH/DELETE /:id`、`GET /:id/deliveries?limit`、`POST /:id/test` | 建立與修改時檢查網址（`isBlockedUrl`，要公開 HTTPS）；刪除是硬刪除；**全部不寫稽核** | 讀 `webhook.view`（supervisor 預設有，讀得到 `secret`）、寫 `webhook.manage` |
 | 9 | 對外轉送（系統） | `event-webhook` 佇列 → `apps/api/src/modules/webhook-subscriptions/webhook-dispatcher.ts` | 每個訂閱一筆 `WebhookDelivery`（存事件原文），重試 3 次 | — |
@@ -54,7 +54,7 @@ description: >
 - 刪除只能動目標聯絡人；頭像檔只刪本租戶 `avatars/` 目錄、且沒有其他聯絡人在用的檔案。
 - 訊息媒體檔只刪 `{tenantId}/media/{本次對話}/{uuid}.ext` 格式的 key（`isConversationMediaKey`）；`anonymize` 只刪進站訊息的，出站訊息還在引用的保留。`anonymize` 要在改寫進站訊息**之前**讀出 `storageKey`，改寫之後就找不到了（#329）。物件刪除在 commit 之後、每個最多一次，失敗筆數記在 `affected.mediaObjectsFailed`／`avatarObjectsFailed`，不要只寫 log。
 - **新增掛在 Contact、Conversation、Case 上的資料表時**：決定 `anonymize` 與 `hard_delete` 要不要處理它，`Restrict` 關聯一定要在 `hardDelete()` 刪 Contact 之前顯式刪除，否則硬刪除會失敗。只存 `contactId` 字串、沒有外鍵的表（ClickLog、BroadcastRecipient、KbArticleFeedback、FlowExecution）兩種模式都不處理（ERASE-01）。
-- `TenantAuditLog.actor`、`DataExportRequest.requester`、`DataErasureRequest.requester` 是 `onDelete: SetNull`。`purgeAgent()` 在刪除成員之前、同一個交易內呼叫 `preserveAuditActor()` 與兩個 `preserveRequester()`，把名稱與 email 存進 `actorName`／`actorEmail`、`requestedByName`／`requestedByEmail`（#414）。新增以 SetNull 參照 `agents`、又需要問責的表時，也要在 `purgeAgent` 加快照。`GET /tenant/audit-logs` 的 `actor` 格式不能改，快照放在 `actorSnapshot`。
+- `TenantAuditLog.actor`、`DataExportRequest.requester`、`DataErasureRequest.requester` 是 `onDelete: SetNull`。`purgeAgent()` 在刪除成員之前、同一個交易內呼叫 `preserveAuditActor()` 與兩個 `preserveRequester()`，把名稱與 email 存進 `actorName`／`actorEmail`、`requestedByName`／`requestedByEmail`（#414）。新增以 SetNull 參照 `agents`、又需要問責的表時，也要在 `purgeAgent` 加快照。請求快照要在稽核快照之前寫（資料刪除 worker 先鎖請求列再寫完成稽核）。背景工作用工作內容裡的成員 ID 寫稽核或送通知前，先以 `requesterExists()`（`apps/workers/src/lib/requester.ts`）確認成員還在。`GET /tenant/audit-logs` 的 `actor` 格式不能改，快照放在 `actorSnapshot`。
 - 新增敏感操作（權限、憑證、對外送資料、匯出名單、改個資）時要寫稽核，並更新 `openspec/specs/tenant-audit-log/spec.md` 的清單與 AUD-01。
 
 ## 跨功能牽連
@@ -74,7 +74,7 @@ description: >
 
 ## 常見 bug 從哪裡查
 - 「稽核查不到某個操作」：先對照 `docs/ref/features/health/GOVERNANCE.md` 的盤點表，很多敏感操作本來就沒寫（AUD-01、HC-GOVERNANCE-03、04、09）。有寫的話查該模組的 flow 是否在交易內呼叫 `recordTenantAudit`。
-- 「稽核的操作者是空的」：操作者被永久刪除了，看 `actorSnapshot`（2026-11-09 之前刪除的成員沒有快照）；或是系統排程寫的（`actorSnapshot` 也是 null）。刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 會違反外鍵而被吞掉（AUD-03 未修的部分）。
+- 「稽核的操作者是空的」：操作者被永久刪除了，看 `actorSnapshot`（2026-11-09 之前刪除的成員沒有快照）；或是系統排程寫的（`actorSnapshot` 也是 null）。刪除請求排隊中、發起人被永久刪除時，`data.erasure.complete` 的 `actorId` 是空值、快照取自請求的 `requestedByName`／`requestedByEmail`，而且不送通知（change `keep-completion-audit-for-purged-requester`）。
 - 「匯出一直 pending」：workers 有沒有在跑、`data-export` 佇列；容器內 workers 連不上 MinIO 見 STO-01。失敗原因在 `data_export_requests.error`。
 - 「匯出內容只要聯絡人卻全部都有」：`scope` 沒作用（EXPORT-01）。
 - 「刪除後客人資料還在」：查 ERASE-01 的保留清單、被合併的封存聯絡人（`mergedIntoId`）、outbox 與 `webhook_deliveries` 的 payload（HC-GOVERNANCE-08）。
