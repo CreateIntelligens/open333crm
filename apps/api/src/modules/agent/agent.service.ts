@@ -9,6 +9,9 @@ import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 import { loadTenantRole } from '../role/role.service.js';
 import { loadRolePermissions } from '../../services/permission.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { preserveAuditActor } from '../tenant-audit/tenant-audit.service.js';
+import { preserveRequester as preserveExportRequester } from '../data-export/data-export.service.js';
+import { preserveRequester as preserveErasureRequester } from '../data-erasure/data-erasure.service.js';
 
 // 防自鎖的權限碼（registry 動態抽 selfLock:true，比照 role.service.setRolePermissions）：
 // 含 role.manage。用於「自我降級」守門，避免寫死單一權限碼。
@@ -471,13 +474,20 @@ export async function deactivateAgent(
  * RESTRICT 的關聯（notifications / cli_sessions / passkey_credentials），
  * 否則外鍵會擋下刪除；CASCADE（agent_team_members）與 SET NULL（cases /
  * conversations / messages 等指派欄位）由資料庫自理，歷史資料保留。
+ * 稽核與資料匯出、刪除請求的操作者欄位也是 SET NULL，刪除前先寫入名稱與 email 快照（issue #414）。
  * 全程在呼叫端開的交易內執行，任一步失敗則整體回滾。
+ *
+ * @returns 被刪成員的名稱，供 flow 寫進 agent.purge 稽核的 payload（不含 email）
  */
-export async function purgeAgent(ctx: TenantCtx, agentId: string, actorRoleId: string | null | undefined) {
+export async function purgeAgent(
+  ctx: TenantCtx,
+  agentId: string,
+  actorRoleId: string | null | undefined,
+): Promise<{ name: string }> {
   const { tx } = ctx;
   const existing = await tx.agent.findFirst({
     where: { id: agentId, tenantId: ctx.tenantId },
-    select: { id: true, isActive: true, role: true, roleId: true },
+    select: { id: true, isActive: true, role: true, roleId: true, name: true, email: true },
   });
   if (!existing) {
     throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
@@ -490,8 +500,14 @@ export async function purgeAgent(ctx: TenantCtx, agentId: string, actorRoleId: s
   await tx.notification.deleteMany({ where: { agentId } });
   await tx.cliSession.deleteMany({ where: { agentId } });
   await tx.passkeyCredential.deleteMany({ where: { agentId } });
+  // 刪除後 actorId、requestedBy 會被清成空值，先保留操作者快照
+  const snapshot = { agentId, name: existing.name, email: existing.email };
+  await preserveAuditActor(ctx, snapshot);
+  await preserveExportRequester(ctx, snapshot);
+  await preserveErasureRequester(ctx, snapshot);
   // 再刪 Agent（agent_team_members 會 CASCADE、cases/conversations/messages 等 SET NULL）
   await tx.agent.delete({ where: { id: agentId } });
+  return { name: existing.name };
 }
 
 /** 成員列表的欄位（含角色與團隊）。啟用中與停用的列表共用 */

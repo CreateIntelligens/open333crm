@@ -2125,7 +2125,9 @@ model PlatformAuditLog {
 model TenantAuditLog {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId   String   @db.Uuid
-  actorId    String?  @db.Uuid // 操作者 agent（系統/排程觸發時可為 null）
+  actorId    String?  @db.Uuid // 操作者 agent（系統/排程觸發時可為 null；成員被永久刪除後也是 null）
+  actorName  String? // 操作者被永久刪除時保存的名稱快照（issue #414）
+  actorEmail String? // 操作者被永久刪除時保存的 email 快照（issue #414）
   action     String // e.g. settings.update | contact.delete | marketing.list.export
   targetType String? // contact | agent | role | channel | setting | ...
   targetId   String?
@@ -2146,7 +2148,9 @@ model TenantAuditLog {
 model DataExportRequest {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String    @db.Uuid
-  requestedBy   String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedBy      String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedByName  String? // 發起者被永久刪除時保存的名稱快照（issue #414）
+  requestedByEmail String? // 發起者被永久刪除時保存的 email 快照（issue #414）
   status        String    @default("pending") // pending | processing | completed | failed | expired
   scope         Json? // 匯出範圍（哪些資料類型）；null=全部
   fileKey       String? // MinIO 物件 key
@@ -2169,7 +2173,9 @@ model DataExportRequest {
 model DataErasureRequest {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String    @db.Uuid
-  requestedBy String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedBy      String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedByName  String? // 發起者被永久刪除時保存的名稱快照（issue #414）
+  requestedByEmail String? // 發起者被永久刪除時保存的 email 快照（issue #414）
   contactId   String    @db.Uuid // 目標聯絡人（刪除後此欄仍留存於稽核用途）
   mode        String    @default("anonymize") // anonymize | hard_delete
   status      String    @default("pending") // pending | processing | completed | failed
