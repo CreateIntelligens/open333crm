@@ -48,12 +48,12 @@
 
 新增 `embedding/embedding-client.ts`，只放外部呼叫：
 
-- `embedText(target: { baseUrl, model }, policy: AiPrivacyPolicy, text)`：遮罩，然後呼叫 `/api/embed`。逾時與重試沿用現在的值（25 秒，重試 1 次）。
+- `embedText(target: { baseUrl, model }, policy: AiPrivacyPolicy, text)`：遮罩，然後呼叫 `/api/embed`。逾時與重試沿用搬遷前的值（25 秒，重試 1 次）。
 - `probeEmbeddingService(baseUrl, model)`：呼叫 `/api/tags`，回傳連線狀態、模型是否存在與模型清單。
 
 兩個 `checkOllamaHealth()` 與 `listOllamaModels()` 都改成呼叫 `probeEmbeddingService()`，再各自轉成原本的回應格式。這樣 `GET /settings/embedding` 只呼叫一次 `/api/tags`，原本會呼叫兩次。
 
-不放在 service 檔：結構規則 2 規定 service 不呼叫外部服務。用戶端檔不收 `TenantCtx`，所以呼叫端在交易內呼叫它時，型別會擋不到。這一點由 code review 與 5.2 的檢查清單把關。
+不放在 service 檔：結構規則 2 規定 service 不呼叫外部服務。用戶端檔不收 `TenantCtx`，所以呼叫端在交易內呼叫 `embedText()` 時，型別檢查擋不住。這一點由 code review 與規劃檔 5.2 的檢查清單把關。
 
 ### D2. 向量化拆成三段，以 `updatedAt` 判斷文章是否被改過
 
@@ -63,7 +63,7 @@
 2. 交易外：以 `prepareArticleText()` 組文字，再呼叫 `embedText()`。
 3. 交易 2：`UPDATE km_articles SET embedding, "embeddingModel" WHERE id AND "tenantId" AND "updatedAt" = 交易 1 讀到的值`。更新 0 列時回 `skipped`，並寫 warn log。
 
-寫入向量用 raw SQL，Prisma 不會更新 `updatedAt`，所以寫入向量不會讓之後的比對失敗。模型名稱用交易 1 讀到的設定，與實際產生向量的模型相同。原本是向量化之後才讀，設定中途改了就會記錯。
+寫入向量用 raw SQL，Prisma 不會更新 `updatedAt`，所以寫入向量不會讓之後的比對失敗。模型名稱用交易 1 讀到的設定，與實際產生向量的模型相同。搬遷前的程式在向量化之後才讀設定：設定在向量化期間被修改時，記下的模型名稱會與實際產生向量的模型不同。
 
 不用 `externalVer`：`externalVer` 是合作方系統的版本號，只有合作方推送會寫入，後台編輯不會遞增。
 
@@ -71,7 +71,7 @@
 
 不用悲觀鎖：
 
-- 以 `SELECT ... FOR UPDATE` 鎖住文章時，鎖到交易結束才放開，所以 Ollama 的呼叫要留在交易內。這違反結構規則 2，交易要放寬到 60 秒以上，每次向量化佔住一條連線，後台存檔最多等 51 秒。
+- 以 `SELECT ... FOR UPDATE` 鎖住文章時，鎖到交易結束才放開，所以 Ollama 的呼叫要留在交易內。這違反結構規則 2，交易逾時要放寬到 60 秒以上，每次向量化佔住一條連線，後台存檔最多等 51 秒。
 - 改用租約欄位時，每個寫入文章的路徑都要先檢查租約，漏掉一處不會報錯。處理程序中斷時，租約要等到期才釋放。`pg_advisory_lock` 綁在連線上，Prisma 的連線池不保證前後兩次查詢用同一條連線。
 - 悲觀鎖只把編輯與向量化排成先後，最後的結果與樂觀鎖相同。「最後是最新內容的向量」靠的是每次寫入都開始自己的向量化。只改分類或標籤的限制也還在（見「Risks / Trade-offs」）。悲觀鎖只省下偶爾白做的一次向量化，而向量化可以重做，結果相同。
 
@@ -90,9 +90,9 @@
 
 ### D4. 向量化設定的讀取不建立設定列
 
-- `getEmbeddingSettings(ctx)` 以 `findUnique` 讀取，沒有設定列就回 `DEFAULT_EMBEDDING_SETTINGS`。讀取不寫資料庫，所以可以在任何交易內呼叫，並行讀取也不會撞 unique。
+- `getEmbeddingSettings(ctx)` 以 `findUnique` 讀取，沒有設定列就回 `DEFAULT_EMBEDDING_SETTINGS`。讀取不寫資料庫，所以可以在任何交易內呼叫，兩個請求同時讀取也不會違反 unique 限制。
 - `updateEmbeddingSettings(ctx, patch)` 以 `upsert` 寫入。`create` 用「預設值加上 patch」，`update` 只寫 patch 裡的欄位。回傳 `modelChanged` 與 `previousModel` 的方式不變。
-- `PUT /settings/embedding` 的 flow 在同一個交易內呼叫 `recordTenantAudit()`。原本用 `writeTenantAudit()` 在交易外寫，寫入失敗只記 log。
+- `PUT /settings/embedding` 的 flow 在同一個交易內呼叫 `recordTenantAudit()`。原本用 `writeTenantAudit()` 在交易外寫，寫入失敗只寫 log。
 
 ### D5. `ai` 的兩個呼叫端以自己的連線組成 `TenantCtx`
 
@@ -105,7 +105,7 @@ const vector = await embedText(settings, policy, text);
 const results = await searchSimilarArticles(ctx, vector, { topK: settings.topK, threshold: settings.threshold });
 ```
 
-`kb-autoreply` 的連線是 `prismaAdmin`，沒有 RLS。所以 `searchSimilarArticles()` 與設定的查詢都明確帶 `tenantId`，現在的寫法已經是這樣。搬 `ai` 時，這三步改成「交易 → 外部呼叫 → 交易」。
+`kb-autoreply` 的連線是 `prismaAdmin`，沒有 RLS。所以 `searchSimilarArticles()` 與設定的查詢都明確帶 `tenantId`。搬遷前的程式已經帶 `tenantId`。搬 `ai` 時，這三步改成「交易 → 外部呼叫 → 交易」。
 
 `searchSimilarArticles(ctx, vector, { topK, threshold })` 的兩個參數改成必填，函式不再讀設定。
 
@@ -117,5 +117,5 @@ const results = await searchSimilarArticles(ctx, vector, { topK: settings.topK, 
 
 - 向量化進行中只改分類或標籤時，那次結果被略過，而這種修改不會開始新的向量化，文章保留舊向量。要碰到秒級的巧合才會發生，管理員可以重新向量化補上。Laravel 以 `updated_at` 做樂觀鎖時也有同樣的情況。
 - 交易 1 與交易 2 之間最久約 51 秒（Ollama 逾時與重試）。期間沒有任何鎖，所以不會擋住後台編輯。代價是被修改的那次向量化白做。
-- `embedText()` 不收 `TenantCtx`，型別擋不到「在交易內呼叫」（D1）。`check-tenant-ctx.mjs` 也數不到，和其他外部呼叫一樣接受為已知限制（規劃檔 5.1）。
+- `embedText()` 不收 `TenantCtx`，型別檢查擋不住「在交易內呼叫」（D1）。`check-tenant-ctx.mjs` 也不計算這種呼叫，和其他外部呼叫一樣接受為已知限制（規劃檔 5.1）。
 - 主規格 `km-ingestion` 改寫「Automated Vectorization and Indexing」：原本的需求描述的是沒有實作的 LanceDB 與分段，這次改成實際的 pgvector 做法。沒有程式依賴原本的描述。

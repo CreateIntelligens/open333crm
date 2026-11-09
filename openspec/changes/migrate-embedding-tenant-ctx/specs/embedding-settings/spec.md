@@ -34,7 +34,7 @@
 
 ### Requirement: 向量化服務的健康檢查
 
-`POST /api/v1/settings/embedding/health` 與 `GET /api/v1/knowledge/embedding-status` SHALL 以租戶目前的服務網址與模型檢查向量化服務。兩者 SHALL 使用同一套判斷：服務連得到，而且模型名稱相同或以「模型名稱:」開頭，才算正常。`GET /api/v1/knowledge/embedding-status` 的回應格式 SHALL 維持 `{ ok, model?, error? }`。
+`POST /api/v1/settings/embedding/health` 與 `GET /api/v1/knowledge/embedding-status` SHALL 以租戶目前的服務網址與模型檢查向量化服務。兩者 SHALL 使用同一套判斷：服務連得到，而且服務回傳的模型清單中有一個模型的名稱等於租戶的模型，或以「租戶的模型名稱:」開頭，才算正常。`GET /api/v1/knowledge/embedding-status` 的回應格式 SHALL 維持 `{ ok, model?, error? }`。
 
 #### Scenario: 服務正常而且有這個模型
 - **WHEN** 服務回傳的模型清單有 `bge-m3:latest`，租戶的模型是 `bge-m3`
