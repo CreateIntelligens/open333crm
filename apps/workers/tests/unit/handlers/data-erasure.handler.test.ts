@@ -94,9 +94,6 @@ function fakeDb(state: State) {
           return {};
         },
       },
-      conversation: emptyModel({
-        findMany: async () => (state.messages.length > 0 ? [{ id: CONVERSATION }] : []),
-      }),
       message: emptyModel({ findMany: async () => state.messages }),
       tenantAuditLog: {
         create: async ({ data }: { data: { action: string; payload: unknown } }) => {
@@ -112,7 +109,11 @@ function fakeDb(state: State) {
     const models = makeModels(journal);
     return new Proxy(models, {
       get: (target, prop: string) => {
-        if (prop === '$queryRaw') return async () => [];
+        // 鎖對話的查詢回傳這位聯絡人的對話；其他 raw 查詢（頭像）回空結果
+        if (prop === '$queryRaw') {
+          return async (sql: TemplateStringsArray) =>
+            sql.join('?').includes('FROM conversations') && state.messages.length > 0 ? [{ id: CONVERSATION }] : [];
+        }
         if (prop === '$transaction') {
           return async (fn: (tx: unknown) => Promise<unknown>) => {
             const txJournal: Array<() => void> = [];

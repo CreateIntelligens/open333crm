@@ -190,6 +190,22 @@ async function readAvatarObjects(tx: Prisma.TransactionClient, tenantId: string,
 }
 
 /**
+ * 交易內鎖住這位聯絡人的對話並回傳 id（呼叫前聯絡人列必須已由 readAvatarObjects 以 FOR UPDATE 鎖住）。
+ * 鎖的順序：聯絡人 → 對話 → 讀訊息。
+ *  - 聯絡人已鎖：插入新對話時外鍵檢查要對聯絡人取 FOR KEY SHARE，會等這個交易結束，不會有漏掉的新對話。
+ *  - 對話 FOR UPDATE：插入訊息時外鍵檢查要對對話取 FOR KEY SHARE。已在進行、還沒 commit 的插入，
+ *    這裡會等它 commit；之後才開始的插入會等這個交易結束。
+ *  - 之後讀訊息是新的語句快照（READ COMMITTED），看得到剛 commit 的進站訊息，媒體 key 不會漏收。
+ */
+async function lockContactConversations(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM conversations
+    WHERE "contactId" = ${contactId}::uuid AND "tenantId" = ${tenantId}::uuid
+    FOR UPDATE`;
+  return rows.map((r) => r.id);
+}
+
+/**
  * 刪除一批 MinIO 物件，每個 key 最多刪一次、不重試。單顆失敗不阻斷刪除流程：
  * 失敗的 key 寫 log，筆數回傳給呼叫端記進請求的 affected。
  */
@@ -394,12 +410,9 @@ async function anonymize(
     const identityMaps = await tx.identityMap.deleteMany({ where: { contactId, tenantId } });
     const memories = await tx.longTermMemory.deleteMany({ where: { contactId } });
 
-    // 抹 inbound 訊息內容（只此聯絡人所屬對話的入站訊息；保留骨架）
-    const convs = await tx.conversation.findMany({
-      where: { contactId, tenantId },
-      select: { id: true },
-    });
-    const convIds = convs.map((c) => c.id);
+    // 抹 inbound 訊息內容（只此聯絡人所屬對話的入站訊息；保留骨架）。
+    // 先鎖對話，等並行寫入的進站訊息 commit，再讀訊息與改寫（見 lockContactConversations）
+    const convIds = await lockContactConversations(tx, tenantId, contactId);
     let messagesRedacted = 0;
     if (convIds.length > 0) {
       // 改寫內容前讀出媒體檔：進站訊息的要刪，保留下來的出站訊息還在引用的不刪
@@ -466,11 +479,9 @@ async function hardDelete(
   let avatars: AvatarObjects = { keys: [], shared: 0, skipped: 0 };
   const affected = await prisma.$transaction(async (tx) => {
     await markCompleted(tx, request);
-    const conversations = await tx.conversation.findMany({
-      where: { contactId, tenantId },
-      select: { id: true },
-    });
-    const convIds = conversations.map((c) => c.id);
+    // 鎖的順序：聯絡人（readAvatarObjects）→ 對話 → 讀訊息，並行寫入的進站訊息也會收到（見 lockContactConversations）
+    avatars = await readAvatarObjects(tx, tenantId, contactId);
+    const convIds = await lockContactConversations(tx, tenantId, contactId);
     const mediaMessages =
       convIds.length > 0
         ? await tx.message.findMany({
@@ -480,7 +491,6 @@ async function hardDelete(
         : [];
     // 訊息全部刪除，沒有保留下來的訊息會引用
     media = selectMessageMedia(tenantId, convIds, mediaMessages, []);
-    avatars = await readAvatarObjects(tx, tenantId, contactId);
 
     // 先算 affected 計數（刪除前）
     const [

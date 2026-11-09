@@ -438,6 +438,49 @@ for (const mode of ['anonymize', 'hard_delete'] as const) {
   });
 }
 
+for (const mode of ['anonymize', 'hard_delete'] as const) {
+  test(`刪除期間並行寫入的進站訊息也會被處理（${mode}）`, async () => {
+    // 模擬收訊：刪除開始時，另一個交易正在這位客人的對話插入一則帶媒體檔、尚未 commit 的進站訊息
+    const { contact, conversation } = await createSubject();
+    const lateKey = mediaKey(A, conversation.id);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let inserted!: (id: string) => void;
+    const insertedId = new Promise<string>((resolve) => (inserted = resolve));
+    const ingest = owner.$transaction(
+      async (tx) => {
+        const message = await tx.message.create({
+          data: {
+            conversationId: conversation.id,
+            senderType: 'CONTACT',
+            direction: 'INBOUND',
+            contentType: 'image',
+            content: { text: '剛傳來的照片', storageKey: lateKey },
+          },
+        });
+        inserted(message.id);
+        await gate;
+      },
+      { timeout: 10_000 },
+    );
+    const messageId = await insertedId;
+
+    const job = runJob(await createRequest(contact.id, mode));
+    await new Promise((resolve) => setTimeout(resolve, 300)); // 讓刪除先開始
+    release();
+    await ingest;
+    await job;
+
+    assert.ok(removedKeys().includes(lateKey), '並行寫入的進站訊息的媒體檔也刪除');
+    const late = await owner.message.findUnique({ where: { id: messageId } });
+    if (mode === 'anonymize') {
+      assert.deepEqual(late?.content, { redacted: true }, '並行寫入的進站訊息也改寫');
+    } else {
+      assert.equal(late, null);
+    }
+  }, 20_000);
+}
+
 test('刪除期間才寫回的頭像檔也會刪除', async () => {
   // 模擬背景補存：刪除開始時，另一個交易正要把渠道身分的頭像改成剛上傳的檔案
   const { contact } = await createSubject({

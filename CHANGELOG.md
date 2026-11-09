@@ -10,6 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 匿名化在同一個交易內、改寫進站訊息前讀出媒體檔，交易 commit 之後刪除。客服上傳的出站訊息媒體檔保留。
   - 兩種模式只刪除 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。
   - 每個檔案最多刪一次、不重試。刪除失敗時請求仍是 `completed`，失敗筆數記在 `affected.mediaObjectsFailed`（訊息媒體檔）與 `affected.avatarObjectsFailed`（頭像檔），完成稽核的 `affected` 相同，失敗的 key 寫進 log。
+  - 刪除開始時還沒 commit 的進站訊息也會處理（change `lock-conversations-during-erasure`）：讀訊息前依序鎖住聯絡人與他的對話，收訊的寫入會等刪除交易結束。原本這則訊息在匿名化時不會改寫，硬刪除時隨對話刪掉，兩種模式都留下媒體檔。
   - 這次修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。
 
 ## [2026-11-06]
