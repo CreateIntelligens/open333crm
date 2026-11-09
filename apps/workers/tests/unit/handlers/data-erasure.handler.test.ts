@@ -218,3 +218,24 @@ test('物件刪除失敗、補寫失敗筆數也失敗時：完成稽核的 affe
   assert.equal(affected.mediaObjectsFailed, 0, '補寫沒有成功，請求保存的仍是交易內寫入的 0');
   assert.deepEqual((s.auditPayloads[0] as { affected: unknown }).affected, affected);
 });
+
+test('檔名不是標準 UUID 的媒體檔不刪：只有 36 個連字號或段落長度不對時計入 mediaObjectsSkipped', async () => {
+  const s = state('pending');
+  const prefix = `${TENANT}/media/${CONVERSATION}`;
+  const valid = `${prefix}/e0000000-0000-0000-0000-00000000000e.jpg`;
+  s.messages = [
+    { direction: 'INBOUND', content: { storageKey: valid } },
+    { direction: 'INBOUND', content: { storageKey: `${prefix}/${'-'.repeat(36)}.jpg` } },
+    { direction: 'INBOUND', content: { storageKey: `${prefix}/e00000000000-0000-0000-0000-00000000.jpg` } },
+  ];
+  const removed: string[] = [];
+  storage.remove = async (_bucket, k) => {
+    removed.push(k);
+  };
+  await handleDataErasureJob(job('anonymize'), fakeDb(s) as never, redis);
+
+  assert.deepEqual(removed, [valid]);
+  const affected = s.request.affected as Record<string, number>;
+  assert.equal(affected.mediaObjects, 1);
+  assert.equal(affected.mediaObjectsSkipped, 2);
+});

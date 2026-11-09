@@ -66,7 +66,7 @@ function isConversationMediaKey(key: string, tenantId: string, convIds: Set<stri
     parts[0] === tenantId &&
     parts[1] === 'media' &&
     convIds.has(parts[2]) &&
-    /^[0-9a-f-]{36}(?:\.\w+)?$/.test(parts[3])
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.\w+)?$/.test(parts[3])
   );
 }
 
@@ -126,7 +126,7 @@ function collectAvatarKeys(
   urls: (string | null | undefined)[],
 ): { byKey: Map<string, string>; skipped: number } {
   const base = storagePublicBase();
-  const keyPattern = new RegExp(`^${tenantId}/avatars/[0-9a-f-]{36}\\.(?:jpg|png|webp|gif)$`);
+  const keyPattern = new RegExp(`^${tenantId}/avatars/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:jpg|png|webp|gif)$`);
   const byKey = new Map<string, string>();
   let skipped = 0;
   for (const url of urls) {
