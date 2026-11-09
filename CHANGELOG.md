@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-09]
+
+### Changed
+
+- **競猜活動發布前要求至少一個正確答案**（#471，change `fix-portal-quiz-requires-correct-answer`）— 競猜原本可以沒有標任何正確答案就發布，每個人都是 0 分，平均分數與作答列表全是 0。現在 `POST /api/v1/portal/activities/:id/publish` 對沒有正確答案的競猜回 400「競猜活動至少要有一個正確答案」，活動維持草稿。建立與編輯草稿時不檢查，草稿可以先存再補正確答案；投票不受影響。後台活動表單的競猜選項區加上「發布前至少勾選一個正確答案」的說明。開獎不變，仍從全部未中獎的作答隨機抽出，不看分數。
+
 ## [2026-11-06]
 
 ### Changed

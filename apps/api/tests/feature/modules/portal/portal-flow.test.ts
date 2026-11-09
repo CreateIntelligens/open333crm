@@ -587,3 +587,77 @@ test('草稿補上選項或欄位後可以發布', async () => {
     assert.equal(published.json().data.status, 'PUBLISHED', type);
   }
 });
+
+// ─── 發布競猜前檢查正確答案（#471） ─────────────────────────────────────────
+
+test('發布沒有正確答案的競猜回 400，活動仍是草稿', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-沒有正確答案`,
+    options: [{ label: '甲' }, { label: '乙', isCorrect: false }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 400, published.body);
+  assert.equal(published.json().error.message, '競猜活動至少要有一個正確答案');
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.equal(after.status, 'DRAFT');
+  assert.equal(after.publishedAt, null);
+});
+
+test('有正確答案的競猜可以發布', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-有正確答案`,
+    options: [{ label: '甲' }, { label: '乙', isCorrect: true }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 200, published.body);
+  assert.equal(published.json().data.status, 'PUBLISHED');
+});
+
+test('投票沒有正確答案仍然可以發布', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'POLL',
+    title: `${MARK}-投票-不需要正確答案`,
+    options: [{ label: '甲' }, { label: '乙' }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 200, published.body);
+  assert.equal(published.json().data.status, 'PUBLISHED');
+});
+
+test('沒有正確答案的競猜草稿可以建立與儲存', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-草稿沒有正確答案`,
+    options: [{ label: '甲', isCorrect: true }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  // 編輯成沒有正確答案的選項，草稿仍可儲存
+  const patched = await admin(appA, 'PATCH', `/activities/${id}`, {
+    options: [{ label: '甲' }, { label: '乙' }],
+  });
+  assert.equal(patched.statusCode, 200, patched.body);
+  assert.equal(patched.json().data.status, 'DRAFT');
+  assert.ok(patched.json().data.options.every((o: { isCorrect: boolean }) => !o.isCorrect));
+
+  const createdWithout = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-建立時沒有正確答案`,
+    options: [{ label: '甲' }],
+  });
+  assert.equal(createdWithout.statusCode, 200, createdWithout.body);
+  assert.equal(createdWithout.json().data.status, 'DRAFT');
+});
