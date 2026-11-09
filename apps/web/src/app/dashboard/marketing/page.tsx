@@ -40,11 +40,16 @@ import {
   materialChannelKey,
   segmentConditionsError,
 } from '@/lib/marketing/broadcast-form';
-import { couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
+import { activePushChannels, couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
 import { BroadcastCouponField } from '@/components/marketing/BroadcastCouponField';
 import { COUPON_URL_NEEDS_COUPON_MESSAGE } from '@/lib/marketing/coupon-url';
 import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { usePermission } from '@/providers/AuthProvider';
+
+// 建立群發的額外權限（change require-broadcast-send-permissions）：沒有權限時欄位停用並說明，後端也會擋
+const SCHEDULE_NEEDS_BROADCAST = '排程發送需要「執行群發」權限。可以先存成草稿，再請有權限的成員發送';
+const COUPON_NEEDS_ISSUE = '附上優惠券需要「發放優惠券」權限，請聯繫管理員開通';
 
 /** 渠道列表（`GET /channels`）在本頁用到的欄位 */
 type ChannelRow = { id: string; displayName: string; channelType: string; isActive: boolean };
@@ -270,6 +275,15 @@ function BroadcastTab() {
     couponId: '',
   };
   const [formData, setFormData] = useState(emptyForm);
+  // 排程到期由排程器送出，等同發送；附券每人發一張券（後端分別要求 marketing.broadcast、coupon.issue）
+  const canSchedule = usePermission('marketing.broadcast');
+  const canAttachCoupon = usePermission('coupon.issue');
+  // 送出與預覽用的表單值：沒有權限的欄位視為空白。表單開著時權限被拿掉，先前填的券與排程時間也不送出（PR #438 審查）
+  const effectiveForm = {
+    ...formData,
+    couponId: canAttachCoupon ? formData.couponId : '',
+    scheduledAt: canSchedule ? formData.scheduledAt : '',
+  };
   // 名額不足時，使用者勾選「我了解」才能建立
   const [couponAck, setCouponAck] = useState(false);
   // 正在查看結果的附券廣播
@@ -286,7 +300,8 @@ function BroadcastTab() {
       .catch((err) => setTagsError(getApiErrorMessage(err, '標籤清單載入失敗')));
   }, [dialogOpen]);
 
-  const activeChannels = (channels as ChannelRow[]).filter((c) => c.isActive);
+  // 只列能主動推送的渠道：網站聊天室送不到顧客，後端也會拒絕（change reject-webchat-push-415）
+  const activeChannels = activePushChannels(channels as ChannelRow[]);
 
   // 依目前選擇的渠道過濾出對應的素材：渠道列舉是 LINE / FB，素材是 line / fb
   const selectedChannel = activeChannels.find((c) => c.id === formData.channelId);
@@ -313,7 +328,7 @@ function BroadcastTab() {
     if (!dialogOpen || !formData.channelId || audienceError) return;
     let cancelled = false;
     const payload: Record<string, unknown> = { channelId: formData.channelId, targetType: formData.targetType };
-    if (formData.couponId) payload.couponId = formData.couponId;
+    if (effectiveForm.couponId) payload.couponId = effectiveForm.couponId;
     if (formData.targetType === 'segment' && formData.segmentId) payload.segmentId = formData.segmentId;
     if (formData.targetType === 'tags') payload.targetConfig = { tagIds: formData.tagIds };
     api
@@ -329,13 +344,13 @@ function BroadcastTab() {
     };
     // tagIds 以字串比較，避免每次重繪產生新陣列就重新查詢
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError, formData.couponId]);
+  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError, effectiveForm.couponId]);
 
-  const couponWarning = formData.couponId ? couponCapacityWarning(audiencePreview) : null;
+  const couponWarning = effectiveForm.couponId ? couponCapacityWarning(audiencePreview) : null;
   // 附券廣播素材可以不選（只送預設發券文字）；沒有素材也沒有附券時說明原因（Instagram 只能附券）
   const selectedMaterial = materials.find((m: Material) => m.id === formData.materialId);
   // 素材有顧客專屬券連結時要附券，否則顧客會看到 {{coupon.url}}（change improve-coupon-url-insert-ux）
-  const sourceError = broadcastSourceError(selectedChannel?.channelType, formData, selectedMaterial?.body);
+  const sourceError = broadcastSourceError(selectedChannel?.channelType, effectiveForm, selectedMaterial?.body);
   const isInstagram = (selectedChannel?.channelType ?? '').toUpperCase() === 'THREADS';
   // 名額不足要先勾選確認
   const createBlocked =
@@ -363,7 +378,7 @@ function BroadcastTab() {
         targetType: formData.targetType,
       };
       if (formData.materialId) payload.materialId = formData.materialId;
-      if (formData.couponId) payload.couponId = formData.couponId;
+      if (effectiveForm.couponId) payload.couponId = effectiveForm.couponId;
       if (formData.campaignId) payload.campaignId = formData.campaignId;
       if (formData.targetType === 'segment' && formData.segmentId) {
         payload.segmentId = formData.segmentId;
@@ -371,7 +386,7 @@ function BroadcastTab() {
       if (formData.targetType === 'tags') {
         payload.targetConfig = { tagIds: formData.tagIds };
       }
-      if (formData.scheduledAt) payload.scheduledAt = new Date(formData.scheduledAt).toISOString();
+      if (effectiveForm.scheduledAt) payload.scheduledAt = new Date(effectiveForm.scheduledAt).toISOString();
 
       await api.post('/marketing/broadcasts', payload);
       setDialogOpen(false);
@@ -616,10 +631,10 @@ function BroadcastTab() {
                   })),
                 ]}
               />
-              <p className="mt-1 text-xs text-muted-foreground">先選渠道，才能看到對應的素材</p>
+              <p className="mt-1 text-xs text-muted-foreground">先選渠道，才能看到對應的素材。網站聊天室不能主動推送訊息，不能群發</p>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">{formData.couponId || isInstagram ? '素材（附券時可不選）' : '素材 *'}</label>
+              <label className="mb-1 block text-sm font-medium">{effectiveForm.couponId || isInstagram ? '素材（附券時可不選）' : '素材 *'}</label>
               {isInstagram ? (
                 // Instagram 沒有素材：不顯示空白的選單，說明只能附券（change add-fb-ig-keyword-coupon）
                 <p className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
@@ -752,12 +767,13 @@ function BroadcastTab() {
                     <p>
                       想發給超過 {audiencePreview.messagingWindowHours} 小時沒互動的人，要用 Meta 付費的「Marketing Messages」（按送達則數計費），本系統目前不支援。
                     </p>
-                    {formData.scheduledAt && <p>排程發送時，會依發送當下的互動紀錄重新計算可送達人數。</p>}
+                    {effectiveForm.scheduledAt && <p>排程發送時，會依發送當下的互動紀錄重新計算可送達人數。</p>}
                   </div>
                 )}
               </div>
             )}
             <BroadcastCouponField
+              disabledReason={canAttachCoupon ? null : COUPON_NEEDS_ISSUE}
               value={formData.couponId}
               onChange={(couponId) => setFormData({ ...formData, couponId })}
               preview={audiencePreview}
@@ -768,11 +784,13 @@ function BroadcastTab() {
               <label className="mb-1 block text-sm font-medium">排程發送（留空為草稿）</label>
               <Input
                 type="datetime-local"
-                value={formData.scheduledAt}
+                value={effectiveForm.scheduledAt}
                 // 只能選未來的時間：排到過去後端會擋下（排程器會立即發送）。只是提示，後端才是保證
                 min={scheduleMin}
+                disabled={!canSchedule}
                 onChange={(e) => setFormData({ ...formData, scheduledAt: e.target.value })}
               />
+              {!canSchedule && <p className="mt-1 text-xs text-muted-foreground">{SCHEDULE_NEEDS_BROADCAST}</p>}
             </div>
           </div>
           {formData.channelId && sourceError && (
@@ -919,7 +937,7 @@ function SegmentTab() {
   const channelTypeValues = [
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook' },
-    { value: 'WEBCHAT', label: 'WebChat' },
+    { value: 'WEBCHAT', label: '網站聊天室' },
     { value: 'WHATSAPP', label: 'WhatsApp' },
   ];
 

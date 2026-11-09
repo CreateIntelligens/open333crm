@@ -2,6 +2,7 @@
  * 方案管理（平台側）。改 plan 的 features/limits 會影響該方案所有租戶的
  * 功能天花板與有效上限——features 變更需失效相關租戶的權限快取。
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
@@ -11,8 +12,15 @@ export async function listPlans(prisma: PrismaClient) {
   return prisma.plan.findMany({ orderBy: { priceMonthly: { sort: 'asc', nulls: 'last' } } });
 }
 
+/** 使用這個方案的租戶 ID：方案的功能或權限設定改變後，重新計算這些租戶已連線 socket 的渠道房間 */
+export async function listTenantIdsOnPlan(prisma: PrismaClient, planId: string): Promise<string[]> {
+  const tenants = await prisma.tenant.findMany({ where: { planId }, select: { id: true } });
+  return tenants.map((t) => t.id);
+}
+
 export async function updatePlan(
   prisma: PrismaClient,
+  redis: Redis,
   id: string,
   data: {
     name?: string;
@@ -46,7 +54,7 @@ export async function updatePlan(
 
   // features 或 permissionOverrides 變更 → 天花板變動 → 失效該方案所有租戶的權限快取
   if (data.features !== undefined || data.permissionOverrides !== undefined) {
-    await invalidatePlanPermissions(prisma, id);
+    await invalidatePlanPermissions(redis, id);
   }
   return plan;
 }

@@ -8,12 +8,15 @@ import { AppError } from '../../shared/utils/response.js';
 import { getChannelPlugin, LINE_DELIVERY_METADATA_KEYS } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { notFound } from '../../shared/messages/resource.js';
 import { markCaseFirstResponse } from '../case/case.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -21,6 +24,8 @@ export interface ConversationFilters {
   assigneeId?: string;
   unread?: boolean;
   closedAfter?: string;
+  /** 關鍵字：比對聯絡人名稱或任一則訊息的文字內容（不分大小寫）；路由已去頭尾空白，空字串視為沒有搜尋 */
+  search?: string;
 }
 
 export interface PaginationParams {
@@ -99,6 +104,17 @@ export async function listConversations(
   }
   if (filters.closedAfter) {
     where.updatedAt = { gte: new Date(filters.closedAfter) };
+  }
+  if (filters.search) {
+    // Prisma 無法表達「最後一則訊息」，改比對任一則訊息：是舊前端只比對最後一則的超集合（design D3）
+    // % 與 _ 當成一般文字（escapeLikeKeyword，PR #449 審查）
+    const keyword = escapeLikeKeyword(filters.search);
+    where.OR = [
+      { contact: { displayName: { contains: keyword, mode: 'insensitive' } } },
+      {
+        messages: { some: { content: { path: ['text'], string_contains: keyword, mode: 'insensitive' } } },
+      },
+    ];
   }
 
   const [conversations, total] = await Promise.all([
@@ -284,8 +300,7 @@ export async function markConversationRead(
     updatedAt: updated.updatedAt.toISOString(),
   };
 
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: updated.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   return updated;
 }
@@ -342,8 +357,7 @@ export async function sendMessage(
   }) + 1;
   const stored = data.contentType === 'text'
     ? await prepareStoredMessageContent(
-        prisma,
-        tenantId,
+        await readAiPrivacyPolicy(prisma, tenantId),
         data.content,
         data.privacyMode === 'original' ? 'agent_original' : 'agent_default',
       )
@@ -412,8 +426,7 @@ export async function sendMessage(
     },
   };
 
-  io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', wsPayload);
 
   // --- Channel Delivery: route outbound message through channel plugin ---
   let delivery: { success: boolean; requestId?: string; error?: string } | null = null;
@@ -532,8 +545,7 @@ export async function sendMessage(
       returnedMessage = { ...message, metadata: metadata as Prisma.JsonValue };
       // 再推一次 message.new：聊天視窗重新載入，顯示「沒有送出」的紅框
       const failedPayload = { ...wsPayload, message: { ...wsPayload.message, metadata } };
-      io.to(`conversation:${conversationId}`).emit('message.new', failedPayload);
-      io.to(`tenant:${tenantId}`).emit('message.new', failedPayload);
+      emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', failedPayload);
     } catch (err) {
       logger.error('[ChannelDelivery] 記錄送出失敗標示失敗', { messageId: message.id, error: String(err) });
     }
@@ -596,7 +608,7 @@ export async function returnConversationToBot(
 
   const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
   const now = new Date();
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system_template');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -618,8 +630,7 @@ export async function returnConversationToBot(
     lastMessageAt: conversation.lastMessageAt?.toISOString() ?? now.toISOString(),
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'conversation.updated', wsPayload);
 
   const msgPayload = {
     conversationId,
@@ -634,8 +645,7 @@ export async function returnConversationToBot(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', msgPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', msgPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', msgPayload);
 
   return updated;
 }
@@ -688,7 +698,7 @@ export async function handoffConversation(
   // Send handoff system message
   const handoffText = data.handoffMessage || '稍等，正在為您轉接客服人員';
   // 座席自填的轉接訊息維持遮罩；系統預設文案是固定字串，原文送出（避免 2md 誤判一般詞）
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: handoffText }, data.handoffMessage ? 'system' : 'system_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: handoffText }, data.handoffMessage ? 'system' : 'system_template');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -717,8 +727,7 @@ export async function handoffConversation(
     lastMessageAt: now.toISOString(),
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'conversation.updated', wsPayload);
 
   const msgPayload = {
     conversationId,
@@ -733,8 +742,7 @@ export async function handoffConversation(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', msgPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', msgPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', msgPayload);
 
   // Publish event
   eventBus.publish({
@@ -947,8 +955,7 @@ export async function updateConversation(
     updatedAt: updated.updatedAt.toISOString(),
   };
 
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   return updated;
 }
@@ -1024,8 +1031,7 @@ export async function closeConversation(
     lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   eventBus.publish({
     name: 'conversation.closed',
@@ -1061,6 +1067,7 @@ export async function closeConversationsForCase(
     },
     select: {
       id: true,
+      channelId: true,
       assignedToId: true,
       unreadCount: true,
       lastMessageAt: true,
@@ -1092,8 +1099,7 @@ export async function closeConversationsForCase(
       lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
       updatedAt: now.toISOString(),
     };
-    io.to(`conversation:${conversation.id}`).emit('conversation.updated', wsPayload);
-    io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'conversation.updated', wsPayload);
 
     eventBus.publish({
       name: 'conversation.closed',

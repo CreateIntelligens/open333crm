@@ -3,7 +3,7 @@
 收件匣是客服的主畫面。左欄是對話清單，右欄是訊息與聯絡人資料。客服在這裡回覆客人、把對話從機器人手上接過來、指派給同事、關閉對話，或把對話開成工單。
 
 - **資料來源**：`apps/api/src/modules/conversation/*`、`apps/api/src/modules/ai/ai.routes.ts`、`apps/api/src/modules/ai/ai.service.ts`、`apps/api/src/modules/automation/automation.worker.ts`、`apps/api/src/modules/automation/bot-reply-guard.ts`、`packages/automation/src/bot-config.ts`、`apps/api/src/modules/webhook/inbound-postback-interceptors.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/web/src/components/inbox/*`
-- **核對日期**：2026-10-21
+- **核對日期**：2026-11-04
 
 ## 負責的模組
 
@@ -70,13 +70,25 @@
 | --- | --- | --- | --- |
 | 客人要求 | 客人點「轉接客服」按鈕，或傳送 `handoff_request` | `inbound-postback-interceptors.ts` 的 `handleHandoffRequest()` | 不指派 |
 | 自動轉真人 | 機器人回覆次數達到 `maxBotReplies`、訊息含 `handoffKeywords`，或客人傳圖片、檔案或影片 | `automation.worker.ts` 的 `checkAutoHandoff()` | 不指派 |
+| 知識庫追問用完 | 知識庫自動回覆的追問次數達到 `clarifyMaxAttempts`，或追問的 LLM 呼叫失敗（含月額度用完） | `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` | 不指派 |
+| AI 回覆失敗 | AI agent 沒有回覆，知識庫回覆又因錯誤失敗（例如去識別化服務、embedding 服務或模型供應商故障） | `automation/ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()` | 不指派 |
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
-每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求與自動轉真人送的是渠道設定的 `handoffMessage`；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求與自動轉真人會發布 `conversation.handoff` 事件。
+每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求、自動轉真人與 AI 回覆失敗送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人、知識庫追問用完與 AI 回覆失敗會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派、且負責客服仍啟用並看得到該渠道時通知負責的客服；沒有指派，或負責客服已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。
 
-自動轉真人以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理，才寫系統訊息、發出 `conversation.handoff`（經 outbox），commit 之後送出轉接訊息。所以同一則訊息處理兩次、或兩次處理同時進行時，只轉接一次。摘要與系統訊息的遮罩在交易之前完成。
+自動轉真人與知識庫追問用完共用 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`）：以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理，才寫系統訊息、發出 `conversation.handoff`（經 outbox），commit 之後推播 `conversation.updated` 與系統訊息到渠道房間，再送出轉接訊息。所以同一則訊息處理兩次、或兩次處理同時進行時，只轉接一次。摘要與系統訊息的遮罩在交易之前完成。知識庫追問用完時，轉接與「已為您轉接」回覆寫在同一個交易；轉接的條件不成立時，這則回覆不寫入也不送出。
 
-客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知租戶內所有 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
+轉接之後，關鍵字規則照樣回覆（workers 執行關鍵字規則時不看對話狀態），知識庫自動回覆與 agent 只回覆 `BOT_HANDLED` 的對話。
+
+**AI 回覆失敗時轉真人（issue #445）。** 客人的文字訊息沒有得到 AI agent 的回覆，知識庫回覆又因錯誤失敗時，客人原本收不到任何訊息，對話停在 `BOT_HANDLED`。現在改為轉真人，客服在收件匣看到轉接原因，也收到「轉接真人」通知：
+
+- `handoffReason` 與系統訊息寫「AI 暫時無法回覆（去識別化服務無法使用）」「（個資保護設定無法讀取）」「（AI 月額度已用完）」或「（AI 服務發生錯誤）」，不寫錯誤內容。系統訊息的 `metadata.source` 是 `ai_reply_failed`。
+- 系統訊息是固定文字，不呼叫去識別化服務；租戶開啟遮罩時，遮罩副本就是原文（`privacy.mode` 為 `system_fixed`）。不寫對話摘要。
+- 也走 `handOffConversation()`，並以 `bot_reply` 認領：同一則訊息只轉接一次，這則訊息已有機器人回覆時不轉接。轉接的交易失敗時，處理失敗、由佇列重試。
+- 正常的不回覆不轉接：關鍵字規則讓步、`botMode` 為 `off` 或 `keyword`、`KB_AUTO_REPLY_ENABLED` 關閉、這則訊息已有機器人回覆、對話已不是 `BOT_HANDLED`。`KB_AUTO_REPLY_ENABLED` 關閉時，agent 失敗的訊息仍然沒有回覆（KB-06）。
+- 不自動重試 AI 回覆：重試可能讓客人收到兩則回覆。
+
+客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 
 客人在對話已經是 `AGENT_HANDLED` 時再按轉接按鈕，系統只重送 `handoffMessage`，不改任何狀態。
 
@@ -88,6 +100,22 @@
 - 保留指派的客服，機器人處理不了再轉真人時回到同一位。
 - 寫一則系統訊息記錄是誰交回的，這則訊息不送給客人。
 - 已結案（要先重新開啟）、已經是 `BOT_HANDLED`，或渠道的 `botMode` 是 `off` 時回 400，按鈕旁顯示原因。
+
+## 對話清單、篩選與搜尋
+
+`GET /api/v1/conversations` 依 `updatedAt desc` 排序，回應帶 `meta.total`、`page`、`limit`、`totalPages`。收件匣每頁請求 50 段（`apps/web/src/hooks/useConversations.ts` 的 `useSWRInfinite`），列表底部的「載入更多對話」依 `meta.totalPages` 取下一頁；已載入的各頁依 `id` 去重（同一段對話出現在兩頁時保留 `updatedAt` 較新的那筆）後依 `updatedAt desc` 排序。翻頁期間有對話被更新往前移時，被擠出已載入範圍的對話要重新整理才看得到（offset 分頁的限制）。載入失敗時列表顯示「對話列表載入失敗」與重試；下一頁失敗時重試同一頁。
+
+篩選全部由後端執行，切換任何篩選都從第 1 頁重新載入：
+
+| 畫面 | 送出的參數 |
+| --- | --- |
+| 「進行中」／「已關閉」 | `status=!CLOSED`／`status=CLOSED` 加 `closedAfter`（7、30、90 天） |
+| 「未讀」 | `unread=true`（`unreadCount > 0`） |
+| 「我的」 | `assigneeId=<自己的 id>`，覆蓋進階篩選的「指派」 |
+| 進階篩選 | `status`（逗號串接）、`channelType`、`assigneeId`（自己或 `unassigned`） |
+| 搜尋框 | `search`：去頭尾空白後最多 100 字（超過回 400），不分大小寫比對聯絡人名稱或對話中任一則訊息的 `content.text`；只有空白時視為沒有搜尋 |
+
+篩選列的「篩選結果」顯示後端的 `meta.total`。所有條件都與 tenantId 及渠道可見範圍同時套用。socket 推來的 `message.new`、`conversation.updated` 合併到已載入的那一列並重排；更新後不再符合目前的狀態、「未讀」或「我的」篩選的列（例如讀過、改派、結案）從列表移除，選取中的對話保留到切換為止。搜尋與「近 30 天」無法從列判斷，維持顯示。列表沒有那段對話時重新載入已載入的各頁。搜尋關鍵字裡的 `%`、`_` 與反斜線當成一般文字比對。
 
 ## 客服回覆怎麼送出
 
@@ -101,7 +129,7 @@
 
 要知道的事：
 
-- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。
+- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。系統寄的滿意度問卷用同樣的欄位，問卷卡片（`CsatMessage`）下方顯示「這份問卷沒有送出」與原因（#416，見 `CASES.md`）。 記錄評分後，問卷訊息的 `metadata.csatScore`／`csatRatedBy` 有值，系統再推一次 `message.new`，問卷卡片改成唯讀並顯示「客人評 N 分」或「客服代評 N 分」；客人的評分訊息顯示「我的評分：N 分」，不顯示 `csat:` 代碼（issue #444）。
 - **客服回覆不會改變對話狀態。** 對話是 `BOT_HANDLED` 時客服直接回覆，機器人仍會繼續回應客人的下一則訊息。要讓機器人停下來，必須先接手。
 - **客服回覆不會指派對話。** 回覆的人不會自動成為負責人。
 - **客服回覆在 LINE 上用 push。** `sendMessage()` 沒有帶 reply token，LINE 外掛以 push 送出，會計入 LINE 官方帳號的訊息額度。機器人的回覆則在 reply token 有效期間內優先用 reply，由 `selectSafeLineStrategy()` 判斷。
@@ -157,11 +185,13 @@
 
 渠道看不見時回 404，看得見但層級不足時回 403。看不見時不回 403，是為了不透露其他分店的對話是否存在。
 
-**即時事件沒有套用可見範圍。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。但每條 socket 連線一建立就自動加入 `tenant:<租戶 ID>` 房間，而新訊息事件 `message.new` 會帶著訊息內容發到這個房間。因此只能看某些渠道的客服，仍會即時收到租戶內所有渠道的訊息。見 `../../system/AUDIT.md` 的 RBAC-04。
+**即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間（issue #427）：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
+
+成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權與方案異動後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。成員停用或刪除時，系統斷開他的連線。轉接真人的系統訊息也走渠道房間。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
 
 `assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 
-可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。AI 輔助端點以 `conversationId` 讀對話時也會檢查。租戶房間的即時事件、聯絡人清單與合併都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
+可見範圍套用在收件匣與工單的 REST 路由、socket 的對話房間與渠道相關的即時事件。AI 輔助端點以 `conversationId` 讀對話時也會檢查。租戶房間的工單與聯絡人合併事件、聯絡人清單與合併都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 右側面板的跨渠道功能
 
@@ -202,7 +232,7 @@
 | 限制 | 說明 |
 | --- | --- |
 | **指派對話不會通知被指派的人** | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
-| **即時事件與聯絡人清單不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
+| **工單與聯絡人合併的即時事件、聯絡人清單不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 對話的狀態下拉選單繞過關閉的紀錄與事件 | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | 閒置時限沒有維護介面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |
 

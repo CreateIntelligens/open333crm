@@ -14,7 +14,7 @@ const log: string[] = [];
 const audits: Array<Record<string, unknown>> = [];
 vi.mock('#src/services/permission.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/services/permission.service.js')>()),
-  invalidateRolePermissions: async (roleId: string) => {
+  invalidateRolePermissions: async (_redis: unknown, roleId: string) => {
     log.push(`invalidate:${roleId}`);
   },
 }));
@@ -89,6 +89,14 @@ test('setRolePermissionsFlow：權限與稽核一起 commit，commit 之後才�
     'commit',
     `invalidate:${ROLE_ID}`,
   ]);
+});
+
+test('setRolePermissionsFlow：清除快取之後重新計算整個租戶已連線 socket 的渠道房間（issue #427）', async () => {
+  const syncSocketChannelRooms = async (tenantId: string, agentId?: string) => {
+    log.push(`sync:${tenantId}:${agentId ?? '*'}`);
+  };
+  await setRolePermissionsFlow({ prisma: mockPrisma(), syncSocketChannelRooms }, actor, ROLE_ID, ['tag.view']);
+  assert.deepEqual(log.slice(-3), ['commit', `invalidate:${ROLE_ID}`, `sync:${TENANT_ID}:*`]);
 });
 
 test('deleteRoleFlow：刪除與稽核 role.delete 一起 commit，commit 之後才清除快取', async () => {

@@ -39,6 +39,7 @@ type EventPublisher = import('#src/events/outbox-publisher.js').EventPublisher;
 const { handleDataExportJob, handleDataExportCleanup } = await import(
   '../../../../../workers/src/handlers/data-export.handler.js'
 );
+const { purgeAgentFlow } = await import('#src/modules/agent/agent.flow.js');
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -49,14 +50,59 @@ const tenantA = await owner.tenant.create({ data: { name: `${MARK}-a` } });
 const tenantB = await owner.tenant.create({ data: { name: `${MARK}-b` } });
 const A = tenantA.id;
 
+// 匯出是全租戶資料：發起、查詢與下載都要同時有 data.export 與 channel.view_all（#428）
 const exporterRole = await owner.role.create({
-  data: { tenantId: A, slug: `${MARK}-exporter`, name: 'exporter', permissions: { create: [{ permissionCode: 'data.export' }] } },
+  data: {
+    tenantId: A,
+    slug: `${MARK}-exporter`,
+    name: 'exporter',
+    permissions: {
+      create: [{ permissionCode: 'data.export' }, { permissionCode: 'channel.view' }, { permissionCode: 'channel.view_all' }],
+    },
+  },
+});
+// 只有 data.export、沒有 channel.view_all 的成員（例如只看得到某家分店的自訂角色）
+const branchExporterRole = await owner.role.create({
+  data: {
+    tenantId: A,
+    slug: `${MARK}-branch-exporter`,
+    name: 'branch exporter',
+    permissions: { create: [{ permissionCode: 'data.export' }, { permissionCode: 'channel.view' }] },
+  },
 });
 const plainRole = await owner.role.create({
   data: { tenantId: A, slug: `${MARK}-plain`, name: 'plain', permissions: { create: [{ permissionCode: 'contact.view' }] } },
 });
 const exporter = await owner.agent.create({
   data: { tenantId: A, roleId: exporterRole.id, email: `${MARK}-exporter@example.test`, name: '匯出者', passwordHash: 'x' },
+});
+const branchExporter = await owner.agent.create({
+  data: {
+    tenantId: A,
+    roleId: branchExporterRole.id,
+    email: `${MARK}-branch-exporter@example.test`,
+    name: '分店匯出者',
+    passwordHash: 'x',
+  },
+});
+// 永久刪除成員的操作者：權限包含匯出者的權限，才能刪除匯出者（RBAC-09）
+const purgerRole = await owner.role.create({
+  data: {
+    tenantId: A,
+    slug: `${MARK}-purger`,
+    name: 'purger',
+    permissions: {
+      create: [
+        { permissionCode: 'data.export' },
+        { permissionCode: 'channel.view' },
+        { permissionCode: 'channel.view_all' },
+        { permissionCode: 'agent.purge' },
+      ],
+    },
+  },
+});
+const purger = await owner.agent.create({
+  data: { tenantId: A, roleId: purgerRole.id, email: `${MARK}-purger@example.test`, name: '管理者', passwordHash: 'x' },
 });
 const plain = await owner.agent.create({
   data: { tenantId: A, roleId: plainRole.id, email: `${MARK}-plain@example.test`, name: '一般成員', passwordHash: 'x' },
@@ -111,12 +157,27 @@ const exportJobs = () => owner.outbox.findMany({ where: { tenantId: A, kind: 'jo
 const requestAudits = () => owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.export.request' } });
 const exporterApp = await buildApp({ id: exporter.id, roleId: exporterRole.id });
 const plainApp = await buildApp({ id: plain.id, roleId: plainRole.id });
+const branchExporterApp = await buildApp({ id: branchExporter.id, roleId: branchExporterRole.id });
 
 /** 建一筆匯出請求，模擬 POST 之後、worker 處理之前的狀態 */
 const createRequest = (data: Record<string, unknown> = {}) =>
   owner.dataExportRequest.create({ data: { tenantId: A, requestedBy: exporter.id, status: 'pending', ...data } });
-const runJob = (requestId: string) =>
-  handleDataExportJob({ data: { requestId, tenantId: A, requestedBy: exporter.id } } as never, owner, {} as never);
+/** 工作內容與發起時寫進 outbox 的相同：requestedBy 是發起的成員 ID，成員被永久刪除後仍是這個值 */
+const runJob = (requestId: string, requestedBy = exporter.id) =>
+  handleDataExportJob({ data: { requestId, tenantId: A, requestedBy } } as never, owner, {} as never);
+
+let seq = 0;
+/** 建立一位可以匯出的成員，以他發起一筆匯出請求，再以永久刪除成員的正式流程刪除他 */
+async function requestThenPurgeRequester() {
+  seq += 1;
+  const requester = await owner.agent.create({
+    data: { tenantId: A, roleId: exporterRole.id, email: `${MARK}-requester-${seq}@example.test`, name: `發起者${seq}`, passwordHash: 'x' },
+  });
+  const req = await createRequest({ requestedBy: requester.id });
+  await purgeAgentFlow({ prisma: tenantDb }, { tenantId: A, agentId: purger.id, roleId: purgerRole.id, ip: '127.0.0.1' }, requester.id);
+  assert.equal(await owner.agent.count({ where: { id: requester.id } }), 0, '發起的成員已被永久刪除');
+  return { requester, req };
+}
 
 /** SimpleZip 只用 store（不壓縮）：依本地檔頭逐一讀出檔名與內容 */
 function readZip(buffer: Buffer): Map<string, string> {
@@ -141,7 +202,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await Promise.all([exporterApp.close(), plainApp.close()]);
+  await Promise.all([exporterApp.close(), plainApp.close(), branchExporterApp.close()]);
   for (const tenantId of [A, tenantB.id]) {
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
     await owner.outbox.deleteMany({ where: { tenantId } });
@@ -249,6 +310,51 @@ test('沒有 data.export 不能發起', async () => {
   assert.equal((await exportJobs()).length, 0);
 });
 
+test('沒有 channel.view_all 不能發起匯出', async () => {
+  const before = await owner.dataExportRequest.count({ where: { tenantId: A } });
+  const auditsBefore = (await requestAudits()).length;
+  const res = await post(branchExporterApp);
+  assert.equal(res.statusCode, 403, res.body);
+  assert.equal(res.json().error.details.requiredPermission, 'channel.view_all');
+  assert.equal(await owner.dataExportRequest.count({ where: { tenantId: A } }), before);
+  assert.equal((await requestAudits()).length, auditsBefore);
+  assert.equal((await exportJobs()).length, 0);
+});
+
+test('沒有 channel.view_all 不能查詢或下載別人發起的匯出', async () => {
+  const req = await createRequest({
+    status: 'completed',
+    fileKey: `export/${A}/${MARK}-branch.zip`,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  });
+  for (const url of [`/api/v1/tenant/data-export/${req.id}`, `/api/v1/tenant/data-export/${req.id}/download`]) {
+    const res = await branchExporterApp.inject({ method: 'GET', url });
+    assert.equal(res.statusCode, 403, `${url} ${res.body}`);
+    assert.equal(res.json().error.details.requiredPermission, 'channel.view_all');
+    assert.equal(res.json().data, undefined, '不回傳請求內容或下載連結');
+  }
+  const stored = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: req.id } });
+  assert.equal(stored.downloadCount, 0, '被拒的下載不累計次數');
+});
+
+test('有 data.export 與 channel.view_all 的成員可以查詢與下載別人發起的匯出', async () => {
+  const req = await owner.dataExportRequest.create({
+    data: {
+      tenantId: A,
+      requestedBy: branchExporter.id,
+      status: 'completed',
+      fileKey: `export/${A}/${MARK}-other.zip`,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    },
+  });
+  const status = await exporterApp.inject({ method: 'GET', url: `/api/v1/tenant/data-export/${req.id}` });
+  assert.equal(status.statusCode, 200, status.body);
+  assert.equal(status.json().data.status, 'completed');
+  const res = await exporterApp.inject({ method: 'GET', url: `/api/v1/tenant/data-export/${req.id}/download` });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().data.url, `https://storage.example.test/export/${A}/${MARK}-other.zip?signed=1`);
+});
+
 test('匯出只含本租戶的資料', async () => {
   const req = await createRequest();
   await runJob(req.id);
@@ -299,6 +405,28 @@ test('上傳失敗時記錄原因', async () => {
   assert.equal(stored.error, 'storage unavailable');
   assert.equal(mocks.notify.mock.calls.length, 1);
   assert.equal(mocks.notify.mock.calls[0][0].type, 'data_export_failed');
+});
+
+test('發起的成員已被永久刪除時完成匯出、不送通知', async () => {
+  const { requester, req } = await requestThenPurgeRequester();
+  await runJob(req.id, requester.id);
+
+  const stored = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: req.id } });
+  assert.equal(stored.status, 'completed', stored.error ?? '');
+  assert.equal(stored.fileKey, `export/${A}/${req.id}.zip`);
+  assert.equal(stored.requestedByName, requester.name);
+  assert.equal(mocks.notify.mock.calls.length, 0, '沒有收件人，不送通知');
+});
+
+test('發起的成員已被永久刪除時匯出失敗、不送通知', async () => {
+  const { requester, req } = await requestThenPurgeRequester();
+  mocks.upload.mockRejectedValueOnce(new Error('storage unavailable'));
+  await runJob(req.id, requester.id);
+
+  const stored = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: req.id } });
+  assert.equal(stored.status, 'failed');
+  assert.equal(stored.error, 'storage unavailable');
+  assert.equal(mocks.notify.mock.calls.length, 0, '沒有收件人，不送通知');
 });
 
 test('保留期內下載', async () => {

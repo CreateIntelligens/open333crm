@@ -16,7 +16,7 @@ import {
   SYSTEM_ROLE_SLUGS,
 } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
-import { getEffectivePermissions } from '../../services/permission.service.js';
+import { loadRolePermissions } from '../../services/permission.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 
 const ADMIN_LOCKED = PERMISSIONS.filter((p) => p.adminLock).map((p) => p.code);
@@ -146,7 +146,7 @@ export async function setRolePermissions(
 
   // 3. 越權防護：非編輯自己以外，不可授予超出自己有效權限的權限
   //    （admin 角色的編輯者若自身即 admin 則有全部權限，不受限）
-  const editorEff = await getEffectivePermissions(ctx.tx, editorRoleId);
+  const editorEff = await loadRolePermissions(ctx.tx, editorRoleId);
   const editorIsAdminOfTenant = await isAdminRole(ctx, editorRoleId);
   if (!editorIsAdminOfTenant) {
     const escalate = [...wanted].filter((c) => !editorEff.has(c));

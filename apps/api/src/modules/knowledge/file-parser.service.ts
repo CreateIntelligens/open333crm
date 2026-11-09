@@ -3,6 +3,7 @@ import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import TurndownService from 'turndown';
 import * as XLSX from '@e965/xlsx';
+import { AppError } from '../../shared/utils/response.js';
 
 export interface ParsedFile {
   title: string;
@@ -53,8 +54,65 @@ async function parseDocx(buffer: Buffer): Promise<string> {
   return turndown.turndown(result.value);
 }
 
+const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+const REPLACEMENT_CHAR = '\uFFFD';
+
+/** CSV 解不出文字時給使用者看的原因（issue #421） */
+export const CSV_ENCODING_UNREADABLE_MESSAGE =
+  '無法辨識這個 CSV 檔案的文字編碼，內容會變成亂碼，所以沒有匯入任何資料。請在試算表軟體另存成「CSV UTF-8」後再匯入。';
+
+function csvEncodingError(): AppError {
+  return new AppError(CSV_ENCODING_UNREADABLE_MESSAGE, 'CSV_ENCODING_UNREADABLE', 400);
+}
+
+/**
+ * 把 CSV 位元組解成文字（issue #421）。
+ * - 有 UTF-8 BOM：去掉 BOM，以 UTF-8 解。
+ * - 沒有 BOM：先以嚴格 UTF-8 解（Google 試算表、Numbers、程式匯出），失敗再試 Big5（台灣版 Excel 的「CSV（逗號分隔）」）。
+ * - 兩種都解不出、或解出來含替代字元 U+FFFD（原始位元組已遺失）：拋 CSV_ENCODING_UNREADABLE，整份不匯入。
+ */
+export function decodeCsvText(buffer: Buffer): string {
+  const hasBom = buffer.subarray(0, 3).equals(UTF8_BOM);
+  const bytes = hasBom ? buffer.subarray(3) : buffer;
+  const encodings = hasBom ? ['utf-8'] : ['utf-8', 'big5'];
+
+  for (const encoding of encodings) {
+    let text: string;
+    try {
+      text = new TextDecoder(encoding, { fatal: true }).decode(bytes);
+    } catch {
+      continue;
+    }
+    if (text.includes(REPLACEMENT_CHAR)) throw csvEncodingError();
+    return text;
+  }
+  throw csvEncodingError();
+}
+
+/**
+ * @description 上傳的 CSV 在內容類型偵測之前先轉成 UTF-8（issue #421 後續）。
+ * 內容類型偵測（Magika）認不出 Big5 等非 UTF-8 文字，會在走到 decodeCsvText() 之前就拒絕；
+ * 先解碼成 UTF-8，偵測與解析都用同一份內容。不是 CSV 或是 xlsx（zip）時原樣回傳。
+ * 解不出時丟 CSV_ENCODING_UNREADABLE（同 decodeCsvText）。
+ * @param buffer 上傳的原始內容
+ * @param filename 上傳的檔名，以副檔名判斷是不是 CSV
+ * @returns 可交給內容類型偵測與解析的內容
+ */
+export function normalizeCsvUpload(buffer: Buffer, filename: string): Buffer {
+  if (!/\.csv$/i.test(filename)) return buffer;
+  if (buffer.subarray(0, 4).equals(Buffer.from('504b0304', 'hex'))) return buffer;
+  return Buffer.from(decodeCsvText(buffer), 'utf-8');
+}
+
+/** xlsx 是 zip（PK 開頭），其他一律當 CSV 文字：先自行解碼，不讓 XLSX 以單位元組讀 UTF-8。 */
+function readWorkbook(buffer: Buffer): XLSX.WorkBook {
+  const isZip = buffer.subarray(0, 4).equals(Buffer.from('504b0304', 'hex'));
+  if (isZip) return XLSX.read(buffer, { type: 'buffer' });
+  return XLSX.read(decodeCsvText(buffer), { type: 'string' });
+}
+
 function parseXlsx(buffer: Buffer): string {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const workbook = readWorkbook(buffer);
   const parts: string[] = [];
 
   for (const sheetName of workbook.SheetNames) {
@@ -88,7 +146,7 @@ function parseXlsx(buffer: Buffer): string {
 }
 
 function parseCsv(buffer: Buffer): string {
-  // XLSX can also parse CSV — reuse the same xlsx parser
+  // XLSX can also parse CSV — reuse the same xlsx parser（readWorkbook 會先解碼 CSV 文字）
   return parseXlsx(buffer);
 }
 
@@ -136,7 +194,7 @@ function detectQaColumns(header: string[]): { qIdx: number; aIdx: number } | nul
  * 回傳 null 代表「偵測不到 QA 結構」→ 呼叫端應改走單篇匯入。
  */
 export function parseSpreadsheetToQaRows(buffer: Buffer): QaRow[] | null {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const workbook = readWorkbook(buffer);
   const rows: QaRow[] = [];
   const seen = new Set<string>();
   let detectedAnySheet = false;

@@ -12,6 +12,8 @@ const list = [
   { id: 'n2', type: 'first_response_warning', title: '首次回應即將逾期', body: 'b2', isRead: false, createdAt: new Date().toISOString() },
   { id: 'n3', type: 'customer_waiting_breached', title: '客戶等待過久', body: 'b3', isRead: false, createdAt: new Date().toISOString() },
   { id: 'n4', type: 'sla_rule', title: '自動化規則通知', body: 'b4', isRead: false, createdAt: new Date().toISOString() },
+  // 機器人轉接真人（#419）
+  { id: 'n5', type: 'conversation_handoff', title: '對話已轉接真人', body: 'b5', isRead: false, createdAt: new Date().toISOString() },
 ];
 const noop = () => undefined;
 const stable = { mutate: noop };
@@ -25,9 +27,9 @@ vi.mock('#src/hooks/useNotifications.js', () => ({
 
 import NotificationsPage from '#src/app/dashboard/notifications/page.js';
 
-test('SLA 與自動化通知顯示對應的類型徽章', () => {
+test('SLA、自動化與轉接真人通知顯示對應的類型徽章', () => {
   render(<NotificationsPage />);
-  for (const label of ['首次回應逾期', '首次回應警告', '客戶等待逾時', '自動化通知']) {
+  for (const label of ['首次回應逾期', '首次回應警告', '客戶等待逾時', '自動化通知', '轉接真人']) {
     assert.ok(screen.queryByText(label) !== null, `應顯示類型「${label}」`);
   }
   assert.ok(screen.queryAllByText('通知').length === 0, '不應退回通用的「通知」徽章');

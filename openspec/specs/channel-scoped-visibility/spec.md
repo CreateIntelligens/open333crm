@@ -97,11 +97,19 @@
 
 ### Requirement: 與即時推播一致
 
-REST 查詢與 socket 推播 SHALL 使用同一個可見渠道的判斷。成員訂閱不可見渠道的渠道房間或對話房間時，系統 SHALL 拒絕訂閱。不可見渠道的訊息事件 MUST NOT 送達該成員，包括送到租戶房間的事件。
+REST 查詢與 socket 推播 SHALL 使用同一個可見渠道的判斷。成員訂閱不可見渠道的渠道房間或對話房間時，系統 SHALL 拒絕訂閱。不可見渠道的訊息事件（`message.new`、`conversation.updated`、`conversation.created`）MUST NOT 送達該成員，包括送到租戶房間的事件。看得到該渠道的成員與有 `channel.view_all` 的成員 SHALL 照常收到這些事件。
 
 #### Scenario: socket 與列表一致
 - **WHEN** 成員不可見 CH-B，CH-B 收到一則新訊息
-- **THEN** 該成員的對話列表看不到這則訊息，也收不到這則訊息的 socket 事件
+- **THEN** 該成員的對話列表看不到這則訊息，也收不到這則訊息的 `message.new` 與 `conversation.updated`
+
+#### Scenario: 看得到的成員與總店照常收到
+- **WHEN** CH-B 收到一則新訊息，成員 A1 的可用渠道有 CH-B，成員 HQ 有 `channel.view_all`
+- **THEN** A1 與 HQ 都收到這則訊息的 `message.new`（含訊息內容）與 `conversation.updated`
+
+#### Scenario: 客服操作的對話更新也依渠道送出
+- **WHEN** 客服把 CH-B 的一段對話標為已讀
+- **THEN** 不可見 CH-B 的成員收不到這段對話的 `conversation.updated`，看得到 CH-B 的成員與總店收得到
 
 #### Scenario: 訂閱不可見渠道的對話房間被拒
 - **WHEN** 成員不可見 CH-B，訂閱 CH-B 某段對話的 socket 房間
@@ -218,3 +226,75 @@ REST 查詢與 socket 推播 SHALL 使用同一個可見渠道的判斷。成員
 #### Scenario: 總店看全部
 - **WHEN** 成員有 `channel.view_all`，讀取總覽
 - **THEN** 訊息數與工單數包含所有渠道
+
+### Requirement: 單筆渠道路由的可見範圍
+
+成員以渠道 ID 讀取或管理渠道，而成員看不到該渠道（含不存在與已停用）時，系統 SHALL 回 HTTP 404，MUST NOT 回傳渠道內容，也 MUST NOT 執行操作。讀取渠道、狀態、嵌入碼與導流識別 SHALL 要求 `read_only`；修改、刪除、測試連線、LIFF 測試、設定 webhook、WebChat 連結與外觀、修改導流識別 SHALL 要求 `full`，不足時回 HTTP 403，錯誤碼為 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`。持有 `channel.view_all` 的成員不受限制。
+
+#### Scenario: 讀取看不到的渠道被拒
+- **WHEN** 成員沒有 `channel.view_all`，只綁定 CH-A，以 ID 讀取 CH-B，或讀取 CH-B 的嵌入碼或導流識別
+- **THEN** 系統回 HTTP 404，不回傳渠道設定、憑證與驗證權杖
+
+#### Scenario: 修改看不到的渠道被拒
+- **WHEN** 成員有 `channel.update` 與 `channel.delete`，沒有 `channel.view_all`，只綁定 CH-A，對 CH-B 改名、停用、換權杖、刪除、測試連線、產生 LIFF 測試、設定 webhook、產生 WebChat 連結、改外觀或改導流識別
+- **THEN** 系統回 HTTP 404，CH-B 的名稱、狀態、憑證、設定與 webhook 網址不變，渠道沒有被刪除
+
+#### Scenario: 唯讀層級可以讀取渠道
+- **WHEN** 成員對 CH-A 的層級是 `read_only`，以 ID 讀取 CH-A
+- **THEN** 系統回 HTTP 200 與 CH-A 的資料
+
+#### Scenario: 唯讀層級不能管理渠道
+- **WHEN** 成員有 `channel.update` 與 `channel.delete`，對 CH-A 的層級是 `read_only`，修改、刪除 CH-A 或改它的 WebChat 外觀
+- **THEN** 系統回 HTTP 403，錯誤碼為 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`，CH-A 不變
+
+#### Scenario: 完整層級可以管理渠道
+- **WHEN** 成員有 `channel.update`，對 CH-A 的層級是 `full`，修改 CH-A 的名稱
+- **THEN** 系統回 HTTP 200，CH-A 的名稱已更新
+
+#### Scenario: 總店不受可見範圍限制
+- **WHEN** 成員有 `channel.view` 與 `channel.view_all`，沒有綁定 CH-B，以 ID 讀取 CH-B
+- **THEN** 系統回 HTTP 200 與 CH-B 的資料
+
+### Requirement: 嵌入碼需要檢視渠道權限
+
+`GET /api/v1/channels/:id/embed-code` SHALL 要求 `channel.view`。成員沒有這個權限時，系統 SHALL 回 HTTP 403，`error.details.requiredPermission` 為 `channel.view`。
+
+#### Scenario: 嵌入碼需要 channel.view
+- **WHEN** 成員沒有 `channel.view`，綁定 WebChat 渠道 CH-A，讀取 CH-A 的嵌入碼
+- **THEN** 系統回 HTTP 403，`error.details.requiredPermission` 為 `channel.view`
+
+### Requirement: 團隊指派由指派權限控管
+
+渠道與團隊的指派路由（列出、指派、撤銷）SHALL 只要求 `channel.assign_team`，不檢查操作者自己的渠道可見範圍：`channel.assign_team` 是全租戶的渠道指派權，與指派用渠道清單、建立成員時的指派範圍一致。
+
+#### Scenario: 團隊指派由 channel.assign_team 控管
+- **WHEN** 成員有 `channel.assign_team`，沒有 `channel.view_all`，沒有綁定 CH-B，把 CH-B 指派給團隊、列出 CH-B 的團隊、再撤銷
+- **THEN** 指派回 HTTP 201，列出含該團隊，撤銷回 HTTP 204
+
+### Requirement: 未指派對話的通知只發給看得到渠道的人
+
+未指派對話的站內通知（收到新訊息 `new_message`、轉接真人 `conversation_handoff`）SHALL 只發給看得到該對話渠道的啟用中主管與管理員：持有 `channel.view_all`，或被授權該渠道。看不到該渠道的人 SHALL NOT 收到，因為通知內容有聯絡人名稱。可見範圍 SHALL 與列表、即時推播使用同一個判斷。
+
+#### Scenario: 分店主管不收其他渠道的新訊息通知
+- **WHEN** 渠道 C 上沒有指派客服的對話收到新訊息，總店管理員 H 持有 `channel.view_all`，分店主管 S 只被授權渠道 D
+- **THEN** H 收到 `new_message` 通知，S 沒有收到
+
+#### Scenario: 分店主管收自己渠道的新訊息通知
+- **WHEN** 渠道 D 上沒有指派客服的對話收到新訊息，分店主管 S 被授權渠道 D
+- **THEN** S 收到 `new_message` 通知
+
+### Requirement: 已指派對話的通知只發給看得到渠道的負責客服
+
+已指派對話的站內通知（收到新訊息 `new_message`、轉接真人 `conversation_handoff`）SHALL 只在負責客服仍啟用、且看得到該對話渠道（持有 `channel.view_all`，或被授權該渠道）時發給他。負責客服已停用或看不到該渠道時，系統 SHALL NOT 發給他，SHALL 改發給看得到該渠道的啟用中主管與管理員，與未指派對話相同。可見範圍 SHALL 與未指派對話的通知使用同一個判斷。
+
+#### Scenario: 負責客服看得到渠道
+- **WHEN** 指派給客服 X 的渠道 C 對話收到新訊息，X 啟用中且被授權渠道 C
+- **THEN** 只有 X 收到 `new_message` 通知
+
+#### Scenario: 負責客服失去渠道權限
+- **WHEN** 指派給客服 X 的渠道 C 對話收到新訊息，X 已不再被授權渠道 C，總店管理員 H 持有 `channel.view_all`
+- **THEN** X 沒有收到通知，H 收到 `new_message` 通知
+
+#### Scenario: 負責客服已停用
+- **WHEN** 指派給客服 X 的對話發出 `conversation.handoff`，X 已停用，總店管理員 H 持有 `channel.view_all`
+- **THEN** X 沒有收到通知，H 收到 `conversation_handoff` 通知

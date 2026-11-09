@@ -28,7 +28,7 @@ import { setupNotificationWorker } from '#src/modules/notification/notification.
 loadEnvConfig();
 
 test('Both producers set the retry policy：API 的 notification 佇列重試 3 次、指數退避 5 秒', async () => {
-  const handle = setupNotificationWorker({} as never);
+  const handle = setupNotificationWorker({} as never, { visibility: async () => new Set() });
   await handle({
     id: 'evt-1',
     name: 'case.assigned' as never,

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { channelDisplayName } from '@open333crm/shared';
 import { Select } from '@/components/ui/select';
 import {
   Dialog,
@@ -87,6 +88,12 @@ function resolveApiError(err: unknown, fallback: string): string {
       return 'Email 已被使用，請換一個電子信箱';
     case 'ROLE_ESCALATION':
       return '無法指派權限高於您自己的角色，請選擇權限範圍不超過您的角色';
+    case 'TARGET_OUTRANKS_ACTOR':
+      return '對方的權限比您高，您不能變更他的角色、重設他的密碼、停用或刪除他，請改由管理員操作';
+    case 'LAST_ADMIN_PROTECTED':
+      return '這是租戶最後一位管理員，不能降級、停用或刪除；請先讓另一位成員成為管理員';
+    case 'SELF_LOCK':
+      return '不能把自己改成這個角色：改了之後您將失去管理角色權限的能力';
     case 'NOT_FOUND':
       return '找不到指定的角色，請重新整理後再試';
     case 'FORBIDDEN':
@@ -461,7 +468,7 @@ function EditAgentDialog({
                         onChange={() => toggleChannel(ch.id)}
                       />
                       <span className="truncate">{ch.displayName}</span>
-                      <span className="text-xs text-muted-foreground">{ch.channelType}</span>
+                      <span className="text-xs text-muted-foreground">{channelDisplayName(ch.channelType)}</span>
                     </label>
                   ))}
                 </div>

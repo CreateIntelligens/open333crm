@@ -2,11 +2,206 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-09]
+
+### Changed
+
+- **AI 個資遮罩函式改收遮罩政策，不再讀資料庫**（#337 階段 4 第四批）— `ai/deidentification.service.ts` 有 5 個遮罩函式：`prepareStoredMessageContent`、`prepareStoredMaterialBody`、`getPrivacyAwareChatProvider`、`deidentifyTenantText`、`deidentifyTenantData`。這些函式原本收資料庫連線，先讀租戶的遮罩政策，再呼叫 2md（外部的個資遮罩服務）。呼叫 2md 是外部呼叫，不能放在交易內。函式收資料庫連線時，呼叫端搬到 flow 之後無法在交易外遮罩。現在這些函式改收遮罩政策（`AiPrivacyPolicy`）。呼叫端先以 `readAiPrivacyPolicy()` 讀出政策，再傳給遮罩函式。行為不變：政策關閉時，系統不呼叫 2md；讀取政策失敗時，API 仍回 503 `AI_PRIVACY_POLICY_UNAVAILABLE`。差異如下：
+  - 一個流程遮罩多次時，系統只讀一次政策。AI Agent 回覆在執行開始時讀一次政策，使用者訊息、工具呼叫紀錄與最終回覆都用這份政策。知識庫自動回覆的回覆訊息與轉接訊息也共用一份政策。原本每次遮罩都重讀政策。
+  - 移除一個判斷：假資料庫沒有 `platformSetting` 時，函式把政策當作關閉。這個判斷只為舊的單元測試存在。單元測試改用 `tests/support/ai-privacy.ts` 提供政策。
+  - 這一批不改遮罩的時機，呼叫端仍在原本的位置遮罩。各呼叫端的模組搬到 flow 時，再把遮罩移到交易之前。
+
+- **競猜活動發布前要求至少一個正確答案**（#471，change `fix-portal-quiz-requires-correct-answer`）— 競猜原本可以沒有標任何正確答案就發布，每個人都是 0 分，平均分數與作答列表全是 0。現在 `POST /api/v1/portal/activities/:id/publish` 對沒有正確答案的競猜回 400「競猜活動至少要有一個正確答案」，活動維持草稿。建立與編輯草稿時不檢查，草稿可以先存再補正確答案；投票不受影響。後台活動表單的競猜選項區加上「發布前至少勾選一個正確答案」的說明。開獎不變，仍從全部未中獎的作答隨機抽出，不看分數。
+
+### Fixed
+
+- **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
+- **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
+  - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。
+  - 通知：只刪對應到要刪除的重複事件的英文標題 SLA 通知（依工單、類型與時間配對，每筆被刪事件、每位成員最多一則）；其他期限週期的通知與配對不到的通知不動。`--notifications=skip` 不處理通知。
+  - 只刪 `--cutoff` 之前寫入的列。預設只預覽（各租戶筆數、英文通知的配對數、cutoff 之後的重複數、沒有 key 的列數、重複最多的工單、依 `sla.breachCount` 判斷的啟用中規則）。`--apply` 在單一交易內刪除：刪除前把整列匯出成 CSV（文件附還原步驟），cutoff 之後仍有重複、筆數與 `--expect-events`／`--expect-notifications` 或預覽不一致時回滾並以非零結束。
+  - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
+  - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
+
+- **刪除或匯出請求排隊中、發起的成員被永久刪除時，完成稽核不再遺失，也不送沒有收件人的通知**（issue #414 後續，AUDIT AUD-03 部分修正，change `keep-completion-audit-for-purged-requester`）— 永久刪除成員後，請求的 `requestedBy` 變成空值，但工作內容仍帶原本的成員 ID。資料刪除 worker 用這個 ID 寫 `data.erasure.complete` 稽核，違反外鍵；稽核在刪除 commit 之後才寫，錯誤只寫 log，完成稽核無聲遺失。兩個 worker 的完成、失敗通知也送給這個 ID，通知佇列重試三次後失敗。現在：
+  - `data.erasure.complete` 稽核改在刪除的同一個交易寫入，與請求的 `completed` 一起 commit。稽核寫不進去時刪除 rollback，請求改為 `failed`。
+  - 寫稽核前以 `tenantId` 查發起的成員。還在時行為不變；已被永久刪除時 `actorId` 寫空值，`actorName`、`actorEmail` 帶入請求的 `requestedByName`、`requestedByEmail`，不送通知，寫一行 log。
+  - 物件儲存刪除失敗時，請求與稽核的 `affected` 在同一個交易補寫，兩者仍然相同。
+  - 資料匯出 worker 送完成、失敗通知前也查發起的成員，已被永久刪除時不送；查詢或送進佇列失敗只寫 log，請求狀態不受影響。
+  - 刪除的完成通知送不進佇列時只寫 log，工作不再失敗（請求已經 commit，重試也不會補送）。
+  - `purgeAgent` 改成先寫請求快照、再寫稽核快照：刪除與永久刪除同時進行時，剛寫入的完成稽核也會有快照。
+  - 未修：依 `actorId` 篩選稽核查不到已刪除成員的紀錄。
+
+- **永久刪除成員後，稽核與資料匯出、刪除請求仍查得到是誰做的**（issue #414，AUDIT AUD-03 部分修正，change `preserve-audit-actor-on-agent-purge`）— 稽核的 `actorId` 與匯出、刪除請求的 `requestedBy` 外鍵是 `ON DELETE SET NULL`，成員被永久刪除後全部變成空值，和系統排程寫的紀錄分不出來，「誰匯出了全租戶資料」查不到。現在：
+  - `DELETE /api/v1/agents/:id` 在刪除成員之前、同一個交易內，把名稱與 email 寫進他當操作者的稽核（新欄位 `actorName`、`actorEmail`），以及他發起的資料匯出與刪除請求（新欄位 `requestedByName`、`requestedByEmail`）。刪除被拒（404、最後一位管理員、權限比操作者高）時不寫。
+  - `GET /api/v1/tenant/audit-logs` 每筆多回 `actorSnapshot: { name, email } | null`，`actor` 的格式不變。
+  - `agent.purge` 稽核的 `payload` 記下被刪成員的名稱（`{ name }`），不記 email。
+  - migration `20261109100000_preserve_audit_actor_snapshot` 只加可為空值的欄位，不回填：之前刪除的成員留下的紀錄沒有快照。
+  - 未修：刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 稽核會違反外鍵，等 #329 合併後另補（已由上一條修正）。
+
+- **資料刪除的匿名化也刪除客人傳來的媒體檔，兩種模式只刪本次對話的媒體檔**（#329，AUDIT ERASE-01 部分修正，change `erase-inbound-media-on-anonymize`）— 匿名化（預設模式）把進站訊息的內容改成 `{ redacted: true }`，改寫前沒有讀出 `storageKey`，客人傳來的圖片、影片與檔案留在物件儲存，而且資料庫再也找不到這些檔案。硬刪除只要 `storageKey` 是字串就照刪，不確認檔案屬於哪個租戶或哪個對話。物件刪除失敗時只寫 log。現在：
+  - 匿名化在同一個交易內、改寫進站訊息前讀出媒體檔，交易 commit 之後刪除。客服上傳的出站訊息媒體檔保留。
+  - 兩種模式只刪除 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。
+  - 每個檔案最多刪一次、不重試。刪除失敗時請求仍是 `completed`，失敗筆數記在 `affected.mediaObjectsFailed`（訊息媒體檔）與 `affected.avatarObjectsFailed`（頭像檔），完成稽核的 `affected` 相同，失敗的 key 寫進 log。
+  - 刪除開始時還沒 commit 的進站訊息也會處理（change `lock-conversations-during-erasure`）：讀訊息前依序鎖住聯絡人與他的對話，收訊的寫入會等刪除交易結束。原本這則訊息在匿名化時不會改寫，硬刪除時隨對話刪掉，兩種模式都留下媒體檔。
+  - 這次修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。
+
+### Security
+
+- **升級三個有安全警示的間接依賴**（Dependabot #179、#180、#181）— 根目錄 `pnpm.overrides` 原本把前兩個套件釘在有漏洞的版本，Dependabot 無法自動升級：
+  - `follow-redirects` 1.16.1 → 1.16.2（GHSA-mrwp-f3q8-3g9p，高風險：重新導向時自訂的認證標頭可能被帶到其他網站）。axios 與 LINE SDK 使用。
+  - `decode-uri-component` 0.5.0 → 0.5.1（GHSA-qr28-fpjm-wq7f，高風險：特定 percent-encoding 字串造成 CPU 阻斷）。minio 使用。
+  - `@fastify/static` 10.1.7 → 10.1.10，連帶把 `glob` 13.0.6 換成 14.0.4（GHSA-3g3m-2fjr-6pw4，中風險：取消逾時後仍可能繼續掃描檔案）。bull-board 的佇列監控頁使用。
+
+## [2026-11-06]
+
+### Changed
+
+- **知識庫改成入口開交易，向量化與刪除附件檔案在 commit 之後才開始**（#337 階段 4 第三批，change `migrate-knowledge-tenant-ctx`）— 文章的建立、修改、發布、匯入與合作方推送，原本寫入之後馬上呼叫向量化，不等結果。合作方推送在寫入的過程中上傳附件。覆蓋文章或刪除文章時，附件的資料列刪除了，S3 上的檔案卻留著。現在：
+  - 向量化在寫入的交易 commit 之後才開始，每次寫入最多開始一次，不等結果；交易 rollback 時不開始。處理程序中途結束時文章沒有向量，與之前相同，由重新向量化補上。
+  - 合作方推送（`POST /api/v1/knowledge/partner-ingest`）分成三段：先在交易內判斷 `cmd` 與 `Ver`，再在交易外上傳附件，最後開交易，鎖住文章再檢查一次 `Ver` 才寫入。上傳期間有另一個推送寫入較新的版本，或兩個推送同時寫入時，較舊的那個回 `skipped`，不會蓋掉較新的內容。確定沒有寫入時，刪除這次上傳的檔案；commit 結果不明時保留。
+  - 合作方覆蓋文章與後台刪除文章時，在 commit 之後刪除舊附件在 S3 上的檔案。刪除失敗只記 log。
+  - 批次匯入與上傳 QA 表的每篇文章各自一個交易，一篇失敗不影響其他篇，回應不變。
+  - `POST /api/v1/knowledge/:id/embed` 收到不存在或另一個租戶的文章時回 404，原本回 500。
+  - 文章與回報的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`，原本回 `DATABASE_ERROR`。文章列表的 `page` 小於 1 或 `limit` 超過 100 時回 400，原本 `page=0` 回 500、`limit` 沒有上限；`limit` 預設仍是 50。回報列表的 `status` 只收 `open`、`resolved`。
+
+- **Canvas 的流程管理與手動觸發改成入口開交易，觸發前檢查流程與聯絡人**（#337 階段 4 第二批，change `migrate-canvas-tenant-ctx`）— 手動觸發（`POST /api/v1/canvas/:id/trigger`）原本不檢查流程與聯絡人屬於哪個租戶。外鍵檢查不套用 RLS，所以呼叫端傳入另一個租戶的流程 id 時，API 也回 202，並在呼叫端的租戶建立 execution。草稿與封存的流程也能觸發，不存在的聯絡人也回 202。引擎在建立 execution 的同一個請求裡就開始執行。引擎執行失敗時，系統不寫 log。現在：
+  - 觸發前在交易內檢查流程屬於本租戶而且是 `ACTIVE`，聯絡人屬於本租戶。流程或聯絡人找不到時回 404，流程不是 `ACTIVE` 時回 409 `FLOW_NOT_ACTIVE`。搬遷前，不存在的流程回 400。
+  - 流程引擎在 execution commit 之後才開始執行，每次觸發最多開始一次；交易 rollback 時不執行。引擎執行失敗時寫 error log，回應仍是 202。
+  - `GET /api/v1/canvas/:id/executions` 在流程不存在或屬於另一個租戶時回 404，與其他流程端點一致。搬遷前回 200 與空陣列。
+  - 執行紀錄的 `status` 篩選改收 execution 的狀態（`RUNNING`、`WAITING`、`COMPLETED`、`FAILED`）。原本收的是流程的狀態（`DRAFT`、`ACTIVE`、`ARCHIVED`），送到資料庫時一律回 400，篩選無法使用。
+  - Canvas 路由的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`。
+  - 身分合併建議的路由（`/api/v1/identity/suggestions`）從 canvas 模組搬到 contact 模組。路徑、權限與回應不變；核准後的 `contact.merged` 推播改經 `notifyTenant()`，仍在 commit 之後送出。
+  - 收到訊息時的自動觸發（`canvas.webhook.ts`）與流程引擎不變，仍用 singleton 連線（AUDIT RLS-01）。
+
+### Fixed
+
+- **知識庫的讀取路由要求 `knowledge.view`**（AUDIT RBAC-01，change `migrate-knowledge-tenant-ctx`）— 文章列表、單篇、來源、分類、搜尋、embedding 狀態、型號、回報數與回報列表原本只檢查登入。角色沒有勾選「檢視知識庫」，或方案不含知識庫時，成員仍然讀得到文章。現在這 9 條路由回 403 `FORBIDDEN`，`details.requiredPermission` 是 `knowledge.view`。系統預設的三個角色都有這個權限。
+- **成員以 JWT 呼叫合作方推送不再一律 403**（AUDIT AUTH-06，change `fix-partner-ingest-jwt-role`）— `POST /api/v1/knowledge/partner-ingest` 接受 Partner API 金鑰，也接受成員的 access token。走 access token 時，認證沒有帶角色，`knowledge.admin` 的檢查查不到權限，有這個權限的成員也回 403。現在依成員角色的有效權限判斷。三個認證函式的 JWT 路徑改成共用同一個函式（`auth.plugin.ts`），`/auth/me` 與 MCP 的 JWT 路徑也一起帶上角色，兩者目前不讀角色，行為不變。Partner API 金鑰的行為不變。
+
+## [2026-11-05]
+
+### Changed
+
+- **Web CRM 色票改回 Figma 設計系統**（change `restore-figma-palette`）— 2026-11-02 的 `harden-web-wcag-typography` 把色票換成較深的另一套顏色（主色 `#1D4ED8`、文字 `#0F172A`），與 Figma 不符。依使用者決定，`globals.css` 淺色 14 個、深色 18 個色彩 token 改回 Figma 原色（主色 `#378ADD`、文字 `#37404C`、AI 紫等）；字級、焦點框、44px 觸控區、略過導覽連結維持不變。主色按鈕、次要文字、刪除紅與深色模式的成功、AI 標籤對比低於 4.5:1，列為規格中的例外。
+- **圖文選單的發布、預設與分眾綁定改成入口開交易，預設與展開拆成兩個欄位**（#337 階段 4 第一批，change `migrate-line-tenant-ctx`）— 發布原本先呼叫 LINE、最後才寫資料庫，沒有並行控制：寫資料庫失敗時 LINE 上留下找不到的選單，同一個選單同時發布兩次會在 LINE 建出兩個。設預設前先取消全體預設，設預設失敗時所有好友都失去選單。`selected` 同時代表「所有好友的預設選單」與 LINE 的「聊天室打開時展開」，兩件事不能分開設定。現在：
+  - 發布拆成「交易內認領 → 交易外呼叫 LINE → 交易內寫入」。同一個選單或同一個渠道的其他選單正在發布時，回 HTTP 409 `PUBLISH_IN_PROGRESS`。停在發布中超過 5 分鐘視為中斷，可以重新發布。LINE 建好選單之後任何一步失敗，刪除剛建立的 LINE 選單並標成 `error`。每個 LINE 呼叫 30 秒逾時。
+  - 設預設不再先取消全體預設，由 LINE 以新選單取代，而且在寫入發布結果之後才設，發布失敗時 LINE 的預設不受影響。設預設失敗時，新選單不記成預設；LINE 回錯誤時原本的預設不變，回應的 `warnings` 帶 `DEFAULT_NOT_SET`，畫面顯示提示。下架時先查 LINE 目前的預設，是這張才取消。
+  - `rich_menus` 新增 `isDefault`（所有好友的預設選單），migration 以原本的 `selected` 填入。`selected` 改回 LINE 的原意，新建時預設展開。編輯頁拆成兩個選項；建立與修改的 API 新增 `isDefault`。
+  - 分眾綁定與解除綁定改在交易內寫進 outbox。Redis 無法使用時改回 200，由 outbox-relay 補送。workers 綁定前確認選單仍已發布、LINE 端的 ID 沒有變，否則跳過。
+  - 列表頁新增「發布中」狀態，發布失敗的選單顯示「發布」按鈕。發布中停留超過 5 分鐘的選單，列表頁與編輯頁顯示「發布中斷」，可以重新發布；中斷的請求恢復後不會改到重新發布的選單。圖文選單路由的 `:id` 不是 UUID 時回 400 `VALIDATION_ERROR`。
+  - LINE 個人資料的同步改成「交易內讀取 → 交易外呼叫 LINE → 交易內寫入」，回應不變。
+
+### Fixed
+
+- **工單詳情頁顯示滿意度分數**（#444 後續，2026-11-04 UAT 驗證發現）— #444 在 `CaseDetail` 加了「滿意度」區塊，但工單詳情頁（`/dashboard/cases/[caseId]`）傳給元件的資料沒有 `csatScore`、`csatComment`、`csatSentAt`、`csatRespondedAt`，UAT 上看不到分數。頁面補上這四個欄位，新增從頁面渲染的測試。
+- **台灣版 Excel 存的 Big5 CSV 可以匯入知識庫**（#421 後續，2026-11-04 UAT 驗證發現）— #421 的解碼在檔案內容類型偵測之後才執行，偵測（Magika）認不出 Big5 文字，上傳時回英文錯誤「File content type rejected: file content type is unknown」，走不到解碼。現在 `.csv` 檔先以 `decodeCsvText()` 轉成 UTF-8 再偵測與解析。另外偵測常把列數少、內容是長中文的 CSV 判成純文字而拒絕，副檔名是 `.csv` 且政策允許 CSV 時，純文字視為 CSV。
+
+## [2026-11-04]
+
+### Changed
+
+- **Redis 連線改由同一個函式建立，一般指令在 Redis 故障時 1 秒內失敗**（#443，change `unify-redis-connection-api`）— API 原本有兩條設定不同的一般用途連線：`@open333crm/core` 的 `redis` 在 Redis 連不上時讓指令一直等，`getSharedRedis()` 在 Redis 接受連線卻不回應時也一直等。權限快取、token 額度、chatbox 認領在租戶交易內使用前者，交易可能超過 5 秒的逾時。現在：
+  - core 新增 `createRedisClient(url, purpose)`。`'command'` 用於一般指令：Redis 拒絕連線時約 0.2 秒失敗，不回應時 1 秒失敗。`'queue'` 用於 BullMQ 與訂閱，指令等到 Redis 恢復。
+  - core 的 `redis` 與 `getSharedRedis()` 改用 `'command'`。呼叫端原本就處理 Redis 失敗，行為只差在不再一直等。`EventBus` 的訂閱改用自己的 `'queue'` 連線。
+  - API 新增 `fastify.redis`（`plugins/redis.plugin.ts`），與 `getSharedRedis()` 是同一條連線。建立應用程式時不連 Redis，關閉 Fastify 時一起關閉，原本關機時沒有關閉。
+  - 登入失敗計數與綁定代碼的入口改從 `fastify.redis` 取得連線，刪除 `getLoginAttemptStore()`。webhook 收訊流程仍用 `getBindingStore()`，隨 #337 階段 4 改為注入。
+- **權限快取、passkey 與維運告警改由呼叫端傳入 Redis，越權檢查不在交易內使用 Redis**（#337 10.4）— `permission.service.ts`、`passkey.service.ts`、`ops-alert.service.ts` 原本自己 import Redis。角色與成員的越權檢查在租戶交易內讀寫權限快取，Redis 不回應時交易可能接近 5 秒的逾時。現在：
+  - 讀寫權限快取的函式以參數接收 Redis，guard、路由、socket、群發與平台路由傳入 `fastify.redis`。
+  - 越權檢查改呼叫新的 `loadRolePermissions()`，只查資料庫、不讀快取，所以一律用最新的權限。每次檢查多 1～2 次查詢，只發生在修改角色與成員時。
+  - `storePasskeyChallenge()`、`takePasskeyChallenge()`、`sendOpsAlert()` 改由呼叫端傳入 Redis。
+  - `check-tenant-ctx` 的「service 直接 import Redis client」從 6 降到 3，剩下的 `token-quota`、`chatbox`、`conversation` 隨 #337 階段 4 處理。
+- **workers 的 Redis 連線改用 `createRedisClient()`，關機時關閉通知佇列的連線**（#443 的 B）— workers 原本自己 `new IORedis`：發布 socket 事件的連線用預設值，Redis 接受連線卻不回應時一直等。現在：
+  - BullMQ 的連線用 `'queue'`，發布 socket 事件的連線用 `'command'`，Redis 不回應時，發布在 1 秒內失敗。呼叫端處理發布失敗的方式不變。
+  - 通知佇列（`lib/notification-queue.ts`）的連線改用 `'queue'`，關閉佇列時一起關閉。BullMQ 不關閉傳入的連線，原本關機時沒有關閉。
+  - 刪除沒有呼叫端的 `channel-plugins/src/line/worker-*.ts` 3 個檔案與 core 的 `license/license-service.ts`（AUDIT PKG-06 部分、LIC-02），以及因此沒有使用者的依賴：core 的 `axios`、`channel-plugins` 的 `bullmq`。core 內只剩 `EventBus` 使用模組層級的 `redis`，隨 #337 階段 6 移除。
+  - 刪除沒有接上的 API `lib/cacheStore.ts`。它是 `@fastify/caching` 的 Redis 儲存後端，但 API 沒有註冊這個 plugin，也沒有任何地方 import 它。一併移除 `@fastify/caching` 依賴與 `CACHE_DRIVER`、`CACHE_SEGMENT`、`CACHE_REDIS_DB`、`CACHE_EXPIRES_IN` 環境變數。部署環境的 `.env.api` 若還有這些變數，API 不再讀取，可以刪除。
+
+### Fixed
+
+- **重開的工單不再算已解決，報表的已解決數與 SLA 達成率不再失真**（#417，change `fix-case-resolved-at-417`，AUDIT CASE-04、AUTO-10，健檢 HC-ANALYTICS-02）— 原本工單解決後重開仍保留舊的 `resolvedAt`，處理中的工單被報表算成已解決；自動化規則的「改工單狀態」完全不寫 `resolvedAt`／`closedAt`。現在：
+  - `@open333crm/shared` 新增 `caseTransitionTimestamps()`，API 的狀態轉換（按鈕、狀態下拉、升級、指派時自動改狀態）、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 共用：轉成「已解決」寫入 `resolvedAt`；從「已解決」轉成「已關閉」保留；直接關閉（沒有經過「已解決」）不算已解決；轉成其他狀態（重開）清除。
+  - `update_case_status` 改成以 `tenantId` 讀目前狀態再條件更新。規則改成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查。
+  - 既有資料不補值。重開後的滿意度問卷行為不變（#339）。
+- **CSV 匯出的欄位一律跳脫並防公式注入**（#423，change `fix-csv-export-escaping`，AUDIT ANA-03，健檢 HC-ANALYTICS-04）— 報表匯出原本只替工單標題加引號，聯絡人名稱、客服姓名、分類、渠道名稱原樣輸出：名稱含逗號時後面的欄位錯位，以 `=`、`+`、`-`、`@` 開頭時 Excel 當成公式。現在：
+  - 新增共用的 `csvCell()`／`csvRow()`（`@open333crm/shared`）：含逗號、雙引號、CR／LF 的欄位以雙引號包住並把 `"` 改成 `""`；以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`；數字照原樣輸出（負數不加 `'`），日期輸出 ISO 字串。
+  - 報表匯出的四種報表（概覽、案件、客服、渠道）標題列與每一欄都經過 `csvRow()`。
+  - 優惠券序號明細改用共用函式（刪掉模組內的 `csvCell()`），輸出改成需要時才加引號，解析結果不變。
+  - 租戶資料匯出 zip 的 `csv/` 檔補上公式防護；日期欄改輸出 ISO 字串（原本是帶引號的 JSON 字串）。
+- **客人評分後，收件匣與工單看得到分數**（#444，change `show-csat-score-444`，AUDIT CASE-05 部分）— 客人評分後問卷卡片仍是空星、客服再點會 400，評分在對話裡顯示成 `csat:2:<工單 ID>`，工單時間軸與詳情頁都沒有分數。現在：
+  - 記錄分數時（客人回覆或客服代評），問卷訊息的 `metadata` 寫入 `csatScore` 與 `csatRatedBy`，並再推一次 `message.new`。卡片唯讀，顯示「客人評 N 分」或「客服代評 N 分」；客服送出失敗時卡片恢復可點。
+  - 客人的評分訊息存成「我的評分：N 分」（與 LINE 按鈕的 `displayText` 相同），原文存在 `metadata.postbackData`；攔截判斷不變。LINE 按鈕送出的評分直接改寫；客人手打的代碼要評分確實記錄才改寫，偽造或別人工單的代碼維持原文。
+  - 工單時間軸寫 `csat_rated`（客人評分或客服代評，客服代評記錄評分的客服）；評分後自動關閉寫 `status_changed`（`reason: 'csat_rated'`），顯示「（評分後自動關閉）」。工單詳情頁新增「滿意度」區塊。
+  - 仍未處理：客服代評不經狀態機、不關閉對話、也送感謝訊息（#339）。
+- **知識庫匯入 Google 試算表、Numbers 或台灣版 Excel 存的 CSV，中文不再變亂碼**（#421，change `fix-kb-csv-encoding-421`，AUDIT KB-03，健檢 HC-KNOWLEDGE-03）— 原本 CSV 沒有 UTF-8 BOM 就被當成單位元組讀，英文表頭時亂碼的問答還會直接發布。現在：
+  - `file-parser.service.ts` 新增 `decodeCsvText()`：有 BOM 去掉後以 UTF-8 解；沒有 BOM 先以嚴格 UTF-8 解，失敗再試 Big5。xlsx 依 zip 檔頭辨識，不受影響。
+  - 兩種都解不出或解出的文字含 U+FFFD 時，該檔一篇都不寫入，上傳結果標成失敗並帶 `code: CSV_ENCODING_UNREADABLE` 與中文原因（建議另存成「CSV UTF-8」）；同批其他檔案照常匯入。
+  - 匯入對話框的失敗原因改為完整換行顯示，不再截斷。
+  - 依使用者決定，問答表拆出的文章維持直接發布。
+- **收件匣可以載入 50 段以後的對話，未讀、我的與搜尋改由後端執行**（#422，change `fix-inbox-conversation-pagination`，AUDIT CONV-04，健檢 HC-INBOX-01）— 收件匣原本只請求第一頁 50 段對話，第 51 段以後找不到，「未讀」「我的」與搜尋也只在這 50 段裡過濾。現在：
+  - 列表底部的「載入更多對話」依 `meta.totalPages` 載入下一頁；已載入的頁依 `id` 去重、依最後更新時間排序。socket 推來的新訊息與對話更新合併到任一已載入的頁並重排。
+  - 「未讀」送 `unread=true`，「我的」送 `assigneeId=<自己>`，切換時從第 1 頁重新載入。
+  - `GET /api/v1/conversations` 新增 `search` 參數：去頭尾空白後最多 100 字（超過回 400 `VALIDATION_ERROR`），不分大小寫比對聯絡人名稱或對話中任一則訊息的文字；與其他篩選、tenantId、渠道可見範圍同時套用。搜尋框改用這個參數。
+  - socket 更新後不再符合目前狀態、「未讀」或「我的」篩選的對話（讀過、改派、結案）從列表移除，選取中的對話保留（HC-INBOX-08）。搜尋關鍵字裡的 `%`、`_` 與反斜線當成一般文字，不再當成萬用字元。
+  - 篩選列的「篩選結果」改顯示後端的總數。列表載入失敗時顯示「對話列表載入失敗」與重試，不再顯示成「沒有對話」。
+  - 操作手冊第 1 章的 50 筆限制說明同步更新。聊天視窗只載最近 50 則訊息（HC-INBOX-07）未改。
+- **自動化規則的條件填純數字時會觸發**（#418 AUTO-06，change `fix-automation-numeric-text-conditions`，健檢 HC-AUTOMATION-01）— 規則編輯器原本把「8888」「1」、電話這類純數字的條件值一律存成數字，規則引擎對「訊息內容」「聯絡人名稱」「聯絡人標籤」等文字欄位比對數字時永遠不成立，規則不觸發，「試試看」也顯示不會觸發。現在編輯器依欄位型別存值：只有數字欄位存數字、是／否欄位存布林，文字欄位保留字串。規則引擎在文字欄位遇到數字比較值時當成文字比對，已存成數字的舊規則不必重存就恢復觸發，workers 與「試試看」結果一致。數字欄位（例如開啟案件數）的比對不變。
+- **編輯粉絲活動草稿只改標題時，選項、競猜正確答案與表單欄位不再被清空**（issue #424，AUDIT PORTAL-03，健檢 HC-PORTAL-01，change `fix-portal-edit-keeps-content`）— 編輯對話框原本拿活動列表的資料當編輯內容，列表不含選項與欄位，只改標題就儲存會送出 `options: []`，後端刪光選項，畫面沒有提示。
+  - 編輯對話框打開時以 `GET /api/v1/portal/activities/:id` 取完整活動；載入中顯示「正在載入活動內容」，載入失敗顯示原因與「重新載入」，兩種情況都不能儲存。
+  - `PATCH /api/v1/portal/activities/:id`：沒帶 `options`／`fields` 時維持不變；投票與競猜送空的 `options`、表單送空的 `fields` 回 400，不刪除既有內容，也不儲存同一個請求的其他欄位。建立活動不受影響。
+- **粉絲活動不能在沒有選項或欄位時發布**（issue #447，change `fix-portal-publish-requires-content`）— 原本投票、競猜沒有選項或表單沒有欄位也能發布，粉絲打開後無法作答。
+  - `POST /api/v1/portal/activities/:id/publish`：投票與競猜至少要有一個選項、表單至少要有一個欄位，否則回 400（訊息「投票與競猜活動至少要有一個選項」／「表單活動至少要有一個欄位」），活動維持草稿；後台「發布」按鈕以 alert 顯示這段訊息。
+  - 建立草稿不變，仍可先建立空草稿再補內容。檢查與編輯草稿（#424）共用同一個函式。
+- **部署後保留平台後台對方案的修改**（#441 PLAN-20，change `preserve-plan-edits-on-seed-441`）— API 容器每次啟動都跑 seed，原本會把 `trial`、`light`、`standard`、`professional`、`enterprise` 五個方案的名稱、功能、上限與月費改回原始碼的值，平台在 `/admin/plans` 的修改下次部署就消失，沒有任何提示。現在 seed 只建立資料庫還沒有的方案，已存在的方案不寫入。程式要改既有方案的內容時，改用只改目標欄位、可重複執行的資料 migration（規則見 `docs/ref/features/platform/PLANS.md`）。
+- **AI 與知識庫回覆都失敗時轉接真人**（#445 KB-06，change `handoff-on-ai-reply-failure-445`）— 去識別化服務、embedding 服務或模型供應商短暫故障時，同一則客人訊息的 AI agent 回覆與知識庫回覆都失敗，原本只記 log：客人收不到任何回覆，對話停在「Bot 處理中」，客服也不知道要接手。現在 agent 沒有回覆、知識庫回覆又因錯誤失敗時，對話轉真人：狀態改為真人處理，轉接原因寫「AI 暫時無法回覆（去識別化服務無法使用）」「（AI 月額度已用完）」「（AI 服務發生錯誤）」等（不寫錯誤內容），收件匣顯示轉接系統訊息並通知客服，客人收到渠道設定的轉接訊息。轉接的系統訊息是固定文字，不需要去識別化服務。同一則訊息重送只轉接一次，已回覆過的訊息不轉接；轉接寫入失敗時交給佇列重試。關鍵字規則讓步、Bot 模式關閉、知識庫自動回覆停用等正常不回覆的情況不轉接。不會自動重送 AI 回覆，避免客人收到兩則。
+- **客人提到 Wi-Fi、e-mail、T-shirt 或訂單編號時，機器人不再回「這個型號查不到資料」**（#420 KB-02，change `fix-kb-model-guard-420`，健檢 HC-KNOWLEDGE-02）— 知識庫自動回覆的型號守門原本不分大小寫抓型號，一般英文詞與訂單編號都被當成查不到的型號，而且對沒有型號文章的租戶也生效；守門回覆不算追問，客人一直提到這類詞就一直不會轉真人。現在：
+  - 型號偵測排除 `Wi-Fi`、`e-mail`、`T-shirt`、`USB-C`、`Type-C` 等常見英文詞（不分大小寫）。型號仍不分大小寫，`tac-11p` 視同 `TAC-11P`。白名單從文章標題重建時也套用同一規則。
+  - 只攔截前綴（品類碼）出現在型號白名單的型號：知識庫沒有型號文章的租戶不守門；前綴不在白名單的編號（訂單編號）不攔截。
+  - 守門回覆計入追問次數；次數用完時改回「已為您轉接客服人員」並轉接真人（與追問用完同一條路徑）。
+  - 前綴打錯的型號（白名單沒有這個前綴）不再觸發守門，改走一般知識庫回答或追問。
+
 ## [2026-11-03]
 
 ### Fixed
 
-- **IG 綁定說明改成請顧客送出代碼**（change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
+- **營業時間檢查輸入，已存的設定不合法時當作沒有設定**（#337 階段 3 第九批，change `settings-input-validation-and-credential-audit`，issue #425，健檢 HC-SETTINGS-01、03、04）— `PUT /api/v1/settings/office-hours` 原本只檢查時間的形狀：跨午夜的時段、`99:99`、不存在的日期與不合法的時區都存得進去。存入不合法的時區之後，非營業時間的自動回覆整個失效，後台沒有提示。現在回 400 `VALIDATION_ERROR`，`error.details.issues` 指出欄位：
+  - 時段是 `HH:mm`（00:00～23:59），結束時間必須晚於開始時間，不支援跨過午夜。
+  - 假日是存在的日期（`YYYY-MM-DD`），最多 366 筆。
+  - 時區是有效的 IANA 時區；非營業時間的訊息是 1～1000 字。
+  - 讀取時以同一份規則解析已存的設定。設定是 `{}`（由其他設定建立 `TenantSettings` 時留下）或不合法時，回傳預設值，`enabled` 是 `false`，收訊時不自動回覆。原本 `{}` 的租戶在營業時間頁按「啟用」整頁崩潰。
+- **API 金鑰與 CLI token 的有效天數只收 1～365 天**（change `settings-input-validation-and-credential-audit`，健檢 HC-SETTINGS-06、12）— `expiresInDays` 原本沒有上限：100000 天建立到期日在 2300 年的憑證，3650000 天讓日期溢位、回 500。現在其他值回 400 `VALIDATION_ERROR`，錯誤訊息寫明範圍。API 金鑰不送有效天數時仍然永不過期，CLI token 仍然是 30 天。
+- **API 文件列出路由檔內註冊的子 plugin**（#337 階段 3 第九批）— 部署時產生 `openapi.json` 的 `openapi-inventory.mjs` 原本只讀 `index.ts` 註冊的路由檔。路由檔內以 `fastify.register()` 掛上的子 plugin 不在文件中，例如平台的 `GET`、`PATCH /api/v1/platform/tenants/:id/ai-privacy`。現在產生器也讀子 plugin：路徑接在外層的前綴後面。外層以 `addHook` 驗證登入，或註冊時傳入含驗證的 guard 時，子 plugin 的路由標示需要登入。
+- **撤銷 API 金鑰與 CLI token 時，路徑的 id 先檢查是不是 UUID**（#337 階段 3 第九批，健檢 HC-SETTINGS-11）— `DELETE /api/v1/settings/api-keys/:id`、`DELETE /api/v1/settings/cli-sessions/:id` 的 id 不是 UUID 時，原本查詢送到資料庫才失敗，回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出欄位。現在回 400 `VALIDATION_ERROR`，`error.details.issues` 指出 `id`。
+- **同時第一次讀取營業時間或追蹤設定時不再回 409**（#337 階段 3 第九批）— 租戶還沒有 `TenantSettings` 時，`GET /api/v1/settings/office-hours` 與 `GET /api/v1/settings/tracking` 會建立一列。兩個請求同時第一次讀取時，後寫入的請求原本撞到 `tenantId` 的唯一約束，回 409 `CONFLICT`「資料重複」。現在改用 `createOrFindExisting()`，後到的請求讀取對方建立的那一列。
+- **單筆渠道路由套用渠道可見範圍**（#408，change `scope-single-channel-routes-408`）— 沒有 `channel.view_all` 的成員對看不到的渠道讀取、修改、換憑證、測試連線、刪除、讀嵌入碼或導流識別、改 WebChat 外觀，現在都回 404。讀取要 `read_only`，管理操作要 `full`，不足回 403 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`。`GET /channels/:id/embed-code` 改為需要 `channel.view`；`POST /channels/webhook-base-url` 會改寫全租戶渠道，改為另需 `channel.view_all`，渠道管理頁對其他成員不顯示套用欄位。
+- **群發的發送權限**（#409 MKT-02、MKT-03，change `require-broadcast-send-permissions`）— 建立帶排程時間的群發要 `marketing.broadcast`，附上優惠券要 `coupon.issue`，附券群發的立即發送也要 `coupon.issue`；預估附券群發人數要 `coupon.view`。排程器到期前與附券群發的佇列 job 執行前，都以排定送出的成員當下的權限重新檢查，成員停用或失去權限時不送出，群發標為失敗並顯示原因。新增 `broadcasts.scheduledById` 欄位。建立群發的表單在沒有權限時停用排程與附券欄位並說明，表單開著時失去權限也不送出先前填的券與排程時間。
+- **租戶連線收回平台層資料表權限**（#412）— migration `20261103110000_revoke_app_tenant_platform_tables` 讓 `app_tenant` 對 `tenants`、`plans`、`platform_settings`、`model_pricings` 只剩 `SELECT`，完全收回 `platform_users`、`platform_audit_logs`、`trial_signups`、`_prisma_migrations`。租戶路徑不能再讀平台帳號的密碼雜湊，也不能改個資遮罩、試用政策或價目表。新表不再自動授權給 `app_tenant`，新的租戶表要在 migration 明確 `GRANT`（AGENTS.md 與 RLS skill 已寫明）。部署時 migration 必須以 owner（`MIGRATE_DATABASE_URL`）執行。
+- **成員操作不能用在權限比自己高的人**（#413，change `guard-agent-target-rank-last-admin`）— 改角色、重設他人密碼、停用、刪除成員時比對對方目前的權限，對方多出操作者沒有的權限時回 403 `TARGET_OUTRANKS_ACTOR`，主管不能再把管理員降級。租戶最後一位啟用中的管理員不能被改成沒有管理權限的角色（422 `LAST_ADMIN_PROTECTED`）。「管理員」改依 `role.manage` 權限判斷，不再看舊的角色列舉。人員管理頁被拒時顯示中文原因。
+- **收件匣即時推播依渠道可見範圍送出**（#427，change `fix-socket-channel-rooms-427`）— `message.new`、`conversation.updated`、`conversation.created` 改送到渠道房間（`tenant:<租戶>:channel:<渠道>`，總店 `tenant:<租戶>:channels:all`），沒有渠道授權的成員不會再從 socket 收到其他渠道的訊息內容；workers 經 `socket:emit` 的推播同步改用渠道房間，`automation.executed` 改為只帶 ID。轉接真人（客人按按鈕或自動轉接）的系統訊息也改送渠道房間。成員可用渠道、角色、角色權限、渠道與團隊授權變更，以及方案異動（平台改方案、核准升級、試用轉正式、方案功能或權限設定改變）後，已連線的成員自動重新計算房間；成員被停用或刪除時斷開他的連線，停用的成員也不能再連線。訂閱房間時改從資料庫讀成員目前的角色，角色被降級後不能再用登入時 token 裡的舊角色訂閱看不到的對話。`socket:emit` 訊息同時給 `room` 與 `rooms`，或房間名稱是空字串時視為格式錯誤並丟棄。
+- **資料匯出限定可查看所有渠道的成員**（#428，change `restrict-data-export-to-tenant-wide-roles`）— 發起、查詢、下載資料匯出除了 `data.export`，還要 `channel.view_all`；只看得到部分渠道的自訂角色不能再匯出全租戶的客戶資料，被拒時回 403，`requiredPermission` 是 `channel.view_all`。`data.export` 的權限說明寫明會匯出全租戶。
+- **知識庫說「已為您轉接」時真的轉接真人**（#419 KB-01，change `fix-kb-clarify-handoff-419`）— 知識庫自動回覆的追問次數用完、或追問的 AI 呼叫失敗（含月額度用完）時，回覆轉接句的同時把對話改為真人處理，記錄轉接原因與系統訊息，收件匣即時更新；轉接不成立時這句話不送出。自動轉接與知識庫轉接共用 `handOffConversation()`，追問次數在轉接時歸零。轉接後關鍵字規則照常回覆，知識庫與 AI 不再回覆。
+- **對話轉接真人時通知客服**（#419 CONV-03）— `conversation.handoff` 原本沒有訂閱者，客服收不到轉接。現在發出「轉接真人」站內通知：已指派的對話通知負責客服，未指派通知看得到該渠道的主管與管理員。
+- **未指派對話的通知依渠道可見範圍送出**（RBAC-04 HC-NOTIFICATIONS-01，change `scope-unassigned-notifications-440`）— 未指派對話的「收到新訊息」與「轉接真人」通知原本發給所有主管與管理員，只看得到分店渠道的主管會收到其他渠道客人的名稱。現在只發給持有 `channel.view_all` 或被授權該渠道的主管與管理員。已指派的對話也一樣：負責人已停用或失去渠道權限時不再通知他，改通知看得到該渠道的主管與管理員（change `notify-visible-assignee-440`，HC-NOTIFICATIONS-02）。
+- **LINE 客人收得到滿意度問卷**（#416 CASE-03，change `fix-csat-line-flex-416`）— LINE 外掛補回 `flex` 訊息，不認得的訊息類型與沒有文字的文字訊息改為回失敗並帶原因，不再送出被 LINE 拒收的空白文字；貼圖缺少 `packageId`、`stickerId` 時也不再補成預設值送出。問卷認領時一併確認租戶仍啟用。問卷送不出時，收件匣的問卷卡片顯示「沒有送出」與原因，工單時間軸記錄 `csat_send_failed`；不自動重寄。
+- **網站聊天室的群發與批次發券不再假成功**（#415 CHAN-02 群發與發券部分，change `reject-webchat-push-415`）— 建立、送出群發，附券群發與券詳情批次發券，渠道不能主動推送（網站聊天室）時回 400 `CHANNEL_PUSH_NOT_SUPPORTED`；修正前建立的網站聊天室群發在排程或背景執行時標為失敗並寫入原因，不發券。群發頁渠道選單只列 LINE、Facebook、Instagram。能主動推送的渠道清單移到 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`，前後端共用。
+- **停用的租戶對外完全停止活動**（#410 AUTH-11，change `stop-disabled-tenant-activity-410`）— 停用（含試用到期）的租戶：網站聊天室建立工作階段、送訊息與訪客 socket 回 404，`processInboundMessage()` 共用入口也丟棄進站事件；到期的排程群發與附券群發佇列 job 不送出，群發標為失敗（`TENANT_DISABLED`）並顯示原因；不寄滿意度問卷。
+- **免費試用與輕量版方案可以使用渠道**（#411 PLAN-14，change `enable-channels-on-trial-light-411`）— `trial`、`light` 方案加入 `channels` 功能，租戶管理員可以檢視與建立渠道。既有方案由 migration `20261103120000_enable_channels_on_trial_light` 補上（只加 `channels`，不動其他欄位）。渠道管理頁收到 403 時顯示「沒有權限」，不再顯示成「沒有渠道」；沒有 `channel.create` 的成員看不到新增渠道、設定精靈與 Facebook 連結按鈕（RBAC-11 渠道頁部分）。
+- **報表與素材等畫面不再顯示渠道系統代號（THREADS、FB、WEBCHAT），改顯示 Instagram、Facebook、網站聊天室** — 新增 `@open333crm/shared` 的 `channelDisplayName()`，前後端共用一份對照（系統代號維持 `THREADS` 不改）。改用的地方：報表「渠道分析」的渠道訊息分布與各渠道對話數、「訊息趨勢」（並補上原本沒有的 Instagram 線）、素材庫列表與素材編輯頁、成員管理的可用渠道、從收件匣建立工單的來源說明、收件匣篩選、聯絡人合併與時間軸、工單詳情、渠道徽章；後端的「不支援的渠道類型」「此渠道類型不支援發送廣播」錯誤、workers 的「系統未載入渠道外掛」送出失敗原因，以及抓不到個人資料時新聯絡人的預設名稱（例如「Instagram User 123456」）。**渠道報表 CSV（`POST /analytics/export`，`reportType: channels`）的「渠道」欄改寫顯示名稱**：原本是 `THREADS`、`FB`、`WEBCHAT`，現在是 `Instagram`、`Facebook`、`網站聊天室`（`LINE` 不變）；有用這個欄位值做試算表公式或比對的人要改用新名稱。報表 API 的 JSON 仍回系統代號，CLI `open333 stats` 不受影響。網站聊天室在渠道徽章、收件匣篩選等處原本顯示「WebChat」，現在顯示「網站聊天室」。後台與手冊的產品名稱統一為「網站聊天室」（渠道設定頁的嵌入碼與網頁版連結、新增渠道與設定精靈的選項、自動化條件、群發分群、模擬器、聯絡人綁定連結與網站聊天室回給訪客的錯誤訊息；原本混用 WebChat、網頁聊天、網站客服）；收件匣模板分類「FB」改顯示「Facebook」，領券連結 API 的渠道類型錯誤訊息改寫為「LINE、Facebook 或 Instagram（API 值：LINE、FB、THREADS）」。
+
+### Added
+
+- **建立與撤銷 API 金鑰、CLI token 時寫租戶稽核**（change `settings-input-validation-and-credential-audit`，AUDIT AUD-01）— 原本這兩種長效憑證的建立與撤銷都沒有稽核，事後查不出是誰建立的。現在稽核與憑證在同一個交易寫入，不含明文：
+  - 設定頁的操作寫 `settings.update`，`payload.section` 是 `api-keys` 或 `cli-sessions`，`payload.operation` 是 `create` 或 `revoke`。
+  - `POST /api/v1/auth/cli/login` 與 `/auth/cli/logout` 寫 `cli_session.login`、`cli_session.logout`，`targetId` 是 token 的 id。
+  - 撤銷不存在、屬於另一個租戶或已經撤銷的憑證時，不寫稽核。已經撤銷的 CLI token 再撤銷一次，不再覆寫原本的撤銷時間；已經停用的 API 金鑰再撤銷一次，仍回 200。
+
+### Changed
+
+- **營業時間、追蹤設定、API 金鑰與 CLI 連線改為入口開交易**（#337 階段 3 第九批）— 這四組設定路由原本把 `request.tenantPrisma` 傳給 service，每個查詢各自一個交易。現在每個請求在 flow 開的一個租戶交易內完成（AGENTS.md 結構規則 2）。
+  - 路由從 `settings.routes.ts` 移到各自的路由檔，由 `settings.routes.ts` 以子 plugin 註冊，權限檢查不變。
+  - 營業時間與追蹤設定的稽核和修改在同一個交易寫入：稽核寫入失敗時，修改也不寫入。原本稽核寫入失敗只記 log，修改照樣寫入。
+  - 建立 API 金鑰與 CLI token 時，先在交易外產生並以 bcrypt 雜湊，再開交易寫入。
+  - CLI 登入與登出（`POST /auth/cli/login`、`/auth/cli/logout`）改以租戶交易寫入 CLI token，不再使用 BYPASSRLS 的連線。驗證金鑰與 token 時還不知道租戶，仍然使用 BYPASSRLS 的連線。
 
 ## [2026-11-02]
 

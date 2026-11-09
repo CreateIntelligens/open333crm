@@ -19,6 +19,7 @@ vi.mock('#src/components/layout/Topbar.js', () => ({ Topbar: () => null }));
 vi.mock('#src/hooks/useRichMenus.js', () => ({ createRichMenu: vi.fn() }));
 
 import NewRichMenuPage from '#src/app/dashboard/line/rich-menus/new/page.js';
+import { RichMenuEditor, type RichMenuDraft } from '#src/components/line/rich-menu/RichMenuEditor.js';
 import {
   richMenuPublishConfirm,
   richMenuUnpublishConfirm,
@@ -72,4 +73,46 @@ test('Publish a default menu：確認文字說明會換掉所有好友目前的�
 test('Unpublish a default menu：確認文字說明所有好友的預設選單會消失', () => {
   assert.match(richMenuUnpublishConfirm(true), /所有好友/);
   assert.doesNotMatch(richMenuUnpublishConfirm(false), /所有好友/);
+});
+
+// ── 預設與展開分開（change migrate-line-tenant-ctx，spec「圖文選單展開狀態」） ──
+
+test('新建時「聊天室打開時展開選單」預設勾選', () => {
+  openEditor();
+  const box = screen.getByRole('checkbox', { name: /聊天室打開時展開選單/ }) as HTMLInputElement;
+  assert.equal(box.checked, true);
+});
+
+function renderEditor(draft: Partial<RichMenuDraft>) {
+  const onChange = vi.fn();
+  const full = {
+    channelId: 'ch-1',
+    name: '選單',
+    chatBarText: '選單',
+    size: { width: 2500, height: 843 },
+    isDefault: false,
+    selected: true,
+    areas: [],
+    imageUrl: '',
+    ...draft,
+  } as RichMenuDraft;
+  render(<RichMenuEditor draft={full} onChange={onChange} />);
+  return onChange;
+}
+
+test('「設為所有好友的預設選單」寫入 isDefault，不改展開狀態', () => {
+  confirmSpy.mockReturnValue(true);
+  const onChange = renderEditor({ isDefault: false, selected: false });
+  fireEvent.click(screen.getByRole('checkbox', { name: /設為所有好友的預設選單/ }));
+  const next = onChange.mock.calls[0][0] as RichMenuDraft;
+  assert.equal(next.isDefault, true);
+  assert.equal(next.selected, false);
+});
+
+test('「聊天室打開時展開選單」寫入 selected，不改預設', () => {
+  const onChange = renderEditor({ isDefault: true, selected: true });
+  fireEvent.click(screen.getByRole('checkbox', { name: /聊天室打開時展開選單/ }));
+  const next = onChange.mock.calls[0][0] as RichMenuDraft;
+  assert.equal(next.selected, false);
+  assert.equal(next.isDefault, true);
 });

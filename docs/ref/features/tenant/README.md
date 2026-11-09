@@ -92,7 +92,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 訂閱者 | 做什麼 |
 | --- | --- |
 | `automation.worker.ts` 的 `setupAutomationWorker()` | 機器人回覆、情緒分析與規則評估，細節見[收件匣與對話](./INBOX.md#機器人什麼時候回覆)與[自動化](./AUTOMATION.md) |
-| `notification.worker.ts` 的 `setupNotificationWorker()` | 發出「收到新訊息」通知。對話已指派時只通知負責人；未指派時通知所有 `ADMIN` 與 `SUPERVISOR` |
+| `notification.worker.ts` 的 `setupNotificationWorker()` | 發出「收到新訊息」通知。對話已指派時只通知負責人；未指派時通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道） |
 | `webhook-dispatcher.ts` 的 `setupWebhookDispatcher()` | 轉發給租戶訂閱了這個事件的外部 URL |
 
 
@@ -109,7 +109,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 每個事件由誰發布、誰訂閱，哪些事件只有一邊，失敗時會不會重試，以及為什麼目前只能跑一個 API 行程，見[事件與背景工作](../../modules/EVENTS.md)。
 
-**socket 的租戶房間收得到全部。** 每條 socket 連線建立時自動加入 `tenant:<租戶 ID>` 房間，而新訊息事件會帶著內容發到這個房間。渠道可見範圍因此在即時事件上不生效，見 `../../system/AUDIT.md` 的 RBAC-04。
+**socket 依渠道分房。** 訊息與對話的即時事件只送到渠道房間，成員連線時依可見渠道加入（issue #427），見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。租戶房間 `tenant:<租戶 ID>` 仍收到工單與聯絡人合併的事件，這部分不套用渠道可見範圍，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 側欄顯示與 API 權限
 

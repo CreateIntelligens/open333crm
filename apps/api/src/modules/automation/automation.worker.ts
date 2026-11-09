@@ -3,34 +3,36 @@
  *
  * - 每個事件送出一個 automation:evaluate job，job id 是事件 id，事件重送時不會評估兩次。
  *   規則評估與動作在 apps/workers 執行；關鍵字規則由 workers 處理 message.received 時比對。
- * - message.received 另外依序做自動轉接、agent 或 KB 回覆、情緒分析。
+ * - message.received 另外依序做自動轉接、agent 或 KB 回覆、情緒分析。agent 沒有回覆、KB 又因錯誤失敗時轉接真人（#445）。
  *   呼叫 LLM、去識別化服務的階段在交易之外，用 prismaAdmin；認領、寫入結果與發出衍生事件
  *   放在一個 inTenant() 交易內，所以同一則訊息處理兩次時，每個副作用最多發生一次。
  */
 
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
-import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { Queue } from 'bullmq';
-import { claimOne, claimSideEffect, hasSideEffectClaim, logger } from '@open333crm/core';
+import { claimSideEffect, hasSideEffectClaim, logger } from '@open333crm/core';
 import { getBotConfig, shouldRunAgentReply, type BotConfig } from '@open333crm/automation';
 import { hasMatchingKeywordRule } from './keyword-yield.js';
 import { createEventRouter, type EventHandler, type SubscribedEvent } from '../../events/subscriber-workers.js';
 import { createOutboxPublisher, publishEvent, type EventPublisher } from '../../events/outbox-publisher.js';
 import { inTenant } from '../../lib/tenant-ctx.js';
+import { handOffConversation } from './handoff.flow.js';
 
 /** 認領與寫入結果的交易：tenantPrisma 是 inTenant() 的基礎連線（受 RLS 約束），events 寫 outbox */
 interface TenantDeps {
   tenantPrisma: PrismaClient;
   events: EventPublisher;
 }
-import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
+import { attemptKbAutoReply, type KbAutoReplyResult } from '../ai/kb-autoreply.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
 import { autoClassifyNewCase } from '../ai/classify.service.js';
 import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { ClaimTransactionError, createBotReplyGuard } from './bot-reply-guard.js';
+import { handOffAfterAiFailure } from './ai-failure-handoff.flow.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -146,81 +148,34 @@ async function checkAutoHandoff(
   const systemText = summary
     ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
     : `自動轉接人工客服：${reason}`;
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: systemText }, 'system');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: systemText }, 'system');
 
-  // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領
+  // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領。
+  // 轉接本身（狀態、原因、系統訊息、conversation.handoff、渠道推播）與 KB 追問用完共用 handOffConversation()
   const replyGuard = createBotReplyGuard(tenantDeps.tenantPrisma, prisma, tenantId, inboundMessageId);
-  const handedOff = await replyGuard.persist(async (tx, scope) => {
-    const claimed = await claimOne(() =>
-      tx.conversation.updateMany({
-        where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-        data: { status: 'AGENT_HANDLED', handoffReason: reason, lastMessageAt: now },
-      }),
-    );
-    // 另一個處理已經轉接了這段對話
-    if (!claimed) return null;
-
-    const systemMessage = await tx.message.create({
-      data: {
+  const handedOff = await replyGuard.persist((_tx, scope) =>
+    handOffConversation(
+      scope,
+      { io, events: tenantDeps.events },
+      {
         conversationId,
-        direction: 'OUTBOUND',
-        senderType: 'SYSTEM',
-        contentType: 'system',
-        content: storedContent.content,
-        metadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
-        isRead: true,
-        createdAt: now,
+        channelId: conversation.channelId,
+        reason,
+        summary,
+        now,
+        systemContent: storedContent.content,
+        systemMetadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
       },
-    });
-    await publishEvent(scope, tenantDeps.events, 'conversation.handoff', {
-      conversationId,
-      reason,
-      summary,
-      previousStatus: 'BOT_HANDLED',
-    });
-    const updatedConversation = await tx.conversation.findFirst({ where: { id: conversationId, tenantId } });
-    return { systemMessage, updatedConversation };
-  });
+    ),
+  );
   if (!handedOff) return;
 
   // 以下在轉接 commit 之後：失敗只記 log，不重試（轉接訊息最多送出一次）
   try {
-    // Deliver configurable handoff message to channel
     await deliverToChannel(prisma, conversationId, botConfig.handoffMessage);
-
-    // Emit WebSocket events
-    const { systemMessage, updatedConversation } = handedOff;
-    if (updatedConversation) {
-      const wsPayload: ConversationUpdatedPayload = {
-        id: updatedConversation.id,
-        status: updatedConversation.status,
-        assignedToId: updatedConversation.assignedToId,
-        unreadCount: updatedConversation.unreadCount,
-        lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
-        updatedAt: updatedConversation.updatedAt.toISOString(),
-        handoffReason: reason,
-      };
-      io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-      io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
-    }
-
-    io.to(`conversation:${conversationId}`).emit('message.new', {
-      conversationId,
-      message: {
-        id: systemMessage.id,
-        conversationId,
-        direction: 'OUTBOUND',
-        senderType: 'SYSTEM',
-        contentType: 'system',
-        content: systemMessage.content,
-        createdAt: now.toISOString(),
-        sender: null,
-      },
-    });
-
     logger.info(`[AutoHandoff] Conversation ${conversationId} auto-escalated: ${reason}`);
   } catch (err) {
-    logger.error('[AutoHandoff] 轉接之後送出轉接訊息或推播失敗:', err);
+    logger.error('[AutoHandoff] 轉接之後送出轉接訊息失敗:', err);
   }
 }
 
@@ -284,7 +239,8 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
   // ── message.received ────────────────────────────────────────────────────
   events.on('message.received', async (event: SubscribedEvent) => {
     // 每個步驟都執行，失敗的步驟最後一起丟錯，由佇列重試；重試時已完成的步驟都已認領，會略過。
-    // 只有「認領之前」的失敗會丟到這裡：LLM 失敗改用 KB、KB 找不到答案這類降級照舊只記 log
+    // 只有「認領之前」的失敗會丟到這裡：LLM 失敗改用 KB、KB 找不到答案這類降級照舊只記 log；
+    // agent 與 KB 都因錯誤沒有回覆時轉接真人（handOffAfterAiFailure），轉接失敗也丟到這裡由佇列重試
     const failures: unknown[] = [];
     {
       const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt, isFirstFollow } = event.payload as {
@@ -335,6 +291,8 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
             logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：這則訊息已有機器人回覆`);
           } else if (conversationId && text && isTextMessage && botConfig) {
             let agentHandled = false;
+            /** agent 丟出的錯誤：KB 也失敗時用來寫轉接原因 */
+            let agentError: unknown;
             // 關鍵字命中時讓步給 keyword 規則，不要再讓 AI 回一次。
             // kb-autoreply 早就有這個判斷（見 attemptKbAutoReply 的 1.5），
             // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
@@ -363,15 +321,26 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
                 agentHandled = agentResult.handled;
               } catch (err) {
                 if (err instanceof ClaimTransactionError) throw err;
+                agentError = err;
                 logger.error('[AutomationWorker] Agent reply error, falling back to KB:', err);
               }
             }
             if (!agentHandled) {
+              let kbResult: KbAutoReplyResult;
               try {
-                await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard);
+                kbResult = await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard, tenantDeps.events);
               } catch (err) {
                 if (err instanceof ClaimTransactionError) throw err;
                 logger.error('[AutomationWorker] KB auto-reply error:', err);
+                kbResult = { status: 'failed', error: err };
+              }
+              // agent 沒有回覆、KB 又因錯誤失敗：客人收不到任何回覆，轉接真人讓客服接手（#445）。
+              // 不重試 AI 回覆（可能送出兩則）；正常的不回覆（關鍵字讓步、botMode、KB 停用、已回覆）不轉接
+              if (kbResult?.status === 'failed') {
+                await handOffAfterAiFailure(
+                  { prisma, tenantPrisma: tenantDeps.tenantPrisma, io, events: tenantDeps.events },
+                  { tenantId: event.tenantId, conversationId, inboundMessageId: messageId, kbError: kbResult.error, agentError },
+                );
               }
             }
           }

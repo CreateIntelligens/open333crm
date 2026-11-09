@@ -34,6 +34,8 @@
 
 **規則頁的用語。** 列表與編輯頁用一句話描述規則，例如「當收到訊息時，如果開啟案件數等於 0，就建立工單「客戶諮詢」」（`rule-summary.ts`）。列表顯示事件的中文名稱、可依名稱搜尋與依啟用狀態篩選。編輯頁把 `priority` 稱為「執行順序」（數字越大越先檢查），`stopOnMatch` 稱為「這條規則執行後，不再檢查其他規則」，條件建構器全部中文（`condition-builder-labels.ts`），觸發事件下方顯示契約的 `description`。契約中 `dispatched: false` 的事件在選單標示「（目前不會觸發）」。「指派客服」從客服名單選人，不必填 ID。
 
+**條件值的型別。** 編輯器依欄位在契約的型別存比較值（`qb-to-engine.ts`）：數字欄位（例如開啟案件數）存數字，是／否欄位存布林，其他欄位（訊息內容、聯絡人名稱、標籤等）一律存字串，即使填的是「8888」「1」這類純數字。規則引擎（`packages/automation/src/rules/operators.ts`）在欄位值是字串、比較值是數字時，把數字當成文字比對，所以 #418 之前存成數字的舊規則與 API 存入的數字一樣會命中；數字欄位的比對不變（#418，AUTO-06 已修正）。
+
 **不合契約的規則不可啟用。** 把規則改為啟用時，API 以儲存後的觸發、條件與動作做契約驗證，不通過回 400；停用永遠可以。編輯器遇到契約沒有的觸發事件時顯示「未知觸發事件（<代碼>）」。既有資料用 `scripts/disable-invalid-automation-rules.mjs` 停用（預設 dry-run）。
 
 **建立規則時的啟用狀態。** `POST /automation/rules` 依請求的 `isActive` 建立規則；沒送時預設啟用。2026-10-05 之前一律建立成啟用，新增規則頁「啟用」沒勾也會立刻開始執行。
@@ -102,7 +104,7 @@
 
 **工單類動作繞過工單模組。** workers 直接更新 `Case` 的欄位，不經過 `case.service.ts`：
 
-- `update_case_status` 不檢查轉換是否合法，不寫時間軸，也不寫 `resolvedAt`、`closedAt`。由規則轉成 `RESOLVED` 的工單因此不會發送滿意度調查，因為 CSAT 排程以 `resolvedAt` 判斷。
+- `update_case_status` 不檢查轉換是否合法，不寫時間軸，也不發 `case.resolved`、`case.closed`。`resolvedAt`、`closedAt` 與工單模組用同一個規則（`caseTransitionTimestamps()`，#417）：由規則轉成 `RESOLVED` 的工單有 `resolvedAt`，問卷排程會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
 - `escalate_case` 只提高優先級，不把狀態改成 `ESCALATED`，也不發布 `case.escalated`。
 - `assign_agent` 只改 `assigneeId`，不發布 `case.assigned`，被指派的人不會收到通知。上下文沒有工單時略過，不會指派對話。
 

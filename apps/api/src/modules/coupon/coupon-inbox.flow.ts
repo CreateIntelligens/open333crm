@@ -123,7 +123,7 @@ async function runIssue(deps: InboxFlowDeps, input: InboxIssueInput): Promise<In
         if (!confirmed) return null;
         if (confirmed.tag) await publishCouponTag(scope, createOutboxPublisher(deps.prisma), reserved.contactId, confirmed.tag);
         // commit 之後才推播：對話新訊息與右側「已發優惠券」重新載入（design D23）
-        notifyCouponMessage(scope, deps.io, confirmed.message);
+        notifyCouponMessage(scope, deps.io, reserved.channelId, confirmed.message);
         notifyInstanceUpdated(scope, deps.io, { instanceId: reserved.instanceId, contactId: reserved.contactId, change: 'issued' });
         return confirmed.message;
       });

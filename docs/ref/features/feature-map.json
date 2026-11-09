@@ -22,7 +22,6 @@
         "apps/api/src/modules/identity-binding/*",
         "apps/api/src/modules/ai/other-channel-context.ts",
         "apps/api/src/modules/line/line-profile.*",
-        "apps/api/src/modules/canvas/canvas.routes.ts",
         "packages/core/src/identity/*",
         "packages/core/src/contacts/contact-service.ts"
       ],
@@ -289,6 +288,8 @@
         "apps/api/tests/unit/modules/coupon/*.test.ts",
         "apps/api/tests/feature/modules/coupon/*.test.ts",
         "apps/api/tests/feature/modules/marketing/broadcast-coupon.test.ts",
+        "apps/api/tests/feature/modules/marketing/broadcast-send-permissions.test.ts",
+        "apps/api/tests/feature/modules/marketing/broadcast-disabled-tenant.test.ts",
         "apps/api/tests/unit/modules/automation/issue-coupon-reference.test.ts",
         "apps/api/tests/unit/modules/automation/send-material-coupon-url.test.ts",
         "apps/web/tests/unit/app/dashboard/marketing/*.test.tsx",
@@ -403,7 +404,6 @@
       "audit": [
         "RBAC-03",
         "CONV-02",
-        "CONV-03",
         "PLAN-13",
         "EXPORT-01",
         "APP-04",
@@ -678,7 +678,6 @@
       ],
       "audit": [
         "RBAC-01",
-        "AUTH-06",
         "PLAN-12",
         "PLAN-02",
         "PLAN-13",
@@ -1086,7 +1085,7 @@
         },
         {
           "domain": "cases",
-          "why": "滿意度調查在 LINE 渠道以 Flex postback 收分數（目前送不出，見健檢 HC-LINE-01）"
+          "why": "滿意度調查在 LINE 渠道以 Flex postback 收分數（LINE 外掛的 flex 分支，#416 修正）"
         },
         {
           "domain": "shortlinks",
@@ -1180,7 +1179,6 @@
         "RBAC-04",
         "CONV-01",
         "CONV-02",
-        "CONV-03",
         "TEAM-01",
         "PLAN-12",
         "RLS-09",
@@ -1252,7 +1250,7 @@
         },
         {
           "domain": "notifications",
-          "why": "新訊息通知負責人或主管；轉真人與指派的通知缺口（CONV-02、CONV-03）"
+          "why": "新訊息通知負責人或主管；轉真人通知（#419）與指派的通知缺口（CONV-02）"
         },
         {
           "domain": "settings",
@@ -1662,7 +1660,6 @@
         "PLAN-03",
         "PLAN-08",
         "AUTH-01",
-        "AUTH-06",
         "AUTH-08",
         "AUTH-10",
         "SEC-06",
@@ -1770,6 +1767,13 @@
       "health": "docs/ref/features/health/SETTINGS.md",
       "paths": [
         "apps/api/src/modules/settings/settings.routes.ts",
+        "apps/api/src/modules/settings/office-hours.routes.ts",
+        "apps/api/src/modules/settings/tracking-settings.routes.ts",
+        "apps/api/src/modules/settings/partner-api-key.routes.ts",
+        "apps/api/src/modules/settings/cli-session.routes.ts",
+        "apps/api/src/modules/settings/office-hours.flow.ts",
+        "apps/api/src/modules/settings/tracking-settings.flow.ts",
+        "apps/api/src/modules/settings/office-hours-settings.ts",
         "apps/api/src/modules/settings/office-hours.service.ts",
         "apps/api/src/modules/settings/tracking-settings.service.ts",
         "apps/api/src/modules/settings/a2a-status.service.ts",
@@ -1777,6 +1781,8 @@
         "apps/api/src/modules/webtalk/*",
         "apps/api/src/modules/auth/partner-api-key.service.ts",
         "apps/api/src/modules/auth/cli-session.service.ts",
+        "apps/api/src/modules/auth/partner-api-key.flow.ts",
+        "apps/api/src/modules/auth/cli-session.flow.ts",
         "apps/api/src/modules/mcp/mcp.routes.ts",
         "apps/api/src/modules/mcp/mcp.server.ts",
         "apps/api/src/modules/mcp/mcp.constants.ts"
@@ -1995,6 +2001,7 @@
         "apps/api/tests/unit/modules/webhook/threads-webhook.test.ts",
         "apps/api/tests/feature/modules/channel/channel-external-account.test.ts",
         "apps/api/tests/feature/modules/channel/channel-status-guard.test.ts",
+        "apps/api/tests/feature/modules/channel/channel-single-route-visibility.test.ts",
         "apps/api/tests/feature/modules/channel/channel-team-access.test.ts",
         "apps/api/tests/feature/modules/channel/meta-token-health.test.ts",
         "apps/api/tests/feature/modules/meta-connect/**",
@@ -2235,6 +2242,7 @@
         "apps/api/src/modules/webhook-subscriptions/*",
         "apps/workers/src/handlers/data-export.handler.ts",
         "apps/workers/src/handlers/data-erasure.handler.ts",
+        "apps/workers/src/lib/requester.ts",
         "apps/workers/src/lib/simple-zip.ts"
       ],
       "pages": [],
@@ -2306,7 +2314,7 @@
         },
         {
           "domain": "members",
-          "why": "稽核的 actor 外鍵 SetNull：永久刪除成員後，他做過的操作在稽核裡變成沒有操作者"
+          "why": "稽核與匯出、刪除請求的操作者外鍵 SetNull：永久刪除成員前 purgeAgent 寫入名稱與 email 快照（actorName、requestedByName 等，#414）"
         },
         {
           "domain": "settings",
@@ -2395,6 +2403,9 @@
         "apps/api/tests/feature/modules/platform/tenant-contract-dates.test.ts",
         "apps/api/tests/feature/modules/trial/trial-data-purge.test.ts",
         "apps/api/tests/feature/modules/auth/tenant-disabled-access.test.ts",
+        "apps/api/tests/feature/modules/chatbox/chatbox-disabled-tenant.test.ts",
+        "apps/api/tests/feature/modules/marketing/broadcast-disabled-tenant.test.ts",
+        "apps/api/tests/feature/modules/csat/csat-disabled-tenant.test.ts",
         "apps/api/tests/unit/modules/platform/platform-audit-routes.test.ts",
         "apps/api/tests/unit/modules/platform/ai-privacy.test.ts",
         "apps/api/tests/unit/modules/platform/tenant-plan.test.ts",
@@ -2430,7 +2441,7 @@
         },
         {
           "domain": "channels",
-          "why": "停用租戶時 LINE/FB/IG webhook 依 tenant.isActive 丟棄進站事件（WebChat 目前沒擋，HC-PLATFORM-TENANTS-01）"
+          "why": "停用租戶時 webhook 依 tenant.isActive 提早丟棄進站事件，processInboundMessage 共用入口再擋一次；網站聊天室建立工作階段、送訊息與訪客 socket 回 404（#410）"
         },
         {
           "domain": "inbox",
@@ -2450,7 +2461,7 @@
         },
         {
           "domain": "marketing",
-          "why": "停用租戶的排程群發仍會執行（broadcast.scheduler 不看 tenant.isActive，HC-PLATFORM-TENANTS-04）"
+          "why": "停用租戶的到期群發與 coupon-broadcast job 不送出，標 failed（TENANT_DISABLED，broadcast-tenant-active.ts，#410）"
         }
       ]
     },
@@ -2754,7 +2765,7 @@
         },
         {
           "domain": "platform-trials",
-          "why": "試用開通綁定 trial 方案；試用方案的 features 不含 channels（HC-PLATFORM-PLANS-01）"
+          "why": "試用開通綁定 trial 方案；試用方案的 features 天花板決定試用租戶能用哪些功能（含 channels，issue #411）"
         },
         {
           "domain": "notifications",

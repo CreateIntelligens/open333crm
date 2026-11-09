@@ -114,7 +114,7 @@ const MATERIAL_CHANNEL_LABELS: Record<string, string> = {
   threads: 'Instagram',
   instagram: 'Instagram',
   ig: 'Instagram',
-  webchat: '網站客服',
+  webchat: '網站聊天室',
 };
 
 /** 存檔被擋下時顯示的說明 */

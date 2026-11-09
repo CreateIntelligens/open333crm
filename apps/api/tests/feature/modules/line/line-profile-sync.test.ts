@@ -75,7 +75,8 @@ async function createLineIdentity(
 async function buildApp(tenantId: string, agentId: string, roleId: string | null) {
   const app = Fastify();
   await app.register(errorHandlerPlugin);
-  app.decorate('prisma', owner);
+  // flow 以 fastify.prisma 開租戶交易：用 app_tenant 連線，RLS 才會生效
+  app.decorate('prisma', tenantDb);
   app.decorate('prismaAdmin', owner);
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     if (roleId === null) {

@@ -57,11 +57,11 @@ Passkey 不是另一種 token。Passkey 驗證成功後，系統發出的是一�
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `authenticate` | 以 `JWT_SECRET` 簽發的任何 JWT | token 的 `agentId` | token 的 `tenantId` | token 的 `role` | token 的 `roleId` | 無 | 租戶後台的絕大多數路由 |
 | `authenticateCliSession` | CLI token | 成員 ID | 成員的租戶 | 成員的 `role` | **不填** | `isCliSession`、`cliSession`（含 scope） | `cli.routes.ts`、`POST /auth/cli/logout` |
-| `authenticateJwtOrCliSession` | `cli_` 開頭走 CLI，其他走 JWT | CLI 分支是成員 ID | CLI 分支是成員的租戶 | CLI 分支是成員的 `role` | **兩個分支都不填** | CLI 分支有 `isCliSession`、`cliSession` | `GET /auth/me`、MCP 端點 |
-| `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | **兩個分支都不填** | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
+| `authenticateJwtOrCliSession` | `cli_` 開頭走 CLI，其他走 JWT | CLI 分支是成員 ID | CLI 分支是成員的租戶 | CLI 分支是成員的 `role` | JWT 分支是 token 的 `roleId`；CLI 分支不填 | CLI 分支有 `isCliSession`、`cliSession` | `GET /auth/me`、MCP 端點 |
+| `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | JWT 分支是 token 的 `roleId`；金鑰分支不填 | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
 | `authenticatePlatformSuperuser` | 平台 JWT | 寫入 `request.platformUser`，不寫 `request.agent` | | | | | `/api/v1/platform/*` |
 
-「JWT 或其他憑證」的裝飾器，JWT 分支填入的 `id`、`tenantId`、`role` 與 `authenticate` 相同，只少了 `roleId`，見 `../system/AUDIT.md` 的 AUTH-06。
+「JWT 或其他憑證」的裝飾器與 `authenticate` 的 JWT 分支都呼叫 `attachAgentFromAccessToken()`，填入相同的欄位。這三份程式原本各寫一份，只有 `authenticate` 帶 `roleId`（AUTH-06，2026-11-06 修正，見 `../system/AUDIT-REVIEWS.md`）。
 
 驗證之後，下列程式讀這些欄位：
 
@@ -109,21 +109,21 @@ Socket.IO 的每個 namespace 各自認證：
 
 | namespace | 使用者 | 認證 | 連線後自動加入的房間 | 其他房間 |
 | --- | --- | --- | --- | --- |
-| 預設（`/`） | 客服 | `socket.plugin.ts` 的 `io.use()` 以 `JWT_SECRET` 驗證 handshake 的 token，把 `agentId`、`tenantId`、`role`、`roleId` 寫入 `socket.data` | `tenant:<tenantId>`、`agent:<agentId>` | 送出 `subscribe` 時由 `authorizeSocketRoom()` 查資料庫授權，並限制頻率 |
+| 預設（`/`） | 客服 | `socket.plugin.ts` 的 `io.use()` 以 `JWT_SECRET` 驗證 handshake 的 token，把 `agentId`、`tenantId`、`role`、`roleId` 寫入 `socket.data` | `tenant:<tenantId>`、`agent:<agentId>`、`tenant:<tenantId>:agent:<agentId>`，以及依可見渠道的 `tenant:<tenantId>:channel:<channelId>`（持有 `channel.view_all` 時改為 `tenant:<tenantId>:channels:all`） | 送出 `subscribe` 時由 `authorizeSocketRoom()` 查資料庫授權，並限制頻率 |
 | `/visitor` | 網站訪客 | `webchat.socket.ts` 以 `chatboxSessionVerifier` 驗證 session ID 與 claim token，並以來源 IP 限制連線頻率 | `visitor:<channelId>:<visitorToken>` | 無 |
 
-客服的 socket 只在 handshake 驗證一次。連線建立之後，系統不會重新驗證，也不會在成員或租戶停用時主動斷線。
+客服的 socket 在 handshake 驗證 token，並拒絕已停用或已不存在的成員。連線建立之後不重新驗證 token：成員被停用或永久刪除時，重新計算房間會斷開他的連線；租戶停用時不會主動斷線。`subscribe` 的授權每次從資料庫讀成員目前的角色，不用 token 裡的 `roleId`。
 
-`tenant:<tenantId>` 房間會收到整個租戶的 `message.new`，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
+`message.new`、`conversation.*` 只送到渠道房間，不送到 `tenant:<tenantId>`（issue #427）。渠道房間在 handshake 驗證時算好；成員的可用渠道、角色或角色權限、渠道與渠道團隊授權、租戶的方案或方案設定改變，以及成員停用與永久刪除時，`fastify.syncSocketChannelRooms()` 重新計算已連線 socket 的房間。`tenant:<tenantId>` 仍收到工單與聯絡人合併的事件，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
 
 ## 停用與撤銷什麼時候生效
 
 | 動作 | 客服 access token | 客服 refresh token | 客服 socket 連線 | CLI token | Partner API 金鑰 |
 | --- | --- | --- | --- | --- | --- |
-| 停用成員 | 有效到過期 | 換發時被擋下 | 不中斷 | 立即失效 | 不受影響 |
-| 永久刪除成員 | 有效到過期 | 換發時被擋下 | 不中斷 | 隨成員刪除 | 不受影響 |
+| 停用成員 | 有效到過期 | 換發時被擋下 | 立即斷線 | 立即失效 | 不受影響 |
+| 永久刪除成員 | 有效到過期 | 換發時被擋下 | 立即斷線 | 隨成員刪除 | 不受影響 |
 | 停用租戶 | 有效到過期 | 換發時被擋下 | 不中斷 | **不受影響** | **不受影響** |
-| 改成員的角色 | 沿用舊角色到過期 | 換發時取得新角色 | 沿用舊角色 | 不看角色 | 不看角色 |
+| 改成員的角色 | 沿用舊角色到過期 | 換發時取得新角色 | 立即依新角色重新計算房間 | 不看角色 | 不看角色 |
 | 登出 | 有效到過期 | cookie 清除，token 本身仍有效 | 前端斷線 | 以 `POST /auth/cli/logout` 撤銷 | 不適用 |
 | 撤銷該憑證 | 無法撤銷 | 無法撤銷 | 無法撤銷 | 立即失效 | 立即失效 |
 
@@ -182,7 +182,6 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員無法以密碼登入 | SEC-06 |
 | CLI token 只看 scope，不看角色與方案天花板；`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 停用租戶不中斷 socket 連線，也不影響 CLI token 與 Partner API 金鑰 | AUTH-02 |
-| `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支不填 `roleId`，網頁登入的成員即使有權限也呼叫不了 `partner-ingest` | AUTH-06 |
 | 登出、改密碼或重設密碼都不會讓已發出的 refresh token 失效 | AUTH-08 |
 | 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | AUTH-10 |
 | `config/env.ts` 的 `JWT_EXPIRES_IN` 沒有讀取端 | AUTH-07 |

@@ -1,4 +1,4 @@
-FROM node:26.12.1-bookworm-slim AS deps
+FROM node:26.13.0-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -55,7 +55,7 @@ RUN pnpm --filter @open333crm/channel-plugins build
 RUN pnpm --filter @open333crm/api build
 
 # ---- Runner ----
-FROM node:26.12.1-bookworm-slim AS runner
+FROM node:26.13.0-bookworm-slim AS runner
 
 WORKDIR /app
 

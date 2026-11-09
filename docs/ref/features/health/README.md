@@ -46,28 +46,28 @@
 
 | 編號 | AUDIT | Issue | 問題 | 驗證 |
 | --- | --- | --- | --- | --- |
-| HC-MARKETING-01 | [MKT-02](../../system/AUDIT.md#mkt-02) | #409 | 沒有 `marketing.broadcast` 的人，建立帶排程時間的群發，到期照樣送出 | 本機實測 |
-| HC-MARKETING-02 | [MKT-03](../../system/AUDIT.md#mkt-03) | #409 | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 本機實測（發出 3 張） |
+| HC-MARKETING-01 | MKT-02（已修正並從 AUDIT 移除） | #409，已修正（change `require-broadcast-send-permissions`） | 沒有 `marketing.broadcast` 的人，建立帶排程時間的群發，到期照樣送出 | 本機實測 |
+| HC-MARKETING-02 | MKT-03（已修正並從 AUDIT 移除） | #409，已修正（change `require-broadcast-send-permissions`） | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 本機實測（發出 3 張） |
 | HC-MARKETING-03 | MKT-04（已修正並從 AUDIT 移除） | #409，已修正（#430） | 群發不套用渠道可見範圍，分店帳號可對看不到的渠道群發 | 本機實測；修正（#430，change `extend-channel-visibility-to-contacts-and-marketing`）以 feature 測試驗證 |
 | HC-MARKETING-04 | [CHAN-02](../../system/AUDIT.md#chan-02) | #415 | WebChat 群發與批次發券顯示成功，顧客實際收不到 | 本機實測 |
-| HC-CHANNELS-01 | [RBAC-07](../../system/AUDIT.md#rbac-07) | #408 | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
-| HC-MEMBERS-01 | [RBAC-08](../../system/AUDIT.md#rbac-08) | #413 | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式 |
-| HC-GOVERNANCE-01 | [AUD-03](../../system/AUDIT.md#aud-03) | #414 | 永久刪除成員後，他的稽核紀錄全部變成沒有操作者（`onDelete: SetNull`） | 本機實測 |
-| HC-PLATFORM-TENANTS-01 | [AUTH-11](../../system/AUDIT.md#auth-11) | #410 | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
+| HC-CHANNELS-01 | RBAC-07（已修正並從 AUDIT 移除） | #408，已修正（change `scope-single-channel-routes-408`） | 單筆渠道的讀取、修改、停用、刪除、換權杖都不檢查渠道可見範圍 | 本機實測 |
+| HC-MEMBERS-01 | RBAC-08（已修正並從 AUDIT 移除） | #413，已修正 | 主管可以把管理員降級；改角色沒有最後一位管理員保護 | 降級實測；無法復原只讀程式。修正（#413，change `guard-agent-target-rank-last-admin`）：改角色、重設密碼、停用、刪除都比對對方權限（同修 RBAC-09），改角色套用最後一位管理員保護，管理員依 `role.manage` 判斷。feature 測試涵蓋 |
+| HC-GOVERNANCE-01 | [AUD-03](../../system/AUDIT.md#aud-03)（部分修正） | #414，部分修正（change `preserve-audit-actor-on-agent-purge`、`keep-completion-audit-for-purged-requester`） | 永久刪除成員後，他的稽核紀錄全部變成沒有操作者（`onDelete: SetNull`） | 本機實測。修正：刪除前把名稱與 email 存進稽核與匯出、刪除請求的快照欄位，`GET /tenant/audit-logs` 回 `actorSnapshot`；排隊中的請求完成時，`data.erasure.complete` 稽核記下快照、不送通知；feature 測試涵蓋。未修：依 `actorId` 篩選查不到已刪除成員的紀錄 |
+| HC-PLATFORM-TENANTS-01 | AUTH-11（已修正並從 AUDIT 移除） | #410，已修正（change `stop-disabled-tenant-activity-410`） | 停用的租戶仍收得到 WebChat 訊息，違反主規格 | 本機實測 |
 | HC-PLATFORM-TRIALS-01 | [TRIAL-05](../../system/AUDIT.md#trial-05) | 已修正（本 PR） | 同一 email 待驗證時再申請一次，會覆寫密碼，申請人點信後站台以他人密碼開通 | 本機實測；UAT 的 `trial.enabled` 為 true，正式環境可被利用。修正（#407，change `trial-set-password-after-verify`）：申請不收密碼，點驗證連結後在驗證頁設定密碼才開通；待驗證再申請不改資料、走重寄節流（同修 TRIAL-06）。feature 測試涵蓋搶先申請與覆寫 |
-| HC-PLATFORM-PLANS-01 | [PLAN-14](../../system/AUDIT.md#plan-14) | #411 | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容相同（2026-10-30 平台 API 唯讀確認） |
-| HC-LINE-01 | [CASE-03](../../system/AUDIT.md#case-03) | #416 | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗 |
-| HC-KNOWLEDGE-01 | [KB-01](../../system/AUDIT.md#kb-01) | #419 | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
-| HC-KNOWLEDGE-02 | [KB-02](../../system/AUDIT.md#kb-02) | #420 | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測 |
-| HC-KNOWLEDGE-03 | [KB-03](../../system/AUDIT.md#kb-03) | #421 | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測 |
-| HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | #418 | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測 |
+| HC-PLATFORM-PLANS-01 | PLAN-14（已修正並從 AUDIT 移除） | #411，已修正（change `enable-channels-on-trial-light-411`） | seed 的試用、輕量版方案不含 `channels` 功能，管理員看不到也建不了渠道 | 本機實測；UAT 方案內容相同（2026-10-30 平台 API 唯讀確認） |
+| HC-LINE-01 | CASE-03（已修正並從 AUDIT 移除） | #416，已修正（change `fix-csat-line-flex-416`） | LINE 滿意度問卷送出空白文字（沒有 `flex` 分支），失敗沒人知道，也不重寄 | 函式實測；LINE 是否拒收待真機驗。修正：LINE 外掛補回 `flex` 分支，不認得的 `contentType` 回失敗並帶原因；問卷送不出時問卷卡片顯示「沒有送出」、工單時間軸寫 `csat_send_failed`，不自動重寄。unit 測試涵蓋，真機待驗 |
+| HC-KNOWLEDGE-01 | KB-01（已修正並從 AUDIT 移除） | #419，已修正（change `fix-kb-clarify-handoff-419`） | 追問次數用完時回「已為您轉接」，實際沒有轉接 | 假 LLM 實測，未經 workers 與真實渠道 |
+| HC-KNOWLEDGE-02 | KB-02（已修正並從 AUDIT 移除） | #420，已修正（change `fix-kb-model-guard-420`） | 型號守門不分大小寫，`Wi-Fi`、`e-mail` 被當成查不到的型號 | 假 LLM 實測；修正以 unit 測試驗證，未經真實渠道 |
+| HC-KNOWLEDGE-03 | KB-03（已修正並從 AUDIT 移除） | #421，已修正（change `fix-kb-csv-encoding-421`） | 沒有 BOM 的 UTF-8 CSV 匯入後中文變亂碼，英文表頭時還會直接發布 | 本機實測。修正：CSV 先以 UTF-8（去 BOM）解、失敗試 Big5，都解不出或含 U+FFFD 時該檔不寫入並顯示中文原因；問答仍直接發布（使用者決定）。unit 測試涵蓋 |
+| HC-AUTOMATION-01 | [AUTO-06](../../system/AUDIT.md#auto-06) | #418，已修正（change `fix-automation-numeric-text-conditions`） | 規則編輯器把純數字條件值存成數字，文字欄位條件永遠不成立 | 本機實測；修正以 unit 測試驗證 |
 | HC-ANALYTICS-01 | 未收錄 | — | 訊息趨勢的日期全部是 0（報表與 CLI） | 本機與 UAT 實測；main 的 `093b7e75` 已修正 |
-| HC-PORTAL-01 | [PORTAL-03](../../system/AUDIT.md#portal-03) | #424 | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測；main 仍存在 |
-| HC-SETTINGS-01 | [HOURS-01](../../system/AUDIT.md#hours-01) | #425 | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測 |
+| HC-PORTAL-01 | PORTAL-03（已修正並從 AUDIT 移除） | #424，已修正（change `fix-portal-edit-keeps-content`） | 編輯草稿活動不帶出原選項，只改標題就清掉選項與正確答案 | 本機與 UAT 實測。修正：編輯對話框以 `GET /portal/activities/:id` 帶入完整活動，載入完成前與失敗時不能儲存；後端拒絕投票、競猜的空選項與表單的空欄位。feature 與 component 測試涵蓋，UAT 尚未重測 |
+| HC-SETTINGS-01 | HOURS-01（已修正並從 AUDIT 移除） | #425，已修正（#337 第九批） | 營業時間設定為 `{}` 的租戶，按「啟用」整頁崩潰 | 本機實測；修正（change `settings-input-validation-and-credential-audit`）以 feature 測試驗證 |
 | HC-PLATFORM-SETTINGS-02 | [RLS-10](../../system/AUDIT.md#rls-10) | #412 | `rls_roles_and_grants` migration 把整個 schema 授權給 `app_tenant`：租戶連線能讀平台帳號的密碼雜湊、改價目表與其他租戶的平台設定。要先有注入點才能利用，但 RLS 少了一道防線 | 本機實測（交易內，已 ROLLBACK） |
-| HC-INBOX-01 | [CONV-04](../../system/AUDIT.md#conv-04) | #422 | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 本機與 UAT 實測 |
-| HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | #417 | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值 |
-| HC-ANALYTICS-04 | [ANA-03](../../system/AUDIT.md#ana-03) | #423 | 匯出 CSV 沒有跳脫，顧客暱稱含逗號會錯位、以 `=` 開頭會被 Excel 當公式 | 本機實測 |
+| HC-INBOX-01 | CONV-04（已修正並從 AUDIT 移除） | #422，已修正（change `fix-inbox-conversation-pagination`） | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 本機與 UAT 實測。修正：列表可載入更多，未讀、我的與搜尋改由後端執行；unit 與 feature 測試涵蓋 |
+| HC-ANALYTICS-02 | [CASE-04](../../system/AUDIT.md#case-04) | #417，已修正（change `fix-case-resolved-at-417`；直接關閉依使用者決定不算已解決） | 直接關閉的工單不寫 `resolvedAt`、重開保留舊值，已解決數與 SLA 達成率失真 | 本機實測；UAT 3 張已關閉工單有 2 張缺值。修正：重開清除 `resolvedAt`，API 與 workers 共用 `caseTransitionTimestamps()`；既有資料不補值；unit 與 feature 測試涵蓋 |
+| HC-ANALYTICS-04 | ANA-03（已修正並從 AUDIT 移除） | #423，已修正（change `fix-csv-export-escaping`） | 匯出 CSV 沒有跳脫，顧客暱稱含逗號會錯位、以 `=` 開頭會被 Excel 當公式 | 本機實測。修正：報表、優惠券序號明細、資料匯出三處 CSV 共用 `@open333crm/shared` 的 `csvCell()`／`csvRow()`；unit 測試涵蓋，UAT 尚未重測 |
 
 Issue 欄的 #408～#425 是 2026-10-30 依「同根因合成一張」開的單；TRIAL-05 的重現步驟可直接用來攻擊正式環境，當時暫不開公開 issue；2026-11-02 已修正（#407，change `trial-set-password-after-verify`），部署到正式環境之前仍可被利用。
 

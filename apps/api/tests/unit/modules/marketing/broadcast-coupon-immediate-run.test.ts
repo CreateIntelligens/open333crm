@@ -23,6 +23,8 @@ function setup(status: string, updated = 1) {
       findFirst: async () => ({ id: B, status, couponId: 'c1' }),
       updateMany: async () => ({ count: updated }),
     },
+    // 排入發送前確認渠道能主動推送（change reject-webchat-push-415）
+    channel: { findFirst: async () => ({ channelType: 'LINE' }) },
   };
   const prisma = {
     async $transaction(cb: (t: typeof tx) => Promise<unknown>) {

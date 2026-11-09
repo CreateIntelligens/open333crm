@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeAll, beforeEach, test, vi } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const calls = vi.hoisted(() => ({ kb: [] as string[], agent: [] as string[], enqueued: 0 }));
 
@@ -39,9 +40,12 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({ deliverToC
 
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
 
-const conversation = { id: 'conv-1', status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null as string | null };
+// 真實的 findFirst 回整列，含 updatedAt；轉接後推 conversation.updated 會讀它
+const conversation = { id: 'conv-1', status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null as string | null, updatedAt: new Date() };
 
 const prisma = {
+
+  ...disabledAiPrivacy,
   conversation: {
     findFirst: async ({ where }: { where: { status?: string } }) =>
       where.status && where.status !== conversation.status

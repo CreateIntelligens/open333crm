@@ -30,8 +30,8 @@ description: >
 | 1 | 建立活動 | `/dashboard/marketing/campaigns`「新增活動」；日期 `type=date` 送 `YYYY-MM-DD` | `POST /marketing/campaigns` → `campaign.service.ts` `createCampaign` | 無、無稽核 | `marketing.manage` / **不隱藏** |
 | 2 | 活動詳情與狀態 | 點卡片 → `campaigns/[campaignId]` | `PATCH /marketing/campaigns/:id {status}`；只允許 draft→active/cancelled、active→completed/cancelled | 讀取時彙總送達、回覆、開案數 | `marketing.manage` |
 | 3 | 建立分群 | `/dashboard/marketing/segments`；條件 `channelType`(LINE/FB/WEBCHAT/WHATSAPP)、`tag`、`createdAfter/Before`(date)，AND/OR | `POST /marketing/segments/preview`、`POST /marketing/segments` | 刪除是硬刪，不檢查是否被排程群發引用 | `marketing.manage` / **不隱藏** |
-| 4 | 建立群發 | `/dashboard/marketing/broadcasts`「建立廣播」：渠道、素材、活動、受眾(all/segment/tags；FB/IG 只有 all)、附券、排程 `datetime-local`→ISO | 即時預估 `POST /marketing/broadcasts/audience-preview`；建立 `POST /marketing/broadcasts` → `marketing.service.ts` `createBroadcast` | 有 `scheduledAt` 為 scheduled，排程器 `broadcast-scheduled` 每 60 秒取 10 筆。渠道選單列出所有啟用中渠道（含網站客服 WebChat，不套用成員可見範圍）；WebChat 沒有素材，只能附券建立，但 WebChat plugin 的 `sendMessage` 不推送也不寫訊息，結果顯示「已完成」顧客卻收不到 | `marketing.manage` / **不隱藏**；建立時不檢查 `marketing.broadcast`、`coupon.issue` 與渠道可見範圍，排程到期由排程器直接送出（健檢 HC-MARKETING-01、02） |
-| 5 | 立即發送/重送/取消 | 群發列 ▶ ↻ ✕ | `POST /marketing/broadcasts/:id/send`、`/cancel` | 附券：202，寫 `coupon-broadcast` 佇列，`runCouponBroadcast` 逐人保留→送出→確認；一般：請求內同步 `executeBroadcast`，素材網址換短連結，LINE 無變數 multicast 每批 499 | `marketing.broadcast` / **不隱藏** |
+| 4 | 建立群發 | `/dashboard/marketing/broadcasts`「建立廣播」：渠道、素材、活動、受眾(all/segment/tags；FB/IG 只有 all)、附券、排程 `datetime-local`→ISO | 即時預估 `POST /marketing/broadcasts/audience-preview`；建立 `POST /marketing/broadcasts` → `marketing.service.ts` `createBroadcast` | 有 `scheduledAt` 為 scheduled，排程器 `broadcast-scheduled` 每 60 秒取 10 筆。渠道選單只列啟用中、能主動推送的渠道（LINE/FB/THREADS，`activePushChannels()`）。WebChat 建立與送出回 400 `CHANNEL_PUSH_NOT_SUPPORTED`，舊的 WebChat 排程到期標 `failed` 寫原因（#415） | `marketing.manage`；帶排程另要 `marketing.broadcast`、帶券另要 `coupon.issue`（403 `details.requiredPermission` 分辨），預估帶券要 `coupon.view` / 沒權限時排程與附券欄位停用並說明。排程器送出前以 `scheduledById`（null 時建立者）當下權限重驗，不過標 `failed`＋`SCHEDULED_SENDER_*`（`broadcast-send-authority.ts`） |
+| 5 | 立即發送/重送/取消 | 群發列 ▶ ↻ ✕ | `POST /marketing/broadcasts/:id/send`、`/cancel` | 附券：202，寫 `coupon-broadcast` 佇列並把 `scheduledById` 設為按下的人，`runCouponBroadcast` 逐人保留→送出→確認；一般：請求內同步 `executeBroadcast`，素材網址換短連結，LINE 無變數 multicast 每批 499 | `marketing.broadcast`（附券另要 `coupon.issue`）/ **不隱藏** |
 | 6 | 附券結果 | 群發列 👁 | `GET /marketing/broadcasts/:id`、`/recipients?status=failed\|skipped` | — | `marketing.view` |
 
 ### 後台：素材
@@ -52,7 +52,7 @@ description: >
 | 13 | 列表與狀態操作 | `/dashboard/marketing/coupons`（`?q&status&page`，status `ACTIVE\|PAUSED\|DRAFT\|ENDED`）；「⋯」選單 | `POST /coupons/:id/{pause,resume,end,duplicate}`、`DELETE /coupons/:id`（只限草稿）→ `coupon-lifecycle.service.ts` `changeStatus` | `coupon.manage` / 停用並提示「需主管權限」 |
 | 14 | 建立、存草稿、發布 | `/coupons/new`、`/coupons/[id]/edit` | `POST/PATCH /coupons`、`POST /coupons/:id/publish`；共用碼檢查 `GET /coupons/shared-code/check`；序號 `POST /coupons/:id/codes/preview`、`/codes` | `coupon.manage` |
 | 15 | 詳情、序號明細、匯出 | `/coupons/[id]`（`?tab=codes\|settings\|claim-links`） | `GET /coupons/:id/stats`、`/instances`、`/instances/export`（大量時 202 背景產生＋通知；不帶畫面篩選，一律匯出全部；狀態與發放來源是英文代碼、時間是 UTC）。狀態篩選「已領取」= `CLAIMED`＋`OPENED`，所以沒有獨立的 OPENED 選項 | `coupon.view` |
-| 16 | 批次發送 | 詳情頁「發送給…」，對象 contacts/tags/segment | `POST /coupons/:id/batch-issue/preview`、`/batch-issue`（202，`coupon-broadcast` 佇列）。UI 渠道只列 LINE/FB/THREADS（`COUPON_PUSH_CHANNEL_TYPES`），後端也接受 WEBCHAT | `coupon.issue` + 渠道 reply_only |
+| 16 | 批次發送 | 詳情頁「發送給…」，對象 contacts/tags/segment | `POST /coupons/:id/batch-issue/preview`、`/batch-issue`（202，`coupon-broadcast` 佇列）。UI 渠道只列 LINE/FB/THREADS（`activePushChannels()`），後端對 WEBCHAT 回 400 `CHANNEL_PUSH_NOT_SUPPORTED`，不建立廣播（#415） | `coupon.issue` + 渠道 reply_only |
 | 17 | 領券連結 | 「領券連結」分頁，渠道 LINE/FB/THREADS，期間 `datetime-local` | `POST /coupons/:id/claim-links`（回 QR data URI）、`/enable\|disable`、`/qrcode` | `coupon.manage` |
 | 18 | 對話發券 | 收件匣 ChatWindow「發券」 | `POST /coupon-issue/conversations/:id {couponId, requestKey, expectedAssigneeId}` | `coupon.issue` |
 
@@ -79,6 +79,7 @@ description: >
 - 多 LINE OA 要同一個 provider 才能跨 OA 認出同一個客人；關鍵字領券、加好友禮依 channel 分別設定。
 - 一個 Contact 被合併時，BroadcastRecipient 與 CouponInstance 會搬到主聯絡人（聯絡人領域 `mergeContacts`）；新增掛在 Contact 上的行銷資料表要一起加進合併清單。
 - UI 不放 emoji 與 ✓（使用者要求）；目前群發列的 ▶ ↻ ✕ 👁 是既有圖示按鈕，新增按鈕不要再加。
+- 群發的發送權限：建立帶排程要 `marketing.broadcast`、帶券要 `coupon.issue`；排程器到期以排定的人（`scheduledById`，舊資料看建立者）當下權限重驗，批次發券只要 `coupon.issue`。新增送出入口時要寫 `scheduledById`，否則排程器後備送出會用建立者的權限判斷。
 - 新增權限點後既有租戶的系統角色不會自動拿到，部署時要跑 `scripts/grant-new-role-permissions.mjs`。
 
 ## 跨功能牽連
@@ -93,6 +94,7 @@ description: >
 3. 建立優惠券（每種 `validityMode` 至少一次）→ 發布 → 暫停 → 恢復 → 提前結束；已發布後改鎖定欄位要 409。
 4. 建立領券連結 → 開 `/coupon/claim/[code]` → 顧客送代碼領券（本機用 WebChat）→ 開票券 → 核銷。
 5. 用 supervisor 與 agent 重走 1、3，確認 403 與按鈕停用。
+- 匯出序號明細（持有者名稱含逗號或以 `=` 開頭）：每列欄數一致、該欄以 `'` 開頭；CSV 跳脫共用 `@open333crm/shared` 的 `csvRow()`（#423），不要在模組內另寫。
 6. 真機（UAT）：LINE 關鍵字領券、FB/IG 關鍵字領券、圖文選單領券、封鎖再加入（本機收不到 LINE/FB webhook）。
 - 自動測試：`pnpm --filter @open333crm/api test -- marketing`、`-- coupon`；`pnpm --filter @open333crm/web test -- marketing`、`-- coupon`、`-- materials`；`pnpm --filter @open333crm/workers test -- coupon`；feature 測試同名過濾。
 - E2E：`apps/web/tests/e2e-uat/tenant-marketing.spec.ts`、`apps/web/tests/e2e-uat/tenant-materials-all-types.spec.ts`。
@@ -103,6 +105,6 @@ description: >
 - 「領券沒反應」：先看訊息是否被 `inbound-coupon-claim.ts` 攔截（代碼格式、渠道是否相符），再看回覆顧客的失敗原因。
 - 「素材選單少了素材」：前端要 200 筆、後端上限 100；分群下拉只拿第一頁 50 筆。
 - 「排程群發失敗：選擇『受眾分群』時必須指定一個分群」：分群在排程後被刪了（FK `ON DELETE SET NULL`，刪除不檢查引用）。
-- 「網站客服（WebChat）群發已完成，顧客卻沒收到」：WebChat plugin 的 `sendMessage` 不推送也不寫訊息（`packages/channel-plugins/src/webchat/index.ts`），附券群發與批次發券都會算成功。
+- 「網站客服（WebChat）群發已完成，顧客卻沒收到」：WebChat plugin 的 `sendMessage` 不推送也不寫訊息（`packages/channel-plugins/src/webchat/index.ts`）。#415 起群發、附券廣播與批次發券都拒絕 WebChat（清單在 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`，檢查在 `assertChannelSupportsPush()`、`claimCouponBroadcast()`）。之前建立的 WebChat 群發會在送出或到期時失敗並寫原因。
 - 「沒有權限的人看到空白列表」：行銷活動、分群、群發、素材頁的 SWR 錯誤不顯示，403 會顯示成「尚無…」。
 - 「顧客開不了票券」：租戶要啟用 email 登記；看 `/fan/coupons/session` 回的 `status`。

@@ -141,9 +141,9 @@ test.describe('@contacts 聯絡人功能', () => {
       `詳情頁應顯示聯絡人名「${visitorA.contactName}」`,
     ).toBeVisible();
 
-    // 渠道身份卡應有 WebChat 徽章（ChannelBadge 的 WEBCHAT label 是「WebChat」）
+    // 渠道身份卡應有網站聊天室徽章（ChannelBadge 的 WEBCHAT label 是「網站聊天室」）
     await expect(page.getByText('渠道身份')).toBeVisible();
-    await expect(page.getByText('WebChat').first(), '渠道身份應包含 WebChat').toBeVisible();
+    await expect(page.getByText('網站聊天室').first(), '渠道身份應包含網站聊天室').toBeVisible();
     await expect(page.getByText('沒有渠道身份')).toBeHidden();
   });
 
@@ -155,7 +155,7 @@ test.describe('@contacts 聯絡人功能', () => {
     await expect(page.getByText('尚無活動記錄')).toBeHidden();
     // 種資料時建立的 webchat 對話 → timeline 應有「新對話 · WebChat」事件
     await expect(
-      page.getByText(/新對話 · WebChat/).first(),
+      page.getByText(/新對話 · 網站聊天室/).first(),
       '時間軸應包含剛種的 WebChat 對話事件',
     ).toBeVisible({ timeout: 15_000 });
   });
@@ -278,11 +278,11 @@ test.describe('@contacts 聯絡人功能', () => {
     await expect(page.getByRole('heading', { name: visitorA.contactName })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText('WebChat', { exact: true })).toHaveCount(1, { timeout: 15_000 });
+    await expect(page.getByText('網站聊天室', { exact: true })).toHaveCount(1, { timeout: 15_000 });
 
     // 次要方詳情頁仍有自己的渠道身份
     await gotoContactDetail(page, visitorB.contactId);
     await expect(page.getByText('沒有渠道身份')).toBeHidden();
-    await expect(page.getByText('WebChat', { exact: true })).toHaveCount(1, { timeout: 15_000 });
+    await expect(page.getByText('網站聊天室', { exact: true })).toHaveCount(1, { timeout: 15_000 });
   });
 });

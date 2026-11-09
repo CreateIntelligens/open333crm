@@ -55,17 +55,23 @@
 
 ### Requirement: 推播的房間由系統決定
 
-交易內登記推播時，呼叫端 MUST 只指定推播名稱與內容；給單一客服人員的推播，再指定該客服人員的 ID。呼叫端 MUST NOT 指定房間名稱。系統 MUST 依推播的種類決定房間：
+交易內登記推播時，呼叫端 MUST 只指定推播名稱與內容；給單一客服人員的推播，再指定該客服人員的 ID；渠道推播，再指定渠道 ID 與（有的話）對話 ID。呼叫端 MUST NOT 指定房間名稱。系統 MUST 依推播的種類決定房間：
 
-- 全租戶推播：送到交易綁定租戶的房間 `tenant:<tenantId>`。
+- 全租戶推播：送到交易綁定租戶的房間 `tenant:<tenantId>`。內容不帶渠道的訊息或對話資料。
+- 渠道推播（`message.new`、`conversation.updated`、`conversation.created`）：送到 `tenant:<tenantId>:channel:<channelId>` 與 `tenant:<tenantId>:channels:all`，有對話 ID 時也送到 `conversation:<conversationId>`；MUST NOT 送到 `tenant:<tenantId>`。
 - 給客服人員的推播：送到帶交易綁定租戶 ID 的成員房間 `tenant:<tenantId>:agent:<agentId>`。
 
-兩種房間的租戶 ID 都由交易綁定的租戶組成，所以推播不會送到別的租戶的連線。
+各種房間的租戶 ID 都由交易綁定的租戶組成，所以推播不會送到別的租戶的連線。
 
 #### Scenario: 全租戶推播
 
 - **WHEN** 綁定租戶 A 的交易內登記推播 `case.updated`，之後交易 commit
 - **THEN** 系統 MUST 把該推播送到 `tenant:<A 的 ID>`，MUST NOT 送到其他房間
+
+#### Scenario: 渠道推播
+
+- **WHEN** 綁定租戶 A 的交易內登記渠道 C 的推播 `message.new`，之後交易 commit
+- **THEN** 系統 MUST 把該推播送到 `tenant:<A 的 ID>:channel:<C 的 ID>` 與 `tenant:<A 的 ID>:channels:all`，MUST NOT 送到 `tenant:<A 的 ID>`
 
 #### Scenario: 給客服人員的推播
 
@@ -205,12 +211,17 @@ repo MUST 提供一個共用函式，執行一次條件更新，並回報是否�
 
 ### Requirement: service 直接使用 Redis 與 LLM 的數量不得增加
 
-「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算兩種寫法在 service 檔中出現的次數，並與同一個基準檔比較：引用 Redis client（`@open333crm/core` 的 `redis` 或整個模組、`ioredis`），以及引用 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 之外的檔案）。腳本 MUST 解析 TypeScript 語法計數：靜態 import、re-export、動態 `import()` 與 `require()` 都 MUST 計入，與註解、空白、換行的寫法無關。只引用型別的 import、註解與字串裡的文字 MUST NOT 計入，flow 檔與 route 檔 MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
+「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算兩種寫法在 service 檔中出現的次數，並與同一個基準檔比較：自己取得 Redis 連線的引用，以及引用 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 之外的檔案）。自己取得 Redis 連線的引用包括 `ioredis`、API 的共用連線模組，以及 `@open333crm/core` 匯出的 Redis 連線、建立連線的函式或整個模組。腳本 MUST 解析 TypeScript 語法計數：靜態 import、re-export、動態 `import()` 與 `require()` 都 MUST 計入，與註解、空白、換行的寫法無關。只引用型別的 import、註解與字串裡的文字 MUST NOT 計入，flow 檔與 route 檔 MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
 
 #### Scenario: service 檔新增 Redis client 的 import
 
 - **WHEN** 一個 service 檔新增 `import { redis } from '@open333crm/core'`，以 `--strict` 執行腳本
 - **THEN** 腳本 MUST 以 exit code 1 結束，輸出 MUST 包含該寫法與該檔案路徑
+
+#### Scenario: service 檔新增建立 Redis 連線的函式的 import
+
+- **WHEN** 一個 service 檔新增 `import { createRedisClient } from '@open333crm/core'`，另一個 service 檔新增 `import { createRedisClient as mk } from '@open333crm/core'`，以 `--strict` 執行腳本
+- **THEN** 腳本 MUST 以 exit code 1 結束，輸出 MUST 包含這兩個檔案路徑
 
 #### Scenario: service 檔新增 LLM 入口的 import
 

@@ -3,6 +3,7 @@
  * 後端也會擋（fail-closed），前端先擋是為了讓使用者在送出前就知道缺什麼。
  */
 
+import { channelDisplayName } from '@open333crm/shared';
 import { bodyHasCouponUrl, COUPON_URL_NEEDS_COUPON_MESSAGE } from './coupon-url';
 
 /** 渠道列舉（LINE / FB）對應素材的 channelType（line / fb）；其他渠道沒有素材可廣播 */
@@ -17,17 +18,9 @@ export function materialChannelKey(channelType: string | undefined | null): 'lin
   }
 }
 
-/** 渠道類型的顯示名稱：畫面不顯示 THREADS、FB 等內部代碼（change add-fb-ig-keyword-coupon） */
-const CHANNEL_TYPE_LABELS: Record<string, string> = {
-  LINE: 'LINE',
-  FB: 'Facebook',
-  THREADS: 'Instagram',
-  WEBCHAT: '網站客服',
-};
-
+/** 渠道類型的顯示名稱：畫面不顯示 THREADS、FB 等內部代碼（change add-fb-ig-keyword-coupon）；對照表在 @open333crm/shared */
 export function channelTypeLabel(channelType: string | undefined | null): string {
-  const key = (channelType ?? '').toUpperCase();
-  return CHANNEL_TYPE_LABELS[key] ?? (channelType ?? '');
+  return channelDisplayName(channelType);
 }
 
 /** 渠道選單的選項文字，例如「IG（Instagram）」 */

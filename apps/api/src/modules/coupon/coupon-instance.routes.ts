@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { EXPORT_SYNC_LIMIT, readExportFile } from './coupon-export.service.js';
-import { getBindingStore, type BindingStore } from '../identity-binding/binding-code.js';
+import type { BindingStore } from '../identity-binding/binding-code.js';
 import { exportInstancesFlow } from './coupon-export.flow.js';
 import { getCouponStatsFlow, listInstancesFlow } from './coupon-stats.flow.js';
 
@@ -43,7 +43,7 @@ function csvDisposition(couponName: string): string {
 const NOT_FOUND = { success: false, error: { code: 'NOT_FOUND', message: '查無此券' } };
 
 export default async function couponInstanceRoutes(app: FastifyInstance, opts: CouponInstanceRoutesOptions = {}) {
-  const exportStore = () => opts.exportStore ?? getBindingStore();
+  const exportStore = () => opts.exportStore ?? app.redis;
   const syncLimit = opts.exportSyncLimit ?? EXPORT_SYNC_LIMIT;
 
   app.addHook('preHandler', app.authenticate);

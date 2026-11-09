@@ -10,11 +10,13 @@ import { randomUUID } from 'node:crypto';
 export const TENANT = 'a0000000-0000-0000-0000-000000000001';
 export const CONVERSATION = 'c0000000-0000-0000-0000-00000000000c';
 export const MESSAGE = 'b0000000-0000-0000-0000-00000000000b';
+export const CHANNEL = 'd0000000-0000-0000-0000-00000000000d';
 
 export interface HarnessState {
   conversation: {
     id: string;
     tenantId: string;
+    channelId: string;
     status: string;
     handoffReason: string | null;
     botRepliesCount: number;
@@ -31,18 +33,33 @@ export interface HarnessState {
   failClaimKind: string | null;
   /** 查這個種類的認領紀錄時丟錯，模擬呼叫 LLM 之前的預查失敗（「Claim check fails」） */
   failClaimCheckKind: string | null;
+  /** 平台設定 ai.privacy.<tenantId>：租戶開啟 AI 個資遮罩（去識別化服務真的會被呼叫） */
+  privacyEnabled: boolean;
+  /** 讀平台設定（ai.privacy.<tenantId>）時資料庫丟錯 */
+  failPrivacyRead: boolean;
+  /** 租戶的自動化規則（關鍵字讓步判斷讀它） */
+  automationRules: Array<Record<string, unknown>>;
 }
 
-export function createHarness(overrides: { botRepliesCount?: number; botConfig?: Record<string, unknown> } = {}) {
+export function createHarness(
+  overrides: {
+    botRepliesCount?: number;
+    botConfig?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+    privacyEnabled?: boolean;
+    automationRules?: Array<Record<string, unknown>>;
+  } = {},
+) {
   const state: HarnessState = {
     conversation: {
       id: CONVERSATION,
       tenantId: TENANT,
+      channelId: CHANNEL,
       status: 'BOT_HANDLED',
       handoffReason: null,
       botRepliesCount: overrides.botRepliesCount ?? 0,
       lastMessageAt: null,
-      metadata: {},
+      metadata: overrides.metadata ?? {},
     },
     botConfig: { botMode: 'llm', handoffKeywords: [], maxBotReplies: 5, ...overrides.botConfig },
     claims: [],
@@ -51,6 +68,9 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
     failSystemMessage: false,
     failClaimKind: null,
     failClaimCheckKind: null,
+    privacyEnabled: overrides.privacyEnabled ?? false,
+    failPrivacyRead: false,
+    automationRules: overrides.automationRules ?? [],
   };
 
   const claimKey = (r: { kind: string; sourceId: string; subKey?: string }) => `${r.kind}|${r.sourceId}|${r.subKey ?? ''}`;
@@ -61,7 +81,8 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
       assignedToId: null,
       unreadCount: 0,
       updatedAt: new Date(),
-      channel: { settings: { botConfig: state.botConfig } },
+      contactId: 'contact-1',
+      channel: { id: state.conversation.channelId, channelType: 'LINE', isActive: true, settings: { botConfig: state.botConfig } },
     };
   }
 
@@ -101,9 +122,12 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
         if (data.senderType === 'SYSTEM' && state.failSystemMessage) throw new Error('system message write failed');
         const row = { id: randomUUID(), senderType: data.senderType, contentType: data.contentType, content: data.content, metadata: data.metadata ?? {} };
         state.messages.push(row);
-        return { ...row, createdAt: new Date() };
+        // 寫入回覆時以 include 取對話的渠道（agent.service：推播只送給看得到該渠道的成員）
+        return { ...row, createdAt: new Date(), conversation: { channelId: CHANNEL } };
       },
       findUnique: async ({ where }: { where: { id: string } }) => state.messages.find((m) => m.id === where.id) ?? null,
+      // KB 自動回覆讀對話紀錄（loadKbHistory）：測試不依賴紀錄內容
+      findMany: async () => [],
       findFirst: async ({ where }: { where: { id: string } }) => state.messages.find((m) => m.id === where.id) ?? null,
       update: async ({ where, data }: { where: { id: string }; data: { metadata: Record<string, unknown> } }) => {
         const m = state.messages.find((x) => x.id === where.id)!;
@@ -141,7 +165,18 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
       },
       updateMany: async () => ({ count: 1 }),
     },
-    automationRule: { findMany: async () => [] },
+    automationRule: { findMany: async () => state.automationRules },
+    platformSetting: {
+      findUnique: async ({ where }: { where: { key: string } }) => {
+        if (state.failPrivacyRead) throw new Error('platform_settings read failed');
+        return state.privacyEnabled && where.key === `ai.privacy.${TENANT}` ? { value: { enabled: true } } : null;
+      },
+    },
+    // agent 回覆的執行紀錄（agent.service 的 runAgentReply）
+    agentRun: {
+      create: async ({ data }: { data: { expiresAt: Date } }) => ({ id: randomUUID(), expiresAt: data.expiresAt }),
+      updateMany: async () => ({ count: 1 }),
+    },
     material: { findMany: async () => [] },
     contact: { findFirst: async () => null },
     case: { findFirst: async () => null, count: async () => 0 },

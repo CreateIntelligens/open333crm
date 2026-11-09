@@ -4,7 +4,7 @@
  *
  * - bcrypt 在開啟交易之前執行，不佔住交易與連線。
  * - 寫入與稽核一起 commit；稽核寫入失敗時整筆 rollback（主規格 tenant-audit-log）。
- * - 稽核的 payload 只放非 PII 摘要：email、密碼都不寫入。
+ * - 稽核的 payload 只放非 PII 摘要：email、密碼都不寫入（agent.purge 只記被刪成員的名稱）。
  */
 import type { PrismaClient } from '@prisma/client';
 import { inTenant } from '../../lib/tenant-ctx.js';
@@ -14,6 +14,7 @@ import { hashPassword } from '../../shared/utils/password.js';
 import type { ChannelGrantScope } from '../../services/channel-visibility.js';
 import { listChannelsForAgent, setAgentChannels } from '../../services/channel-team-access.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { resyncChannelRooms, type SocketChannelRoomSync } from '../../events/socket-push.js';
 import {
   changeOwnPassword,
   createAgent,
@@ -28,6 +29,8 @@ import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 
 export interface AgentFlowDeps {
   prisma: PrismaClient;
+  /** 可用渠道或角色改變後重新計算該成員已連線 socket 的渠道房間（issue #427）；停用、刪除後斷開他的連線 */
+  syncSocketChannelRooms?: SocketChannelRoomSync;
 }
 
 /** 成員列表：isActive 為 false 時列出停用的成員 */
@@ -81,7 +84,10 @@ export async function changeOwnPasswordFlow(
     changeOwnPassword(scope, actor.agentId, currentPassword, newPasswordHash));
 }
 
-/** 指派角色。越權防護（ROLE_ESCALATION 403）與自我降級守門（SELF_LOCK 422）在 service */
+/**
+ * 指派角色。守門都在 service：新角色越權（ROLE_ESCALATION 403）、自我降級（SELF_LOCK 422）、
+ * 最後一位管理員（LAST_ADMIN_PROTECTED 422）、目標權限高於操作者（TARGET_OUTRANKS_ACTOR 403）
+ */
 export function updateAgentRoleFlow(
   deps: AgentFlowDeps,
   actor: RequestActor,
@@ -98,15 +104,16 @@ export function updateAgentRoleFlow(
       payload: { role: agent.role, roleId: input.roleId ?? null },
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
     return agent;
   });
 }
 
-/** 重設別人的密碼。稽核只記操作事實，不記密碼 */
+/** 重設別人的密碼。目標權限高於操作者時 service 回 403 TARGET_OUTRANKS_ACTOR。稽核只記操作事實，不記密碼 */
 export async function resetAgentPasswordFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string, newPassword: string) {
   const passwordHash = await hashPassword(newPassword);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await resetAgentPassword(scope, agentId, passwordHash);
+    await resetAgentPassword(scope, agentId, passwordHash, actor.roleId);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'agent.password.reset',
@@ -117,11 +124,14 @@ export async function resetAgentPasswordFlow(deps: AgentFlowDeps, actor: Request
   });
 }
 
-/** 停用（可再啟用、保留 email）。不可停用自己，避免自我鎖定 */
+/**
+ * 停用（可再啟用、保留 email）。不可停用自己，避免自我鎖定。
+ * commit 之後斷開該成員已連線的 socket（resyncChannelRooms 遇到停用的成員就斷線）
+ */
 export async function deactivateAgentFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
   if (actor.agentId === agentId) throw new AppError('不可停用自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await deactivateAgent(scope, agentId);
+    await deactivateAgent(scope, agentId, actor.roleId);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'agent.deactivate',
@@ -129,6 +139,7 @@ export async function deactivateAgentFlow(deps: AgentFlowDeps, actor: RequestAct
       targetId: agentId,
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
   });
 }
 
@@ -146,18 +157,24 @@ export async function reactivateAgentFlow(deps: AgentFlowDeps, actor: RequestAct
   });
 }
 
-/** 永久刪除（釋放 email、不可復原）。不可刪除自己：自我鎖定，且稽核的 actorId 會違反外鍵 */
+/**
+ * 永久刪除（釋放 email、不可復原）。不可刪除自己：自我鎖定，且稽核的 actorId 會違反外鍵。
+ * commit 之後斷開該成員已連線的 socket
+ */
 export async function purgeAgentFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
   if (actor.agentId === agentId) throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await purgeAgent(scope, agentId);
+    const { name } = await purgeAgent(scope, agentId, actor.roleId);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'agent.purge',
       targetType: 'agent',
       targetId: agentId,
+      // 記下被刪成員的名稱，刪除後 targetId 查不到是誰（issue #414）；email 留在快照欄位，不放 payload
+      payload: { name },
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
   });
 }
 
@@ -173,6 +190,7 @@ export function setAgentChannelsFlow(deps: AgentFlowDeps, actor: RequestActor, a
       payload: { count: result.count },
       ip: actor.ip,
     });
+    resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
     return result;
   });
 }

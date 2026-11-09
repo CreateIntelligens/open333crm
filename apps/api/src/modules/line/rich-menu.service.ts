@@ -2,14 +2,13 @@
  * Rich Menu 管理 service
  *
  * CRUD：status 一律 draft；published 的 menu 不能直接改 / 刪，需先 unpublish。
- * Publish 流程：建 LINE richmenu → 上傳圖 → 若 selected 則 set as default。
+ * 每個函式在呼叫端（rich-menu.flow.ts）開的租戶交易內執行，不呼叫 LINE（AGENTS.md 結構規則 2）。
+ * 發布、取消發布的 LINE 呼叫在 rich-menu.line-api.ts，由 flow 在交易外呼叫。
  */
 
-import type { PrismaClient, Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { Queue } from 'bullmq';
+import type { Prisma } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
-import { logger } from '@open333crm/core';
 import { isValidRichMenuSize } from './rich-menu.layouts.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { calculateSegmentContacts } from '../marketing/segment.service.js';
@@ -18,23 +17,6 @@ import { ALL_CHANNELS } from '../../services/channel-visibility.js';
 
 /** Rich Menu 分眾綁定的背景 queue（與 apps/workers 端消費者一致）。 */
 export const RICH_MENU_BIND_QUEUE = 'rich-menu-bind';
-
-let _bindQueue: Queue | null = null;
-function richMenuBindQueue(): Queue {
-  if (!_bindQueue) {
-    _bindQueue = new Queue(RICH_MENU_BIND_QUEUE, {
-      connection: { url: process.env.REDIS_URL! },
-      defaultJobOptions: { removeOnComplete: { age: 86_400 }, removeOnFail: { age: 604_800 } },
-    });
-  }
-  return _bindQueue;
-}
-
-export async function closeRichMenuBindQueue(): Promise<void> {
-  if (!_bindQueue) return;
-  await _bindQueue.close();
-  _bindQueue = null;
-}
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -71,7 +53,10 @@ export interface CreateRichMenuInput {
   name: string;
   chatBarText: string;
   size: { width: number; height: number };
+  /** 聊天室打開時是否展開選單（LINE 的 selected） */
   selected?: boolean;
+  /** 是否為所有好友的預設選單 */
+  isDefault?: boolean;
   areas: RichMenuArea[];
   imageUrl: string;
 }
@@ -80,7 +65,10 @@ export interface UpdateRichMenuInput {
   name?: string;
   chatBarText?: string;
   size?: { width: number; height: number };
+  /** 聊天室打開時是否展開選單（LINE 的 selected） */
   selected?: boolean;
+  /** 是否為所有好友的預設選單 */
+  isDefault?: boolean;
   areas?: RichMenuArea[];
   imageUrl?: string;
 }
@@ -149,13 +137,9 @@ function validateAreas(areas: RichMenuArea[], size: { width: number; height: num
   }
 }
 
-async function assertChannelBelongsToTenant(
-  prisma: TenantDb,
-  channelId: string,
-  tenantId: string,
-): Promise<void> {
-  const channel = await prisma.channel.findFirst({
-    where: { id: channelId, tenantId },
+async function assertChannelBelongsToTenant(ctx: TenantCtx, channelId: string): Promise<void> {
+  const channel = await ctx.tx.channel.findFirst({
+    where: { id: channelId, tenantId: ctx.tenantId },
   });
   if (!channel) {
     // 不洩露 channel 存在性，回 404
@@ -168,34 +152,26 @@ async function assertChannelBelongsToTenant(
 
 // ─── CRUD ──────────────────────────────────────────────────────────────
 
-export async function listRichMenus(
-  prisma: TenantDb,
-  tenantId: string,
-  channelId: string,
-) {
-  await assertChannelBelongsToTenant(prisma, channelId, tenantId);
-  return prisma.richMenu.findMany({
-    where: { tenantId, channelId },
+export async function listRichMenus(ctx: TenantCtx, channelId: string) {
+  await assertChannelBelongsToTenant(ctx, channelId);
+  return ctx.tx.richMenu.findMany({
+    where: { tenantId: ctx.tenantId, channelId },
     orderBy: { createdAt: 'desc' },
   });
 }
 
-export async function getRichMenu(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
-  const menu = await prisma.richMenu.findFirst({ where: { id, tenantId } });
+async function findRichMenu(db: Prisma.TransactionClient, id: string, tenantId: string) {
+  const menu = await db.richMenu.findFirst({ where: { id, tenantId } });
   if (!menu) throw new AppError(notFound('richMenu'), 'NOT_FOUND', 404);
   return menu;
 }
 
-export async function createRichMenu(
-  prisma: TenantDb,
-  tenantId: string,
-  input: CreateRichMenuInput,
-) {
-  await assertChannelBelongsToTenant(prisma, input.channelId, tenantId);
+export async function getRichMenu(ctx: TenantCtx, id: string) {
+  return findRichMenu(ctx.tx, id, ctx.tenantId);
+}
+
+export async function createRichMenu(ctx: TenantCtx, input: CreateRichMenuInput) {
+  await assertChannelBelongsToTenant(ctx, input.channelId);
   validateChatBarText(input.chatBarText);
 
   if (!isValidRichMenuSize(input.size)) {
@@ -211,14 +187,15 @@ export async function createRichMenu(
     throw new AppError('請提供圖片網址', 'INVALID_INPUT', 400);
   }
 
-  return prisma.richMenu.create({
+  return ctx.tx.richMenu.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       channelId: input.channelId,
       name: input.name,
       chatBarText: input.chatBarText,
       size: input.size as unknown as Prisma.InputJsonValue,
-      selected: input.selected ?? false,
+      selected: input.selected ?? true,
+      isDefault: input.isDefault ?? false,
       areas: input.areas as unknown as Prisma.InputJsonValue,
       imageUrl: input.imageUrl,
       status: 'draft',
@@ -226,13 +203,8 @@ export async function createRichMenu(
   });
 }
 
-export async function updateRichMenu(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-  input: UpdateRichMenuInput,
-) {
-  const existing = await getRichMenu(prisma, id, tenantId);
+export async function updateRichMenu(ctx: TenantCtx, id: string, input: UpdateRichMenuInput) {
+  const existing = await getRichMenu(ctx, id);
 
   // 守衛：已發布的 menu 需先 unpublish 才能修改
   if (existing.status !== 'draft') {
@@ -260,18 +232,15 @@ export async function updateRichMenu(
   if (input.chatBarText !== undefined) data.chatBarText = input.chatBarText;
   if (input.size !== undefined) data.size = input.size as unknown as Prisma.InputJsonValue;
   if (input.selected !== undefined) data.selected = input.selected;
+  if (input.isDefault !== undefined) data.isDefault = input.isDefault;
   if (input.areas !== undefined) data.areas = input.areas as unknown as Prisma.InputJsonValue;
   if (input.imageUrl !== undefined) data.imageUrl = input.imageUrl;
 
-  return prisma.richMenu.update({ where: { id }, data });
+  return ctx.tx.richMenu.update({ where: { id }, data });
 }
 
-export async function deleteRichMenu(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
-  const existing = await getRichMenu(prisma, id, tenantId);
+export async function deleteRichMenu(ctx: TenantCtx, id: string) {
+  const existing = await getRichMenu(ctx, id);
   if (existing.status !== 'draft') {
     throw new AppError(
       '已發布的 Rich Menu 不能直接刪除，請先取消發布',
@@ -279,24 +248,21 @@ export async function deleteRichMenu(
       400,
     );
   }
-  await prisma.richMenu.delete({ where: { id } });
+  await ctx.tx.richMenu.delete({ where: { id } });
   return { deleted: true };
 }
 
-export async function duplicateRichMenu(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
-  const source = await getRichMenu(prisma, id, tenantId);
-  return prisma.richMenu.create({
+export async function duplicateRichMenu(ctx: TenantCtx, id: string) {
+  const source = await getRichMenu(ctx, id);
+  return ctx.tx.richMenu.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       channelId: source.channelId,
       name: `${source.name}（副本）`,
       chatBarText: source.chatBarText,
       size: source.size as unknown as Prisma.InputJsonValue,
       selected: source.selected,
+      isDefault: source.isDefault,
       areas: source.areas as unknown as Prisma.InputJsonValue,
       imageUrl: source.imageUrl,
       status: 'draft',
@@ -306,12 +272,11 @@ export async function duplicateRichMenu(
 
 // ─── Publish / Unpublish ───────────────────────────────────────────────
 
-const LINE_API_BASE = 'https://api.line.me';
-const LINE_DATA_API_BASE = 'https://api-data.line.me';
-const MAX_IMAGE_BYTES = 1024 * 1024; // 1 MB
+/** 停在 publishing 超過這個時間，視為發布中斷，可以重新發布（design D3） */
+export const STALE_PUBLISHING_MS = 5 * 60_000;
 
 async function getLineAccessToken(
-  prisma: TenantDb,
+  prisma: Prisma.TransactionClient,
   channelId: string,
   tenantId: string,
 ): Promise<string> {
@@ -333,251 +298,130 @@ async function getLineAccessToken(
   return accessToken;
 }
 
-interface FetchedImage {
-  buffer: Buffer;
-  contentType: 'image/jpeg' | 'image/png';
+/**
+ * 同一個渠道的發布依序認領：檢查「渠道沒有其他發布中的選單」與認領在同一把鎖內（design D1）。
+ * 交易級 advisory lock，交易結束自動釋放，所以呼叫 LINE 期間不佔鎖。
+ */
+async function lockChannelPublishing(tx: Prisma.TransactionClient, channelId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`rich-menu-publish:${channelId}`}, 0))`;
 }
 
-async function fetchAndValidateImage(
-  imageUrl: string,
-  size: { width: number; height: number },
-): Promise<FetchedImage> {
-  let response: Response;
-  try {
-    response = await fetch(imageUrl);
-  } catch {
-    throw new AppError(`無法取得背景圖：${imageUrl}`, 'IMAGE_FETCH_FAILED', 400);
-  }
-  if (!response.ok) {
-    throw new AppError(
-      `背景圖回應 ${response.status}：${imageUrl}`,
-      'IMAGE_FETCH_FAILED',
-      400,
-    );
-  }
-
-  const contentTypeHeader = (response.headers.get('content-type') ?? '').toLowerCase();
-  let contentType: 'image/jpeg' | 'image/png';
-  if (contentTypeHeader.includes('image/jpeg') || contentTypeHeader.includes('image/jpg')) {
-    contentType = 'image/jpeg';
-  } else if (contentTypeHeader.includes('image/png')) {
-    contentType = 'image/png';
-  } else {
-    throw new AppError(
-      `背景圖格式必須是 JPEG 或 PNG（實際：${contentTypeHeader || 'unknown'}）`,
-      'IMAGE_INVALID_TYPE',
-      400,
-    );
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  if (buffer.byteLength > MAX_IMAGE_BYTES) {
-    throw new AppError(
-      `背景圖大小 ${(buffer.byteLength / 1024).toFixed(0)}KB 超過 LINE 限制 1MB`,
-      'IMAGE_TOO_LARGE',
-      400,
-    );
-  }
-  // 註：尺寸（寬高 pixel）由 LINE API 拒絕回報，本地不解析 PNG/JPEG header；
-  // size 欄位已在 create/update 時驗過版型合法，這裡只擋大小與 MIME。
-  void size;
-
-  return { buffer, contentType };
+export interface PublishClaim {
+  menu: Awaited<ReturnType<typeof findRichMenu>>;
+  accessToken: string;
+  /**
+   * 認領時寫入的 updatedAt，當作這次認領的憑證。完成與放掉都以它為條件：
+   * 中斷超過 5 分鐘的請求恢復後，不會改到另一個請求重新認領的選單。
+   */
+  claimedAt: Date;
 }
 
 /**
- * 把現行所有 selected=true 的 published rich menu 取消 default。
- * LINE 端的「全體 default richmenu」只能有一個；新 publish selected=true
- * 時要先讓出位置，避免 set default 時與舊的衝突。
+ * 交易 1：把選單認領成 publishing。draft、error，或停在 publishing 超過 5 分鐘的選單可以認領。
+ * 已發布回 400 ALREADY_PUBLISHED；選單或同渠道其他選單發布中回 409 PUBLISH_IN_PROGRESS。
  */
-async function unsetCurrentDefault(
-  prisma: TenantDb,
-  tenantId: string,
-  channelId: string,
-  accessToken: string,
-  excludeId: string,
-): Promise<void> {
-  const others = await prisma.richMenu.findMany({
-    where: {
-      tenantId,
-      channelId,
-      status: 'published',
-      selected: true,
-      NOT: { id: excludeId },
-      lineRichMenuId: { not: null },
-    },
-  });
-  if (others.length === 0) return;
-
-  // LINE 沒有 per-richmenu 取消 default 的 API；直接呼叫 DELETE all default
-  try {
-    await fetch(`${LINE_API_BASE}/v2/bot/user/all/richmenu`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-  } catch (err) {
-    logger.warn(`[RichMenu] unset default failed: ${(err as Error).message}`);
-  }
-
-  await prisma.richMenu.updateMany({
-    where: { id: { in: others.map((o) => o.id) } },
-    data: { selected: false },
-  });
-}
-
-export async function publishRichMenu(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
-  const menu = await getRichMenu(prisma, id, tenantId);
+export async function claimRichMenuForPublish(ctx: TenantCtx, id: string): Promise<PublishClaim> {
+  const menu = await getRichMenu(ctx, id);
+  await lockChannelPublishing(ctx.tx, menu.channelId);
   if (menu.status === 'published') {
     throw new AppError('此 Rich Menu 已發布', 'ALREADY_PUBLISHED', 400);
   }
 
-  const accessToken = await getLineAccessToken(prisma, menu.channelId, tenantId);
-  const size = menu.size as unknown as { width: number; height: number };
-  const image = await fetchAndValidateImage(menu.imageUrl, size);
-
-  // 1. 建立 richmenu
-  const createResp = await fetch(`${LINE_API_BASE}/v2/bot/richmenu`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      size,
-      selected: menu.selected,
-      name: menu.name,
-      chatBarText: menu.chatBarText,
-      areas: menu.areas,
-    }),
-  });
-  if (!createResp.ok) {
-    const body = await createResp.text();
-    await prisma.richMenu.update({ where: { id }, data: { status: 'error' } });
-    throw new AppError(
-      'LINE 無法建立圖文選單，請確認版型與渠道設定後重試',
-      'LINE_API_ERROR',
-      400,
-      // 管理員主動發布：LINE 原文放 details 供排查，不併進 message
-      { upstream: body, status: createResp.status },
-    );
-  }
-  const { richMenuId } = (await createResp.json()) as { richMenuId: string };
-
-  // 2. 上傳背景圖
-  const uploadResp = await fetch(
-    `${LINE_DATA_API_BASE}/v2/bot/richmenu/${richMenuId}/content`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': image.contentType,
-      },
-      body: image.buffer,
-    },
-  );
-  if (!uploadResp.ok) {
-    const body = await uploadResp.text();
-    // 回滾：刪掉剛建的 richmenu，避免殘留
-    await fetch(`${LINE_API_BASE}/v2/bot/richmenu/${richMenuId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).catch(() => {});
-    await prisma.richMenu.update({ where: { id }, data: { status: 'error' } });
-    throw new AppError(
-      'LINE 無法接受此背景圖，請確認圖片尺寸與格式後重試',
-      'LINE_API_ERROR',
-      400,
-      { upstream: body, status: uploadResp.status },
-    );
-  }
-
-  // 3. 設為 default（若 selected）
-  if (menu.selected) {
-    await unsetCurrentDefault(prisma, tenantId, menu.channelId, accessToken, id);
-
-    const defaultResp = await fetch(
-      `${LINE_API_BASE}/v2/bot/user/all/richmenu/${richMenuId}`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
-    );
-    if (!defaultResp.ok) {
-      const body = await defaultResp.text();
-      logger.warn(`[RichMenu] set default failed: ${defaultResp.status} ${body}`);
-      // 不算致命 — richmenu 已建好，使用者可從 LINE OA 後台手動設 default
-    }
-  }
-
-  const updated = await prisma.richMenu.update({
-    where: { id },
-    data: {
-      status: 'published',
-      lineRichMenuId: richMenuId,
-      publishedAt: new Date(),
+  const claimedAt = new Date();
+  const staleBefore = new Date(claimedAt.getTime() - STALE_PUBLISHING_MS);
+  const busy = await ctx.tx.richMenu.count({
+    where: {
+      tenantId: ctx.tenantId,
+      channelId: menu.channelId,
+      status: 'publishing',
+      updatedAt: { gte: staleBefore },
+      NOT: { id },
     },
   });
-  logger.info(`[RichMenu] published id=${id} lineRichMenuId=${richMenuId}`);
-  return updated;
+  const { count } = busy
+    ? { count: 0 }
+    : await ctx.tx.richMenu.updateMany({
+        where: {
+          id,
+          tenantId: ctx.tenantId,
+          OR: [{ status: { in: ['draft', 'error'] } }, { status: 'publishing', updatedAt: { lt: staleBefore } }],
+        },
+        data: { status: 'publishing', updatedAt: claimedAt },
+      });
+  if (count === 0) {
+    throw new AppError('這個 LINE 渠道有圖文選單正在發布，請稍後再試', 'PUBLISH_IN_PROGRESS', 409);
+  }
+
+  const accessToken = await getLineAccessToken(ctx.tx, menu.channelId, ctx.tenantId);
+  return { menu, accessToken, claimedAt };
 }
 
-export async function unpublishRichMenu(
-  prisma: TenantDb,
+/**
+ * 交易 2：寫入發布結果。這次的認領已不在（中斷後被重新認領）時回 null，呼叫端要補償。
+ * 這時還沒設預設，先記成非預設；設預設成功後由 markRichMenuDefault 改成預設（design D4）。
+ */
+export async function completeRichMenuPublish(ctx: TenantCtx, id: string, claimedAt: Date, lineRichMenuId: string) {
+  const { count } = await ctx.tx.richMenu.updateMany({
+    where: { id, tenantId: ctx.tenantId, status: 'publishing', updatedAt: claimedAt },
+    data: { status: 'published', lineRichMenuId, publishedAt: new Date(), isDefault: false },
+  });
+  if (count === 0) return null;
+  return getRichMenu(ctx, id);
+}
+
+/**
+ * 交易 3：LINE 設預設成功後，把這個選單記成預設，同渠道其他已發布的選單不再是預設。
+ * 條件含 LINE 端的 id：期間已被取消發布或重新發布時不寫，回 null。
+ */
+export async function markRichMenuDefault(ctx: TenantCtx, id: string, lineRichMenuId: string) {
+  const { count } = await ctx.tx.richMenu.updateMany({
+    where: { id, tenantId: ctx.tenantId, status: 'published', lineRichMenuId },
+    data: { isDefault: true },
+  });
+  if (count === 0) return null;
+
+  const menu = await getRichMenu(ctx, id);
+  // 只清已發布的選單；草稿的 isDefault 是「發布時設成預設」的設定，不動
+  await ctx.tx.richMenu.updateMany({
+    where: { tenantId: ctx.tenantId, channelId: menu.channelId, status: 'published', isDefault: true, NOT: { id } },
+    data: { isDefault: false },
+  });
+  return menu;
+}
+
+/** 發布失敗時放掉這次的認領：還沒呼叫 LINE 時回到原本的狀態，之後失敗一律是 error */
+export async function releaseRichMenuPublish(
+  ctx: TenantCtx,
   id: string,
-  tenantId: string,
+  claimedAt: Date,
+  status: 'draft' | 'error',
 ) {
-  const menu = await getRichMenu(prisma, id, tenantId);
+  await ctx.tx.richMenu.updateMany({
+    where: { id, tenantId: ctx.tenantId, status: 'publishing', updatedAt: claimedAt },
+    data: { status, lineRichMenuId: null },
+  });
+}
+
+/** 取消發布的交易 1：讀選單與憑證。只有 published、error 可以取消發布 */
+export async function readRichMenuForUnpublish(ctx: TenantCtx, id: string) {
+  const menu = await getRichMenu(ctx, id);
   if (menu.status !== 'published' && menu.status !== 'error') {
     throw new AppError('此 Rich Menu 尚未發布', 'NOT_PUBLISHED', 400);
   }
+  const accessToken = await getLineAccessToken(ctx.tx, menu.channelId, ctx.tenantId);
+  return { menu, accessToken };
+}
 
-  const accessToken = await getLineAccessToken(prisma, menu.channelId, tenantId);
-
-  if (menu.lineRichMenuId) {
-    // 若是 default，先 unset default（避免 LINE 端孤兒指向）
-    if (menu.selected) {
-      await fetch(`${LINE_API_BASE}/v2/bot/user/all/richmenu`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }).catch((err) => {
-        logger.warn(`[RichMenu] unset default failed during unpublish: ${(err as Error).message}`);
-      });
-    }
-
-    const deleteResp = await fetch(
-      `${LINE_API_BASE}/v2/bot/richmenu/${menu.lineRichMenuId}`,
-      {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
-    );
-    // 404 視為已不存在，可繼續清本地狀態
-    if (!deleteResp.ok && deleteResp.status !== 404) {
-      const body = await deleteResp.text();
-      throw new AppError(
-        'LINE 無法刪除此圖文選單，請稍後重試',
-        'LINE_API_ERROR',
-        400,
-        { upstream: body, status: deleteResp.status },
-      );
-    }
-  }
-
-  const updated = await prisma.richMenu.update({
-    where: { id },
-    data: {
-      status: 'draft',
-      lineRichMenuId: null,
-      publishedAt: null,
-    },
+/**
+ * 取消發布的交易 2：寫回 draft。條件含交易 1 讀到的 LINE 端 id，另一個請求已經寫回時不重寫。
+ * isDefault 保留：草稿的 isDefault 是「發布時設成預設」的設定。
+ */
+export async function completeRichMenuUnpublish(ctx: TenantCtx, id: string, lineRichMenuId: string | null) {
+  await ctx.tx.richMenu.updateMany({
+    where: { id, tenantId: ctx.tenantId, status: { in: ['published', 'error'] }, lineRichMenuId },
+    data: { status: 'draft', lineRichMenuId: null, publishedAt: null },
   });
-  logger.info(`[RichMenu] unpublished id=${id}`);
-  return updated;
+  return getRichMenu(ctx, id);
 }
 
 // ─── 分眾綁定 ───────────────────────────────────────────────────────────
@@ -587,7 +431,7 @@ export async function unpublishRichMenu(
  * segment → calculateSegmentContacts；tag → 直接篩 contactTag。再經 ChannelIdentity 取 LINE uid。
  */
 async function resolveAudienceLineUids(
-  prisma: TenantDb,
+  prisma: Prisma.TransactionClient,
   tenantId: string,
   channelId: string,
   audience: { segmentId?: string; tagId?: string },
@@ -624,52 +468,46 @@ async function resolveAudienceLineUids(
   return [...new Set(identities.map((i) => i.uid))];
 }
 
-/**
- * 把已發布的 Rich Menu 綁定給某受眾（不同受眾看不同 menu）。
- * 解析出 uid → 入背景 queue（bulk link 每批 500 + rate limit，不阻塞 API）。回 { queued }。
- */
-export async function bindRichMenuToAudience(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-  audience: { segmentId?: string; tagId?: string },
-): Promise<{ queued: number }> {
-  const menu = await getRichMenu(prisma, id, tenantId);
-  if (menu.status !== 'published' || !menu.lineRichMenuId) {
-    throw new AppError('請先發布此 Rich Menu 才能綁定受眾', 'NOT_PUBLISHED', 400);
-  }
-  const uids = await resolveAudienceLineUids(prisma, tenantId, menu.channelId, audience);
-  if (uids.length === 0) return { queued: 0 };
+export type RichMenuAudience = { segmentId?: string; tagId?: string };
 
-  await richMenuBindQueue().add('bind', {
-    tenantId,
-    channelId: menu.channelId,
-    lineRichMenuId: menu.lineRichMenuId,
-    uids,
-    op: 'link',
-  });
-  logger.info(`[RichMenu] queued bind menu=${id} to ${uids.length} users`);
-  return { queued: uids.length };
+/** rich-menu-bind 佇列的工作內容。richMenuId 讓 workers 執行前確認選單仍已發布（design D6） */
+export interface RichMenuBindJobData {
+  tenantId: string;
+  channelId: string;
+  richMenuId: string;
+  lineRichMenuId: string | null;
+  uids: string[];
+  op: 'link' | 'unlink';
 }
 
-/** 對某受眾解除綁定（回到全體 default）。 */
-export async function unbindRichMenuFromAudience(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-  audience: { segmentId?: string; tagId?: string },
-): Promise<{ queued: number }> {
-  const menu = await getRichMenu(prisma, id, tenantId);
-  const uids = await resolveAudienceLineUids(prisma, tenantId, menu.channelId, audience);
-  if (uids.length === 0) return { queued: 0 };
+/** queue-monitoring「各佇列 job 的保留期限」：completed 保留 24 小時，failed 保留 7 天 */
+export const RICH_MENU_BIND_JOB_OPTIONS = {
+  removeOnComplete: { age: 86_400 },
+  removeOnFail: { age: 604_800 },
+};
 
-  await richMenuBindQueue().add('unbind', {
-    tenantId,
+/**
+ * 準備綁定或解除綁定的工作：解析受眾的 LINE uid。受眾沒有 LINE 身分時回 null。
+ * 綁定只允許已發布的選單；解除綁定不檢查（客人回到全體預設選單）。
+ */
+export async function prepareRichMenuBindJob(
+  ctx: TenantCtx,
+  id: string,
+  audience: RichMenuAudience,
+  op: 'link' | 'unlink',
+): Promise<RichMenuBindJobData | null> {
+  const menu = await getRichMenu(ctx, id);
+  if (op === 'link' && (menu.status !== 'published' || !menu.lineRichMenuId)) {
+    throw new AppError('請先發布此 Rich Menu 才能綁定受眾', 'NOT_PUBLISHED', 400);
+  }
+  const uids = await resolveAudienceLineUids(ctx.tx, ctx.tenantId, menu.channelId, audience);
+  if (uids.length === 0) return null;
+  return {
+    tenantId: ctx.tenantId,
     channelId: menu.channelId,
+    richMenuId: id,
     lineRichMenuId: menu.lineRichMenuId,
     uids,
-    op: 'unlink',
-  });
-  logger.info(`[RichMenu] queued unbind menu=${id} from ${uids.length} users`);
-  return { queued: uids.length };
+    op,
+  };
 }

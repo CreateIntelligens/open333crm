@@ -41,10 +41,10 @@ description: >
 | 1 | 選 LINE 官方帳號 | `/dashboard/line/rich-menus?channelId=`，`OaSwitcher` 列出啟用中的 LINE 渠道 | `GET /channels` | 網址帶 channelId 會自動選中 | `channel.view`；側欄「渠道」群組依 `richmenu.manage` 隱藏 |
 | 2 | 建立圖文選單草稿 | 「建立 Rich Menu」→ 10 種版型 → `RichMenuEditor` | 背景圖 `POST /files/upload`（前端檢查比例、1MB、像素）；`POST /line/rich-menus` → `rich-menu.service.ts` `createRichMenu` | 只寫 DB，status `draft` | `richmenu.manage` / 頁面不擋，403 時顯示成「尚未建立任何 Rich Menu」 |
 | 3 | 編輯草稿 | 卡片「編輯」→ `rich-menus/[id]` | `PATCH /line/rich-menus/:id`；只有 `draft` 能改 | — | 同上 |
-| 4 | 發布 | 卡片「發布」或編輯頁「發布到 LINE」（發布的是**已存檔**內容） | `POST /:id/publish`：伺服器抓 `imageUrl` → LINE 建選單 → 上傳圖 → `selected` 時設預設 | 失敗變 `error`；設預設失敗只記 log | 同上；確認視窗依 `selected` 換文字（`apps/web/src/lib/rich-menu-confirm.ts`） |
-| 5 | 取消發布 | 已發布卡片「取消發布」 | `POST /:id/unpublish`：預設選單先 `DELETE /user/all/richmenu`，再刪 LINE 選單；LINE 404 視為已刪 | 回 `draft` | 同上 |
-| 6 | 綁定受眾 | 已發布卡片「綁定受眾」→ `RichMenuBindDialog`（只能選分群） | `POST /:id/bind-audience {segmentId}` → 解析 LINE uid → `rich-menu-bind` 佇列 → workers `rich-menu-bind.handler.ts` 每 500 人 bulk link | 回 `{queued}`；**失敗只在佇列**，不重試、畫面看不到 | 同上；分群清單要 `marketing.view` |
-| 7 | 複製、刪除 | 卡片「⋯」 | `POST /:id/duplicate`、`DELETE /:id`（只限 draft，硬刪） | 複製連 `selected` 一起複製 | 同上 |
+| 4 | 發布 | 卡片「發布」或編輯頁「發布到 LINE」（發布的是**已存檔**內容） | `POST /:id/publish` → `rich-menu.flow.ts` `publishRichMenuFlow`：交易內認領成 `publishing`（同選單或同渠道發布中回 409 `PUBLISH_IN_PROGRESS`，超過 5 分鐘可重新認領）→ 交易外抓 `imageUrl`、LINE 建選單、上傳圖 → 交易內寫 `published`（先記成非預設）→ `isDefault` 時交易外設預設（不先取消舊預設），成功後交易內記成預設 | LINE 建好後、寫入 `published` 前失敗：補償刪除、變 `error`（還沒設預設，不必設回）；下載圖失敗回原狀態；設預設失敗回 `warnings: ['DEFAULT_NOT_SET']`、不記成預設 | 同上；確認視窗依 `isDefault` 換文字（`apps/web/src/lib/rich-menu-confirm.ts`） |
+| 5 | 取消發布 | 已發布卡片「取消發布」 | `POST /:id/unpublish`：預設選單先 `GET /user/all/richmenu`，是這張才 `DELETE`，再刪 LINE 選單；LINE 404 視為已刪 | 回 `draft`，`isDefault` 保留 | 同上 |
+| 6 | 綁定受眾 | 已發布卡片「綁定受眾」→ `RichMenuBindDialog`（只能選分群） | `POST /:id/bind-audience {segmentId}` → 解析 LINE uid → 交易內 `enqueueJob`（outbox，payload 帶 `richMenuId`）→ `rich-menu-bind` 佇列 → workers `rich-menu-bind.handler.ts` 先確認選單仍 `published` 且 LINE ID 相同，再每 500 人 bulk link | 回 `{queued}`；**失敗只在佇列**，不重試、畫面看不到 | 同上；分群清單要 `marketing.view` |
+| 7 | 複製、刪除 | 卡片「⋯」 | `POST /:id/duplicate`、`DELETE /:id`（只限 draft，硬刪） | 複製連 `isDefault`、`selected` 一起複製 | 同上 |
 | 8 | 快速回覆預設組 | `/dashboard/line/quick-replies` → `PresetEditDialog` | `GET/POST/PATCH/DELETE /line/quick-reply-presets`；最多 13 顆、標籤 20 字、文字 300 字 | 收件匣 `MessageInput` 套用後附在訊息的 `quickReplies` | 讀取只驗登入；寫入 `quickreply.manage` / **建立鈕不隱藏** |
 | 9 | 收 LINE 訊息（系統） | LINE → `/api/v1/webhooks/line/:channelId` | 先驗簽（缺或錯 403、渠道類型不符 403、渠道不存在 200、憑證解不開 500）→ 回 200 → 背景 `processWebhookEvent` → `LinePlugin.parseWebhook` → `processInboundMessage` | 見下方「進站事件怎麼存」 | 公開，以 channelSecret HMAC 驗簽 |
 | 10 | LIFF／LINE Login 設定 | 渠道設定 `BotConfigForm`（渠道領域）填 LIFF ID、Login Channel ID | `PATCH /channels/:id {settings.liffConfig}`，格式 `1234567890-AbcdEfgh`、10 位數字 | 短連結在 LINE 內走 `/liff/redirect` 取 uid；優惠券以 ID token 驗身分（`apps/api/src/modules/coupon/line-id-token.ts`） | `channel.update` |
@@ -67,13 +67,13 @@ description: >
 - **驗簽在回應前**：LINE 路由先 `verifyWebhookRequest` 再回 200，簽章錯回 403（規格 line-webhook-events）；事件處理在回應後背景執行。webhook 的 content-type parser 保留原始 body（`__rawBody`），改 body 解析會讓驗簽全失敗。
 - LINE 驗簽用 `channelSecret`；FB／IG 用 `appSecret`。驗簽字串比較用 `signaturesMatch`（固定時間）。
 - **租戶由 channelId 反查**，webhook 一律 `prismaAdmin`（無 RLS），每個查詢都要自帶 `tenantId` 或渠道條件。
-- `buildLineMessage` 不認得的 `contentType` 會**靜默變成空白文字訊息**（LINE 拒收）。新增要送到 LINE 的訊息型別，一定要加 case 並寫測試；目前滿意度調查用的 `'flex'` 就沒有 case（健檢 HC-LINE-01）。
+- `buildLineMessage` 不認得的 `contentType` 會丟 `LineMessageBuildError`，`sendMessage` 回 `{ success: false, error }`、不呼叫 LINE（#416；以前靜默變成空白文字被 LINE 拒收）。認得的有：`text`、`quick_reply`、`flex`（滿意度問卷，需 `altText` 與 `contents`，舊資料的 `flexJson`／`text` 也接受）、`image`、`video`、`file`、`audio`、`location`、`sticker` 與素材的 `line_*`。新增要送到 LINE 的訊息型別，一定要加 case 並寫測試；FB 素材（`fb_*`）送到 LINE 會失敗。
 - `LinePlugin.sendMessage` 失敗回 `{success:false}` 不拋錯；呼叫端要檢查回傳值，否則失敗只剩 log（記憶規則「失敗不可以只寫 log」）。
 - LINE 一次最多 5 則訊息、multicast 每批 ≤ 500（群發用 499）、快速回覆最多 13 顆、標籤 20 字。
 - reply token：`selectSafeLineStrategy` 只在收到後 30 秒內用 reply，否則 push；reply 失敗補一次 push（規格 line-safe-reply）。`message.received` 事件帶 `replyToken`，對外 webhook 也會收到（AUDIT HOOK-01）。
 - 憑證：AES-256-GCM，金鑰 `CREDENTIAL_ENCRYPTION_KEY`（至少 32 字），API `apps/api/src/modules/channel/channel.service.ts` 與 workers `apps/workers/src/lib/credentials.ts` 各一份實作，**要一起改**；BYOK AI 金鑰共用同一把（AUDIT AI-01）。沒有金鑰輪替機制，換金鑰後所有渠道要重填憑證。本機從 UAT 同步的渠道憑證解不開是正常的。
 - 多個 LINE OA 要在同一個 provider，userId 才相同；LIFF 的 Login channel 也要在同一個 provider。
-- 圖文選單：只有 `draft` 能改、能刪；預設選單 LINE 一個 OA 只有一張，發布 `selected` 選單會先取消別張；綁定是快照，系統不記錄誰綁了哪張。
+- 圖文選單：只有 `draft` 能改、能刪；`isDefault`（所有好友的預設）與 `selected`（聊天室打開時展開）是兩個欄位，不要再混用；預設選單 LINE 一個 OA 只有一張，設預設由 LINE 直接取代，不要先取消全體預設；同渠道同時只有一張在發布中；綁定是快照，系統不記錄誰綁了哪張。
 - 下游轉發 `immediate` 模式會讓 CRM 完全不處理該 webhook；目標網址被擋時訊息就消失。改轉發邏輯不要拿掉 `claimForForward` 迴圈防護與 `isBlockedUrl`。
 - `/line-imagemap/*` 必須公開（LINE 匿名抓圖），寬度只允許 240／300／460／700／1040，baseUrl 不含副檔名。
 
@@ -89,13 +89,13 @@ description: >
 3. image（LINE 代管）在假權杖下要出現 `mediaError`；`fileSize` 超過 25 MB 不下載。
 4. 圖文選單：建立 → 編輯 → 發布（假權杖會變「發布失敗」）→ 綁定受眾 → 取消發布；supervisor 可、agent 403。
 5. 快速回覆預設組：建立、重新整理讀回、刪除；agent 寫入 403。
-6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查、收回訊息、LIFF 開票券。
+6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查（客人按分數後，收件匣卡片顯示「客人評 N 分」、客人訊息顯示「我的評分：N 分」，#444）、收回訊息、LIFF 開票券。
 - 自動測試：`pnpm --filter @open333crm/channel-plugins test`；`pnpm --filter @open333crm/api test -- rich-menu webhook-signature downstream-forwarder inbound-media tag-on-click line-id-token channel-credential-security line-imagemap`；`pnpm --filter @open333crm/workers test -- rich-menu-bind credentials`；`pnpm --filter @open333crm/web test -- rich-menu imagemap-url bot-config-form-line-login`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/webhook/ channel-liff-id coupon-line-login`。
 - E2E：`apps/web/tests/e2e-uat/tenant-line-materials.spec.ts`。
 
 ## 常見 bug 從哪裡查
 - 「LINE 完全收不到訊息」：先看 API log 的 `[Webhook] Signature verification failed`（Channel Secret 填錯；手冊說測試連線只驗 Access Token）、`Channel not found or inactive`、`Tenant is disabled`；渠道有沒有設 `downstreamWebhook` 的 `immediate` 模式（`[DownstreamWebhook] Blocked SSRF target`）。
-- 「LINE 滿意度調查客人沒收到」：`apps/api/src/modules/csat/csat.service.ts` 送 `contentType:'flex'`，`buildLineMessage` 沒有這個 case，變成空白文字被 LINE 拒收，結果沒人檢查（HC-LINE-01）。
+- 「LINE 滿意度調查客人沒收到」：先看收件匣的問卷卡片有沒有「這份問卷沒有送出」與原因，或工單時間軸的「滿意度問卷沒有送出」（`case_events.eventType = 'csat_send_failed'`，原因在 `payload.reason`）。常見原因：渠道停用、找不到客人的 LINE 帳號、LINE API 拒收。系統不自動重寄（`csatSentAt` 保留）。#416 以前 `flex` 沒有 case，問卷變空白文字被拒收（HC-LINE-01）。
 - 「同一個點擊出現兩次」：LINE 重送事件，postback 沒有訊息 id 不去重（HC-LINE-02）。
 - 「客人收回的訊息還在」：`unsend` 只存成一則「[不支援的訊息類型]」（HC-LINE-03）。
 - 「圖文選單發布失敗」：錯誤詳情在回應的 `details.upstream`（畫面只顯示「請確認版型與渠道設定」）；401 是 Access Token 錯，400 多半是圖片尺寸或區域動作。`error` 狀態的選單到編輯頁按「發布到 LINE」重試，或複製一份改。

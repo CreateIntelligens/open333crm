@@ -46,7 +46,7 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 - **THEN** `processInboundMessage` 回傳那則訊息與 `duplicate: true`，沒有更新對話，也沒有發布 `message.received`
 
 ### Requirement: 停用租戶的進站事件直接丟棄
-渠道所屬的租戶停用時，即使渠道本身仍啟用，系統 SHALL 丟棄該渠道收到的進站事件：不建立渠道身分、聯絡人、對話與訊息，只記錄 warn log。
+渠道所屬的租戶停用（含試用到期自動停用）時，即使渠道本身仍啟用，系統 SHALL 丟棄該渠道收到的進站事件：不建立渠道身分、聯絡人、對話與訊息，只記錄 warn log。所有渠道共用的進站入口 `processInboundMessage` SHALL 做這個檢查；查不到租戶時視為停用。webhook 在驗簽之前也提早丟棄。
 
 租戶停用是預期內的情況，不是錯誤。LINE 的 webhook 路由 SHALL 照常回 HTTP 200，平台不會因此重送事件。
 
@@ -57,6 +57,10 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 #### Scenario: LINE 的 webhook 路由照常回 200
 - **WHEN** 租戶已停用，該租戶的 LINE 渠道收到一則簽章正確的 webhook 請求
 - **THEN** 路由回 HTTP 200
+
+#### Scenario: 共用入口 processInboundMessage 丟棄停用租戶的進站事件
+- **WHEN** 租戶已停用，呼叫端直接以該租戶的渠道呼叫 `processInboundMessage` 處理一則文字訊息
+- **THEN** `processInboundMessage` 回傳 `undefined`，沒有建立渠道身分與訊息
 
 ### Requirement: 沒有聯絡人 UID 的進站事件直接略過
 解析後的進站事件沒有聯絡人 UID（`contactUid` 是空值）時，`processInboundMessage` SHALL 直接結束。系統 SHALL NOT 建立聯絡人、渠道身分、對話或訊息，也 SHALL NOT 推送 socket 事件或發布 EventBus 事件。
@@ -70,14 +74,14 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 
 1. 存入一則 `INBOUND` 訊息。
 2. 對話的 `unreadCount` 加 1，並更新 `lastMessageAt`。
-3. 推送 `message.new` 與 `conversation.updated`，對象是對話的房間 `conversation:<對話 ID>` 與租戶的房間 `tenant:<租戶 ID>`。
+3. 推送 `message.new` 與 `conversation.updated`，對象是對話的房間 `conversation:<對話 ID>` 與渠道房間（`tenant:<租戶 ID>:channel:<渠道 ID>`、`tenant:<租戶 ID>:channels:all`），不送到租戶的房間 `tenant:<租戶 ID>`（issue #427）。
 4. 發布 EventBus 事件 `message.received`，`payload.messageId` 是這則訊息的 ID。
 
 `processInboundMessage` SHALL 回傳 `duplicate: false`。
 
 #### Scenario: 一般進站訊息
 - **WHEN** 訪客第一次從 WebChat 渠道送出文字訊息 `hello`
-- **THEN** 對話有一則 `INBOUND` 訊息，`unreadCount` 是 1，`lastMessageAt` 有值；`message.new` 與 `conversation.updated` 都推送到對話與租戶的房間；`message.received` 發布一次，`payload.messageId` 是這則訊息的 ID
+- **THEN** 對話有一則 `INBOUND` 訊息，`unreadCount` 是 1，`lastMessageAt` 有值；`message.new` 與 `conversation.updated` 都推送到對話與渠道房間；`message.received` 發布一次，`payload.messageId` 是這則訊息的 ID
 
 ### Requirement: CSAT 回覆的攔截
 進站的文字或 postback 符合 `csat:<分數>:<工單 ID>`，而且分數是 1～5 時，系統 SHALL 攔截這則訊息，SHALL NOT 發布 `message.received`。
@@ -89,6 +93,8 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 - 工單還沒有評分。
 
 條件不成立時，系統 SHALL NOT 修改任何工單，也 SHALL NOT 送出訊息。進站管線以略過 RLS 的連線執行，所以這些條件 SHALL 寫在查詢工單的條件裡。
+
+攔截之後，不論分數是否寫入，系統 SHALL 把這則進站訊息的內容改寫成「我的評分：<分數> 分」（與 LINE 問卷按鈕的 `displayText` 相同），並把原始文字存在這則訊息的 `metadata.postbackData`，讓收件匣與其他讀取端不顯示 `csat:` 代碼。
 
 #### Scenario: 同租戶、同聯絡人的工單寫入評分
 - **WHEN** 聯絡人回覆 `csat:5:<工單 ID>`，工單屬於收訊租戶與這位聯絡人，而且還沒有評分
@@ -106,6 +112,10 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 - **WHEN** 聯絡人回覆的工單 ID 不存在
 - **THEN** 系統不修改任何工單，也不發布 `message.received`
 
+#### Scenario: 評分的訊息在收件匣顯示文字
+- **WHEN** 聯絡人回覆 `csat:2:<工單 ID>`（LINE 問卷按鈕的 postback，或同格式的文字）
+- **THEN** 對話中這則客人訊息的 `content.text` 是「我的評分：2 分」，`metadata.postbackData` 是 `csat:2:<工單 ID>`，系統不發布 `message.received`
+
 ### Requirement: KB 回饋的攔截
 進站的文字或 postback 符合 `kb_feedback:<good 或 bad>:<文章 ID 或 none>:<Bot 訊息 ID>` 時，系統 SHALL 攔截這則訊息，SHALL NOT 發布 `message.received`。
 
@@ -122,3 +132,22 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 #### Scenario: KB 回饋沒有對應的文章
 - **WHEN** 聯絡人回覆 `kb_feedback:bad:none:<Bot 訊息 ID>`
 - **THEN** 系統不寫入回饋；對話收到感謝訊息；系統不發布 `message.received`
+
+### Requirement: 停用租戶的網站聊天室入口回 404
+租戶停用（含試用到期自動停用）時，網站聊天室建立工作階段、送訊息、bootstrap 與訪客 socket（`/visitor`）驗證工作階段 SHALL 比照渠道停用回 HTTP 404，`error.code` 是 `NOT_FOUND`。系統 SHALL NOT 建立聯絡人、對話或訊息。租戶啟用時行為不變。
+
+#### Scenario: 啟用中的租戶：訪客送訊息照常寫入（對照組）
+- **WHEN** 租戶啟用中，訪客以認領過的工作階段送一則文字訊息
+- **THEN** 系統寫入一則進站訊息
+
+#### Scenario: 既有的工作階段在租戶停用後送訊息
+- **WHEN** 訪客在租戶啟用時開了工作階段，租戶停用之後訪客以同一個工作階段送一則文字訊息
+- **THEN** 系統回 404 `NOT_FOUND`，沒有寫入訊息
+
+#### Scenario: 租戶停用後新訪客建立工作階段
+- **WHEN** 租戶已停用，新訪客以渠道公開金鑰建立工作階段
+- **THEN** 系統回 404 `NOT_FOUND`，沒有建立聯絡人與對話
+
+#### Scenario: 租戶停用後訪客 socket 驗證工作階段
+- **WHEN** 租戶停用之後，訪客以既有的工作階段與認領憑證連線 `/visitor`
+- **THEN** 驗證工作階段回 404 `NOT_FOUND`，連線被拒

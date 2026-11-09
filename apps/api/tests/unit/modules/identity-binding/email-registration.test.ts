@@ -15,6 +15,7 @@ import {
   sendEmailRegistrationNotices,
 } from '#src/modules/identity-binding/email-registration.service.js';
 import type { BindingActor } from '#src/modules/identity-binding/binding-common.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 let tenantSeq = 0;
 /** 每個案例用不同的租戶 id，避開設定快取 */
@@ -71,6 +72,7 @@ function issueFixture() {
   const sent: Array<{ conversationId: string; text: string }> = [];
   const created: Array<Record<string, unknown>> = [];
   const db = {
+    ...disabledAiPrivacy,
     message: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         created.push(data);

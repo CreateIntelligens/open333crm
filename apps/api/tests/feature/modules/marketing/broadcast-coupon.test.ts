@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { registerChannelPlugin, type ChannelPlugin, type OutboundPayload } from '@open333crm/channel-plugins';
-import { readWalletToken } from '@open333crm/core';
+import { readWalletToken, redis } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient, withTenant } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
@@ -216,15 +216,19 @@ beforeAll(async () => {
     owner.channel.create({ data: { tenantId: T, channelType, displayName: `${MARK}-${channelType}`, credentialsEncrypted, isActive: true } });
   lineChannel = (await mkChannel('LINE')).id;
   fbChannel = (await mkChannel('FB')).id;
-  agentId = (await owner.agent.create({ data: { tenantId: T, email: `${MARK}@example.com`, name: '行銷小美', passwordHash: 'x' } })).id;
   tagId = (await owner.tag.create({ data: { tenantId: T, name: `${MARK}-分眾`, scope: 'CONTACT' } })).id;
   roleId = (await owner.role.create({
     data: {
       tenantId: T, slug: MARK, name: MARK,
       // channel.view_all：這裡測附券廣播，不測渠道可見範圍（群發只能用可見渠道，見 channel-scoped-visibility.test.ts）
-      permissions: { create: ['marketing.view', 'marketing.manage', 'marketing.broadcast', 'channel.view_all'].map((permissionCode) => ({ permissionCode })) },
+      // coupon.view、coupon.issue：附券廣播要發券權限，排程器也以建立者的權限重新檢查（broadcast-send-permissions.test.ts）
+      permissions: {
+        create: ['marketing.view', 'marketing.manage', 'marketing.broadcast', 'channel.view_all', 'coupon.view', 'coupon.issue']
+          .map((permissionCode) => ({ permissionCode })),
+      },
     },
   })).id;
+  agentId = (await owner.agent.create({ data: { tenantId: T, email: `${MARK}@example.com`, name: '行銷小美', passwordHash: 'x', roleId } })).id;
 });
 
 beforeEach(() => {
@@ -253,8 +257,8 @@ afterAll(async () => {
   await owner.shortLink.deleteMany({ where: { tenantId: T, createdById: creatorId } });
   await owner.material.deleteMany({ where: { tenantId: T, createdById: creatorId } });
   await owner.tag.deleteMany({ where: { id: tagId } });
-  await owner.role.deleteMany({ where: { id: roleId } });
   await owner.agent.deleteMany({ where: { tenantId: T, email: `${MARK}@example.com` } });
+  await owner.role.deleteMany({ where: { id: roleId } });
   await owner.channel.deleteMany({ where: { id: { in: [lineChannel, fbChannel] } } });
   await owner.$disconnect();
   await prisma.$disconnect();
@@ -772,7 +776,7 @@ describe('排程的附券廣播到時間由排程發送', () => {
       },
     }) as PrismaClient;
     let poll: (() => Promise<void>) | null = null;
-    setupBroadcastScheduler({ registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never, scoped, testIo as never, { prisma, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS });
+    setupBroadcastScheduler({ registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never, scoped, testIo as never, redis, { prisma, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS });
     assert.ok(poll);
     await poll!();
 

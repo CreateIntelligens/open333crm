@@ -112,7 +112,7 @@ test.describe('@settings-channels 設定頁渠道管理', () => {
     const res = await embedRes;
     expect(res.ok(), `取得嵌入碼 API 失敗：${await res.text()}`).toBeTruthy();
 
-    const dialog = page.getByRole('dialog').filter({ hasText: 'WebChat 嵌入碼' });
+    const dialog = page.getByRole('dialog').filter({ hasText: '網站聊天室嵌入碼' });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     const codeText = await dialog.locator('pre').innerText();
     expect(codeText).toContain('<script');
@@ -151,7 +151,7 @@ test.describe('@settings-channels 設定頁渠道管理', () => {
     const chRes = await api.get(`channels/${WEBCHAT_CHANNEL_ID}`);
     const displayName: string = (await chRes.json())?.data?.displayName;
 
-    // 此連結按鈕在頁首「Webhook 公開網址」卡片下方的「WebChat 網頁版連結」小節內，
+    // 此連結按鈕在頁首「Webhook 公開網址」卡片下方的「網站聊天室網頁版連結」小節內，
     // 按鈕文字依是否已有 publicKey 顯示「產生連結」或「複製連結」
     const linkRow = page
       .locator('div')
@@ -167,7 +167,7 @@ test.describe('@settings-channels 設定頁渠道管理', () => {
     const res = await linkRes;
     expect(res.ok(), `產生網頁版連結失敗：${await res.text()}`).toBeTruthy();
 
-    const dialog = page.getByRole('dialog').filter({ hasText: 'WebChat 網頁版連結' });
+    const dialog = page.getByRole('dialog').filter({ hasText: '網站聊天室網頁版連結' });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     const urlText = await dialog.locator('pre').innerText();
     expect(urlText).toContain('/chatbox?channel=');

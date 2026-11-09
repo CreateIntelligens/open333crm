@@ -35,7 +35,7 @@ vi.mock('#src/modules/ai/ai.service.js', () => ({
   },
 }));
 vi.mock('#src/modules/ai/deidentification.service.js', () => ({
-  prepareStoredMessageContent: async (_p: unknown, _t: string, content: unknown) => ({ content, metadata: {} }),
+  prepareStoredMessageContent: async (_policy: unknown, content: unknown) => ({ content, metadata: {} }),
 }));
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async (_p: unknown, _c: string, payload: unknown) => {
@@ -46,7 +46,7 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({
 }));
 
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
-const { createHarness, messageReceived } = await import('./automation-harness.js');
+const { createHarness, messageReceived, TENANT, CHANNEL } = await import('./automation-harness.js');
 
 const HANDOFF_MESSAGE = '稍等，正在為您轉接客服人員';
 
@@ -105,4 +105,40 @@ test('Delivery fails after handoff commit：轉接已 commit，送出轉接訊�
 
   assert.equal(h.state.conversation.status, 'AGENT_HANDLED');
   assert.equal(h.state.outbox.filter((o) => o.name === 'conversation.handoff').length, 1);
+});
+
+test('轉接的 message.new 送到渠道房間（與其他 message.new 相同），不只送到對話房間（PR #438 審查）', async () => {
+  const { h } = setup();
+  const emitted: Array<{ rooms: string[]; event: string }> = [];
+  h.io.to = ((rooms: string | string[]) => ({
+    emit: (event: string) => { emitted.push({ rooms: ([] as string[]).concat(rooms), event }); },
+  })) as never;
+  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never);
+  await handle(messageReceived());
+
+  const messageNew = emitted.find((e) => e.event === 'message.new');
+  assert.ok(messageNew, '送出 message.new');
+  assert.ok(messageNew.rooms.includes(`tenant:${TENANT}:channel:${CHANNEL}`), `送到渠道房間：${messageNew.rooms.join(',')}`);
+  assert.ok(messageNew.rooms.includes(`tenant:${TENANT}:channels:all`), '送到總店房間');
+});
+
+test('自動轉接：worker 推播 conversation.updated 到渠道房間，帶對話的 updatedAt 與轉接原因', async () => {
+  const h = createHarness({ botRepliesCount: 5 });
+  const emitted: Array<{ rooms: string[]; name: string; data: Record<string, unknown> }> = [];
+  const io = {
+    to: (rooms: string | string[]) => ({
+      emit: (name: string, data: Record<string, unknown>) => {
+        emitted.push({ rooms: Array.isArray(rooms) ? rooms : [rooms], name, data });
+      },
+    }),
+  };
+  await setupAutomationWorker(h.adminPrisma as never, io as never, h.tenantPrisma as never)(messageReceived());
+
+  const updated = emitted.filter((e) => e.name === 'conversation.updated');
+  assert.equal(updated.length, 1);
+  assert.equal(updated[0].data.status, 'AGENT_HANDLED');
+  assert.equal(typeof updated[0].data.updatedAt, 'string');
+  assert.ok(!Number.isNaN(Date.parse(String(updated[0].data.updatedAt))));
+  assert.ok(updated[0].data.handoffReason);
+  assert.ok(updated[0].rooms.includes(`tenant:${TENANT}:channel:${CHANNEL}`), JSON.stringify(updated[0].rooms));
 });

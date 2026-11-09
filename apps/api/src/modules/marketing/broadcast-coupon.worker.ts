@@ -8,8 +8,13 @@
  * 錯誤不在這裡吞掉：搶占前失敗時讓佇列重試；搶占後的錯誤 runCouponBroadcast 已把原因寫進廣播
  * （後台看得到），重試時搶不到，不會重複發送。
  */
+import type { Redis } from 'ioredis';
 import type { Job } from 'bullmq';
+import type { PrismaClient } from '@prisma/client';
 import type { CouponBroadcastJobData } from './broadcast-coupon.service.js';
+import { runCouponBroadcast, type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
+import { rejectUnauthorizedScheduledSend } from './broadcast-send-authority.js';
+import { rejectDisabledTenantSend, TENANT_DISABLED_FAILURE } from './broadcast-tenant-active.js';
 
 export type RunCouponBroadcast = (tenantId: string, broadcastId: string) => Promise<unknown>;
 
@@ -20,5 +25,22 @@ export function createCouponBroadcastProcessor(run: RunCouponBroadcast) {
       throw new Error('coupon-broadcast job 缺少 tenantId 或 broadcastId');
     }
     return run(tenantId, broadcastId);
+  };
+}
+
+/**
+ * coupon-broadcast 佇列的執行函式（index.ts）。發送前與排程器相同，以排定送出的成員當下的權限重新檢查：
+ * job 重試或 outbox 延後送出時，成員可能已經被停用或降權（PR #438 審查）。不能送時群發標為失敗，job 正常結束。
+ * 租戶已停用（含試用到期）時也不送出，群發標為失敗（issue #410）。
+ */
+export function createCouponBroadcastJobRunner(deps: CouponBroadcastDeps & { adminPrisma: PrismaClient; redis: Redis }): RunCouponBroadcast {
+  const { adminPrisma, redis, ...couponDeps } = deps;
+  return async (tenantId, broadcastId) => {
+    if (await rejectDisabledTenantSend(couponDeps, tenantId, broadcastId)) {
+      return { status: 'denied', failureCode: TENANT_DISABLED_FAILURE.code };
+    }
+    const denial = await rejectUnauthorizedScheduledSend({ prisma: couponDeps.prisma, adminPrisma, redis }, tenantId, broadcastId);
+    if (denial) return { status: 'denied', failureCode: denial.code };
+    return runCouponBroadcast(couponDeps, tenantId, broadcastId);
   };
 }

@@ -4,6 +4,7 @@ import { sendCsatSurvey } from './csat.service.js';
 import { closeConversationsForCase } from '../conversation/conversation.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
+import { caseTransitionTimestamps } from '@open333crm/shared';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
@@ -29,6 +30,8 @@ export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient
           csatSentAt: null,
           resolvedAt: { lte: cutoff },
           conversations: { some: {} },
+          // 租戶停用（含試用到期）時不寄問卷給客人（issue #410）
+          tenant: { isActive: true },
         },
         include: {
           conversations: {
@@ -83,9 +86,10 @@ export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient
           // 以條件更新認領：讀取之後工單被重開、客人已評分，或別次執行已結案時，不再結案、不發事件
           const { count } = await prisma.case.updateMany({
             where: { id: c.id, tenantId: c.tenantId, status: 'RESOLVED', csatRespondedAt: null },
+            // RESOLVED → CLOSED：依共用規則（issue #417）寫 closedAt、保留 resolvedAt
             data: {
               status: 'CLOSED',
-              closedAt: now,
+              ...caseTransitionTimestamps('RESOLVED', 'CLOSED', now),
             },
           });
           if (count === 0) {

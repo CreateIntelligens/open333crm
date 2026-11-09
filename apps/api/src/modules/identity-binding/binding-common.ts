@@ -7,10 +7,11 @@ import { logger } from '@open333crm/core';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { resolveMergeChain } from '../contact/contact-merge.service.js';
-import { buildMessageNewPayload, emitToConversationAndTenant } from '../webhook/inbound-socket-presenter.js';
+import { buildMessageNewPayload, emitToConversationChannel } from '../webhook/inbound-socket-presenter.js';
 import type { BindingStore } from './binding-code.js';
 import { BINDING_TEXT } from './binding-links.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface BindingDeps {
   store: BindingStore;
@@ -60,7 +61,7 @@ export async function sendBindingMessage(
   text: string,
   kind: string,
 ): Promise<boolean> {
-  const storedContent = await prepareStoredMessageContent(db, tenantId, { text }, 'system_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(db, tenantId), { text }, 'system_template');
   const operationalText = storedContent.content.text as string;
   const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, operationalText);
   if (!ok) logger.warn('[IdentityBinding] 綁定訊息送出失敗', { conversationId, kind });
@@ -79,11 +80,13 @@ export async function sendBindingMessage(
         ...(ok ? {} : { deliveryFailed: true, deliveryError: BINDING_TEXT.deliveryFailed }),
       },
     },
+    // channelId：推播只送給看得到這個渠道的成員（issue #427）
+    include: { conversation: { select: { channelId: true } } },
   });
   await db.conversation.updateMany({ where: { id: conversationId, tenantId }, data: { lastMessageAt: new Date() } });
   if (deps.io) {
     const payload = buildMessageNewPayload(message, { content: storedContent.content, includeTypePayload: true, includeMetadata: true });
-    emitToConversationAndTenant(deps.io, conversationId, tenantId, 'message.new', payload);
+    emitToConversationChannel(deps.io, tenantId, { id: conversationId, channelId: message.conversation.channelId }, 'message.new', payload);
   }
   return ok;
 }

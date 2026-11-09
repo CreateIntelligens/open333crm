@@ -26,6 +26,7 @@ import { usedPermissionCodes } from './guards/rbac.guard.js';
 import { loadEnvConfig } from './config/env.js';
 import { installZodChineseLocale } from './config/zod-locale.js';
 import prismaPlugin from './plugins/prisma.plugin.js';
+import redisPlugin from './plugins/redis.plugin.js';
 import cookiePlugin from './plugins/cookie.plugin.js';
 import authPlugin from './plugins/auth.plugin.js';
 import corsPlugin from './plugins/cors.plugin.js';
@@ -95,7 +96,8 @@ import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
 import cliRoutes from './modules/cli/cli.routes.js';
 import mcpRoutes from './modules/mcp/mcp.routes.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
-import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
+import canvasRoutes from './modules/canvas/canvas.routes.js';
+import mergeSuggestionRoutes from './modules/contact/merge-suggestion.routes.js';
 import { createBullJobScheduler } from './lib/job-scheduler.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
 import { setupTrialScheduler } from './modules/trial/trial.scheduler.js';
@@ -110,10 +112,8 @@ import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { agentVisibilityResolver } from './services/channel-visibility.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
-import { createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
+import { createCouponBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
-import { runCouponBroadcast } from './modules/marketing/broadcast-coupon.flow.js';
-import { getBindingStore } from './modules/identity-binding/binding-code.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
@@ -173,6 +173,7 @@ export async function bootstrap() {
   await app.register(corsPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(prismaPlugin);
+  await app.register(redisPlugin);
   await app.register(cookiePlugin);
   await app.register(authPlugin);
   await app.register(socketPlugin);
@@ -238,7 +239,7 @@ export async function bootstrap() {
   await app.register(shortlinkRedirectRoutes, { prefix: '/s' });
   await app.register(lineImagemapRoutes, { prefix: '/line-imagemap' });
   await app.register(canvasRoutes, { prefix: '/api/v1/canvas' });
-  await app.register(identityRoutes, { prefix: '/api/v1/identity' });
+  await app.register(mergeSuggestionRoutes, { prefix: '/api/v1/identity' });
   await app.register(webchatRoutes, { prefix: '/api/v1/webchat' });
   await app.register(chatboxRoutes, { prefix: '/api/v1/chatbox' });
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });
@@ -262,15 +263,16 @@ export async function bootstrap() {
   // 訂閱者從各自的佇列取得事件（change outbox-event-delivery）；job 失敗時只重試該訂閱者的 job
   const subscriberWorkers = startQueueWorkers(
     {
-      [EVENT_NOTIFICATION_QUEUE]: subscriberProcessor(setupNotificationWorker(app.prismaAdmin)),
+      [EVENT_NOTIFICATION_QUEUE]: subscriberProcessor(setupNotificationWorker(app.prismaAdmin, { visibility: agentVisibilityResolver(app.prismaAdmin, app.redis) })),
       [EVENT_AUTOMATION_QUEUE]: subscriberProcessor(setupAutomationWorker(app.prismaAdmin, app.io, app.prisma)),
       [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
       [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,
       [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
       // 附券廣播「立即發送」與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
-      [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor((tenantId, broadcastId) =>
-        runCouponBroadcast({ prisma: app.prisma, io: app.io, store: getBindingStore(), visibilityOf: agentVisibilityResolver(app.prismaAdmin) }, tenantId, broadcastId)) as JobProcessor,
+      [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createCouponBroadcastJobRunner({
+        prisma: app.prisma, adminPrisma: app.prismaAdmin, redis: app.redis, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
+      })) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
@@ -283,7 +285,7 @@ export async function bootstrap() {
     queueNames: ALERTED_QUEUES,
     createQueueEvents: (name) => new QueueEvents(name, { connection: { url: config.REDIS_URL } }),
     getJob: async (queueName, jobId) => monitoredQueueByName.get(queueName)?.getJob(jobId),
-    sendAlert: (alert) => sendOpsAlert(alert),
+    sendAlert: (alert) => sendOpsAlert(alert, { redis: app.redis }),
     dashboardUrl: `${config.WEB_BASE_URL}/api/v1/platform/queues`,
   });
   app.addHook('onClose', () => failedAlerts.close());
@@ -295,10 +297,10 @@ export async function bootstrap() {
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
   setupAnalyticsScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
-  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, {
+  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, app.redis, {
     prisma: app.prisma,
-    store: getBindingStore(),
-    visibilityOf: agentVisibilityResolver(app.prismaAdmin),
+    store: app.redis,
+    visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
   });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);

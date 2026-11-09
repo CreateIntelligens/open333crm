@@ -13,12 +13,14 @@ import {
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import { channelDisplayName } from '@open333crm/shared';
 
 interface MessageTrendChartProps {
   data: Array<{
     date: string;
     LINE?: number;
     FB?: number;
+    THREADS?: number;
     WEBCHAT?: number;
     total?: number;
   }>;
@@ -28,11 +30,14 @@ interface MessageTrendChartProps {
 const CHANNEL_COLORS: Record<string, string> = {
   LINE: '#06C755',
   FB: '#1877F2',
+  THREADS: '#E4405F',
   WEBCHAT: '#6B7280',
   total: '#8B5CF6',
 };
 
 export function MessageTrendChart({ data, isLoading }: MessageTrendChartProps) {
+  // API 只有當天有 Instagram 訊息才回 THREADS，沒有的日子補 0，線才不會斷
+  const rows = data.map((d) => ({ ...d, THREADS: d.THREADS ?? 0 }));
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -49,7 +54,7 @@ export function MessageTrendChart({ data, isLoading }: MessageTrendChartProps) {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={data}>
+            <LineChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 dataKey="date"
@@ -65,7 +70,7 @@ export function MessageTrendChart({ data, isLoading }: MessageTrendChartProps) {
                 stroke={CHANNEL_COLORS.LINE}
                 strokeWidth={2}
                 dot={false}
-                name="LINE"
+                name={channelDisplayName('LINE')}
               />
               <Line
                 type="monotone"
@@ -73,7 +78,7 @@ export function MessageTrendChart({ data, isLoading }: MessageTrendChartProps) {
                 stroke={CHANNEL_COLORS.FB}
                 strokeWidth={2}
                 dot={false}
-                name="Facebook"
+                name={channelDisplayName('FB')}
               />
               <Line
                 type="monotone"
@@ -81,7 +86,15 @@ export function MessageTrendChart({ data, isLoading }: MessageTrendChartProps) {
                 stroke={CHANNEL_COLORS.WEBCHAT}
                 strokeWidth={2}
                 dot={false}
-                name="WebChat"
+                name={channelDisplayName('WEBCHAT')}
+              />
+              <Line
+                type="monotone"
+                dataKey="THREADS"
+                stroke={CHANNEL_COLORS.THREADS}
+                strokeWidth={2}
+                dot={false}
+                name={channelDisplayName('THREADS')}
               />
             </LineChart>
           </ResponsiveContainer>

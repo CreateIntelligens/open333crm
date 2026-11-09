@@ -152,7 +152,7 @@ const CHANNEL_LABEL: Record<string, string> = {
   LINE: 'LINE',
   FB: 'Facebook',
   THREADS: 'Instagram',
-  WEBCHAT: '網站客服',
+  WEBCHAT: '網站聊天室',
 };
 
 export function channelLabel(channelType: string): string {

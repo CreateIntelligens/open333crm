@@ -44,8 +44,15 @@ function makePlugin(calls: { link: number; unlink: number; lastUids: string[] })
   } as any;
 }
 
-function makePrisma(channelExists: boolean) {
+/** menu：資料庫裡的選單（undefined 表示已刪除）；richMenuReads 記錄 workers 有沒有查選單 */
+function makePrisma(channelExists: boolean, menu?: { status: string; lineRichMenuId: string | null }, reads = { count: 0 }) {
   return {
+    richMenu: {
+      async findFirst() {
+        reads.count++;
+        return menu ?? null;
+      },
+    },
     channel: {
       async findFirst() {
         return channelExists
@@ -105,6 +112,45 @@ async function testEmptyUidsNoop() {
   assert.equal(calls.link, 0);
 }
 
+// spec line-rich-menu「背景綁定只綁到仍在發布中的選單」（change migrate-line-tenant-ctx）
+async function bindWithMenu(menu: { status: string; lineRichMenuId: string | null } | undefined, op = 'link') {
+  const calls = { link: 0, unlink: 0, lastUids: [] as string[] };
+  const reads = { count: 0 };
+  await handleRichMenuBindJob(
+    job({ tenantId: 't1', channelId: 'c1', richMenuId: 'm1', lineRichMenuId: 'rm1', uids: ['u1'], op }),
+    makePrisma(true, menu, reads) as any,
+    new Map([['LINE', makePlugin(calls)]]),
+  );
+  return { calls, reads };
+}
+
+test('綁定工作晚於取消發布執行：選單已是 draft，不呼叫 LINE 綁定', async () => {
+  const { calls } = await bindWithMenu({ status: 'draft', lineRichMenuId: null });
+  assert.equal(calls.link, 0);
+});
+
+test('綁定工作晚於重新發布執行：LINE 端的選單 id 已改變，不呼叫 LINE 綁定', async () => {
+  const { calls } = await bindWithMenu({ status: 'published', lineRichMenuId: 'rm2' });
+  assert.equal(calls.link, 0);
+});
+
+test('選單已刪除：不呼叫 LINE 綁定', async () => {
+  const { calls } = await bindWithMenu(undefined);
+  assert.equal(calls.link, 0);
+});
+
+test('選單仍在發布中：呼叫 LINE 綁定', async () => {
+  const { calls } = await bindWithMenu({ status: 'published', lineRichMenuId: 'rm1' });
+  assert.equal(calls.link, 1);
+});
+
+test('解除綁定不查選單，照常執行', async () => {
+  const { calls, reads } = await bindWithMenu({ status: 'draft', lineRichMenuId: null }, 'unlink');
+  assert.equal(calls.unlink, 1);
+  assert.equal(reads.count, 0);
+});
+
+// 部署前送出的工作沒有 richMenuId：照舊執行，不查選單
 test('link calls plugin ui', testLinkCallsPluginUi);
 test('unlink calls plugin ui', testUnlinkCallsPluginUi);
 test('channel not in tenant skips', testChannelNotInTenantSkips);

@@ -19,7 +19,7 @@ import {
 } from '@/hooks/useCouponBatchIssue';
 import {
   BATCH_ISSUE_MAX_RECIPIENTS,
-  COUPON_PUSH_CHANNEL_TYPES,
+  activePushChannels,
   couponCapacityWarning,
   type CouponAudiencePreview,
 } from '@/lib/marketing/coupon-broadcast';
@@ -91,9 +91,7 @@ export function CouponBatchIssueDialog({ couponId, couponName, open, onOpenChang
 
   // 只有能主動推送訊息的渠道（LINE、Facebook、Instagram）
   const pushChannels = useMemo(
-    () => (channels as Array<{ id: string; displayName: string; channelType: string; isActive: boolean }>).filter(
-      (c) => c.isActive && COUPON_PUSH_CHANNEL_TYPES.includes(c.channelType),
-    ),
+    () => activePushChannels(channels as Array<{ id: string; displayName: string; channelType: string; isActive: boolean }>),
     [channels],
   );
   // 分眾需要行銷檢視權限；讀不到就不提供

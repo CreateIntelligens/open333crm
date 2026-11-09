@@ -22,7 +22,7 @@ description: >
 - 影響分析：`node scripts/feature-impact.mjs --domain inbox`
 
 路由前綴：`/api/v1/conversations`（`apps/api/src/modules/conversation/conversation.routes.ts`）、`/api/v1/ai`（`apps/api/src/modules/ai/ai.routes.ts`）。
-即時事件：`apps/api/src/plugins/socket.plugin.ts`（連線即加入 `tenant:<id>`、`agent:<id>`），訂閱授權在 `apps/api/src/modules/socket/socket-room-authorization.ts`。
+即時事件：`apps/api/src/plugins/socket.plugin.ts`（連線即加入 `tenant:<id>`、`agent:<id>`，以及依可見渠道的渠道房間 `tenant:<id>:channel:<channelId>`／總店 `tenant:<id>:channels:all`，`modules/socket/socket-channel-rooms.ts`），房間由 `apps/api/src/events/socket-push.ts` 決定，訂閱授權在 `apps/api/src/modules/socket/socket-room-authorization.ts`。
 
 ## 前端操作流程
 
@@ -30,7 +30,7 @@ description: >
 
 | # | 流程 | 入口 | API → 後端 | 副作用 | 權限 |
 | - | ---- | ---- | ---------- | ------ | ---- |
-| 1 | 列表、分頁籤、搜尋、進階篩選 | `/dashboard/inbox` 左欄（`ConversationList.tsx`、`FilterDrawer.tsx`） | `GET /conversations?status=!CLOSED\|CLOSED\|A,B&channelType&assigneeId&closedAfter&page=1&limit=50` → `listConversations`（依 `resolveChannelVisibility` 過濾） | 無。**只抓第一頁 50 筆，沒有分頁**；「未讀」「我的」與搜尋都只在這 50 筆裡做（前端過濾） | `inbox.view` + 渠道可見 / 不隱藏 |
+| 1 | 列表、分頁籤、搜尋、進階篩選、載入更多 | `/dashboard/inbox` 左欄（`ConversationList.tsx`、`FilterDrawer.tsx`） | `GET /conversations?status=!CLOSED\|CLOSED\|A,B&channelType&assigneeId&unread&search&closedAfter&page=N&limit=50` → `listConversations`（依 `resolveChannelVisibility` 過濾） | 無。`useSWRInfinite` 依 `meta.totalPages` 載入更多；「未讀」送 `unread=true`、「我的」送 `assigneeId`、搜尋送 `search`（後端比對聯絡人名稱或任一則訊息文字，#422） | `inbox.view` + 渠道可見 / 不隱藏 |
 | 2 | 開對話、讀訊息、標已讀 | 點列表列；或網址 `?conv=<id>`（通知的 clickUrl） | `GET /conversations/:id`、`GET /:id/messages?page=1&limit=50&order=desc`、`POST /:id/read` | `read` 推 `conversation.updated`。**只載最近 50 則**；從網址直接開不會標已讀 | `inbox.view` + `read_only` |
 | 3 | 送文字（快速回覆、模板、AI 採用、個資遮罩） | 輸入框 Enter（`MessageInput.tsx`）；Bot 處理中或已關閉時輸入框鎖住 | `POST /:id/messages {contentType:'text', content:{text, quickReplies?}, privacyMode?}` → `sendMessage` | 先寫 OUTBOUND 再經渠道外掛送；失敗寫 `metadata.deliveryFailed` 並再推一次 `message.new`；有工單時寫首次回應；發 `message.sent` | `inbox.reply` + `reply_only` / **不隱藏** |
 | 4 | 送圖片 | 迴紋針（PNG/JPG ≤20MB） | `POST /:id/send-image`（multipart）→ `handleSendMedia` → MinIO → `sendMessage` | 同上。LINE、FB、WebChat 可；前端也讓 Instagram 送，後端回 501（英文訊息） | `inbox.reply` + `reply_only` |
@@ -42,14 +42,14 @@ description: >
 | 10 | 對話標籤 | 右欄「對話標籤」（`TagManager` targetType=CONVERSATION） | `POST /:id/tags {tagId}`、`DELETE /:id/tags/:tagId` → `tag.flow.ts` | 重複貼回 201（upsert） | `inbox.manage` + `reply_only` / 不隱藏 |
 | 11 | 從對話建立工單 | 右欄「建立工單」（`CaseCreateModal`） | `POST /cases/from-conversation/:id`（工單領域）；`POST /conversations/:id/case` 是同功能、前端沒用 | 已有工單時 409「這則對話已建立過案件」 | `case.create`（+`case.assign`）+ `full` / 不隱藏 |
 | 12 | AI 建議回覆 | 表頭燈泡（`AiSuggestPanel.tsx`），「採用」以 `ai-adopt` 事件帶入輸入框 | `POST /ai/suggest-reply {conversationId}` | 呼叫 LLM、計用量；失敗一律顯示「無法取得建議」 | 只驗登入（PLAN-12）+ `read_only` |
-| 13 | 即時更新 | `SocketProvider`、`useConversations`、`useMessages` 監聽 `message.new`、`conversation.updated` | 來源：`sendMessage`、`inbound-socket-presenter.ts`、workers 經 Redis `socket:emit` | 列表就地合併欄位並重排；**不套用目前篩選**（已關閉的仍留在進行中，直到重新整理）。前端不訂閱 `conversation:` 房間，全部靠 `tenant:` 房間 | 租戶房間不套用渠道可見範圍（RBAC-04，已實測） |
-| 14 | 顧客要求轉真人（系統） | 顧客點「轉接客服」或傳 `handoff_request`（文字也算） | `inbound-postback-interceptors.ts` `handleHandoffRequest` | `BOT_HANDLED→AGENT_HANDLED`、不指派、送 `handoffMessage`、發 `conversation.handoff`（沒有通知訂閱者，CONV-03）；`ACTIVE` 時只記 log、不回顧客 | — |
-| 15 | 機器人回覆、自動轉真人（系統） | `message.received` → `automation.worker.ts` | `checkAutoHandoff`（次數上限、`handoffKeywords`、媒體）→ AI agent → `kb-autoreply.service.ts` | 以 `bot-reply-guard.ts` 認領，每則入站訊息最多一則機器人回覆 | — |
+| 13 | 即時更新 | `SocketProvider`、`useConversations`、`useMessages` 監聽 `message.new`、`conversation.updated` | 來源：`sendMessage`、`inbound-socket-presenter.ts`、workers 經 Redis `socket:emit` | 列表就地合併欄位並重排；**不套用目前篩選**（已關閉的仍留在進行中，直到重新整理）。前端不訂閱 `conversation:` 房間，全部靠渠道房間（#427） | 只送給看得到該渠道的成員與總店；授權變更後已連線的成員自動重新計算房間 |
+| 14 | 顧客要求轉真人（系統） | 顧客點「轉接客服」或傳 `handoff_request`（文字也算） | `inbound-postback-interceptors.ts` `handleHandoffRequest` | `BOT_HANDLED→AGENT_HANDLED`、不指派、送 `handoffMessage`、發 `conversation.handoff`（送「轉接真人」通知，#419）；`ACTIVE` 時只記 log、不回顧客 | — |
+| 15 | 機器人回覆、自動轉真人（系統） | `message.received` → `automation.worker.ts` | `checkAutoHandoff`（次數上限、`handoffKeywords`、媒體）→ AI agent → `kb-autoreply.service.ts`（追問用完或 LLM 失敗也轉接）；兩者共用 `automation/handoff.flow.ts` 的 `handOffConversation()` | 以 `bot-reply-guard.ts` 認領，每則入站訊息最多一則機器人回覆；轉接寫在同一個認領交易 | — |
 | 16 | 閒置自動關閉（系統） | 每 5 分鐘 `inactivity-close.worker.ts` | `closeConversation(source:'inactivity')` | 時限 `TenantSettings.inactivityCloseHours`，沒有介面（CONV-01） | — |
 
-**有後端、沒有前端入口**：`POST /:id/send-video`；`POST /:id/typing`（前端不呼叫，`TypingIndicator` 也收不到，因為事件只發到沒人訂閱的 `conversation:` 房間）；`HandoffModal`（指定接手人、自訂轉接訊息）在頁面上永遠不會開啟；`POST /:id/case`；列表的 `assigneeId=<特定成員>`、`unread`；`useMessages` 的 `loadOlder`（載入更早訊息）沒有被 `ChatWindow` 使用；`PATCH` 的 `status: BOT_HANDLED`。
+**有後端、沒有前端入口**：`POST /:id/send-video`；`POST /:id/typing`（前端不呼叫，`TypingIndicator` 也收不到，因為事件只發到沒人訂閱的 `conversation:` 房間）；`HandoffModal`（指定接手人、自訂轉接訊息）在頁面上永遠不會開啟；`POST /:id/case`；列表的 `assigneeId=<其他成員>`；`useMessages` 的 `loadOlder`（載入更早訊息）沒有被 `ChatWindow` 使用；`PATCH` 的 `status: BOT_HANDLED`。
 
-**前端實際送出的值**：狀態篩選 `ACTIVE|BOT_HANDLED|AGENT_HANDLED|CLOSED` 以逗號串接，或 `!CLOSED`；`channelType` 取自 `GET /channels` 的類型；`assigneeId` 只送自己的 id 或 `unassigned`；`closedAfter` 是 ISO 字串（今天往前 7/30/90 天）；狀態下拉只送 `ACTIVE`、`AGENT_HANDLED`；結案 `{reason?}`（空白不送）；接管 `{}`；訊息 `contentType:'text'`。後端 Zod 全部接受。注意 `unread=false` 會被 `z.coerce.boolean` 當成 `true`（前端不送 false）。
+**前端實際送出的值**：狀態篩選 `ACTIVE|BOT_HANDLED|AGENT_HANDLED|CLOSED` 以逗號串接，或 `!CLOSED`；`channelType` 取自 `GET /channels` 的類型；`assigneeId` 只送自己的 id 或 `unassigned`；`unread` 只送 `true`；`search` 是搜尋框去頭尾空白後的文字（後端上限 100 字）；`closedAfter` 是 ISO 字串（今天往前 7/30/90 天）；狀態下拉只送 `ACTIVE`、`AGENT_HANDLED`；結案 `{reason?}`（空白不送）；接管 `{}`；訊息 `contentType:'text'`。後端 Zod 全部接受。注意 `unread=false` 會被 `z.coerce.boolean` 當成 `true`（前端不送 false）。
 
 ## 不可破壞的規則
 - **兩層授權疊加**：路由的 `requirePermission('inbox.*')` 之外，每條對話路由都要呼叫 `assertConversationChannelVisible(request, id, level)`。新增路由時照 `conversation.routes.ts` 的 `perm` 表與層級（讀 `read_only`、回覆類 `reply_only`、管理類 `full`）。看不到回 404，不可改成 403（會透露他店對話存在）。
@@ -60,7 +60,7 @@ description: >
 - 機器人回覆以 `bot_reply` + 入站訊息 id 認領（`bot-reply-guard.ts`），認領與寫入同一交易、commit 後才送出。
 - 交回 Bot 要把 `botRepliesCount` 歸零、清 `handoffReason`，否則下一則訊息立刻又轉真人。
 - 渠道差異走 `getChannelPlugin()`；`conversation.routes.ts` 的媒體白名單與 `sendMessage` 的 WEBCHAT 分支是既有例外，不要再加 `channelType` 分支（AGENTS.md 規則 5）。
-- socket 推播：直接 emit 只用在 HTTP 請求的直接結果；背景工作走 Redis `socket:emit`。租戶房間目前會把訊息內容送給看不到該渠道的成員（RBAC-04），新增推播不要再往 `tenant:` 房間放訊息內容。
+- socket 推播：直接 emit 只用在 HTTP 請求的直接結果；背景工作走 Redis `socket:emit`。帶訊息或對話資料的推播一律走渠道房間：API 用 `notifyChannel()`／`emitToChannel()`，workers 用 `publishChannelSocketEvent()`；不要往 `tenant:` 房間放訊息內容（#427）。新增會改變渠道授權的入口，要呼叫 `resyncChannelRooms()` 或 `fastify.syncSocketChannelRooms()`。
 
 ## 跨功能牽連
 由 `docs/ref/features/feature-map.json` 產生，執行 `node scripts/feature-impact.mjs --domain inbox` 看最新版本。重點：
@@ -72,16 +72,17 @@ description: >
 1. WebChat 訪客傳訊（`POST /chatbox/sessions` → `/verify` → `/chatbox/messages`）→ 收件匣不重新整理就出現 → 接管 → 回覆（訪客端收到）→ 交回 Bot → 結案 → 已關閉分頁看得到。
 2. 指派、改狀態、重新開啟、對話標籤，重新整理後讀回一致。
 3. 用自訂角色（只有 `inbox.view`）與三種存取層級的成員（`read_only`、`reply_only`、`full`，直接寫 `agent_channel_accesses`）重走 1–2，確認 403／404 與畫面訊息；沒有任何渠道的成員看不到對話。
-4. socket：以看不到某渠道的成員連線，確認收不收得到該渠道的 `message.new`（RBAC-04 修好後應收不到）。
-5. 進行中超過 50 筆、單一對話超過 50 則時的顯示（目前只顯示 50）。
-- 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/conversation tests/unit/modules/socket tests/unit/services/channel-visibility auto-handoff bot-reply-claim return-to-bot ai-routes-channel-scope`；`pnpm --filter @open333crm/web test -- tests/unit/components/inbox tests/unit/lib/inbox tests/unit/lib/socket`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/channel/channel-scoped-visibility route-permission-guards modules/webhook/inbound-message-processing`。
+4. socket：以看不到某渠道的成員連線，確認收不到該渠道的 `message.new`、`conversation.updated`；有授權的成員與總店收得到；後台改該成員的可用渠道後，不重新整理就開始（或停止）收到（feature 測試 `modules/socket/socket-channel-rooms`）。
+5. 進行中超過 50 段時按「載入更多對話」、在第 2 頁的對話收到新訊息時移到最上面且不重複；搜尋第 51 段以後的聯絡人名稱找得到。單一對話超過 50 則時目前只顯示 50 則（HC-INBOX-07）。
+6. AI 與知識庫回覆都失敗（#445）：去識別化服務或 embedding 服務失敗時，`BOT_HANDLED` 對話的文字訊息轉真人，收件匣即時顯示轉接系統訊息與原因，客服收到轉接通知；同一則訊息重送不重複轉接（`ai-failure-handoff.test.ts`）。
+- 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/conversation tests/unit/modules/socket tests/unit/services/channel-visibility auto-handoff ai-failure-handoff bot-reply-claim return-to-bot ai-routes-channel-scope`；`pnpm --filter @open333crm/web test -- tests/unit/components/inbox tests/unit/lib/inbox tests/unit/lib/socket`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/channel/channel-scoped-visibility route-permission-guards modules/webhook/inbound-message-processing modules/socket/socket-channel-rooms`。
 - E2E：`apps/web/tests/e2e-uat/tenant-inbox.spec.ts`。
 
 ## 常見 bug 從哪裡查
-- 「客服說看不到某段對話」：先查渠道可見範圍（`agent_channel_accesses`、`channel_team_accesses`、角色有無 `channel.view_all`，`apps/api/src/services/channel-visibility.ts`）；再查是否超過列表的 50 筆（`apps/web/src/hooks/useConversations.ts` 的 `limit = 50`）；被指派給看不到渠道的人時，他的「我的」也是空的。
-- 「訊息沒即時出現」：API 直接 emit 看 `conversation.service.ts`；webhook 進站看 `apps/api/src/modules/webhook/inbound-socket-presenter.ts`；workers 走 Redis `socket:emit`，由 `socket.plugin.ts` 轉發。前端只聽 `tenant:` 房間。
+- 「客服說看不到某段對話」：先查渠道可見範圍（`agent_channel_accesses`、`channel_team_accesses`、角色有無 `channel.view_all`，`apps/api/src/services/channel-visibility.ts`）；再查是否還沒按「載入更多對話」（每頁 50 段）；被指派給看不到渠道的人時，他的「我的」也是空的。
+- 「訊息沒即時出現」：API 直接 emit 看 `conversation.service.ts`；webhook 進站看 `apps/api/src/modules/webhook/inbound-socket-presenter.ts`；workers 走 Redis `socket:emit`，由 `socket.plugin.ts` 轉發。前端靠渠道房間收到：成員看不到該渠道、或授權剛改而重新計算失敗（log `重新計算渠道房間失敗`）時收不到，重新整理（重新連線）即可。
 - 「客服回了但顧客沒收到」：看訊息泡泡的紅字（`metadata.deliveryError`），再看 API log 的 `[ChannelDelivery]`。
-- 「機器人不回／一直轉真人」：渠道 `settings.botConfig`（`packages/automation/src/bot-config.ts` 的預設值）、`botRepliesCount` 與 `maxBotReplies`、`handoffKeywords`；處理在 `apps/api/src/modules/automation/automation.worker.ts`。對話不是 `BOT_HANDLED` 時機器人一律不回。
+- 「機器人不回／一直轉真人」：渠道 `settings.botConfig`（`packages/automation/src/bot-config.ts` 的預設值）、`botRepliesCount` 與 `maxBotReplies`、`handoffKeywords`；處理在 `apps/api/src/modules/automation/automation.worker.ts`。對話不是 `BOT_HANDLED` 時機器人一律不回。轉接原因是「AI 暫時無法回覆（…）」時，是 AI 與知識庫回覆都失敗（`ai-failure-handoff.flow.ts`，#445），查 API log 的 `[KbAutoReply]`、`[AgentRunner]`、`[AiFailureHandoff]`。
 - 「指派了對方沒收到通知」：已知 CONV-02，`conversation.assigned` 沒有發布端。
 - 「同一位顧客有兩段進行中的對話」：多半是重新開啟舊對話造成（HC-INBOX-02），或 IDENT-03 的同渠道雙身分。
 - 「按了按鈕出現英文 Forbidden」：渠道存取層級不足（`CHANNEL_ACCESS_LEVEL_INSUFFICIENT`），訊息字串在 `channel-visibility.ts`。

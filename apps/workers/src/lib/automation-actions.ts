@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { bumpSlaPriority, CASE_CATEGORIES } from '@open333crm/shared';
+import { bumpSlaPriority, CASE_CATEGORIES, caseTransitionTimestamps, type CaseStatus } from '@open333crm/shared';
 import { claimSideEffect, dispatchOutboxRows, logger, writeOutbox, type OutboxRow } from '@open333crm/core';
 import { publishSocketEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
@@ -244,7 +244,7 @@ async function createCaseFromAutomation(
   return created.id;
 }
 
-const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網頁聊天' };
+const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網站聊天室' };
 const channelLabel = (channelType: string) => CHANNEL_LABELS[channelType] ?? channelType;
 
 /**
@@ -385,10 +385,27 @@ export async function executeWorkerAutomationActions(
       if (action.type === 'update_case_status') {
         const status = params['status'];
         if (typeof status === 'string' && status && context.caseId) {
-          await prisma.case.update({
-            where: { id: context.caseId },
-            data: { status: status as any },
+          // resolvedAt／closedAt 與 API 的 transitionCase() 用同一個規則（issue #417，AUDIT AUTO-10）。
+          // 以讀到的狀態做條件更新：讀取之後狀態被別人改掉時不覆寫，時間欄位不會依舊狀態算錯
+          const current = await prisma.case.findFirst({
+            where: { id: context.caseId, tenantId: context.tenantId },
+            select: { status: true },
           });
+          if (!current) {
+            logger.info(`[automation] update_case_status skipped: case ${context.caseId} not found`);
+            continue;
+          }
+          const { count } = await prisma.case.updateMany({
+            where: { id: context.caseId, tenantId: context.tenantId, status: current.status },
+            data: {
+              status: status as any,
+              ...caseTransitionTimestamps(current.status as CaseStatus, status as CaseStatus, new Date()),
+            },
+          });
+          if (count === 0) {
+            logger.info(`[automation] update_case_status skipped: case ${context.caseId} status changed concurrently`);
+            continue;
+          }
           await publishSocketEvent(redisPublisher, `tenant:${context.tenantId}`, 'case.updated', {
             id: context.caseId,
             status,
@@ -506,7 +523,7 @@ export async function executeWorkerAutomationActions(
         // channel 防呆：素材 channelType 與對話 channel 不符就 skip（避免 FB 對話送 line_* 空訊息）
         const conv = await prisma.conversation.findFirst({
           where: { id: context.conversationId, tenantId: context.tenantId },
-          include: { channel: { select: { channelType: true } } },
+          include: { channel: { select: { id: true, channelType: true } } },
         });
         const convChannelType = conv?.channel?.channelType?.toLowerCase();
         const matChannelType = material.channelType?.toLowerCase();

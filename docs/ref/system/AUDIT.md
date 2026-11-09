@@ -2,6 +2,8 @@
 
 本文件集中記錄系統盤點時發現的實作落差，只描述各項的現況。其他系統文件只描述主要結構，不重複問題細節；每一項怎麼查證、在哪一次盤點發現，記在[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
 
+一項完全修正之後，從本文件移除這一項的摘要列與內文，在複查紀錄寫明修正它的 change 或 commit。部分修正的項目留在本文件，狀態寫「部分修正」，內文寫明已修與未修的部分（規則見 `AGENTS.md` Step 4）。
+
 摘要表依章節排列，順序與內文相同。點 ID 可跳到該項的內文。
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
@@ -51,15 +53,12 @@
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-08](#rls-08) | 租戶隔離與權限 | P2 | 已定方向 | service 收到的 client 決定了它的 RLS 與交易保證；背景工作多半傳 `prismaAdmin`，沒有 RLS | 靜態確認 |
 | [RLS-09](#rls-09) | 租戶隔離與權限 | P3 | 已定方向 | Socket 房間只有 `tenant:` 帶租戶 ID，推播端無法檢查 `conversation:`、`agent:` 等房間屬於哪個租戶 | 靜態確認 |
-| [RLS-10](#rls-10) | 租戶隔離與權限 | P1 | 未處理 | 租戶連線 `app_tenant` 對平台層資料表有完整讀寫權限：讀得到平台帳號的密碼雜湊，改得了其他租戶的平台設定與價目表 | 執行時確認 |
-| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 執行時確認 |
+| [RLS-10](#rls-10) | 租戶隔離與權限 | P3 | 部分修正 | 租戶連線 `app_tenant` 對平台層資料表的寫入權限與 `platform_users` 等表的讀取已收回（#412）；仍讀得到 `platform_settings` 全部的鍵，包含其他租戶的 `ai.privacy.*` 開關 | 執行時確認 |
+| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | `agent.delete`、`billing.view` 沒有強制點（知識庫的讀取路由已改為檢查 `knowledge.view`） | 執行時確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
-| [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人（含權杖失效通知）與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色；持 `agent.manage` 的非管理員可以建立列舉為 `ADMIN` 的成員 | 執行時確認 |
-| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、`GET /cases/stats`、資料匯出與刪除、新訊息通知沒有套用；聯絡人的對話、工單、時間軸（`481452a`）、AI 輔助端點、`POST /cases`（#281）、`POST /cases/from-conversation/:id`，以及聯絡人清單與合併、報表與匯出、工單與對話詳情（#430）已修正 | 執行時確認 |
+| [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 部分修正 | 工單自動指派、通知收件人（含權杖失效通知）看舊的角色列舉，不看細粒度角色；持 `agent.manage` 的非管理員可以建立列舉為 `ADMIN` 的成員 | 執行時確認 |
+| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 `GET /cases/stats`、資料刪除、新訊息通知沒有套用；聯絡人的對話、工單、時間軸（`481452a`）、AI 輔助端點、`POST /cases`（#281）、`POST /cases/from-conversation/:id`，以及聯絡人清單與合併、報表與匯出、工單與對話詳情（#430）、socket 推播（#427）與資料匯出（#428）已修正 | 執行時確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
-| [RBAC-07](#rbac-07) | 租戶隔離與權限 | P1 | 未處理 | 單筆渠道的讀取、修改、停用、換憑證、刪除都不檢查渠道可見範圍，分店成員知道渠道 ID 就能操作看不到的渠道 | 執行時確認 |
-| [RBAC-08](#rbac-08) | 租戶隔離與權限 | P1 | 未處理 | 改成員角色不比較目標的權限，也沒有最後一位管理員保護：主管可以把唯一的管理員降級，之後無人能改回 | 執行時確認 |
-| [RBAC-09](#rbac-09) | 租戶隔離與權限 | P2 | 未處理 | 重設他人密碼、停用、刪除成員都不比較目標的權限；持 `agent.password.reset` 的自訂角色可以接管管理員帳號 | 執行時確認 |
 | [RBAC-10](#rbac-10) | 租戶隔離與權限 | P2 | 未處理 | 編輯成員可使用的渠道時一律寫 `full`，原本 `read_only`、`reply_only` 的成員被編輯一次就升成完整權限 | 執行時確認 |
 | [RBAC-11](#rbac-11) | 租戶隔離與權限 | P2 | 未處理 | 後台多數頁面不依權限隱藏操作，按下才 403；沒有權限時頁面顯示成「沒有資料」 | 執行時確認 |
 | [TEAM-01](#team-01) | 租戶隔離與權限 | P2 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用；進站訊息不依團隊分流 | 靜態確認 |
@@ -69,11 +68,9 @@
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
-| [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
 | [AUTH-10](#auth-10) | 帳號與登入 | P3 | 未處理 | 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | 執行時確認 |
-| [AUTH-11](#auth-11) | 帳號與登入 | P1 | 未處理 | 停用的租戶仍收得到 WebChat 訊息，預約的群發也照常送出 | 執行時確認 |
 | [AUTH-12](#auth-12) | 帳號與登入 | P2 | 未處理 | 平台「修改密碼」打錯目前密碼會被整頁登出，看不到錯誤訊息 | 執行時確認 |
 | [AUTH-13](#auth-13) | 帳號與登入 | P2 | 未處理 | 平台的「重寄開通信」會立刻換掉任何啟用中帳號的密碼，包括自己，沒有確認 | 執行時確認 |
 | [AUTH-14](#auth-14) | 帳號與登入 | P2 | 未處理 | 平台帳號的開通信、重寄開通信與租戶的重寄開通信，寄送失敗時仍回成功 | 靜態確認 |
@@ -82,15 +79,11 @@
 | [SEC-02](#sec-02) | 帳號與登入 | P2 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
-| [SEC-07](#sec-07) | 帳號與登入 | P2 | 未處理 | CLI token 與 API 金鑰的有效天數沒有上限，可以建立到期日在 2300 年的憑證；更大的值回 500 | 執行時確認 |
 | [SEC-08](#sec-08) | 帳號與登入 | P2 | 未處理 | 圖文選單發布時伺服器直接請求背景圖網址，不擋內網，可用來探測內網服務 | 執行時確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
-| [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | [TRIAL-02](#trial-02) | 試用 | P2 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效；通用端點也能寫壞租戶的個資遮罩設定，讓該租戶所有訊息寫入失敗 | 執行時確認 |
 | [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
 | [TRIAL-04](#trial-04) | 試用 | P3 | 部分修正 | 租戶頁啟用已過期的試用租戶，只維持到下一輪排程，並重寄到期信；啟用不清除軟刪標記。延長試用已改為清除標記（`9f3c6c1a`） | 執行時確認 |
-| [TRIAL-05](#trial-05) | 試用 | P1 | 已修正 | 同一 email 待驗證時再申請一次會覆寫密碼，申請人點信後站台以他人密碼開通；#407 改為申請不收密碼、驗證後才設定 | 執行時確認 |
-| [TRIAL-06](#trial-06) | 試用 | P2 | 已修正 | 再送一次試用申請會繞過重寄節流，換 IP 就能對任意信箱無限寄驗證信；#407 改為待驗證時走重寄節流 | 執行時確認 |
 | [TRIAL-07](#trial-07) | 試用 | P2 | 未處理 | 手動開通表單預設「免費試用」方案但不設試用到期日，這類租戶永遠停在試用方案，也不出現在試用管理頁 | 執行時確認 |
 | [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | [PLAN-02](#plan-02) | 方案與額度 | P3 | 未處理 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
@@ -104,7 +97,6 @@
 | [PLAN-11](#plan-11) | 方案與額度 | P3 | 未處理 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
 | [PLAN-12](#plan-12) | 方案與額度 | P3 | 未處理 | AI 不在功能天花板的維度內，停用 AI 只能把 `monthlyTokens` 設成 `0` | 靜態確認 |
 | [PLAN-13](#plan-13) | 方案與額度 | P2 | 未處理 | 換方案或調高方案的額度之後，當月的額度告警不會再發 | 靜態確認 |
-| [PLAN-14](#plan-14) | 方案與額度 | P1 | 未處理 | 試用與輕量版方案不含 `channels` 功能（seed 與 UAT 相同），這兩個方案的管理員看不到也建不了渠道 | 執行時確認 |
 | [PLAN-15](#plan-15) | 方案與額度 | P2 | 未處理 | `/admin/plans` 同時編輯兩張方案卡片時，第二張送出的是舊值，畫面卻顯示已更新 | 執行時確認 |
 | [PLAN-16](#plan-16) | 方案與額度 | P2 | 未處理 | 方案異動申請的核准與駁回不是原子操作，同時送出時兩者都成功；「一筆待審」只靠查詢後建立，同時送出可建多筆 | 執行時確認 |
 | [PLAN-17](#plan-17) | 方案與額度 | P2 | 未處理 | 方案異動的審核結果傳不回租戶：平台頁沒有審核備註，核准與駁回也不通知租戶 | 執行時確認 |
@@ -120,18 +112,13 @@
 | [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [SLA-06](#sla-06) | SLA | P2 | 未處理 | SLA 以日曆時間連續計算，不扣營業時間、假日，也不在「待處理」時暫停；非營業時間照樣逾時、通知與升級 | 執行時確認 |
 | [SLA-07](#sla-07) | SLA | P2 | 未處理 | 工單優先級改變後不重新套用 SLA 政策：升成緊急的工單仍以原優先級的時限計時，逾時升級後也沒有新期限 | 執行時確認 |
-| [HOURS-01](#hours-01) | SLA | P1 | 未處理 | 營業時間設定為 `{}` 的租戶，在營業時間頁按「啟用」整頁崩潰，無法從畫面啟用營業時間 | 執行時確認 |
-| [HOURS-02](#hours-02) | SLA | P2 | 未處理 | 營業時間不驗證時段與時區：跨午夜時段讓整天都判定為非營業；不合法的時區讓自動回覆整個失效 | 執行時確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
-| [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 未處理 | 對話轉接真人時，主管與管理員收不到通知 | 靜態確認 |
-| [CONV-04](#conv-04) | 對話、工單與自動化 | P1 | 未處理 | 收件匣只載入前 50 段對話，沒有分頁；篩選與搜尋都只在這 50 段裡找 | 執行時確認 |
 | [CONV-05](#conv-05) | 對話、工單與自動化 | P2 | 未處理 | 重新開啟已關閉的對話，不檢查同一聯絡人在同一渠道是否已有未關閉的對話，造成兩段同時進行 | 執行時確認 |
-| [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 未處理 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派，通知只寄給停用的人 | 執行時確認 |
-| [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷也送不出去，見 CASE-03 | 靜態確認 |
-| [CASE-03](#case-03) | 對話、工單與自動化 | P1 | 未處理 | LINE 的滿意度調查送出空白文字，LINE 拒收，失敗沒有紀錄也不重寄 | 靜態確認 |
-| [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 未處理 | 工單狀態轉換不維護 `resolvedAt` 與 `csatSentAt`：直接關閉不算已解決，重開保留舊值，報表的已解決數與 SLA 達成率失真，重開再解決的工單 1 分鐘內被自動結案 | 執行時確認 |
-| [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 未處理 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息 | 執行時確認 |
+| [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 未處理 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440） | 執行時確認 |
+| [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷已可送出（#416） | 靜態確認 |
+| [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 部分修正 | 工單狀態轉換不維護 `csatSentAt`：重開再解決的工單 1 分鐘內被自動結案；`resolvedAt` 的部分（重開保留舊值，報表的已解決數與 SLA 達成率失真）#417 已修正 | 執行時確認 |
+| [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 部分修正 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息；時間軸已有紀錄（#444） | 執行時確認 |
 | [CASE-06](#case-06) | 對話、工單與自動化 | P2 | 未處理 | 連結對話到工單不檢查對話的聯絡人與渠道可見範圍，可以把別的顧客、看不到的渠道的對話掛上 | 執行時確認 |
 | [CASE-07](#case-07) | 對話、工單與自動化 | P2 | 未處理 | 建立與修改工單不驗證 `assigneeId`、`teamId` 屬於本租戶，可以把其他租戶的成員寫成負責人 | 執行時確認 |
 | [CASE-08](#case-08) | 對話、工單與自動化 | P2 | 未處理 | 工單的「團隊」下拉讀錯欄位，永遠只有「未指定」，畫面上無法觸發依團隊輪流指派 | 執行時確認 |
@@ -140,12 +127,10 @@
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
-| [AUTO-06](#auto-06) | 對話、工單與自動化 | P1 | 未處理 | 規則編輯器把純數字的條件值存成數字，「訊息內容 包含 8888」這類條件永遠不成立 | 執行時確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
-| [AUTO-09](#auto-09) | 對話、工單與自動化 | P2 | 已修正 | 自動化的試跑與執行紀錄只驗登入，沒有 `automation.view` 的成員可以讀到規則的條件與動作全文 | 執行時確認 |
-| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 未處理 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫 `resolvedAt` 與工單事件、不通知被指派的人，查詢也不帶 `tenantId` | 執行時確認 |
-| [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 未處理 | Canvas 用 API 建不出串接的節點，草稿也能觸發；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網 | 執行時確認 |
+| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫工單事件、不通知被指派的人，`assign_agent`、`escalate_case` 的查詢不帶 `tenantId`；`update_case_status` 的 `resolvedAt`／`closedAt` 與 `tenantId` #417 已修正 | 執行時確認 |
+| [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 部分修正 | Canvas 用 API 建不出串接的節點；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網。手動觸發不再接受草稿、封存的流程與不存在的聯絡人 | 執行時確認 |
 | [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 未處理 | 自動化動作的參數只檢查有填，不檢查值：狀態可存 `"FOO"`，負責人可存其他租戶的成員 | 執行時確認 |
 | [AUTO-13](#auto-13) | 對話、工單與自動化 | P2 | 未處理 | 「短連結被點擊」的觸發說明可以依連結決定動作，但契約沒有連結的條件欄位，用到時存檔被拒 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
@@ -155,8 +140,6 @@
 | [CONTACT-03](#contact-03) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併完成後「合併紀錄」卡不更新，看不到剛才的合併，也找不到「解除合併」 | 執行時確認 |
 | [CONTACT-04](#contact-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 聯絡人時間軸一次取出全部對話、工單與事件，沒有上限；資料多的聯絡人詳情頁要 60 秒以上 | 執行時確認 |
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 部分修正 | 群發失敗後重試，逐人送出的群發會對全部對象重送；連按兩次與排程重疊已擋下 | 靜態確認 |
-| [MKT-02](#mkt-02) | 聯絡人、行銷與報表 | P1 | 未處理 | 沒有 `marketing.broadcast` 的成員，建立帶排程時間的群發，到期照樣送出 | 執行時確認 |
-| [MKT-03](#mkt-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 附券群發繞過 `coupon.issue`，沒有優惠券權限也能發券 | 執行時確認 |
 | [MKT-05](#mkt-05) | 聯絡人、行銷與報表 | P2 | 未處理 | 分群的「建立日期」條件以 UTC 午夜切日，台灣 00:00–07:59 建立的聯絡人算到前一天 | 執行時確認 |
 | [MKT-06](#mkt-06) | 聯絡人、行銷與報表 | P2 | 未處理 | 群發的素材選單要 200 筆但後端上限 100，分群下拉只拿第一頁 50 筆 | 執行時確認 |
 | [MKT-07](#mkt-07) | 聯絡人、行銷與報表 | P2 | 未處理 | 刪除分群不檢查是否被排程群發引用，群發到期失敗時的原因看不出是分群被刪 | 執行時確認 |
@@ -171,23 +154,21 @@
 | [SHORT-04](#short-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 建立短連結的路由把所有例外包成 400 並回傳原始訊息，Prisma 錯誤原文顯示在畫面上；跨租戶的自訂代碼重複也走這條路徑 | 執行時確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
 | [ANA-02](#ana-02) | 聯絡人、行銷與報表 | P3 | 已提建議 | 工單報表的 CSV 匯出與 CSAT 報表讀出期間內的所有工單，在 API 行程內計算，回應時間隨工單數增加 | 執行時確認 |
-| [ANA-03](#ana-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 報表匯出的 CSV 沒有跳脫：名稱含逗號會跑欄，以 `=` 等字元開頭會被 Excel 當成公式 | 執行時確認 |
 | [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；活動詳情端點不看開始與結束時間；票券夾已簽發 fanToken，端點可以進入 | 執行時確認 |
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 執行時確認 |
-| [PORTAL-03](#portal-03) | 聯絡人、行銷與報表 | P1 | 未處理 | 編輯草稿活動不帶出原本的選項，只改標題就儲存會清掉所有選項與正確答案 | 執行時確認 |
 | [PORTAL-04](#portal-04) | 聯絡人、行銷與報表 | P2 | 未處理 | 粉絲送出活動的答案不驗證：不屬於該活動的選項照收並給點，表單必填欄位空白也收 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 渠道刪除是硬刪除；有對話的渠道刪除改回 409 並可從畫面停用，沒有對話的渠道刪除時仍連帶刪除聯絡人身分 | 靜態確認 |
-| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P1 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；網站聊天室的群發與發券顯示成功，顧客收不到（2026-10-30 健檢）；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
+| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P1 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；網站聊天室不能群發與發券（#415 改為拒絕，不再假成功）；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [CHAN-06](#chan-06) | 渠道、稽核與資料權利 | P2 | 未處理 | LINE 的「測試連線」不檢查 Channel Secret；Secret 填錯時顯示成功，之後每則 webhook 都因簽章不符被拒，卡片沒有警示 | 靜態確認 |
 | [CHAN-07](#chan-07) | 渠道、稽核與資料權利 | P2 | 未處理 | LINE 重送的事件中，沒有訊息 id 的 postback 與 follow 被重複處理：存兩則、再跑一次貼標與轉真人 | 執行時確認 |
 | [CHAN-08](#chan-08) | 渠道、稽核與資料權利 | P2 | 未處理 | 客人收回 LINE 訊息時，原訊息照常顯示，另外多一則「不支援的訊息類型」 | 執行時確認 |
 | [CHAN-09](#chan-09) | 渠道、稽核與資料權利 | P2 | 未處理 | 下游轉發設為立即模式時，目標網址被 SSRF 防護擋下，訊息既不轉發也不進 CRM，完全消失 | 執行時確認 |
 | [CHAN-10](#chan-10) | 渠道、稽核與資料權利 | P2 | 未處理 | 圖文選單綁定受眾的背景工作失敗時不重試、不通知，畫面只顯示「已送出」 | 執行時確認 |
 | [CHAN-11](#chan-11) | 渠道、稽核與資料權利 | P2 | 未處理 | 圖文選單的區域動作切成「日期時間選擇」時，模式下拉顯示有值卻沒有寫入，儲存回 400 | 執行時確認 |
-| [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更、優惠券與行銷、匯出下載、對外 Webhook 訂閱等操作 | 執行時確認 |
-| [AUD-03](#aud-03) | 渠道、稽核與資料權利 | P1 | 未處理 | 永久刪除成員後，他在稽核紀錄裡的操作都變成沒有操作者，無法再查出是誰做的 | 執行時確認 |
+| [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 租戶稽核不涵蓋登入、渠道憑證變更、優惠券與行銷、匯出下載、對外 Webhook 訂閱等操作 | 執行時確認 |
+| [AUD-03](#aud-03) | 渠道、稽核與資料權利 | P1 | 部分修正 | 永久刪除成員時已保存名稱與 email 快照，排隊中的刪除、匯出請求完成時也記下快照（#414）；依 `actorId` 篩選稽核查不到已刪除成員的紀錄 | 執行時確認 |
 | [AUD-04](#aud-04) | 渠道、稽核與資料權利 | P2 | 未處理 | `agent.create` 稽核只記舊的角色列舉，不記實際指派的角色與可見渠道 | 執行時確認 |
-| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email、outbox 與 Webhook 送出紀錄兩種模式都保留；刪除後解除合併會讓被併入的人重新出現 | 執行時確認 |
+| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留表單答案（客人傳的媒體檔已改為刪除，#329）；被合併的聯絡人的姓名、電話、email、outbox 與 Webhook 送出紀錄兩種模式都保留；刪除後解除合併會讓被併入的人重新出現 | 執行時確認 |
 | [ERASE-02](#erase-02) | 渠道、稽核與資料權利 | P2 | 未處理 | 資料刪除沒有防誤刪機制：一次 API 呼叫就執行硬刪除，沒有預覽、確認、冷靜期或取消 | 執行時確認 |
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體；打包時間長時，同一個請求可能被兩次執行同時處理 | 靜態確認 |
 | [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 部分修正 | 對外 Webhook 轉送所有內部事件：已有對外事件清單，但第一版等於所有事件；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
@@ -219,18 +200,15 @@
 | [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `OLLAMA_*` 環境變數與 Chat 的位址補救已無作用 | 靜態確認 |
 | [LLM-04](#llm-04) | Storage、LLM 與資料庫 | P2 | 未處理 | Embedding 只能呼叫 Ollama；UAT 目前靠 Compose 內的 Ollama 運作，依部署決定拿掉 Ollama 後，知識庫自動回覆、AI 建議回覆與語意搜尋都會失效 | 執行時確認 |
 | [LLM-05](#llm-05) | Storage、LLM 與資料庫 | P2 | 未處理 | AI 摘要在 LLM 失敗或額度用完時回傳一段固定範本，轉接真人時以「Bot 對話摘要」寫進對話 | 執行時確認 |
-| [KB-01](#kb-01) | Storage、LLM 與資料庫 | P1 | 未處理 | 知識庫追問次數用完時回覆「已為您轉接客服人員」，實際沒有轉接 | 執行時確認 |
-| [KB-02](#kb-02) | Storage、LLM 與資料庫 | P1 | 未處理 | 型號守門不分大小寫，把 `Wi-Fi`、`e-mail`、訂單編號當成查不到的型號，對所有租戶生效 | 執行時確認 |
-| [KB-03](#kb-03) | Storage、LLM 與資料庫 | P1 | 未處理 | 沒有 BOM 的 UTF-8 CSV 匯入知識庫後中文變亂碼，英文表頭時還會直接發布 | 執行時確認 |
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
 | [KB-05](#kb-05) | Storage、LLM 與資料庫 | P2 | 未處理 | 型號守門命中後寫進對話的 `modelGuard` 永遠不清除，之後的回覆都沿用舊值 | 執行時確認 |
+| [KB-06](#kb-06) | Storage、LLM 與資料庫 | P3 | 部分修正 | AI 與知識庫回覆都失敗時客人收不到回覆；知識庫失敗時已改為轉真人（#445），`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆、不轉接 | 執行時確認 |
 | [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
 | [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
 | [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
 | [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
-| [CI-04](#ci-04) | CI 與測試 | P2 | 已修正 | 試用申請與開通完全沒有自動測試，主規格 `trial-application` 的 9 個 scenario 都沒有測試；#407 為每個 scenario 補上同名測試 | 靜態確認 |
 
 ## 租戶隔離與權限
 
@@ -252,7 +230,14 @@
 
 **等待節點也受影響。** Canvas 的等待節點只靠 `canvas.scheduler.ts` 每 60 秒呼叫 `processResumeQueue()` 恢復，BullMQ 路徑從來沒有成功過（[APP-07](#app-07)）。`processResumeQueue()` 也用 singleton，所以同樣受上面兩種情況影響。修正 RLS-01 時，一併處理 APP-07。
 
-**優先順序。** 安全面是 P2：進入 Canvas 的路徑都不接受外部指定的 ID。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，`FlowRunner` 的 `executionId` 由租戶連線建立，因此即使 singleton 繞過 RLS，資料也不會流到其他租戶。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`，而且 `interaction_flows` 與 `flow_executions` 都是 0 筆（2026-10-02），沒有租戶使用 Canvas，因此維持 P2。
+**優先順序。** 安全面是 P2。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，流程 id 由這個函式自己查出，不接受外部指定的 ID。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`，而且 `interaction_flows` 與 `flow_executions` 都是 0 筆（2026-10-02），沒有租戶使用 Canvas，因此維持 P2。
+
+**更正與手動觸發的修正**（2026-11-06，change `migrate-canvas-tenant-ctx`）：上一段原本寫「進入 Canvas 的路徑都不接受外部指定的 ID」，這句不正確。手動觸發 `POST /api/v1/canvas/:id/trigger` 的流程 id 與聯絡人 id 都由呼叫端指定：
+
+- PostgreSQL 的外鍵檢查不套用 RLS。呼叫端傳入另一個租戶的流程 id 時，API 也回 202，並在呼叫端的租戶建立 execution。之後引擎執行另一個租戶的流程節點。本機以 `app_tenant` 連線實測，結果相同。
+- `flow_executions.contactId` 沒有外鍵，任何 UUID 都能寫入。
+
+現在手動觸發在租戶交易內先檢查流程與聯絡人屬於本租戶，再建立 execution，commit 之後才交給引擎（見 AUTO-11）。引擎、`processResumeQueue()` 與 `canvas.webhook.ts` 仍用 singleton，本項的其他部分未處理。
 
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
@@ -327,6 +312,10 @@ Socket.IO 房間只有 `tenant:<tenantId>` 帶租戶 ID。`conversation:<id>`、
 
 RLS 是租戶隔離的第二道防線；對這幾張表，第二道防線不存在。修正方向：收回 `app_tenant` 對平台層資料表的寫入權限，`platform_users` 連讀取一併收回；租戶路徑需要的兩張表只給 `SELECT`。
 
+**部分修正（#412，2026-11-03）。** migration `20261103110000_revoke_app_tenant_platform_tables` 讓 `app_tenant` 對 `tenants`、`plans`、`platform_settings`、`model_pricings` 只剩 `SELECT`（租戶路徑讀方案上限、租戶停用狀態、個資遮罩政策與價目表），完全收回 `platform_users`、`platform_audit_logs`、`trial_signups` 與 `_prisma_migrations`。`ALTER DEFAULT PRIVILEGES` 不再把新表授權給 `app_tenant`，新的租戶表要在開啟 RLS 的 migration 明確 `GRANT`。`apps/api/tests/feature/platform-table-grants.test.ts` 檢查寫入與讀取被拒、必要的讀取仍可用，並檢查每張 FORCE RLS 的表都有授權。
+
+**仍未修正**：`platform_settings` 仍是整表 `SELECT`，租戶連線讀得到其他租戶的 `ai.privacy.*` 開關值（布林，不是個資）。要收窄得改成由 `app_admin` 讀出後傳入，因此由 P1 降為 P3。
+
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-SETTINGS-02（[PLATFORM-SETTINGS 健檢](../features/health/PLATFORM-SETTINGS.md)）。證據：本機 psql 在交易內 `SET LOCAL ROLE app_tenant` 並設定 `app.current_tenant`，看得到全部 `platform_settings`、`UPDATE` 其他租戶的 `ai.privacy.*` 成功、`INSERT` 新鍵成功、`UPDATE model_pricings` 成功、`platform_users.passwordHash` 可讀，最後 ROLLBACK（健檢實測）。子代理原列 P2，2026-10-30 使用者決定升為 P1。
 
 <a id="rbac-01"></a>
@@ -338,18 +327,19 @@ RLS 是租戶隔離的第二道防線；對這幾張表，第二道防線不存�
 | --- | --- |
 | `481452a`（2026-09-30） | `contact.routes.ts` 的每一條路由 |
 | `efbd5f0`（#207，2026-10-02） | `case`、`conversation`、`tag`、`shortlink` 四個模組的每一條路由。改負責人或團隊另外要求 `case.assign`，改成 `ESCALATED` 另外要求 `case.escalate` |
+| change `migrate-knowledge-tenant-ctx`（2026-11-06） | `knowledge.routes.ts` 的 9 條讀取路由要求 `knowledge.view`（`knowledge-routes.test.ts`「讀取知識庫需要檢視權限」） |
 
 `packages/shared/src/rbac/permissions.ts`（2026-10-29 從 `packages/core` 搬來）宣告 62 個權限碼（2026-10-30 功能健檢核對，本機與 UAT 的 `/roles/matrix` 都是 62 個；2026-10-02 核對時是 56 個）。其中 3 個在 `apps/api/src` 完全沒有出現：
 
 | 權限碼 | 現況 |
 | --- | --- |
-| `knowledge.view` | `knowledge.routes.ts` 以 `addHook('preHandler')` 只檢查登入。寫入路由另外要求 `knowledge.manage` 或 `knowledge.admin`，但 9 條讀取路由（文章列表、單篇、來源、分類、搜尋、embedding 狀態、模型、回饋數量、回饋列表）沒有權限碼檢查 |
+| `knowledge.view` | **已修正（change `migrate-knowledge-tenant-ctx`）。** 原本 `knowledge.routes.ts` 以 `addHook('preHandler')` 只檢查登入，9 條讀取路由（文章列表、單篇、來源、分類、搜尋、embedding 狀態、模型、回饋數量、回饋列表）沒有權限碼檢查。現在每條讀取路由要求 `knowledge.view` |
 | `agent.delete` | 註冊表標示「已淘汰，改用 `agent.deactivate` / `agent.purge`」 |
 | `billing.view` | 描述是「租戶站內方案/用量頁」，但這個頁面不存在：租戶端的 `/dashboard/plan` 只有升級與加購的申請表，以及自己的申請列表（見 PLAN-10） |
 
 2026-10-30 功能健檢實測重現：只有 `inbox.view` 的成員讀文章列表、單篇、分類、來源、型號、回報清單與回報數都回 200（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。`agent.delete` 仍在註冊表，角色頁顯示「刪除成員（舊）」（[MEMBERS 健檢](../features/health/MEMBERS.md)）。
 
-知識庫的讀取路由因此有兩個後果：
+修正之前，知識庫的讀取路由有兩個後果：
 
 - 角色設定取消勾選「檢視知識庫」，成員仍然讀得到文章。
 - 方案的功能天花板不含 `knowledge` 時，租戶的成員仍然讀得到文章。寫入路由會被天花板擋下。
@@ -404,7 +394,7 @@ CLI token 與網頁登入走兩套授權，兩套之間沒有對應：
 
 **後果二：MCP 工具不受方案限制。** MCP 端點要求 token 帶 `mcp:read`，個別工具再依 `requiredMcpScopeForTool()` 要求 `mcp:line:read`、`mcp:line:send` 或 `mcp:line:broadcast`。`mcp.server.ts` 的工具（查聯繫人與案件、報表、LINE 對話、直接發送、群發）都不檢查角色權限或方案天花板。只有持 `settings.manage` 的人能發出帶這些 scope 的 token，但發出之後，方案不含 `marketing` 的租戶也能透過 MCP 群發。
 
-**`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。對照之下，`authenticateJwtOrCliSession` 的 JWT 分支沒有設定 `roleId`，網頁使用者在同一條路由上會拿到空的權限集合而被擋下。同一條路由，JWT 失效關閉，CLI 失效開放。
+**`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。同一條路由上，網頁使用者的 JWT 依角色權限判斷（2026-11-06 起，change `fix-partner-ingest-jwt-role`），CLI token 卻不受檢查。
 
 **規格依據。** 主規格 `rbac` 的「CLI token 的授權」規定：CLI 路由與 MCP 工具 SHALL 同時檢查 token 的 scope 與成員的有效權限集合；權限檢查的 guard MUST NOT 直接放行 CLI token。後果一、後果二與失效開放的程式碼都違反這條需求。這條需求依 issue #217 的決定寫入（CLI 選項 A）。
 
@@ -423,7 +413,6 @@ CLI token 的停用問題另見 AUTH-02。
 | `apps/workers/src/lib/automation-actions.ts` 的 `getSupervisorAndAdminAgentIds()` | 自動化的「通知主管」動作 |
 | `trial/trial.scheduler.ts` 的 `adminEmails()` | 試用到期的通知信只寄給 `ADMIN` |
 | `csat/csat.service.ts` 的 `recordCsatScore()` | CSAT 兩分以下只通知 `SUPERVISOR`，不含 `ADMIN` |
-| `agent/agent.service.ts` 的 `assertNotLastActiveAdmin()` | 停用與刪除成員時，「最後一位啟用中的管理員」把 `role` 為 `ADMIN` 的成員也算成管理員 |
 
 2026-10-30 功能健檢補上兩點：
 
@@ -432,7 +421,7 @@ CLI token 的停用問題另見 AUTH-02。
 
 指派自訂角色時，`agent.service.ts` 的 `resolveRoleAssignment()` 讓 `role` 沿用成員原本的值。因此兩個同屬一個自訂角色的成員，行為可能正好相反：原本是 `ADMIN` 的人會收到所有主管通知，也永遠不會被自動指派工單；原本是 `AGENT` 的人則相反。「人員管理」頁只顯示細粒度角色，管理員看不到這個差異。
 
-**規格依據。** 主規格 `agent-lifecycle` 的「停用成員」與「永久刪除成員」規定：目標是租戶最後一位啟用中、角色為 `admin` 系統角色的成員時，系統 SHALL 拒絕。`assertNotLastActiveAdmin()` 把 `role` 為 `ADMIN`、但角色已改成自訂角色的成員也算進去。例如：租戶只剩一位 `admin` 系統角色的成員 M，另一位成員的角色列舉仍是 `ADMIN`。系統因此認為有兩位管理員，允許停用或刪除 M，租戶可能從此沒有人能管理角色。現況違反這兩條需求，因此由 P3 調為 P2。表中其他規則沒有主規格規定。
+**部分修正（#413，2026-11-03）。** 「最後一位啟用中的管理員」改依角色權限有沒有 `role.manage`（含 implies）判斷，不再看 `role` 列舉；停用、刪除與改角色共用同一個判斷（change `guard-agent-target-rank-last-admin`）。原本違反主規格 `agent-lifecycle` 的部分已消除，表中其餘規則沒有主規格規定，仍未處理。
 
 <a id="rbac-04"></a>
 ### RBAC-04：渠道可見範圍有多處沒有套用
@@ -441,19 +430,18 @@ CLI token 的停用問題另見 AUTH-02。
 
 | 路徑 | 沒有套用的結果 |
 | --- | --- |
-| `plugins/socket.plugin.ts` 在連線時讓每條 socket 自動加入 `tenant:<租戶 ID>` | `conversation.service.ts` 的 `sendMessage()` 與 `webhook/inbound-socket-presenter.ts` 的 `emitToConversationAndTenant()` 都把含訊息內容的 `message.new` 發到租戶房間。受限的客服即時收到所有渠道的訊息 |
 | `case.routes.ts` 的 `GET /stats` | 統計全租戶的工單 |
-| 資料匯出（`data-export.handler.ts`） | 只以 `tenantId` 篩選。持 `data.export` 的成員即使沒有任何渠道授權、沒有 `inbox.view` 與 `case.view`，也能匯出全租戶的聯絡人（含各渠道 uid）、對話、訊息與工單（HC-GOVERNANCE-02） |
 | 資料刪除（`data-erasure.service.ts`） | 持 `data.erase` 但看不到某渠道的成員，可以匿名化或硬刪除只在那個渠道出現的聯絡人（HC-GOVERNANCE-05） |
-| `notification.worker.ts` 的未指派對話新訊息通知 | 通知所有 `ADMIN`、`SUPERVISOR`，不看渠道。只看得到分店渠道的主管仍收到其他渠道客人的名稱，點進去是 404（HC-NOTIFICATIONS-01） |
 
-第一項影響最大：只要受限客服的畫面連著 socket，渠道可見範圍在即時事件上等於不存在。2026-10-30 功能健檢實測重現：沒有任何渠道授權的成員訂閱對話房間被拒，但仍從租戶房間收到 WebChat 的 `message.new`，含訊息全文（[INBOX 健檢](../features/health/INBOX.md)）。
+**socket 推播已修正（#427，2026-11-03）。** 連線時依可見渠道加入 `tenant:<租戶>:channel:<渠道>`，總店加入 `tenant:<租戶>:channels:all`；`message.new`、`conversation.*` 改送渠道房間，不再送到租戶房間；成員可用渠道、角色、角色權限、渠道與團隊授權變更，以及方案異動後重新計算已連線成員的房間；停用或刪除的成員被斷線，也不能再連線（change `fix-socket-channel-rooms-427`、PR #438 審查，`socket-channel-rooms.test.ts`）。仍送到租戶房間的有 `case.*`（`case.created`、`case.deleted` 帶工單標題）、`sla.event`、`contact.merged`（帶聯絡人名稱）。
 
-**2026-10-30 功能健檢新增的路徑。** 健檢實測發現七條路徑；報表與匯出（HC-ANALYTICS-03）、工單詳情（HC-CASES-08）、對話詳情（HC-INBOX-05）、聯絡人修改與合併預覽（HC-CONTACTS-10）已由 #430 修正並從上表移除，上表 `GET /stats` 之後剩下的三列是其餘的健檢發現。影響較大或修法不同的另列一項：單筆渠道的路由（RBAC-07，P1）、連結對話到工單（CASE-06）、指派給看不到渠道的成員（CONV-06）；群發（原 MKT-04，P1）已由 #430 修正並移除。**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-03（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-08（[CASES 健檢](../features/health/CASES.md)）、HC-INBOX-05（[INBOX 健檢](../features/health/INBOX.md)）、HC-CONTACTS-10（[CONTACTS 健檢](../features/health/CONTACTS.md)）、HC-GOVERNANCE-02（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-05（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-NOTIFICATIONS-01（[NOTIFICATIONS 健檢](../features/health/NOTIFICATIONS.md)）。證據：各報告以只綁一個渠道或沒有渠道授權的自訂角色實測，例如 `apps/api/src/modules/analytics/analytics.service.ts:282-294`、`apps/api/src/modules/case/case.service.ts:150-157`、`apps/api/src/modules/conversation/conversation.service.ts:184-206`、`apps/api/src/modules/contact/contact.service.ts:236-244`、`apps/workers/src/handlers/data-export.handler.ts:56-112`、`apps/api/src/modules/data-erasure/data-erasure.service.ts:45-56`、`apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236`。
+**資料匯出已修正（#428，2026-11-03）。** 匯出定位為全租戶的資料可攜權，內容不依渠道篩選；發起、查詢與下載改為要求 `data.export` 加 `channel.view_all`（change `restrict-data-export-to-tenant-wide-roles`）。
+
+**2026-10-30 功能健檢新增的路徑。** 健檢實測發現七條路徑；報表與匯出（HC-ANALYTICS-03）、工單詳情（HC-CASES-08）、對話詳情（HC-INBOX-05）、聯絡人修改與合併預覽（HC-CONTACTS-10）已由 #430 修正並從上表移除，資料匯出（HC-GOVERNANCE-02）已由 #428 修正並移除，未指派對話的新訊息通知（HC-NOTIFICATIONS-01）已由 #440 修正並移除，上表 `GET /stats` 之後剩下的兩列是其餘的健檢發現。影響較大或修法不同的另列一項：單筆渠道的路由（原 RBAC-07，P1，已由 #408 修正並移除）、連結對話到工單（CASE-06）、指派給看不到渠道的成員（CONV-06）；群發（原 MKT-04，P1）已由 #430 修正並移除。**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-03（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-08（[CASES 健檢](../features/health/CASES.md)）、HC-INBOX-05（[INBOX 健檢](../features/health/INBOX.md)）、HC-CONTACTS-10（[CONTACTS 健檢](../features/health/CONTACTS.md)）、HC-GOVERNANCE-02（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-05（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-NOTIFICATIONS-01（[NOTIFICATIONS 健檢](../features/health/NOTIFICATIONS.md)）。證據：各報告以只綁一個渠道或沒有渠道授權的自訂角色實測，例如 `apps/api/src/modules/analytics/analytics.service.ts:282-294`、`apps/api/src/modules/case/case.service.ts:150-157`、`apps/api/src/modules/conversation/conversation.service.ts:184-206`、`apps/api/src/modules/contact/contact.service.ts:236-244`、`apps/workers/src/handlers/data-export.handler.ts:56-112`、`apps/api/src/modules/data-erasure/data-erasure.service.ts:45-56`、`apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236`。
 
 **規格依據。** 主規格 `channel-scoped-visibility` 的「與即時推播一致」，現況沒有做到：
 
-- 「與即時推播一致」：不可見渠道的訊息事件 MUST NOT 送達成員，包括送到租戶房間的事件。第一項違反這條需求。
+- 「與即時推播一致」：不可見渠道的訊息事件 MUST NOT 送達成員，包括送到租戶房間的事件。#427 修正前違反這條需求。
 
 `GET /cases/stats` 不在這份規格的範圍內。
 
@@ -491,44 +479,6 @@ CLI token 的停用問題另見 AUTH-02。
 
 **部分緩解（2026-10-21，add-coupon-system）**：新增 `scripts/grant-new-role-permissions.mjs`。它只把「指定的權限碼 ∩ 該角色的預設權限」補到各租戶的系統角色，已存在的略過，不刪除也不重建，所以不會覆蓋租戶的修改。新增權限碼時改用這支腳本，例如優惠券上線：`node scripts/grant-new-role-permissions.mjs coupon.view coupon.manage coupon.issue coupon.redeem store.view store.manage`。仍未解決：要由部署的人指定這次新增的碼、腳本不清除 `perms:*` 快取（只印出提醒）、沒有納入部署流程；reconcile 腳本本身沒有改。
 
-<a id="rbac-07"></a>
-### RBAC-07：單筆渠道的路由不檢查渠道可見範圍
-
-`GET /channels` 與 `GET /channels/:id/status` 依渠道可見範圍過濾，單筆渠道的其他路由沒有。持有 `channel.update` 或 `channel.delete`、沒有 `channel.view_all` 的成員，可以對看不到的渠道：
-
-- 讀取渠道設定（含遮罩憑證與明文 `verifyToken`）、嵌入碼與導流識別。
-- 改名、停用、更換憑證（例如換掉 FB 的 `pageAccessToken`）、測試連線、設定 webhook、改聊天室外觀。
-- 刪除渠道。
-
-換憑證不寫稽核（AUD-01），事後查不到是誰做的。
-
-**規格依據。** 主規格 `channel-visibility-defaults` 的「Unbound Channel Is Not Visible」規定：沒有綁定的渠道在列表與單筆存取檢查中都不可見。現況違反這條需求。其他沒有套用可見範圍的路徑見 RBAC-04。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-CHANNELS-01（[CHANNELS 健檢](../features/health/CHANNELS.md)）。證據：`apps/api/src/modules/channel/channel.routes.ts:326-414`、`:450`、`:460`、`:499-567`、`:570`，`channel.service.ts:687`；自訂角色只綁 LINE-A，`GET /channels/<FB>` 200，`PATCH` 改名、停用、換權杖都 200，admin 讀回權杖已換（健檢實測）。
-
-<a id="rbac-08"></a>
-### RBAC-08：改成員角色沒有越權與最後一位管理員保護
-
-`agent.service.ts` 的 `updateAgentRole()` 只檢查「新角色」是否超出操作者的權限，不檢查「目標成員目前的角色」是否比操作者高，也不呼叫 `assertNotLastActiveAdmin()`（只有停用與刪除呼叫）。
-
-`supervisor` 系統角色預設有 `agent.role.assign`，因此主管可以把管理員改成 Supervisor 或 Agent。租戶只有一位管理員時（多數租戶的情況），一個操作之後就沒有人持有 `role.manage`、`agent.deactivate`、`agent.purge`；主管也不能把人改回 Admin（`ROLE_ESCALATION`），只能直接改資料庫。
-
-**規格依據。** 主規格 `agent-lifecycle` 只規定停用與刪除要有最後一位管理員保護；`role-management` 的越權防護只比對目標角色。這一項沒有直接違反主規格，依影響判定為 P1。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MEMBERS-01（[MEMBERS 健檢](../features/health/MEMBERS.md)）。證據：`apps/api/src/modules/agent/agent.service.ts:240-287`；以 seed supervisor `PATCH /agents/<admin2>/role {"role":"SUPERVISOR"}` 回 200（健檢實測）；「最後一位管理員」情況為讀程式，沒有對 seed 帳號實測。
-
-<a id="rbac-09"></a>
-### RBAC-09：重設密碼、停用、刪除成員不比較目標的權限
-
-`resetAgentPassword()`、`deactivateAgent()`、`purgeAgent()` 只檢查操作者有沒有對應的權限碼，不檢查目標成員的權限是否比操作者高：
-
-- 持 `agent.password.reset` 的自訂角色可以重設管理員的密碼，再以管理員身分登入，等於繞過 `ROLE_ESCALATION` 取得全部權限。
-- 持 `agent.deactivate`、`agent.purge` 的自訂角色可以停用或刪除管理員（不是最後一位時）。
-
-這三個碼預設只有 `admin` 持有，要管理員先把它們授予自訂角色才會發生，因此列為 P2。角色權限頁沒有任何提示說明這三個碼等同管理員。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MEMBERS-02（[MEMBERS 健檢](../features/health/MEMBERS.md)）。證據：`agent.service.ts:317-334`、`:376-396`、`:408-425`；自訂角色只有 `agent.view, agent.password.reset`，重設 admin2 的密碼後以新密碼登入成功；另一個自訂角色停用 admin2 回 204（健檢實測）。
-
 <a id="rbac-10"></a>
 ### RBAC-10：編輯成員的渠道一律寫成 `full`
 
@@ -545,7 +495,7 @@ CLI token 的停用問題另見 AUTH-02。
 | --- | --- | --- |
 | 自動化 | 新增規則、啟用開關、儲存規則、刪除規則 | HC-AUTOMATION-09 |
 | 工單 | 新增工單、刪除、關閉案件、狀態等 6 個下拉、備註 | HC-CASES-10 |
-| 渠道管理 | 套用、設定精靈、新增渠道、停用、測試連線、編輯、刪除 | HC-CHANNELS-02 |
+| 渠道管理 | 停用、測試連線、編輯、刪除（套用依 `channel.view_all`，#408；新增渠道、設定精靈依 `channel.create`，列表 403 顯示沒有權限，#411） | HC-CHANNELS-02 |
 | 聯絡人與標籤 | 合併聯絡人、貼標與移除標籤、標籤管理的新增編輯刪除 | HC-CONTACTS-06、HC-CONTACTS-07 |
 | 收件匣 | 結案、交回 Bot、接管、負責人與狀態下拉、輸入框、建立工單；存取層級不足時顯示英文 `Forbidden: channel access level insufficient` | HC-INBOX-04 |
 | 知識庫 | 新增文章、匯入、編輯、發布、封存、刪除 | HC-KNOWLEDGE-05 |
@@ -720,22 +670,6 @@ B 手上的 token 在過期前仍然可用（見 AUTH-03），過期後 B 就登
 
 A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽核歸屬：之後的操作都記在 B 名下。事後的線索只有一條，就是第一步留下的 `platform_user.update` 稽核，payload 記著新的 email。第二、三步的忘記密碼與重設沒有稽核（見 SEC-02）。
 
-<a id="auth-06"></a>
-### AUTH-06：兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`
-
-`auth.plugin.ts` 有兩個裝飾器同時接受 JWT 與另一種憑證。兩者的 JWT 分支都只寫入 `id`、`tenantId` 與 `role`，沒有寫入 `roleId`：
-
-| 裝飾器 | 另一種憑證 | 使用的路由 | JWT 分支的後果 |
-| --- | --- | --- | --- |
-| `authenticateJwtOrCliSession` | CLI token | `GET /auth/me`、MCP 端點 | 目前沒有影響：`/auth/me` 不檢查權限，MCP 會先擋下不是 CLI token 的請求 |
-| `authenticateJwtOrPartnerKey` | Partner API 金鑰 | `POST /knowledge/partner-ingest` | 這條路由掛 `requirePermission('knowledge.admin')`。`roleId` 為空時權限集合為空，**網頁登入的成員即使有 `knowledge.admin` 也一律 403** |
-
-`authenticate` 本身有填 `roleId`。三個裝飾器的 JWT 分支是各自複製的程式碼，後來 `authenticate` 加上 `roleId` 時，另外兩份沒有跟著改。
-
-`partner-ingest` 的設計對象是外部夥伴系統，網頁前端沒有呼叫它，所以目前只有以 JWT 測試這條路由的人會遇到。但任何新路由改用這兩個裝飾器、同時掛 `requirePermission()`，網頁使用者都會被擋下；CLI 分支則因為 `requirePermission()` 對 CLI 直接放行而完全不受檢查，見 RBAC-02。
-
-**修正方向**：三個裝飾器的 JWT 分支共用一個函式，由它寫入完整的 `request.agent`，包括 `roleId`。
-
 <a id="auth-07"></a>
 ### AUTH-07：`JWT_EXPIRES_IN` 沒有讀取端
 
@@ -791,22 +725,6 @@ refresh token 外洩之後，持有者可以持續換發 access token，直到 r
 UAT 上有沒有只差大小寫的成員，還沒有查過。
 
 **修正方向**：建立、修改與登入時都先把 email 去掉頭尾空白並轉成小寫，查詢也以小寫比對。上線前先查出只差大小寫的成員，決定保留哪一位，再把既有的 email 全部轉成小寫。主規格補上「email 不分大小寫」。
-
-<a id="auth-11"></a>
-### AUTH-11：停用的租戶仍收得到 WebChat 訊息，排程群發照常送出
-
-停用租戶之後，有兩條路徑不檢查 `tenant.isActive`：
-
-| 路徑 | 現況 |
-| --- | --- |
-| WebChat（Chatbox）進站 | `chatbox.service.ts` 的 `resolveChatboxChannel()` 只看渠道的 `isActive`，`handleChatboxMessage()` 直接呼叫 `processInboundMessage()`。既有的訪客工作階段可以繼續送訊息，新訪客也能建立工作階段；系統照常建立聯絡人、對話與訊息，後續的自動化與 AI 回覆流程也照常進入。LINE、FB、IG 的 webhook 有檢查（`webhook.service.ts:86`） |
-| 排程群發 | `broadcast.scheduler.ts` 只依 `status = 'scheduled'` 與 `scheduledAt` 撈全部租戶的群發，不看租戶是否停用。停用（含試用到期自動停用）的租戶預約的群發照樣送給顧客 |
-
-AUTH-02 記錄的是停用租戶後既有的連線與憑證；這一項是進站訊息與背景工作。
-
-**規格依據。** 主規格 `inbound-message-processing` 的「停用租戶的進站事件直接丟棄」，以及 `trial-lifecycle` 的「到期停用」（inbound 訊息被丟棄）。WebChat 進站違反這兩條需求。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TENANTS-01（[PLATFORM-TENANTS 健檢](../features/health/PLATFORM-TENANTS.md)）、HC-PLATFORM-TENANTS-04（[PLATFORM-TENANTS 健檢](../features/health/PLATFORM-TENANTS.md)）。證據：`apps/api/src/modules/chatbox/chatbox.service.ts:354-366`、`:598-640`；停用租戶後同一工作階段與新工作階段各送一則都回 200，資料庫多 3 則 INBOUND 訊息（健檢實測）。排程群發 `apps/api/src/modules/marketing/broadcast.scheduler.ts:25-31`（讀程式）。HC-PLATFORM-TRIALS 報告引用同一個問題。
 
 <a id="auth-12"></a>
 ### AUTH-12：平台改密碼打錯目前密碼會被登出
@@ -910,29 +828,19 @@ AUTH-02 記錄的是停用租戶後既有的連線與憑證；這一項是進站
 
 **修正方向**：`login-attempts.ts` 的註解建議改以 email 加來源 IP 計數。改用這個鍵之後，攻擊者的失敗嘗試只鎖住攻擊者自己的 IP，成員從其他 IP 仍可登入。代價是：從多個 IP 分散猜同一個帳號時，每個 IP 各自計數，只剩每個 IP 的速率限制能擋。另一個做法是保留 email 計數，但鎖定期間改為要求額外驗證，而不是直接拒絕。兩種做法都會改變主規格規定的行為，修正的 PR 要以 MODIFIED 修改「登入失敗達上限時鎖定帳號」。
 
-<a id="sec-07"></a>
-### SEC-07：CLI token 與 API 金鑰的有效天數沒有上限
-
-`settings.routes.ts` 建立 CLI token 與 API 金鑰時，`expiresInDays` 只驗是正整數，沒有上限。CLI 頁寫「每個 Token 都有到期日」，但 API 接受 100000 天（到期日 2300 年）；3650000 天讓日期溢位，回 500 `INTERNAL_ERROR`。scope 不受限的問題見 RBAC-02。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SETTINGS-06（[SETTINGS 健檢](../features/health/SETTINGS.md)）。證據：`apps/api/src/modules/settings/settings.routes.ts:397-399, 468-470, 533, 579`；`POST /settings/cli-sessions {expiresInDays:100000}` 回 201、`expiresAt: 2300-08-15`，`3650000` 回 500（健檢實測，測試資料已撤銷）。
-
 <a id="sec-08"></a>
 ### SEC-08：圖文選單的背景圖網址可以打內網
 
-`rich-menu.service.ts` 發布圖文選單時以 `fetch(imageUrl)` 下載背景圖，網址只驗 `z.string().url()`，沒有呼叫 `isBlockedUrl()`（下游轉發已在用）。持 `richmenu.manage` 的成員（主管預設就有）可以讓 API 請求內網位址；錯誤訊息回傳對方的 Content-Type 或「無法取得背景圖」，可以用來探測內網服務與連接埠。整個過程發生在呼叫 LINE API 之前，不需要有效的 Access Token。Canvas 的 `API_FETCH` 節點有同樣的缺口，見 AUTO-11。
+`rich-menu.line-api.ts` 的 `fetchRichMenuImage()` 在發布圖文選單時以 `fetch(imageUrl)` 下載背景圖（change `migrate-line-tenant-ctx` 之前在 `rich-menu.service.ts`），網址只驗 `z.string().url()`，沒有呼叫 `isBlockedUrl()`（下游轉發已在用）。持 `richmenu.manage` 的成員（主管預設就有）可以讓 API 請求內網位址；錯誤訊息回傳對方的 Content-Type 或「無法取得背景圖」，可以用來探測內網服務與連接埠。整個過程發生在呼叫 LINE API 之前，不需要有效的 Access Token。Canvas 的 `API_FETCH` 節點有同樣的缺口，見 AUTO-11。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-LINE-04（[LINE 健檢](../features/health/LINE.md)）。證據：`apps/api/src/modules/line/rich-menu.service.ts:346`；草稿 `imageUrl: http://localhost:3001/health` 發布時回「背景圖格式必須是 JPEG 或 PNG（實際：application/json…）」，`localhost:5433` 回「無法取得背景圖」（健檢實測）。
 
 ## 金鑰與 License
 
 <a id="lic-01"></a>
-<a id="lic-02"></a>
-### LIC-01、LIC-02：兩份 LicenseService
+### LIC-01：API 使用寫死的授權資料
 
 `license.guard.ts` 使用 `apps/api/src/services/license.ts`。該實作直接建立寫死的授權資料，不會連線到授權伺服器。
-
-`packages/core/src/license/license-service.ts` 會呼叫 `LICENSE_FETCH_URL`，但沒有實際使用者。
 
 **主規格已移除。** 主規格 `license-service` 與 `team-license` 描述系統從授權伺服器取得授權資料，與現況不符。issue #217 確認功能天花板與額度改由 `tenant-plan`、`plan-limits-core`、`granular-plan-entitlement` 負責，移除了這兩份主規格。這一項沒有違反主規格，維持 P4。
 
@@ -1035,32 +943,6 @@ PlatformSetting（KV，不知道型別）
 
 **修正方向**：暫時維持現狀。之後要處理時，可以考慮讓啟用一併清除 `purgedAt`，或對試用已過期的租戶拒絕啟用，提示改用「延長」。
 
-<a id="trial-05"></a>
-### TRIAL-05：再次申請試用會覆寫待驗證申請的密碼
-
-`trial.service.ts` 的 `requestTrial()` 遇到同一 email 已有待驗證的申請時，直接以新送的值覆寫 `passwordHash` 與 `siteName`，並寄一封新的驗證信給該 email（舊連結失效）。開通時沿用 `signupRow.passwordHash`。
-
-因此任何人知道申請人的 email，就能在對方點信之前再送一次申請：申請人點最新那封信，租戶以攻擊者的密碼開通。攻擊者可以登入這個站台的 ADMIN 帳號，看到申請人之後放進去的客戶資料；申請人自己的密碼反而登不進去。攻擊者也可以對從未申請的 email 先送申請，對方點信就落入同一個情況。申請人唯一看得出異狀的地方，是第二封信主旨帶著攻擊者填的站台名稱。
-
-正式環境可以被利用：2026-10-30 以平台 API 唯讀查詢，UAT（即正式環境，APP-10）的 `trial.enabled` 是 `true`，公開試用申請開放中。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-01（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`apps/api/src/modules/trial/trial.service.ts:87-101`、`:200`；兩個 IP 以同一 email、不同密碼申請，點第二封信開通後，第一個密碼登入 401、第二個密碼 200（健檢實測）。
-
-**已修正**（#407，change `trial-set-password-after-verify`）：申請時不收密碼，`POST /trial/signups` 帶來的 `password` 忽略不存，`trial_signups.passwordHash` 已由 migration 移除。`GET /trial/verify` 只確認連結、不開通；驗證頁送出密碼（`POST /trial/verify`）後，才在同一個交易內消耗 token、以這次送出的密碼建立管理員。待驗證的申請再送一次不改站台名稱，驗證頁也可以修改站台名稱。測試：`apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`「搶先申請的人無法決定管理員密碼」「待驗證時以不同站台名稱再申請」「申請時送出的密碼被忽略」。
-
-修正前已開通的試用站台，管理員密碼可能已被他人覆寫過。這次修正沒有清查既有站台。
-
-<a id="trial-06"></a>
-### TRIAL-06：再送一次試用申請繞過重寄節流
-
-`/resend` 有「間隔 60 秒、最多 5 次」的節流，但 `/signups` 遇到待驗證的申請時每次都換 token 寄信，只受「每個 IP 每 10 分鐘 5 次」的速率限制。換 IP 就能對任意信箱無限寄驗證信，以平台名義寄信轟炸，也會耗掉寄信額度與網域信譽。UAT 的 `trial.enabled` 是 `true`（2026-10-30 平台 API 唯讀確認），正式環境可以被利用。健檢在本機以 `X-Forwarded-For` 換 IP；正式環境只採信 nginx 附加的來源 IP（`apps/api/src/lib/trust-proxy.ts`），要換真實的來源 IP。
-
-**規格依據。** 主規格 `trial-application` 的「防枚舉統一回應」規定：待驗證且未過期的申請再送一次時，依節流規則重寄。現況違反這條需求。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-02（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`apps/api/src/modules/trial/trial.service.ts:87-118`（節流只在 `:131-135` 的 `resendTrial`）；7 個不同的 `X-Forwarded-For` 對同一信箱送申請，幾秒內寄出 7 封驗證信（健檢實測）。
-
-**已修正**（#407，change `trial-set-password-after-verify`）：`requestTrial()` 遇到待驗證的申請時改呼叫 `resendTrial()`，與 `/resend` 共用「間隔 60 秒、最多 5 封」的節流，並寄到原申請的 email。測試：`trial-signup-verify.test.ts`「待驗證時連續再申請受重寄節流」。
-
 <a id="trial-07"></a>
 ### TRIAL-07：手動開通預設試用方案，卻不設到期日
 
@@ -1160,7 +1042,7 @@ PlatformSetting（KV，不知道型別）
 
 | feature | 路由層的覆蓋情況 | 關掉這個 feature |
 | --- | --- | --- |
-| `automation` | `canvas` 11 條全有、`automation` 7 條中 5 條（沒有檢查的試跑與執行紀錄已由 `8899e280` 補上，見 AUTO-09） | 大致擋得住 |
+| `automation` | `canvas` 11 條全有、`automation` 7 條中 5 條（沒有檢查的試跑與執行紀錄已由 `8899e280` 補上） | 大致擋得住 |
 | `analytics` | 9 條路由、10 處檢查 | 擋得住 |
 | `channels` | `channel` 19 條中 17 條 | 大致擋得住 |
 | `marketing` | 36 條中 21 條 | 大部分擋得住，仍有未檢查的路由 |
@@ -1384,17 +1266,6 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 租戶付費升級之後，當月第二次用完額度時沒有任何預警。主規格 `usage-quota-alerts` 的「每個門檻每月最多告警一次」只規定核准加購時清除旗標。因此這一項不違反主規格，但造成的結果與核准加購修正前相同。
 
 租戶有 `monthlyTokens` 的覆寫值時，換方案不會改變有效上限（見 PLAN-05），這時保留旗標是正確的。修正時要比較換方案前後的有效上限，上限提高才清除旗標。
-
-<a id="plan-14"></a>
-### PLAN-14：試用與輕量版方案的租戶看不到也建不了渠道
-
-`packages/database/prisma/seed.ts` 的 `trial`（免費試用）與 `light`（輕量版）方案，`features` 只有 `inbox` 與 `core`。`channel.view`、`channel.create` 屬於 `channels` feature，因此這兩個方案的租戶連管理員都看不到、也建不了任何渠道，接不了 LINE、FB、IG、WebChat。
-
-渠道頁把 403 顯示成「沒有渠道／新增您的第一個渠道」，按「新增渠道」才 403（RBAC-11）。租戶實際上有啟用中的渠道時，畫面也顯示沒有渠道。
-
-UAT 已確認相同：2026-10-30 以平台 API 唯讀查詢，`trial` 是 `["inbox","knowledge","core"]`、`light` 是 `["inbox","core"]`，都不含 `channels`。試用開通的租戶從第一天起就無法接渠道。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-PLANS-01（[PLATFORM-PLANS 健檢](../features/health/PLATFORM-PLANS.md)）。證據：`packages/database/prisma/seed.ts:31,38`、`packages/shared/src/rbac/permissions.ts:76-83`；自建方案設成 `["inbox","core"]`，租戶管理員 `GET /channels` 回 403 `requiredPermission: channel.view`（健檢實測）。
 
 <a id="plan-15"></a>
 ### PLAN-15：同時編輯兩張方案卡片，第二張存入舊值
@@ -1634,31 +1505,6 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SLA-02（[SLA 健檢](../features/health/SLA.md)）。證據：`apps/api/src/modules/case/case.service.ts:861-866`、`apps/workers/src/handlers/sla.handler.ts:457`；MEDIUM 工單改成 HIGH 後 `slaPolicy`、`slaDueAt` 不變（本機健檢實測）；UAT Demo 只讀查詢。
 
-<a id="hours-01"></a>
-### HOURS-01：營業時間設定為空物件時，營業時間頁崩潰
-
-`TenantSettings` 由營業時間以外的路徑建立時（追蹤設定、跨渠道綁定、AI 設定，或第一次收文字訊息時情緒分析呼叫 `getChatSettings()`），`officeHours` 是 schema 預設的 `{}`。
-
-- `office-hours.service.ts` 的 `getOfficeHours()` 只在沒有這一列時給預設值；`{}` 是 truthy，直接回傳。
-- 前端 `data.officeHours || DEFAULT_CONFIG` 也不會替換。
-
-結果是在營業時間頁按「啟用」開關時整頁崩潰（`Cannot read properties of undefined (reading 'mon')`）；不按開關直接儲存則回 400。收過訊息的租戶多半是這種狀態，因此這類租戶無法從畫面啟用營業時間。UAT Demo 租戶已有完整設定，不受影響；其他租戶沒有查。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SETTINGS-01（[SETTINGS 健檢](../features/health/SETTINGS.md)）。證據：`apps/api/src/modules/settings/office-hours.service.ts:69`、`apps/web/src/components/settings/OfficeHoursSettings.tsx:64, 192-194`；本機 Demo 租戶 `officeHours` 為 `{}`，點開關後出現「Application error: a client-side exception」（健檢實測）。
-
-<a id="hours-02"></a>
-### HOURS-02：營業時間不驗證時段與時區
-
-`PUT /settings/office-hours` 不驗證內容：
-
-| 輸入 | 結果 |
-| --- | --- |
-| 結束早於開始（跨午夜，例如 13:00–02:00） | 可以儲存，實際整天都判定為非營業，營業時間內也送出非營業時間自動回覆。手冊已提醒不支援跨午夜，但畫面與後端都不擋 |
-| `99:99`、`24:61`、假日 `abc`、`2026-13-45` | 都接受 |
-| 不合法的 `timezone`（例如 `Mars/Base`） | 每則進站訊息在 `Intl.DateTimeFormat` 拋 `RangeError`，`sendOutsideHoursAutoReply()` 只寫 error log，自動回覆整個失效，後台沒有任何提示 |
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-SETTINGS-03（[SETTINGS 健檢](../features/health/SETTINGS.md)）、HC-SETTINGS-04（[SETTINGS 健檢](../features/health/SETTINGS.md)）。證據：`apps/api/src/modules/settings/settings.routes.ts:57-82`、`office-hours.service.ts:118, 146-151`、`apps/api/src/modules/webhook/inbound-side-effects.ts:216-217`；週五 13:32 設 `fri: 13:00–02:00` 後 WebChat 收到自動回覆；`timezone: "Mars/Base"` 後沒有自動回覆、log 有 `Invalid time zone specified`（健檢實測）。
-
 ## 對話、工單與自動化
 
 功能說明見[收件匣與對話](../features/tenant/INBOX.md)、[工單](../features/tenant/CASES.md)與[自動化](../features/tenant/AUTOMATION.md)。
@@ -1692,31 +1538,6 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 
 **部分修正。** #294（`a3044f93`）讓狀態選單的「已關閉」改開結案視窗，走 `POST /:id/close`。2026-10-16，`updateConversation()` 收到 `CLOSED`（且對話尚未關閉）時改呼叫 `closeConversation()`，記錄來源 `manual`、時間與操作者並發布 `conversation.closed`；同時帶負責人時先改負責人再關閉。直接呼叫 API 的路徑因此也有結案紀錄。指派仍不發布 `conversation.assigned`。
 
-<a id="conv-03"></a>
-### CONV-03：對話轉接真人時，主管與管理員收不到通知
-
-兩條路徑會把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，並發布 `conversation.handoff`：
-
-| 路徑 | 位置 |
-| --- | --- |
-| 客人點「轉接客服」按鈕（postback `handoff_request`） | `webhook/inbound-postback-interceptors.ts` |
-| 自動轉真人（機器人回覆次數到上限、客人說出轉接關鍵字、客人傳圖片、檔案或影片） | `automation/automation.worker.ts` 的 `checkAutoHandoff()` |
-
-API 行程內沒有任何程式訂閱 `conversation.handoff`。`notification.worker.ts` 沒有訂閱這個事件，所以主管與管理員收不到「對話已轉接真人」的通知。只有訂閱了這個事件的對外 Webhook 收得到。
-
-change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫「既有 `conversation.handoff` event 已有 notification.worker 訂閱者通知 supervisor」。這個前提不成立，當時沒有實作訂閱者。
-
-**規格依據。** 主規格 `bot-handoff-config` 的「Webhook intercepts handoff_request postback」規定：系統 SHALL 發布 `conversation.handoff`，讓 SUPERVISOR 與 ADMIN 收到通知。事件有發布，但通知沒有發生，現況違反這條需求，因此列為 P2。自動轉真人的路徑不在這條需求內，但發布同一個事件。
-
-<a id="conv-04"></a>
-### CONV-04：收件匣只載入前 50 段對話
-
-`useConversations.ts` 只送 `page=1&limit=50`，對話列表沒有分頁，也沒有「載入更多」。「未讀」「我的」與搜尋都在前端對這 50 段過濾，第 51 段以後在收件匣找不到，API 的 `meta.total` 與 `totalPages` 沒有被使用。
-
-手冊已寫明限制，建議改到聯絡人頁找；但只有 WebChat 身分的聯絡人不在聯絡人清單，這個繞道對他們無效。進行中對話常態超過 50 段的租戶，收件匣等於主要功能失效。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-INBOX-01（[INBOX 健檢](../features/health/INBOX.md)）。證據：`apps/web/src/hooks/useConversations.ts:130`、`apps/web/src/components/inbox/ConversationList.tsx:78-103`；本機插入 55 段已關閉對話，「已關閉」分頁只顯示 50 段；UAT Demo 近 30 天已關閉 93 段，畫面顯示 50 段（健檢實測，UAT 只讀）。子代理原列 P2，2026-10-30 使用者決定升為 P1。
-
 <a id="conv-05"></a>
 ### CONV-05：重新開啟對話造成兩段未關閉的對話
 
@@ -1733,7 +1554,7 @@ change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫�
 | --- | --- |
 | 對話：`PATCH /conversations/:id` 的 `assignedToId`、`/handoff` 的 `assignToId` | 停用的成員、看不到該渠道的成員都能被指派。指派給停用成員時，負責人下拉顯示「未指派」；指派給看不到渠道的成員時，他的「我的」分頁是空的，收到新訊息通知但點開 404 |
 | 工單：`/assign`、`PATCH assigneeId`、建立時帶 `assigneeId`、升級時改派 | 不檢查負責人看不看得到工單的渠道。被指派的人收到通知，點進去 404，工單也不在他的列表。自動指派有這個檢查，手動沒有；負責人下拉列出租戶全部成員 |
-| 停用成員 | `deactivateAgent()` 不解除指派。客人在指派給停用成員的對話傳訊時，`notification.worker.ts` 只通知那位停用的成員，ADMIN、SUPERVISOR 都收不到。`case.assigned` 與 SLA 通知同樣不檢查 `isActive` |
+| 停用成員 | `deactivateAgent()` 不解除指派。`case.assigned` 與 SLA 通知不檢查 `isActive`。對話的「收到新訊息」與「轉接真人」通知已由 #440 修正：負責人停用或看不到渠道時，改通知看得到該渠道的主管與管理員（change `notify-visible-assignee-440`） |
 
 指派他租戶的成員見 CASE-07。
 
@@ -1746,7 +1567,7 @@ change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫�
 
 | 渠道 | 實際送出的內容 | 客人能不能回覆 |
 | --- | --- | --- |
-| LINE | 設計上是 Flex Message，五個 postback 按鈕，資料是 `csat:<分數>:<工單 ID>` | 設計上能；實際上 Flex 送不出去，見 CASE-03 |
+| LINE | 設計上是 Flex Message，五個 postback 按鈕，資料是 `csat:<分數>:<工單 ID>` | 能（#416 修正 Flex 送出） |
 | 其他渠道 | `deliverToChannel()` 送出文字「回覆 csat:分數 即可，例如 csat:5」 | 不能 |
 
 `inbound-postback-interceptors.ts` 的 `handleCsatResponse()` 只認得 `csat:<分數>:<工單 ID>`。客人照提示回覆的 `csat:5` 沒有工單 ID，不符合這個格式，會被當成一般訊息交給 AI 回覆與自動化。
@@ -1756,18 +1577,7 @@ change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫�
 - `buildCsatChannelMessage()` 為非 LINE 渠道組了五個快速回覆選項，但 `sendCsatSurvey()` 只在 LINE 分支使用它的回傳值。
 - 進站的 `postbackData` 只從 LINE 的 `rawPayload.postback.data` 取值，Facebook 的 postback 欄位沒有解析，因此即使改送快速回覆或按鈕，Facebook 送回的 payload 也到不了攔截器。
 
-結果是非 LINE 渠道的工單永遠不會有 CSAT 分數。原本記為「報表的滿意度只反映 LINE 的客人」；2026-10-30 功能健檢發現 LINE 的問卷也送不出去（CASE-03），所以目前沒有任何渠道的客人能自己回覆滿意度，只剩客服手動記分（[LINE 健檢](../features/health/LINE.md)）。
-
-<a id="case-03"></a>
-### CASE-03：LINE 的滿意度調查送不出去
-
-`csat.service.ts` 的 `sendCsatSurvey()` 以 `contentType: 'flex'` 呼叫 LINE 外掛，但 `packages/channel-plugins/src/line/index.ts` 的 `buildLineMessage()` 沒有 `'flex'` 分支，落到 `default` 變成 `{"type":"text","text":""}`。LINE 拒收空白文字。
-
-失敗沒有任何地方看得到：外掛的 `sendMessage()` 回 `{success: false}` 不拋錯，`sendCsatSurvey()` 不檢查回傳值，`csatSentAt` 已經寫入，之後也不會再寄。`'flex'` 分支在 `3a19c457`（2026-05-20，新增素材系統）被刪除，之後沒有測試涵蓋 LINE 這條路徑。
-
-加上 CASE-02 的非 LINE 渠道，目前沒有任何渠道的客人能自己回覆滿意度，只剩客服手動記分（手動記分的問題見 CASE-05）。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-LINE-01（[LINE 健檢](../features/health/LINE.md)）。證據：`packages/channel-plugins/src/line/index.ts:134, 246`、`apps/api/src/modules/csat/csat.service.ts:25, 166`；以 tsx 呼叫 `buildLineMessage('flex', …)` 得到 `{"type":"text","text":""}`（函式層健檢實測）。LINE 端拒收依 API 規格判斷，待真機驗證。
+結果是非 LINE 渠道的工單永遠不會有 CSAT 分數。報表的滿意度只反映 LINE 的客人。2026-10-30 功能健檢發現 LINE 的問卷也送不出去，2026-11-03 已修正（#416），問卷送不出時收件匣與工單時間軸會留下紀錄（[LINE 健檢](../features/health/LINE.md)）。
 
 <a id="case-04"></a>
 ### CASE-04：工單狀態轉換不維護 `resolvedAt` 與 `csatSentAt`
@@ -1785,12 +1595,16 @@ change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫�
 
 workers 的 `update_case_status` 動作也不寫 `resolvedAt`，見 AUTO-10。
 
+**`resolvedAt` 的部分已修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`@open333crm/shared` 的 `caseTransitionTimestamps()` 是唯一的規則，API 的 `transitionCase()`、`escalateCase()`、`assignCase()`、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 都用它。轉成 `RESOLVED` 寫入 `resolvedAt`；從 `RESOLVED` 轉成 `CLOSED` 保留；直接關閉不算已解決（使用者決定，`resolvedAt` 為 null）；轉成其他狀態（重開）清除。既有資料不補值：修正前直接關閉的工單仍沒有 `resolvedAt`，修正前重開、目前仍在處理中的工單仍保留舊的 `resolvedAt`，直到下一次狀態轉換。**重開後被自動結案**（`csatSentAt`）未處理，由 #339 決定。
+
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-02（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-02（[CASES 健檢](../features/health/CASES.md)）。證據：`apps/api/src/modules/case/case.service.ts:487-492`、`apps/api/src/modules/analytics/analytics.service.ts:68-88, 211-214, 350-357`、`apps/api/src/modules/csat/csat.scheduler.ts:65-90`；本機以 API 直接關閉後 `resolvedAt: null`，重開後 `resolvedAt` 不變，固定資料下總覽 `resolvedCases` 為 2（期望 1）；`csatSentAt` 設為 80 小時前、重開再解決，約 1 分鐘後工單已是 `CLOSED`（健檢實測）。HC-ANALYTICS-02 子代理原列 P2，2026-10-30 使用者決定升為 P1。
 
 <a id="case-05"></a>
 ### CASE-05：客服記錄滿意度直接把工單改成已關閉
 
-`POST /cases/:id/csat`（收件匣 CSAT 卡片的星星）呼叫 `csat.service.ts`，不檢查工單狀態，直接把工單改成 `CLOSED`：不經狀態機、不寫時間軸、不關閉對話。同時把「感謝評分」的追蹤訊息送給顧客；2 分以下送「我們會立即安排主管為您跟進處理」，但顧客根本沒有評分。
+`POST /cases/:id/csat`（收件匣 CSAT 卡片的星星）呼叫 `csat.service.ts`，不檢查工單狀態，直接把工單改成 `CLOSED`：不經狀態機、不關閉對話。同時把「感謝評分」的追蹤訊息送給顧客；2 分以下送「我們會立即安排主管為您跟進處理」，但顧客根本沒有評分。
+
+**2026-11-04 部分修正（#444，change `show-csat-score-444`）。** 記錄分數時寫一筆 `csat_rated` 時間軸事件（客服代評 `actorType: 'agent'`、`actorId` 是評分的客服，`payload.source: 'agent'`），評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`）。收件匣的問卷卡片有分數時唯讀，客人評過分後客服不會再點到 400。仍未處理：不經狀態機、不關閉對話、客服代評也送感謝訊息給顧客；客服代評的去留在 #339 討論。
 
 **規格依據。** 主規格 `case-management` 的「Case Status Transition Validation」規定狀態轉換 SHALL 經過狀態機驗證。現況違反這條需求。
 
@@ -1883,15 +1697,6 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 **目前的緩解。** 2026-10-05 起，契約以 `dispatched: false` 標出上表 6 種事件（change `improve-automation-page-readability`）：規則編輯器的選單顯示「（目前不會觸發）」，選了之後警告規則不會執行，試跑也說明條件符合仍不會執行。API 與 CLI、MCP 仍然可以建立這些事件的規則，事件本身也仍然沒有送出。
 
-<a id="auto-06"></a>
-### AUTO-06：規則編輯器把純數字的條件值存成數字
-
-`apps/web/src/lib/automation/qb-to-engine.ts` 的 `parseValue()` 把看起來像數字的條件值轉成數字存檔。`packages/automation/src/rules/operators.ts` 的 `contains` 遇到非字串的比較值回 `false`，因此「訊息內容」「聯絡人名稱」「聯絡人標籤」這類字串欄位的條件永遠不成立。
-
-訂單編號、選單數字（「1」「2」）、電話是最常見的關鍵字，都受影響。編輯器重新整理後仍顯示 8888，「試試看」也顯示不會觸發，管理員只會以為規則壞了。以 API 存入字串 `"7777"` 的規則正常。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-01（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/web/src/lib/automation/qb-to-engine.ts:9-16,82`、`packages/automation/src/rules/operators.ts`；在 `/dashboard/automation/new` 建「訊息內容 包含 8888」，送出的 body 是 `"value":8888`，模擬訊息「我的單號 8888」沒有觸發，`POST /rules/:id/test` 回 `matched:false`（健檢實測）。
-
 <a id="auto-07"></a>
 ### AUTO-07：SLA 規則的執行路徑與一般規則不一致
 
@@ -1914,15 +1719,6 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-03（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）、HC-CONTACTS-09（[CONTACTS 健檢](../features/health/CONTACTS.md)）。證據：`apps/api/src/modules/automation/automation.worker.ts:479`、`packages/automation/src/contracts/facts.ts`、`apps/api/src/modules/tag/tag.flow.ts:36-43`、`tagging.service.ts:146`；貼 tagM 觸發通知後再貼無關的 tagN，又收到一次通知；同一個標籤 `POST` 兩次，outbox 多兩筆 `contact.tagged`（健檢實測）。
 
-<a id="auto-09"></a>
-### AUTO-09：自動化的試跑與執行紀錄只驗登入
-
-`automation.routes.ts` 的 `POST /automation/rules/:id/test` 與 `GET /automation/logs` 只掛 `fastify.authenticate`。沒有 `automation.view` 的成員（例如 seed 的 agent）可以用規則 ID 呼叫試跑，拿到規則的名稱、條件與動作全文（含通知文字、素材 ID、客服 ID）。權限註冊表寫 `automation.view` 涵蓋「logs、test」。方案不含 `automation` 時，這兩條路由同樣不受天花板限制（PLAN-04 的「7 條中 5 條」）。
-
-**已修正**（`8899e280`，#426）：兩條路由都改為 `requirePermission('automation.view')`。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-04（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/api/src/modules/automation/automation.routes.ts:196,210`、`packages/shared/src/rbac/permissions.ts:70`；agent 的 `GET /automation/rules` 回 403，但 `/rules/<id>/test` 回 200 並含 `rule.conditions`、`rule.actions`（健檢實測）。
-
 <a id="auto-10"></a>
 ### AUTO-10：workers 的工單類動作繞過工單模組
 
@@ -1934,17 +1730,20 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 
 功能文件 `AUTOMATION.md` 的「工單類動作繞過工單模組」已寫行為。
 
+**部分修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`update_case_status` 改成先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，`resolvedAt`／`closedAt` 用 API 共用的 `caseTransitionTimestamps()`（CASE-04）。因此規則改成「已解決」的工單會有 `resolvedAt`，問卷排程會照常寄滿意度調查。仍未處理：不檢查轉換是否合法、不寫工單事件、不發 `case.resolved`／`case.closed`、`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`。
+
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-05（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/workers/src/lib/automation-actions.ts:295-305,385-428`；`case.created` 規則設定 URGENT、指派、改成 RESOLVED 之後 `resolvedAt` 為 null、`case_events` 只有 `created`、被指派的人沒有通知（健檢實測）。
 
 <a id="auto-11"></a>
 ### AUTO-11：Canvas 無法串接節點，權限與網址檢查過寬
 
 - 節點的 `nextNodeId` 必須是 UUID，但節點 ID 由資料庫產生，`PATCH /canvas/:id` 也不收 `nodes`（回 200 但節點不變），所以用 API 建不出兩個以上互相串接的節點。
-- 草稿（`DRAFT`）流程也能觸發；`contactId` 不存在也回 202。
 - `agent` 系統角色預設有 `canvas.use`。
 - `API_FETCH` 節點直接 `fetch()` 任意網址，沒有 `isBlockedUrl()` 檢查。目前因為無法串接而走不到；串接修好之後，成員就能讓伺服器請求內網網址（同 SEC-08）。
 
 RLS-01 與 APP-07 記錄的是 Canvas 引擎的連線與喚醒，與這一項不同。
+
+**已修正的部分**（2026-11-06，change `migrate-canvas-tenant-ctx`）：原本草稿（`DRAFT`）流程也能觸發，`contactId` 不存在也回 202。現在手動觸發在交易內先檢查流程屬於本租戶而且是 `ACTIVE`、聯絡人屬於本租戶：流程或聯絡人找不到回 404，流程不是 `ACTIVE` 回 409 `FLOW_NOT_ACTIVE`，都不建立 execution。測試：`apps/api/tests/feature/modules/canvas/canvas-trigger.test.ts`。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-06（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/api/src/modules/canvas/canvas.routes.ts:37,51-58,137`、`canvas.service.ts:69-79,230-250`、`packages/core/src/canvas/api-fetch-node.ts:51`、`packages/shared/src/rbac/default-roles.ts:65`；agent 建立 TRIGGER→API_FETCH→ACTION 的草稿流程並觸發，回 202，執行紀錄 `FAILED`、`Node … not found in flow`（健檢實測）；SSRF 為讀程式。
 
@@ -1970,6 +1769,8 @@ RLS-01 與 APP-07 記錄的是 Canvas 引擎的連線與喚醒，與這一項不
 ### IDENT-01：合併建議沒有產生端
 
 `packages/core/src/identity/identity-stitcher.ts` 的 `detectPhoneDuplicates()` 是唯一會建立 `MergeSuggestion` 的函式，它沒有任何呼叫端；同一個檔案的 `stitchByPhone()` 與 `stitchByLiffCookie()` 也沒有。`/api/v1/identity` 的審核端點因此永遠沒有資料可審。
+
+審核端點與客服手動合併有兩點不同（2026-11-06 搬到 `contact/merge-suggestion.routes.ts` 時記錄，行為沒有改）：核准合併建議不寫租戶稽核，也不檢查兩位聯絡人的渠道可見範圍。客服手動合併兩者都做。系統開始產生合併建議之前，產品要決定核准是否比照手動合併。
 
 **規格依據。** 主規格 `identity-stitching-engine` 的「AI 合併建議」規定：系統發現不同渠道的聯絡人有相同手機號碼時，必須產生一筆合併建議，交給管理員核准。現況沒有任何程式產生建議，違反這條需求，因此由 P4 調為 P2。
 
@@ -2063,20 +1864,6 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 - 送出途中發生例外：逐人送出的群發，例外之前已經送達的人，重送時會再收到一次。
 
 **修正方向**：送出改成背景工作；重試時跳過已有成功收件紀錄的聯絡人；為停在 `sending` 的群發提供逾時或復原的途徑。
-
-<a id="mkt-02"></a>
-### MKT-02：排程群發不檢查發送權限
-
-建立群發（`POST /marketing/broadcasts`）只要求 `marketing.manage`，「立即發送」才要求 `marketing.broadcast`。建立時帶 `scheduledAt`，`broadcast.scheduler.ts` 到期直接執行，不檢查建立者有沒有發送權限。只有 `marketing.manage` 的成員因此可以對顧客群發。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-01（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`apps/api/src/modules/marketing/marketing.routes.ts:278`、`apps/api/src/modules/marketing/broadcast.scheduler.ts:24-45`；只有 `marketing.view`、`marketing.manage` 的成員建立 75 秒後的附券群發，「立即發送」回 403，約 80 秒後排程器送出：送達 3、發券 3（健檢實測）。
-
-<a id="mkt-03"></a>
-### MKT-03：附券群發繞過發券權限
-
-`marketing.service.ts` 的 `assertBroadcastCoupon()` 只檢查券的狀態，不檢查操作者有沒有 `coupon.issue`。沒有任何優惠券權限的成員可以建立並送出附券群發。前端附券選單因 `GET /coupons` 403 顯示載入失敗，但 API 照收。`audience-preview` 也把券的剩餘名額回給沒有 `coupon.view` 的成員。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-02（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`apps/api/src/modules/marketing/marketing.service.ts:227-228`、`marketing.routes.ts:290-294`；沒有 `coupon.view`、`coupon.issue` 的成員帶 `couponId` 建立群發 201、送出 202，結果發券 3 張（健檢實測）。
 
 <a id="mkt-05"></a>
 ### MKT-05：分群的建立日期條件以 UTC 切日
@@ -2206,16 +1993,6 @@ analytics 的其他統計以 SQL 的 `count` 或 `$queryRaw` 彙總，或以 `ta
   - 限制匯出筆數，超過時告知使用者。
   - 改成背景工作產生檔案，做法比照 `tenant/data-export`。
 
-<a id="ana-03"></a>
-### ANA-03：報表匯出的 CSV 沒有跳脫
-
-`analytics.service.ts` 匯出 CSV 時，工單報表只替標題加引號，聯絡人名稱、客服姓名、分類原樣輸出；客服報表的姓名也一樣。聯絡人名稱來自 LINE、FB 暱稱或 WebChat 訪客自填：
-
-- 名稱含逗號時，後面的欄位錯位。
-- 名稱以 `=`、`+`、`-`、`@` 開頭時，Excel 把它當成公式（CSV injection）。顧客可以自己設定這個值。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-04（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）。證據：`apps/api/src/modules/analytics/analytics.service.ts:652-666, 672-685, 701-703`；聯絡人名稱改成 `=HYPERLINK("http://evil.example","hc-analytics, 點我")`，匯出的工單 CSV 標題列 10 欄、資料列 11 欄（健檢實測）。子代理原列 P2，2026-10-30 使用者決定升為 P1。
-
 <a id="portal-01"></a>
 ### PORTAL-01：粉絲門戶的活動結果端點回傳測驗答案與未發布活動的結果，詳情端點不看開放時間
 
@@ -2239,13 +2016,6 @@ analytics 的其他統計以 SQL 的 `count` 或 `$queryRaw` 彙總，或以 `ta
 - 非 `AppError` 的例外（例如 Prisma 錯誤）也把原始訊息回給公開用戶端，違反 `AGENTS.md` 的「Do not return raw errors」。
 
 原本以「端點目前無法進入」標為 P3。這個前提已不成立（見 PORTAL-01），調為 P2。2026-10-30 功能健檢實測：「您已參加過這個活動」（409）、草稿與已結束（404）都變成 400 `BAD_REQUEST`，Prisma 錯誤原文（含伺服器檔案路徑與程式碼片段）直接回給公開端。main 已把輸入解析移到 `try` 之外，業務錯誤仍轉成 400（[PORTAL 健檢](../features/health/PORTAL.md)）。修正方式是移除這段 `try/catch`，交給全域的錯誤處理。
-
-<a id="portal-03"></a>
-### PORTAL-03：編輯草稿活動會清掉選項
-
-活動頁把清單項當成編輯資料，而 `portal.service.ts` 的 `listActivities()` 不 include `options`、`fields`。編輯對話框因此沒有帶出原本的選項與欄位；只改標題就按「儲存」，前端送出 `options: []`，`updateActivity()` 收到空陣列就 `deleteMany`，所有選項（含競猜的正確答案）或表單欄位被刪光。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PORTAL-01（[PORTAL 健檢](../features/health/PORTAL.md)）。證據：`apps/web/src/app/dashboard/portal/page.tsx:182`、`apps/api/src/modules/portal/portal.service.ts:44-54, 131-156`、`apps/web/src/components/portal/ActivityFormDialog.tsx:62-71, 99-104`；本機介面改標題儲存後 `options` 為 `[]`；UAT 以前端相同的 body PATCH 草稿，回應 `options: []`（健檢實測）。
 
 <a id="portal-04"></a>
 ### PORTAL-04：粉絲送出活動的答案不驗證
@@ -2291,7 +2061,7 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 
 **未修正**：workers 的清單仍沒有 `webchatPlugin`，關鍵字與自動化規則的回覆送不到網站聊天室（收件匣有失敗紀錄）。AI 不會因此讓步，訪客仍收到 AI 回覆。即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
 
-**群發與批次發券也送不到網站聊天室（2026-10-30 功能健檢）。** API 行程的群發與批次發券同樣呼叫 `webchatPlugin.sendMessage()`，它只寫 log 並回成功；附券流程也沒有推送 socket 或寫入訊息。WebChat 渠道的群發與發券顯示「成功」、發券數照算，顧客實際收不到任何訊息，對話裡也沒有外送訊息。群發頁的渠道選單列出 WebChat；批次發券的介面不列 WebChat（`COUPON_PUSH_CHANNEL_TYPES`），但 API 照收並同樣回成功。UAT Demo 租戶也有 WebChat 渠道可以選。顧客收不到券，系統紀錄卻顯示已送達，因此這一項由 P2 調為 P1。
+**群發與批次發券（2026-10-30 功能健檢，2026-11-03 部分修正，#415）。** 原本群發與批次發券對網站聊天室呼叫 `webchatPlugin.sendMessage()`，它只寫 log 並回成功，顯示「成功」、發券數照算，顧客實際收不到。現在建立與送出回 400 `CHANNEL_PUSH_NOT_SUPPORTED`，修正前建立的網站聊天室群發在排程或背景執行時標為失敗並寫原因；群發頁只列能主動推送的渠道（`@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`）。網站聊天室仍然不能群發或發券，`webchatPlugin.sendMessage()` 維持回成功，因為收件匣回覆與 `deliverToChannel()` 依賴它。`canvas.worker.ts` 對網站聊天室也是假成功（沒推訪客房間）。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-04（[MARKETING 健檢](../features/health/MARKETING.md)）。證據：`packages/channel-plugins/src/webchat/index.ts:48-56`、`apps/web/src/app/dashboard/marketing/page.tsx:285`、`apps/web/src/lib/marketing/coupon-broadcast.ts:89`；WebChat 渠道的附券群發 `completed`、成功 3、發券 3，`messages` 表沒有任何外送訊息（健檢實測）。
 
@@ -2349,31 +2119,33 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作
 
-租戶稽核涵蓋成員、角色的建立改名刪除與權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。`role`、`agent`（change `migrate-role-agent-tenant-ctx`）與 `case`、`contact`、`webtalk`（#337 階段 3）以 `recordTenantAudit()` 在交易內寫稽核，其他模組仍呼叫 `writeTenantAudit()`。下列操作沒有寫稽核：
+租戶稽核涵蓋成員、角色的建立改名刪除與權限、渠道的建立刪除與團隊授權、設定、合併聯絡人、刪除工單、資料匯出與刪除申請。`role`、`agent`（change `migrate-role-agent-tenant-ctx`）與 `case`、`contact`、`webtalk`、`settings` 的營業時間與追蹤設定、API 金鑰與 CLI token（#337 階段 3）以 `recordTenantAudit()` 在交易內寫稽核，其他模組仍呼叫 `writeTenantAudit()`。下列操作沒有寫稽核：
 
 | 範圍 | 沒有稽核的操作 |
 | --- | --- |
 | 認證 | 登入成功與失敗、Passkey 的註冊與刪除 |
-| 長效憑證 | API 金鑰的建立與撤銷、CLI token 的建立（`/settings/cli-sessions`、`/auth/cli/login`）與撤銷 |
 | 渠道 | 修改渠道，包括更換憑證（`PATCH /channels/:id`） |
 | 業務 | 送出群發、自動化規則的增刪改、刪除知識庫文章、刪除標籤 |
 | 行銷與優惠券（2026-10-30 健檢） | 優惠券的建立、發布、暫停、恢復、複製、刪除；群發與分群的建立。`coupon`、`marketing` 模組都沒有呼叫稽核函式 |
-| 匯出與對外 Webhook（2026-10-30 健檢） | 下載匯出檔（只把 `downloadCount` 加一，同租戶任何持 `data.export` 的成員都能下載別人發起的匯出）；對外 Webhook 訂閱的建立、修改、刪除與測試送出。訂閱 `message.received` 就能把客人訊息持續送到外部網址（HOOK-01），刪除又是硬刪除，連 `WebhookDelivery` 一起刪掉，事後查不到曾送到哪個網址 |
+| 匯出與對外 Webhook（2026-10-30 健檢） | 下載匯出檔（只把 `downloadCount` 加一，同租戶持 `data.export` 與 `channel.view_all` 的成員都能下載別人發起的匯出，規格明定）；對外 Webhook 訂閱的建立、修改、刪除與測試送出。訂閱 `message.received` 就能把客人訊息持續送到外部網址（HOOK-01），刪除又是硬刪除，連 `WebhookDelivery` 一起刪掉，事後查不到曾送到哪個網址 |
 | 其他敏感操作（2026-10-30 健檢） | 修改聯絡人的 email、電話；門市帳號的建立、重設密碼、強制登出、刪除（`store.manage`）；會員綁定設定與手動綁定、解除；SLA 政策的增刪改 |
 
-長效憑證與渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候建立了一把能長期存取租戶資料的金鑰。渠道憑證可以被看不到該渠道的成員更換，見 RBAC-07。稽核紀錄失去操作者的問題見 AUD-03、AUD-04。
+渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候更換了渠道的憑證。#408 之前渠道憑證可以被看不到該渠道的成員更換，現在要對該渠道有 `full` 層級。API 金鑰與 CLI token 的建立與撤銷已經寫稽核（change `settings-input-validation-and-credential-audit`）。稽核紀錄失去操作者的問題見 AUD-03、AUD-04。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-MARKETING-14（[MARKETING 健檢](../features/health/MARKETING.md)）、HC-GOVERNANCE-03（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-04（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）、HC-GOVERNANCE-09（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）。證據：優惠券與行銷操作、下載匯出檔、Webhook 訂閱的建立修改刪除、修改聯絡人 email 與電話之後 `tenant_audit_logs` 沒有新紀錄（健檢實測）；門市帳號、會員綁定、SLA 政策為讀程式，例如 `apps/api/src/modules/webhook-subscriptions/webhook-subscription.routes.ts:48, 58, 68, 86`、`apps/api/src/modules/data-export/data-export.flow.ts:62-69`、`apps/api/src/modules/store/store.routes.ts:56-100`。
 
 <a id="aud-03"></a>
 ### AUD-03：永久刪除成員後，稽核紀錄失去操作者
 
-`TenantAuditLog.actor` 的外鍵是 `onDelete: SetNull`，`agent.purge` 的稽核又只記 `targetId`，不記被刪成員是誰。成員被永久刪除之後：
+**狀態：部分修正**（2026-11-09，issue #414，change `preserve-audit-actor-on-agent-purge`、`keep-completion-audit-for-purged-requester`）。
 
-- 他在稽核紀錄裡的所有操作變成 `actor: null`，與系統排程寫的紀錄無法區分。
-- 資料匯出請求的 `requestedBy` 也變成 null。「誰匯出了全租戶資料」在這位成員被刪除後完全查不到。
+`TenantAuditLog.actor`、`DataExportRequest.requester`、`DataErasureRequest.requester` 的外鍵是 `onDelete: SetNull`。修正前，成員被永久刪除之後，他在稽核紀錄裡的所有操作變成 `actor: null`，與系統排程寫的紀錄無法區分；資料匯出與刪除請求的 `requestedBy` 也變成 null；`agent.purge` 的稽核只記 `targetId`。永久刪除是釋放 email 的標準做法，UAT 已有 52 筆 `agent.purge`。
 
-永久刪除是釋放 email 的標準做法，UAT 已有 52 筆 `agent.purge`。
+**已修正：** `purgeAgent()` 在刪除成員之前、同一個交易內，把名稱與 email 寫進他當操作者的稽核（`actorName`、`actorEmail`）與他發起的匯出、刪除請求（`requestedByName`、`requestedByEmail`）。`GET /tenant/audit-logs` 每筆多回 `actorSnapshot`。`agent.purge` 的 `payload` 記下被刪成員的名稱。修正前已刪除的成員留下的紀錄沒有快照，無法回復。
+
+刪除或匯出請求還在排隊時發起人被永久刪除（change `keep-completion-audit-for-purged-requester`）：`data.erasure.complete` 稽核改在刪除的交易內寫入，寫入前以 `tenantId` 查發起的成員，已被刪除時 `actorId` 寫空值、帶入請求的名稱與 email 快照，不送通知。匯出 worker 送通知前也查發起的成員。修正前這筆稽核違反外鍵，錯誤被 `.catch()` 吞掉，完成與失敗通知在通知佇列重試後失敗。
+
+**未修正：** 依 `actorId` 篩選稽核（`GET /tenant/audit-logs?actorId=`）查不到已刪除成員的紀錄：他的紀錄 `actorId` 已是空值，快照只存名稱與 email，篩選不比對快照。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-GOVERNANCE-01（[GOVERNANCE 健檢](../features/health/GOVERNANCE.md)）。證據：`packages/database/prisma/schema.prisma:2132, 2156, 2178`、`apps/api/src/modules/agent/agent.flow.ts:150-160`；成員 X 發起資料匯出後被停用並刪除，同一筆 `data.export.request` 稽核的 `actorId` 變成 NULL（健檢實測）。
 
@@ -2391,15 +2163,17 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 
 `apps/workers/src/handlers/data-erasure.handler.ts` 有兩種模式：
 
-- `anonymize`（預設）：清空聯絡人的個人欄位，刪除屬性、渠道身分、`IdentityMap` 與長期記憶，把進站訊息的內容換成 `{ redacted: true }`。
+- `anonymize`（預設）：清空聯絡人的個人欄位，刪除屬性、渠道身分、`IdentityMap` 與長期記憶，把進站訊息的內容換成 `{ redacted: true }`，並刪除進站訊息的媒體檔。
 - `hard_delete`：刪除聯絡人與他的對話、訊息、工單、積分、活動提交與媒體檔。
+
+**部分修正（2026-11-09，#329，change `erase-inbound-media-on-anonymize`）：** `anonymize` 原本在改寫進站訊息前沒有讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫也找不到。現在改寫前讀出、交易 commit 之後刪除，兩種模式只刪 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，刪除失敗的筆數記在 `affected.mediaObjectsFailed`。修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。下表其他列都還沒有修正。
 
 沒有涵蓋的資料：
 
 | 資料 | `anonymize` | `hard_delete` |
 | --- | --- | --- |
 | 客服回覆的訊息內容 | 保留 | 刪除 |
-| 物件儲存裡的訊息媒體檔（頭像檔兩種模式都刪除） | 保留 | 刪除 |
+| 物件儲存裡客服上傳的出站媒體檔（客人傳的進站媒體檔與頭像檔兩種模式都刪除） | 保留 | 刪除 |
 | 活動提交（含表單答案）、積分 | 保留 | 刪除 |
 | 工單標題、描述、備註、CSAT 留言 | 保留 | 刪除 |
 | `ClickLog`（含 IP、User-Agent、LINE uid） | 保留 | 保留 |
@@ -2408,7 +2182,7 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 | `Outbox.payload`（已送出的列不清除，例如 `case.created` 帶工單標題）、`WebhookDelivery.payload`（事件原文，含訊息內容）（2026-10-30 健檢） | 保留 | 保留 |
 | 刪除前產生、7 天內仍可下載的匯出檔（2026-10-30 健檢） | 保留 | 保留 |
 
-`ClickLog`、`BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` 只存 `contactId` 字串，沒有外鍵，兩種模式都不處理。預設模式保留了客人上傳的圖片與表單答案，這兩類最可能含個人資料。
+`ClickLog`、`BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` 只存 `contactId` 字串，沒有外鍵，兩種模式都不處理。預設模式保留了表單答案，最可能含個人資料。
 
 最後一列來自聯絡人合併。`contact-merge.service.ts` 合併兩位聯絡人時，被併入的聯絡人只設定 `isArchived` 與 `mergedIntoId`，個人欄位不變。刪除的 handler 只處理請求指定的 `contactId`，不沿 `mergedIntoId` 找被併入的聯絡人。同一位客人在多個渠道各有一位聯絡人、後來合併時，刪除保留下來的那一位，其他渠道留下的姓名、電話與 email 仍在資料庫。封存的聯絡人可以另外以自己的 ID 發起刪除，但後台不列出封存的聯絡人，操作者不容易知道它們存在。
 
@@ -2718,13 +2492,12 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 | --- | --- | --- |
 | `ChannelPlugin.setWebhook()` | LINE 與 Telegram 外掛有實作 | 沒有。LINE 的自動設定由 API 的 `line-webhook-setup.service.ts` 直接呼叫 LINE API |
 | `extensions.audience` | LINE 外掛有實作分眾名單 | 沒有 |
-| `line/worker-media-download.ts`、`worker-narrowcast-progress.ts`、`worker-insight-sync.ts` | 各自定義 BullMQ 佇列與 worker | 沒有任何檔案 import。LINE 媒體下載實際走 `resolveInboundMedia()` |
 | `getAllChannelPlugins()`、`hasChannelPlugin()`、`getPlugin()`、`registerPlugin` | 註冊表的輔助函式與舊名稱 | 沒有 |
 | `telegram.ts` | `TelegramPlugin` 類別，由套件入口與 `./telegram` 子路徑匯出 | 沒有註冊，見 APP-02 |
 
-與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.service.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
+與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.line-api.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
 
-**主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `worker-insight-sync.ts`、`worker-narrowcast-progress.ts` 與 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
+**主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
 
 ## Storage、LLM 與資料庫
 
@@ -2773,12 +2546,12 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 
 | 功能 | 失敗時的行為 |
 | --- | --- |
-| 知識庫自動回覆（`kb-autoreply.service.ts` 的 `attemptKbAutoReply()`） | 只記 error log，然後不回覆客人，也不轉真人 |
+| 知識庫自動回覆（`kb-autoreply.service.ts` 的 `attemptKbAutoReply()`） | 回傳 `failed`，agent 也沒回覆時轉真人，原因「AI 暫時無法回覆（AI 服務發生錯誤）」（KB-06，#445）。客人收不到 AI 回覆 |
 | AI 建議回覆（`ai.service.ts` 的 `suggestReply()`） | 回傳空的建議清單 |
 | 知識庫語意搜尋（`knowledge.service.ts` 的 `semanticSearch()`） | 拋出錯誤 |
 | 建立或修改文章時產生向量（`embedArticle()`） | 在背景失敗，只記 log。文章仍可發布，但不會被檢索到 |
 
-自動回覆的失敗最不容易察覺：客人收不到回覆，對話也沒有轉給客服。
+自動回覆的失敗原本最不容易察覺：客人收不到回覆，對話也沒有轉給客服。#445 之後改為轉真人，但每則文字訊息都會轉給客服（KB-06）。
 
 **UAT 目前仍正常產生向量（2026-10-30 功能健檢）。** UAT Demo 租戶的 `GET /knowledge/embedding-status` 回 `{ok: true, model: "bge-m3:latest"}`，1180 篇已發布文章抽查前 200 篇都有向量。UAT 靠 Compose 內仍在執行的 Ollama 服務（LLM-02）運作。「Embedding 只能呼叫 Ollama」仍然成立；上表是拿掉 Ollama 之後的結果，不是 UAT 目前的現況。原本這裡寫成「所有產生向量的路徑都會失敗」，依健檢改成條件式（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。
 
@@ -2791,36 +2564,6 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-USAGE-04（[PLATFORM-USAGE 健檢](../features/health/PLATFORM-USAGE.md)）。證據：`apps/api/src/modules/ai/ai.service.ts:113-128`、`apps/api/src/modules/automation/automation.worker.ts:136-147`；本機 LLM 不通時 `POST /ai/summarize` 回 200 與上述範本（健檢實測）；額度用完與寫入系統訊息為讀程式。
 
-<a id="kb-01"></a>
-### KB-01：追問次數用完時回覆已轉接，實際沒有轉接
-
-`kb-autoreply.service.ts` 在追問次數用完時送出「…已為您轉接客服人員，請稍候」，但只寫訊息，不改對話狀態：對話仍是 `BOT_HANDLED`，沒有 `handoffReason`、沒有系統訊息，客服不會收到。客人再傳訊息，又收到同一句。
-
-實際的轉接要等 `botRepliesCount` 達到渠道的 `maxBotReplies`（預設 5），才由 `automation.worker.ts` 的 `checkAutoHandoff()` 觸發；把 `maxBotReplies` 調高的渠道，客人會一直收到假的轉接訊息。LLM 失敗（含月額度用完的 `PLAN_LIMIT_EXCEEDED`）時，追問路徑也送同一句。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-KNOWLEDGE-01（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。證據：`apps/api/src/modules/ai/kb-autoreply.service.ts:252-255, 270-273`；健檢腳本搭配假 LLM 對新對話連送 4 則，後兩則都是 `clarify_handoff`，對話狀態一直是 `BOT_HANDLED`（健檢實測，未經 workers 與真實渠道）。
-
-<a id="kb-02"></a>
-### KB-02：型號守門把一般英文詞當成型號
-
-`model-matcher.ts` 的正規式 `\b([A-Z]{1,4})-([0-9A-Z]+…)\b` 不分大小寫，`Wi-Fi`、`e-mail`、`T-shirt`、訂單編號 `AB-12345` 都被當成型號。KB 相似度低於 0.85 時，機器人回「這個型號我這邊查不到資料」，請客人確認型號。
-
-- 守門對**所有租戶**生效。沒有任何型號文章的租戶白名單是空的，只要訊息有這類詞，就一定走守門。
-- 守門路徑不累加追問次數，客人一直提到這類詞就一直不會轉真人。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-KNOWLEDGE-02（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。證據：`apps/api/src/modules/ai/model-matcher.ts:22`、`kb-autoreply.service.ts:185-237`；健檢腳本送「我家 Wi-Fi 連不上怎麼辦」得到 `replyKind=model_not_found`、`unknownModel=WI-FI`；`detectModels()` 對 `T-shirt`、`AB-12345` 也命中（健檢實測）。
-
-<a id="kb-03"></a>
-### KB-03：知識庫匯入沒有 BOM 的 CSV 變成亂碼
-
-`file-parser.service.ts` 以 `XLSX.read(buffer, {type:'buffer'})` 讀 CSV，沒有指定編碼，把 UTF-8 當單位元組讀。沒有 BOM 的 UTF-8 CSV 匯入後中文全部變亂碼：
-
-- 表頭是「問題,答案」時認不出表頭，整份變成一篇亂碼草稿。
-- 表頭是英文 `question,answer` 時會拆成問答，但標題與答案是亂碼，而且直接發布（`knowledge.routes.ts:167`），AI 馬上會用。
-
-Google 試算表、Numbers 與程式匯出的 CSV 都沒有 BOM；台灣版 Excel 的「CSV（逗號分隔）」是 Big5，同樣會亂碼。手冊用的範例檔 `apps/web/tests/fixtures/manual-kb-sample.csv` 就是沒有 BOM 的 UTF-8。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-KNOWLEDGE-03（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。證據：`apps/api/src/modules/knowledge/file-parser.service.ts:57, 139`；上傳英文表頭、沒有 BOM 的 CSV 得到 1 篇已發布、標題亂碼的文章；加上 `EF BB BF` 後正常（健檢實測）。
 
 <a id="kb-04"></a>
 ### KB-04：LLM 失敗時把文章全文送給客人
@@ -2835,6 +2578,21 @@ Google 試算表、Numbers 與程式匯出的 CSV 都沒有 BOM；台灣版 Exce
 `kb-autoreply.service.ts` 以 `{...existingMeta, ...metadataExtras}` 寫對話的 metadata。守門命中後寫入的 `modelGuard` 之後永遠不會清掉，後續的一般回答與追問都沿用舊值，客服或除錯時會誤以為最近一則是守門回覆。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-KNOWLEDGE-06（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。證據：`apps/api/src/modules/ai/kb-autoreply.service.ts:436`；守門之後的 `clarify`、`kb_high_confidence` 回覆，對話 metadata 仍是 `{"modelGuard":{"unknownModel":"E-MAIL",…}}`（健檢實測）。
+
+<a id="kb-06"></a>
+### KB-06：AI 與知識庫回覆都失敗時客人收不到回覆
+
+2026-11-04 UAT Demo 租戶開了 AI 個資遮罩，去識別化服務短暫回 503。同一則客人訊息的 agent 回覆與知識庫自動回覆（產生向量時呼叫去識別化服務）都失敗，`automation.worker.ts` 只記 log：客人沒收到回覆，對話停在 `BOT_HANDLED`，收件匣看不到失敗（issue #445）。
+
+**已修正**（change `handoff-on-ai-reply-failure-445`）：agent 沒有回覆、`attemptKbAutoReply()` 又因錯誤失敗時，`automation/ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()` 以 `bot_reply` 認領並呼叫 `handOffConversation()` 轉真人，`handoffReason` 寫「AI 暫時無法回覆（去識別化服務無法使用）」等，送出 `handoffMessage`。系統訊息不呼叫去識別化服務。關鍵字讓步、`botMode` 關閉、已回覆過不轉接。
+
+**未修正**：
+
+- `KB_AUTO_REPLY_ENABLED` 關閉時，agent 失敗的訊息仍然沒有回覆、也不轉接（核准的預設：「KB 停用不可轉接」）。
+- 不自動重試 AI 回覆：服務幾秒後恢復也不會補回覆，改由客服接手。
+- 收件匣只在轉接系統訊息與原因看得到失敗，客人那則訊息本身沒有「AI 回覆失敗」標示。
+
+**規格依據**：`bot-handoff-config`「AI 與知識庫回覆都因錯誤失敗時轉接真人」「正常不回覆時不轉接」。
 
 <a id="db-01"></a>
 ### DB-01：向量維度不一致
@@ -2912,15 +2670,6 @@ grep -cE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update
 ### CI-02：沒有 CI 執行 lint
 
 `eslint.config.js` 與 `pnpm lint` 已存在，但沒有任何 CI workflow 執行 lint。
-
-<a id="ci-04"></a>
-### CI-04：試用申請與開通沒有自動測試
-
-主規格 `trial-application` 的 9 個 scenario（總開關、關閉後仍可開通、防枚舉、gmail 別名、過期 token、重寄後舊連結失效、開通成功、中途失敗可重試、email 已被建走）都找不到測試。`trial.service.ts`、`email-normalizer.ts`、`trial.routes.ts` 沒有任何測試引用。TRIAL-05 與 TRIAL-06 都發生在這段沒有測試的程式。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-TRIALS-04（[PLATFORM-TRIALS 健檢](../features/health/PLATFORM-TRIALS.md)）。證據：`git ls-files apps/*/tests` 搜尋 `requestTrial`、`verifyAndProvision`、`normalizeEmail`、`trial/signups` 都沒有結果（讀程式）。
-
-**已修正**（#407，與 TRIAL-05 同一個 change）：主規格 `trial-application` 的每個 scenario（含這次新增的）都有同名測試，在 `apps/api/tests/feature/modules/trial/trial-signup-verify.test.ts`；路由的輸入驗證在 `apps/api/tests/unit/modules/trial/trial-routes.test.ts`，驗證頁在 `apps/web/tests/unit/app/trial/verify-page.test.tsx`。`email-normalizer.ts` 的非 gmail 網域行為（HC-PLATFORM-TRIALS-14）仍沒有測試。
 
 ## 已查證後排除的項目
 

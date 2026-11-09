@@ -17,7 +17,7 @@
 - 工單：刪除。
 - 資料權利：發起資料匯出、發起與完成資料刪除。
 
-其他敏感操作（例如登入、API 金鑰與 CLI token、修改渠道憑證）目前不寫稽核，記在 `docs/ref/system/AUDIT.md` 的 AUD-01。
+長效憑證的稽核見「建立與撤銷長效憑證時寫稽核」。其他敏感操作（例如登入、修改渠道憑證）目前不寫稽核，記在 `docs/ref/system/AUDIT.md` 的 AUD-01。
 
 #### Scenario: 設定角色權限時寫稽核
 - **WHEN** 有 `role.manage` 的成員以 `PUT /api/v1/roles/:id/permissions` 設定角色的權限
@@ -47,6 +47,11 @@
 
 `GET /api/v1/tenant/audit-logs` SHALL 回傳目前租戶的稽核，依 `createdAt` 由新到舊排序，每頁預設 20 筆、最多 100 筆。查詢 SHALL 支援依 `action`、`actorId` 與日期區間（`from`、`to`）篩選。呼叫的成員 SHALL 有 `audit.view`，沒有時系統回 HTTP 403。回傳的稽核 SHALL 只屬於目前的租戶。
 
+每筆稽核 SHALL 回傳 `actor` 與 `actorSnapshot`：
+
+- `actor`：操作者成員還存在時是 `{ id, name, email }`，否則是 `null`。
+- `actorSnapshot`：操作者被永久刪除時保存的 `{ name, email }`（見 `agent-lifecycle` 的「永久刪除成員」）；沒有保存快照時是 `null`。
+
 #### Scenario: 依 action 篩選本租戶的稽核
 - **WHEN** 有 `audit.view` 的成員以 `action=role.permission.update` 查詢
 - **THEN** 系統回 HTTP 200，結果只含本租戶 `action` 是 `role.permission.update` 的稽核，不含其他租戶的稽核
@@ -59,6 +64,14 @@
 - **WHEN** 成員以 `from`、`to` 與 `pageSize` 查詢
 - **THEN** 系統只回傳 `createdAt` 落在區間內的稽核，每頁筆數不超過 `pageSize`，`total` 是符合條件的總筆數
 
+#### Scenario: 操作者被永久刪除後回傳快照
+- **WHEN** 成員 X 發起資料匯出後被停用並永久刪除，有 `audit.view` 的成員以 `action=data.export.request` 查詢
+- **THEN** 該筆稽核的 `actor` 是 `null`，`actorSnapshot` 是 `{ name: X 的名稱, email: X 的 email }`
+
+#### Scenario: 操作者還在時沒有快照
+- **WHEN** 有 `audit.view` 的成員查詢操作者仍存在的稽核
+- **THEN** 該筆稽核的 `actor` 是 `{ id, name, email }`，`actorSnapshot` 是 `null`
+
 ### Requirement: 交易內的稽核與主操作一起 commit
 
 在綁定租戶的交易內寫稽核時，稽核 SHALL 與主操作的寫入一起 commit 或一起 rollback。稽核的 `tenantId` SHALL 是交易綁定的租戶，呼叫端 SHALL NOT 指定。稽核寫入失敗時，系統 SHALL 拋出錯誤，交易 rollback，主操作的寫入 SHALL NOT 留在資料庫。
@@ -70,3 +83,36 @@
 #### Scenario: 稽核寫入失敗時主操作 rollback
 - **WHEN** 綁定租戶的交易內建立一個角色，接著寫一筆稽核，稽核的 `actorId` 是不存在的成員，所以寫入違反外鍵
 - **THEN** 呼叫端收到錯誤，資料庫中 MUST NOT 有該角色，也 MUST NOT 有該筆稽核
+
+### Requirement: 建立與撤銷長效憑證時寫稽核
+
+建立或撤銷 Partner API 金鑰與 CLI token 成功後，系統 SHALL 在同一個交易寫一筆 `TenantAuditLog`：
+
+- 設定頁的建立與撤銷：`action` 是 `settings.update`，`targetType` 是 `settings`，`payload.section` 是 `api-keys` 或 `cli-sessions`。
+- CLI 登入建立 token、登出撤銷 token：`action` 是 `cli_session.login`、`cli_session.logout`，`targetType` 是 `cli_session`，`targetId` 是 token 的 ID。
+
+稽核 SHALL NOT 包含金鑰或 token 的明文。撤銷的對象不存在、屬於另一個租戶或已經撤銷時，系統不寫稽核。
+
+#### Scenario: 建立 API 金鑰時寫稽核
+- **WHEN** 有 `settings.manage` 的成員以 `POST /api/v1/settings/api-keys` 建立金鑰
+- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`targetType` 是 `settings`，`actorId` 是操作的成員，`payload` 是 `{ section: "api-keys", operation: "create", apiKeyId, name, expiresAt }`，不含金鑰的明文
+
+#### Scenario: 撤銷 API 金鑰時寫稽核
+- **WHEN** 有 `settings.manage` 的成員以 `DELETE /api/v1/settings/api-keys/:id` 撤銷金鑰
+- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`payload` 是 `{ section: "api-keys", operation: "revoke", apiKeyId }`
+
+#### Scenario: 在設定頁建立 CLI token 時寫稽核
+- **WHEN** 有 `settings.manage` 的成員以 `POST /api/v1/settings/cli-sessions` 建立 token
+- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`actorId` 是操作的成員，`payload` 是 `{ section: "cli-sessions", operation: "create", sessionId, name, scopes, expiresAt }`，不含 token 的明文
+
+#### Scenario: 在設定頁撤銷 CLI token 時寫稽核
+- **WHEN** 有 `settings.manage` 的成員以 `DELETE /api/v1/settings/cli-sessions/:id` 撤銷租戶內的 token
+- **THEN** 系統寫一筆稽核，`action` 是 `settings.update`，`payload` 是 `{ section: "cli-sessions", operation: "revoke", sessionId }`
+
+#### Scenario: CLI 登入與登出時寫稽核
+- **WHEN** 成員以 `POST /api/v1/auth/cli/login` 登入，再以 `POST /api/v1/auth/cli/logout` 登出
+- **THEN** 系統寫兩筆稽核，`actorId` 都是這位成員，`targetType` 都是 `cli_session`，`targetId` 都是這把 token 的 ID：登入的 `action` 是 `cli_session.login`，`payload` 是 `{ name, scopes, expiresAt }`，不含 token 的明文；登出的 `action` 是 `cli_session.logout`
+
+#### Scenario: 撤銷不存在的憑證時不寫稽核
+- **WHEN** 成員撤銷不存在的 API 金鑰或 CLI token，或另一個租戶的 API 金鑰或 CLI token
+- **THEN** 系統不寫稽核

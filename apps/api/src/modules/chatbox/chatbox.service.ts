@@ -22,6 +22,7 @@ import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { AppError } from '../../shared/utils/response.js';
 import { processInboundMessage } from '../webhook/webhook.service.js';
 import type { ChatboxMessageRegistry } from './chatbox.registry.js';
@@ -359,8 +360,9 @@ export async function resolveChatboxChannel(prisma: PrismaClient, publicKey: str
   const identifiers: Array<{ publicKey: string } | { id: string }> = [{ publicKey }];
   if (UUID_RE.test(publicKey)) identifiers.push({ id: publicKey });
 
+  // 租戶停用（含試用到期）時比照渠道停用回 404，不建立工作階段（issue #410）
   const channel = await prisma.channel.findFirst({
-    where: { OR: identifiers, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
+    where: { OR: identifiers, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true, tenant: { isActive: true } },
   });
   if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   return channel;
@@ -446,7 +448,7 @@ export async function createChatboxSession(
     },
   });
 
-  io.to(`tenant:${channel.tenantId}`).emit('conversation.created', {
+  emitToChannel(io, channel.tenantId, { channelId: channel.id }, 'conversation.created', {
     id: result.conversation.id,
     status: result.conversation.status,
     assignedToId: null,
@@ -480,7 +482,7 @@ export async function verifyChatboxSession(
   const session = await prisma.chatboxSession.findUnique({
     where: { tokenDigest },
     include: {
-      channel: true,
+      channel: { include: { tenant: { select: { isActive: true } } } },
     },
   });
 
@@ -491,7 +493,8 @@ export async function verifyChatboxSession(
   if (session.expiresAt.getTime() <= now.getTime()) {
     throw new AppError('聊天連線已逾時，請重新整理頁面', 'UNAUTHORIZED', 401);
   }
-  if (!session.channel.isActive || session.channel.channelType !== CHANNEL_TYPE.WEBCHAT) {
+  // 租戶停用（含試用到期）時比照渠道停用回 404：送訊息、bootstrap 與訪客 socket 都經過這裡（issue #410）
+  if (!session.channel.isActive || !session.channel.tenant?.isActive || session.channel.channelType !== CHANNEL_TYPE.WEBCHAT) {
     throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
@@ -564,7 +567,7 @@ export async function adaptChatboxMessageToWebchatParsed(
 ): Promise<ParsedWebhookMessage> {
   const plugin = getChannelPlugin(CHANNEL_TYPE.WEBCHAT);
   if (!plugin) {
-    throw new AppError('網頁聊天渠道模組未註冊，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
+    throw new AppError('網站聊天室渠道模組未註冊，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
   }
 
   const channelMsgId = `chatbox-${input.clientMessageId}`;
@@ -603,7 +606,7 @@ export async function handleChatboxMessage(
   claimRedis?: ChatboxClaimRedis,
 ): Promise<{ message: ChatboxMessageOutput; duplicate: boolean }> {
   if (VISITOR_MEDIA_MESSAGE_TYPES.has(input.type)) {
-    throw new AppError('網頁聊天不開放傳送圖片、影片或檔案', 'BAD_REQUEST', 400);
+    throw new AppError('網站聊天室不開放傳送圖片、影片或檔案', 'BAD_REQUEST', 400);
   }
   const session = await verifyClaimedChatboxSession(prisma, input, claimRedis);
   const existing = await prisma.message.findUnique({

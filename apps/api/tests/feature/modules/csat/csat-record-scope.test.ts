@@ -107,3 +107,70 @@ scenario('客服操作（不帶 contactId）只能寫入自己租戶的工單', 
   const own = await createCase(tx, TENANT_A, 'agent-own');
   assert.equal(await recordCsatScore(tx, io, own.caseId, 4, undefined, { tenantId: TENANT_A }), true);
 });
+
+/**
+ * 評分後客服看得到結果（issue #444，主規格 csat-survey「評分後收件匣的問卷卡片顯示分數」「評分寫入工單時間軸」）：
+ * 以真的資料庫驗證 metadata.caseId 的 JSON 條件，以及只更新同租戶的問卷訊息。
+ */
+async function addSurvey(tx: TenantDb, conversationId: string, caseId: string) {
+  return tx.message.create({
+    data: {
+      conversationId,
+      direction: 'OUTBOUND',
+      senderType: 'SYSTEM',
+      contentType: 'csat',
+      content: { text: '滿意度調查', caseId },
+      metadata: { type: 'csat_survey', caseId },
+    },
+  });
+}
+
+scenario('客人評分後問卷卡片顯示分數', async (tx) => {
+  const own = await createCase(tx, TENANT_A, 'card');
+  const survey = await addSurvey(tx, own.conversationId, own.caseId);
+  // 另一張工單的問卷不受影響
+  const other = await createCase(tx, TENANT_A, 'card-other');
+  const otherSurvey = await addSurvey(tx, other.conversationId, other.caseId);
+
+  assert.equal(await recordCsatScore(tx, io, own.caseId, 2, undefined, { tenantId: TENANT_A, contactId: own.contactId }), true);
+
+  const after = await tx.message.findUniqueOrThrow({ where: { id: survey.id } });
+  const metadata = after.metadata as Record<string, unknown>;
+  assert.equal(metadata.csatScore, 2);
+  assert.equal(metadata.csatRatedBy, 'customer');
+  assert.equal(metadata.caseId, own.caseId);
+  const untouched = await tx.message.findUniqueOrThrow({ where: { id: otherSurvey.id } });
+  assert.equal((untouched.metadata as Record<string, unknown>).csatScore, undefined);
+});
+
+scenario('客人評分後時間軸有評分與自動關閉紀錄', async (tx) => {
+  const own = await createCase(tx, TENANT_A, 'timeline');
+  await recordCsatScore(tx, io, own.caseId, 2, undefined, { tenantId: TENANT_A, contactId: own.contactId });
+
+  const events = await tx.caseEvent.findMany({ where: { caseId: own.caseId }, orderBy: { createdAt: 'asc' } });
+  const rated = events.find((e) => e.eventType === 'csat_rated');
+  assert.ok(rated, '有 csat_rated 事件');
+  assert.equal(rated.actorType, 'contact');
+  assert.deepEqual(rated.payload, { score: 2, source: 'customer' });
+  const closed = events.find((e) => e.eventType === 'status_changed');
+  assert.ok(closed, '有自動關閉的 status_changed 事件');
+  assert.equal(closed.actorType, 'system');
+  assert.deepEqual(closed.payload, { from: 'RESOLVED', to: 'CLOSED', reason: 'csat_rated' });
+});
+
+scenario('客服代評的時間軸紀錄標明客服', async (tx) => {
+  const own = await createCase(tx, TENANT_A, 'agent-rate');
+  const survey = await addSurvey(tx, own.conversationId, own.caseId);
+  const agent = await tx.agent.create({
+    data: { tenantId: TENANT_A, email: `csat-agent-${Date.now()}@example.test`, name: '王小明', passwordHash: 'x', role: 'AGENT' },
+  });
+
+  assert.equal(await recordCsatScore(tx, io, own.caseId, 4, undefined, { tenantId: TENANT_A, agentId: agent.id }), true);
+
+  const rated = await tx.caseEvent.findFirstOrThrow({ where: { caseId: own.caseId, eventType: 'csat_rated' } });
+  assert.equal(rated.actorType, 'agent');
+  assert.equal(rated.actorId, agent.id);
+  assert.deepEqual(rated.payload, { score: 4, source: 'agent' });
+  const after = await tx.message.findUniqueOrThrow({ where: { id: survey.id } });
+  assert.equal((after.metadata as Record<string, unknown>).csatRatedBy, 'agent');
+});

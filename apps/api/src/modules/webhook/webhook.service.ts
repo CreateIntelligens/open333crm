@@ -289,6 +289,12 @@ export async function processPlatformMetaWebhook(
   }
 }
 
+/** 租戶是否啟用；查不到（孤兒資料）視為停用 */
+async function isTenantActive(prisma: PrismaClient, tenantId: string): Promise<boolean> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { isActive: true } });
+  return tenant?.isActive === true;
+}
+
 export async function processInboundMessage(
   prisma: PrismaClient,
   io: SocketIOServer,
@@ -300,6 +306,13 @@ export async function processInboundMessage(
 ) {
   const ctx = createInboundMessageContext(prisma, io, credentials, channel, tenantId, parsed, options);
   if (!ctx) return;
+
+  // 所有渠道共用的入口檢查：租戶停用（含試用到期）時丟棄進站事件，不建立任何資料（issue #410）。
+  // webhook 在驗簽前已提早丟棄，這裡另外擋住網站聊天室與其他直接呼叫的路徑
+  if (!(await isTenantActive(prisma, tenantId))) {
+    logger.warn('[Webhook] Tenant is disabled, dropping inbound message', { tenantId, channelId: channel.id });
+    return;
+  }
 
   // FB／IG 點 m.me／ig.me 連結產生的 referral 事件只帶 ref、沒有訊息內容，不落地成收件匣訊息
   if (ctx.contentType === 'referral') {

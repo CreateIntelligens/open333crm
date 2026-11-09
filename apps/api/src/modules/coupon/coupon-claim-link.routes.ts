@@ -38,7 +38,7 @@ const updateSchema = z.object({
 const couponParams = z.object({ id: z.string().uuid('優惠券識別格式不正確') });
 const linkParams = couponParams.extend({ linkId: z.string().uuid('領券連結識別格式不正確') });
 const availableQuery = z.object({
-  channelType: z.enum(['LINE', 'FB', 'THREADS'], { errorMap: () => ({ message: '渠道類型只能是 LINE、FB 或 THREADS' }) }).optional(),
+  channelType: z.enum(['LINE', 'FB', 'THREADS'], { errorMap: () => ({ message: '渠道類型只能是 LINE、Facebook 或 Instagram（API 值：LINE、FB、THREADS）' }) }).optional(),
 });
 
 const webBaseUrl = () => getConfig().WEB_BASE_URL;

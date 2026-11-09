@@ -4,6 +4,245 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
+
+issue #414 後續，分支 `fix/erasure-export-deleted-requester-414`，change `keep-completion-audit-for-purged-requester`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUD-03 的「worker 寫完成稽核違反外鍵、通知失敗」 | 已修正，AUD-03 維持部分修正（依 `actorId` 篩選查不到已刪除成員的紀錄未處理） | `data-erasure-flow.test.ts`「發起的成員已被永久刪除時，完成稽核記下快照、不送通知」修正前失敗在斷言上（稽核筆數 0，log 有 `tenant_audit_logs_actorId_fkey`）；`data-export-flow.test.ts` 兩個「發起的成員已被永久刪除時…不送通知」修正前失敗在斷言上（送了通知）；`agent-purge.test.ts`「請求的快照在稽核的快照之前寫入」修正前失敗。mutation：發起者還在時改成不記他、不通知，「發起的成員還在時記下他並通知他」失敗；補寫失敗筆數時不更新稽核，feature 與單元的「物件刪除失敗時請求仍然完成」失敗；拿掉 `requesterExists` 的空值防護，單元「工作內容沒有 requestedBy 時…」失敗；匯出拿掉發起者檢查，單元與 feature 的「已被永久刪除…不送通知」失敗 |
+
+## 2026-11-09：匿名化刪除客人傳來的媒體檔（ERASE-01）
+
+#329，分支 `fix/erase-media-329`，change `erase-inbound-media-on-anonymize`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ERASE-01 的「物件儲存裡的訊息媒體檔」 | 進站媒體檔已修正，ERASE-01 維持部分修正（客服上傳的出站媒體檔、表單答案、合併封存聯絡人等其他列未處理） | `data-erasure-flow.test.ts`「匿名化刪除進站訊息的媒體檔」修正前失敗在斷言上（沒有呼叫刪除）。範圍檢查與失敗筆數的 4 個情境修正前都失敗在斷言上；mutation：拿掉「對話屬於本次刪除」的檢查，兩個「不刪本租戶媒體目錄以外的檔案」失敗；拿掉「保留訊息仍引用」的檢查，「仍被保留訊息引用的媒體檔保留」失敗 |
+
+修正之前已匿名化的客人留下的孤兒檔另外由 #474 處理，匿名化與媒體下載同時進行的競態由 #475 處理，合併封存聯絡人與刪除後仍可解除合併由 #473 處理。
+
+## 2026-11-09：永久刪除成員時保留操作者快照（AUD-03）
+
+分支 `fix/audit-actor-snapshot-414`，change `preserve-audit-actor-on-agent-purge`，issue #414。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUD-03 | 部分修正 | migration `20261109100000_preserve_audit_actor_snapshot` 加快照欄位；`purgeAgent()` 刪除前寫入。`agent-management.test.ts`「刪除保留操作者快照」「刪除稽核記下被刪成員的名稱」「操作者還在時沒有快照」修正前失敗在斷言上，修正後通過；`agent-purge.test.ts`「刪除被拒時不寫快照」以 mutation 驗證（把快照移到驗證之前，最後一位管理員與權限比較兩案失敗；在 404 之前寫快照，四案都失敗）。未修的部分：worker 的 `data.erasure.complete` 稽核在發起人被刪除後違反外鍵，等 #329 合併後另補 |
+
+## 2026-11-06：移除已完全修正的項目（TRIAL-05、TRIAL-06、AUTO-06、AUTO-09、CI-04）
+
+2026-09-30 定下的規則（一項完全修正之後從 `AUDIT.md` 移除）只記在本文件，`AGENTS.md` 的完成檢查只寫「update that item」，所以這 5 項修正後標成「已修正」留在 `AUDIT.md`。這次把規則寫進 `AGENTS.md` Step 4 與 `AUDIT.md` 開頭，並移除這 5 項。
+
+| 項目 | 結果 | 修正 |
+| --- | --- | --- |
+| TRIAL-05 | 已修正，從 `AUDIT.md` 移除 | #407，change `trial-set-password-after-verify`：申請不收密碼，驗證後才設定。原內文附註「修正前已開通的試用站台，管理員密碼可能已被他人覆寫過，沒有清查」，使用者 2026-11-06 決定不當作未修的部分 |
+| TRIAL-06 | 已修正，從 `AUDIT.md` 移除 | #407：待驗證的申請再送一次時走重寄節流 |
+| AUTO-06 | 已修正，從 `AUDIT.md` 移除 | #418，change `fix-automation-numeric-text-conditions`。原內文的「後端仍不檢查條件值的型別」由 #405 追蹤 |
+| AUTO-09 | 已修正，從 `AUDIT.md` 移除 | `8899e280`（#426）：試跑與執行紀錄改為 `requirePermission('automation.view')` |
+| CI-04 | 已修正，從 `AUDIT.md` 移除 | #407：主規格 `trial-application` 的每個 scenario 都有同名測試 |
+
+程式碼註解與測試仍引用這些 ID，用來說明來歷，不改。
+
+## 2026-11-06：成員以 JWT 呼叫合作方推送（AUTH-06）
+
+分支 `fix/partner-ingest-jwt-role`，change `fix-partner-ingest-jwt-role`。#337 階段 4 第三批部署後，在 UAT 以 admin 帳號呼叫 `POST /knowledge/partner-ingest` 時重現。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTH-06 | 已修正，從 `AUDIT.md` 移除 | UAT：admin 的角色有 `knowledge.admin`（資料庫與 Redis 權限快取都確認），JWT 呼叫回 403，`details.requiredPermission` 是 `knowledge.admin`。本機：`partner-ingest-jwt.test.ts`「有知識庫進階權限的成員推送文件」修正前回 403，失敗在斷言上；修正後通過。「沒有知識庫進階權限的成員推送文件」以 mutation 驗證：把路由的權限改成 `knowledge.view`，測試失敗 |
+| RBAC-02 | 維持未處理，只更新說明 | RBAC-02 的說明提到「`authenticateJwtOrCliSession` 的 JWT 分支沒有 `roleId`」，這是 AUTH-06 的一部分，已隨 AUTH-06 修正，說明已改寫，也拿掉對 AUTH-06 的引用。RBAC-02 本身（CLI token 只看 scope、`requirePermission()` 對 CLI 直接放行）沒有改 |
+
+## 2026-11-06：知識庫的讀取權限（RBAC-01）
+
+#337 階段 4 第三批，分支 `refactor/337-stage4-knowledge`，change `migrate-knowledge-tenant-ctx`。以本機 feature 測試資料庫（`app_tenant` 連線）驗證；影響範圍查了 UAT 的資料庫（唯讀）。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-01 的 `knowledge.view` | 已修正，RBAC-01 維持部分修正（`agent.delete`、`billing.view` 未處理） | `knowledge-routes.test.ts`「角色沒有檢視權限」修正前回 200，失敗在斷言上。UAT 上沒有 `knowledge.view` 的自訂角色都沒有啟用中的成員，不含知識庫的方案沒有租戶使用 |
+
+## 2026-11-06：Canvas 手動觸發的檢查（AUTO-11、RLS-01、IDENT-01）
+
+#337 階段 4 第二批，分支 `refactor/337-stage4-canvas`，change `migrate-canvas-tenant-ctx`。以單元測試與本機 feature 測試資料庫（`app_tenant` 連線）驗證，沒有連 UAT；UAT 沒有 Canvas 流程。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-11 的「草稿也能觸發、不存在的聯絡人回 202」 | 已修正，AUTO-11 改為部分修正 | `canvas-trigger.test.ts` 的 5 個失敗情境在修正前都失敗在斷言上：另一個租戶的流程回 202、不存在的流程回 400、草稿與封存回 202、另一個租戶與不存在的聯絡人回 202 |
+| RLS-01 的「進入 Canvas 的路徑都不接受外部指定的 ID」 | 更正 | 手動觸發接受呼叫端指定的流程 id 與聯絡人 id；外鍵檢查不套用 RLS，修正前實測另一個租戶的流程 id 回 202。手動觸發已修正，引擎與自動觸發仍用 singleton，RLS-01 維持未處理 |
+| IDENT-01 | 補記，未修正 | 核准合併建議不寫稽核、不檢查渠道可見範圍，與客服手動合併不同。路由搬到 contact 模組，行為不變（`merge-suggestion-routes.test.ts`） |
+
+## 2026-11-04：直接關閉與重開的工單在報表算錯已解決（CASE-04、AUTO-10）
+
+issue #417，分支 `fix/p4-417`，change `fix-case-resolved-at-417`。以單元測試與測試資料庫 `open333crm_test_p4_417` 的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-04 的 `resolvedAt` | 部分修正（`csatSentAt` 未處理，#339） | `packages/shared/src/constants/case-transitions.ts` 新增 `caseTransitionTimestamps()`，`case.service.ts` 的 `transitionCase()`、`escalateCase()`、`assignCase()`，`csat.service.ts` 的 `recordCsatScore()`、`csat.scheduler.ts` 的逾時結案都用它。轉成 `RESOLVED` 寫入；`RESOLVED` → `CLOSED` 保留；直接關閉為 null（使用者決定不算已解決）；其他轉換清除。既有資料不補值。`case-resolved-at.test.ts`（unit）的兩項重開與 feature 測試（走 `transitionCaseFlow` 與 `getOverviewStats`，`resolvedCases` 期望 2）修正前以 assertion 失敗；其餘以突變驗證（change 的 tasks.md 3.1） |
+| AUTO-10 的 `update_case_status` | 部分修正 | 先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，套同一個規則。`automation-update-case-status.test.ts` 6 項修正前全部失敗。不檢查轉換、不寫工單事件、`assign_agent` 不通知與其他動作不帶 `tenantId` 未處理 |
+| HC-ANALYTICS-02 | 已修正（直接關閉依使用者決定維持不算已解決） | 報表查詢不改，`resolvedAt` 的語意與報表一致。報表另有以 `status` 判斷的地方，與 `resolvedAt` 不衝突，未改：總覽「處理中工單」（`OPEN/IN_PROGRESS/PENDING/ESCALATED`）、案件報表 SLA 違規表與我的績效「即將到期」（排除 `CLOSED/RESOLVED`，直接關閉的逾期工單不列為違規）、我的績效「待處理」（只算 `OPEN/IN_PROGRESS`，不含 `PENDING/ESCALATED`）；案件趨勢的「已解決」（`closed` 欄）是依建立日分組、目前有 `resolvedAt` 的工單數，不是當天解決的數量 |
+
+規則轉成「已解決」的工單現在有 `resolvedAt`，問卷排程會照常寄滿意度調查；修正前不會寄。
+
+## 2026-11-04：CSV 匯出的欄位跳脫與公式防護（ANA-03）
+
+issue #423，分支 `fix/p4-423`，change `fix-csv-export-escaping`。以 unit 測試與測試資料庫的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ANA-03 | 已修正，從 `AUDIT.md` 移除 | 全 repo 盤點產生 CSV 的位置共三處，改為共用 `packages/shared/src/utils/csv.ts` 的 `csvCell()`／`csvRow()`（沿用優惠券 `csvCell()` 的公式防護規則，改為需要時才加引號、數字不加 `'`）。① 報表匯出 `analytics.service.ts` 的 `buildCsv()` 四種報表；`export-csv-escaping.test.ts` 的 4 項修正前以 assertion 失敗，「概覽 CSV 的負數不加單引號」以突變驗證。② 優惠券序號明細 `coupon-stats.service.ts`（原本已有公式防護）；`csv-cell.test.ts` 改測 `instancesToCsv()`，以突變（拿掉公式防護）驗證；feature 測試「CSV 欄位含逗號時不破壞格式」原本數 `","`，改用 CSV 解析比欄數。③ 租戶資料匯出 workers `simple-zip.ts` 的 `toCsv()`（原本沒有公式防護，日期被 `JSON.stringify` 多包一層引號）；`data-export-zip.test.ts` 的 2 項修正前失敗。前端不產生 CSV。`packages/kb-ingest` 的審核用 CSV 不改：檔案會被讀回匯入，且是離線工具 |
+
+## 2026-11-04：評分後收件匣與工單看得到分數（CASE-05）
+
+issue #444，分支 `fix/p4-444`，change `show-csat-score-444`。以單元測試與測試資料庫 `open333crm_test_p4_444` 的 feature 測試驗證，沒有連 UAT；LINE 真機尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-05 | 部分修正 | `recordCsatScore()` 呼叫新的 `recordCsatRating(ctx: TenantCtx, …)`：問卷訊息（`contentType: 'csat'`、`metadata.caseId`、同租戶）寫入 `metadata.csatScore`／`csatRatedBy` 並再推一次 `message.new`，寫 `csat_rated` 事件；自動關閉寫 `status_changed`（`reason: 'csat_rated'`）。`csat-score-display.test.ts` 4 項、`csat-record-scope.test.ts` 新增 3 項修正前失敗。仍不經狀態機、不關閉對話、客服代評也送感謝訊息（#339） |
+| UAT 實測的評分顯示成 `csat:2:<工單 ID>` | 已修正（未列 AUDIT） | 進站攔截後 `relabelCsatReplyMessage()` 把訊息改寫成「我的評分：N 分」，原文存在 `metadata.postbackData`；有遮罩副本時副本改成同一段固定文字。`inbound-message-processing.test.ts`「評分的訊息在收件匣顯示文字」修正前失敗 |
+
+## 2026-11-04：型號守門把一般英文詞當成型號（KB-02）
+
+issue #420，分支 `fix/p4-420`，change `fix-kb-model-guard-420`。以 unit 測試驗證（假 LLM 與檢索、經 workers `message.received`），沒有連 UAT，真機未驗。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-02（HC-KNOWLEDGE-02） | 已修正，從 `AUDIT.md` 移除 | `model-matcher.ts` 排除轉大寫後是常見英文詞的（偵測維持不分大小寫、結果轉大寫，`tac-11p` 視同 `TAC-11P`）（`WI-FI`、`E-MAIL`、`T-SHIRT`、`USB-C`、`TYPE-C`、`HDMI-2`、`CD-R`、`DVD-R`，沿用 `packages/kb-ingest` 的停用詞）；`checkModelGuard()` 只攔截前綴出現在白名單的型號，白名單空（沒有型號文章）時不攔截，訂單編號 `AB-12345` 這類前綴不在白名單的編號也不攔截。守門回覆計入 `clarifyAttempts`，用完時改走 #419 的 `clarify_handoff`（`clarifyExhaustedReason()`、`handOffConversation()`）。`model-matcher.test.ts` 的一般英文詞案例、`kb-model-guard.test.ts` 11 項中 10 項修正前以 assertion 失敗，「查無的型號仍引導選型號」為既有行為；`hasKnownPrefix` 判斷、守門累加次數、用完時轉接各以突變驗證。主規格 `bot-handoff-config` 新增「型號守門只攔截知識庫型號格式的型號」，修改「知識庫追問用完或 AI 失敗時轉接真人」 |
+| HC-KNOWLEDGE-06（守門的 `modelGuard` 留在對話 metadata） | 未處理 | 不在這次範圍 |
+
+初版把偵測改成大小寫敏感，審查後恢復不分大小寫（前綴白名單已擋住非型號的編號，大小寫敏感只會讓小寫型號失去引導）；「小寫型號視同大寫」在大小寫敏感的版本上失敗。
+前綴打錯的型號（白名單沒有這個前綴）不再觸發守門，改走一般知識庫回答或追問。
+
+## 2026-11-04：知識庫匯入 CSV 的文字編碼（KB-03）
+
+issue #421，分支 `fix/p4-421`，change `fix-kb-csv-encoding-421`。以本機單元測試與手冊範例檔驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-03（HC-KNOWLEDGE-03） | 已修正，從 `AUDIT.md` 移除 | `file-parser.service.ts` 新增 `decodeCsvText()`：UTF-8 BOM 去掉後以 UTF-8 解，沒有 BOM 先嚴格 UTF-8、失敗試 Big5（Node 內建 `TextDecoder`，不新增依賴）；`readWorkbook()` 依 zip 檔頭分辨 xlsx 與 CSV，`parseSpreadsheetToQaRows()` 與單篇 CSV 匯入都經過它。兩種都解不出或含 U+FFFD 時拋 `CSV_ENCODING_UNREADABLE`（400，中文原因），上傳路由沿用每檔各自回報的結構，在該檔結果帶 `code`，該檔不寫入任何文章。`knowledge-file-parser-encoding.test.ts` 7 項中 6 項修正前以 assertion 失敗、有 BOM 的一項以突變驗證；`knowledge-upload-encoding.test.ts` 2 項修正前失敗。`apps/web/tests/fixtures/manual-kb-sample.csv`（無 BOM UTF-8）實跑拆出正確中文問答。問答表直接發布依使用者決定（2026-11-04）保留，不列為問題 |
+
+## 2026-11-04：刪除沒有呼叫端、使用 core `redis` 的檔案（LIC-02、PKG-06）
+
+issue #443 的 B，分支 `refactor/redis-connection-workers`。以 `grep` 確認沒有呼叫端後刪除，`pnpm test` 通過。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| LIC-02 | 已修正，從 `AUDIT.md` 移除 | 刪除 `packages/core/src/license/license-service.ts` 與 core 入口的匯出。整個 repo 沒有 import 它；API 的 `services/license.ts` 是另一個同名類別，不受影響。core 的 `axios` 因此沒有使用者，一併移除。LIC-01 的標題改為只描述 API 的寫死授權資料 |
+| PKG-06 | 部分修正 | 刪除 `line/worker-media-download.ts`、`worker-narrowcast-progress.ts`、`worker-insight-sync.ts`，三者都沒有被 import，也不在 `package.json` 的 `exports`。`channel-plugins` 的 `bullmq` 因此沒有使用者，一併移除。`setWebhook()`、`extensions.audience`、註冊表的輔助函式與 `telegram.ts` 未處理 |
+
+## 2026-11-04：部署時 seed 不再覆蓋平台對方案的修改（PLAN-20）
+
+issue #441，分支 `fix/p3-441`，change `preserve-plan-edits-on-seed-441`。以單元測試與拋棄式資料庫實跑 seed 確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| PLAN-20 | 已修正，從 `AUDIT.md` 移除 | `seedPlans()` 移到 `packages/database/prisma/seed-data/plans.ts`，`upsert` 的 `update` 改為空物件（與 `seedModelPricing()` 相同寫法）：方案不存在時建立，已存在時不寫入（`updatedAt` 也不變）。`plans.test.ts` 的「部署後保留平台修改」兩項與「只補缺少的方案」修正前失敗（`maxAgents` 8 被改回 5 等），「方案不存在時 seed 建立」以突變驗證。拋棄式資料庫 `open333crm_test_p3_441_seed` 實跑：改 `light`、刪 `enterprise` 後再跑 seed，`light` 的欄位與 `updatedAt` 不變、`enterprise` 被補回；跑完已刪除。主規格 `tenant-plan` 補上「部署後保留平台修改」「方案不存在時 seed 建立」。程式要改既有方案改用資料 migration，規則寫在 `docs/ref/features/platform/PLANS.md` 與 skill `feature-platform-plans` |
+
+**seed 其他區段的盤點。** API 容器每次啟動都執行 `packages/database/prisma/seed.ts`（`apps/api/docker-entrypoint.sh`）。這次只修方案；其他區段的現況如下：
+
+| 區段 | 已存在時覆寫的欄位 | 對 UAT 的影響 | 建議 |
+| --- | --- | --- | --- |
+| Demo 租戶（`seedDemoAccounts`） | `tenants.name` 改回 `Demo Tenant` | `NODE_ENV=production` 時預設不執行（#394），只在設 `SEED_DEMO_ACCOUNTS=true` 時執行 | 改名的需求出現時改為 `update: {}` |
+| Demo 系統角色（`seedDemoRoles`） | `roles.name`、`isSystem`；`role_permissions` 整批刪除後依 `DEFAULT_ROLE_PERMISSIONS` 重建 | 同上，預設不執行。設了 `SEED_DEMO_ACCOUNTS=true` 時，平台或租戶對 Demo 系統角色權限的調整每次部署都被還原（RBAC-06 記載的情形） | 正式環境不要設 `SEED_DEMO_ACCOUNTS=true`；若要保留這個開關，改為只在角色不存在時建立 |
+| Demo 成員（三個） | `agents.name`、`role`、`roleId`（密碼與啟用狀態已不覆寫，#394） | 同上，預設不執行。執行時會把被改過角色的 Demo 成員改回原角色 | 同上 |
+| 開發用平台帳號 | `platform_users.name`（密碼不覆寫，#394） | 同上，預設不執行 | 影響小，維持 |
+| 系統模板（`seedSystemTemplates`） | 全部欄位，含 `isActive: true` | `systemTemplates` 目前是空陣列，沒有任何寫入 | 重新加入系統模板時，先決定是否允許租戶或平台修改，再決定是否保留 `update` |
+| 模型價目（`seedModelPricing`） | 不覆寫（`update: {}`） | 無 | 維持；改價時新增一列較新的 `effectiveFrom`（USAGE-02） |
+| 方案（`seedPlans`） | issue #441 後不覆寫 | 無 | 已修正 |
+
+2026-11-04 唯讀確認 UAT `.env.api`：`NODE_ENV=production`，沒有設 `SEED_DEMO_ACCOUNTS`，Demo 區段部署時不執行。
+
+## 2026-11-04：AI 與知識庫回覆都失敗時客人收不到回覆（KB-06、LLM-04）
+
+issue #445，change `handoff-on-ai-reply-failure-445`。以本機單元測試與測試資料庫的 feature 測試驗證，沒有連 UAT；真機（LINE）尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-06（新增） | 部分修正 | `attemptKbAutoReply()` 改回傳 `KbAutoReplyResult`（`replied`／`skipped` 與原因／`failed`），embedding 失敗與丟出的錯誤算失敗；`automation.worker.ts` 在 agent 沒有回覆、知識庫失敗時呼叫 `ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()`：沿用 `createBotReplyGuard()`（`bot_reply` 認領）與 `handOffConversation()`，原因由 `kb-autoreply.service.ts` 的 `aiReplyFailedReason()` 產生（與 `clarifyLlmFailedReason()` 共用錯誤種類判斷）；系統訊息用 `fixedSystemMessageContent()`，不呼叫 2md。`ai-failure-handoff.test.ts` 9 項，4 項修正前以 assertion 失敗，其餘 5 項以 mutation 驗證。`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，未處理 |
+| LLM-04 的知識庫自動回覆列 | 描述更新 | embedding 失敗不再「不回覆也不轉真人」，改為轉真人。Embedding 只能呼叫 Ollama 本身未處理 |
+
+## 2026-11-04：收件匣對話列表的分頁與後端篩選（CONV-04）
+
+issue #422，change `fix-inbox-conversation-pagination`。以本機測試資料庫的 unit 與 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CONV-04（HC-INBOX-01） | 已修正，從 `AUDIT.md` 移除 | `useConversations()` 改用 `useSWRInfinite`，每頁 50 段，依 `meta.totalPages` 顯示「載入更多對話」；多頁依 `id` 去重、依 `updatedAt desc` 排序，socket 的 `message.new`、`conversation.updated` 合併到各頁。「未讀」送 `unread=true`、「我的」送 `assigneeId`，搜尋框送新的 `search` 參數（去頭尾空白後最多 100 字，比對聯絡人名稱或任一則訊息的 `content.text`，不分大小寫）。`list-conversations-search.test.ts`（feature）8 項中 6 項修正前失敗，2 項以突變驗證；`use-conversations-pagination.test.tsx` 9 項中 6 項、`conversation-list-server-filters.test.tsx` 7 項中 6 項修正前失敗，「下一頁載入失敗」在實作時補寫 |
+| HC-INBOX-08（socket 更新不套用篩選） | 已修正（PR #449 審查） | `useConversations()` 以 `matchesFilters()` 依列上的狀態、指派與未讀數重新判斷，不符合的列移除，選取中的保留；搜尋與 `closedAfter` 無法從列判斷 |
+| 搜尋關鍵字的 LIKE 萬用字元 | 已修正（PR #449 審查） | `escapeLikeKeyword()`（`apps/api/src/shared/utils/like-pattern.ts`）跳脫 `\`、`%`、`_`。聯絡人與優惠券的搜尋（`contact.service.ts`、`coupon.service.ts`）有同樣的寫法，未改 |
+| HC-INBOX-07（聊天視窗只載 50 則訊息） | 未處理 | 不在這次範圍。`useMessages().loadOlder()` 以 offset 分頁，新訊息進來時頁界會位移、失敗只寫 console，接上前要先改成以時間或序號往前取 |
+
+搜尋比對任一則訊息，不只最後一則：Prisma 無法表達「最後一則訊息」的條件（change 的 design D3）。訊息量很大的租戶搜尋可能變慢，之後需要時再加索引。
+
+## 2026-11-04：自動化規則的純數字條件值（AUTO-06）
+
+issue #418，change `fix-automation-numeric-text-conditions`。以 unit 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-06（HC-AUTOMATION-01） | 已修正，保留在 `AUDIT.md` 並標示已修正 | 編輯器 `qb-to-engine.ts` 依契約的欄位型別轉值，文字欄位保留字串，載入舊規則再存會改成字串；`packages/automation/src/rules/operators.ts` 在文字欄位遇到數字比較值時轉成字串比對，已存成數字的規則不必重存。`packages/automation` 的 `operators.test.ts` 6 項、web 的 `qb-to-engine.test.ts` 3 項、workers 的 `automation.handler.test.ts`「訊息內容包含數字比較值」、api 的 `automation-test-numeric-text.test.ts`「試試看與實際觸發一致」修正前失敗；數字與布林欄位不變的測試以突變驗證。後端仍不驗證條件值型別（#405） |
+
+## 2026-11-04：編輯粉絲活動草稿清掉選項（PORTAL-03）
+
+issue #424。以本機測試資料庫的 feature 測試與 web 的 component 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| PORTAL-03（HC-PORTAL-01） | 已修正，從 `AUDIT.md` 移除 | `ActivityFormDialog.tsx` 打開編輯時以 `GET /portal/activities/:id` 取完整活動，載入完成前與載入失敗時停用「儲存」並顯示原因；`portal.service.ts` 的 `updateActivity()` 對投票、競猜的空 `options` 與表單的空 `fields` 丟 400，不刪除既有內容。change `fix-portal-edit-keeps-content`。`portal-flow.test.ts`（feature）新增 3 項，其中 2 項修正前失敗，「只改標題時，選項、正確答案與表單欄位都保留」以 mutation 驗證；`activity-form-dialog-edit.test.tsx` 2 項修正前失敗 |
+
+## 2026-11-03：第二優先的顧客受影響且失敗看不到的問題（KB-01、CONV-03、CASE-03、CHAN-02、AUTH-11、PLAN-14、RBAC-11）
+
+issue #410、#411、#415、#416、#419，同一個 PR。以本機測試資料庫的 unit 與 feature 測試驗證，沒有連 UAT；真機（LINE、FB）尚未驗證。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-01（HC-KNOWLEDGE-01） | 已修正，從 `AUDIT.md` 移除 | 追問用完或追問的 LLM 呼叫失敗（含 `PLAN_LIMIT_EXCEEDED`）時，`kb-autoreply.service.ts` 在 bot_reply 認領的交易內呼叫 `automation/handoff.flow.ts` 的 `handOffConversation()`（與 `checkAutoHandoff()` 共用）：改 `AGENT_HANDLED`、寫 `handoffReason` 與系統訊息、發 `conversation.handoff`、`notifyChannel` 推播；轉接不成立時整筆 rollback，轉接句不送出。轉接後關鍵字規則照常回覆（寫入規格）。change `fix-kb-clarify-handoff-419`。`kb-clarify-handoff.test.ts` 7 項中 6 項修正前失敗；`handoff-flow.test.ts`（feature）3 項 |
+| CONV-03 | 已修正，從 `AUDIT.md` 移除 | `conversation.handoff` 加入通知訂閱者，類型 `conversation_handoff`：已指派通知負責客服，未指派通知主管與管理員。通知測試修正前失敗。`handoff_request` 按鈕仍用自己的程式與 `eventBus.publish` |
+| CASE-03（HC-LINE-01） | 已修正，從 `AUDIT.md` 移除 | `buildLineMessage()` 補回 `flex`，不認得的 contentType 丟 `LineMessageBuildError`，`sendMessage()` 回失敗且不呼叫 LINE；`sendCsatSurvey()` 檢查送出結果，失敗時寫入訊息 `metadata.deliveryFailed`／`deliveryError` 與 `case_events` 的 `csat_send_failed`，`csatSentAt` 保留不重寄。change `fix-csat-line-flex-416`。`line-flex-message.test.ts` 6 項、`csat-delivery.test.ts` 4 項修正前失敗。CASE-02（非 LINE 渠道無法回覆）不變 |
+| CHAN-02 的群發與發券（HC-MARKETING-04） | 部分修正 | `createBroadcast`、`executeBroadcast`、`queueCouponBroadcast`、`claimCouponBroadcast` 以 `supportsProactivePush()` 拒絕網站聊天室（400 `CHANNEL_PUSH_NOT_SUPPORTED`，舊排程標失敗）；群發頁選單只列能推送的渠道。change `reject-webchat-push-415`。`broadcast-push-channel.test.ts` 5 項、`coupon-batch-issue.test.ts` 2 項修正前失敗。workers 的 WebChat 外掛、共用送出函式、`canvas.worker.ts` 的假成功未處理 |
+| AUTH-11（HC-PLATFORM-TENANTS-01、04） | 已修正，從 `AUDIT.md` 移除 | `processInboundMessage()` 共用入口丟棄停用租戶的進站事件；chatbox 的 `resolveChatboxChannel()`、`verifyChatboxSession()` 回 404；排程群發與 coupon-broadcast job 在權限重驗前檢查租戶，停用時標 `failed`（`TENANT_DISABLED`）；問卷排程過濾停用租戶。change `stop-disabled-tenant-activity-410`。`chatbox-disabled-tenant`、`broadcast-disabled-tenant`、`csat-disabled-tenant` 三支 feature 測試修正前失敗。Canvas 等待節點恢復不看租戶，未處理 |
+| PLAN-14（HC-PLATFORM-PLANS-01） | 已修正，從 `AUDIT.md` 移除 | seed 的 `trial`、`light` 加入 `channels`；migration `20261103120000_enable_channels_on_trial_light` 只對這兩個方案補 `channels`，不動其他欄位，重複執行不再改。部署後 Redis `perms:tenant:*` 最多 10 分鐘生效。change `enable-channels-on-trial-light-411`。`plans.test.ts`、`channel-trial-light-plans.test.ts` 修正前失敗；migration 測試以突變驗證 |
+| RBAC-04 的未指派對話通知（HC-NOTIFICATIONS-01） | 已修正 | PR #440 審查發現 #419 的轉接通知照用「所有主管與管理員」的收件人。`notification.worker.ts` 的未指派分支（`message.received`、`conversation.handoff`）改用 `resolveAgentChannelVisibility()` 過濾，只留看得到該渠道的人。change `scope-unassigned-notifications-440`。`notification.worker.test.ts` 2 項修正前失敗。第五輪審查再補已指派分支：負責人已停用或看不到該渠道時不通知他，改通知看得到渠道的主管與管理員（change `notify-visible-assignee-440`，3 項修正前失敗），CONV-06 的停用成員一列與 HC-NOTIFICATIONS-02 的對話通知部分一併修正 |
+| RBAC-11 的渠道管理頁 | 部分修正 | 列表 403 顯示「沒有權限」，新增渠道、設定精靈、Facebook 連結依 `channel.create` 顯示。`channel-management.test.tsx` 3 項修正前失敗。停用、測試連線、編輯、刪除仍未依權限隱藏 |
+
+另外發現：API 容器每次啟動都跑 seed，會把五個方案的名稱、功能、上限、價格寫回原始碼的值，與主規格「平台改 plan features 即時生效」衝突，記為 PLAN-20（issue #441）。
+
+## 2026-11-03：營業時間的輸入檢查、憑證的有效天數與稽核（HOURS-01、HOURS-02、SEC-07、AUD-01）
+
+#337 階段 3 第九批，change `settings-input-validation-and-credential-audit`。以 feature 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| HOURS-01（HC-SETTINGS-01，issue #425） | 已修正，從 `AUDIT.md` 移除 | `getOfficeHours()` 以 `readOfficeHoursSettings()` 解析已存的設定，`{}` 與不合法的設定回傳預設值（`enabled: false`），營業時間頁拿到完整的 `schedule`。`office-hours-validation.test.ts` 的「設定是空物件時回傳預設值」 |
+| HOURS-02（HC-SETTINGS-03、04） | 已修正，從 `AUDIT.md` 移除 | `PUT /settings/office-hours` 以 `officeHoursSettingsSchema` 檢查時段、假日、時區與訊息長度，跨午夜的時段回 400。已存的不合法時區當作沒有設定，收訊時不再拋 `RangeError`。`office-hours-settings.test.ts`、`office-hours-validation.test.ts` |
+| SEC-07（HC-SETTINGS-06、12） | 已修正，從 `AUDIT.md` 移除 | `expiresInDays` 只收 1～365 的整數，`0`、`366`、`3650000` 與小數回 400 `VALIDATION_ERROR`。`credential-expiry.test.ts` |
+| AUD-01 的長效憑證 | 已修正，AUD-01 仍為部分修正 | 設定頁建立與撤銷 API 金鑰、CLI token 寫 `settings.update`（`section` 是 `api-keys`、`cli-sessions`）；CLI 登入與登出寫 `cli_session.login`、`cli_session.logout`。稽核與憑證在同一個交易寫入。`credential-audit.test.ts` |
+| RBAC-02（CLI token 的 scope 不受限）、HC-SETTINGS-08（前端不顯示欄位的錯誤）、HC-SETTINGS-11 的後半（撤銷不存在的 CLI token 回 200） | 未處理 | 不在這次範圍 |
+
+## 2026-11-03：第一優先的權限與隔離修正（RBAC-07、RBAC-08、RBAC-09、MKT-02、MKT-03、RLS-10、RBAC-04、RBAC-03）
+
+PR #438 的 bot 審查之後補修（同一天）：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-04 的 socket：停用或刪除的成員 | 已修正 | 停用、刪除成員後重新計算該成員的連線，停用或不存在的成員直接斷線；連線時也拒絕停用的成員。`socket-channel-rooms.test.ts` 兩項、`agent.flow.test.ts` 兩項修正前失敗 |
+| RBAC-04 的 socket：轉接訊息 | 已修正 | 自動轉接與 `handoff_request` 的 `message.new` 原本只送對話房間，改走渠道推播。`auto-handoff.test.ts`、`handoff-request-push.test.ts` 修正前失敗 |
+| RBAC-04 的 socket：方案異動 | 已修正 | 平台改方案、核准升級、試用轉正式、方案功能或權限設定改變後重新計算受影響租戶的連線。`platform-plan-socket-resync.test.ts` 4 項修正前失敗 |
+| MKT-02、MKT-03 的佇列 job | 已修正 | 附券群發的 `coupon-broadcast` job 執行前也以排定送出的成員當下的權限檢查（job 重試、outbox 延後時成員可能已被降權）。`broadcast-send-permissions.test.ts` 新增一項修正前失敗。檢查與搶占不在同一個交易，之間毫秒內被降權仍會送出，不處理 |
+
+issue #408、#409、#412、#413、#427、#428，同一個 PR。以本機測試資料庫的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-07（HC-CHANNELS-01） | 已修正，從 `AUDIT.md` 移除 | 帶渠道 ID 的路由都經過 `requireVisibleChannel()`（`assertChannelVisible`），看不到的渠道回 404；讀取要 `read_only`，管理操作要 `full`。`/webhook-base-url` 改寫全租戶渠道，限 `channel.view_all`；`/embed-code` 補上 `channel.view`。團隊指派路由刻意只看 `channel.assign_team`。change `scope-single-channel-routes-408`。`channel-single-route-visibility.test.ts` 修正前 10 項以 assertion 失敗 |
+| RBAC-08（HC-MEMBERS-01） | 已修正，從 `AUDIT.md` 移除 | `updateAgentRole()` 比對對方目前的權限（`TARGET_OUTRANKS_ACTOR`），新角色不含 `role.manage` 且對方是最後一位啟用中的管理員時回 `LAST_ADMIN_PROTECTED`。change `guard-agent-target-rank-last-admin`。`agent-management.test.ts` 新增 7 項，6 項修正前失敗，另做 4 種 mutation |
+| RBAC-09（HC-MEMBERS-02） | 已修正，從 `AUDIT.md` 移除 | 重設密碼、停用、刪除都呼叫 `assertTargetNotAboveActor()` |
+| RBAC-03 的最後一位管理員保護 | 部分修正 | 改依角色權限有沒有 `role.manage` 判斷；自動指派、通知收件人等其餘列未處理 |
+| MKT-02（HC-MARKETING-01） | 已修正，從 `AUDIT.md` 移除 | 建立帶 `scheduledAt` 的群發要 `marketing.broadcast`；`broadcast.scheduler.ts` 送出前以 `scheduledById`（舊資料看建立者）當下的有效權限重驗，不過時標 `failed` 並寫 `SCHEDULED_SENDER_*` 與原因。change `require-broadcast-send-permissions`，migration `20261103100000_broadcast_scheduled_by` |
+| MKT-03（HC-MARKETING-02） | 已修正，從 `AUDIT.md` 移除 | 建立與立即發送附券群發要 `coupon.issue`，`audience-preview` 帶券要 `coupon.view`。`broadcast-send-permissions.test.ts` 15 項，8 項修正前失敗 |
+| RLS-10（HC-PLATFORM-SETTINGS-02） | 部分修正，由 P1 降為 P3 | migration `20261103110000_revoke_app_tenant_platform_tables`：4 張平台表只留 `SELECT`，`platform_users`、`platform_audit_logs`、`trial_signups`、`_prisma_migrations` 全部收回，預設權限不再授權 `app_tenant`。`platform-table-grants.test.ts` 修正前 14 項失敗；完整 feature 測試通過。`platform_settings` 仍整表可讀 |
+| RBAC-04 的 socket 租戶房間 | 已修正 | 渠道房間加總店房間，`message.new`、`conversation.*` 改送渠道房間，授權變更時重新計算。change `fix-socket-channel-rooms-427`。`socket-channel-rooms.test.ts` 三個情境修正前失敗，「離開已訂閱的對話房間」做過 mutation。`case.*`、`sla.event`、`contact.merged` 仍送租戶房間 |
+| RBAC-04 的資料匯出（HC-GOVERNANCE-02） | 已修正 | 發起、查詢、下載要求 `data.export` 加 `channel.view_all`。change `restrict-data-export-to-tenant-wide-roles`。`data-export-flow.test.ts` 2 項修正前失敗 |
+
 ## 2026-11-02：分群群發依建立者的可見範圍判斷（RBAC-04）
 
 #430 合併後的 code review，change `segment-broadcast-creator-visibility`。以 feature 測試確認，沒有連 UAT。

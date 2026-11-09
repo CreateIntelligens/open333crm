@@ -27,7 +27,10 @@ export interface RichMenuDraft {
   name: string;
   chatBarText: string;
   size: { width: number; height: number };
+  /** 聊天室打開時是否展開選單（LINE 的 selected） */
   selected: boolean;
+  /** 發布時是否設成所有好友的預設選單 */
+  isDefault: boolean;
   areas: RichMenuArea[];
   imageUrl: string;
 }
@@ -76,18 +79,31 @@ export function RichMenuEditor({ draft, onChange }: Props) {
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={draft.selected}
+                checked={draft.isDefault}
                 onChange={(e) => {
                   const next = e.target.checked;
                   // 勾選會影響所有好友，先確認；取消勾選不需要
                   if (next && !confirm(RICH_MENU_DEFAULT_CHECK_CONFIRM)) return;
-                  onChange({ ...draft, selected: next });
+                  onChange({ ...draft, isDefault: next });
                 }}
               />
               <span>設為所有好友的預設選單</span>
             </label>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              勾選後，發布時會換掉這個官方帳號所有好友目前看到的選單，好友開啟對話時也會自動展開。只想給部分好友看，請不要勾，發布後用「綁定受眾」。
+              勾選後，發布時會換掉這個官方帳號所有好友目前看到的選單。只想給部分好友看，請不要勾，發布後用「綁定受眾」。
+            </p>
+          </div>
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={draft.selected}
+                onChange={(e) => onChange({ ...draft, selected: e.target.checked })}
+              />
+              <span>聊天室打開時展開選單</span>
+            </label>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              不勾時選單收合，好友點聊天室底部的「{draft.chatBarText || '選單'}」才會打開。
             </p>
           </div>
         </Section>

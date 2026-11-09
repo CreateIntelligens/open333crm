@@ -22,7 +22,6 @@
     "@bull-board/api": "9.10.4",
     "@bull-board/fastify": "9.10.4",
     "@e965/xlsx": "^0.20.3",
-    "@fastify/caching": "^9.0.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^10.0.0",
     "@fastify/jwt": "^10.2.5",
@@ -71,6 +70,7 @@
     "@types/sanitize-html": "^2.16.1",
     "@types/turndown": "^5.0.6",
     "pino-pretty": "^11.0.0",
+    "socket.io-client": "4.8.3",
     "tsx": "^4.22.0",
     "typescript": "^5.4.0"
   }

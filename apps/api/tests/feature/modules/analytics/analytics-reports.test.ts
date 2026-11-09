@@ -415,7 +415,7 @@ test('匯出 CSV：總覽、工單、客服與渠道', async () => {
 
   const channels = await exportCsv(appA, 'channels');
   assert.equal(channels[0], '渠道,訊息數,對話數');
-  assert.deepEqual(channels.slice(1).sort(), ['FB,1,1', 'LINE,4,2']);
+  assert.deepEqual(channels.slice(1).sort(), ['Facebook,1,1', 'LINE,4,2']);
 });
 
 test('CLI 報表：與報表頁同一份計算，只限本租戶；工單統計只回逾期數', async () => {

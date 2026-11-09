@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { channelDisplayName } from '@open333crm/shared';
 
 interface ContactMergeModalProps {
   open: boolean;
@@ -75,14 +76,6 @@ interface MergePreview {
     totalCases: number;
   };
 }
-
-const CHANNEL_LABELS: Record<string, string> = {
-  LINE: 'LINE',
-  FB: 'Facebook',
-  THREADS: 'Instagram',
-  WEBCHAT: 'WebChat',
-  WHATSAPP: 'WhatsApp',
-};
 
 const STEPS = ['選擇合併對象', '確認資料保留', '確認合併'];
 
@@ -210,7 +203,7 @@ export function ContactMergeModal({
       <div className="mt-1.5 flex flex-wrap gap-1">
         {types.map((t) => (
           <Badge key={t} variant="secondary" className="text-[10px] px-1.5 py-0">
-            {CHANNEL_LABELS[t] || t}
+            {channelDisplayName(t)}
           </Badge>
         ))}
       </div>
@@ -428,7 +421,7 @@ export function ContactMergeModal({
                           {[...new Set(preview.primary.channelIdentities.map((ci) => ci.channelType))].map(
                             (t) => (
                               <Badge key={t} variant="secondary" className="text-[10px]">
-                                {CHANNEL_LABELS[t] || t}
+                                {channelDisplayName(t)}
                               </Badge>
                             ),
                           )}
@@ -439,7 +432,7 @@ export function ContactMergeModal({
                           {preview.diff.newChannelIdentities.length > 0 ? (
                             preview.diff.newChannelIdentities.map((ci) => (
                               <Badge key={ci.channelType} variant="outline" className="text-[10px]">
-                                {CHANNEL_LABELS[ci.channelType] || ci.channelType}（新增）
+                                {channelDisplayName(ci.channelType)}（新增）
                               </Badge>
                             ))
                           ) : (

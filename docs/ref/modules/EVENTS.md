@@ -81,7 +81,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `conversation.updated` | `conversation.service.ts` | 無 |
 | `conversation.assigned` | **無** | 通知。見 CONV-02 |
 | `conversation.closed` | `conversation.service.ts` | 無 |
-| `conversation.handoff` | `automation.worker.ts`（outbox）、`webhook/inbound-postback-interceptors.ts` | 無 |
+| `conversation.handoff` | `automation/handoff.flow.ts`（outbox；自動轉真人與知識庫追問用完）、`webhook/inbound-postback-interceptors.ts` | 通知 |
 | `case.created` | `case.flow.ts`（outbox）；workers 的 `create_case`（outbox） | 自動化 |
 | `case.updated` | **無** | 無 |
 | `case.assigned` | `case.flow.ts`（outbox，手動指派與自動派案） | 通知 |
@@ -120,7 +120,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 
 | kind | sourceId | subKey | 保護的副作用 |
 | --- | --- | --- | --- |
-| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接的轉接訊息：每則入站訊息最多一則機器人回覆 |
+| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接與 AI 回覆失敗轉接（#445）的轉接訊息：每則入站訊息最多一則機器人回覆 |
 | `automation_action` | 觸發事件 id | `<規則 id>#<動作序號>` | workers 的每個規則動作。SLA 排程沒有事件 id，不認領 |
 | `sentiment` | 入站訊息 id | 空字串 | 情緒分析的結果與 `sentiment.negative` |
 | `keyword_matched` | 入站訊息 id | 規則 id | 給對外 Webhook 的 `keyword.matched` |
@@ -134,7 +134,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 - 認領、寫入結果或寫入 outbox 的交易失敗。沒有 commit 就沒有認領紀錄，也沒有 outbox，只有佇列的重試能補做。API 的機器人回覆以 `ClaimTransactionError`（`bot-reply-guard.ts`）標示這種失敗。降級用的 catch（例如「agent 失敗改由 KB 回覆」）遇到這個錯誤時，會往外丟，不會吞掉。
 - 把下一步的 job 送進佇列失敗，例如規則評估、站內通知、告警信。
 
-刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時改用關鍵字判斷，照舊只記 log。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
+刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時改用關鍵字判斷，照舊只記 log。agent 沒有回覆、KB 回覆又因錯誤失敗時，不再只記 log：`handOffAfterAiFailure()` 以 `bot_reply` 認領並轉接真人，轉接的交易失敗時往外丟，由佇列重試（#445）。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
 
 對話轉接以條件更新認領對話（`BOT_HANDLED` 改成 `AGENT_HANDLED`），不另外寫認領紀錄。
 
@@ -172,7 +172,7 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 | --- | --- | --- | --- |
 | `notification` | API 的 `notification.worker.ts`；workers 的 `lib/notification-queue.ts` | `notification.handler.ts`。重試共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `automation` | API 的 `automation.worker.ts` | `automation.handler.ts`。重試共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
-| `rich-menu-bind` | API 的 `rich-menu.service.ts` | `rich-menu-bind.handler.ts` | 完成 24 小時、失敗 7 天 |
+| `rich-menu-bind` | API 的 `rich-menu.flow.ts`（`enqueueJob`，經 outbox） | `rich-menu-bind.handler.ts` | 完成 24 小時、失敗 7 天 |
 | `data-export` | API 的 `data-export.flow.ts`，經 outbox | `data-export.handler.ts` | 完成 24 小時、失敗 7 天 |
 | `data-erasure` | API 的 `data-erasure.flow.ts`，經 outbox | `data-erasure.handler.ts` | 完成 24 小時、失敗 7 天 |
 | `sla` | workers 啟動時註冊重複工作，每 5 分鐘 | `sla.handler.ts` | 完成 24 小時、失敗 7 天 |
@@ -286,10 +286,10 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 ## 新增事件或背景工作時
 
-1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。
+1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()`、`notifyChannel()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。帶渠道的訊息或對話資料的推播用 `notifyChannel()`，只送給看得到該渠道的成員；`notifyTenant()` 不可帶這類內容（issue #427）。還沒搬到 `inTenant()` 的舊入口用 `emitToChannel()`。
 2. **其他模組要跟著做事**：flow 在交易內用 `publishEvent()`。先在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES` 加上名稱，再在 `queues.ts` 的 `EVENT_SUBSCRIBERS` 決定哪些訂閱者收到。訂閱者要承受同一個事件處理兩次。
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：flow 在交易內用 `enqueueJob()`，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。job 可能送兩次，handler 要承受重複。
-4. **workers 要推送即時事件**：用 `publishSocketEvent()`。
+4. **workers 要推送即時事件**：帶渠道資料的用 `publishChannelSocketEvent()`（送到對話、渠道與總店房間，`socket:emit` 訊息帶 `rooms`）；其他用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：在寫入業務資料的交易內用 `writeOutbox()`，帶入租戶 ID；commit 之後呼叫 `dispatchOutboxRows()`。
 6. **不能重複的副作用**：執行前在交易內用 `claimSideEffect()` 認領，或以條件更新認領資料列。認領的交易失敗時丟錯讓 job 重試；認領之後的失敗只記 log。
 7. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時，每一期都只產生一筆 job；但 job 可能在行程被強制結束後重跑，所以都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
@@ -309,7 +309,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 | API 行程假設只有一份，無法水平擴充 | APP-09 |
 | 對外 Webhook 轉送所有事件，`message.received` 帶 `replyToken` | HOOK-01 |
 | `packages/core` 有未使用的服務 | PKG-05 |
-| 租戶房間的 `message.new` 不套用渠道可見範圍 | RBAC-04 |
+| 租戶房間的工單（`case.*`）與聯絡人合併事件不套用渠道可見範圍；`case.created`、`case.deleted` 帶工單標題 | RBAC-04 |
 | 還沒搬遷的發布端仍是最多一次（`eventBus.publish()`） | 搬遷進度見 issue #337 |
 
 ## 自己驗證的方法

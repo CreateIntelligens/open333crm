@@ -1330,6 +1330,9 @@ model Broadcast {
   totalDelivered Int       @default(0)
   totalReplied   Int       @default(0)
   createdById    String    @db.Uuid
+  // 排定送出的成員（change require-broadcast-send-permissions）：建立排程時是建立者，附券廣播「立即發送」
+  // 與批次發券是按下的人。排程器到期送出前以此人當下的有效權限重新檢查；null（舊資料）時退回 createdById
+  scheduledById  String?   @db.Uuid
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -1405,8 +1408,10 @@ model RichMenu {
   chatBarText    String
   // 版型尺寸 { width, height }，必為 10 種官方版型其中之一
   size           Json
-  // 預設展開選單
-  selected       Boolean   @default(false)
+  // 聊天室打開時是否展開選單（LINE 建立選單 API 的 selected）
+  selected       Boolean   @default(true)
+  // 是否為所有好友的預設選單；發布時設成 LINE 的 default rich menu
+  isDefault      Boolean   @default(false)
   // 區域陣列 [{ bounds: { x, y, width, height }, action: { type, ... } }]
   areas          Json
   // 背景圖（MinIO 公開 URL）
@@ -2120,7 +2125,9 @@ model PlatformAuditLog {
 model TenantAuditLog {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId   String   @db.Uuid
-  actorId    String?  @db.Uuid // 操作者 agent（系統/排程觸發時可為 null）
+  actorId    String?  @db.Uuid // 操作者 agent（系統/排程觸發時可為 null；成員被永久刪除後也是 null）
+  actorName  String? // 操作者被永久刪除時保存的名稱快照（issue #414）
+  actorEmail String? // 操作者被永久刪除時保存的 email 快照（issue #414）
   action     String // e.g. settings.update | contact.delete | marketing.list.export
   targetType String? // contact | agent | role | channel | setting | ...
   targetId   String?
@@ -2141,7 +2148,9 @@ model TenantAuditLog {
 model DataExportRequest {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String    @db.Uuid
-  requestedBy   String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedBy      String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedByName  String? // 發起者被永久刪除時保存的名稱快照（issue #414）
+  requestedByEmail String? // 發起者被永久刪除時保存的 email 快照（issue #414）
   status        String    @default("pending") // pending | processing | completed | failed | expired
   scope         Json? // 匯出範圍（哪些資料類型）；null=全部
   fileKey       String? // MinIO 物件 key
@@ -2164,7 +2173,9 @@ model DataExportRequest {
 model DataErasureRequest {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String    @db.Uuid
-  requestedBy String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedBy      String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedByName  String? // 發起者被永久刪除時保存的名稱快照（issue #414）
+  requestedByEmail String? // 發起者被永久刪除時保存的 email 快照（issue #414）
   contactId   String    @db.Uuid // 目標聯絡人（刪除後此欄仍留存於稽核用途）
   mode        String    @default("anonymize") // anonymize | hard_delete
   status      String    @default("pending") // pending | processing | completed | failed

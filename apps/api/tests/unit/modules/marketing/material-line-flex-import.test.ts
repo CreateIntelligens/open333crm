@@ -9,6 +9,7 @@ import {
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 
 import { test } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 
 type StoredMaterial = Record<string, any>;
@@ -20,6 +21,7 @@ function createPrismaMock() {
   return {
     materials,
     prisma: {
+      ...disabledAiPrivacy,
       messageTemplate: {
         async findUnique() {
           return null;

@@ -4,13 +4,15 @@ import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { sendEmail } from '../email/email.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { emitToChannel } from '../../events/socket-push.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 interface SocketTarget {
   emit(event: string, payload: unknown): void;
 }
 
 interface SocketIOServerLike {
-  to(room: string): SocketTarget;
+  to(room: string | string[]): SocketTarget;
 }
 
 interface CanvasSendMessagePayload {
@@ -104,7 +106,7 @@ export async function handleCanvasSendMessage(
   }
 
   const outboundText = text ?? '';
-  const storedContent = await prepareStoredMessageContent(prisma as never, tenantId, { text: outboundText }, 'tenant_template');
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma as never, tenantId), { text: outboundText }, 'tenant_template');
   const credentials = decryptCredentials(conversation.channel.credentialsEncrypted);
   const sendResult = await plugin.sendMessage(
     identity.uid,
@@ -152,8 +154,7 @@ export async function handleCanvasSendMessage(
     },
   };
 
-  io.to(`conversation:${conversation.id}`).emit('message.new', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'message.new', wsPayload);
 }
 
 async function handleEmailSend(

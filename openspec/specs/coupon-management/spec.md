@@ -1361,6 +1361,11 @@
 - **WHEN** 從券詳情頁批次發券
 - **THEN** 系統回 403，沒有發出任何券
 
+#### Scenario: 選網站聊天室渠道發券
+
+- **WHEN** 座席以 API 對網站聊天室渠道批次發券
+- **THEN** 系統回 400，code 為 `CHANNEL_PUSH_NOT_SUPPORTED`，不建立廣播，沒有發出任何券
+
 ### Requirement: 發券 API 不預設為對話發券
 
 `POST /api/v1/coupons/:id/issue` SHALL 不送訊息；沒有帶發放方式時記為 `api`。帶入系統保留的發放方式（`inbox`、`keyword`、`follow`、`automation`、`broadcast`、`batch`、`public_link`）時 SHALL 回 400（design D31）。
@@ -1555,3 +1560,53 @@
 - **GIVEN** 一張進行中、固定效期、到期日已過的券，與一張進行中、還沒到期的券
 - **WHEN** 使用者開啟優惠券列表
 - **THEN** 已到期的券在狀態旁標示「已過到期日」，還沒到期的券沒有這個標示，兩張的狀態都仍顯示「進行中」
+
+### Requirement: 附券廣播需要發券權限
+
+從廣播頁建立帶 `couponId` 的廣播時，系統 SHALL 另外要求 `coupon.issue`；「立即發送」附券廣播時，系統 SHALL 同時要求 `marketing.broadcast` 與 `coupon.issue`。缺少 `coupon.issue` 時回 403，`error.details.requiredPermission` 為 `coupon.issue`，不建立廣播、不發出任何券。建立廣播表單在沒有 `coupon.issue` 時 SHALL 停用附券欄位並說明原因。
+
+#### Scenario: 沒有發券權限建立附券廣播
+
+- **WHEN** 有 `marketing.manage`、沒有 `coupon.issue` 的成員建立帶 `couponId` 的廣播
+- **THEN** 系統回 403，`error.details.requiredPermission` 為 `coupon.issue`，沒有建立廣播
+
+#### Scenario: 有發券權限建立附券廣播
+
+- **WHEN** 有 `marketing.manage` 與 `coupon.issue` 的成員建立帶進行中行銷券的廣播
+- **THEN** 廣播建立成功
+
+#### Scenario: 沒有發券權限立即發送附券廣播
+
+- **WHEN** 有 `marketing.broadcast`、沒有 `coupon.issue` 的成員對附券廣播按「立即發送」
+- **THEN** 系統回 403，`error.details.requiredPermission` 為 `coupon.issue`，廣播狀態不變，沒有發出任何券
+
+#### Scenario: 表單停用附券欄位
+
+- **WHEN** 沒有 `coupon.issue` 的成員開啟建立廣播表單
+- **THEN** 附券欄位停用，並說明附上優惠券需要「發放優惠券」權限
+
+### Requirement: 附券廣播的受眾預覽需要檢視優惠券權限
+
+`POST /marketing/broadcasts/audience-preview` 帶 `couponId` 時，系統 SHALL 要求 `coupon.view`；缺少時回 403，`error.details.requiredPermission` 為 `coupon.view`，不回傳券的剩餘名額。不帶 `couponId` 的預覽不需要優惠券權限。
+
+#### Scenario: 沒有檢視優惠券權限預覽附券廣播
+
+- **WHEN** 沒有 `coupon.view` 的成員以 `couponId` 預覽廣播受眾
+- **THEN** 系統回 403，`error.details.requiredPermission` 為 `coupon.view`，回應不含剩餘名額
+
+#### Scenario: 不附券的預覽
+
+- **WHEN** 沒有任何優惠券權限的成員不帶 `couponId` 預覽廣播受眾
+- **THEN** 系統回傳符合條件與可送達人數
+
+### Requirement: 序號明細 CSV 的欄位經過跳脫與公式防護
+
+序號明細 CSV（直接下載與背景匯出）SHALL 讓標題列與每個欄位經過與報表匯出相同的規則：含逗號、雙引號、CR 或 LF 的欄位以雙引號包住並把 `"` 改成 `""`；以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`。持有者名稱來自顧客自訂的暱稱，因此不能原樣輸出。
+
+#### Scenario: 持有者名稱以公式開頭又含逗號
+- **WHEN** 管理者匯出序號明細，某張券的持有者名稱是 `=HYPERLINK("http://evil.example","點我, 領獎")`
+- **THEN** 每列都是 10 欄，持有者欄的值是 `'` 加上原名稱
+
+#### Scenario: 券號以減號開頭、持有者名稱含換行
+- **WHEN** 券號是 `-B2`、持有者名稱含換行
+- **THEN** 券號欄是 `'-B2`，持有者欄以雙引號包住並保留換行

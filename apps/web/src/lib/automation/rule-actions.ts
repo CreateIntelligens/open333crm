@@ -153,7 +153,7 @@ const MATERIAL_CHANNEL_LABELS: Record<string, string> = {
   line: 'LINE',
   fb: 'Facebook',
   threads: 'Instagram',
-  webchat: '網頁聊天',
+  webchat: '網站聊天室',
 };
 
 /**

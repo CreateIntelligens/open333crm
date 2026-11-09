@@ -45,7 +45,7 @@ const CATEGORY_TABS = [
   { value: '行銷類', label: '行銷類' },
   { value: '產品資訊類', label: '產品資訊' },
   { value: '互動類', label: '互動類' },
-  { value: 'FB模板', label: 'FB' },
+  { value: 'FB模板', label: 'Facebook' },
   { value: '問候', label: '問候' },
 ];
 

@@ -341,7 +341,13 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
                 const score = typeof msg.metadata?.csatScore === 'number' ? msg.metadata.csatScore : undefined;
                 const msgContent = typeof msg.content === 'object' ? msg.content : {};
                 const csatCaseId = (msg.metadata?.caseId as string) || (msgContent as Record<string, unknown>).caseId as string | undefined;
-                return <CsatMessage key={msg.id} score={score} readonly={isClosed || !!score} caseId={csatCaseId} />;
+                // 問卷沒有送到客人（issue #416）：卡片下方顯示原因
+                const csatDeliveryError = msg.metadata?.deliveryFailed === true
+                  ? (typeof msg.metadata.deliveryError === 'string' ? msg.metadata.deliveryError : '')
+                  : undefined;
+                // 評分者（issue #444）：客人回覆或客服代評
+                const csatRatedBy = msg.metadata?.csatRatedBy === 'agent' ? 'agent' : msg.metadata?.csatRatedBy === 'customer' ? 'customer' : undefined;
+                return <CsatMessage key={msg.id} score={score} ratedBy={csatRatedBy} readonly={isClosed || !!score} caseId={csatCaseId} deliveryError={csatDeliveryError} />;
               }
               return <MessageBubble key={msg.id} message={msg} />;
             })}

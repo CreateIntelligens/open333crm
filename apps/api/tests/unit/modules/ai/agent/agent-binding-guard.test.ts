@@ -46,7 +46,7 @@ test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說
     message: {
       create: async (args: { data: { content: { text: string }; metadata: Record<string, unknown> } }) => {
         created.push(args.data);
-        return { id: 'm1', metadata: args.data.metadata };
+        return { id: 'm1', metadata: args.data.metadata, conversation: { channelId: 'ch1' } };
       },
     },
   };

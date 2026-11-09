@@ -18,6 +18,8 @@ import { loadOtherChannelContext, withOtherChannelContext } from '../other-chann
 import type { AccessibleChannels } from '../../../services/channel-visibility.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
 import type { BotReplyGuard } from '../../automation/bot-reply-guard.js';
+import { emitToChannel } from '../../../events/socket-push.js';
+import { readAiPrivacyPolicy } from '../../platform/ai-privacy.service.js';
 
 export const AGENT_SYSTEM_PROMPT =
   '你是 Open333CRM 的專業客服與研究助手，使用繁體中文回答。' +
@@ -60,8 +62,9 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
   }
 
-  const protectedProvider = await getPrivacyAwareChatProvider(prisma, input.tenantId, provider);
-  const storedUserMessage = await deidentifyTenantText(prisma, input.tenantId, input.userMessage);
+  const privacy = await readAiPrivacyPolicy(prisma, input.tenantId);
+  const protectedProvider = getPrivacyAwareChatProvider(privacy, provider);
+  const storedUserMessage = await deidentifyTenantText(privacy, input.userMessage);
   const now = new Date();
   const run = await prisma.agentRun.create({
     data: {
@@ -77,7 +80,7 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
   const expiresAt = run.expiresAt;
   const store: AgentRunStore = {
     async recordToolCall(record) {
-      const safeTrace = await deidentifyTenantData(prisma, input.tenantId, {
+      const safeTrace = await deidentifyTenantData(privacy, {
         arguments: record.call.arguments,
         result: record.result,
       }) as { arguments: Record<string, unknown>; result: string };
@@ -109,7 +112,7 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     async finishRun(result) {
       const finalText = result.finalText === undefined
         ? undefined
-        : await deidentifyTenantText(prisma, input.tenantId, result.finalText);
+        : await deidentifyTenantText(privacy, result.finalText);
       await prisma.agentRun.updateMany({
         where: { id: run.id, tenantId: input.tenantId },
         data: {
@@ -214,8 +217,8 @@ export async function persistAndDeliverAgentReply(
   replyGuard: BotReplyGuard,
 ): Promise<void> {
   const now = new Date();
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text }, 'system');
-  type PersistedAgentMessage = { id: string; metadata: unknown };
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text }, 'system');
+  type PersistedAgentMessage = { id: string; metadata: unknown; conversation: { channelId: string } };
   const message = await replyGuard.persist(async (db: Prisma.TransactionClient): Promise<PersistedAgentMessage | null> => {
     const claimed = await db.conversation.updateMany({
       where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
@@ -233,7 +236,8 @@ export async function persistAndDeliverAgentReply(
         metadata: { source: 'agentic_llm', agentRunId: runId, ...storedContent.metadata, ...(bindingCodeBlocked ? { bindingCodeBlocked: true } : {}) },
         createdAt: now,
       },
-      select: { id: true, metadata: true },
+      // channelId：推播只送給看得到這個渠道的成員（issue #427）
+      select: { id: true, metadata: true, conversation: { select: { channelId: true } } },
     }) as unknown as PersistedAgentMessage;
   });
   if (!message) return;
@@ -252,8 +256,7 @@ export async function persistAndDeliverAgentReply(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', payload);
-  io.to(`tenant:${tenantId}`).emit('message.new', payload);
+  emitToChannel(io, tenantId, { channelId: message.conversation.channelId, conversationId }, 'message.new', payload);
   await deliverToChannel(prisma, conversationId, { contentType: 'text', content: storedContent.content, delivery });
 }
 

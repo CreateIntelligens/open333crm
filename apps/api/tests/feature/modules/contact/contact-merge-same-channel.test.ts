@@ -15,7 +15,7 @@ import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient, withTenant } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import contactRoutes from '#src/modules/contact/contact.routes.js';
-import { identityRoutes } from '#src/modules/canvas/canvas.routes.js';
+import mergeSuggestionRoutes from '#src/modules/contact/merge-suggestion.routes.js';
 import { mergeContacts } from '#src/modules/contact/contact-merge.service.js';
 
 loadEnvConfig();
@@ -78,7 +78,7 @@ async function buildApp(roleId: string) {
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(prisma, T);
   });
   await app.register(contactRoutes, { prefix: '/api/v1/contacts' });
-  await app.register(identityRoutes, { prefix: '/api/v1/identity' });
+  await app.register(mergeSuggestionRoutes, { prefix: '/api/v1/identity' });
   await app.ready();
   return app;
 }

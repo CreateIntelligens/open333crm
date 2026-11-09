@@ -39,6 +39,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { SettingsLoadError } from '@/components/knowledge/SettingsLoadError';
+import { usePermission } from '@/providers/AuthProvider';
 import { ChannelAccountRouting } from './ChannelAccountRouting';
 import { META_CONNECT_ERROR_TEXT, MetaConnectButton, MetaConnectDialog, useMetaConnectConfigured } from './MetaConnect';
 
@@ -58,8 +60,24 @@ interface Channel {
   createdAt: string;
 }
 
+/**
+ * 渠道列表讀取失敗時的說明（issue #411，RBAC-11）。
+ * 403 不可顯示成「沒有渠道」：租戶可能有啟用中的渠道，只是角色或方案擋下了檢視權限。
+ */
+export function describeChannelListError(err: unknown): { forbidden: boolean; message: string } {
+  const status = (err as { response?: { status?: number } } | null)?.response?.status;
+  if (status === 403) {
+    return {
+      forbidden: true,
+      message: '你沒有權限檢視渠道。需要「檢視渠道」權限，且目前的方案要包含渠道功能，請洽管理員。',
+    };
+  }
+  return { forbidden: false, message: getApiErrorMessage(err, '無法讀取渠道列表，請稍後重試') };
+}
+
 export function ChannelManagement() {
-  const { channels, isLoading, mutate } = useChannels();
+  const { channels, isLoading, error: channelsError, mutate } = useChannels();
+  const canCreateChannels = usePermission('channel.create');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const metaConnectConfigured = useMetaConnectConfigured();
   // Facebook 授權導回時帶 ?metaConnect=（選擇粉專）或 ?metaConnectError=（失敗原因）
@@ -93,6 +111,11 @@ export function ChannelManagement() {
   const [savingTheme, setSavingTheme] = useState(false);
 
   const { load: loadWidget, unload: unloadWidget } = useWebchat();
+  // Webhook 公開網址會改寫全租戶每個渠道（含分店看不到的），後端只允許總店（issue #408）
+  const canViewAllChannels = usePermission('channel.view_all');
+  const canUpdateChannels = usePermission('channel.update');
+  const canSetWebhookBaseUrl = canViewAllChannels && canUpdateChannels;
+  const hasWebchatChannel = (channels as Channel[]).some((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT);
 
   // Webhook base URL state
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
@@ -293,11 +316,14 @@ export function ChannelManagement() {
   return (
     <div className="mt-4 space-y-6">
       {/* Webhook Base URL Setting */}
+      {(canSetWebhookBaseUrl || hasWebchatChannel) && (
       <Card>
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <Globe className="mt-0.5 h-5 w-5 text-muted-foreground shrink-0" />
             <div className="flex-1 space-y-2">
+              {canSetWebhookBaseUrl && (
+              <>
               <div>
                 <p className="font-medium text-sm">Webhook 公開網址</p>
                 <p className="text-xs text-muted-foreground">
@@ -334,9 +360,11 @@ export function ChannelManagement() {
                   目前使用：{webhookBaseUrl}
                 </p>
               )}
-              {(channels as Channel[]).some((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT) && (
+              </>
+              )}
+              {hasWebchatChannel && (
                 <div className="mt-3 space-y-2 border-t pt-3">
-                  <p className="text-xs font-medium text-muted-foreground">WebChat 網頁版連結</p>
+                  <p className="text-xs font-medium text-muted-foreground">網站聊天室網頁版連結</p>
                   {(channels as Channel[])
                     .filter((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT)
                     .map((ch) => (
@@ -365,6 +393,7 @@ export function ChannelManagement() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Channel List Header */}
       <div className="flex items-center justify-between">
@@ -375,14 +404,18 @@ export function ChannelManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
-          <Button size="sm" variant="outline" onClick={() => setShowWizard(true)}>
-            設定精靈
-          </Button>
-          <Button size="sm" onClick={() => setShowAddDialog(true)}>
-            <Plus className="mr-1 h-4 w-4" />
-            新增渠道
-          </Button>
+          {canCreateChannels && (
+            <>
+              {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
+              <Button size="sm" variant="outline" onClick={() => setShowWizard(true)}>
+                設定精靈
+              </Button>
+              <Button size="sm" onClick={() => setShowAddDialog(true)}>
+                <Plus className="mr-1 h-4 w-4" />
+                新增渠道
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -406,15 +439,22 @@ export function ChannelManagement() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : channelsError ? (
+        <SettingsLoadError
+          {...describeChannelListError(channelsError)}
+          onRetry={() => mutate()}
+        />
       ) : channels.length === 0 ? (
         <EmptyState
           icon={<Settings className="h-12 w-12" />}
           title="沒有渠道"
-          description="新增您的第一個渠道以開始接收訊息"
+          description={canCreateChannels ? '新增您的第一個渠道以開始接收訊息' : '目前沒有你看得到的渠道'}
           action={
-            <Button onClick={() => setShowAddDialog(true)}>
-              <Plus className="mr-1 h-4 w-4" /> 新增渠道
-            </Button>
+            canCreateChannels ? (
+              <Button onClick={() => setShowAddDialog(true)}>
+                <Plus className="mr-1 h-4 w-4" /> 新增渠道
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -639,7 +679,7 @@ export function ChannelManagement() {
       <Dialog open={embedCodeDialog.open} onOpenChange={(v) => setEmbedCodeDialog({ ...embedCodeDialog, open: v })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>WebChat 嵌入碼</DialogTitle>
+            <DialogTitle>網站聊天室嵌入碼</DialogTitle>
           </DialogHeader>
           <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
             {embedCodeDialog.code}
@@ -664,7 +704,7 @@ export function ChannelManagement() {
       <Dialog open={chatboxLinkDialog.open} onOpenChange={(v) => setChatboxLinkDialog({ ...chatboxLinkDialog, open: v })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>WebChat 網頁版連結</DialogTitle>
+            <DialogTitle>網站聊天室網頁版連結</DialogTitle>
           </DialogHeader>
           <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
             {chatboxLinkDialog.url}

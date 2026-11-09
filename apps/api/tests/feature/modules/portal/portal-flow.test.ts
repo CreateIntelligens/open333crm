@@ -458,3 +458,206 @@ test('事件寫不進 outbox 時，作答與積分都不留下', async () => {
     await app.close();
   }
 });
+
+// ─── 編輯草稿不清掉選項與欄位（#424，PORTAL-03） ─────────────────────────────
+
+test('只改標題時，選項、正確答案與表單欄位都保留', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-保留內容`,
+    options: [{ label: '紅茶', isCorrect: true }, { label: '綠茶' }],
+    fields: [{ fieldKey: 'name', label: '姓名', isRequired: true }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const patched = await admin(appA, 'PATCH', `/activities/${id}`, { title: `${MARK}-新標題` });
+  assert.equal(patched.statusCode, 200, patched.body);
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.equal(after.title, `${MARK}-新標題`);
+  assert.deepEqual(
+    after.options.map((o: { label: string; isCorrect: boolean }) => [o.label, o.isCorrect]),
+    [['紅茶', true], ['綠茶', false]],
+  );
+  assert.deepEqual(
+    after.fields.map((f: { fieldKey: string; label: string; isRequired: boolean }) => [f.fieldKey, f.label, f.isRequired]),
+    [['name', '姓名', true]],
+  );
+});
+
+test('投票或競猜的選項送空陣列時回 400', async () => {
+  for (const type of ['POLL', 'QUIZ'] as const) {
+    const created = await admin(appA, 'POST', '/activities', {
+      type,
+      title: `${MARK}-${type}-空選項`,
+      options: [{ label: '甲', isCorrect: true }, { label: '乙' }],
+    });
+    assert.equal(created.statusCode, 200, created.body);
+    const id = created.json().data.id as string;
+
+    const patched = await admin(appA, 'PATCH', `/activities/${id}`, { title: `${MARK}-不該存`, options: [] });
+    assert.equal(patched.statusCode, 400, `${type}: ${patched.body}`);
+
+    const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+    assert.equal(after.title, `${MARK}-${type}-空選項`, type);
+    assert.deepEqual(after.options.map((o: { label: string }) => o.label), ['甲', '乙'], type);
+  }
+});
+
+test('表單的欄位送空陣列時回 400', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'FORM',
+    title: `${MARK}-表單-空欄位`,
+    fields: [{ fieldKey: 'phone', label: '電話' }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const patched = await admin(appA, 'PATCH', `/activities/${id}`, { fields: [] });
+  assert.equal(patched.statusCode, 400, patched.body);
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.deepEqual(after.fields.map((f: { fieldKey: string }) => f.fieldKey), ['phone']);
+});
+
+// ─── 發布前檢查選項與欄位（#447） ───────────────────────────────────────────
+
+test('建立沒有選項或欄位的草稿仍然允許', async () => {
+  for (const type of ['POLL', 'QUIZ', 'FORM'] as const) {
+    const created = await admin(appA, 'POST', '/activities', { type, title: `${MARK}-${type}-空草稿` });
+    assert.equal(created.statusCode, 200, `${type}: ${created.body}`);
+    assert.equal(created.json().data.status, 'DRAFT', type);
+  }
+});
+
+test('發布沒有選項的投票或競猜回 400，活動仍是草稿', async () => {
+  for (const type of ['POLL', 'QUIZ'] as const) {
+    const created = await admin(appA, 'POST', '/activities', {
+      type,
+      title: `${MARK}-${type}-發布空選項`,
+      fields: [{ fieldKey: 'name', label: '姓名' }],
+    });
+    assert.equal(created.statusCode, 200, created.body);
+    const id = created.json().data.id as string;
+
+    const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+    assert.equal(published.statusCode, 400, `${type}: ${published.body}`);
+    assert.equal(published.json().error.message, '投票與競猜活動至少要有一個選項', type);
+
+    const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+    assert.equal(after.status, 'DRAFT', type);
+    assert.equal(after.publishedAt, null, type);
+  }
+});
+
+test('發布沒有欄位的表單回 400，活動仍是草稿', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'FORM',
+    title: `${MARK}-表單-發布空欄位`,
+    options: [{ label: '不算欄位' }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 400, published.body);
+  assert.equal(published.json().error.message, '表單活動至少要有一個欄位');
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.equal(after.status, 'DRAFT');
+});
+
+test('草稿補上選項或欄位後可以發布', async () => {
+  const cases = [
+    { type: 'POLL', patch: { options: [{ label: '甲' }] } },
+    { type: 'QUIZ', patch: { options: [{ label: '甲', isCorrect: true }, { label: '乙' }] } },
+    { type: 'FORM', patch: { fields: [{ fieldKey: 'phone', label: '電話' }] } },
+  ] as const;
+  for (const { type, patch } of cases) {
+    const created = await admin(appA, 'POST', '/activities', { type, title: `${MARK}-${type}-補內容後發布` });
+    assert.equal(created.statusCode, 200, created.body);
+    const id = created.json().data.id as string;
+
+    const patched = await admin(appA, 'PATCH', `/activities/${id}`, patch);
+    assert.equal(patched.statusCode, 200, `${type}: ${patched.body}`);
+
+    const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+    assert.equal(published.statusCode, 200, `${type}: ${published.body}`);
+    assert.equal(published.json().data.status, 'PUBLISHED', type);
+  }
+});
+
+// ─── 發布競猜前檢查正確答案（#471） ─────────────────────────────────────────
+
+test('發布沒有正確答案的競猜回 400，活動仍是草稿', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-沒有正確答案`,
+    options: [{ label: '甲' }, { label: '乙', isCorrect: false }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 400, published.body);
+  assert.equal(published.json().error.message, '競猜活動至少要有一個正確答案');
+
+  const after = (await admin(appA, 'GET', `/activities/${id}`)).json().data;
+  assert.equal(after.status, 'DRAFT');
+  assert.equal(after.publishedAt, null);
+});
+
+test('有正確答案的競猜可以發布', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-有正確答案`,
+    options: [{ label: '甲' }, { label: '乙', isCorrect: true }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 200, published.body);
+  assert.equal(published.json().data.status, 'PUBLISHED');
+});
+
+test('投票沒有正確答案仍然可以發布', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'POLL',
+    title: `${MARK}-投票-不需要正確答案`,
+    options: [{ label: '甲' }, { label: '乙' }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  const published = await admin(appA, 'POST', `/activities/${id}/publish`);
+  assert.equal(published.statusCode, 200, published.body);
+  assert.equal(published.json().data.status, 'PUBLISHED');
+});
+
+test('沒有正確答案的競猜草稿可以建立與儲存', async () => {
+  const created = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-草稿沒有正確答案`,
+    options: [{ label: '甲', isCorrect: true }],
+  });
+  assert.equal(created.statusCode, 200, created.body);
+  const id = created.json().data.id as string;
+
+  // 編輯成沒有正確答案的選項，草稿仍可儲存
+  const patched = await admin(appA, 'PATCH', `/activities/${id}`, {
+    options: [{ label: '甲' }, { label: '乙' }],
+  });
+  assert.equal(patched.statusCode, 200, patched.body);
+  assert.equal(patched.json().data.status, 'DRAFT');
+  assert.ok(patched.json().data.options.every((o: { isCorrect: boolean }) => !o.isCorrect));
+
+  const createdWithout = await admin(appA, 'POST', '/activities', {
+    type: 'QUIZ',
+    title: `${MARK}-競猜-建立時沒有正確答案`,
+    options: [{ label: '甲' }],
+  });
+  assert.equal(createdWithout.statusCode, 200, createdWithout.body);
+  assert.equal(createdWithout.json().data.status, 'DRAFT');
+});

@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { systemTemplates } from './seed-data/system-templates.js';
 import { seedDemoAccounts, shouldSeedDemoAccounts } from './seed-data/demo-accounts.js';
+import { seedPlans } from './seed-data/plans.js';
 
 const prisma = new PrismaClient();
 
@@ -12,73 +13,11 @@ async function main() {
 
   await seedModelPricing();
 
-  await seedPlans();
+  await seedPlans(prisma);
 
   console.log(
     `Seed complete: ${demo ? 'demo tenant, 3 agents, 3 system roles, 1 platform user, ' : 'demo accounts skipped, '}${systemTemplates.length} system templates, model pricing, 5 plans`,
   );
-}
-
-/**
- * 平台方案種子（全域）。features = 功能天花板；limits.null = 無上限。
- * idempotent upsert（slug 唯一）。改方案內容 = 改這裡或平台後台，零改碼影響租戶。
- */
-async function seedPlans() {
-  const plans = [
-    {
-      slug: 'trial',
-      name: '免費試用',
-      features: ['inbox', 'knowledge', 'core'],
-      limits: { maxAgents: 3, maxTags: 50, monthlyTokens: 200_000 },
-      priceMonthly: 0,
-    },
-    {
-      slug: 'light',
-      name: '輕量版',
-      features: ['inbox', 'core'],
-      limits: { maxAgents: 5, maxTags: 100, monthlyTokens: 1_500_000 },
-      priceMonthly: 1800,
-    },
-    {
-      slug: 'standard',
-      name: '標準版',
-      features: ['inbox', 'channels', 'knowledge', 'core'],
-      limits: { maxAgents: 10, maxTags: 500, monthlyTokens: 3_000_000 },
-      priceMonthly: 3600,
-    },
-    {
-      slug: 'professional',
-      name: '專業版',
-      features: ['inbox', 'channels', 'marketing', 'analytics', 'knowledge', 'core'],
-      limits: { maxAgents: 20, maxTags: 1000, monthlyTokens: 8_000_000 },
-      priceMonthly: 7200,
-    },
-    {
-      slug: 'enterprise',
-      name: '企業版',
-      features: ['inbox', 'channels', 'automation', 'marketing', 'analytics', 'knowledge', 'portal', 'core'],
-      limits: { maxAgents: null, maxTags: null, monthlyTokens: null },
-      priceMonthly: null,
-    },
-  ];
-  for (const p of plans) {
-    await prisma.plan.upsert({
-      where: { slug: p.slug },
-      update: {
-        name: p.name,
-        features: p.features as Prisma.InputJsonValue,
-        limits: p.limits as Prisma.InputJsonValue,
-        priceMonthly: p.priceMonthly,
-      },
-      create: {
-        slug: p.slug,
-        name: p.name,
-        features: p.features as Prisma.InputJsonValue,
-        limits: p.limits as Prisma.InputJsonValue,
-        priceMonthly: p.priceMonthly,
-      },
-    });
-  }
 }
 
 /**

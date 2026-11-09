@@ -114,6 +114,30 @@ async function lockActivity(ctx: TenantCtx, id: string) {
   return tx.portalActivity.findFirst({ where: { id, tenantId } });
 }
 
+/**
+ * 檢查活動有可作答的內容：投票與競猜至少一個選項，表單至少一個欄位，競猜至少一個正確答案。
+ *
+ * 編輯（#424）與發布（#447、#471）共用。數量傳 undefined 表示這部分不檢查：編輯沒帶 options／fields 時不動，
+ * 不需檢查；發布時傳資料庫裡的實際數量。建立草稿不呼叫這支，草稿可以先存再分次補內容。
+ * 正確答案數只有發布時傳：編輯只會發生在草稿（updateActivity 擋掉非草稿），草稿可以還沒勾正確答案。
+ */
+function assertActivityAnswerable(
+  type: string,
+  optionCount: number | undefined,
+  fieldCount: number | undefined,
+  correctOptionCount?: number,
+) {
+  if ((type === 'POLL' || type === 'QUIZ') && optionCount === 0) {
+    throw new AppError('投票與競猜活動至少要有一個選項', 'ACTIVITY_OPTIONS_REQUIRED', 400);
+  }
+  if (type === 'FORM' && fieldCount === 0) {
+    throw new AppError('表單活動至少要有一個欄位', 'ACTIVITY_FIELDS_REQUIRED', 400);
+  }
+  if (type === 'QUIZ' && correctOptionCount === 0) {
+    throw new AppError('競猜活動至少要有一個正確答案', 'ACTIVITY_CORRECT_ANSWER_REQUIRED', 400);
+  }
+}
+
 // 選項與欄位的刪除、重建和活動的更新在呼叫端 flow 的同一個交易內完成
 export async function updateActivity(
   ctx: TenantCtx,
@@ -145,7 +169,11 @@ export async function updateActivity(
     throw new AppError('結束時間必須晚於開始時間', 'INVALID_DATE_RANGE', 400);
   }
 
-  // Replace options and fields if provided
+  // 沒帶 options／fields（undefined）= 這部分不動。帶了就整批刪除重建，所以投票、競猜的空選項
+  // 與表單的空欄位一律擋下：前端曾在沒載入選項時送出 []，只改標題就刪光選項與正確答案（#424）。
+  // 活動沒有選項或欄位就無法作答，刪光不是合法的編輯結果。
+  assertActivityAnswerable(activity.type, data.options?.length, data.fields?.length);
+
   if (data.options) {
     await prisma.portalOption.deleteMany({ where: { activityId: id } });
     await prisma.portalOption.createMany({
@@ -203,6 +231,13 @@ export async function publishActivity(ctx: TenantCtx, id: string) {
   const activity = await lockActivity(ctx, id);
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以發布', 'INVALID_ACTIVITY_STATUS', 409);
+  // 草稿可以沒有選項或欄位，發布後粉絲看得到，沒有內容就無法作答（#447）。
+  // 已鎖住活動列，編輯要等這個交易結束，數到的選項與欄位就是發布時的內容。
+  const optionCount = await prisma.portalOption.count({ where: { activityId: id } });
+  const fieldCount = await prisma.portalField.count({ where: { activityId: id } });
+  // 競猜沒有正確答案時每個人都是 0 分，發布前要求至少一個正確答案（#471）。開獎仍從全部作答隨機抽出。
+  const correctOptionCount = await prisma.portalOption.count({ where: { activityId: id, isCorrect: true } });
+  assertActivityAnswerable(activity.type, optionCount, fieldCount, correctOptionCount);
   return prisma.portalActivity.update({
     where: { id },
     data: { status: 'PUBLISHED', publishedAt: new Date() },

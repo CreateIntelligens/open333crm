@@ -8,13 +8,14 @@ import { logger } from '@open333crm/core';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { emitInboundSocketEvents, sendFirstContactGreeting } from './inbound-side-effects.js';
-import { buildMessageNewPayload, emitToConversationAndTenant } from './inbound-socket-presenter.js';
+import { buildMessageNewPayload, emitToConversationChannel } from './inbound-socket-presenter.js';
 import { extractBindingCode, getBindingStore, pendingConfirmKey, type BindingStore } from '../identity-binding/binding-code.js';
 import {
   detectBindingIntent,
   executeBindingIntent,
   getIdentityBindingSettingsCached,
 } from '../identity-binding/identity-binding.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 const REFERRAL_DEDUP_MS = 10 * 60 * 1000;
 
@@ -156,7 +157,7 @@ async function runBindingIntent(
     // err 放第二個參數才會帶出 message 與 stack（包在物件裡會被序列化成 {}）
     logger.error(`[Webhook] Identity binding failed (intent=${intent.kind}, conversation=${conversation.id}):`, err);
     try {
-      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '跨渠道綁定處理失敗，顧客的綁定請求沒有完成，請協助確認。' }, 'system_template');
+      const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: '跨渠道綁定處理失敗，顧客的綁定請求沒有完成，請協助確認。' }, 'system_template');
       const note = await ctx.prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -168,10 +169,10 @@ async function runBindingIntent(
           isRead: false,
         },
       });
-      emitToConversationAndTenant(
+      emitToConversationChannel(
         ctx.io,
-        conversation.id,
         ctx.tenantId,
+        { id: conversation.id, channelId: ctx.channel.id },
         'message.new',
         buildMessageNewPayload(note, { includeTypePayload: true }),
       );

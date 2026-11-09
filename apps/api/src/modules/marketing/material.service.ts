@@ -32,6 +32,7 @@ import { buildLineMessage } from '@open333crm/channel-plugins';
 import { notFound } from '../../shared/messages/resource.js';
 import { validateLineVideoUrl } from '@open333crm/shared';
 import { prepareStoredMaterialBody } from '../ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -434,7 +435,7 @@ export async function createMaterial(
   // 示範圖（FB 是所有站內路徑）換成公開網址，LINE 驗證與 LINE／FB 發送才收得到
   body = resolveSampleImageUrls(contentType, body);
 
-  const preparedBody = await prepareStoredMaterialBody(prisma, tenantId, body, input.privacyMode ?? 'mask');
+  const preparedBody = await prepareStoredMaterialBody(await readAiPrivacyPolicy(prisma, tenantId), body, input.privacyMode ?? 'mask');
   body = preparedBody.body as Record<string, unknown>;
 
   // 儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
@@ -514,7 +515,7 @@ export async function updateMaterial(
       : input.body;
     // 與 createMaterial() 相同：示範圖（FB 是所有站內路徑）換成公開網址
     const resolvedBody = resolveSampleImageUrls(existing.contentType, body);
-    const preparedBody = await prepareStoredMaterialBody(prisma, tenantId, resolvedBody, input.privacyMode ?? 'mask');
+    const preparedBody = await prepareStoredMaterialBody(await readAiPrivacyPolicy(prisma, tenantId), resolvedBody, input.privacyMode ?? 'mask');
     data.body = preparedBody.body;
     data.maskedBody = preparedBody.maskedBody ?? Prisma.DbNull;
     data.privacyMode = preparedBody.privacyMode;
@@ -621,8 +622,7 @@ export async function deleteMaterial(prisma: TenantDb, id: string, tenantId: str
 export async function duplicateMaterial(prisma: TenantDb, id: string, tenantId: string) {
   const source = await getMaterial(prisma, id, tenantId);
   const preparedBody = await prepareStoredMaterialBody(
-    prisma,
-    tenantId,
+    await readAiPrivacyPolicy(prisma, tenantId),
     source.body as Record<string, unknown>,
   );
   const copy = await prisma.material.create({
@@ -1020,8 +1020,7 @@ export async function restoreMaterialVersion(
   const restoredBody = (version.body ?? {}) as Record<string, unknown>;
   validateFbMaterialBody(material.contentType, restoredBody);
   const preparedBody = await prepareStoredMaterialBody(
-    prisma,
-    tenantId,
+    await readAiPrivacyPolicy(prisma, tenantId),
     restoredBody,
     version.privacyMode === 'original' ? 'original' : 'mask',
   );

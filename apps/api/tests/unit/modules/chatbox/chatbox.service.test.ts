@@ -88,7 +88,8 @@ function createSessionRecord(overrides: Record<string, unknown> = {}) {
     revokedAt: null,
     riskLevel: 'LOW',
     metadata: { fingerprint },
-    channel: createChannel(),
+    // verifyChatboxSession 一併讀渠道所屬租戶的啟用狀態（issue #410）
+    channel: { ...createChannel(), tenant: { isActive: true } },
     ...overrides,
   };
 }

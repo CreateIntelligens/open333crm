@@ -7,7 +7,6 @@
  */
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
-import { redis as coreRedis } from '@open333crm/core';
 
 export const OPS_ALERT_QUEUE = 'ops-alert';
 
@@ -69,12 +68,13 @@ export async function closeOpsAlertQueue(): Promise<void> {
 /**
  * 發出一則告警。同一個合併鍵在 10 分鐘內只送出第一則，其他的只計數；
  * 下一則送出的告警帶上這個次數。計數放在 Redis，多個 API 實例也只送一則。
- * 回傳 true 代表這則告警已放進佇列。
+ * 回傳 true 代表這則告警已放進佇列。呼叫端傳入 Redis（`fastify.redis`）；佇列預設是 ops-alert 佇列。
  */
 export async function sendOpsAlert(
   alert: OpsAlert,
-  deps: OpsAlertDeps = { redis: coreRedis, queue: opsAlertQueue() },
+  deps: Pick<OpsAlertDeps, 'redis'> & Partial<OpsAlertDeps>,
 ): Promise<boolean> {
+  const queue = deps.queue ?? opsAlertQueue();
   const gateKey = `ops-alert:${alert.key}`;
   const suppressedKey = `${gateKey}:suppressed`;
 
@@ -88,7 +88,7 @@ export async function sendOpsAlert(
   let suppressedCount = 0;
   try {
     suppressedCount = Number((await deps.redis.getdel(suppressedKey)) ?? 0);
-    await deps.queue.add('ops-alert:send', {
+    await queue.add('ops-alert:send', {
       title: alert.title,
       fields: alert.fields,
       ...(alert.link ? { link: alert.link } : {}),

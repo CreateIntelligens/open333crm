@@ -191,7 +191,7 @@
           <tr><td>訊息內容</td><td>客人這則訊息寫了什麼，例如「包含 退貨」</td></tr>
           <tr><td>聯絡人標籤</td><td>客人身上有沒有某個標籤</td></tr>
           <tr><td>聯絡人是 VIP</td><td>客人有沒有大寫「VIP」標籤（見「<a href="ch03-contacts.html#p5">03 · 聯絡人</a>」）</td></tr>
-          <tr><td>對話渠道、聯絡人渠道</td><td>客人從 LINE、Facebook 或 WebChat 來</td></tr>
+          <tr><td>對話渠道、聯絡人渠道</td><td>客人從 LINE、Facebook 或網站聊天室來</td></tr>
           <tr><td>對話狀態</td><td>對話是進行中、等待中或已關閉</td></tr>
           <tr><td>開啟案件數</td><td>客人目前有幾張還沒結案的工單</td></tr>
           <tr><td>案件狀態、案件優先級、案件分類</td><td>工單的狀態、優先級、分類（「案件」就是「工單」）</td></tr>
@@ -200,7 +200,7 @@
       </table>
       <!-- KNOWN-ISSUE: 渠道條件選項缺 Instagram；ID 類條件要手動貼 UUID；情緒欄位只在 SLA 時機出現。 -->
       <div class="info"><span>ℹ️</span><div>
-        渠道條件目前只能選 LINE、Facebook、WebChat，<b>還不能選 Instagram</b>。<br>
+        渠道條件目前只能選 LINE、Facebook、網站聊天室，<b>還不能選 Instagram</b>。<br>
         「對話負責客服 ID」「負責客服 ID」「團隊 ID」「案件 ID」要貼系統內部的代碼，一般使用時建議不要用這幾個欄位。<br>
         「最新情緒」「負面情緒次數」只有 SLA 類時機能用，在「收到訊息」時沒辦法依客人情緒判斷。
       </div></div>
@@ -282,7 +282,7 @@
           <tr><td>沒有命中任何關鍵字</td><td>AI 照常回覆</td></tr>
         </tbody>
       </table>
-      <p>這個讓步只發生在 LINE、Facebook、Instagram。網站聊天視窗（WebChat）的關鍵字規則目前<b>送不出回覆</b>，WebChat 的客人請交給 AI 或客服回答。</p>
+      <p>這個讓步只發生在 LINE、Facebook、Instagram。網站聊天室的關鍵字規則目前<b>送不出回覆</b>，網站聊天室的客人請交給 AI 或客服回答。</p>
       <p>如果關鍵字規則另外加了「在什麼情況下」的條件（例如「對話渠道 等於 LINE」），系統會連條件一起判斷：<b>條件不成立時，規則不執行，AI 照常回覆</b>，客人不會沒人理。</p>
       <!-- KNOWN-ISSUE: 關鍵字規則各自觸發，「執行後不再檢查其他規則」無效；客服接手後仍會自動回覆。 -->
       <div class="warn"><span>⚠️</span><div>

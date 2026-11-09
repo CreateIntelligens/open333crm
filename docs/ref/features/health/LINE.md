@@ -21,7 +21,7 @@ P0：無。
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-LINE-01 | P1 | **LINE 的滿意度調查送不出去，而且沒有任何地方看得到失敗。** `sendCsatSurvey` 以 `contentType: 'flex'` 呼叫 LINE 外掛，但 `buildLineMessage` 沒有 `'flex'` 分支，落到 `default` 變成 `{"type":"text","text":""}`。LINE 拒收空白文字；`sendMessage` 回 `{success:false}` 不拋錯，`sendCsatSurvey` 不檢查回傳值，`csatSentAt` 已寫入，不會再寄。`'flex'` 分支是 `3a19c457`（2026-05-20，新增素材系統）刪掉的，之後沒有測試涵蓋 LINE 這條路徑。AUDIT CASE-02 寫「LINE 能回覆」，與現況不符 | **實測（函式層）**：以 tsx 呼叫 `buildLineMessage('flex', {type:'flex',altText,contents})` 得到 `{"type":"text","text":""}`。**讀程式**：`csat.service.ts` 的 LINE 分支與回傳值處理。LINE 端拒收（空白 text 回 400）依 API 規格判斷，**待真機驗**：UAT Demo 租戶的 LINE 對話結案後看客人有沒有收到問卷 | `packages/channel-plugins/src/line/index.ts:134`（沒有 `'flex'` case，`:246` default）；`apps/api/src/modules/csat/csat.service.ts:25, 166` | CASE-03（CASE-02 的 LINE 列已更正） |
+| HC-LINE-01 | P1 | （健檢當時，#416 change `fix-csat-line-flex-416` 已修正）**LINE 的滿意度調查送不出去，而且沒有任何地方看得到失敗。** `sendCsatSurvey` 以 `contentType: 'flex'` 呼叫 LINE 外掛，但 `buildLineMessage` 沒有 `'flex'` 分支，落到 `default` 變成 `{"type":"text","text":""}`。LINE 拒收空白文字；`sendMessage` 回 `{success:false}` 不拋錯，`sendCsatSurvey` 不檢查回傳值，`csatSentAt` 已寫入，不會再寄。`'flex'` 分支是 `3a19c457`（2026-05-20，新增素材系統）刪掉的，之後沒有測試涵蓋 LINE 這條路徑。AUDIT CASE-02 寫「LINE 能回覆」，與現況不符 | **實測（函式層）**：以 tsx 呼叫 `buildLineMessage('flex', {type:'flex',altText,contents})` 得到 `{"type":"text","text":""}`。**讀程式**：`csat.service.ts` 的 LINE 分支與回傳值處理。LINE 端拒收（空白 text 回 400）依 API 規格判斷，**待真機驗**：UAT Demo 租戶的 LINE 對話結案後看客人有沒有收到問卷 | `packages/channel-plugins/src/line/index.ts:134`（沒有 `'flex'` case，`:246` default）；`apps/api/src/modules/csat/csat.service.ts:25, 166` | CASE-03（CASE-02 的 LINE 列已更正） |
 | HC-LINE-02 | P2 | LINE 重送事件（`deliveryContext.isRedelivery`）時，沒有訊息 id 的事件被重複處理：postback 存兩則、再跑一次攔截（貼標、轉真人、CSAT）與 AI／自動化；follow 存兩則、`followCount` 加兩次。去重只看 `message.id`，LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈防護用它 | 本機：同一個 postback 事件（`webhookEventId` 相同）先送 `isRedelivery:false` 再送 `true` → 兩次 200，收件匣出現兩則「menu=main」；follow 同樣兩則，`followCount` 從 0 變 2 | `apps/api/src/modules/webhook/inbound-message-writer.ts:26`；`packages/channel-plugins/src/line/index.ts:376` | CHAN-07 |
 | HC-LINE-03 | P2 | 客人收回訊息（`unsend`）時，原訊息照常顯示，另外多一則「[不支援的訊息類型]」並加未讀數。規格 `line-webhook-events` 要求把原訊息標成 `recalled`；LINE 開發準則也要求尊重收回、之後不能被看到或使用 | 本機：先送 text `hcmsg0001`，再送 `{"type":"unsend","unsend":{"messageId":"hcmsg0001"}}` → 收件匣兩則都在，原文未變 | `packages/channel-plugins/src/line/index.ts:402`；進站管線沒有任何 `unsend` 處理 | CHAN-08 |
 | HC-LINE-04 | P2 | 圖文選單發布時，伺服器直接 `fetch(imageUrl)`，網址只驗 `z.string().url()`，不擋內網。有 `richmenu.manage`（主管預設就有）的人可以讓 API 去打內網位址，錯誤訊息回傳對方的 Content-Type 或「無法取得」，可用來探測內網服務與連接埠。專案已有 `isBlockedUrl`（下游轉發在用） | 本機：建草稿 `imageUrl: http://localhost:3001/health` → 發布回「背景圖格式必須是 JPEG 或 PNG（實際：application/json; charset=utf-8）」；`http://localhost:3000/` 回 `text/html`；`http://localhost:5433/` 回「無法取得背景圖」。整個過程在 LINE API 之前，不需要有效的 Access Token | `apps/api/src/modules/line/rich-menu.service.ts:346`；建立與修改的 schema 在 `rich-menu.routes.ts` | SEC-08 |
@@ -75,7 +75,7 @@ P0：無。
 | Spec | Scenario 數 | 找不到同名測試 | 缺實作 | 部分或行為不同 | 前端入口 |
 | --- | --- | --- | --- | --- | --- |
 | line-webhook-events | 13 | 7 | 2：「Follow event updates contact」（沒有 `Contact.channelStatus` 欄位，follow 只記 `ChannelIdentity.firstFollowedAt` 等）、「Unsend event marks message」（HC-LINE-03） | 1：「Invalid signature rejected」回 403 正確，但非 UUID 與憑證解不開回 500 | 系統流程 |
-| line-messaging | 6 | 6 | 4：「Flex message sent」（`content.flexJson` 不支援，`'flex'` 變空白文字，HC-LINE-01）、「Multicast batching」（不是 BullMQ，群發在請求內同步每批 499）、「Narrowcast with audience」（沒有呼叫端）、「Quota exceeded」（沒有 Broadcast／Narrowcast 的呼叫端，也沒有額度檢查） | — | 無 |
+| line-messaging | 6 | 6 | 4：「Flex message sent」（`content.flexJson` 不支援，`'flex'` 變空白文字，HC-LINE-01；#416 已修正並改寫此情境）、「Multicast batching」（不是 BullMQ，群發在請求內同步每批 499）、「Narrowcast with audience」（沒有呼叫端）、「Quota exceeded」（沒有 Broadcast／Narrowcast 的呼叫端，也沒有額度檢查） | — | 無 |
 | line-safe-reply | 5 | 5 | 0 | — | 系統流程（`safe-reply.test.ts` 有測） |
 | line-rich-menu | 47 | 39 | 6：「Delete Rich Menu」呼叫 LINE 刪除（只能刪草稿，且與同規格「刪除限制」矛盾）、「List … reflecting current state on LINE」（不同步 LINE）、「Bind single user」（`CHANNEL_UI_SWITCH` 自動化動作不存在）、「Create alias」「Switch alias target」（沒有 Alias API，`richmenuswitch` 實際無法使用）、「提示 richmenuswitch 需先 publish 目標」（API 不回 warning，只有前端文字） | 7：「Batch bind」佇列名與限流不同（`rich-menu-bind`、無 3 次／小時限制）；「拒絕不指定 channelId」回 `VALIDATION_ERROR` 不是 `CHANNEL_ID_REQUIRED`；「拒絕非 LINE 渠道」訊息用語不同；背景圖的格式、尺寸、大小（3 個 scenario）只在前端檢查，後端沒有 `INVALID_IMAGE_FORMAT`、`IMAGE_SIZE_MISMATCH`；「取消編輯」新建頁的「取消」鈕不確認；側欄群組名稱是「渠道」不是「LINE 管理」 | 有（列表、新建、編輯、綁定） |
 | line-downstream-webhook | 14 | 14 | 0 | 1：「封鎖內網目標」符合規格，但 immediate 模式下訊息因此消失（HC-LINE-05） | 渠道設定的 `DownstreamWebhookDialog` |
@@ -87,7 +87,7 @@ P0：無。
 
 ## 待真機驗
 
-- LINE 滿意度調查：客人是否收到問卷（預期收不到，HC-LINE-01）。驗證前要先修，或在 UAT Demo 的 LINE 對話結案一張工單觀察。
+- LINE 滿意度調查：客人是否收到問卷（健檢時預期收不到，HC-LINE-01；#416 已修正，待真機驗）。在 UAT Demo 的 LINE 對話結案一張工單觀察；送不出時收件匣的問卷卡片要顯示「沒有送出」、工單時間軸要有一筆紀錄。客人按分數後（#444 修正，待真機驗）：問卷卡片唯讀並顯示「客人評 N 分」，客人的訊息顯示「我的評分：N 分」不是 `csat:` 代碼，工單時間軸有評分與「評分後自動關閉」兩筆。
 - 圖文選單成功發布、設為預設、取消預設、綁定受眾後客人看到的選單（本機只有假權杖）。
 - 客人真的收回訊息、封鎖再加入、在群組裡傳訊息時，收件匣的呈現。
 - LINE 實際重送事件的頻率（LINE 後台開啟「Webhook redelivery」時才會重送）。

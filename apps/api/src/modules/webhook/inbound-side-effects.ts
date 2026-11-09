@@ -12,8 +12,9 @@ import { renderTemplateBody } from '../marketing/template-renderer.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
-  emitToConversationAndTenant,
+  emitToConversationChannel,
 } from './inbound-socket-presenter.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 const outsideHoursReplyCache = new Map<string, number>();
 const OUTSIDE_HOURS_DEDUP_MS = 30 * 60 * 1000; // 30 minutes
@@ -34,10 +35,10 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
       where: { id: message.id },
       data: { content: updatedContent as any },
     });
-    emitToConversationAndTenant(
+    emitToConversationChannel(
       io,
-      message.conversationId,
       tenantId,
+      conversation,
       'message.new',
       buildMessageNewPayload(message, {
         content: updatedContent,
@@ -102,7 +103,7 @@ export async function emitInboundSocketEvents(ctx: InboundMessageContext): Promi
     conversationId: ctx.conversation.id,
     contentType: ctx.contentType,
   });
-  emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', wsPayload);
+  emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', wsPayload);
 
   const updatedConv = await ctx.prisma.conversation.findUnique({
     where: { id: ctx.conversation.id },
@@ -110,7 +111,7 @@ export async function emitInboundSocketEvents(ctx: InboundMessageContext): Promi
 
   if (updatedConv) {
     const convPayload = buildConversationUpdatedPayload(updatedConv);
-    emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'conversation.updated', convPayload);
+    emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'conversation.updated', convPayload);
   }
 }
 
@@ -169,7 +170,8 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
   }
 
   try {
-    let outsideMsg = await getOutsideHoursMessage(ctx.prisma, ctx.tenantId);
+    // 收訊管線還沒有搬遷（#337 階段 4），沒有租戶交易：以管線的 client 組成 TenantCtx。查詢都帶 tenantId
+    let outsideMsg = await getOutsideHoursMessage({ tx: ctx.prisma, tenantId: ctx.tenantId });
 
     if (outsideMsg) {
       try {
@@ -185,7 +187,7 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
       const lastReply = outsideHoursReplyCache.get(ctx.contactId);
       if (!lastReply || ctx.now.getTime() - lastReply > OUTSIDE_HOURS_DEDUP_MS) {
         outsideHoursReplyCache.set(ctx.contactId, ctx.now.getTime());
-        const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: outsideMsg }, 'tenant_template');
+        const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: outsideMsg }, 'tenant_template');
 
         const autoReply = await ctx.prisma.message.create({
           data: {
@@ -208,7 +210,7 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
           includeTypePayload: true,
         });
 
-        emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', autoReplyPayload);
+        emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', autoReplyPayload);
 
         await deliverToChannel(ctx.prisma, ctx.conversation.id, storedContent.content.text as string);
       }
@@ -279,7 +281,7 @@ export async function sendFirstContactGreeting(
       logger.warn('[Webhook] First-contact greeting variable render failed, sending raw template', err);
     }
 
-    const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: greeting }, 'tenant_template');
+    const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: greeting }, 'tenant_template');
     const message = await ctx.prisma.message.create({
       data: {
         conversationId: ctx.conversation.id,
@@ -300,7 +302,7 @@ export async function sendFirstContactGreeting(
       content: storedContent.content,
       includeTypePayload: true,
     });
-    emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', payload);
+    emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', payload);
 
     await deliver(ctx.prisma, ctx.conversation.id, storedContent.content.text as string);
 

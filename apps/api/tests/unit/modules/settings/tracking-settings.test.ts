@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { trackingSettingsSchema } from '#src/modules/settings/settings.routes.js';
+import { trackingSettingsSchema } from '#src/modules/settings/tracking-settings.routes.js';
 
 test('合格的 ID 可以儲存', () => {
   const data = trackingSettingsSchema.parse({ gaId: ' G-ABC123XYZ9 ', metaPixelId: '123456789012345' });

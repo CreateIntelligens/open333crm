@@ -3,6 +3,7 @@
  * provisionTenant 是開通核心（Tenant → system roles → admin agent），
  * 收 transaction client 供 trial 自動開通與平台手動開通共用。
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { seedRolesForTenant } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
@@ -57,6 +58,7 @@ export async function getTenantDetail(prisma: PrismaClient, id: string) {
 /** 平台編輯租戶基本資料：名稱、方案。方案變更需失效權限天花板/租戶方案快取（比照 convertToPaid）。 */
 export async function updateTenant(
   prisma: PrismaClient,
+  redis: Redis,
   id: string,
   input: { name?: string; planSlug?: string },
 ) {
@@ -83,7 +85,7 @@ export async function updateTenant(
   });
 
   if (planChangedTo) {
-    await invalidatePlanPermissions(prisma, planChangedTo);
+    await invalidatePlanPermissions(redis, planChangedTo);
     invalidateTenantPlan(id);
   }
   return updated;

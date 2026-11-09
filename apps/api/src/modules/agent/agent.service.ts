@@ -1,14 +1,17 @@
 import { ALL_CHANNELS, type ChannelAccessLevel, type ChannelGrantScope } from '../../services/channel-visibility.js';
 import { insertAgentChannelAccess } from '../../services/channel-team-access.js';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
-import { PERMISSIONS } from '@open333crm/core';
+import { PERMISSIONS, resolveImplied } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { verifyPassword } from '../../shared/utils/password.js';
 import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 import { loadTenantRole } from '../role/role.service.js';
-import { getEffectivePermissions } from '../../services/permission.service.js';
+import { loadRolePermissions } from '../../services/permission.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { preserveAuditActor } from '../tenant-audit/tenant-audit.service.js';
+import { preserveRequester as preserveExportRequester } from '../data-export/data-export.service.js';
+import { preserveRequester as preserveErasureRequester } from '../data-erasure/data-erasure.service.js';
 
 // 防自鎖的權限碼（registry 動態抽 selfLock:true，比照 role.service.setRolePermissions）：
 // 含 role.manage。用於「自我降級」守門，避免寫死單一權限碼。
@@ -71,8 +74,8 @@ async function assertNoRoleEscalation(
     : null;
   if (assignerRole?.isSystem && assignerRole.slug === 'admin') return;
 
-  const assignerEff = await getEffectivePermissions(ctx.tx, assignerRoleId);
-  const targetEff = await getEffectivePermissions(ctx.tx, targetRoleId);
+  const assignerEff = await loadRolePermissions(ctx.tx, assignerRoleId);
+  const targetEff = await loadRolePermissions(ctx.tx, targetRoleId);
   const escalate = [...targetEff].filter((c) => !assignerEff.has(c));
   if (escalate.length) {
     throw new AppError(
@@ -80,6 +83,42 @@ async function assertNoRoleEscalation(
       'ROLE_ESCALATION',
       403,
       { escalatedPermissions: escalate },
+    );
+  }
+}
+
+/**
+ * 目標成員的權限不可高於操作者（AUDIT RBAC-08、RBAC-09）：改角色、重設密碼、停用、刪除他人前檢查。
+ * 目標目前角色的有效權限含操作者沒有的權限碼時丟 403 TARGET_OUTRANKS_ACTOR，
+ * 否則操作者可以把權限比自己高的人降級，或重設對方密碼後以對方身分登入，等於繞過 ROLE_ESCALATION。
+ * 比照 assertNoRoleEscalation：操作者是租戶 admin system role 時放行；比較的是角色原始權限（含 implies），
+ * 不套方案天花板。
+ *
+ * @param actorRoleId 操作者角色 id（request.agent.roleId）
+ * @param targetRoleId 目標成員目前的角色 id
+ */
+async function assertTargetNotAboveActor(
+  ctx: TenantCtx,
+  actorRoleId: string | null | undefined,
+  targetRoleId: string | null,
+): Promise<void> {
+  const actorRole = actorRoleId
+    ? await ctx.tx.role.findFirst({
+        where: { id: actorRoleId, tenantId: ctx.tenantId },
+        select: { slug: true, isSystem: true },
+      })
+    : null;
+  if (actorRole?.isSystem && actorRole.slug === 'admin') return;
+
+  const actorEff = await loadRolePermissions(ctx.tx, actorRoleId);
+  const targetEff = await loadRolePermissions(ctx.tx, targetRoleId);
+  const exceeded = [...targetEff].filter((c) => !actorEff.has(c));
+  if (exceeded.length) {
+    throw new AppError(
+      `無法對權限比你高的成員執行這個操作（對方多出的權限: ${exceeded.join(', ')}）`,
+      'TARGET_OUTRANKS_ACTOR',
+      403,
+      { exceededPermissions: exceeded },
     );
   }
 }
@@ -114,7 +153,7 @@ async function resolveRoleAssignment(
   const role = input.role ?? fallbackRole;
   const roleId = await resolveRoleId(ctx, role);
   // 該租戶缺對應 system role → 資料未正確初始化，直接擋下而非用 null 覆蓋既有 roleId
-  // （否則成員 roleId 會被清空，getEffectivePermissions(null) 回空集合把人鎖死）。
+  // （否則成員 roleId 會被清空，loadRolePermissions(null) 回空集合把人鎖死）。
   if (!roleId) {
     throw new AppError(
       '租戶缺少對應的系統角色，請重新初始化角色設定',
@@ -246,7 +285,7 @@ export async function updateAgentRole(
 ) {
   const existing = await ctx.tx.agent.findFirst({
     where: { id: agentId, tenantId: ctx.tenantId },
-    select: { role: true },
+    select: { role: true, roleId: true, isActive: true },
   });
 
   if (!existing) {
@@ -265,7 +304,7 @@ export async function updateAgentRole(
   // 的角色，否則該租戶將失去所有能管理角色/權限的人，只能手動改 DB 復原。
   // 僅在「目標即操作者本人」時檢查；改別人一律放行。
   if (selfAgentId && agentId === selfAgentId) {
-    const newEff = await getEffectivePermissions(ctx.tx, roleId);
+    const newEff = await loadRolePermissions(ctx.tx, roleId);
     const retainsSelfLock = SELF_LOCK_CODES.some((c) => newEff.has(c));
     if (!retainsSelfLock) {
       throw new AppError(
@@ -276,6 +315,14 @@ export async function updateAgentRole(
       );
     }
   }
+
+  // 最後一位管理員保護（AUDIT RBAC-08）：新角色不含管理權限、目標是最後一位啟用中的管理員時擋下。
+  // 排在 TARGET_OUTRANKS_ACTOR 之前：主管降級唯一的管理員時，回應指出真正的風險（租戶會沒有管理員）。
+  if (!(await roleIsAdmin(ctx, roleId))) {
+    await assertNotLastActiveAdmin(ctx, existing, 'change_role');
+  }
+  // 目標目前的權限不可高於操作者（AUDIT RBAC-08）
+  await assertTargetNotAboveActor(ctx, assignerRoleId, existing.roleId);
 
   const agent = await ctx.tx.agent.update({
     where: { id: agentId },
@@ -318,14 +365,19 @@ export async function resetAgentPassword(
   ctx: TenantCtx,
   agentId: string,
   passwordHash: string,
+  actorRoleId: string | null | undefined,
 ) {
   const existing = await ctx.tx.agent.findFirst({
     where: { id: agentId, tenantId: ctx.tenantId },
+    select: { id: true, roleId: true },
   });
 
   if (!existing) {
     throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
+
+  // 重設權限比自己高的人的密碼，等於可以用對方身分登入（AUDIT RBAC-09）
+  await assertTargetNotAboveActor(ctx, actorRoleId, existing.roleId);
 
   await ctx.tx.agent.update({
     where: { id: agentId },
@@ -333,40 +385,56 @@ export async function resetAgentPassword(
   });
 }
 
-// admin 判定條件（legacy enum 或 granular system role 其一即算）：last-admin 守門用
-const ADMIN_WHERE = {
-  OR: [
-    { role: 'ADMIN' as const },
-    { roleRef: { is: { slug: 'admin', isSystem: true } } },
-  ],
-};
+/**
+ * 「管理員」依權限判斷（AUDIT RBAC-03）：角色的有效權限（含 implies）含任一 selfLock 權限碼（role.manage）。
+ * 不看舊的角色列舉 role：列舉是 ADMIN、角色已改成低權限自訂角色的成員不算；
+ * 持 role.manage 的自訂角色算（他能把人改回管理員，租戶不會被鎖死）。
+ */
+async function roleIsAdmin(ctx: TenantCtx, roleId: string | null): Promise<boolean> {
+  const eff = await loadRolePermissions(ctx.tx, roleId);
+  return SELF_LOCK_CODES.some((c) => eff.has(c));
+}
+
+/** 本租戶的管理員角色 id（有效權限含 selfLock 權限碼，見 roleIsAdmin） */
+async function listAdminRoleIds(ctx: TenantCtx): Promise<string[]> {
+  const roles = await ctx.tx.role.findMany({
+    where: { tenantId: ctx.tenantId },
+    select: { id: true, permissions: { select: { permissionCode: true } } },
+  });
+  return roles
+    .filter((r) => {
+      const eff = resolveImplied(r.permissions.map((p) => p.permissionCode));
+      return SELF_LOCK_CODES.some((c) => eff.has(c));
+    })
+    .map((r) => r.id);
+}
+
+const LAST_ADMIN_ACTION_LABEL = {
+  deactivate: '停用',
+  purge: '刪除',
+  change_role: '改成沒有管理權限的角色',
+} as const;
 
 /**
- * Last-admin 守門：目標若為「啟用中的管理員」且是租戶最後一位，擋下停用/刪除。
+ * Last-admin 守門：目標若為「啟用中的管理員」且是租戶最後一位，擋下停用、刪除與降級。
  * 否則租戶將失去所有管理權限（無人能再指派角色/調整設定），只能手動改 DB 復原。
- * 目標已停用（isActive=false）時不影響啟用中 admin 數，不在此擋。
+ * 目標已停用（isActive=false）時不影響啟用中管理員數，不在此擋。
  */
 async function assertNotLastActiveAdmin(
   ctx: TenantCtx,
-  target: { isActive: boolean; role: string; roleId: string | null },
+  target: { isActive: boolean; roleId: string | null },
+  action: keyof typeof LAST_ADMIN_ACTION_LABEL,
 ): Promise<void> {
   if (!target.isActive) return;
-  const targetIsAdmin =
-    target.role === 'ADMIN' ||
-    (target.roleId
-      ? Boolean(await ctx.tx.role.findFirst({
-          where: { id: target.roleId, tenantId: ctx.tenantId, slug: 'admin', isSystem: true },
-          select: { id: true },
-        }))
-      : false);
-  if (!targetIsAdmin) return;
+  const adminRoleIds = await listAdminRoleIds(ctx);
+  if (!target.roleId || !adminRoleIds.includes(target.roleId)) return;
 
   const activeAdmins = await ctx.tx.agent.count({
-    where: { tenantId: ctx.tenantId, isActive: true, ...ADMIN_WHERE },
+    where: { tenantId: ctx.tenantId, isActive: true, roleId: { in: adminRoleIds } },
   });
   if (activeAdmins <= 1) {
     throw new AppError(
-      '不可停用/刪除租戶最後一位啟用中的管理員',
+      `不能把租戶最後一位啟用中的管理員${LAST_ADMIN_ACTION_LABEL[action]}，請先讓另一位成員成為管理員`,
       'LAST_ADMIN_PROTECTED',
       422,
     );
@@ -376,6 +444,7 @@ async function assertNotLastActiveAdmin(
 export async function deactivateAgent(
   ctx: TenantCtx,
   agentId: string,
+  actorRoleId: string | null | undefined,
 ) {
   const existing = await ctx.tx.agent.findFirst({
     where: { id: agentId, tenantId: ctx.tenantId },
@@ -387,7 +456,9 @@ export async function deactivateAgent(
   }
 
   // 防呆：不可停用最後一位啟用中的管理員（租戶會被鎖死）
-  await assertNotLastActiveAdmin(ctx, existing);
+  await assertNotLastActiveAdmin(ctx, existing, 'deactivate');
+  // 不可停用權限比自己高的成員（AUDIT RBAC-09）
+  await assertTargetNotAboveActor(ctx, actorRoleId, existing.roleId);
 
   await ctx.tx.agent.update({
     where: { id: agentId },
@@ -403,25 +474,42 @@ export async function deactivateAgent(
  * RESTRICT 的關聯（notifications / cli_sessions / passkey_credentials），
  * 否則外鍵會擋下刪除；CASCADE（agent_team_members）與 SET NULL（cases /
  * conversations / messages 等指派欄位）由資料庫自理，歷史資料保留。
+ * 稽核與資料匯出、刪除請求的操作者欄位也是 SET NULL，刪除前先寫入名稱與 email 快照（issue #414）。
  * 全程在呼叫端開的交易內執行，任一步失敗則整體回滾。
+ *
+ * @returns 被刪成員的名稱，供 flow 寫進 agent.purge 稽核的 payload（不含 email）
  */
-export async function purgeAgent(ctx: TenantCtx, agentId: string) {
+export async function purgeAgent(
+  ctx: TenantCtx,
+  agentId: string,
+  actorRoleId: string | null | undefined,
+): Promise<{ name: string }> {
   const { tx } = ctx;
   const existing = await tx.agent.findFirst({
     where: { id: agentId, tenantId: ctx.tenantId },
-    select: { id: true, isActive: true, role: true, roleId: true },
+    select: { id: true, isActive: true, role: true, roleId: true, name: true, email: true },
   });
   if (!existing) {
     throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
   // 防呆：不可刪除最後一位啟用中的管理員（租戶會被鎖死）
-  await assertNotLastActiveAdmin(ctx, existing);
+  await assertNotLastActiveAdmin(ctx, existing, 'purge');
+  // 不可刪除權限比自己高的成員（AUDIT RBAC-09）
+  await assertTargetNotAboveActor(ctx, actorRoleId, existing.roleId);
   // 先清 RESTRICT 關聯（有資料會擋刪）
   await tx.notification.deleteMany({ where: { agentId } });
   await tx.cliSession.deleteMany({ where: { agentId } });
   await tx.passkeyCredential.deleteMany({ where: { agentId } });
+  // 刪除後 actorId、requestedBy 會被清成空值，先保留操作者快照。
+  // 先寫請求、再寫稽核：資料刪除 worker 的交易鎖住請求列後才寫完成稽核，這裡更新請求時會等它 commit，
+  // 之後寫稽核快照才看得到那筆完成稽核
+  const snapshot = { agentId, name: existing.name, email: existing.email };
+  await preserveExportRequester(ctx, snapshot);
+  await preserveErasureRequester(ctx, snapshot);
+  await preserveAuditActor(ctx, snapshot);
   // 再刪 Agent（agent_team_members 會 CASCADE、cases/conversations/messages 等 SET NULL）
   await tx.agent.delete({ where: { id: agentId } });
+  return { name: existing.name };
 }
 
 /** 成員列表的欄位（含角色與團隊）。啟用中與停用的列表共用 */

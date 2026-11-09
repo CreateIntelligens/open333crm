@@ -7,7 +7,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod/v3';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { storeLoginLookups } from '../auth/store-account-login.js';
 import {
   isExpiredStoreToken,
@@ -55,7 +54,7 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
   const deps = (): StoreConsoleFlowDeps => ({
     prisma: app.prisma,
     io: app.io,
-    store: getBindingStore(),
+    store: app.redis,
     resolveTenant: lookups.resolveTenant,
   });
 

@@ -11,6 +11,7 @@ import { notFound } from "#src/shared/messages/resource.js";
 import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from "#src/modules/mcp/mcp.constants.js";
 
 import { test } from 'vitest';
+import { disabledAiPrivacy } from "../../../support/ai-privacy.js";
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const TENANT_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -74,6 +75,7 @@ function createPrismaMock() {
     material: null,
   };
   return {
+    ...disabledAiPrivacy,
     agent: {
       findFirst: async () => ({
         id: AGENT_ID,

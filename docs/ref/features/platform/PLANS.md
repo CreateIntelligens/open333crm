@@ -20,6 +20,23 @@
 
 `slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。它只出現在平台後台的方案頁與排序，不會回傳給租戶端，系統也不產生帳單，見 `../../system/AUDIT.md` 的 PLAN-10。
 
+## seed 建立的五個方案
+
+`packages/database/prisma/seed-data/plans.ts` 定義 `trial`、`light`、`standard`、`professional`、`enterprise` 五個方案。`seedPlans()` 只建立資料庫還沒有的方案（`upsert` 的 `update` 是空物件，與 `seedModelPricing()` 相同寫法），已存在的方案不更新。五個方案的 `features` 都含 `channels`，所以每個方案的租戶都能檢視與建立渠道。`trial`、`light` 原本不含 `channels`，issue #411 補上，既有資料由 migration `20261103120000_enable_channels_on_trial_light` 更新。
+
+seed 方案的 `limits` 沒有 `maxChannels`（渠道數無上限），`allowedChannelTypes` 也不寫入（預設 `[]`，不限制類型），見 AUDIT PLAN-07。
+
+API 容器每次啟動都跑 seed（`apps/api/docker-entrypoint.sh`）。平台後台對方案的修改（`name`、`features`、`limits`、`priceMonthly`、`allowedChannelTypes`、`permissionOverrides`、`isActive`）在部署或重啟後保留。issue #441 之前，seed 以 upsert 寫入，每次部署把前四個欄位寫回 `plans.ts` 的值。
+
+**程式要改既有方案的內容時**，只改 `plans.ts` 不會影響既有環境（它只用在新建的資料庫）。另寫一支一次性的資料 migration：
+
+- 只改目標方案（以 `slug` 篩選）的目標欄位，不整列覆寫。
+- 加上「還沒改過」的條件，可重複執行，例如 `AND NOT (features ? 'channels')`。
+- 檔頭寫明原因、權限快取何時生效與回滾 SQL。
+- 同時更新 `plans.ts` 的 `SEED_PLANS`，讓新環境與既有環境一致。
+
+範例：`packages/database/prisma/migrations/20261103120000_enable_channels_on_trial_light`。改 `features` 或 `permissionOverrides` 後，既有租戶的有效權限在 Redis `perms:tenant:*` 快取到期（最多 10 分鐘）才生效。平台若已改過該欄位，migration 會蓋掉平台的值，寫之前先確認正式環境的現況。
+
 ## 名稱與實際行為不符的欄位
 
 | 欄位 | 看名字會以為 | 實際上 |

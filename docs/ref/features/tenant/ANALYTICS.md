@@ -36,7 +36,9 @@ CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`cr
 
 **即時計算。** 每次查詢都直接統計 `cases`、`messages`、`conversations`、`contacts` 等資料表，沒有快取，也不讀 `DailyStat`。資料量大時，報表的查詢時間會跟著增加。工單報表的匯出與 CSAT 報表讀出期間內的所有工單，見 `../../system/AUDIT.md` 的 ANA-02。
 
-**SLA 達成率**是已解決、而且 `resolvedAt` 不晚於 `slaDueAt` 的工單比例。沒有 SLA 期限的工單不計入。
+**已解決**看工單的 `resolvedAt`：總覽的已解決數、SLA 達成率、平均解決時間、案件趨勢的「已解決」、客服績效與我的績效都一樣。工單轉成「已解決」時寫入，從已解決轉成已關閉時保留；直接關閉（沒有經過已解決）的工單沒有 `resolvedAt`，不算已解決；重開時清除，重開的工單不再算已解決（#417，規則見[工單](./CASES.md)的「解決時間與關閉時間」）。2026-11-04 之前的資料沒有補值。案件趨勢的「已解決」依工單的**建立日**分組，是那天建立、目前已解決的工單數，不是那天解決的數量。
+
+**SLA 達成率**是已解決、而且 `resolvedAt` 不晚於 `slaDueAt` 的工單比例。沒有 SLA 期限的工單不計入。案件報表的 SLA 違規表看的是狀態：不是 `RESOLVED`、`CLOSED`，而且已過 `slaDueAt` 的工單，所以直接關閉的逾期工單不列為違規。
 
 **平均首次回應時間**取 `Case.firstResponseAt` 不為空的工單計算。客服在工單關聯的對話第一次送出訊息時寫入這個欄位，AI 與系統自動回覆不算。沒有關聯對話的工單不會有這個值，因此不計入，見 `../../system/AUDIT.md` 的 SLA-05。
 
@@ -56,7 +58,7 @@ CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`cr
 | 其他報表 | `analytics.view` |
 | `POST /analytics/export` | `analytics.export` |
 
-側欄的「總覽」要 `analytics.view`，「我的績效」要 `analytics.view.self`；兩個都沒有時不顯示「報表」。「匯出 CSV」按鈕只對有 `analytics.export` 的成員顯示，匯出的 CSV 以 UTF-8 BOM 開頭，Excel 開啟中文不會亂碼。
+側欄的「總覽」要 `analytics.view`，「我的績效」要 `analytics.view.self`；兩個都沒有時不顯示「報表」。「匯出 CSV」按鈕只對有 `analytics.export` 的成員顯示，匯出的 CSV 以 UTF-8 BOM 開頭，Excel 開啟中文不會亂碼。每一欄（含標題列）都經過 `@open333crm/shared` 的 `csvRow()`：含逗號、引號、換行的欄位以雙引號包住，以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`，Excel 不會當成公式；數字欄位照原樣輸出（#423）。
 
 報表頁的自訂日期以瀏覽器的本地時區解析，迄日算到當天 23:59:59。
 

@@ -1,9 +1,9 @@
 import { logger } from '@open333crm/core';
 import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { eventBus } from '../../events/event-bus.js';
-import { recordCsatScore } from '../csat/csat.service.js';
+import { recordCsatScore, relabelCsatReplyMessage } from '../csat/csat.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
+import { recordKbFeedbackFlow } from '../knowledge/knowledge.flow.js';
 import { addTagToTargetFlow } from '../tag/tag.flow.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig } from './inbound-message.types.js';
@@ -11,8 +11,9 @@ import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
-  emitToConversationAndTenant,
+  emitToConversationChannel,
 } from './inbound-socket-presenter.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export async function runInboundPostbackInterceptors(ctx: InboundMessageContext): Promise<boolean> {
   // 點擊貼標：附加語意，不短路（貼完標仍讓該 postback 走後續 CSAT/KB/handoff 與正常訊息流程）。
@@ -50,14 +51,35 @@ async function handleTagOnClick(ctx: InboundMessageContext): Promise<void> {
 }
 
 async function handleCsatResponse(ctx: InboundMessageContext): Promise<boolean> {
-  const csatMatch = ctx.textContent.match(/^csat:(\d):([a-f0-9-]+)$/i)
-    || ctx.postbackData.match(/^csat:(\d):([a-f0-9-]+)$/i);
+  const csatPattern = /^csat:(\d):([a-f0-9-]+)$/i;
+  const csatMatch = ctx.textContent.match(csatPattern) || ctx.postbackData.match(csatPattern);
 
   if (!csatMatch) return false;
 
   const score = parseInt(csatMatch[1], 10);
   const csatCaseId = csatMatch[2];
   if (score < 1 || score > 5) return false;
+
+  // 收件匣顯示客人在 LINE 上看到的「我的評分：N 分」，不顯示 csat: 代碼（issue #444）。
+  // 判斷已經用 ctx.textContent／ctx.postbackData 做完，只改寫存下來的訊息。
+  // LINE 按鈕的 postback 客人看到的就是 displayText，先改寫，接著的問卷與感謝訊息推送時收件匣就是文字；
+  // 客人手打的代碼要等評分確實記錄才改寫，偽造或別人工單的代碼維持原文（PR #455 審查）
+  const fromButton = csatPattern.test(ctx.postbackData);
+  const relabel = async () => {
+    if (!ctx.message) return;
+    try {
+      await relabelCsatReplyMessage({ tx: ctx.prisma, tenantId: ctx.tenantId }, {
+        messageId: ctx.message.id,
+        messageMetadata: ctx.message.metadata,
+        score,
+        postbackData: csatMatch[0],
+      });
+    } catch (err) {
+      // 改寫失敗只影響顯示，評分照常記錄
+      logger.error('[Webhook] CSAT 評分訊息改寫失敗:', err);
+    }
+  };
+  if (fromButton) await relabel();
 
   // 只接受同租戶、傳訊者本人的工單；不符時仍攔截，避免偽造的評分落入 AI 與自動化（AUDIT RLS-06）
   const recorded = ctx.contactId
@@ -66,6 +88,7 @@ async function handleCsatResponse(ctx: InboundMessageContext): Promise<boolean> 
       contactId: ctx.contactId,
     })
     : false;
+  if (recorded && !fromButton) await relabel();
   if (!recorded) {
     logger.warn(
       `[Webhook] CSAT 未記錄：工單不存在、已評分，或不屬於此租戶與聯絡人 tenant=${ctx.tenantId} contact=${ctx.contactId ?? '-'} case=${csatCaseId}`,
@@ -83,7 +106,7 @@ async function handleKbFeedback(ctx: InboundMessageContext): Promise<boolean> {
   const articleId = fbMatch[2];
   const fbMessageId = fbMatch[3];
   try {
-    await recordKbFeedback(ctx.prisma, ctx.tenantId, {
+    await recordKbFeedbackFlow({ prisma: ctx.prisma }, ctx.tenantId, {
       rating,
       articleId,
       messageId: fbMessageId,
@@ -117,7 +140,7 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       });
     } else if (ctx.conversation.status === 'BOT_HANDLED') {
       const reason = 'user_requested_handoff';
-      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '使用者主動點按按鈕轉接人工客服' }, 'system_template');
+      const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), { text: '使用者主動點按按鈕轉接人工客服' }, 'system_template');
       const systemMessage = await ctx.prisma.message.create({
         data: {
           conversationId: ctx.conversation.id,
@@ -156,15 +179,16 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       const convPayload: ConversationUpdatedPayload = buildConversationUpdatedPayload(updatedConversation, {
         handoffReason: reason,
       });
-      emitToConversationAndTenant(
+      emitToConversationChannel(
         ctx.io,
-        ctx.conversation.id,
         ctx.tenantId,
+        ctx.conversation,
         'conversation.updated',
         convPayload,
       );
 
-      ctx.io.to(`conversation:${ctx.conversation.id}`).emit('message.new', buildMessageNewPayload(systemMessage, {
+      // 與其他 message.new 相同送到渠道房間（issue #427、PR #438 審查）
+      emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', buildMessageNewPayload(systemMessage, {
         includeMetadata: true,
         includeSenderNull: true,
       }));

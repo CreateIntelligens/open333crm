@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod/v3';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
@@ -31,11 +31,15 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { withTenant, type TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
-import { ALL_CHANNELS, resolveChannelVisibility, assertChannelVisible } from '../../services/channel-visibility.js';
+import {
+  ALL_CHANNELS,
+  resolveChannelVisibility,
+  assertChannelVisible,
+  type ChannelAccessLevel,
+} from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { resolveBindingHandle } from '../identity-binding/binding-links.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { checkLineIdToken } from '../coupon/line-id-token.js';
 import { getLiffTestResultFlow, startLiffTestFlow, type LiffTestDeps } from './liff-test.flow.js';
 import { liffTestIdSchema } from './liff-test-public.routes.js';
@@ -243,6 +247,19 @@ const channelIdParamsSchema = z.object({
   id: z.string().uuid('渠道 id 格式錯誤'),
 });
 
+/**
+ * 單筆渠道路由的可見範圍守門（issue #408）：排在 requirePermission 之後。
+ * 看不到的渠道（含不存在、已停用）回 404，與渠道列表一致；看得到但層級不足回 403。
+ * 層級跟著權限碼走：channel.view 的讀取要 read_only；channel.update／channel.delete 的管理操作要 full。
+ * 總店（channel.view_all）不受限制。
+ */
+function requireVisibleChannel(level: ChannelAccessLevel) {
+  return async (request: FastifyRequest) => {
+    const { id } = channelIdParamsSchema.parse(request.params);
+    await assertChannelVisible(request, id, level);
+  };
+}
+
 const bindingHandleSchema = z.object({
   bindingHandle: z
     .string()
@@ -286,7 +303,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
     prisma: fastify.prisma,
     checkIdToken: checkLineIdToken,
     ...opts.liffTest,
-    store: opts.liffTest?.store ?? getBindingStore(),
+    store: opts.liffTest?.store ?? fastify.redis,
   });
 
   // All routes require authentication
@@ -334,12 +351,14 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
       payload: { channelType: data.channelType, displayName: data.displayName },
       ip: request.ip,
     });
+    // 已連線成員的渠道房間依新的渠道與授權重新計算（issue #427）
+    await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.status(201).send(success(channel));
   });
 
   // GET /api/v1/channels/:id
-  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] }, async (request, reply) => {
     const channel = await getChannel(
       request.tenantPrisma,
       request.params.id,
@@ -350,7 +369,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   });
 
   // PATCH /api/v1/channels/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const parsed = updateChannelSchema.parse(request.body);
     const data = { ...parsed, credentials: stripSystemManagedCredentials(parsed.credentials) };
 
@@ -370,12 +389,14 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
         request.log.warn({ err: err instanceof Error ? err.message : err, channelId: request.params.id }, '更新權杖後自動驗證失敗'),
       );
     }
+    // 停用、重新啟用改變可見渠道：已連線成員的渠道房間重新計算（issue #427）
+    if (data.isActive !== undefined) await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.send(success(channel));
   });
 
   // DELETE /api/v1/channels/:id
-  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.delete') }, async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('channel.delete'), requireVisibleChannel('full')] }, async (request, reply) => {
     const result = await deleteChannel(
       request.tenantPrisma,
       request.params.id,
@@ -391,12 +412,14 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
       targetId: request.params.id,
       ip: request.ip,
     });
+    // 已連線成員的渠道房間依新的渠道與授權重新計算（issue #427）
+    await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.send(success(result));
   });
 
   // POST /api/v1/channels/:id/verify
-  fastify.post<{ Params: { id: string } }>('/:id/verify', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/verify', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const result = await verifyChannel(
       request.tenantPrisma,
       request.params.id,
@@ -407,7 +430,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   });
 
   // POST /api/v1/channels/:id/liff-test — 產生 LIFF 設定的測試連結（change add-liff-config-test）
-  fastify.post<{ Params: { id: string } }>('/:id/liff-test', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/liff-test', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     return reply.send(success(await startLiffTestFlow(liffTestDeps(), request.agent.tenantId, id)));
   });
@@ -415,7 +438,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   // GET /api/v1/channels/:id/liff-test/:testId — 查詢手機回報的測試結果
   fastify.get<{ Params: { id: string; testId: string } }>(
     '/:id/liff-test/:testId',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const { id, testId } = z.object({ id: z.string().uuid(), testId: liffTestIdSchema }).parse(request.params);
       return reply.send(success(await getLiffTestResultFlow(liffTestDeps(), request.agent.tenantId, id, testId)));
@@ -423,7 +446,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   );
 
   // POST /api/v1/channels/webhook-base-url — 批次更新所有渠道的 Webhook URL
-  fastify.post('/webhook-base-url', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  // 改寫的是全租戶每個渠道（含分店看不到的），只限總店（channel.view_all）。issue #408
+  fastify.post('/webhook-base-url', { preHandler: [requirePermission('channel.update'), requirePermission('channel.view_all')] }, async (request, reply) => {
     const data = updateWebhookBaseUrlSchema.parse(request.body);
 
     const result = await updateWebhookBaseUrl(
@@ -436,7 +460,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   });
 
   // POST /api/v1/channels/:id/setup-webhook — LINE auto webhook setup
-  fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const result = await autoSetupLineWebhook(
       request.tenantPrisma,
       request.params.id,
@@ -446,9 +470,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   });
 
   // GET /api/v1/channels/:id/status — channel health status
-  fastify.get<{ Params: { id: string } }>('/:id/status', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
-    // 與渠道列表一致：看不到的渠道視為不存在（404）
-    await assertChannelVisible(request, request.params.id, 'read_only');
+  // 與渠道列表一致：看不到的渠道視為不存在（404）
+  fastify.get<{ Params: { id: string } }>('/:id/status', { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] }, async (request, reply) => {
     const channel = await request.tenantPrisma.channel.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });
@@ -478,8 +501,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
     }));
   });
 
-  // GET /api/v1/channels/:id/embed-code — WebChat embed code
-  fastify.get<{ Params: { id: string } }>('/:id/embed-code', async (request, reply) => {
+  // GET /api/v1/channels/:id/embed-code — WebChat embed code（權限註冊表寫明 channel.view 涵蓋 embed-code）
+  fastify.get<{ Params: { id: string } }>('/:id/embed-code', { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] }, async (request, reply) => {
     const result = await generateEmbedCode(
       request.tenantPrisma,
       request.params.id,
@@ -491,7 +514,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   // POST /api/v1/channels/:id/chatbox-link — WebChat standalone page link
   fastify.post<{ Params: { id: string }; Body: unknown }>(
     '/:id/chatbox-link',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const body = chatboxLinkSchema.parse(request.body);
       const channel = await request.tenantPrisma.channel.findFirst({
@@ -530,7 +553,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   // GET /api/v1/channels/:id/binding-handle
   fastify.get<{ Params: { id: string } }>(
     '/:id/binding-handle',
-    { preHandler: requirePermission('channel.view') },
+    { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] },
     async (request, reply) => {
       const { id } = channelIdParamsSchema.parse(request.params);
       const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
@@ -541,7 +564,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   // PATCH /api/v1/channels/:id/binding-handle
   fastify.patch<{ Params: { id: string }; Body: unknown }>(
     '/:id/binding-handle',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const { id } = channelIdParamsSchema.parse(request.params);
       const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
@@ -568,7 +591,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   // PATCH /api/v1/channels/:id/chatbox-theme — WebChat chatbox public theme
   fastify.patch<{ Params: { id: string }; Body: unknown }>(
     '/:id/chatbox-theme',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const body = chatboxThemeSchema.parse(request.body);
       const channel = await getTenantWebchatChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
@@ -601,7 +624,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   // POST /api/v1/channels/:id/chatbox-theme/background — upload tenant-owned background image
   fastify.post<{ Params: { id: string } }>(
     '/:id/chatbox-theme/background',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const channel = await getTenantWebchatChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
       const file = await request.file();
@@ -646,6 +669,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   );
 
   // ── 渠道↔團隊指派（CM-173，總店/分店渠道級可見性）──────────────────────
+  // 不套用操作者的渠道可見範圍：channel.assign_team 本來就是全租戶的渠道指派權
+  // （與 GET /assignable、resolveChannelGrantScope 一致），否則持有者無法把分店渠道指派給團隊。issue #408
 
   // GET /api/v1/channels/:channelId/teams — 列出某渠道被指派給哪些團隊
   fastify.get<{ Params: { channelId: string } }>(
@@ -688,6 +713,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
         payload: { teamId: body.teamId, accessLevel: body.accessLevel },
         ip: request.ip,
       });
+      // 已連線成員的渠道房間依新的團隊授權重新計算（issue #427）
+      await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
       return reply.status(201).send(success(row));
     },
@@ -718,6 +745,8 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
         payload: { teamId: request.params.teamId },
         ip: request.ip,
       });
+      // 已連線成員的渠道房間依撤銷後的團隊授權重新計算（issue #427）
+      await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
       return reply.status(204).send();
     },

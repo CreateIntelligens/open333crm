@@ -22,6 +22,7 @@ import { importCodes, previewImport, removeAvailableCode } from '#src/modules/co
 import { getCouponStats, exportInstancesCsv, listInstances } from '#src/modules/coupon/coupon-stats.service.js';
 import { countInstances } from '#src/modules/coupon/coupon-export.service.js';
 import { ctxOf, runInTenant } from '#tests/support/tenant-run.js';
+import { parseCsv } from '#tests/support/parse-csv.js';
 
 const owner = new PrismaClient();
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
@@ -341,10 +342,10 @@ it('CSV 欄位含逗號時不破壞格式', async () => {
   await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), c.id, 'ACTIVE'));
   await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contactA] }));
   const csv = await exportInstancesCsv((fn) => runInTenant(prisma, tenantId, fn), c.id);
-  const lines = csv.split('\n');
-  // 每列欄位數須一致（用引號包住後，逗號不會被誤判為分隔）
-  const countCells = (line: string) => (line.match(/","/g) ?? []).length;
-  assert.equal(countCells(lines[1]), countCells(lines[0]), '資料列欄位數與標題列不符');
+  // 每列欄位數須一致（含逗號的欄位以引號包住，逗號不會被誤判為分隔）。
+  // #423 起只有需要時才加引號，改用 CSV 解析數欄數，不再數 `","`
+  const rows = parseCsv(csv.slice(1).trim());
+  assert.equal(rows[1].length, rows[0].length, '資料列欄位數與標題列不符');
 });
 
 // ── 租戶隔離 ──

@@ -94,3 +94,26 @@ test('編輯時改了角色才送角色', async () => {
   fireEvent.click(within(dialog).getByRole('button', { name: '儲存' }));
   await waitFor(() => assert.ok(api.patch.mock.calls.some(([url]) => url === '/agents/a1/role')));
 });
+
+// AUDIT RBAC-08：改角色被後端拒絕時，編輯對話框要顯示清楚的中文原因，不能只寫 log
+const apiError = (code: string, message: string) => ({ response: { data: { error: { code, message } } } });
+
+for (const [code, expected] of [
+  ['TARGET_OUTRANKS_ACTOR', '對方的權限比您高'],
+  ['LAST_ADMIN_PROTECTED', '最後一位管理員'],
+  ['SELF_LOCK', '管理角色權限'],
+] as const) {
+  test(`改角色被拒（${code}）時對話框顯示中文原因且不關閉`, async () => {
+    auth.perms = new Set(['agent.view', 'agent.role.assign']);
+    mockApi();
+    api.patch.mockRejectedValue(apiError(code, 'backend message'));
+    render(<AgentManagement />);
+    await screen.findByText('王小明');
+    fireEvent.click(screen.getByRole('button', { name: /編輯/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'r-admin' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '儲存' }));
+    assert.ok(await within(dialog).findByText((text) => text.includes(expected)));
+    assert.ok(screen.queryByRole('dialog') !== null);
+  });
+}

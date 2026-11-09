@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { ALL_CHANNELS, channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { channelDisplayName, csvRow } from '@open333crm/shared';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -764,11 +765,7 @@ async function buildCsv(
   switch (reportType) {
     case 'overview': {
       const data = await getOverviewStats(ctx, accessible, from, to);
-      const headers = Object.keys(data).join(',');
-      const values = Object.values(data)
-        .map((v) => (v === null ? '' : String(v)))
-        .join(',');
-      return `${headers}\n${values}`;
+      return `${csvRow(Object.keys(data))}\n${csvRow(Object.values(data))}`;
     }
 
     case 'cases': {
@@ -780,11 +777,11 @@ async function buildCsv(
         },
         orderBy: { createdAt: 'desc' },
       });
-      const headers = 'ID,標題,狀態,優先級,分類,指派客服,聯絡人,建立時間,解決時間,CSAT';
+      const headers = csvRow(['ID', '標題', '狀態', '優先級', '分類', '指派客服', '聯絡人', '建立時間', '解決時間', 'CSAT']);
       const rows = cases.map((c) =>
-        [
+        csvRow([
           c.id,
-          `"${(c.title || '').replace(/"/g, '""')}"`,
+          c.title || '',
           c.status,
           c.priority,
           c.category || '',
@@ -793,16 +790,16 @@ async function buildCsv(
           c.createdAt.toISOString(),
           c.resolvedAt?.toISOString() || '',
           c.csatScore ?? '',
-        ].join(','),
+        ]),
       );
       return `${headers}\n${rows.join('\n')}`;
     }
 
     case 'agents': {
       const agents = await getAgentPerformance(ctx, accessible, from, to);
-      const headers = '客服ID,姓名,角色,處理案件數,已解決,平均首次回應(分),平均解決時間(分),CSAT,SLA達成率(%)';
+      const headers = csvRow(['客服ID', '姓名', '角色', '處理案件數', '已解決', '平均首次回應(分)', '平均解決時間(分)', 'CSAT', 'SLA達成率(%)']);
       const rows = agents.map((a) =>
-        [
+        csvRow([
           a.agentId,
           a.name,
           a.role,
@@ -812,14 +809,14 @@ async function buildCsv(
           a.avgResolutionMinutes ?? '',
           a.csatAvg ?? '',
           a.slaAchievementRate ?? '',
-        ].join(','),
+        ]),
       );
       return `${headers}\n${rows.join('\n')}`;
     }
 
     case 'channels': {
       const data = await getChannelAnalytics(ctx, accessible, from, to);
-      const headers = '渠道,訊息數,對話數';
+      const headers = csvRow(['渠道', '訊息數', '對話數']);
       const channelMap = new Map<string, { msgs: number; convs: number }>();
       for (const m of data.messagesByChannel) {
         channelMap.set(m.name, { msgs: m.value, convs: 0 });
@@ -829,8 +826,9 @@ async function buildCsv(
         existing.convs = c.value;
         channelMap.set(c.name, existing);
       }
+      // 渠道欄寫顯示名稱（Instagram），不寫系統代號（THREADS）
       const rows = Array.from(channelMap.entries()).map(
-        ([name, v]) => `${name},${v.msgs},${v.convs}`,
+        ([name, v]) => csvRow([channelDisplayName(name), v.msgs, v.convs]),
       );
       return `${headers}\n${rows.join('\n')}`;
     }

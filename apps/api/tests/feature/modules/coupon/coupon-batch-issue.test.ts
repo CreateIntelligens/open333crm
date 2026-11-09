@@ -44,6 +44,17 @@ registerChannelPlugin({
     return { success: true };
   },
 } as unknown as ChannelPlugin);
+// 網站聊天室的外掛與正式的一樣只回成功（change reject-webchat-push-415）：送出就記下，測試確認沒有呼叫
+registerChannelPlugin({
+  channelType: 'WEBCHAT',
+  verifySignature: () => true,
+  parseWebhook: async () => [],
+  getProfile: async (uid: string) => ({ uid, displayName: uid }),
+  sendMessage: async (to: string, payload: OutboundPayload) => {
+    sent.push({ to, payload });
+    return { success: true };
+  },
+} as unknown as ChannelPlugin);
 
 const store = memBindingStore();
 let app: FastifyInstance;
@@ -206,6 +217,64 @@ describe('從券詳情頁批次發券', () => {
       assert.equal(await broadcastCount(), before, '不建立廣播');
     } finally {
       await owner.channel.delete({ where: { id: other.id } });
+    }
+  });
+
+  it('選網站聊天室渠道發券', async () => {
+    // issue #415：網站聊天室沒有主動推送，批次發券原本回成功、發券數照算，顧客收不到
+    const webchat = await owner.channel.create({
+      data: { tenantId: T, channelType: 'WEBCHAT', displayName: `${MARK}-WEBCHAT`, isActive: true, credentialsEncrypted: 'x' },
+    });
+    await owner.agentChannelAccess.create({ data: { channelId: webchat.id, agentId: agent.id, accessLevel: 'reply_only' } });
+    try {
+      const contact = await owner.contact.create({ data: { tenantId: T, displayName: `${MARK}-web-a` } });
+      await owner.channelIdentity.create({
+        data: { contactId: contact.id, channelId: webchat.id, channelType: 'WEBCHAT', uid: `${MARK}-web-a`, profileName: 'web-a' },
+      });
+      const before = await broadcastCount();
+      const res = await post({ channelId: webchat.id, targetType: 'contacts', contactIds: [contact.id] });
+      assert.equal(res.statusCode, 400, res.body);
+      assert.equal(res.json().error.code, 'CHANNEL_PUSH_NOT_SUPPORTED');
+      assert.match(res.json().error.message, /網站聊天室/);
+      assert.equal(await broadcastCount(), before, '不建立廣播');
+      assert.equal(await owner.couponInstance.count({ where: { tenantId: T, couponId, contactId: contact.id } }), 0, '沒有發出任何券');
+    } finally {
+      await owner.agentChannelAccess.deleteMany({ where: { channelId: webchat.id } });
+      await owner.channelIdentity.deleteMany({ where: { channelId: webchat.id } });
+      await owner.channel.delete({ where: { id: webchat.id } });
+    }
+  });
+
+  it('排程到期的網站聊天室附券廣播', async () => {
+    // 修正前建立的附券廣播：排程或 coupon-broadcast job 執行時標失敗、寫原因，不呼叫渠道也不發券
+    const webchat = await owner.channel.create({
+      data: { tenantId: T, channelType: 'WEBCHAT', displayName: `${MARK}-WEBCHAT-old`, isActive: true, credentialsEncrypted: 'x' },
+    });
+    try {
+      const contact = await owner.contact.create({ data: { tenantId: T, displayName: `${MARK}-web-old` } });
+      await owner.channelIdentity.create({
+        data: { contactId: contact.id, channelId: webchat.id, channelType: 'WEBCHAT', uid: `${MARK}-web-old`, profileName: 'web-old' },
+      });
+      const old = await owner.broadcast.create({
+        data: {
+          tenantId: T, name: `${MARK}-舊的網站聊天室廣播`, channelId: webchat.id, targetType: 'contacts',
+          targetConfig: { contactIds: [contact.id] }, status: 'scheduled', scheduledAt: new Date(Date.now() - 60_000),
+          createdById: agent.id, couponId, couponIssuedVia: 'batch',
+        },
+      });
+      const result = await runCouponBroadcast({ prisma, io: testIo, store, webBaseUrl: 'https://crm.example.com', visibilityOf: async () => ALL_CHANNELS }, T, old.id);
+      assert.equal(result.status, 'failed');
+      const row = await owner.broadcast.findUniqueOrThrow({ where: { id: old.id } });
+      assert.equal(row.status, 'failed');
+      assert.equal(row.failureCode, 'CHANNEL_PUSH_NOT_SUPPORTED');
+      assert.match(row.failureReason ?? '', /網站聊天室/, '寫入看得到的原因');
+      assert.equal(row.successCount, 0, '沒有回報成功');
+      assert.equal(sent.filter((s) => s.to === `${MARK}-web-old`).length, 0, '沒有呼叫渠道');
+      assert.equal(await owner.couponInstance.count({ where: { tenantId: T, couponId, contactId: contact.id } }), 0, '沒有發出任何券');
+    } finally {
+      await owner.broadcast.deleteMany({ where: { tenantId: T, channelId: webchat.id } });
+      await owner.channelIdentity.deleteMany({ where: { channelId: webchat.id } });
+      await owner.channel.delete({ where: { id: webchat.id } });
     }
   });
 

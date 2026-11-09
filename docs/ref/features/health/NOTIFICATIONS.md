@@ -21,13 +21,13 @@ P0、P1：無。
 
 | 編號 | 嚴重度 | 問題 | 重現步驟 | 位置（file:line） | AUDIT |
 | --- | --- | --- | --- | --- | --- |
-| HC-NOTIFICATIONS-01 | P2 | 未指派對話的新訊息通知所有 `ADMIN`、`SUPERVISOR`，不看渠道可見範圍。只能看分店渠道的主管仍收到其他渠道客人的名稱（「某某 傳來新訊息」），點進去是 404 | **實測（本機）**：建自訂角色（`inbox.view, case.view, contact.view`，無 `channel.view_all`）＋成員 `role: SUPERVISOR`、只直綁 LINE-A → 模擬器對 WebChat 渠道送一則訊息 → 該成員收到 `new_message`「hc-notifications-分店外客人 傳來新訊息」；以他登入 `GET /conversations/<該對話>` 回 404 | `apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236` | RBAC-04（已補列；收件人看舊列舉的部分見 RBAC-03） |
+| HC-NOTIFICATIONS-01 | P2 | （健檢當時，#440 已修正：未指派對話的新訊息與轉接通知只發給看得到該渠道的主管與管理員）未指派對話的新訊息通知所有 `ADMIN`、`SUPERVISOR`，不看渠道可見範圍。只能看分店渠道的主管仍收到其他渠道客人的名稱（「某某 傳來新訊息」），點進去是 404 | **實測（本機）**：建自訂角色（`inbox.view, case.view, contact.view`，無 `channel.view_all`）＋成員 `role: SUPERVISOR`、只直綁 LINE-A → 模擬器對 WebChat 渠道送一則訊息 → 該成員收到 `new_message`「hc-notifications-分店外客人 傳來新訊息」；以他登入 `GET /conversations/<該對話>` 回 404 | `apps/api/src/modules/notification/notification.worker.ts:61-74, 217-236` | RBAC-04（已補列；收件人看舊列舉的部分見 RBAC-03） |
 | HC-NOTIFICATIONS-02 | P2 | 對話指派給已停用的成員時，客人新訊息只通知那位停用的成員，沒有任何在職的人收到。停用成員不會解除指派 | **實測（本機）**：建成員 → 把對話指派給他 → `POST /agents/:id/deactivate` → 模擬器送訊息 → 唯一的 `new_message` 寫給 `isActive=false` 的成員，ADMIN、SUPERVISOR 都沒收到 | `notification.worker.ts:226-228`（不檢查 `isActive`）；`apps/api/src/modules/agent/agent.service.ts:376-396`（停用不解除指派）。`case.assigned`（`notification.worker.ts:88-96`）與 SLA（`apps/workers/src/handlers/sla.handler.ts:205`）同樣不檢查（讀程式） | CONV-06 |
 | HC-NOTIFICATIONS-03 | P2 | 工單升級時在對話框改派負責人，新負責人收不到任何通知。升級只發 `case.escalated`，收件人只有主管與升級前負責人 | **實測（本機）**：工單指派給 supervisor → admin 升級並改派給 agent、勾兩個通知對象 → supervisor 收到 `case_escalated`；agent 沒有 `case_assigned` 也沒有 `case_escalated` | `apps/api/src/modules/case/case.flow.ts:145-155`（`escalateCaseFlow` 不發 `case.assigned`）；`apps/api/src/modules/notification/notification.service.ts:122-150` | CASE-09 |
 | HC-NOTIFICATIONS-04 | P2 | 建立工單時直接選負責人，負責人收不到通知（功能文件「要知道的事」已寫，AUDIT 沒有） | **實測（本機）**：`POST /cases {assigneeId: agent}` → 201，agent 沒有任何 `case_assigned` | `case.flow.ts:83`（`afterCaseCreated` 有負責人時直接 return，只有自動派案發 `case.assigned`） | CASE-09（文件已知） |
 | CONV-02 | P2 | 指派對話不會通知被指派的人 | **實測（本機）**：`PATCH /conversations/:id {assignedToId: agent}` → 200，5 秒內沒有任何通知寫入。AUDIT 原為「靜態確認」，本次執行時確認 | `notification.worker.ts:244-266`（訂閱存在、無發布端） | CONV-02（已記錄） |
 | RBAC-03 | P2 | 收件人看 `Agent.role` 舊列舉 | **實測（本機）**：本機所有自訂角色的 `hc-*` 成員 `role` 都是 `AGENT`，未指派新訊息全部收不到；上面 HC-NOTIFICATIONS-01 的成員只因 `role: SUPERVISOR` 就收到 | `notification.worker.ts:61-74` 等 7 處 | RBAC-03（已記錄） |
-| CONV-03 | P2 | 對話轉接真人時沒有通知 | 讀程式：`notification.worker.ts` 沒有訂閱 `conversation.handoff` | 同左 | CONV-03（已記錄） |
+| CONV-03 | P2 | （健檢當時，#419 已修正：通知訂閱者處理 `conversation.handoff`，類型 `conversation_handoff`）對話轉接真人時沒有通知 | 讀程式：`notification.worker.ts` 沒有訂閱 `conversation.handoff` | 同左 | CONV-03（已記錄） |
 | HC-NOTIFICATIONS-05 | P3 | CSAT 低分通知的連結是 `/dashboard/cases?id=<工單>`，工單列表頁不讀 `id`，點了停在列表 | **實測（本機 UI）**：supervisor 點「CSAT 低分警報」→ 網址 `/dashboard/cases?id=…`，畫面是工單列表。手冊第 4 章已註明這個行為 | `apps/api/src/modules/csat/csat.service.ts:306`；`apps/web/src/app/dashboard/cases/page.tsx`（無 `useSearchParams`） | 新 |
 | HC-NOTIFICATIONS-06 | P3 | 通知類型徽章缺 `csat_low_score`、`usage_quota_warning`、`usage_quota_critical`、`channel_token_invalid`、`data_export_ready`、`data_export_failed`、`data_erasure_done`，一律顯示「通知」；鈴鐺的圖示表連 `sla_rule` 也沒有 | **實測**：本機 CSAT 卡片徽章為「通知」；UAT Demo 第 1 頁 20 張卡片中 5 張權杖失效顯示「通知」 | `apps/web/src/app/dashboard/notifications/page.tsx:21-32`；`apps/web/src/components/notification/NotificationBell.tsx:10-19` | 新 |
 | HC-NOTIFICATIONS-07 | P3 | 標記已讀、全部已讀失敗時畫面沒有任何提示，只丟出未處理的 `AxiosError`；點通知時已讀失敗也不會跳頁 | **實測（本機 UI）**：以 Playwright 讓 `PATCH /notifications/*/read` 回 500 → 按雙勾 → 畫面無任何錯誤文字，`pageerror: AxiosError: Request failed with status code 500` | `page.tsx:57-83`；`NotificationBell.tsx:47-67`（`await` 沒有 try/catch） | 新 |
@@ -43,7 +43,7 @@ P0、P1：無。
 | AUDIT | 結論 |
 | --- | --- |
 | CONV-02 | 未修。本次執行時確認（見上表）。手冊第 4 章「誰會收到」寫「對話指派給某人 → 被指派的那個人」，與實際不符 |
-| CONV-03 | 未修（讀程式） |
+| CONV-03 | #419 已修正（`notification.worker.test.ts`「未指派的對話轉接」「已指派的對話轉接」） |
 | RBAC-03 | 未修，執行時確認 |
 | APP-04、APP-05 | 未變（讀程式）：`notification.worker.ts` 仍是 producer；`sla.warning`／`sla.breached` 訂閱仍沒有發布端 |
 | EXPORT-01 | 通知連結的部分未修：`data-export.handler.ts:220-226` 仍連到 `/dashboard/settings/data-export/<id>`，前端被 `settings/[section]` 吃掉、顯示「一般設定」 |
@@ -105,8 +105,8 @@ P0、P1：無。
 
 ## 建議新增到 AUDIT.md 的項目
 
-- HC-NOTIFICATIONS-01：新訊息通知不套渠道可見範圍，洩漏其他渠道的客人名稱。
-- HC-NOTIFICATIONS-02：停用成員不解除指派，客人訊息只通知停用的人。
+- HC-NOTIFICATIONS-01：新訊息通知不套渠道可見範圍，洩漏其他渠道的客人名稱。（#440 已修正，change `scope-unassigned-notifications-440`）
+- HC-NOTIFICATIONS-02：停用成員不解除指派，客人訊息只通知停用的人。#440 已修正對話通知：負責人停用或看不到渠道時改通知主管與管理員；停用仍不解除指派。
 - HC-NOTIFICATIONS-03、HC-NOTIFICATIONS-04：升級改派與建立時指定負責人都不發 `case.assigned`（可併成一項「指派不經 `/assign` 時不通知」，和 CONV-02 同一類）。
 - HC-NOTIFICATIONS-09：CSAT 與權杖失效繞過通知佇列，違反 `standalone-worker-runtime`。
 - HC-NOTIFICATIONS-11：通知沒有保留期限（目前只在功能文件）。

@@ -14,6 +14,8 @@ import { decryptCredentials } from '../lib/credentials.js';
 interface RichMenuBindJobData {
   tenantId: string;
   channelId: string;
+  /** 部署前送出的工作沒有這個欄位 */
+  richMenuId?: string;
   lineRichMenuId: string;
   uids: string[];
   op: 'link' | 'unlink';
@@ -24,8 +26,21 @@ export async function handleRichMenuBindJob(
   prisma: PrismaClient,
   pluginRegistry: Map<string, ChannelPlugin>,
 ): Promise<void> {
-  const { tenantId, channelId, lineRichMenuId, uids, op } = job.data as RichMenuBindJobData;
+  const { tenantId, channelId, richMenuId, lineRichMenuId, uids, op } = job.data as RichMenuBindJobData;
   if (!uids || uids.length === 0) return;
+
+  // 綁定工作至少送出一次，可能晚於取消發布或重新發布才執行：選單已不是這個 LINE 選單時跳過
+  // （spec line-rich-menu「背景綁定只綁到仍在發布中的選單」）。解除綁定讓客人回到全體預設，不檢查。
+  if (op === 'link' && richMenuId) {
+    const menu = await prisma.richMenu.findFirst({
+      where: { id: richMenuId, tenantId },
+      select: { status: true, lineRichMenuId: true },
+    });
+    if (menu?.status !== 'published' || menu.lineRichMenuId !== lineRichMenuId) {
+      logger.info(`[rich-menu-bind] skip stale bind menu=${richMenuId} lineRichMenuId=${lineRichMenuId} (tenant ${tenantId})`);
+      return;
+    }
+  }
 
   // 驗證 channel 屬本租戶 + 取憑證
   const channel = await prisma.channel.findFirst({

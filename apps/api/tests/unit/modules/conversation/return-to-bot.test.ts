@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { returnConversationToBot } from '#src/modules/conversation/conversation.service.js';
 import { AppError } from '#src/shared/utils/response.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 function fixture(conv: { status: string; botMode?: string }, opts: { closedMeanwhile?: boolean } = {}) {
   const updates: Array<Record<string, unknown>> = [];
@@ -12,6 +13,7 @@ function fixture(conv: { status: string; botMode?: string }, opts: { closedMeanw
   const messages: Array<Record<string, unknown>> = [];
   const emitted: string[] = [];
   const prisma = {
+    ...disabledAiPrivacy,
     conversation: {
       findFirst: async () => ({
         id: 'c1',

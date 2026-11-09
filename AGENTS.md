@@ -288,10 +288,27 @@ A service obeys these rules:
   failure, which code does the step again, and the guarantee. Change `outbox-event-delivery`,
   `design.md` section 14, shows such a table.
 
+**Redis connections.** In the API process, an entry point gets the Redis connection for
+commands (cache, counters, short-lived codes) from `fastify.redis` and gives it to the flow as a
+parameter. Do not import a Redis client in a module. To create a connection in another place,
+call `createRedisClient(url, purpose)` from `@open333crm/core`:
+
+- `'command'`: for commands. When Redis refuses the connection or does not reply, a command
+  fails in 1 second or less.
+- `'queue'`: for BullMQ and for a subscriber. A command waits until Redis replies, as BullMQ
+  requires.
+
+Do not create a connection with `new IORedis` (#443). `fastify.redis` does not connect when the
+application starts. It connects at the first command, and it closes when Fastify closes.
+
 A flow and a background job obey these rules:
 
-- Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant) or
-  `notifyAgent(scope, io, agentId, name, data)` (to one agent), from `apps/api/src/events/socket-push.ts`.
+- Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant),
+  `notifyChannel(scope, io, { channelId, conversationId }, name, data)` (to the agents who can see the
+  channel) or `notifyAgent(scope, io, agentId, name, data)` (to one agent), from
+  `apps/api/src/events/socket-push.ts`. An event that carries messages or conversation data of a
+  channel (`message.new`, `conversation.*`) uses `notifyChannel`. Do not send such data to the tenant
+  room: an agent without access to the channel would receive it (issue #427).
   Send events with `await publishEvent(scope, publisher, name, payload)`. Send BullMQ jobs with
   `await enqueueJob(scope, publisher, queueName, name, data)`. `publisher` is an `EventPublisher`,
   for example `createOutboxPublisher(prisma)`. Both are in
@@ -357,8 +374,8 @@ so these functions do not change its result.
   is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
   - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
-  - a reference from a service file to a Redis client (`redis` or the whole module from
-    `@open333crm/core`, or `ioredis`) or to an LLM module (`ai/llm.service.js`, a file in
+  - a reference from a service file to a Redis client (`redis`, `createRedisClient` or the
+    whole module from `@open333crm/core`, `ioredis`, or `lib/redis-client`) or to an LLM module (`ai/llm.service.js`, a file in
     `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
     module-level clients inside the transaction, so a flow receives them as dependencies instead.
 
@@ -417,6 +434,41 @@ cannot send messages from automation rules.
   channel directly. This file does not list them, because a move into plugins costs much work.
   Do not copy them. `docs/ref/modules/CHANNEL-PLUGINS.md` tells where they are and how to add a
   channel.
+
+#### When to consider a new structure
+
+A structure is a new layer, a new file type, a shared object, a registry or a shared function.
+The signals below tell you when to stop and evaluate a structure. A signal does not decide
+the result. The evaluation decides it.
+
+| Signal | What it can show | Structure to evaluate |
+| ------ | ---------------- | --------------------- |
+| The same rule or query is in two or more modules | The rule has no owner. A fix reaches one copy only | One shared function. Examples: `createOrFindExisting()` and `claimOne()` in `packages/core/src/db/db-invariants.ts` |
+| Two or more review comments on one pull request are about the same part of the code | The guarantee of that code is not defined | First write the guarantee in the spec, for example "at most once" or "at least once". Then evaluate the code again |
+| One change needs edits in many locations, and a missed location shows no error | The behavior has no single point of control | A registry or a shared function. Example: the channel plugin registry (structure rule 5) |
+
+To evaluate a structure, answer these questions in the proposal or the pull request:
+
+1. Which file paths have the problem now? A problem that can occur only in the future is not
+   a reason.
+2. How many callers use the structure now? With only one caller, the structure can be more
+   design than the problem needs. An open change or an issue can name the second caller.
+3. What is the smallest form that solves the problem? Compare a rule in this file, a function
+   and a check script with a new object or a new layer.
+4. How difficult is it to remove the structure? If the structure changes many files, try it in
+   one or two modules first. Review the result. Then apply the structure to the other modules.
+   Example: #337 stage 2 tried `TenantCtx` in `role` and `agent`. The review of that stage
+   added the flow layer.
+
+Earlier evaluations rejected these structures. Evaluate one again when its reason is no longer
+true:
+
+| Structure | Reason |
+| --------- | ------ |
+| A generic repository layer | A generic repository loses the result type of each Prisma query. The other jobs of a repository have a different owner in this repo. Tenant isolation is the job of the two enforcement layers in the Multi-Tenancy section. The transaction boundary is the job of `TenantCtx` |
+| Event listeners that a service registers | A person who reads the service cannot see its side effects |
+| A method on `TenantCtx` or `TenantScope` for each side effect | See structure rule 2 |
+| One transaction for each aggregate, with events between aggregates | Many operations must write several tables together, for example a contact merge. With one transaction for each aggregate, a failure can leave only part of the operation written |
 
 #### Appendix: which SOLID principle each rule is
 
@@ -495,9 +547,18 @@ request:
       characters. Many main specs have such requirements, and until they are split, `--strict`
       always fails on them. In a change, the script does not ignore this warning. Split a new
       requirement that is too long.
-- [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, update
-      that item, add an entry to `docs/ref/system/AUDIT-REVIEWS.md`, and update each feature or
-      module document under `docs/ref/` that describes the changed behavior.
+- [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, add an
+      entry to `docs/ref/system/AUDIT-REVIEWS.md` that names the fix (change or commit). Then do
+      one of these:
+      - The item is fixed completely: remove its row and its section from `AUDIT.md`. Do not keep
+        it with the status "已修正". In the entry, write "已修正，從 `AUDIT.md` 移除". Remove or
+        update each link to the item in other files (`grep -rn "<ID>"`), for example
+        `docs/ref/features/feature-map.json` and the limit tables in `docs/ref/`.
+      - The item is fixed in part: keep it, set the status to "部分修正", and write in the item
+        which part is fixed and which part is not.
+
+      Also update each feature or module document under `docs/ref/` that describes the changed
+      behavior.
 
 ## Multi-Tenancy: Two Enforcement Layers (Critical)
 
@@ -509,7 +570,10 @@ request:
 platform-layer tables. These tables are `tenants`, `plans`, `platform_users`, `platform_audit_logs`,
 `platform_settings`, `model_pricings` and `trial_signups`. The `tenant_isolation` policy reads the
 session variable `app.current_tenant`. A new tenant table needs its own migration that enables
-RLS. The skill named below gives the steps.
+RLS and grants `SELECT, INSERT, UPDATE, DELETE` on the table to `app_tenant`. New tables get no
+privileges for `app_tenant` by default (#412). `app_tenant` can only read `tenants`, `plans`,
+`platform_settings` and `model_pricings`, and cannot use the other platform-layer tables. Write
+platform-layer tables through `prismaAdmin`. The skill named below gives the steps.
 
 ### Which Prisma client to use
 
@@ -567,7 +631,8 @@ Use path A when all of these conditions are true:
 
 - The event is the direct result of the current HTTP request.
 - The data is already in the database.
-- The Socket event goes to all agents of the tenant (`notifyTenant`) or to one agent (`notifyAgent`).
+- The Socket event goes to all agents of the tenant (`notifyTenant`), to the agents who can see a
+  channel (`notifyChannel`), or to one agent (`notifyAgent`).
 - You need no more queries.
 
 **Path B — Async queue** (outbox → subscriber queue → BullMQ → workers → Redis pub/sub):
@@ -594,6 +659,10 @@ await redisPublisher.publish(
   JSON.stringify({ room, event, data }),
 );
 ```
+
+A worker sends an event with the messages or conversation data of a channel with
+`publishChannelSocketEvent()` from `apps/workers/src/lib/socket-bridge.ts`. It sends the message to the
+channel rooms (`rooms` in the `socket:emit` message), not to the tenant room.
 
 Workers send a business event with `writeOutbox()` from `@open333crm/core`, in the transaction
 that writes the data. Give the `tenantId`: the workers connection has no RLS. After the commit,
@@ -702,6 +771,23 @@ that no code registers. Thus a renamed or removed id does not stay in Redis.
 
 ## Conventions
 
+- **Do not reinvent existing code (MANDATORY)**: before you write a helper, a schema, a guard, a
+  flow or a component, search the repo for code that already does the job, and use it. Extend the
+  existing code if it does almost the job. Do not write a second version next to it.
+  - **Why**: two versions of one rule diverge. A later fix reaches one version only, and the other
+    version keeps the bug. Reviews in this repo have found new SSRF checks written next to
+    `isBlockedUrl()`, and new handoff code written next to `handOffConversation()`.
+  - **How to search**: `grep -rn` for the function name, the error code and the Chinese message
+    text; read the skill of the feature area (`.claude/skills/feature-<id>/`); run
+    `node scripts/feature-impact.mjs --files <file>` to find the area that owns the code.
+  - **Common helpers**: `isBlockedUrl()` (SSRF check, `apps/api/src/modules/webhook/downstream-forwarder.ts`),
+    `handOffConversation()` (hand a conversation to an agent, `apps/api/src/modules/automation/handoff.flow.ts`),
+    `claimSideEffect()` (`packages/core/src/outbox/claims.ts`), `createOrFindExisting()` and
+    `claimOne()` (`packages/core/src/db/db-invariants.ts`), `paginationSchema`
+    (`apps/api/src/shared/utils/pagination.ts`), `int4Schema`
+    (`apps/api/src/shared/utils/numeric-bounds.ts`), `AppError` (`apps/api/src/shared/utils/response.ts`).
+  - If the existing code cannot be reused (for example, it breaks a structure rule), write in the
+    pull request why, and move the callers to the new code in the same change.
 - **CHANGELOG Maintenance (MANDATORY)**: when you implement a feature (`feat`), a bug fix (`fix`)
   or an architecture change, you **MUST update `CHANGELOG.md`**. A pull request that changes only
   docs, OpenSpec files or tests does not need an entry. Write the entry under the latest release

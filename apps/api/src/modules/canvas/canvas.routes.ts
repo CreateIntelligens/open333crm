@@ -1,30 +1,23 @@
 /**
  * Canvas REST routes — /api/v1/canvas (Tasks 5.1, 5.4)
- * Identity merge routes — /api/v1/identity
+ * 身分合併建議的路由在 contact/merge-suggestion.routes.ts。
  */
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
+import { FlowRunner } from '@open333crm/core';
+import { actorOf } from '../../lib/request-actor.js';
 import {
-  listFlows,
-  getFlow,
-  createFlow,
-  updateFlow,
-  activateFlow,
-  getFlowAnalytics,
-  listExecutions,
-  triggerFlow,
-} from './canvas.service.js';
-import {
-  listSuggestions,
-  claimSuggestionForApproval,
-  rejectMerge,
-  SuggestionNotFoundError,
-  SuggestionNotPendingError,
-} from '@open333crm/core';
-import { success, paginated, AppError } from '../../shared/utils/response.js';
-import { withTenant } from '../../lib/tenant-db.js';
-import { mergeContacts } from '../contact/contact-merge.service.js';
+  activateFlowFlow,
+  createFlowFlow,
+  getFlowAnalyticsFlow,
+  getFlowFlow,
+  listExecutionsFlow,
+  listFlowsFlow,
+  triggerFlowFlow,
+  updateFlowFlow,
+} from './canvas.flow.js';
+import { success, paginated } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -63,31 +56,21 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
-const triggerFlowSchema = z.object({
-  contactId: z.string().uuid(),
-  vars: z.record(z.unknown()).optional(),
-});
-
-const suggestionQuerySchema = z.object({
-  status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUPERSEDED']).optional(),
+// 執行紀錄的 status 是 execution 的狀態（ExecutionState），不是流程的狀態
+const executionQuerySchema = z.object({
+  status: z.enum(['RUNNING', 'WAITING', 'COMPLETED', 'FAILED']).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
-const suggestionParamsSchema = z.object({
-  id: z.string().uuid('合併建議 id 格式錯誤'),
+const flowParamsSchema = z.object({
+  id: z.string().uuid('流程 id 格式錯誤'),
 });
 
-/** 把 core 的建議錯誤轉成對應 HTTP 狀態的 AppError */
-function toSuggestionAppError(err: unknown): never {
-  if (err instanceof SuggestionNotFoundError) {
-    throw new AppError('找不到此合併建議', 'NOT_FOUND', 404);
-  }
-  if (err instanceof SuggestionNotPendingError) {
-    throw new AppError('此合併建議已處理過了', 'CONFLICT', 409);
-  }
-  throw err;
-}
+const triggerFlowSchema = z.object({
+  contactId: z.string().uuid(),
+  vars: z.record(z.unknown()).optional(),
+});
 
 // ── Route registration ───────────────────────────────────────────────────────
 
@@ -97,135 +80,65 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   // ── GET /api/v1/canvas ──────────────────────────────────────────────────
   // registry 無 canvas.view，讀取端點一律以 canvas.use 守門
   fastify.get('/', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
-    const query = listQuerySchema.parse(request.query);
-    const { page, limit, status } = query;
-
-    const { flows, total } = await listFlows(request.tenantPrisma, request.agent.tenantId, {
-      page, limit, status,
-    });
-
+    const { page, limit, status } = listQuerySchema.parse(request.query);
+    const { flows, total } = await listFlowsFlow(fastify, actorOf(request).tenantId, { page, limit, status });
     return reply.send(paginated(flows, total, page, limit));
   });
 
   // ── POST /api/v1/canvas ─────────────────────────────────────────────────
   fastify.post('/', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const data = createFlowSchema.parse(request.body);
-    const flow = await createFlow(request.tenantPrisma, request.agent.tenantId, data as never);
+    const flow = await createFlowFlow(fastify, actorOf(request).tenantId, data);
     return reply.status(201).send(success(flow));
   });
 
   // ── GET /api/v1/canvas/:id ──────────────────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
-    const flow = await getFlow(request.tenantPrisma, request.params.id, request.agent.tenantId);
+  fastify.get('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+    const { id } = flowParamsSchema.parse(request.params);
+    const flow = await getFlowFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(flow));
   });
 
   // ── PATCH /api/v1/canvas/:id ────────────────────────────────────────────
-  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+  fastify.patch('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+    const { id } = flowParamsSchema.parse(request.params);
     const data = updateFlowSchema.parse(request.body);
-    const flow = await updateFlow(request.tenantPrisma, request.params.id, request.agent.tenantId, data);
+    const flow = await updateFlowFlow(fastify, actorOf(request).tenantId, id, data);
     return reply.send(success(flow));
   });
 
   // ── POST /api/v1/canvas/:id/activate ───────────────────────────────────
-  fastify.post<{ Params: { id: string } }>('/:id/activate', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
-    const flow = await activateFlow(request.tenantPrisma, request.params.id, request.agent.tenantId);
+  fastify.post('/:id/activate', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+    const { id } = flowParamsSchema.parse(request.params);
+    const flow = await activateFlowFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(flow));
   });
 
   // ── POST /api/v1/canvas/:id/trigger ────────────────────────────────────
-  fastify.post<{ Params: { id: string } }>('/:id/trigger', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+  // 流程不存在或屬於另一個租戶回 404、不是 ACTIVE 回 409；引擎在 commit 之後才開始執行
+  fastify.post('/:id/trigger', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+    const { id } = flowParamsSchema.parse(request.params);
     const { contactId, vars } = triggerFlowSchema.parse(request.body);
-    const executionId = await triggerFlow(
-      request.tenantPrisma,
-      request.params.id,
-      contactId,
-      request.agent.tenantId,
-      vars,
+    const executionId = await triggerFlowFlow(
+      { prisma: fastify.prisma, runFlow: (executionId) => FlowRunner.run(executionId) },
+      actorOf(request).tenantId,
+      { flowId: id, contactId, vars },
     );
     return reply.status(202).send(success({ executionId }));
   });
 
   // ── GET /api/v1/canvas/:id/analytics ───────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/:id/analytics', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
-    const analytics = await getFlowAnalytics(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+  fastify.get('/:id/analytics', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+    const { id } = flowParamsSchema.parse(request.params);
+    const analytics = await getFlowAnalyticsFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(analytics));
   });
 
   // ── GET /api/v1/canvas/:id/executions ──────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/:id/executions', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
-    const query = listQuerySchema.parse(request.query);
-    const { page, limit, status } = query;
-
-    const result = await listExecutions(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-      { page, limit, status },
-    );
-
+  fastify.get('/:id/executions', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
+    const { id } = flowParamsSchema.parse(request.params);
+    const { page, limit, status } = executionQuerySchema.parse(request.query);
+    const result = await listExecutionsFlow(fastify, actorOf(request).tenantId, id, { page, limit, status });
     return reply.send(paginated(result.executions, result.total, page, limit));
-  });
-}
-
-// ── Identity routes (separate prefix /api/v1/identity) ─────────────────────
-
-export async function identityRoutes(fastify: FastifyInstance) {
-  fastify.addHook('preHandler', fastify.authenticate);
-
-  // ── GET /api/v1/identity/suggestions ───────────────────────────────────
-  // registry 無 identity.view，讀取端點一律以 identity.review 守門
-  fastify.get('/suggestions', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
-    const query = suggestionQuerySchema.parse(request.query);
-    const { status, page, limit } = query;
-
-    const tenantId = request.agent.tenantId;
-    const { suggestions, total } = await withTenant(fastify.prisma, tenantId, (tx) =>
-      listSuggestions(tx, tenantId, status ?? 'PENDING', { page, limit }),
-    );
-
-    return reply.send(paginated(suggestions, total, page, limit));
-  });
-
-  // ── POST /api/v1/identity/suggestions/:id/approve ──────────────────────
-  fastify.post<{ Params: { id: string } }>('/suggestions/:id/approve', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
-    const { id } = suggestionParamsSchema.parse(request.params);
-    const tenantId = request.agent.tenantId;
-    // 建議狀態與合併在同一交易：合併失敗時建議維持 PENDING
-    const result = await withTenant(fastify.prisma, tenantId, async (tx) => {
-      const { primaryContactId, secondaryContactId } = await claimSuggestionForApproval(
-        tx,
-        tenantId,
-        id,
-        request.agent.id,
-      ).catch(toSuggestionAppError);
-      return mergeContacts({ tx, tenantId }, {
-        survivorId: primaryContactId,
-        mergedId: secondaryContactId,
-        source: 'SUGGESTION',
-        actorAgentId: request.agent.id,
-      });
-    });
-    fastify.io.to(`tenant:${tenantId}`).emit('contact.merged', {
-      primaryContactId: result.survivor.id,
-      secondaryContactId: result.merged.id,
-      primaryName: result.survivor.displayName,
-      secondaryName: result.merged.displayName,
-    });
-    return reply.send(success({ merged: true, mergeLogId: result.mergeLogId }));
-  });
-
-  // ── POST /api/v1/identity/suggestions/:id/reject ───────────────────────
-  fastify.post<{ Params: { id: string } }>('/suggestions/:id/reject', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
-    const { id } = suggestionParamsSchema.parse(request.params);
-    const tenantId = request.agent.tenantId;
-    await withTenant(fastify.prisma, tenantId, (tx) =>
-      rejectMerge(tx, tenantId, id, request.agent.id),
-    ).catch(toSuggestionAppError);
-    return reply.send(success({ rejected: true }));
   });
 }

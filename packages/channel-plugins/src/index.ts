@@ -196,6 +196,7 @@ export {
   LinePlugin,
   linePlugin,
   buildLineMessage,
+  LineMessageBuildError,
   LINE_DELIVERY_METADATA_KEYS,
   LINE_RETRY_KEY_TTL_MS,
   isLineRetryKeyExpired,

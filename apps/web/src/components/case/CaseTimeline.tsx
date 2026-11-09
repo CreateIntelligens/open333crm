@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { csatScoreLabel } from '@/lib/csat-labels';
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: '開啟',
@@ -43,7 +44,9 @@ function formatEventDescription(
     case 'status_changed': {
       const from = STATUS_LABELS[payload?.from as string] || payload?.from || '?';
       const to = STATUS_LABELS[payload?.to as string] || payload?.to || '?';
-      return `狀態：${from} → ${to}`;
+      // 客人評分（或客服代評）後系統自動關閉（issue #444）
+      const reason = payload?.reason === 'csat_rated' ? '（評分後自動關閉）' : '';
+      return `狀態：${from} → ${to}${reason}`;
     }
     case 'assigned':
       return `指派給 ${payload?.assigneeName || '未知'}`;
@@ -84,6 +87,16 @@ function formatEventDescription(
       return `自動指派給 ${payload?.assigneeName || '客服'}`;
     case 'conversation_linked':
       return '關聯了一個對話';
+    // 滿意度評分（issue #444）：標明客人評分或客服代評
+    case 'csat_rated': {
+      const score = Number(payload?.score);
+      const label = csatScoreLabel(score);
+      const text = `${score} 分${label ? `（${label}）` : ''}`;
+      return payload?.source === 'agent' ? `客服代評滿意度：${text}` : `客人評分：${text}`;
+    }
+    // 滿意度問卷送出失敗（issue #416）：系統不會自動重寄
+    case 'csat_send_failed':
+      return `滿意度問卷沒有送出，客人沒有收到${payload?.reason ? `：${payload.reason}` : ''}`;
     default:
       return eventType;
   }
@@ -95,6 +108,8 @@ interface CaseTimelineProps {
     id: string;
     type: string;
     eventType?: string;
+    /** contact：客人觸發的事件（例如回覆滿意度問卷），作者顯示「客人」 */
+    actorType?: string;
     description?: string;
     content?: string;
     payload?: Record<string, unknown>;
@@ -159,7 +174,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
         type: evtType,
         content: formatEventDescription(evtType, payload),
         isInternal: e.isInternal || false,
-        author: e.actor?.name || e.agentName || e.createdBy || '系統',
+        author: e.actorType === 'contact' ? '客人' : e.actor?.name || e.agentName || e.createdBy || '系統',
         createdAt: e.createdAt,
         isNote: false,
       };
@@ -185,6 +200,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
     switch (type) {
       case 'escalated':
       case 'closed':
+      case 'csat_send_failed':
         return 'bg-destructive-subtle text-destructive';
       case 'resolved':
         return 'bg-success-subtle text-success';

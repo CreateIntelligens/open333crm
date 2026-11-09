@@ -17,7 +17,7 @@
  * 收件紀錄在第 1 步就寫入：同一則廣播重送時，已有收件紀錄的人不再發券或送訊息（含 pending）。
  */
 import type { Prisma } from '@prisma/client';
-import { COUPON_ISSUED_VIA } from '@open333crm/shared';
+import { COUPON_ISSUED_VIA, supportsProactivePush } from '@open333crm/shared';
 import { confirmPendingInstance, isCouponPastFixedEnd, taipeiDateString, voidPendingInstance, type IssueSkipReason } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
@@ -27,9 +27,11 @@ import { CouponValidationError } from '../coupon/coupon.service.js';
 import { resolveContext } from './template-context.js';
 import { extractVariables, type TemplateVariable } from './template-renderer.js';
 import {
+  CHANNEL_PUSH_NOT_SUPPORTED_REASON,
   FAILURE_REASON_MAX_LENGTH,
   allRecipientsFailedReason,
   alreadySendingError,
+  assertChannelSupportsPush,
   createBroadcast,
   filterByMessagingWindow,
   resolveAudience,
@@ -94,14 +96,26 @@ const nowDate = (now?: number) => new Date(now ?? Date.now());
  * 草稿、已排程、失敗可以排入；發送中但超過 5 分鐘沒有進度的（程式中途結束）也可以重新排入，
  * 已有收件紀錄的人不會再拿到券。job 與排程誰先搶占（claimCouponBroadcast）誰發送，另一個不做事。
  */
-export async function queueCouponBroadcast(ctx: TenantCtx, broadcastId: string, now: number = Date.now()) {
+export async function queueCouponBroadcast(
+  ctx: TenantCtx,
+  broadcastId: string,
+  now: number = Date.now(),
+  /**
+   * 按下發送的人：寫進 scheduledById，排程器後備送出時以此人當下的權限重新檢查
+   * （change require-broadcast-send-permissions design D3）。沒給時保留原值（null 時排程器看建立者）
+   */
+  actorId?: string,
+) {
   const { tx, tenantId } = ctx;
   const broadcast = await tx.broadcast.findFirst({
     where: { id: broadcastId, tenantId },
-    select: { id: true, status: true, couponId: true },
+    select: { id: true, status: true, couponId: true, channelId: true },
   });
   if (!broadcast) throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   if (!broadcast.couponId) throw new AppError('這則廣播沒有附券', 'INVALID_STATE', 400);
+  // 修正前建立的網站聊天室附券廣播：不排入發送（change reject-webchat-push-415）
+  const channel = await tx.channel.findFirst({ where: { id: broadcast.channelId, tenantId }, select: { channelType: true } });
+  if (channel) assertChannelSupportsPush(channel.channelType);
   const scheduledAt = new Date(now);
   const queued = await tx.broadcast.updateMany({
     where: {
@@ -112,7 +126,7 @@ export async function queueCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
         { status: 'sending', updatedAt: { lt: new Date(now - STALE_SENDING_MS) } },
       ],
     },
-    data: { status: 'scheduled', scheduledAt, failureReason: null, failureCode: null },
+    data: { status: 'scheduled', scheduledAt, failureReason: null, failureCode: null, ...(actorId ? { scheduledById: actorId } : {}) },
   });
   if (queued.count === 0) {
     if (broadcast.status === 'sending') throw alreadySendingError();
@@ -192,6 +206,8 @@ export async function claimCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
     select: { id: true, channelType: true, credentialsEncrypted: true, settings: true },
   });
   if (!channel) return invalid('CHANNEL_NOT_FOUND', '找不到此渠道或渠道已停用，請至設定確認');
+  // 修正前排定的網站聊天室附券廣播：標失敗、寫原因，不呼叫渠道也不發券（change reject-webchat-push-415）
+  if (!supportsProactivePush(channel.channelType)) return invalid('CHANNEL_PUSH_NOT_SUPPORTED', CHANNEL_PUSH_NOT_SUPPORTED_REASON);
 
   let material: CouponBroadcastPlan['material'] = null;
   if (b.materialId) {
@@ -675,7 +691,7 @@ export async function createBatchIssue(
     couponIssuedByName: agent?.name ?? undefined,
     // 券詳情頁的批次發放不指定行銷活動；渠道已由路由以 assertChannelVisible 檢查
   }, accessibleChannels);
-  const queued = await queueCouponBroadcast(ctx, broadcast.id, now);
+  const queued = await queueCouponBroadcast(ctx, broadcast.id, now, agentId);
   return { broadcastId: broadcast.id, name: broadcast.name, status: queued.status, job: queued.job };
 }
 
