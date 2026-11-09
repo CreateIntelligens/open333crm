@@ -12,6 +12,13 @@ issue #468，分支 `fix/chat-load-older-468`，change `fix-chat-window-load-old
 | --- | --- | --- |
 | HC-INBOX-07（聊天視窗只載 50 則訊息） | 已修正 | `GET /conversations/:id/messages` 新增游標 `before`（`createdAt` 再 `id`，與聯絡人訊息共用 `shared/utils/message-cursor.ts`），回應帶 `hasMore`、`nextCursor`；`page` 分頁照舊。`useMessages().loadOlder()` 改用游標、失敗回傳原因；`ChatWindow` 加「載入更早的訊息」、往上載入保持捲動位置、只在最新一則改變時捲到底、最新與更早訊息失敗都顯示原因與重試。`conversation-messages-cursor.test.ts`（feature）7 項中 4 項修正前以 assertion 失敗，3 項（第一頁、其他租戶、舊的 page 呼叫）以突變驗證；`chat-window-load-older.test.tsx` 8 項中 7 項修正前失敗，「沒有更早的訊息時不顯示按鈕」以突變驗證 |
 | `getMessages()` 的 `where` 沒有 `tenantId` | 已修正 | 查詢與計數改帶 `conversation: { tenantId }`。feature 測試走 RLS，拿掉 `tenantId` 看不出來；`get-messages-tenant-scope.test.ts`（單元）修正前失敗。突變：改用 BYPASSRLS 連線並拿掉 `tenantId` 時，feature「其他租戶的對話」失敗 |
+## 2026-11-09：UAT 的向量欄位維度（DB-01）
+
+#337 階段 4 第五批（change `migrate-embedding-tenant-ctx`）討論 DB-01 時，以 `~/workbase/SRE/host_connacts.md` 的 Open333 UAT 連線唯讀查詢，沒有修改任何東西。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| DB-01 | 未處理，描述修正 | UAT 的 `km_articles.embedding` 是 `vector(1024)`（`format_type(atttypid, atttypmod)`），與 schema 一致。原本寫「執行中的欄位都是 `vector(1536)`」，只在由 migration 建立的本機與測試資料庫成立。改寫成「migration 歷史落後於 UAT」，並註明補 migration 前要查每個環境的實際維度。`long_term_memories.embedding` 沒有查 |
 
 ## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
 
