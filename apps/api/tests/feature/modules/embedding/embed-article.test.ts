@@ -104,17 +104,6 @@ describe('向量化期間文章被修改時不寫入向量', () => {
     assert.match(ollama.state.embedCalls[1].input, /第二版內容/);
   });
 
-  test('向量化期間文章被封存', async () => {
-    const a = await fx.articleOf(fx.A, 'archived', { status: 'PUBLISHED' });
-    ollama.state.beforeEmbedReturns = async () => {
-      await fx.owner.kmArticle.update({ where: { id: a.id }, data: { status: 'ARCHIVED' } });
-    };
-
-    await embed(fx.A, a.id).catch(() => {});
-
-    assert.equal((await stored(a.id)).marker, null);
-  });
-
   test('向量化期間文章沒有被修改', async () => {
     const a = await fx.articleOf(fx.A, 'unchanged', { status: 'PUBLISHED' });
     const neighbour = await fx.articleOf(fx.A, 'unchanged-neighbour', { status: 'PUBLISHED' });
@@ -142,6 +131,33 @@ describe('向量化期間只有不影響向量化文字的欄位改變', () => {
     assert.equal(await embed(fx.A, a.id), 'written');
 
     assert.equal((await stored(a.id)).marker, 9);
+  });
+
+  test('向量化期間文章被封存', async () => {
+    const a = await fx.articleOf(fx.A, 'archived', { status: 'PUBLISHED' });
+    ollama.state.vector = markedVector(12);
+    ollama.state.beforeEmbedReturns = async () => {
+      await fx.owner.kmArticle.update({ where: { id: a.id }, data: { status: 'ARCHIVED' } });
+    };
+
+    assert.equal(await embed(fx.A, a.id), 'written');
+
+    // 封存的文章有向量也不會被檢索到（knowledge-embedding-routes.test.ts「ARCHIVED article is not returned by semantic search」）
+    assert.equal((await stored(a.id)).marker, 12);
+  });
+
+  test('向量化期間文章被發布', async () => {
+    // 已有舊向量的草稿改了內容，向量化還沒完成就被發布：發布看到已有向量，不會再開始向量化
+    const a = await fx.articleOf(fx.A, 'published-during', { status: 'DRAFT' });
+    await setVector(a.id, 2, 'bge-m3');
+    ollama.state.vector = markedVector(11);
+    ollama.state.beforeEmbedReturns = async () => {
+      await fx.owner.kmArticle.update({ where: { id: a.id }, data: { status: 'PUBLISHED' } });
+    };
+
+    assert.equal(await embed(fx.A, a.id), 'written');
+
+    assert.equal((await stored(a.id)).marker, 11, '文章的向量是這次的結果，不是舊向量');
   });
 });
 

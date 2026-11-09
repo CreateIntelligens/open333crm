@@ -57,17 +57,8 @@ export function prepareArticleText(article: {
 
 // ─── 文章的向量 ─────────────────────────────────────────────────────────────
 
-/** 向量化一篇文章的輸入：組成的文字與文章的狀態。寫入前以這兩者判斷文章有沒有被改過（design D2） */
-export interface ArticleEmbeddingSource {
-  text: string;
-  status: string;
-}
-
-/** 讀一篇文章的向量化輸入。文章不存在或屬於另一個租戶時回 null */
-export async function readArticleForEmbedding(
-  ctx: TenantCtx,
-  articleId: string,
-): Promise<ArticleEmbeddingSource | null> {
+/** 讀一篇文章向量化用的文字。文章不存在或屬於另一個租戶時回 null */
+export async function readArticleForEmbedding(ctx: TenantCtx, articleId: string): Promise<string | null> {
   const article = await ctx.tx.kmArticle.findFirst({
     where: { id: articleId, tenantId: ctx.tenantId },
     select: {
@@ -77,24 +68,24 @@ export async function readArticleForEmbedding(
       summary: true,
       content: true,
       spec: true,
-      status: true,
       attachments: { select: { filename: true } },
     },
   });
   if (!article) return null;
-  return { text: prepareArticleText(article), status: article.status };
+  return prepareArticleText(article);
 }
 
 /**
- * 只在文章的向量化文字與狀態仍和 `source` 相同時寫入向量與模型名稱（design D2）。回傳是否寫入。
+ * 只在文章的向量化文字仍和 `sourceText` 相同時寫入向量與模型名稱（design D2）。回傳是否寫入。
  *
  * 先以 `FOR UPDATE` 鎖住文章再重組文字：比對與寫入之間，其他交易改不了這篇文章。
- * 不比對 `updatedAt`：瀏覽次數這類不進向量化文字的欄位也會更新 `updatedAt`。
+ * 只比對文字：向量只取決於文字。`updatedAt` 會被瀏覽次數改變；狀態（發布、封存）由查詢過濾，
+ * 比對它們會把仍然正確的向量丟掉（review-loop 第 1、2 輪）。
  */
 export async function writeArticleEmbedding(
   ctx: TenantCtx,
   articleId: string,
-  input: { vector: number[]; model: string; source: ArticleEmbeddingSource },
+  input: { vector: number[]; model: string; sourceText: string },
 ): Promise<boolean> {
   const locked = await ctx.tx.$queryRawUnsafe<Array<{ id: string }>>(
     `SELECT id FROM km_articles WHERE id = $1::uuid AND "tenantId" = $2::uuid FOR UPDATE`,
@@ -103,8 +94,7 @@ export async function writeArticleEmbedding(
   );
   if (locked.length === 0) return false;
 
-  const current = await readArticleForEmbedding(ctx, articleId);
-  if (!current || current.text !== input.source.text || current.status !== input.source.status) return false;
+  if ((await readArticleForEmbedding(ctx, articleId)) !== input.sourceText) return false;
 
   await ctx.tx.$executeRawUnsafe(
     `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2 WHERE id = $3::uuid AND "tenantId" = $4::uuid`,

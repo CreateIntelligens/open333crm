@@ -12,7 +12,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 這一批不改遮罩的時機，呼叫端仍在原本的位置遮罩。各呼叫端的模組搬到 flow 時，再把遮罩移到交易之前。
 
 - **向量化改成交易外呼叫 Ollama，向量化期間文章被修改時不寫入**（#337 階段 4 第五批，change `migrate-embedding-tenant-ctx`）— `embedding` 模組與向量化設定改成入口開交易：交易內讀設定、遮罩政策與文章，交易外遮罩並呼叫 Ollama（新檔 `embedding/embedding-client.ts`），交易內寫入向量。可觀察的差異如下：
-  - 寫入向量前鎖住文章，重組向量化的文字，與向量化之前的文字和狀態比對。向量化期間文章被修改、封存或刪除時，這次的向量不寫入，寫一筆 warn log。只有瀏覽次數改變時照樣寫入。原本文章連改兩次時，舊內容的向量可能蓋掉新內容的向量。
+  - 寫入向量前鎖住文章，重組向量化的文字，與向量化之前的文字比對。向量化期間文章的標題、內容等向量化文字被修改，或文章被刪除時，這次的向量不寫入，寫一筆 warn log。只有發布、封存或瀏覽次數改變時照樣寫入。原本文章連改兩次時，舊內容的向量可能蓋掉新內容的向量。
   - `POST /api/v1/knowledge/:id/embed` 碰到上述情況時回 409 `ARTICLE_CHANGED`，原本回 200 並寫入舊內容的向量。
   - `embeddingModel` 記下實際產生向量的模型。原本向量化之後才讀設定，設定在這段期間被修改時會記錯。
   - 讀向量化設定（`GET /api/v1/settings/embedding`、向量化、搜尋、健康檢查）時，沒有設定列就回預設值，不建立設定列。`PUT /api/v1/settings/embedding` 改用 upsert 建立或修改設定列。

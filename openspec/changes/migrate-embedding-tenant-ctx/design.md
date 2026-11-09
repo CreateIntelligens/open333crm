@@ -56,19 +56,23 @@
 
 不放在 service 檔：結構規則 2 規定 service 不呼叫外部服務。用戶端檔不收 `TenantCtx`，所以呼叫端在交易內呼叫 `embedText()` 時，型別檢查擋不住。這一點由 code review 與規劃檔 5.2 的檢查清單把關。
 
-### D2. 向量化拆成三段，寫入前比對向量化的文字與狀態
+### D2. 向量化拆成三段，寫入前比對向量化的文字
 
 `embedding.flow.ts` 的 `embedArticleFlow(deps, tenantId, articleId)` 依序執行：
 
-1. 交易 1（`inTenant`）：讀向量化設定、遮罩政策與文章，以 `prepareArticleText()` 組成向量化的文字，並記下文章的狀態。文章不存在時回 `not_found`。
+1. 交易 1（`inTenant`）：讀向量化設定、遮罩政策與文章，以 `prepareArticleText()` 組成向量化的文字。文章不存在時回 `not_found`。
 2. 交易外：以交易 1 的文字呼叫 `embedText()`。
-3. 交易 2：以 `SELECT ... FOR UPDATE` 鎖住文章，再讀一次文章、重組文字。文字與狀態都和交易 1 相同時，才 `UPDATE km_articles SET embedding, "embeddingModel" WHERE id AND "tenantId"`。文章不存在、文字或狀態不同時回 `skipped`，並寫 warn log。
+3. 交易 2：以 `SELECT ... FOR UPDATE` 鎖住文章，再讀一次文章、重組文字。文字和交易 1 相同時，才 `UPDATE km_articles SET embedding, "embeddingModel" WHERE id AND "tenantId"`。文章不存在或文字不同時回 `skipped`，並寫 warn log。
 
-只比對進入向量化文字的欄位（標題、分類、標籤、規格、摘要、內容、附件檔名）與狀態，所以瀏覽次數這類欄位的寫入不影響結果。比對文字由 `prepareArticleText()` 決定，之後文字多用一個欄位，比對自動跟著改。兩段文字都在記憶體內，直接比較字串，不另算雜湊。鎖住文章之後才比對，比對與寫入之間其他交易改不了這篇文章；交易 2 沒有外部呼叫，鎖只持有幾毫秒。模型名稱用交易 1 讀到的設定，與實際產生向量的模型相同。搬遷前的程式在向量化之後才讀設定：設定在向量化期間被修改時，記下的模型名稱會與實際產生向量的模型不同。
+只比對進入向量化文字的欄位（標題、分類、標籤、規格、摘要、內容、附件檔名），所以瀏覽次數、狀態這類欄位的寫入不影響結果。比對文字由 `prepareArticleText()` 決定，之後文字多用一個欄位，比對自動跟著改。兩段文字都在記憶體內，直接比較字串，不另算雜湊。鎖住文章之後才比對，比對與寫入之間其他交易改不了這篇文章；交易 2 沒有外部呼叫，鎖只持有幾毫秒。模型名稱用交易 1 讀到的設定，與實際產生向量的模型相同。搬遷前的程式在向量化之後才讀設定：設定在向量化期間被修改時，記下的模型名稱會與實際產生向量的模型不同。
 
 不用 `externalVer`：`externalVer` 是合作方系統的版本號，只有合作方推送會寫入，後台編輯不會遞增。
 
 不用 `updatedAt`（review-loop 第 1 輪）：最初的實作比對 `updatedAt`。`getArticle()` 以 Prisma 的 `update` 累加瀏覽次數，`@updatedAt` 跟著改變。後台按「編輯」會先讀文章，所以建立文章後馬上點編輯，這次的向量就被略過；沒有存檔時，文章一直沒有向量。只讓瀏覽次數不改 `updatedAt` 也不夠：之後新增的統計欄位以 Prisma 寫入時，會再撞到同樣的問題。
+
+不比對狀態（review-loop 第 2 輪）：第 1 輪改成比對「文字 + 狀態」。一篇已有舊向量的草稿改了內容、向量化還沒完成就被發布時，這次的結果因為狀態改變被略過，而 `publishArticle()` 看到文章已有向量，不再開始向量化，已發布的文章就留著舊內容的向量。向量只取決於文字；要不要被檢索是查詢時依 `status = 'PUBLISHED'` 判斷（spec「Archived Articles Excluded from Retrieval」），所以封存期間寫入的向量不會被檢索到。
+
+第 1、2 輪的共同原因：拿不是向量輸入的欄位（`updatedAt`、狀態）判斷向量還能不能用。之後要加比對條件時，先確認那個欄位是不是 `prepareArticleText()` 的輸入。
 
 不用內容版本欄位：
 - 由程式遞增：文章與附件有 8 個寫入點，新增的寫入路徑忘了遞增不會報錯。

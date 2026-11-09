@@ -24,7 +24,7 @@ export type EmbedArticleResult = 'written' | 'skipped' | 'not_found';
  * 向量化一篇文章。向量化服務失敗時丟出錯誤，文章的向量不變。
  *
  * - `not_found`：交易 1 讀不到文章（不存在、屬於另一個租戶，或已被刪除）。
- * - `skipped`：向量化期間文章的向量化文字或狀態改變（修改、封存），或文章被刪除，這次的向量不寫入
+ * - `skipped`：向量化期間文章的向量化文字改變，或文章被刪除，這次的向量不寫入
  *   （spec km-ingestion「向量化期間文章被修改時不寫入向量」）。較新的寫入會自己開始向量化。
  */
 export async function embedArticleFlow(
@@ -34,20 +34,20 @@ export async function embedArticleFlow(
 ): Promise<EmbedArticleResult> {
   // 交易 1：模型名稱用這裡讀到的設定，與實際產生向量的模型相同
   const read = await inTenant(deps.prisma, tenantId, async (scope) => {
-    const article = await readArticleForEmbedding(scope, articleId);
-    if (!article) return null;
-    return { article, ...(await readEmbeddingInputs(scope)) };
+    const text = await readArticleForEmbedding(scope, articleId);
+    if (text === null) return null;
+    return { text, ...(await readEmbeddingInputs(scope)) };
   });
   if (!read) return 'not_found';
 
-  const { article, settings, policy } = read;
-  const vector = await embedText(settings, policy, article.text);
+  const { text, settings, policy } = read;
+  const vector = await embedText(settings, policy, text);
 
   const written = await inTenant(deps.prisma, tenantId, (scope) =>
-    writeArticleEmbedding(scope, articleId, { vector, model: settings.model, source: article }),
+    writeArticleEmbedding(scope, articleId, { vector, model: settings.model, sourceText: text }),
   );
   if (!written) {
-    logger.warn(`[Embedding] 向量化期間文章被修改、封存或刪除，不寫入這次的向量（article ${articleId}）`);
+    logger.warn(`[Embedding] 向量化期間文章被修改或刪除，不寫入這次的向量（article ${articleId}）`);
     return 'skipped';
   }
   return 'written';
