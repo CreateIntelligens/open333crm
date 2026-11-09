@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Download, Loader2 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePermission } from '@/providers/AuthProvider';
 import { Topbar } from '@/components/layout/Topbar';
@@ -11,6 +11,7 @@ import { KpiCards } from '@/components/analytics/KpiCards';
 import { MessageTrendChart } from '@/components/analytics/MessageTrendChart';
 import { CaseCategoryPieChart } from '@/components/analytics/CaseCategoryPieChart';
 import { CaseTrendChart } from '@/components/analytics/CaseTrendChart';
+import { CaseSummary, SlaViolationTable, toPriorityDistribution, PRIORITY_COLORS } from '@/components/analytics/CaseReportParts';
 import { AgentPerformanceTable } from '@/components/analytics/AgentPerformanceTable';
 import { ChannelDistributionChart } from '@/components/analytics/ChannelDistributionChart';
 import {
@@ -125,76 +126,43 @@ export default function AnalyticsPage() {
             </div>
           </TabsContent>
 
-          {/* Tab 2: Cases */}
-          <TabsContent value="cases">
-            <div className="space-y-6">
+          {/* Tab 2: Cases — 依 Claude Design「案件報表」：摘要數字 → 趨勢 → 分類／優先級分布 → SLA 違規清單 */}
+          <TabsContent value="cases" className="mt-5">
+            <div className="flex flex-col gap-5">
+              <CaseSummary
+                trend={caseData.data?.trend || []}
+                violations={(caseData.data?.slaViolations || []).length}
+                isLoading={caseData.isLoading}
+              />
               <CaseTrendChart
                 data={caseData.data?.trend || []}
                 isLoading={caseData.isLoading}
+                error={caseData.error}
+                onRetry={() => caseData.mutate()}
               />
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
                 <CaseCategoryPieChart
                   data={caseData.data?.categoryDistribution || []}
                   isLoading={caseData.isLoading}
+                  error={caseData.error}
+                  onRetry={() => caseData.mutate()}
                   title="案件分類分布"
                 />
                 <CaseCategoryPieChart
-                  data={caseData.data?.priorityDistribution || []}
+                  data={toPriorityDistribution(caseData.data?.priorityDistribution || [])}
                   isLoading={caseData.isLoading}
+                  error={caseData.error}
+                  onRetry={() => caseData.mutate()}
                   title="案件優先級分布"
+                  colors={PRIORITY_COLORS}
                 />
               </div>
-
-              {/* SLA violations table */}
-              <div className="rounded-lg border">
-                <div className="border-b bg-muted/50 px-4 py-3">
-                  <h3 className="text-sm font-semibold">SLA 違規案件</h3>
-                </div>
-                {caseData.isLoading ? (
-                  <div className="flex h-[100px] items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (caseData.data?.slaViolations || []).length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    無 SLA 違規案件
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b bg-muted/30">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">標題</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">狀態</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">指派客服</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">聯絡人</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">SLA 到期</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {(caseData.data?.slaViolations || []).map((v: any) => (
-                          <tr key={v.id} className="hover:bg-muted/30">
-                            <td className="px-4 py-2 font-medium">{v.title}</td>
-                            <td className="px-4 py-2">{v.status}</td>
-                            <td className="px-4 py-2">{v.assignee?.name || '-'}</td>
-                            <td className="px-4 py-2">{v.contact?.displayName || '-'}</td>
-                            <td className="px-4 py-2 text-destructive">
-                              {v.slaDueAt ? new Date(v.slaDueAt).toLocaleString('zh-TW') : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Escalation rate */}
-              {caseData.data?.escalationRate != null && (
-                <div className="rounded-lg border p-4">
-                  <p className="text-sm text-muted-foreground">升級率</p>
-                  <p className="text-2xl font-bold">{caseData.data.escalationRate}%</p>
-                </div>
-              )}
+              <SlaViolationTable
+                data={caseData.data?.slaViolations || []}
+                isLoading={caseData.isLoading}
+                error={caseData.error}
+                onRetry={() => caseData.mutate()}
+              />
             </div>
           </TabsContent>
 
