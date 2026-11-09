@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { caseTransitionTimestamps } from '#src/constants/case-transitions.js';
+import { caseStatusOutcomeEvent, caseTransitionTimestamps } from '#src/constants/case-transitions.js';
 
 const NOW = new Date('2026-11-04T00:00:00Z');
 
@@ -30,4 +30,34 @@ test('重開：RESOLVED → IN_PROGRESS、CLOSED → OPEN 清除 resolvedAt', ()
 test('狀態沒有改變：不動任何時間欄位', () => {
   assert.deepEqual(caseTransitionTimestamps('RESOLVED', 'RESOLVED', NOW), {});
   assert.deepEqual(caseTransitionTimestamps('CLOSED', 'CLOSED', NOW), {});
+});
+
+// ── caseStatusOutcomeEvent（issue #469）：API 與 workers 共用的 case.resolved／case.closed 內容 ──
+const SOURCE = {
+  caseId: 'case-1',
+  contactId: 'contact-1',
+  channelId: 'channel-1',
+  assigneeId: null,
+  title: '退貨',
+  conversationId: 'conv-1',
+};
+
+test('轉成 RESOLVED：發 case.resolved，內容含工單、聯絡人、渠道、負責人、標題與對話', () => {
+  assert.deepEqual(caseStatusOutcomeEvent('RESOLVED', SOURCE), {
+    name: 'case.resolved',
+    payload: { caseId: 'case-1', contactId: 'contact-1', channelId: 'channel-1', assigneeId: null, title: '退貨', conversationId: 'conv-1' },
+  });
+});
+
+test('轉成 CLOSED：發 case.closed；沒有對話時不帶 conversationId', () => {
+  assert.deepEqual(caseStatusOutcomeEvent('CLOSED', { ...SOURCE, assigneeId: 'agent-1', conversationId: null }), {
+    name: 'case.closed',
+    payload: { caseId: 'case-1', contactId: 'contact-1', channelId: 'channel-1', assigneeId: 'agent-1', title: '退貨' },
+  });
+});
+
+test('轉成其他狀態：不發事件', () => {
+  for (const to of ['OPEN', 'IN_PROGRESS', 'PENDING', 'ESCALATED'] as const) {
+    assert.equal(caseStatusOutcomeEvent(to, SOURCE), null, to);
+  }
 });

@@ -21,8 +21,23 @@ const jobData = {
 
 const job = { id: 'n1', name: 'notification:dispatch', data: jobData } as unknown as Job;
 
-function makePrisma(create: (args: { data: Record<string, unknown> }) => Promise<unknown>) {
-  return { notification: { create } } as unknown as PrismaClient;
+type Recipient = 'active' | 'inactive' | 'deleted';
+
+/**
+ * 模擬 createNotificationForActiveAgent 的條件寫入（INSERT … SELECT … FROM agents WHERE …）：
+ * 成員不在、租戶或 ID 不符，或 SQL 帶啟用條件而成員已停用時寫入 0 筆；否則經 create 寫入一筆並回傳。
+ * 參數順序：type、title、body、clickUrl、agentId、tenantId。
+ */
+function makePrisma(create: (args: { data: Record<string, unknown> }) => Promise<unknown>, recipient: Recipient = 'active') {
+  const $queryRaw = async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const [type, title, body, clickUrl, agentId, tenantId] = values;
+    const sql = strings.join('?');
+    if (recipient === 'deleted') return [];
+    if (agentId !== jobData.agentId || tenantId !== jobData.tenantId) return [];
+    if (recipient === 'inactive' && /"isActive" = true/.test(sql)) return [];
+    return [await create({ data: { tenantId, agentId, type, title, body, clickUrl } })];
+  };
+  return { $queryRaw } as unknown as PrismaClient;
 }
 
 function makeRedis(publish: (channel: string, message: string) => Promise<number>) {
@@ -100,5 +115,49 @@ describe('handleNotificationJob', () => {
 
     assert.equal(created.length, 2);
     assert.deepEqual(created[0], created[1]);
+  });
+
+  // issue #484：通知排隊期間收件成員被永久刪除或停用，寫入會撞外鍵或送給不該收的人
+  for (const recipient of ['deleted', 'inactive'] as const) {
+    const name = recipient === 'deleted' ? '收件成員已被永久刪除' : '收件成員已停用';
+    test(name, async () => {
+      const infoLog = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+      let createCalls = 0;
+      let publishCalls = 0;
+      const prisma = makePrisma(async ({ data }) => {
+        createCalls++;
+        // 真實資料庫：刪除的成員會撞 notifications.agentId 外鍵；停用的成員寫得進去
+        if (recipient === 'deleted') throw new Error('Foreign key constraint violated: notifications_agent_id_fkey');
+        return { id: 'notif-1', ...data };
+      }, recipient);
+      const redis = makeRedis(async () => {
+        publishCalls++;
+        return 1;
+      });
+
+      await assert.doesNotReject(handleNotificationJob(job, prisma, redis));
+
+      assert.equal(createCalls, 0);
+      assert.equal(publishCalls, 0);
+      assert.ok(infoLog.mock.calls.some(([msg]) => /a1/.test(String(msg)) && /略過/.test(String(msg))));
+    });
+  }
+
+  test('查詢通過後收件成員被永久刪除', async () => {
+    // 查成員時還在，寫入前被 purgeAgent 刪掉：真實資料庫的條件寫入寫入 0 筆；舊寫法撞外鍵 P2003
+    const fk = Object.assign(new Error('Foreign key constraint violated: notifications_agentId_fkey'), { code: 'P2003' });
+    let publishCalls = 0;
+    const prisma = {
+      agent: { findFirst: async () => ({ id: jobData.agentId }) },
+      notification: { create: async () => { throw fk; } },
+      $queryRaw: async () => [],
+    } as unknown as PrismaClient;
+    const redis = makeRedis(async () => {
+      publishCalls++;
+      return 1;
+    });
+
+    await assert.doesNotReject(handleNotificationJob(job, prisma, redis));
+    assert.equal(publishCalls, 0);
   });
 });

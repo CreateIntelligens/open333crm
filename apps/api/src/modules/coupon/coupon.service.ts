@@ -13,6 +13,7 @@ import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { sanitizeTerms } from './terms-sanitizer.js';
 import { normalizePrefix } from './coupon-code.service.js';
 import { staffCodeError, findLockedChanges } from './coupon-rules.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 export interface CouponInput {
   name?: string;
@@ -327,9 +328,11 @@ export async function listCoupons(
   if (opts.purpose) base.purpose = opts.purpose as Prisma.CouponWhereInput['purpose'];
   const q = opts.q?.trim();
   if (q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(q);
     base.OR = [
-      { name: { contains: q, mode: 'insensitive' } },
-      { displayCode: { contains: q, mode: 'insensitive' } },
+      { name: { contains: keyword, mode: 'insensitive' } },
+      { displayCode: { contains: keyword, mode: 'insensitive' } },
     ];
   }
   const where: Prisma.CouponWhereInput = opts.status

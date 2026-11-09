@@ -6,6 +6,7 @@
  * 推播在 commit 之後送出；事件與資料一起寫進 outbox。
  */
 import type { Server } from 'socket.io';
+import { caseStatusOutcomeEvent } from '@open333crm/shared';
 import type { TenantScope } from '../../lib/tenant-ctx.js';
 import { notifyTenant } from '../../events/socket-push.js';
 import { publishEvent, type EventPublisher } from '../../events/outbox-publisher.js';
@@ -81,17 +82,16 @@ export async function caseTransitionedEffects(
 ): Promise<void> {
   const { updated, before, toStatus } = transition;
   notifyCaseUpdated(scope, deps.io, updated);
-  if (toStatus !== 'RESOLVED' && toStatus !== 'CLOSED') return;
-
-  const conversationId = before.conversations[0]?.id ?? null;
-  await publishEvent(scope, deps.events, toStatus === 'RESOLVED' ? 'case.resolved' : 'case.closed', {
+  // 事件內容與 workers 的 update_case_status 共用（issue #469）
+  const outcome = caseStatusOutcomeEvent(toStatus, {
     caseId: updated.id,
     contactId: before.contactId,
     channelId: before.channelId,
     assigneeId: before.assigneeId,
     title: before.title,
-    ...(conversationId ? { conversationId } : {}),
+    conversationId: before.conversations[0]?.id ?? null,
   });
+  if (outcome) await publishEvent(scope, deps.events, outcome.name, outcome.payload);
 }
 
 /** 升級：推播，並發 case.escalated 給自動化與升級通知 */

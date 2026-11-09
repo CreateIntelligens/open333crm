@@ -4,7 +4,7 @@
 - 程式版本：5c81102e
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
-- 已修正：HC-INBOX-01（#422，change `fix-inbox-conversation-pagination`）。對話列表依 `meta.totalPages` 載入更多，「未讀」「我的」改送 `unread`、`assigneeId`，搜尋改由後端的 `search` 參數執行；`tenant/INBOX.md`、手冊 ch01 已同步。HC-INBOX-07（聊天視窗只載 50 則）未修正。本報告其餘段落仍描述健檢當時的程式
+- 已修正：HC-INBOX-01（#422，change `fix-inbox-conversation-pagination`）。對話列表依 `meta.totalPages` 載入更多，「未讀」「我的」改送 `unread`、`assigneeId`，搜尋改由後端的 `search` 參數執行；`tenant/INBOX.md`、手冊 ch01 已同步。HC-INBOX-07（#468，change `fix-chat-window-load-older-468`）：聊天視窗以游標 `before` 載入更早的訊息，見 AUDIT-REVIEWS 2026-11-09。本報告其餘段落仍描述健檢當時的程式
 - 之後的行為變更：AI 與知識庫回覆都因錯誤失敗時轉真人（issue #445，change `handoff-on-ai-reply-failure-445`），見 `tenant/INBOX.md` 的轉真人
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只讀）
 - 規格：`docs/ref/features/feature-map.json` 的 `inbox`；功能文件 `docs/ref/features/tenant/INBOX.md`
@@ -30,7 +30,7 @@ P0：無。HC-INBOX-01 原列 P2，2026-10-30 使用者決定升為 P1。
 | HC-INBOX-04 | P2 | 收件匣的操作不依權限碼與渠道存取層級隱藏：結案、交回 Bot、接管、負責人與狀態下拉、輸入框、迴紋針、對話標籤、建立工單，按下才 403。存取層級不足時，畫面顯示英文「Forbidden: channel access level insufficient（需 full，實為 reply_only）」 | 本機：自訂角色只有 `inbox.view`（`hc-inbox-ro`）→ 所有按鈕可見、輸入框可打字，送出顯示「沒有送出：權限不足…」、改負責人顯示「權限不足…」。`read_only` 成員送出顯示「沒有送出：Forbidden: channel access level insufficient（需 reply_only，實為 read_only）」 | `apps/web/src/components/inbox/ChatWindow.tsx:241-300`；`MessageInput.tsx`；`apps/api/src/services/channel-visibility.ts:259`（英文訊息） | RBAC-11 |
 | HC-INBOX-05 | P2 | `GET /conversations/:id` 回傳聯絡人**所有**渠道身分（uid、暱稱），不依渠道可見範圍過濾；`GET /contacts/:id` 已過濾。畫面右欄沒有顯示，問題在 API 回應 | 本機：替測試聯絡人加一個「健檢 LINE-A」身分 → `reply_only` 成員（只看得到 hc-inbox-WebChat）呼叫 `GET /conversations/C1`，`contact.channelIdentities` 含 `健檢 LINE-A / Uhcinbox0001 / hc-inbox-LINE暱稱`；同一人呼叫 `GET /contacts/<id>` 只回 WebChat 身分 | `conversation.service.ts:184-206`（`getConversation` 的 include） | RBAC-04（已補列；與 HC-CONTACTS-10 同一缺口） |
 | HC-INBOX-06 | P3 | 狀態下拉沒有「Bot 處理中」選項：`BOT_HANDLED` 的對話，下拉顯示「進行中」，與旁邊的徽章「Bot 處理中」矛盾；此時選「進行中」不會觸發變更 | 本機與 UAT（只讀）：開一段 Bot 處理中的對話，下拉顯示「進行中」 | `ChatWindow.tsx:88-92` | 新（與 CONV-02 的標籤問題相關） |
-| HC-INBOX-07 | P3 | 聊天視窗只載最近 50 則訊息，沒有「載入更早」。`useMessages` 已有 `loadOlder`，`ChatWindow` 沒有使用。手冊已寫明，建議改到聯絡人頁的對話紀錄 | 本機：在一段對話插入 60 則訊息 → 畫面顯示 47 則（50 則扣掉卡片類訊息），捲到頂沒有更多，最早的 #1 不顯示 | `apps/web/src/hooks/useMessages.ts:20, 70-95`；`ChatWindow.tsx:57` | 新 |
+| HC-INBOX-07 | P3 | 聊天視窗只載最近 50 則訊息，沒有「載入更早」。`useMessages` 已有 `loadOlder`，`ChatWindow` 沒有使用。手冊已寫明，建議改到聯絡人頁的對話紀錄 | 本機：在一段對話插入 60 則訊息 → 畫面顯示 47 則（50 則扣掉卡片類訊息），捲到頂沒有更多，最早的 #1 不顯示 | `apps/web/src/hooks/useMessages.ts:20, 70-95`；`ChatWindow.tsx:57` | 已修正（#468） |
 | HC-INBOX-08 | P3 | socket 更新列表時不套用目前的篩選：在「進行中」分頁結案的對話仍留在進行中列表，直到重新整理；狀態篩選也一樣 | 本機：「進行中」開 C2 → 結案 → 左欄 C2 仍在進行中列表最上方 | `useConversations.ts:201-232`（只合併欄位） | 已修正（PR #449：更新後不符合狀態、未讀、我的篩選的列移除，選取中的保留） |
 | HC-INBOX-09 | P3 | 從網址開對話（通知的 clickUrl、重新整理、分享連結）不會標已讀；只有點列表列才標 | 本機：`/dashboard/inbox?conv=C2` 開啟 → 該列的未讀徽章仍是 1 | `ConversationList.tsx:69-73` | 新 |
 | HC-INBOX-10 | P3 | 列表參數 `unread=false` 被當成 `true`（`z.coerce.boolean` 把非空字串都轉成 true）；`assigneeId` 不是 UUID 時回 400 `DATABASE_ERROR`「資料處理失敗」 | 本機：標一段已讀後，`?unread=false` 回 15 筆、不帶參數 16 筆；`?assigneeId=foo` 400 `DATABASE_ERROR`。前端不送這兩種值 | `conversation.routes.ts:122-130` | 新 |
