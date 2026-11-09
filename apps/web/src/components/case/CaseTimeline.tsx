@@ -34,6 +34,11 @@ const PRIORITY_LABELS: Record<string, string> = {
   URGENT: '緊急',
 };
 
+/** 自動化事件的規則名稱；SLA 等沒有規則名稱的路徑只寫「自動化規則」 */
+function automationRuleName(payload?: Record<string, unknown>): string {
+  return typeof payload?.ruleName === 'string' && payload.ruleName ? `自動化規則「${payload.ruleName}」` : '自動化規則';
+}
+
 function formatEventDescription(
   eventType: string,
   payload?: Record<string, unknown>,
@@ -44,9 +49,20 @@ function formatEventDescription(
     case 'status_changed': {
       const from = STATUS_LABELS[payload?.from as string] || payload?.from || '?';
       const to = STATUS_LABELS[payload?.to as string] || payload?.to || '?';
-      // 客人評分（或客服代評）後系統自動關閉（issue #444）
-      const reason = payload?.reason === 'csat_rated' ? '（評分後自動關閉）' : '';
+      // 客人評分（或客服代評）後系統自動關閉（issue #444）；自動化規則改的標出規則（issue #469）
+      const reason =
+        payload?.reason === 'csat_rated'
+          ? '（評分後自動關閉）'
+          : payload?.source === 'automation'
+            ? `（${automationRuleName(payload)}）`
+            : '';
       return `狀態：${from} → ${to}${reason}`;
+    }
+    // 自動化規則要改的狀態不符合轉換規則，沒有改（issue #469）
+    case 'automation_status_skipped': {
+      const from = STATUS_LABELS[payload?.from as string] || payload?.from || '?';
+      const to = STATUS_LABELS[payload?.to as string] || payload?.to || '?';
+      return `${automationRuleName(payload)}沒有改狀態：不能從「${from}」直接改成「${to}」`;
     }
     case 'assigned':
       return `指派給 ${payload?.assigneeName || '未知'}`;
@@ -202,6 +218,8 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
       case 'closed':
       case 'csat_send_failed':
         return 'bg-destructive-subtle text-destructive';
+      case 'automation_status_skipped':
+        return 'bg-warning-subtle text-warning';
       case 'resolved':
         return 'bg-success-subtle text-success';
       case 'assigned':

@@ -4,6 +4,17 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：自動化「更新工單狀態」依狀態轉換規則，下拉參數檢查值（AUTO-10、AUTO-12）
+
+issue #469，分支 `fix/automation-case-status-469`，change `fix-automation-case-status-469`。以單元測試與測試資料庫 `open333crm_test_p6b` 的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-10 的 `update_case_status` 不檢查轉換、不寫工單事件、不發 `case.resolved`／`case.closed`、socket `source` 寫錯 | 已修正，AUTO-10 維持部分修正（`assign_agent` 不通知、`assign_agent`／`escalate_case`／`set_case_priority` 不帶 `tenantId` 未處理） | `automation-update-case-status.test.ts` 新增 6 項修正前全部失敗在斷言上（OPEN → RESOLVED 被寫入、沒有略過紀錄、沒有 `status_changed`、沒有 outbox、`source` 為 `sla_worker`、狀態相同仍推播） |
+| AUTO-12 的下拉參數值 | 已修正，AUTO-12 改為部分修正（`agentId` 未處理） | `packages/automation/tests/unit/contracts/validation.test.ts` 4 項修正前失敗；`automation-routes.test.ts`「Select parameter outside the options rejected」修正前回 201 |
+
+`case.resolved`／`case.closed` 的內容改由 `@open333crm/shared` 的 `caseStatusOutcomeEvent()` 組，API 的 `caseTransitionedEffects()` 與 workers 共用；拿掉 `conversationId` 的 mutation 讓 shared 與 API 的工單測試各失敗。
+
 ## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
 
 issue #414 後續，分支 `fix/erasure-export-deleted-requester-414`，change `keep-completion-audit-for-purged-requester`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。

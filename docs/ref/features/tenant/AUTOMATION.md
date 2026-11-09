@@ -100,11 +100,13 @@
 
 **驗證錯誤訊息。** 契約驗證（`packages/automation/src/contracts/validation.ts`）的錯誤訊息一律中文，寫第幾個條件或動作，並用契約的中文名稱，例如「第 1 個動作「傳送訊息」不適用於「工單關閉」觸發」。條件依畫面順序編號，巢狀群組裡的條件連續計數。契約完全沒有的欄位或動作只有原始代碼，訊息會說明「不是系統提供的」，例如「第 2 個動作「auto_assign」不是系統提供的動作，請刪除」；編輯頁列為「未知動作（auto_assign）」。
 
+**下拉參數只收選項內的值**（#469）。「目標狀態」「優先級」「新優先級」「分類」等下拉參數有值時必須是契約的選項之一，否則存規則回 400，例如「第 1 個動作「更新工單狀態」的「目標狀態」不能是「FOO」，請從選項中選擇」；選填的下拉留空照常通過。API、CLI、MCP 都走同一個驗證。既有規則若存了選項外的值，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。負責人、通知對象（`agentId`）仍不檢查（AUTO-12）。「目標狀態」的選項是開啟、處理中、待處理、已升級、已解決、已關閉。
+
 **`add_tag` 以名稱找標籤。** 規則存的是標籤名稱。workers 依名稱找標籤時不限 scope；找不到就用這個名稱建立一個新的標籤。因此標籤被改名或刪除後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。貼標時，workers 在同一個交易把 `contact.tagged` 寫進 outbox，讓以貼標為觸發的規則接著執行。事件帶著來源 `automation`，自動化訂閱者據此略過，避免無限迴圈。
 
-**工單類動作繞過工單模組。** workers 直接更新 `Case` 的欄位，不經過 `case.service.ts`：
+**工單類動作繞過工單模組。** workers 直接更新 `Case` 的欄位，不經過 `case.service.ts`。`update_case_status` 與工單模組共用 `packages/shared` 的規則，其餘動作沒有：
 
-- `update_case_status` 不檢查轉換是否合法，不寫時間軸，也不發 `case.resolved`、`case.closed`。`resolvedAt`、`closedAt` 與工單模組用同一個規則（`caseTransitionTimestamps()`，#417）：由規則轉成 `RESOLVED` 的工單有 `resolvedAt`，問卷排程會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
+- `update_case_status` 依工單的狀態轉換規則（`canTransition()`，#469），和客服手動改狀態一樣：例如「開啟」不能直接改成「已解決」。不合法（含不存在的狀態值）時不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫時間軸 `status_changed`（顯示「（自動化規則「<名稱>」）」），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox，內容與手動轉換相同（`caseStatusOutcomeEvent()`）；推播 `case.updated` 的 `source` 是 `automation`。`resolvedAt`、`closedAt` 用 `caseTransitionTimestamps()`（#417），由規則轉成 `RESOLVED` 的工單會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
 - `escalate_case` 只提高優先級，不把狀態改成 `ESCALATED`，也不發布 `case.escalated`。
 - `assign_agent` 只改 `assigneeId`，不發布 `case.assigned`，被指派的人不會收到通知。上下文沒有工單時略過，不會指派對話。
 

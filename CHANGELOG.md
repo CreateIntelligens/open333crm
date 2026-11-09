@@ -15,6 +15,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **自動化「更新工單狀態」依工單的狀態轉換規則，時間軸看得到結果**（issue #469，AUDIT AUTO-10、AUTO-12 部分修正，change `fix-automation-case-status-469`）— 規則原本能把「開啟」直接改成「已解決」（客服手動操作會回 422），時間軸沒有紀錄，推播的 `source` 寫成 `sla_worker`，對外 webhook 收不到 `case.resolved`／`case.closed`；用 API、CLI、MCP 也能存 `status: "FOO"` 的規則，觸發時才失敗、只寫 log。現在：
+  - workers 的 `update_case_status` 寫入前用 `canTransition()`。不允許的轉換（含不存在的狀態值）不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）。目標狀態等於目前狀態時不改也不寫。
+  - 允許的轉換在同一個交易寫 `status_changed`（`actorType: 'automation'`，時間軸顯示規則名稱），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox；推播 `case.updated` 的 `source` 改成 `automation`。
+  - `case.resolved`／`case.closed` 的內容改由 `@open333crm/shared` 的 `caseStatusOutcomeEvent()` 組，API 手動轉換與 workers 共用。目前系統內只有對外 webhook 訂閱這兩個事件，自動化不訂閱，不會造成規則迴圈。
+  - 契約驗證檢查下拉參數（目標狀態、優先級、新優先級、分類）的值必須是選項之一，存規則回 400；選填的下拉留空照常通過。
+  - 「更新工單狀態」的選項加入「待處理」（使用者 2026-11-09 決定）。
+  - 影響既有規則：「建立工單時改成已解決」這類規則之後不再改狀態，只在時間軸留下略過紀錄；存了選項外下拉值的規則會被 workers 整條略過，規則列表標示「規則不會執行」。
+  - 未修：`assign_agent` 不通知、`assign_agent`／`escalate_case`／`set_case_priority` 的更新不帶 `tenantId`；`agentId` 不檢查。
+
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
 - **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。
