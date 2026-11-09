@@ -203,6 +203,20 @@ describe('自動化規則', () => {
     assert.equal(other.body.error!.message, '找不到要傳送的素材，或素材已停用');
   });
 
+  // issue #469（AUDIT AUTO-12）：原本只檢查有填，API、CLI、MCP 可以存不存在的狀態，觸發時才失敗
+  test('Select parameter outside the options rejected：狀態 FOO 回 400，規則沒有存進資料庫', async () => {
+    const name = `${MARK}-錯誤狀態`;
+    const res = await call(appA, 'POST', rules, rule({
+      name,
+      trigger: { type: 'case.created' },
+      actions: [{ type: 'update_case_status', params: { status: 'FOO' } }],
+    }));
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.equal(res.body.error!.code, 'VALIDATION_ERROR');
+    assert.match(res.body.error!.message, /「更新工單狀態」的「目標狀態」不能是「FOO」/);
+    assert.equal(await owner.automationRule.count({ where: { tenantId: A, name } }), 0);
+  });
+
   test('加好友禮：其他租戶的券回 400；同租戶第二條回 409，其他租戶不受影響', async () => {
     const wrong = await call(appA, 'POST', rules, followGift(couponB.id));
     assert.equal(wrong.status, 400);

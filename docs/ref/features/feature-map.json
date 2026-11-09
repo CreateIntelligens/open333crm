@@ -885,7 +885,7 @@
         },
         {
           "domain": "cases",
-          "why": "create_case 建單、update_case_status/escalate_case/set_case_priority/assign_agent 直接改 Case（不經 case.service）；case.created、case.escalated 觸發"
+          "why": "create_case 建單、update_case_status/escalate_case/set_case_priority/assign_agent 直接改 Case（不經 case.service；update_case_status 用 shared 的 canTransition、caseStatusOutcomeEvent，寫 case_events 與 case.resolved/closed）；case.created、case.escalated 觸發"
         },
         {
           "domain": "inbox",

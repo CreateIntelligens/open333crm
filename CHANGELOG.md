@@ -24,6 +24,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **自動化「更新工單狀態」依工單的狀態轉換規則，時間軸看得到結果**（issue #469，AUDIT AUTO-10、AUTO-12 部分修正，change `fix-automation-case-status-469`）— 規則原本能把「開啟」直接改成「已解決」（客服手動操作會回 422），時間軸沒有紀錄，推播的 `source` 寫成 `sla_worker`，對外 webhook 收不到 `case.resolved`／`case.closed`；用 API、CLI、MCP 也能存 `status: "FOO"` 的規則，觸發時才失敗、只寫 log。現在：
+  - workers 的 `update_case_status` 寫入前用 `canTransition()`。不允許的轉換（含不存在的狀態值）不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）。目標狀態等於目前狀態時不改也不寫。
+  - 允許的轉換在同一個交易寫 `status_changed`（`actorType: 'automation'`，時間軸顯示規則名稱），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox；推播 `case.updated` 的 `source` 改成 `automation`。
+  - `case.resolved`／`case.closed` 的內容改由 `@open333crm/shared` 的 `caseStatusOutcomeEvent()` 組，API 手動轉換與 workers 共用。目前系統內只有對外 webhook 訂閱這兩個事件，自動化不訂閱，不會造成規則迴圈。
+  - 契約驗證檢查下拉參數（目標狀態、優先級、新優先級、分類）的值必須是選項之一，存規則回 400；選填的下拉留空照常通過。
+  - 「更新工單狀態」的選項加入「待處理」（使用者 2026-11-09 決定）。
+  - 影響既有規則：「建立工單時改成已解決」這類規則之後不再改狀態，只在時間軸留下略過紀錄；存了選項外下拉值的規則會被 workers 整條略過，規則列表標示「規則不會執行」。
+  - 未修：`assign_agent` 不通知、`assign_agent`／`escalate_case`／`set_case_priority` 的更新不帶 `tenantId`；`agentId` 不檢查。
+
 - **站內通知不再寫給已被永久刪除或已停用的成員**（issue #484，change `skip-inactive-notification-recipient-484`）— 通知是非同步的：排進佇列時收件成員還在，worker 處理時他可能已被永久刪除，`notifications.agentId` 的外鍵讓寫入失敗，佇列重試三次後進入 failed set，佇列監控多出失敗紀錄。已停用（`isActive: false`）的成員也仍然收到新通知。現在：
   - 三個寫入通知的地方在寫入前以 `tenantId` 查收件成員：workers 的 `notification:dispatch`（工單指派、升級、SLA、新訊息、轉接、自動化、AI 用量、資料匯出與刪除完成）、API 的 `createAndDispatch`（CSAT 低分、權杖失效）、序號明細背景匯出的完成與失敗通知。
   - 成員不存在或已停用時略過這則通知、寫 info log，不丟錯、不重試；重新啟用後不補送停用期間的通知。

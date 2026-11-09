@@ -23,6 +23,8 @@ const caseCategoryOptions = [
 const caseStatusOptions = [
   { value: 'OPEN', label: '開啟' },
   { value: 'IN_PROGRESS', label: '處理中' },
+  // 2026-11-09 使用者決定加入（issue #469）；與其他狀態一樣受狀態轉換限制
+  { value: 'PENDING', label: '待處理' },
   { value: 'ESCALATED', label: '已升級' },
   { value: 'RESOLVED', label: '已解決' },
   { value: 'CLOSED', label: '已關閉' },
