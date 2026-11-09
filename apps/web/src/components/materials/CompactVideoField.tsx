@@ -17,6 +17,7 @@ import { Upload, Film } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { uploadDirect, type DirectUploadPurpose } from '@/lib/direct-upload';
 import { validateLineVideoUrl } from '@open333crm/shared';
 
@@ -83,8 +84,10 @@ export function CompactVideoField({ value, onChange, placeholder, maxBytes, uplo
       });
       onChange(res.data?.data?.url ?? '');
     } catch (err: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError(((err as any)?.response?.data?.error?.message) ?? (err instanceof Error ? err.message : '上傳失敗'));
+      // 直傳 PUT 失敗時 uploadDirect 丟出的是一般 Error，訊息已是中文，當作 fallback 顯示；
+      // axios 錯誤的 message 是英文（Request failed with status code …），不可直接顯示
+      const directUploadMessage = err instanceof Error && !('isAxiosError' in err) ? err.message : null;
+      setError(getApiErrorMessage(err, directUploadMessage ?? '影片上傳失敗，請稍後重試'));
     } finally {
       setUploading(false);
       setProgress(null);

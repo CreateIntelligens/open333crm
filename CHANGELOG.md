@@ -15,6 +15,11 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **上傳被拒時的錯誤訊息改成中文，並說明原因**（issue #470，change `localize-upload-error-messages`）— 上傳的檔案被內容偵測拒絕時，畫面原本顯示英文的 `File content type rejected: file content type is unknown`。現在 `message` 依原因顯示中文：檔案是空的、無法辨識檔案內容（列出允許的格式）、這裡不接受某種檔案（說出偵測到的格式與允許的格式）、檔案內容與副檔名不符；偵測暫時無法使用（503）也改成中文。英文原因放在 `details.reason`，並寫進 log（不含檔名與內容）。錯誤碼與 HTTP 狀態不變。同時處理：
+  - 收件匣傳圖片、影片的 `Unsupported file type…`、`File exceeds N MB limit` 改成中文，並列出允許的格式。
+  - 網站聊天室背景圖的 `{ "error": "No file uploaded" }`、`{ "error": "Unsupported background image type" }` 改用 `AppError`，回應變成標準格式的中文訊息。
+  - 直傳超過上限的訊息改用同一個函式（`apps/api/src/shared/messages/upload.ts`），多了「請壓縮後再上傳」。
+  - 素材的圖片、影片欄位（`CompactImageField`、`CompactVideoField`）改用 `getApiErrorMessage()`：後端沒回訊息時（例如代理伺服器的 413）顯示「檔案過大，請換小一點的檔案」，不再顯示「上傳失敗」或英文的 `Request failed with status code 413`。
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。
 - **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
   - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。

@@ -22,7 +22,7 @@ vi.mock('#src/modules/knowledge/knowledge.flow.js', () => ({
   },
 }));
 // 內容類型偵測（Magika）認不出不是 UTF-8 的文字：2026-11-04 UAT 上傳 Big5 CSV 回
-// 「File content type rejected: file content type is unknown」。假函式照這個行為，原本一律通過的
+// 「File content type rejected: file content type is unknown」（issue #470 前的英文訊息）。假函式照這個行為，原本一律通過的
 // 假函式讓 #421 的測試沒發現 Big5 根本走不到解碼（AGENTS.md「A mock does only what the real code can do」）
 vi.mock('#src/modules/upload/upload-validation.js', async () => {
   const { AppError } = await import('#src/shared/utils/response.js');
@@ -31,7 +31,13 @@ vi.mock('#src/modules/upload/upload-validation.js', async () => {
       try {
         new TextDecoder('utf-8', { fatal: true }).decode(input.buffer);
       } catch {
-        throw new AppError('File content type rejected: file content type is unknown', 'INVALID_FILE_TYPE', 400);
+        // 訊息與真的 assertUploadContent 一致（issue #470 改成中文，英文原因在 details.reason）
+        throw new AppError(
+          '無法辨識檔案內容，請確認檔案沒有損壞，且是允許的格式（PDF、Word（DOCX）、Excel（XLSX）、CSV、HTML、Markdown、純文字（TXT））',
+          'INVALID_FILE_TYPE',
+          400,
+          { reason: 'file content type is unknown' },
+        );
       }
       return { accepted: true, detectedMime: input.clientMime, reason: 'test' };
     },

@@ -12,6 +12,7 @@ import type { StorageProvider } from './storage.provider.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { AppError } from '../../shared/utils/response.js';
+import { fileTooLargeMessage } from '../../shared/messages/upload.js';
 import { logger } from '@open333crm/core';
 import { LINE_VIDEO_MAX_BYTES } from '@open333crm/shared';
 import type { UploadDetectionPolicy } from '../upload/upload-content-detector.js';
@@ -56,7 +57,7 @@ const SAMPLE_HEAD_BYTES = 1024 * 1024;
 const SAMPLE_TAIL_BYTES = 64 * 1024;
 
 function tooLarge(maxBytes: number): AppError {
-  return new AppError(`檔案超過上限 ${Math.round(maxBytes / 1024 / 1024)} MB`, 'FILE_TOO_LARGE', 413, { maxBytes });
+  return new AppError(fileTooLargeMessage(maxBytes), 'FILE_TOO_LARGE', 413, { maxBytes });
 }
 
 /** API 對外可達的 base URL（imagemap baseUrl 用；隧道測試時設 API_PUBLIC_URL 指向 ngrok）。 */

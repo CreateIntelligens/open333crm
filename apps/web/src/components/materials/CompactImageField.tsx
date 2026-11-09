@@ -12,6 +12,7 @@ import { Upload, X, Image as ImageIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface Props {
   value: string;
@@ -127,8 +128,7 @@ export function CompactImageField({ value, onChange, placeholder, hint, requireA
       const data = res.data?.data ?? {};
       onChange(extractUrl ? extractUrl(data) : (data.url ?? ''));
     } catch (err: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError(((err as any)?.response?.data?.error?.message) ?? '上傳失敗');
+      setError(getApiErrorMessage(err, '圖片上傳失敗，請稍後重試'));
     } finally {
       setUploading(false);
     }
