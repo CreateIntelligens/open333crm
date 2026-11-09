@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 import { ALL_CHANNELS, channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 export interface ContactFilters {
@@ -53,10 +54,12 @@ export async function listContacts(
   };
 
   if (filters.q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(filters.q);
     where.OR = [
-      { displayName: { contains: filters.q, mode: 'insensitive' } },
-      { phone: { contains: filters.q, mode: 'insensitive' } },
-      { email: { contains: filters.q, mode: 'insensitive' } },
+      { displayName: { contains: keyword, mode: 'insensitive' } },
+      { phone: { contains: keyword, mode: 'insensitive' } },
+      { email: { contains: keyword, mode: 'insensitive' } },
     ];
   }
 

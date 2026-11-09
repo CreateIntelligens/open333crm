@@ -106,7 +106,7 @@ P0、P1：無。
 ## 建議新增到 AUDIT.md 的項目
 
 - HC-NOTIFICATIONS-01：新訊息通知不套渠道可見範圍，洩漏其他渠道的客人名稱。（#440 已修正，change `scope-unassigned-notifications-440`）
-- HC-NOTIFICATIONS-02：停用成員不解除指派，客人訊息只通知停用的人。#440 已修正對話通知：負責人停用或看不到渠道時改通知主管與管理員；停用仍不解除指派。
+- HC-NOTIFICATIONS-02：停用成員不解除指派，客人訊息只通知停用的人。#440 已修正對話通知：負責人停用或看不到渠道時改通知主管與管理員；停用仍不解除指派。#484 起所有站內通知寫入前檢查收件成員，停用或已刪除的成員不再收到通知；工單指派與 SLA 預警的負責人停用時，這則通知沒有人收到（不改發主管）。
 - HC-NOTIFICATIONS-03、HC-NOTIFICATIONS-04：升級改派與建立時指定負責人都不發 `case.assigned`（可併成一項「指派不經 `/assign` 時不通知」，和 CONV-02 同一類）。
 - HC-NOTIFICATIONS-09：CSAT 與權杖失效繞過通知佇列，違反 `standalone-worker-runtime`。
 - HC-NOTIFICATIONS-11：通知沒有保留期限（目前只在功能文件）。

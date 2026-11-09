@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { taipeiDateStart, taipeiDateString } from '@open333crm/core';
 import { csvRow } from '@open333crm/shared';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 export interface CouponStats {
   couponId: string;
@@ -128,15 +129,17 @@ export async function listInstances(
   const q = opts.q?.trim();
   if (q) {
     const normalized = q.replace(/[-\s]/g, '').toUpperCase();
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）：原生 SQL 的 LIKE 預設也以反斜線跳脫
+    const codeKeyword = escapeLikeKeyword(normalized);
     const codeMatches = normalized
       ? await db.$queryRaw<{ id: string }[]>`
           SELECT id FROM coupon_instances
           WHERE "tenantId" = ${tenantId}::uuid AND "couponId" = ${couponId}::uuid
-            AND upper(regexp_replace(code, '[-[:space:]]', '', 'g')) LIKE ${'%' + normalized + '%'}`
+            AND upper(regexp_replace(code, '[-[:space:]]', '', 'g')) LIKE ${'%' + codeKeyword + '%'}`
       : [];
     where.OR = [
       { id: { in: codeMatches.map((r) => r.id) } },
-      { contact: { displayName: { contains: q, mode: 'insensitive' } } },
+      { contact: { displayName: { contains: escapeLikeKeyword(q), mode: 'insensitive' } } },
     ];
   }
 

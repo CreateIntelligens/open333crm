@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
+import { createNotificationForActiveAgent, logger } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
 
@@ -13,21 +14,20 @@ export interface CreateNotificationInput {
   clickUrl?: string;
 }
 
+/**
+ * 寫入一則站內通知並推播給收件成員。
+ * 收件成員已被永久刪除或已停用時不寫入、不推播，寫 info log 並回傳 null（#484）。
+ */
 export async function createAndDispatch(
   prisma: TenantDb,
   io: SocketIOServer,
   input: CreateNotificationInput,
 ) {
-  const notification = await prisma.notification.create({
-    data: {
-      tenantId: input.tenantId,
-      agentId: input.agentId,
-      type: input.type,
-      title: input.title,
-      body: input.body,
-      clickUrl: input.clickUrl,
-    },
-  });
+  const notification = await createNotificationForActiveAgent(prisma, input);
+  if (!notification) {
+    logger.info(`[Notification] 略過通知 ${input.type}：收件成員 ${input.agentId} 已不存在或已停用（tenant ${input.tenantId}）`);
+    return null;
+  }
 
   // Emit to agent-specific room
   io.to(`agent:${input.agentId}`).emit('notification.new', notification);

@@ -376,7 +376,8 @@
         "apps/api/src/modules/trial/usage-alert-emails.ts",
         "apps/api/src/modules/email/email.service.ts",
         "apps/workers/src/handlers/notification.handler.ts",
-        "apps/workers/src/lib/notification-queue.ts"
+        "apps/workers/src/lib/notification-queue.ts",
+        "packages/core/src/agent/agent-lookup.ts"
       ],
       "pages": [
         "apps/web/src/app/dashboard/notifications/**",
@@ -670,6 +671,7 @@
       ],
       "specs": [
         "km-ingestion",
+        "embedding-settings",
         "knowledge-base-information-architecture",
         "token-quota",
         "usage-quota-alerts",
