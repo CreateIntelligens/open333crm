@@ -7,6 +7,7 @@ import type { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 export interface ArticleInput {
   title: string;
@@ -44,10 +45,12 @@ export async function listArticles(ctx: TenantCtx, filters: ArticleListFilters) 
   // source: '__manual__' 代表手動建立（externalSource 為空），其餘為精確比對
   if (source) where.externalSource = source === '__manual__' ? null : source;
   if (q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(q);
     where.OR = [
-      { title: { contains: q, mode: 'insensitive' } },
-      { summary: { contains: q, mode: 'insensitive' } },
-      { content: { contains: q, mode: 'insensitive' } },
+      { title: { contains: keyword, mode: 'insensitive' } },
+      { summary: { contains: keyword, mode: 'insensitive' } },
+      { content: { contains: keyword, mode: 'insensitive' } },
       // tag 為陣列元素精確比對（輸入完整 tag 名稱才會命中）
       { tags: { has: q } },
     ];
