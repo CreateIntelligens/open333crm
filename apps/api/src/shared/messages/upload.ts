@@ -7,7 +7,7 @@
  */
 
 /** 內容偵測拒絕的原因分類。偵測信心不足與無法辨識對使用者是同一件事，歸成 unrecognized。 */
-export type UploadRejection = 'empty' | 'unrecognized' | 'type_not_allowed' | 'extension_mismatch';
+export type UploadRejection = 'empty' | 'unrecognized' | 'type_not_allowed' | 'extension_mismatch' | 'mime_mismatch';
 
 /** MIME 對應到使用者熟悉的格式名稱（多半就是副檔名）。 */
 const MIME_LABELS: Record<string, string> = {
@@ -53,6 +53,11 @@ export function uploadRejectedMessage(
       return detectedMime
         ? `檔案內容（${fileTypeLabel(detectedMime)}）與副檔名不符，請確認檔案格式或改正副檔名`
         : '檔案內容與副檔名不符，請確認檔案格式或改正副檔名';
+    case 'mime_mismatch':
+      // 副檔名正確、只有上傳時標示的 MIME 與內容不符（PR #492 review）：不提副檔名，避免使用者去改正確的副檔名
+      return detectedMime
+        ? `檔案內容（${fileTypeLabel(detectedMime)}）與上傳時標示的檔案類型不符，請重新選擇檔案`
+        : '檔案內容與上傳時標示的檔案類型不符，請重新選擇檔案';
     case 'unrecognized':
     default:
       return `無法辨識檔案內容，請確認檔案沒有損壞，且是允許的格式（${allowed}）`;

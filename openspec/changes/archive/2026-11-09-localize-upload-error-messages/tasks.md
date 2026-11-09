@@ -3,6 +3,7 @@
 - [x] 1.1 測試 `apps/api/tests/unit/modules/upload/upload-validation-messages.test.ts`：空檔案、無法辨識、信心不足、類型不允許、副檔名不符、宣告類型不符、偵測無法使用，各自的中文訊息與 `details.reason`；在現有程式上 7 個都斷言失敗
 - [x] 1.2 `apps/api/src/shared/messages/upload.ts` 新增訊息函式；`detectUploadContent()` 回傳 `rejection` 分類；`assertUploadContent()` 用中文訊息、英文原因放 `details.reason` 並寫 log
 - [x] 1.3 突變驗證：`details` 拿掉 `reason` 時 6 個失敗；類型不允許的分類改成 `unrecognized` 時 1 個失敗
+- [x] 1.3a PR #492 review：宣告 MIME 不符拆成 `mime_mismatch`，訊息不提副檔名；測試先改成新訊息並斷言失敗。補「偵測器正常、檔案被拒時一律回 400，不是 503」；突變驗證：catch 不再原樣丟出 AppError 時失敗
 - [x] 1.4 `knowledge-upload-encoding.test.ts` 的假 `assertUploadContent()` 改成新的中文訊息（假函式要跟真函式一樣）
 
 ## 2. 入口自己的類型、大小檢查

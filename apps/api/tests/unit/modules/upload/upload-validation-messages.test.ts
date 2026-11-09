@@ -104,14 +104,35 @@ describe('Rejected uploads explain the reason in Chinese', () => {
     assert.equal(error.details?.reason, 'filename extension does not match image/png');
   });
 
-  test('內容與宣告的類型不符：同樣提示副檔名不符', async () => {
+  test('副檔名正確、只有宣告的類型不符：提示與上傳時標示的類型不符，不說副檔名', async () => {
     const error = await rejectionOf(assertUploadContent(
       { buffer: png, filename: 'logo.png', clientMime: 'application/pdf' },
       UPLOAD_POLICIES.generic,
       fakeMagika('png'),
     ));
-    assert.equal(error.message, '檔案內容（PNG）與副檔名不符，請確認檔案格式或改正副檔名');
+    assert.equal(error.code, 'INVALID_FILE_TYPE');
+    assert.equal(error.message, '檔案內容（PNG）與上傳時標示的檔案類型不符，請重新選擇檔案');
     assert.equal(error.details?.reason, 'client MIME application/pdf does not match detected MIME image/png');
+  });
+
+  // PR #492 bot 疑慮：catch 會不會把 400 改成 503。catch 第一行把 AppError 原樣丟出，這裡逐一確認
+  test('偵測器正常、檔案被拒時一律回 400 INVALID_FILE_TYPE，不是 503', async () => {
+    const cases = [
+      { buffer: Buffer.alloc(0), filename: 'a.png', clientMime: 'image/png', label: 'png' },
+      { buffer: Buffer.from([0, 1, 2, 3, 255, 254, 253, 252]), filename: 'a.png', clientMime: 'image/png', label: 'unknown' },
+      { buffer: pdf, filename: 'a.pdf', clientMime: 'application/pdf', label: 'pdf' },
+      { buffer: png, filename: 'a.pdf', clientMime: 'image/png', label: 'png' },
+      { buffer: png, filename: 'a.png', clientMime: 'image/jpeg', label: 'png' },
+    ];
+    for (const c of cases) {
+      const error = await rejectionOf(assertUploadContent(
+        { buffer: c.buffer, filename: c.filename, clientMime: c.clientMime },
+        UPLOAD_POLICIES.imagemap,
+        fakeMagika(c.label),
+      ));
+      assert.equal(error.statusCode, 400, `${c.filename} ${c.clientMime}`);
+      assert.equal(error.code, 'INVALID_FILE_TYPE');
+    }
   });
 
   test('偵測暫時無法使用：回 503 中文訊息，錯誤碼不變', async () => {

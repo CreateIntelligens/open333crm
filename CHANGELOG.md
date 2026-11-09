@@ -15,7 +15,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
-- **上傳被拒時的錯誤訊息改成中文，並說明原因**（issue #470，change `localize-upload-error-messages`）— 上傳的檔案被內容偵測拒絕時，畫面原本顯示英文的 `File content type rejected: file content type is unknown`。現在 `message` 依原因顯示中文：檔案是空的、無法辨識檔案內容（列出允許的格式）、這裡不接受某種檔案（說出偵測到的格式與允許的格式）、檔案內容與副檔名不符；偵測暫時無法使用（503）也改成中文。英文原因放在 `details.reason`，並寫進 log（不含檔名與內容）。錯誤碼與 HTTP 狀態不變。同時處理：
+- **上傳被拒時的錯誤訊息改成中文，並說明原因**（issue #470，change `localize-upload-error-messages`）— 上傳的檔案被內容偵測拒絕時，畫面原本顯示英文的 `File content type rejected: file content type is unknown`。現在 `message` 依原因顯示中文：檔案是空的、無法辨識檔案內容（列出允許的格式）、這裡不接受某種檔案（說出偵測到的格式與允許的格式）、檔案內容與副檔名不符、檔案內容與上傳時標示的檔案類型不符（副檔名正確時不提副檔名）；偵測暫時無法使用（503）也改成中文。英文原因放在 `details.reason`，並寫進 log（不含檔名與內容）。錯誤碼與 HTTP 狀態不變。同時處理：
   - 收件匣傳圖片、影片的 `Unsupported file type…`、`File exceeds N MB limit` 改成中文，並列出允許的格式。
   - 網站聊天室背景圖的 `{ "error": "No file uploaded" }`、`{ "error": "Unsupported background image type" }` 改用 `AppError`，回應變成標準格式的中文訊息。
   - 直傳超過上限的訊息改用同一個函式（`apps/api/src/shared/messages/upload.ts`），多了「請壓縮後再上傳」。

@@ -2,7 +2,7 @@
 
 ### Requirement: Content-based upload validation
 
-系統 MUST 以檔案 bytes 偵測實際內容類型，不得只信任 multipart 的 client MIME 或原始副檔名。系統 MUST 對每個上傳入口套用該入口允許的 canonical content type 清單；不支援、無法辨識或信心不足的檔案 MUST 被拒絕，且不得進入正式 storage 或 parser。拒絕時錯誤碼 MUST 是 `INVALID_FILE_TYPE`（HTTP 400），`message` MUST 是依原因區分的中文說明（空檔案、無法辨識內容、類型不允許、內容與副檔名不符），偵測器的英文原因 MUST 放在 `details.reason`，不得出現在 `message`。偵測器本身無法使用時，錯誤碼 MUST 是 `FILE_TYPE_DETECTION_UNAVAILABLE`（HTTP 503），`message` MUST 是中文。
+系統 MUST 以檔案 bytes 偵測實際內容類型，不得只信任 multipart 的 client MIME 或原始副檔名。系統 MUST 對每個上傳入口套用該入口允許的 canonical content type 清單；不支援、無法辨識或信心不足的檔案 MUST 被拒絕，且不得進入正式 storage 或 parser。拒絕時錯誤碼 MUST 是 `INVALID_FILE_TYPE`（HTTP 400），`message` MUST 是依原因區分的中文說明（空檔案、無法辨識內容、類型不允許、內容與副檔名不符、內容與上傳時標示的類型不符），偵測器的英文原因 MUST 放在 `details.reason`，不得出現在 `message`。偵測器本身無法使用時，錯誤碼 MUST 是 `FILE_TYPE_DETECTION_UNAVAILABLE`（HTTP 503），`message` MUST 是中文。
 
 #### Scenario: Valid image with forged client MIME
 
@@ -36,8 +36,13 @@
 
 #### Scenario: Content that does not match the extension
 
-- **WHEN** 上傳內容是 PNG、檔名是 `document.pdf`，或 client MIME 宣告為 `application/pdf`
+- **WHEN** 上傳內容是 PNG、檔名是 `document.pdf`
 - **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「檔案內容（PNG）與副檔名不符，請確認檔案格式或改正副檔名」，`details.reason` 保留英文原因
+
+#### Scenario: Content that does not match the declared MIME type
+
+- **WHEN** 上傳內容是 PNG、檔名是 `logo.png`，但 client MIME 宣告為 `application/pdf`
+- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「檔案內容（PNG）與上傳時標示的檔案類型不符，請重新選擇檔案」，不提副檔名，`details.reason` 保留英文原因
 
 #### Scenario: Detector unavailable returns a Chinese message
 

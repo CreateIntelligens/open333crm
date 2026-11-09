@@ -237,7 +237,7 @@ export async function detectUploadContent(
     return { accepted: false, rejection: 'type_not_allowed', detectedMime, label, confidence, reason: `type ${detectedMime} is not allowed for ${input.policy.name}` };
   }
   if (!GENERIC_MIMES.has(clientMime) && clientMime !== detectedMime) {
-    return { accepted: false, rejection: 'extension_mismatch', detectedMime, label, confidence, reason: `client MIME ${clientMime} does not match detected MIME ${detectedMime}` };
+    return { accepted: false, rejection: 'mime_mismatch', detectedMime, label, confidence, reason: `client MIME ${clientMime} does not match detected MIME ${detectedMime}` };
   }
   if (!extensionMatches(detectedMime, input.filename)) {
     return { accepted: false, rejection: 'extension_mismatch', detectedMime, label, confidence, reason: `filename extension does not match ${detectedMime}` };

@@ -6,7 +6,7 @@ issue #470：上傳的檔案被內容偵測（Magika）拒絕時，畫面直接�
 
 ## What Changes
 
-- 內容偵測拒絕時，`message` 改成中文並依原因區分：空檔案、無法辨識內容（含偵測信心不足）、類型不允許、內容與副檔名不符（含與宣告的類型不符）。訊息說出偵測到的格式或該入口允許的格式。
+- 內容偵測拒絕時，`message` 改成中文並依原因區分：空檔案、無法辨識內容（含偵測信心不足）、類型不允許、內容與副檔名不符、內容與上傳時標示的類型不符（副檔名正確、只有 client MIME 不符時不提副檔名，PR #492 review）。訊息說出偵測到的格式或該入口允許的格式。
 - 偵測暫時無法使用（503）的訊息改成中文。
 - 英文原因放在 `details.reason`，與既有的 `detectedMime`、`label`、`confidence` 一起；log 記錄原因、入口、偵測結果，不記錄檔名與內容。
 - 錯誤碼（`INVALID_FILE_TYPE`、`FILE_TYPE_DETECTION_UNAVAILABLE`、`BAD_REQUEST`）與 HTTP 狀態不變。
