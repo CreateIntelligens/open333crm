@@ -12,6 +12,30 @@ issue #468，分支 `fix/chat-load-older-468`，change `fix-chat-window-load-old
 | --- | --- | --- |
 | HC-INBOX-07（聊天視窗只載 50 則訊息） | 已修正 | `GET /conversations/:id/messages` 新增游標 `before`（`createdAt` 再 `id`，與聯絡人訊息共用 `shared/utils/message-cursor.ts`），回應帶 `hasMore`、`nextCursor`；`page` 分頁照舊。`useMessages().loadOlder()` 改用游標、失敗回傳原因；`ChatWindow` 加「載入更早的訊息」、往上載入保持捲動位置、只在最新一則改變時捲到底、最新與更早訊息失敗都顯示原因與重試。`conversation-messages-cursor.test.ts`（feature）7 項中 4 項修正前以 assertion 失敗，3 項（第一頁、其他租戶、舊的 page 呼叫）以突變驗證；`chat-window-load-older.test.tsx` 8 項中 7 項修正前失敗，「沒有更早的訊息時不顯示按鈕」以突變驗證 |
 | `getMessages()` 的 `where` 沒有 `tenantId` | 已修正 | 查詢與計數改帶 `conversation: { tenantId }`。feature 測試走 RLS，拿掉 `tenantId` 看不出來；`get-messages-tenant-scope.test.ts`（單元）修正前失敗。突變：改用 BYPASSRLS 連線並拿掉 `tenantId` 時，feature「其他租戶的對話」失敗 |
+## 2026-11-09：自動化「更新工單狀態」依狀態轉換規則，下拉參數檢查值（AUTO-10、AUTO-12）
+
+issue #469，分支 `fix/automation-case-status-469`，change `fix-automation-case-status-469`。以單元測試與測試資料庫 `open333crm_test_p6b` 的 feature 測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-10 的 `update_case_status` 不檢查轉換、不寫工單事件、不發 `case.resolved`／`case.closed`、socket `source` 寫錯 | 已修正，AUTO-10 維持部分修正（`assign_agent` 不通知、`assign_agent`／`escalate_case`／`set_case_priority` 不帶 `tenantId` 未處理） | `automation-update-case-status.test.ts` 新增 6 項修正前全部失敗在斷言上（OPEN → RESOLVED 被寫入、沒有略過紀錄、沒有 `status_changed`、沒有 outbox、`source` 為 `sla_worker`、狀態相同仍推播） |
+| AUTO-12 的下拉參數值 | 已修正，AUTO-12 改為部分修正（`agentId` 未處理） | `packages/automation/tests/unit/contracts/validation.test.ts` 4 項修正前失敗；`automation-routes.test.ts`「Select parameter outside the options rejected」修正前回 201 |
+
+`case.resolved`／`case.closed` 的內容改由 `@open333crm/shared` 的 `caseStatusOutcomeEvent()` 組，API 的 `caseTransitionedEffects()` 與 workers 共用；拿掉 `conversationId` 的 mutation 讓 shared 與 API 的工單測試各失敗。
+## 2026-11-09：站內通知只寫給仍啟用的成員（CONV-06 部分修正）
+
+issue #484，分支 `fix/notify-recipient-check-484`，change `skip-inactive-notification-recipient-484`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CONV-06 的「`case.assigned` 與 SLA 通知不檢查 `isActive`」 | 部分修正，CONV-06 改為部分修正 | 三個寫入點（workers `notification.handler.ts`、`createAndDispatch`、`recordExportNotice`）改用 `packages/core` 的 `createNotificationForActiveAgent()` 條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`）。workers 單元「收件成員已被永久刪除」「收件成員已停用」修正前失敗在斷言上（沒有拒絕、仍寫入）；feature `notification-recipient.test.ts` 的刪除情境修正前丟 `notifications_agent_id_fkey` 外鍵錯誤，停用、重新啟用不補送與匯出情境失敗在斷言上。mutation：拿掉啟用條件，workers「已停用」與 feature 三項停用情境失敗；拿掉 handler 的檢查，workers 兩項失敗；拿掉 `createAndDispatch` 與 `recordExportNotice` 的檢查，feature 五項失敗。PR #489 審查補「查完才被永久刪除」：feature 兩項競爭測試（刪除成員的交易停在提交前、寫入卡在成員列的鎖上）在先查再寫的版本丟 `notifications_agentId_fkey`；改成條件寫入後通過，拿掉 `FOR KEY SHARE` 兩項失敗。未處理：工單指派與 SLA 預警的負責人停用時不改發主管（現在沒有人收到）、停用不解除指派、指派不驗證負責人 |
+## 2026-11-09：其他搜尋的 LIKE 萬用字元（#467）
+
+issue #467，分支 `fix/escape-like-search-467`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 搜尋關鍵字的 LIKE 萬用字元（2026-11-04 CONV-04 紀錄中「聯絡人與優惠券的搜尋…未改」） | 已修正 | 聯絡人、優惠券列表、優惠券序號明細（含序號的原生 SQL `LIKE`）、知識庫、行銷範本、素材庫、短連結的搜尋都先以 `escapeLikeKeyword()` 跳脫。全 repo 搜尋 `contains`／`startsWith`／`endsWith`／`string_contains` 與原生 SQL 的 `LIKE`，接使用者輸入的只剩試用申請的 `endsWith('@網域')`：只用來縮小候選，之後在應用層逐一比對正規化 email，萬用字元不影響結果，未改。`like-escape-search.test.ts`（feature）17 個欄位各 3 種輸入（`_`、`%`、反斜線）共 51 項加 1 項 email 案例，修正前 51 項失敗在斷言上，序號的反斜線案例因測試資料撞到序號正規化唯一索引而報錯，改測試資料後以 mutation 驗證；另以 mutation 只還原單一欄位（聯絡人電話、知識庫內文、序號原生 SQL），對應欄位的案例失敗 |
 ## 2026-11-09：UAT 的向量欄位維度（DB-01）
 
 #337 階段 4 第五批（change `migrate-embedding-tenant-ctx`）討論 DB-01 時，以 `~/workbase/SRE/host_connacts.md` 的 Open333 UAT 連線唯讀查詢，沒有修改任何東西。

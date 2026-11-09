@@ -53,7 +53,9 @@
 - [x] 8.2 `pnpm test` 通過（2026-11-09：17 個套件）。
 - [x] 8.3 `pnpm test:feature` 通過（2026-11-09：139 檔、1365 個測試）。
 - [x] 8.4 `node scripts/check-tenant-ctx.mjs --strict` 通過，執行 `--update-baseline`；`check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規。
-- [ ] 8.5 `node scripts/feature-impact.mjs` 列出的直接受影響領域，逐項走過回歸清單。
+- [x] 8.5 `node scripts/feature-impact.mjs` 列出的直接受影響領域，逐項走過回歸清單。
+  - 直接受影響的 5 個領域（contacts、knowledge、automation、inbox、settings）的自動測試都通過（8.2、8.3）。contacts 只改到一個單元測試讀的原始碼路徑。瀏覽器上的手動回歸交給負責 UAT 手動測試的人（使用者 2026-11-09 決定）。
 - [x] 8.6 `CHANGELOG.md` 的 `Changed` 寫明可觀察的差異：`POST /:id/embed` 的 409、讀設定不建立設定列、設定與稽核一起寫入。
 - [x] 8.7 `node scripts/validate-openspec.mjs migrate-embedding-tenant-ctx` 與 `--specs` 通過。
-- [ ] 8.8 部署到 UAT 後重跑規劃檔 6.2 的腳本，`bench.mjs` 加上 `GET /settings/embedding` 與 `POST /knowledge/search`。
+- [x] 8.8 部署到 UAT 後重跑規劃檔 6.2 的腳本，`bench.mjs` 加上 `GET /settings/embedding` 與 `POST /knowledge/search`。
+  - 2026-11-09，main `c33cf919`：`GET /settings/embedding` p50 9.9 ms、每請求 1.1 個交易；`POST /knowledge/search` p50 542.5 ms（大多是 UAT 的 Ollama 向量化查詢文字）、每請求 2.3 個交易。10 人併發 p50 144.6 ms、p95 227.4 ms，P2024 與 `Transaction already closed` 都是 0。
