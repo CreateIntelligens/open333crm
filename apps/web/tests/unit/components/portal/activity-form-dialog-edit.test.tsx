@@ -73,3 +73,13 @@ test('完整活動載入失敗時顯示錯誤且不能儲存', async () => {
   fireEvent.click(save);
   assert.equal(api.patch.mock.calls.length, 0);
 });
+
+test('競猜的選項區提示發布前至少勾選一個正確答案，投票不顯示', async () => {
+  render(<ActivityFormDialog open onClose={() => {}} onSaved={() => {}} editData={null} />);
+
+  // 預設類型是投票：沒有正確答案的提示
+  assert.ok(screen.queryByText('發布前至少勾選一個正確答案') === null);
+
+  fireEvent.change(screen.getByDisplayValue('投票'), { target: { value: 'QUIZ' } });
+  await waitFor(() => assert.ok(screen.queryByText('發布前至少勾選一個正確答案') !== null));
+});

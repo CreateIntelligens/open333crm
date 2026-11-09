@@ -3,7 +3,7 @@
 這一組功能有 API、沒有後台頁面，要透過 CLI、MCP 或直接呼叫 API 使用：查詢租戶的操作紀錄、匯出租戶資料、刪除單一客人的個人資料、把系統事件推送給外部系統，以及讓 AI 工具以 MCP 操作租戶資料。
 
 - **資料來源**：`apps/api/src/modules/tenant-audit/*`、`apps/api/src/modules/data-export/*`、`apps/api/src/modules/data-erasure/*`、`apps/api/src/modules/webhook-subscriptions/*`、`apps/api/src/modules/mcp/*`、`apps/workers/src/handlers/data-export.handler.ts`、`apps/workers/src/handlers/data-erasure.handler.ts`
-- **核對日期**：2026-10-21
+- **核對日期**：2026-11-09
 
 ## 負責的模組
 
@@ -29,7 +29,9 @@
 | 設定 | `settings.update`，`payload.section` 記錄是哪一類設定 |
 | 資料 | `contact.merge`、`contact.merge_revert`、`case.delete`、`data.export.request`、`data.erasure.request`、`data.erasure.complete` |
 
-`payload` 刻意不放個人資料，例如合併聯絡人只記兩個 ID。
+`payload` 刻意不放個人資料，例如合併聯絡人只記兩個 ID。`agent.purge` 例外記下被刪成員的名稱（`{ name }`），不記 email。
+
+**操作者被永久刪除之後。** 稽核的 `actorId` 外鍵是 `ON DELETE SET NULL`，成員被永久刪除後 `actorId` 變成空值。`purgeAgent()` 在刪除成員之前、同一個交易內，把他的名稱與 email 寫進他當操作者的稽核（`actorName`、`actorEmail`），也寫進他發起的資料匯出與刪除請求（`requestedByName`、`requestedByEmail`）。`GET /tenant/audit-logs` 每筆回傳 `actor`（成員還在時是 `{ id, name, email }`，否則是 `null`）與 `actorSnapshot`（保存的 `{ name, email }`，沒有快照時是 `null`）。這個機制在 2026-11-09 上線（issue #414），之前刪除的成員留下的紀錄沒有快照，查不回來。依 `actorId` 篩選查不到已刪除成員的紀錄。
 
 **沒有寫稽核的重要操作**：登入成功與失敗、Passkey 的註冊與刪除、API 金鑰與 CLI token 的建立和撤銷、修改渠道（包括更換憑證）、角色的建立、改名與刪除、送出群發、自動化規則的增刪改。其中長效憑證與渠道憑證的變更，事後完全無法追查。見 `../../system/AUDIT.md` 的 AUD-01。
 
@@ -60,17 +62,19 @@
 
 | 模式 | 做什麼 |
 | --- | --- |
-| `anonymize`（預設） | 聯絡人的名稱改成佔位字串，清空頭像、電話與 email；刪除屬性、渠道身分、`IdentityMap` 與長期記憶；把客人傳進來的訊息內容換成 `{ redacted: true }`；刪除物件儲存裡的頭像檔。對話與工單保留，報表數字不變 |
+| `anonymize`（預設） | 聯絡人的名稱改成佔位字串，清空頭像、電話與 email；刪除屬性、渠道身分、`IdentityMap` 與長期記憶；把客人傳進來的訊息內容換成 `{ redacted: true }`；刪除這些訊息在物件儲存的媒體檔與頭像檔。對話、工單與客服上傳的媒體檔保留，報表數字不變 |
 | `hard_delete` | 刪除聯絡人本身，以及他的對話、訊息、工單、積分、活動提交，並刪除物件儲存裡的媒體檔與頭像檔 |
 
 兩種模式都刪除這位聯絡人在物件儲存的頭像檔，但同租戶其他聯絡人還在用的檔案保留（合併時主聯絡人會沿用被併入那位的頭像）。workers 要設定與 api 相同的 `S3_PUBLIC_URL`；沒設定或不同時頭像檔不刪，筆數記在申請的 `affected.avatarObjectsSkipped`。
+
+訊息的媒體檔只刪 `{tenantId}/media/{這位客人的對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，客服回覆的出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。檔案在交易 commit 之後刪，每個最多刪一次、不重試；刪除失敗時申請仍是完成，筆數記在 `affected.mediaObjectsFailed` 與 `affected.avatarObjectsFailed`，失敗的 key 寫進 workers 的 log。
 
 **兩種模式都有沒涵蓋的資料：**
 
 | 資料 | `anonymize` | `hard_delete` |
 | --- | --- | --- |
 | 客服回覆的訊息內容 | 保留 | 刪除 |
-| 客人傳的圖片與檔案 | 保留檔案 | 刪除 |
+| 客服上傳的圖片與檔案 | 保留 | 刪除 |
 | 活動提交的表單答案、積分 | 保留 | 刪除 |
 | 工單標題、描述、備註與 CSAT 留言 | 保留 | 刪除 |
 | 點擊紀錄（`ClickLog`，含 IP、User-Agent、LINE uid） | 保留 | 保留 |
