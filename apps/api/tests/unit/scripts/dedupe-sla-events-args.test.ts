@@ -10,9 +10,10 @@ import { repoRoot } from '#tests/support/paths.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let parseArgs: (argv: string[]) => any;
+let csvCell: (value: unknown) => string;
 
 beforeAll(async () => {
-  ({ parseArgs } = await import(pathToFileURL(resolve(repoRoot, 'scripts/dedupe-sla-events.mjs')).href));
+  ({ parseArgs, csvCell } = await import(pathToFileURL(resolve(repoRoot, 'scripts/dedupe-sla-events.mjs')).href));
 });
 
 const TENANT = 'a0000000-0000-0000-0000-000000000001';
@@ -55,4 +56,15 @@ test('不合法的租戶 ID、通知模式與預期筆數都拒絕', () => {
   assert.equal(opts.notifications, 'skip');
   assert.equal(opts.expectEvents, 12);
   assert.equal(opts.expectNotifications, 0);
+});
+
+test('CSV 欄位：物件與陣列寫成 JSON，日期寫成 ISO，NULL 寫成空欄位', () => {
+  assert.equal(csvCell(null), '');
+  assert.equal(csvCell(undefined), '');
+  assert.equal(csvCell({ facts: { 'sla.dueAt': 'x', note: 'a "b"' } }), '"{""facts"":{""sla.dueAt"":""x"",""note"":""a \\""b\\""""}}"');
+  assert.equal(csvCell([1, 'a']), '"[1,""a""]"');
+  assert.equal(csvCell(new Date('2026-10-02T01:00:00.000Z')), '"2026-10-02T01:00:00.000Z"');
+  assert.equal(csvCell(12n), '"12"');
+  assert.equal(csvCell(true), '"true"');
+  assert.equal(csvCell('含,逗號'), '"含,逗號"');
 });

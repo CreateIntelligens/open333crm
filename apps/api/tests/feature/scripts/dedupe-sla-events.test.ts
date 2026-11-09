@@ -9,7 +9,8 @@
  * 腳本的 SQL 是全域的，不能留下對其他測試資料的寫入。每個情境都帶 tenants 限定自建租戶。
  */
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -278,42 +279,85 @@ test('--tenant 只處理指定租戶', async () => {
   });
 });
 
-test('通知：只處理英文標題的 SLA 通知，每位成員、每張工單、每種類型只留最早一筆', async () => {
+const plus = (d: Date, seconds: number) => new Date(d.getTime() + seconds * 1000);
+const EN_FR_BREACHED = { type: 'first_response_breached', title: 'First response SLA breached' };
+
+test('通知：同一週期每天重複的事件與通知只留最早一組（每位成員各一筆）', async () => {
   await inRolledBackTransaction(async (tx) => {
-    const s = await seedTenant(tx, '通知');
-    const c1 = await s.newCase();
-    const c2 = await s.newCase();
-    const base = { tenantId: s.tenant.id, type: 'first_response_breached', title: 'First response SLA breached' };
-    const keep = await notification(tx, { ...base, agentId: s.admin.id, caseId: c1.id, createdAt: day(2) });
-    await notification(tx, { ...base, agentId: s.admin.id, caseId: c1.id, createdAt: day(3) });
-    await notification(tx, { ...base, agentId: s.admin.id, caseId: c1.id, createdAt: day(4) });
-    // 不同工單、不同成員各自保留
-    await notification(tx, { ...base, agentId: s.admin.id, caseId: c2.id, createdAt: day(3) });
-    await notification(tx, { ...base, agentId: s.assignee.id, caseId: c1.id, createdAt: day(3) });
-    // #281 後的中文標題不處理
-    for (const d of [2, 3]) {
-      await notification(tx, {
-        tenantId: s.tenant.id, agentId: s.admin.id, caseId: c1.id,
-        type: 'first_response_breached', title: '首次回應已逾期', createdAt: day(d),
-      });
+    const s = await seedTenant(tx, '通知同週期');
+    const c = await s.newCase();
+    const kept: string[] = [];
+    for (const d of [2, 3, 4]) {
+      await event(tx, c.id, 'first_response_breached', day(d), { 'sla.dueAt': DUE_A });
+      for (const agent of [s.assignee, s.admin]) {
+        // 舊程式先寫事件再把通知丟進佇列，通知晚幾秒寫入
+        const n = await notification(tx, {
+          ...EN_FR_BREACHED, tenantId: s.tenant.id, agentId: agent.id, caseId: c.id, createdAt: plus(day(d), 3),
+        });
+        if (d === 2) kept.push(n.id);
+      }
     }
-    // 英文但不是 SLA 預設標題（自動化規則的通知）不處理
-    for (const d of [2, 3]) {
+
+    const result = await run(tx, [s.tenant.id]);
+
+    assert.equal(result.report.notifications.total, 4);
+    assert.equal(result.applied.deletedNotifications, 4);
+    const left = await tx.notification.findMany({ where: { tenantId: s.tenant.id } });
+    assert.deepEqual(left.map((n) => n.id).sort(), kept.sort());
+  });
+});
+
+test('通知：同工單同成員兩個不同期限週期各一筆通知都保留', async () => {
+  await inRolledBackTransaction(async (tx) => {
+    const s = await seedTenant(tx, '通知不同週期');
+    const c = await s.newCase();
+    await event(tx, c.id, 'sla_breached', day(2), { 'sla.dueAt': DUE_A });
+    await event(tx, c.id, 'sla_breached', day(6), { 'sla.dueAt': DUE_B });
+    for (const d of [2, 6]) {
       await notification(tx, {
-        tenantId: s.tenant.id, agentId: s.admin.id, caseId: c1.id,
-        type: 'sla_breached', title: 'SLA rule matched', createdAt: day(d),
+        tenantId: s.tenant.id, agentId: s.admin.id, caseId: c.id,
+        type: 'sla_breached', title: 'Resolution SLA breached', createdAt: plus(day(d), 2),
       });
     }
 
     const result = await run(tx, [s.tenant.id]);
 
-    assert.equal(result.report.notifications.total, 2);
-    assert.equal(result.applied.deletedNotifications, 2);
-    const english = await tx.notification.findMany({
-      where: { tenantId: s.tenant.id, title: 'First response SLA breached', agentId: s.admin.id, clickUrl: `/dashboard/cases/${c1.id}` },
-    });
-    assert.deepEqual(english.map((n) => n.id), [keep.id]);
-    assert.equal(await tx.notification.count({ where: { tenantId: s.tenant.id } }), 1 + 2 + 2 + 2);
+    assert.equal(result.report.notifications.total, 0);
+    assert.equal(result.report.notifications.matchedKept, 2);
+    assert.equal(await tx.notification.count({ where: { tenantId: s.tenant.id } }), 2);
+  });
+});
+
+test('通知：對不到被刪事件的英文通知、中文通知、自動化規則通知都不動，報表列出配對數', async () => {
+  await inRolledBackTransaction(async (tx) => {
+    const s = await seedTenant(tx, '通知配對');
+    const c = await s.newCase();
+    await event(tx, c.id, 'first_response_breached', day(2), { 'sla.dueAt': DUE_A });
+    await event(tx, c.id, 'first_response_breached', day(3), { 'sla.dueAt': DUE_A });
+    const base = { ...EN_FR_BREACHED, tenantId: s.tenant.id, agentId: s.admin.id, caseId: c.id };
+    await notification(tx, { ...base, createdAt: plus(day(2), 1) });
+    const paired = await notification(tx, { ...base, createdAt: plus(day(3), 1) });
+    // 時間對不到任何事件（例如事件已被別的方式刪掉）
+    const orphan = await notification(tx, { ...base, createdAt: day(5) });
+    // 已刪事件同一成員第二筆通知：每筆被刪事件每位成員最多配對一筆
+    const second = await notification(tx, { ...base, createdAt: plus(day(3), 30) });
+    for (const title of ['首次回應已逾期', 'SLA rule matched']) {
+      await notification(tx, { ...base, title, createdAt: plus(day(3), 1) });
+    }
+
+    const result = await run(tx, [s.tenant.id]);
+
+    const n = result.report.notifications;
+    assert.equal(n.english, 4);
+    assert.equal(n.total, 1);
+    assert.equal(n.matchedKept, 1);
+    assert.equal(n.unmatched, 1);
+    assert.equal(n.extraOnDeleted, 1);
+    const left = (await tx.notification.findMany({ where: { tenantId: s.tenant.id } })).map((x) => x.id);
+    assert.ok(!left.includes(paired.id));
+    assert.ok(left.includes(orphan.id));
+    assert.ok(left.includes(second.id));
+    assert.equal(left.length, 5);
   });
 });
 
@@ -335,12 +379,42 @@ test('--notifications=skip 不動通知', async () => {
   });
 });
 
-test('--apply 先把要刪的整列匯出成 CSV', async () => {
+/** 解析本腳本寫出的 CSV：有值的欄位一律加引號，空欄位（沒有引號）代表 NULL */
+function parseCsv(text: string): Array<Array<string | null>> {
+  const rows: Array<Array<string | null>> = [];
+  let row: Array<string | null> = [];
+  let i = 0;
+  while (i < text.length) {
+    let value: string | null = null;
+    if (text[i] === '"') {
+      value = '';
+      i += 1;
+      for (;;) {
+        if (text[i] === '"') {
+          if (text[i + 1] === '"') { value += '"'; i += 2; continue; }
+          i += 1;
+          break;
+        }
+        value += text[i];
+        i += 1;
+      }
+    }
+    row.push(value);
+    if (text[i] === ',') { i += 1; continue; }
+    rows.push(row);
+    row = [];
+    i += 1;
+  }
+  return rows;
+}
+
+test('--apply 先把要刪的整列匯出成 CSV，payload 可以 JSON.parse 回原本的 facts', async () => {
   await inRolledBackTransaction(async (tx) => {
     const s = await seedTenant(tx, 'CSV');
     const c = await s.newCase('含 "引號", 逗號');
     await event(tx, c.id, 'sla_breached', day(2), { 'sla.dueAt': DUE_A });
-    const dup = await event(tx, c.id, 'sla_breached', day(3), { 'sla.dueAt': DUE_A, note: 'a "b", c' });
+    const facts = { 'sla.dueAt': DUE_A, note: 'a "b", c', tags: ['vip'], n: 3 };
+    const dup = await event(tx, c.id, 'sla_breached', day(3), facts);
     await notification(tx, {
       tenantId: s.tenant.id, agentId: s.admin.id, caseId: c.id,
       type: 'sla_breached', title: 'Resolution SLA breached', createdAt: day(2),
@@ -352,18 +426,91 @@ test('--apply 先把要刪的整列匯出成 CSV', async () => {
 
     const result = await run(tx, [s.tenant.id]);
 
-    const eventsCsv = await readFile(result.applied.files.events, 'utf8');
-    const lines = eventsCsv.trim().split('\n');
-    assert.equal(lines.length, 2);
-    assert.ok(lines[0]!.startsWith('"id","tenantId","caseId"'));
-    assert.ok(lines[1]!.includes(dup.id));
-    // payload 是 JSON 文字（a \"b\", c），放進 CSV 時雙引號再加倍
-    assert.ok(lines[1]!.includes('a \\""b\\"", c'), '欄位內的雙引號要跳脫');
-    const notificationsCsv = await readFile(result.applied.files.notifications, 'utf8');
-    assert.ok(notificationsCsv.includes(dupNotification.id));
+    const rows = parseCsv(await readFile(result.applied.files.events, 'utf8'));
+    assert.deepEqual(rows[0], ['id', 'tenantId', 'caseId', 'actorType', 'actorId', 'eventType', 'payload', 'createdAt']);
+    assert.equal(rows.length, 2);
+    const [id, tenantId, caseId, actorType, actorId, eventType, payload, createdAt] = rows[1]!;
+    assert.deepEqual([id, tenantId, caseId, actorType, actorId, eventType], [dup.id, s.tenant.id, c.id, 'system', null, 'sla_breached']);
+    assert.deepEqual(JSON.parse(payload!).facts, facts);
+    assert.equal(createdAt, day(3).toISOString());
+    const notificationRows = parseCsv(await readFile(result.applied.files.notifications, 'utf8'));
+    assert.equal(notificationRows[1]![0], dupNotification.id);
   });
 });
 
+test('照 SLA.md 的還原步驟，可以從 CSV 把刪掉的列寫回', async () => {
+  await inRolledBackTransaction(async (tx) => {
+    const s = await seedTenant(tx, '還原');
+    const c = await s.newCase();
+    await event(tx, c.id, 'customer_waiting_breached', day(2), { 'case.lastAgentReplyAt': null });
+    const dup = await event(tx, c.id, 'customer_waiting_breached', day(3), { 'case.lastAgentReplyAt': null, x: [1, { y: 'z' }] });
+    await notification(tx, {
+      tenantId: s.tenant.id, agentId: s.admin.id, caseId: c.id,
+      type: 'customer_waiting_breached', title: 'Customer waiting SLA breached', createdAt: day(2),
+    });
+    const dupNotification = await notification(tx, {
+      tenantId: s.tenant.id, agentId: s.admin.id, caseId: c.id,
+      type: 'customer_waiting_breached', title: 'Customer waiting SLA breached', createdAt: plus(day(3), 5),
+    });
+    await tx.notification.update({ where: { id: dupNotification.id }, data: { isRead: true, readAt: day(4) } });
+    const originalNotification = await tx.notification.findUniqueOrThrow({ where: { id: dupNotification.id } });
+
+    const result = await run(tx, [s.tenant.id]);
+    assert.equal(await tx.caseEvent.count({ where: { id: dup.id } }), 0);
+
+    // 取 SLA.md「還原」的 SQL 照順序執行；\copy 是 psql 指令，改成把 CSV 的每個欄位以文字
+    // 交給資料庫轉成暫存表的型別（與 \copy 的 FORMAT csv 相同：沒有引號的空欄位是 NULL）
+    const doc = await readFile(resolve(repoRoot, 'docs/ref/features/SLA.md'), 'utf8');
+    const restoreSql = doc.slice(doc.indexOf('### 還原')).match(/```sql\n([\s\S]*?)```/)![1]!;
+    const statements = restoreSql
+      .split('\n').filter((line) => !line.startsWith('\\copy')).join('\n')
+      .split(/;\s*\n/).map((x) => x.trim()).filter(Boolean);
+    const [createEvents, createNotifications, ...inserts] = statements;
+    await tx.$executeRawUnsafe(createEvents!);
+    await tx.$executeRawUnsafe(createNotifications!);
+    const load = async (table: string, file: string) => {
+      const [header, ...rows] = parseCsv(await readFile(file, 'utf8'));
+      const types = (await tx.$queryRawUnsafe(
+        `SELECT attname, format_type(atttypid, atttypmod) AS t FROM pg_attribute WHERE attrelid = '${table}'::regclass AND attnum > 0`,
+      )) as Array<{ attname: string; t: string }>;
+      const typeOf = new Map(types.map((x) => [x.attname, x.t]));
+      const cols = header!.map((h) => `"${h}"`).join(', ');
+      const values = header!.map((h, k) => `$${k + 1}::text::${typeOf.get(h!)}`).join(', ');
+      for (const r of rows) await tx.$executeRawUnsafe(`INSERT INTO ${table} (${cols}) VALUES (${values})`, ...r);
+    };
+    await load('restore_case_events', result.applied.files.events);
+    await load('restore_notifications', result.applied.files.notifications);
+    assert.equal(inserts.length, 2);
+    for (const sql of inserts) await tx.$executeRawUnsafe(sql);
+
+    const restored = await tx.caseEvent.findUniqueOrThrow({ where: { id: dup.id } });
+    assert.deepEqual(restored, dup);
+    assert.deepEqual(await tx.notification.findUniqueOrThrow({ where: { id: dupNotification.id } }), originalNotification);
+  });
+});
+
+test('CSV 檔名已存在時中止，不刪除先前就存在的檔案', async () => {
+  await inRolledBackTransaction(async (tx) => {
+    const s = await seedTenant(tx, '既有檔案');
+    const c = await s.newCase();
+    for (const d of [2, 3]) {
+      await event(tx, c.id, 'sla_breached', day(d), { 'sla.dueAt': DUE_A });
+      await notification(tx, {
+        tenantId: s.tenant.id, agentId: s.admin.id, caseId: c.id,
+        type: 'sla_breached', title: 'Resolution SLA breached', createdAt: day(d),
+      });
+    }
+    const stamp = `fixed-${Date.now()}`;
+    const existing = join(outDir, `sla-dedupe-${stamp}-notifications.csv`);
+    await writeFile(existing, '先前的備份');
+
+    await assert.rejects(run(tx, [s.tenant.id], { fileStamp: stamp }), /EEXIST/);
+
+    assert.equal(await readFile(existing, 'utf8'), '先前的備份');
+    assert.ok(!existsSync(join(outDir, `sla-dedupe-${stamp}-case-events.csv`)), '這次建立的檔案要清掉');
+    assert.equal((await remainingEvents(tx, c.id)).length, 2);
+  });
+});
 test('預期筆數與這次預覽不一致時拒絕刪除', async () => {
   await inRolledBackTransaction(async (tx) => {
     const s = await seedTenant(tx, '預期筆數');

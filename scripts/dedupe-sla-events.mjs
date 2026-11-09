@@ -11,8 +11,11 @@
  *     （createdAt、id 排序）。期限 key：逾期類用 facts['sla.dueAt']；警告類再加
  *     facts['sla.warningBeforeMinutes']；客戶等待用 facts['case.lastAgentReplyAt']（null 也算一組）。
  *     沒有 key 的舊列不動。
- *   - 通知：#281 前的英文標題 SLA 通知，每位成員、每種類型、每張工單（clickUrl）只留最早一筆。
- *   - 兩者都只刪 --cutoff 之前寫入的列。cutoff 之後還有重複，表示 cutoff 給錯了，--apply 會拒絕執行。
+ *   - 通知：只刪「對應到要刪除的重複時間軸事件」的英文標題 SLA 通知。舊程式寫完事件才把通知丟進佇列，
+ *     所以依工單（clickUrl）、類型（= eventType）與時間配對到最近的事件；每筆被刪事件、每位成員
+ *     最多刪一筆。對應到保留事件的通知（不同期限週期、客服回覆後重算）與配對不到的通知都不動。
+ *   - 兩者都只刪 --cutoff 之前寫入的列。cutoff 之後還有重複事件或英文通知，表示 cutoff 給錯了，
+ *     --apply 會拒絕執行。
  *
  * 安全設計：
  *   - 預設 dry-run：只印出筆數，交易最後回滾；建立暫存表後把交易設為唯讀。
@@ -163,7 +166,7 @@ export async function runDedupe(tx, opts) {
   await run('ranked-events');
   await run('event-targets');
   if (withNotifications) {
-    await run('ranked-notifications');
+    await run('notification-pairs');
     await run('notification-targets');
   } else {
     // 讓 @target-totals 與 @delete-notifications 仍可執行：空的目標表
@@ -176,17 +179,25 @@ export async function runDedupe(tx, opts) {
 
   const eventsByTenant = await query('count-events');
   const notificationsByTenant = withNotifications ? await query('count-notifications') : null;
+  const notificationSummary = withNotifications ? (await query('notification-summary'))[0] : null;
   const sum = (rows) => rows.reduce((n, r) => n + r.toDelete, 0);
   const report = {
     cutoff: opts.cutoff.toISOString(),
     tenants: opts.tenants,
     events: { byTenant: eventsByTenant, total: sum(eventsByTenant) },
     notifications: notificationsByTenant
-      ? { byTenant: notificationsByTenant, total: sum(notificationsByTenant) }
+      ? {
+          byTenant: notificationsByTenant,
+          total: sum(notificationsByTenant),
+          english: notificationSummary.english,
+          matchedKept: notificationSummary.matchedKept,
+          extraOnDeleted: notificationSummary.extraOnDeleted,
+          unmatched: notificationSummary.unmatched,
+        }
       : null,
     afterCutoff: {
       events: (await query('after-cutoff-events'))[0].count,
-      notifications: withNotifications ? (await query('after-cutoff-notifications'))[0].count : 0,
+      notifications: notificationSummary?.afterCutoff ?? 0,
     },
     missingKey: await query('missing-key'),
     topCases: await query('top-cases'),
@@ -205,7 +216,7 @@ async function applyDeletion(tx, sections, report, opts) {
   const { afterCutoff } = report;
   if (afterCutoff.events > 0 || afterCutoff.notifications > 0) {
     throw new Error(
-      `cutoff 之後仍有重複（時間軸 ${afterCutoff.events} 筆、通知 ${afterCutoff.notifications} 筆），` +
+      `cutoff 之後仍有重複事件 ${afterCutoff.events} 筆、英文 SLA 通知 ${afterCutoff.notifications} 筆，` +
         'cutoff 可能早於 #281 上線時間。請用 --find-cutoff 確認後再執行，這次不刪除。',
     );
   }
@@ -224,16 +235,18 @@ async function applyDeletion(tx, sections, report, opts) {
     return { deletedEvents: 0, deletedNotifications: 0, files: {} };
   }
 
-  const stamp = new Date().toISOString().replace(/[-:.]/g, '');
+  const stamp = opts.fileStamp ?? new Date().toISOString().replace(/[-:.]/g, '');
   const files = {
     events: resolve(opts.outDir, `sla-dedupe-${stamp}-case-events.csv`),
     notifications: resolve(opts.outDir, `sla-dedupe-${stamp}-notifications.csv`),
   };
+  // 只記這次成功建立的檔案：開檔失敗（例如同名檔案已存在）時不能把別人的檔案刪掉
+  const created = [];
   try {
-    await exportCsv(tx, sectionOf(sections, 'export-events'), files.events, [
+    await exportCsv(tx, sectionOf(sections, 'export-events'), files.events, created, [
       'id', 'tenantId', 'caseId', 'actorType', 'actorId', 'eventType', 'payload', 'createdAt',
     ]);
-    await exportCsv(tx, sectionOf(sections, 'export-notifications'), files.notifications, [
+    await exportCsv(tx, sectionOf(sections, 'export-notifications'), files.notifications, created, [
       'id', 'tenantId', 'agentId', 'type', 'title', 'body', 'clickUrl', 'isRead', 'readAt', 'createdAt',
     ]);
 
@@ -247,19 +260,27 @@ async function applyDeletion(tx, sections, report, opts) {
     return { deletedEvents, deletedNotifications, files };
   } catch (err) {
     // 交易會回滾：CSV 裡的列沒有被刪，留著會被誤認為備份
-    for (const file of Object.values(files)) if (existsSync(file)) unlinkSync(file);
+    for (const file of created) if (existsSync(file)) unlinkSync(file);
     throw err;
   }
 }
 
-function csvCell(value) {
+/**
+ * @description 一個 CSV 欄位。NULL 寫成沒有引號的空欄位（psql \copy 的 FORMAT csv 讀回 NULL），
+ *   其他值一律加引號：日期寫 ISO 8601（UTC），物件與陣列（例如 jsonb）寫 JSON，其餘用 String()。
+ */
+export function csvCell(value) {
   if (value === null || value === undefined) return '';
-  const text = value instanceof Date ? value.toISOString() : String(value);
+  let text;
+  if (value instanceof Date) text = value.toISOString();
+  else if (typeof value === 'object') text = JSON.stringify(value);
+  else text = String(value);
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-async function exportCsv(tx, sql, file, columns) {
+async function exportCsv(tx, sql, file, created, columns) {
   const fd = openSync(file, 'wx');
+  created.push(file);
   try {
     writeSync(fd, `${columns.map(csvCell).join(',')}\n`);
     let lastId = ZERO_UUID;
@@ -290,13 +311,17 @@ function printReport(report, log) {
   log(`時間軸事件：要刪 ${report.events.total} 筆`);
   for (const r of report.events.byTenant) log(`  [${r.tenantName}] ${r.tenantId}  ${r.eventType}  ${r.toDelete}`);
   if (report.notifications) {
-    log(`\n英文標題 SLA 通知：要刪 ${report.notifications.total} 筆`);
-    for (const r of report.notifications.byTenant) log(`  [${r.tenantName}] ${r.tenantId}  ${r.type}  ${r.toDelete}`);
+    const n = report.notifications;
+    log(`\n英文標題 SLA 通知：共 ${n.english} 則，配對到要刪除的重複事件、要刪 ${n.total} 則`);
+    for (const r of n.byTenant) log(`  [${r.tenantName}] ${r.tenantId}  ${r.type}  ${r.toDelete}`);
+    log(`  配對到保留的事件（不動）：${n.matchedKept} 則`);
+    log(`  同一筆被刪事件、同一位成員的第二則以後（不動）：${n.extraOnDeleted} 則`);
+    log(`  配對不到事件（不動）：${n.unmatched} 則`);
   } else {
     log('\n英文標題 SLA 通知：--notifications=skip，不處理');
   }
 
-  log(`\ncutoff 之後的重複（應為 0）：時間軸 ${report.afterCutoff.events}、通知 ${report.afterCutoff.notifications}`);
+  log(`\ncutoff 之後（應為 0）：重複事件 ${report.afterCutoff.events}、英文 SLA 通知 ${report.afterCutoff.notifications}`);
 
   const missing = report.missingKey.map((r) => `${r.eventType} ${r.count}`).join('、') || '無';
   log(`沒有期限 key、不處理的時間軸事件：${missing}`);

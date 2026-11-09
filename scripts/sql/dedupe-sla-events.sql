@@ -83,33 +83,67 @@ CREATE TEMP TABLE sla_dedupe_event_targets ON COMMIT DROP AS
 SELECT id FROM sla_dedupe_ranked_events
 WHERE rn > 1 AND before_cutoff;
 
--- @ranked-notifications
--- #281 之前的 SLA 預設通知（英文標題）。notifications 沒有 caseId，clickUrl 是 /dashboard/cases/<id>，
--- 所以依「成員 + 類型 + clickUrl（工單）+ 標題」分組，只留最早一筆。
+-- @notification-pairs
+-- #281 之前的 SLA 預設通知（英文標題），配對到產生它的時間軸事件。
+-- 舊程式（ee79c5ae^ 的 sla.handler.ts dispatchSlaOutcome）依序：寫 CaseEvent → 發 socket →
+-- enqueueNotification() 丟進 BullMQ → notification worker 立刻建立 Notification（預設 attempts 1、
+-- 沒有延遲）。所以通知比事件晚幾秒寫入，佇列積壓時再晚一些。配對條件：
+--   - 同一張工單：notifications 沒有 caseId，從 clickUrl '/dashboard/cases/<id>' 取出
+--   - 同一種事件：舊程式的通知 type 就是 eventType
+--   - 時間：通知寫入時間在事件之前 1 分鐘到之後 5 分鐘內。之前 1 分鐘只容許兩個程序的時鐘差；
+--     之後 5 分鐘容許佇列積壓，又不超過一輪掃描間隔（5 分鐘），而每天重複的事件相隔 24 小時，不會配錯天
+--   - 符合的事件不只一筆時，取時間最近的那筆
+-- 每筆事件、每位成員只取時間最近的一則（pair_rank = 1）。只有配對到「要刪除的重複事件」的通知會刪，
+-- 對應到保留事件的通知（不同期限週期、客服回覆後重算、重開工單）不動。
 -- 自動化規則的通知（例如 'SLA rule matched'）與 #281 之後的中文標題不在範圍內。
-CREATE TEMP TABLE sla_dedupe_ranked_notifications ON COMMIT DROP AS
+CREATE TEMP TABLE sla_dedupe_notification_pairs ON COMMIT DROP AS
 WITH params AS (
   SELECT (current_setting('sla_dedupe.cutoff')::timestamptz AT TIME ZONE 'UTC') AS cutoff,
          string_to_array(nullif(current_setting('sla_dedupe.tenants'), ''), ',')::uuid[] AS tenants
+),
+english AS (
+  SELECT n.id, n."tenantId" AS tenant_id, n."agentId" AS agent_id, n.type, n."createdAt" AS created_at,
+         n."createdAt" < p.cutoff AS before_cutoff,
+         lower(substring(n."clickUrl" from '^/dashboard/cases/([0-9a-fA-F-]{36})$')) AS case_id_text
+  FROM notifications n
+  CROSS JOIN params p
+  WHERE (n.type, n.title) IN (
+          ('first_response_breached', 'First response SLA breached'),
+          ('first_response_warning', 'First response SLA warning'),
+          ('sla_breached', 'Resolution SLA breached'),
+          ('sla_warning', 'Resolution SLA warning'),
+          ('customer_waiting_breached', 'Customer waiting SLA breached')
+        )
+    AND (p.tenants IS NULL OR n."tenantId" = ANY (p.tenants))
+),
+nearest AS (
+  SELECT DISTINCT ON (en.id)
+         en.id AS notification_id,
+         r.id AS event_id,
+         abs(extract(epoch FROM en.created_at - r.created_at)) AS gap_seconds
+  FROM english en
+  JOIN sla_dedupe_ranked_events r
+    ON r.case_id::text = en.case_id_text
+   AND r.tenant_id = en.tenant_id
+   AND r.event_type = en.type
+   AND en.created_at >= r.created_at - interval '1 minute'
+   AND en.created_at <= r.created_at + interval '5 minutes'
+  ORDER BY en.id, gap_seconds, r.created_at, r.id
 )
-SELECT n.id, n."tenantId" AS tenant_id, n.type, n."createdAt" AS created_at,
-       n."createdAt" < p.cutoff AS before_cutoff,
-       row_number() OVER (PARTITION BY n."agentId", n.type, n."clickUrl", n.title ORDER BY n."createdAt", n.id) AS rn
-FROM notifications n
-CROSS JOIN params p
-WHERE (n.type, n.title) IN (
-        ('first_response_breached', 'First response SLA breached'),
-        ('first_response_warning', 'First response SLA warning'),
-        ('sla_breached', 'Resolution SLA breached'),
-        ('sla_warning', 'Resolution SLA warning'),
-        ('customer_waiting_breached', 'Customer waiting SLA breached')
-      )
-  AND (p.tenants IS NULL OR n."tenantId" = ANY (p.tenants));
+SELECT en.id, en.tenant_id, en.agent_id, en.type, en.created_at, en.before_cutoff,
+       nr.event_id,
+       (t.id IS NOT NULL) AS event_deleted,
+       CASE WHEN nr.event_id IS NOT NULL THEN
+         row_number() OVER (PARTITION BY nr.event_id, en.agent_id ORDER BY nr.gap_seconds, en.created_at, en.id)
+       END AS pair_rank
+FROM english en
+LEFT JOIN nearest nr ON nr.notification_id = en.id
+LEFT JOIN sla_dedupe_event_targets t ON t.id = nr.event_id;
 
 -- @notification-targets
 CREATE TEMP TABLE sla_dedupe_notification_targets ON COMMIT DROP AS
-SELECT id FROM sla_dedupe_ranked_notifications
-WHERE rn > 1 AND before_cutoff;
+SELECT id FROM sla_dedupe_notification_pairs
+WHERE event_deleted AND pair_rank = 1 AND before_cutoff;
 
 -- @count-events
 SELECT r.tenant_id AS "tenantId", t.name AS "tenantName", r.event_type AS "eventType",
@@ -123,7 +157,7 @@ ORDER BY t.name, r.tenant_id, r.event_type;
 -- @count-notifications
 SELECT r.tenant_id AS "tenantId", t.name AS "tenantName", r.type AS "type",
        count(*)::int AS "toDelete"
-FROM sla_dedupe_ranked_notifications r
+FROM sla_dedupe_notification_pairs r
 JOIN sla_dedupe_notification_targets x ON x.id = r.id
 JOIN tenants t ON t.id = r.tenant_id
 GROUP BY r.tenant_id, t.name, r.type
@@ -132,8 +166,14 @@ ORDER BY t.name, r.tenant_id, r.type;
 -- @after-cutoff-events
 SELECT count(*)::int AS count FROM sla_dedupe_ranked_events WHERE rn > 1 AND NOT before_cutoff;
 
--- @after-cutoff-notifications
-SELECT count(*)::int AS count FROM sla_dedupe_ranked_notifications WHERE rn > 1 AND NOT before_cutoff;
+-- @notification-summary
+-- afterCutoff：cutoff 之後還有英文 SLA 通知，表示 cutoff 早於 #281 上線（舊程式仍在執行）
+SELECT count(*)::int AS english,
+       count(*) FILTER (WHERE event_id IS NOT NULL AND NOT event_deleted)::int AS "matchedKept",
+       count(*) FILTER (WHERE event_deleted AND pair_rank > 1)::int AS "extraOnDeleted",
+       count(*) FILTER (WHERE event_id IS NULL)::int AS unmatched,
+       count(*) FILTER (WHERE NOT before_cutoff)::int AS "afterCutoff"
+FROM sla_dedupe_notification_pairs;
 
 -- @missing-key
 SELECT event_type AS "eventType", count(*)::int AS count

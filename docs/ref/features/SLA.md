@@ -115,7 +115,7 @@ facts 由 `buildSlaFacts()` 組成，包含下列資料：
 | 對象 | 規則 |
 | --- | --- |
 | 時間軸（`case_events`） | `actorType` 為 `system` 的五種事件：`first_response_breached`、`first_response_warning`、`sla_breached`、`sla_warning`、`customer_waiting_breached`。同一張工單、同一種事件、同一個期限 key 只留最早一筆（依 `createdAt`、`id` 排序）。期限 key：逾時類用 `facts['sla.dueAt']`；預警類再加 `facts['sla.warningBeforeMinutes']`；客戶等待用 `facts['case.lastAgentReplyAt']`，沒有值（客服從未回覆）也算一組。期限改變或客服回覆後重新計算的那幾筆會留下 |
-| 通知（`notifications`） | #281 前的英文標題預設通知：`First response SLA breached`、`First response SLA warning`、`Resolution SLA breached`、`Resolution SLA warning`、`Customer waiting SLA breached`。每位成員、每種類型、每張工單（`clickUrl`）只留最早一筆。中文標題與自動化規則的通知不處理 |
+| 通知（`notifications`） | #281 前的英文標題預設通知：`First response SLA breached`、`First response SLA warning`、`Resolution SLA breached`、`Resolution SLA warning`、`Customer waiting SLA breached`。只刪對應到「要刪除的重複時間軸事件」的那幾則。舊程式寫完事件才把通知丟進佇列，所以依工單（從 `clickUrl` 取出）、類型（等於 `eventType`）與時間（事件前 1 分鐘到後 5 分鐘）配對到最近的事件；每筆被刪事件、每位成員最多刪一則。對應到保留事件的通知（不同期限週期、客服回覆後重算、重開工單）與配對不到事件的通知都不動。中文標題與自動化規則的通知不處理 |
 | 不處理 | `--cutoff` 之後寫入的列；payload 沒有上述 facts key 的舊列（更早的版本沒有寫 facts） |
 
 ### 副作用
@@ -145,7 +145,8 @@ facts 由 `buildSlaFacts()` 組成，包含下列資料：
    `--cutoff` 必須寫時區（`Z` 或 `+08:00`）。`--tenant` 可以重複，不帶時處理所有租戶。輸出：
 
    - 各租戶、各事件類型要刪的時間軸筆數，與各租戶、各類型要刪的通知筆數。
-   - cutoff 之後的重複數。應為 0，不為 0 表示 cutoff 早於 #281 上線，`--apply` 會拒絕執行。
+   - 英文 SLA 通知總數，以及配對到保留事件、同一筆被刪事件同一位成員的第二則以後、配對不到事件的則數（這三類都不動）。
+   - cutoff 之後的重複事件數與英文 SLA 通知數。都應為 0，不為 0 表示 cutoff 早於 #281 上線，`--apply` 會拒絕執行。
    - 沒有期限 key、不處理的時間軸事件數。
    - 重複最多的前 10 張工單。
    - 依 `sla.breachCount` 或 `sla.escalationLevel` 判斷的啟用中規則。
@@ -169,7 +170,28 @@ facts 由 `buildSlaFacts()` 組成，包含下列資料：
 
 ### 還原
 
-CSV 的欄位與資料表相同，`payload` 是 JSON 文字，時間是 UTC 的 ISO 8601。需要還原時，把 CSV 匯入暫存表後 `INSERT INTO case_events (id, "caseId", "actorType", "actorId", "eventType", payload, "createdAt")` 與 `INSERT INTO notifications (...)` 寫回（`tenantId` 欄位只供核對，`case_events` 沒有這個欄位）。工單已經刪除的列無法寫回。
+CSV 的欄位名稱與資料表相同。有值的欄位一律加引號，NULL 是沒有引號的空欄位；`payload` 是 JSON 文字，時間是 UTC 的 ISO 8601。時間軸的 CSV 多一個 `tenantId` 欄位供核對，`case_events` 沒有這個欄位。
+
+以 owner 身分用 `psql` 連到資料庫，在 CSV 所在目錄執行（把檔名換成實際的檔名）。工單或成員已經刪除的列寫不回去，會略過；已經存在的 id 也略過：
+
+```sql
+CREATE TEMP TABLE restore_case_events (id uuid, "tenantId" uuid, "caseId" uuid, "actorType" text, "actorId" uuid, "eventType" text, payload jsonb, "createdAt" timestamptz);
+CREATE TEMP TABLE restore_notifications (id uuid, "tenantId" uuid, "agentId" uuid, type text, title text, body text, "clickUrl" text, "isRead" boolean, "readAt" timestamptz, "createdAt" timestamptz);
+\copy restore_case_events FROM 'sla-dedupe-<時間>-case-events.csv' WITH (FORMAT csv, HEADER true)
+\copy restore_notifications FROM 'sla-dedupe-<時間>-notifications.csv' WITH (FORMAT csv, HEADER true)
+INSERT INTO case_events (id, "caseId", "actorType", "actorId", "eventType", payload, "createdAt")
+SELECT id, "caseId", "actorType", "actorId", "eventType", payload, "createdAt" AT TIME ZONE 'UTC'
+FROM restore_case_events r
+WHERE EXISTS (SELECT 1 FROM cases c WHERE c.id = r."caseId")
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO notifications (id, "tenantId", "agentId", type, title, body, "clickUrl", "isRead", "readAt", "createdAt")
+SELECT id, "tenantId", "agentId", type, title, body, "clickUrl", "isRead", "readAt" AT TIME ZONE 'UTC', "createdAt" AT TIME ZONE 'UTC'
+FROM restore_notifications r
+WHERE EXISTS (SELECT 1 FROM agents a WHERE a.id = r."agentId")
+ON CONFLICT (id) DO NOTHING;
+```
+
+`tests/feature/scripts/dedupe-sla-events.test.ts` 依這段 SQL 還原，確認寫回的列與刪除前相同。
 
 ## 目前的限制
 
