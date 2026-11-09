@@ -60,17 +60,19 @@
 
 | 模式 | 做什麼 |
 | --- | --- |
-| `anonymize`（預設） | 聯絡人的名稱改成佔位字串，清空頭像、電話與 email；刪除屬性、渠道身分、`IdentityMap` 與長期記憶；把客人傳進來的訊息內容換成 `{ redacted: true }`；刪除物件儲存裡的頭像檔。對話與工單保留，報表數字不變 |
+| `anonymize`（預設） | 聯絡人的名稱改成佔位字串，清空頭像、電話與 email；刪除屬性、渠道身分、`IdentityMap` 與長期記憶；把客人傳進來的訊息內容換成 `{ redacted: true }`；刪除這些訊息在物件儲存的媒體檔與頭像檔。對話、工單與客服上傳的媒體檔保留，報表數字不變 |
 | `hard_delete` | 刪除聯絡人本身，以及他的對話、訊息、工單、積分、活動提交，並刪除物件儲存裡的媒體檔與頭像檔 |
 
 兩種模式都刪除這位聯絡人在物件儲存的頭像檔，但同租戶其他聯絡人還在用的檔案保留（合併時主聯絡人會沿用被併入那位的頭像）。workers 要設定與 api 相同的 `S3_PUBLIC_URL`；沒設定或不同時頭像檔不刪，筆數記在申請的 `affected.avatarObjectsSkipped`。
+
+訊息的媒體檔只刪 `{tenantId}/media/{這位客人的對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，客服回覆的出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。檔案在交易 commit 之後刪，每個最多刪一次、不重試；刪除失敗時申請仍是完成，筆數記在 `affected.mediaObjectsFailed` 與 `affected.avatarObjectsFailed`，失敗的 key 寫進 workers 的 log。
 
 **兩種模式都有沒涵蓋的資料：**
 
 | 資料 | `anonymize` | `hard_delete` |
 | --- | --- | --- |
 | 客服回覆的訊息內容 | 保留 | 刪除 |
-| 客人傳的圖片與檔案 | 保留檔案 | 刪除 |
+| 客服上傳的圖片與檔案 | 保留 | 刪除 |
 | 活動提交的表單答案、積分 | 保留 | 刪除 |
 | 工單標題、描述、備註與 CSAT 留言 | 保留 | 刪除 |
 | 點擊紀錄（`ClickLog`，含 IP、User-Agent、LINE uid） | 保留 | 保留 |

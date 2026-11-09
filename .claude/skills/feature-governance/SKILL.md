@@ -52,6 +52,7 @@ description: >
 - 發起匯出／刪除的「請求、稽核、佇列工作」一起成立或一起 rollback；worker 以請求狀態認領（`pending|processing` → `processing`），已結束的請求不重做。改 handler 不要拿掉認領與 `markCompleted` 的列鎖。
 - 刪除的 `payload`、佇列工作不含 `reason`；完成稽核只有 `contactId`、`mode`、`affected`。
 - 刪除只能動目標聯絡人；頭像檔只刪本租戶 `avatars/` 目錄、且沒有其他聯絡人在用的檔案。
+- 訊息媒體檔只刪 `{tenantId}/media/{本次對話}/{uuid}.ext` 格式的 key（`isConversationMediaKey`）；`anonymize` 只刪進站訊息的，出站訊息還在引用的保留。`anonymize` 要在改寫進站訊息**之前**讀出 `storageKey`，改寫之後就找不到了（#329）。物件刪除在 commit 之後、每個最多一次，失敗筆數記在 `affected.mediaObjectsFailed`／`avatarObjectsFailed`，不要只寫 log。
 - **新增掛在 Contact、Conversation、Case 上的資料表時**：決定 `anonymize` 與 `hard_delete` 要不要處理它，`Restrict` 關聯一定要在 `hardDelete()` 刪 Contact 之前顯式刪除，否則硬刪除會失敗。只存 `contactId` 字串、沒有外鍵的表（ClickLog、BroadcastRecipient、KbArticleFeedback、FlowExecution）兩種模式都不處理（ERASE-01）。
 - `TenantAuditLog.actor` 是 `onDelete: SetNull`：永久刪除成員會讓他的稽核失去操作者（HC-GOVERNANCE-01）。改成員刪除或稽核結構時不要讓情況更糟。
 - 新增敏感操作（權限、憑證、對外送資料、匯出名單、改個資）時要寫稽核，並更新 `openspec/specs/tenant-audit-log/spec.md` 的清單與 AUD-01。
