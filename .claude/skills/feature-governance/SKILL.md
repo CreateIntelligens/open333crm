@@ -53,7 +53,7 @@ description: >
 - 刪除的 `payload`、佇列工作不含 `reason`；完成稽核只有 `contactId`、`mode`、`affected`。
 - 刪除只能動目標聯絡人；頭像檔只刪本租戶 `avatars/` 目錄、且沒有其他聯絡人在用的檔案。
 - **新增掛在 Contact、Conversation、Case 上的資料表時**：決定 `anonymize` 與 `hard_delete` 要不要處理它，`Restrict` 關聯一定要在 `hardDelete()` 刪 Contact 之前顯式刪除，否則硬刪除會失敗。只存 `contactId` 字串、沒有外鍵的表（ClickLog、BroadcastRecipient、KbArticleFeedback、FlowExecution）兩種模式都不處理（ERASE-01）。
-- `TenantAuditLog.actor` 是 `onDelete: SetNull`：永久刪除成員會讓他的稽核失去操作者（HC-GOVERNANCE-01）。改成員刪除或稽核結構時不要讓情況更糟。
+- `TenantAuditLog.actor`、`DataExportRequest.requester`、`DataErasureRequest.requester` 是 `onDelete: SetNull`。`purgeAgent()` 在刪除成員之前、同一個交易內呼叫 `preserveAuditActor()` 與兩個 `preserveRequester()`，把名稱與 email 存進 `actorName`／`actorEmail`、`requestedByName`／`requestedByEmail`（#414）。新增以 SetNull 參照 `agents`、又需要問責的表時，也要在 `purgeAgent` 加快照。`GET /tenant/audit-logs` 的 `actor` 格式不能改，快照放在 `actorSnapshot`。
 - 新增敏感操作（權限、憑證、對外送資料、匯出名單、改個資）時要寫稽核，並更新 `openspec/specs/tenant-audit-log/spec.md` 的清單與 AUD-01。
 
 ## 跨功能牽連
@@ -73,7 +73,7 @@ description: >
 
 ## 常見 bug 從哪裡查
 - 「稽核查不到某個操作」：先對照 `docs/ref/features/health/GOVERNANCE.md` 的盤點表，很多敏感操作本來就沒寫（AUD-01、HC-GOVERNANCE-03、04、09）。有寫的話查該模組的 flow 是否在交易內呼叫 `recordTenantAudit`。
-- 「稽核的操作者是空的」：操作者被永久刪除了（HC-GOVERNANCE-01），或是 worker 寫的（`data.erasure.complete` 的 actor 是發起人）。
+- 「稽核的操作者是空的」：操作者被永久刪除了，看 `actorSnapshot`（2026-11-09 之前刪除的成員沒有快照）；或是系統排程寫的（`actorSnapshot` 也是 null）。刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 會違反外鍵而被吞掉（AUD-03 未修的部分）。
 - 「匯出一直 pending」：workers 有沒有在跑、`data-export` 佇列；容器內 workers 連不上 MinIO 見 STO-01。失敗原因在 `data_export_requests.error`。
 - 「匯出內容只要聯絡人卻全部都有」：`scope` 沒作用（EXPORT-01）。
 - 「刪除後客人資料還在」：查 ERASE-01 的保留清單、被合併的封存聯絡人（`mergedIntoId`）、outbox 與 `webhook_deliveries` 的 payload（HC-GOVERNANCE-08）。

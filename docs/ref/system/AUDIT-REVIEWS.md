@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：永久刪除成員時保留操作者快照（AUD-03）
+
+分支 `fix/audit-actor-snapshot-414`，change `preserve-audit-actor-on-agent-purge`，issue #414。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUD-03 | 部分修正 | migration `20261109100000_preserve_audit_actor_snapshot` 加快照欄位；`purgeAgent()` 刪除前寫入。`agent-management.test.ts`「刪除保留操作者快照」「刪除稽核記下被刪成員的名稱」「操作者還在時沒有快照」修正前失敗在斷言上，修正後通過；`agent-purge.test.ts`「刪除被拒時不寫快照」以 mutation 驗證（把快照移到驗證之前，最後一位管理員與權限比較兩案失敗；在 404 之前寫快照，四案都失敗）。未修的部分：worker 的 `data.erasure.complete` 稽核在發起人被刪除後違反外鍵，等 #329 合併後另補 |
+
 ## 2026-11-06：移除已完全修正的項目（TRIAL-05、TRIAL-06、AUTO-06、AUTO-09、CI-04）
 
 2026-09-30 定下的規則（一項完全修正之後從 `AUDIT.md` 移除）只記在本文件，`AGENTS.md` 的完成檢查只寫「update that item」，所以這 5 項修正後標成「已修正」留在 `AUDIT.md`。這次把規則寫進 `AGENTS.md` Step 4 與 `AUDIT.md` 開頭，並移除這 5 項。

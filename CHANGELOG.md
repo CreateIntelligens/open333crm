@@ -17,6 +17,13 @@ All notable changes to **open333CRM** will be documented in this file.
   - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
   - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
 
+- **永久刪除成員後，稽核與資料匯出、刪除請求仍查得到是誰做的**（issue #414，AUDIT AUD-03 部分修正，change `preserve-audit-actor-on-agent-purge`）— 稽核的 `actorId` 與匯出、刪除請求的 `requestedBy` 外鍵是 `ON DELETE SET NULL`，成員被永久刪除後全部變成空值，和系統排程寫的紀錄分不出來，「誰匯出了全租戶資料」查不到。現在：
+  - `DELETE /api/v1/agents/:id` 在刪除成員之前、同一個交易內，把名稱與 email 寫進他當操作者的稽核（新欄位 `actorName`、`actorEmail`），以及他發起的資料匯出與刪除請求（新欄位 `requestedByName`、`requestedByEmail`）。刪除被拒（404、最後一位管理員、權限比操作者高）時不寫。
+  - `GET /api/v1/tenant/audit-logs` 每筆多回 `actorSnapshot: { name, email } | null`，`actor` 的格式不變。
+  - `agent.purge` 稽核的 `payload` 記下被刪成員的名稱（`{ name }`），不記 email。
+  - migration `20261109100000_preserve_audit_actor_snapshot` 只加可為空值的欄位，不回填：之前刪除的成員留下的紀錄沒有快照。
+  - 未修：刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 稽核會違反外鍵，等 #329 合併後另補。
+
 ## [2026-11-06]
 
 ### Changed

@@ -3,7 +3,7 @@
 這一組功能有 API、沒有後台頁面，要透過 CLI、MCP 或直接呼叫 API 使用：查詢租戶的操作紀錄、匯出租戶資料、刪除單一客人的個人資料、把系統事件推送給外部系統，以及讓 AI 工具以 MCP 操作租戶資料。
 
 - **資料來源**：`apps/api/src/modules/tenant-audit/*`、`apps/api/src/modules/data-export/*`、`apps/api/src/modules/data-erasure/*`、`apps/api/src/modules/webhook-subscriptions/*`、`apps/api/src/modules/mcp/*`、`apps/workers/src/handlers/data-export.handler.ts`、`apps/workers/src/handlers/data-erasure.handler.ts`
-- **核對日期**：2026-10-21
+- **核對日期**：2026-11-09
 
 ## 負責的模組
 
@@ -29,7 +29,9 @@
 | 設定 | `settings.update`，`payload.section` 記錄是哪一類設定 |
 | 資料 | `contact.merge`、`contact.merge_revert`、`case.delete`、`data.export.request`、`data.erasure.request`、`data.erasure.complete` |
 
-`payload` 刻意不放個人資料，例如合併聯絡人只記兩個 ID。
+`payload` 刻意不放個人資料，例如合併聯絡人只記兩個 ID。`agent.purge` 例外記下被刪成員的名稱（`{ name }`），不記 email。
+
+**操作者被永久刪除之後。** 稽核的 `actorId` 外鍵是 `ON DELETE SET NULL`，成員被永久刪除後 `actorId` 變成空值。`purgeAgent()` 在刪除成員之前、同一個交易內，把他的名稱與 email 寫進他當操作者的稽核（`actorName`、`actorEmail`），也寫進他發起的資料匯出與刪除請求（`requestedByName`、`requestedByEmail`）。`GET /tenant/audit-logs` 每筆回傳 `actor`（成員還在時是 `{ id, name, email }`，否則是 `null`）與 `actorSnapshot`（保存的 `{ name, email }`，沒有快照時是 `null`）。這個機制在 2026-11-09 上線（issue #414），之前刪除的成員留下的紀錄沒有快照，查不回來。依 `actorId` 篩選查不到已刪除成員的紀錄。
 
 **沒有寫稽核的重要操作**：登入成功與失敗、Passkey 的註冊與刪除、API 金鑰與 CLI token 的建立和撤銷、修改渠道（包括更換憑證）、角色的建立、改名與刪除、送出群發、自動化規則的增刪改。其中長效憑證與渠道憑證的變更，事後完全無法追查。見 `../../system/AUDIT.md` 的 AUD-01。
 

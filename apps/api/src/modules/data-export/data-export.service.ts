@@ -53,6 +53,18 @@ export async function createExportRequest(ctx: TenantCtx, input: CreateExportReq
   });
 }
 
+/**
+ * 永久刪除成員之前，把他的名稱與 email 寫進他發起的匯出請求（issue #414）。
+ * requestedBy 的外鍵是 ON DELETE SET NULL，刪除成員後只剩這兩個欄位查得到發起者。
+ * 必須與刪除成員在同一個交易。
+ */
+export async function preserveRequester(ctx: TenantCtx, input: { agentId: string; name: string; email: string }) {
+  await ctx.tx.dataExportRequest.updateMany({
+    where: { tenantId: ctx.tenantId, requestedBy: input.agentId },
+    data: { requestedByName: input.name, requestedByEmail: input.email },
+  });
+}
+
 /** 查單筆匯出請求狀態（tenantId scoped）。 */
 export async function getExportRequest(ctx: TenantCtx, id: string) {
   const req = await ctx.tx.dataExportRequest.findFirst({
