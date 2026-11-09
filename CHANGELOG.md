@@ -2,6 +2,17 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-09]
+
+### Fixed
+
+- **清除 #281 前每天重複的 SLA 時間軸事件與通知**（issue #320）— #281 把 SLA 掃描的去重改成「同一個期限只記一次」，但已經產生的重複資料沒有清除：逾時的工單每天一筆「首次回應已逾期」「解決期限已逾期」，通知頁同樣每天一則（Demo 租戶一位管理員累積上千則）。新增一次性腳本 `scripts/dedupe-sla-events.mjs`（SQL 在 `scripts/sql/dedupe-sla-events.sql`），不需要 migration：
+  - 時間軸：系統寫入的五種 SLA 事件，同一張工單、同一種事件、同一個期限 key 只留最早一筆。逾時類看 `sla.dueAt`，預警類再看 `sla.warningBeforeMinutes`，客戶等待看 `case.lastAgentReplyAt`（沒有值也算一組）。沒有這些 facts 的舊列不動。
+  - 通知：#281 前的英文標題 SLA 通知，每位成員、每種類型、每張工單只留最早一筆；`--notifications=skip` 不處理通知。
+  - 只刪 `--cutoff` 之前寫入的列。預設只預覽（各租戶筆數、cutoff 之後的重複數、沒有 key 的列數、重複最多的工單、依 `sla.breachCount` 判斷的啟用中規則）。`--apply` 在單一交易內刪除：刪除前把整列匯出成 CSV，cutoff 之後仍有重複、筆數與 `--expect-events`／`--expect-notifications` 或預覽不一致時回滾並以非零結束。
+  - 用法：`node scripts/dedupe-sla-events.mjs --find-cutoff` 找 cutoff；`node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z [--tenant <id>]` 預覽；確認後加 `--apply --expect-events N --expect-notifications M [--out-dir 目錄]`。需要能略過 RLS 的連線（`MIGRATE_DATABASE_URL`）。操作手冊見 `docs/ref/features/SLA.md`「清除 #281 前的重複事件」。
+  - 清除後，未結案工單的 `sla.breachCount` 會變小，依它判斷的升級規則會比較晚觸發，這是正確行為。
+
 ## [2026-11-06]
 
 ### Changed

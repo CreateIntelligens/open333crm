@@ -3,7 +3,7 @@
 SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，多久內要結案。系統依承諾計時，接近期限時預警，超過期限時升級優先級並通知人員。
 
 - **資料來源**：`apps/api/src/modules/sla/*`、`apps/workers/src/handlers/sla.handler.ts`、`packages/shared/src/sla/*`、`apps/api/src/modules/case/case.service.ts`、`packages/database/prisma/schema.prisma`
-- **核對日期**：2026-09-23
+- **核對日期**：2026-11-09
 
 ## 這份文件回答的問題
 
@@ -16,6 +16,7 @@ SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，�
 | 逾時之後系統做什麼？ | [逾時之後系統做什麼](#逾時之後系統做什麼) |
 | 租戶可以自訂逾時的處理方式嗎？ | [租戶自訂規則](#租戶自訂規則) |
 | 現在哪些部分不能用？ | [目前的限制](#目前的限制) |
+| 時間軸與通知留著 #281 前每天重複的 SLA 事件，怎麼清？ | [清除 #281 前的重複事件](#清除-281-前的重複事件) |
 
 ## 程式碼分佈在哪裡
 
@@ -83,7 +84,7 @@ SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，�
 
 `dispatchSlaOutcome()` 依序執行下列步驟。
 
-1. **去重**。同一張工單、同一種事件，24 小時內已經發生過就直接返回。掃描每 5 分鐘一輪，沒有這道檢查會重複發送。
+1. **去重**。同一個期限只記一次：同一張工單、同一種事件，在去重起點之後已經有紀錄就直接返回。去重起點是期限（逾時）、預警時間點（預警），或上次客服回覆的時間（客戶等待）。掃描每 5 分鐘一輪，沒有這道檢查會重複發送。2026-10-15（#281）之前是「24 小時內發生過就返回」，逾時的工單每天重寫一次時間軸、重發一次通知，舊資料用[一次性腳本](#清除-281-前的重複事件)清除。
 2. **升級優先級**。只有結案逾時會做。`bumpSlaPriority()` 依 `LOW → MEDIUM → HIGH → URGENT` 推一級，已經是 `URGENT` 就不動。
 3. **寫入 `CaseEvent`**。`actorType` 為 `system`，payload 內含事件名稱、升級前後的優先級，以及一整包 facts。
 4. **發通知並觸發自動化規則**。
@@ -104,6 +105,71 @@ facts 由 `buildSlaFacts()` 組成，包含下列資料：
 `evaluateSlaAutomationRules()` 取出該租戶 `eventType` 等於該 SLA 事件名稱、而且 `isActive` 是 `true` 的 `AutomationRule`，依 `priority` 由高到低排序，把 facts 交給 `@open333crm/automation` 的 `evaluateRules()` 比對，再執行命中規則的動作。
 
 租戶因此可以寫出「結案逾時而且聯繫人是 VIP，就指派給特定團隊」這類規則。每種事件開放哪些 fact 由 `getSlaConditionFactsForEvent()` 決定，各事件開放的 fact 不同。
+
+## 清除 #281 前的重複事件
+
+#281（2026-10-15）之前的去重以 24 小時為窗，逾時的工單每天多一筆時間軸事件，負責人與主管每天多收一則通知。新的事件不再重複，舊資料由 `scripts/dedupe-sla-events.mjs` 一次清除（issue #320）。SQL 在 `scripts/sql/dedupe-sla-events.sql`。
+
+### 清除規則
+
+| 對象 | 規則 |
+| --- | --- |
+| 時間軸（`case_events`） | `actorType` 為 `system` 的五種事件：`first_response_breached`、`first_response_warning`、`sla_breached`、`sla_warning`、`customer_waiting_breached`。同一張工單、同一種事件、同一個期限 key 只留最早一筆（依 `createdAt`、`id` 排序）。期限 key：逾時類用 `facts['sla.dueAt']`；預警類再加 `facts['sla.warningBeforeMinutes']`；客戶等待用 `facts['case.lastAgentReplyAt']`，沒有值（客服從未回覆）也算一組。期限改變或客服回覆後重新計算的那幾筆會留下 |
+| 通知（`notifications`） | #281 前的英文標題預設通知：`First response SLA breached`、`First response SLA warning`、`Resolution SLA breached`、`Resolution SLA warning`、`Customer waiting SLA breached`。每位成員、每種類型、每張工單（`clickUrl`）只留最早一筆。中文標題與自動化規則的通知不處理 |
+| 不處理 | `--cutoff` 之後寫入的列；payload 沒有上述 facts key 的舊列（更早的版本沒有寫 facts） |
+
+### 副作用
+
+工單的 `sla.breachCount` 與 `sla.escalationLevel` 是逾時類事件的筆數。清除後，未結案工單的這兩個數字會變小，依它們判斷的自動化規則會比較晚觸發。這是正確的行為：數字回到「逾時過幾次」，而不是「逾時後過了幾天」。預覽會列出受影響的啟用中規則。
+
+### 操作步驟
+
+以下指令在 repo 根目錄執行；在 API 容器內，把 `scripts/` 整個資料夾（含 `sql/`）複製到 `/app/scripts/`，在 `/app` 執行。連線需要能略過 RLS 的身分：優先用 `MIGRATE_DATABASE_URL`（owner），否則用 `DATABASE_URL`。身分不能略過 RLS 時，腳本直接失敗，不會回報 0 筆。
+
+1. **正式寫入前先備份資料庫。**
+2. **找 cutoff**（唯讀）：
+
+   ```bash
+   node scripts/dedupe-sla-events.mjs --find-cutoff
+   ```
+
+   印出最早的中文 SLA 通知時間（#281 之後）與最晚的英文 SLA 通知時間。前者就是 cutoff。如果最晚的英文通知晚於最早的中文通知，改用部署紀錄的時間。也可以直接在資料庫執行 SQL 檔的 `-- @find-cutoff` 段落。
+
+3. **預覽**（dry-run，預設模式；建立暫存表後交易改為唯讀，最後回滾）：
+
+   ```bash
+   node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z
+   node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z --tenant <租戶 ID>
+   ```
+
+   `--cutoff` 必須寫時區（`Z` 或 `+08:00`）。`--tenant` 可以重複，不帶時處理所有租戶。輸出：
+
+   - 各租戶、各事件類型要刪的時間軸筆數，與各租戶、各類型要刪的通知筆數。
+   - cutoff 之後的重複數。應為 0，不為 0 表示 cutoff 早於 #281 上線，`--apply` 會拒絕執行。
+   - 沒有期限 key、不處理的時間軸事件數。
+   - 重複最多的前 10 張工單。
+   - 依 `sla.breachCount` 或 `sla.escalationLevel` 判斷的啟用中規則。
+   - 建議的 `--expect-events`、`--expect-notifications` 值。
+
+4. **執行**（單一交易）：
+
+   ```bash
+   node scripts/dedupe-sla-events.mjs --cutoff 2026-10-15T08:00:00Z --tenant <租戶 ID> --apply \
+     --expect-events 1234 --expect-notifications 567 --out-dir /tmp
+   ```
+
+   - 要刪的 id 放進交易內的暫存表（`ON COMMIT DROP`），不在正式 schema 建備份表。
+   - 刪除前把整列匯出成 CSV：`sla-dedupe-<時間>-case-events.csv`（含所屬租戶）與 `sla-dedupe-<時間>-notifications.csv`，放在 `--out-dir`（預設目前目錄）。檔案已存在時不覆蓋。
+   - 這次預覽的筆數與 `--expect-*` 不同、cutoff 之後有重複、或 DELETE 的筆數與預覽不同時，整筆交易回滾，刪除先前寫出的 CSV，以非零結束。
+   - `--notifications=skip` 只清時間軸，不動通知。
+
+5. **抽查**：打開重複最多的幾張工單，時間軸每個期限只剩一筆逾時、一筆預警。
+
+建議順序（issue #320 的決定）：本機用 `scripts/sync-uat-db.sh` 拉回的 UAT 資料演練 → UAT 只跑預覽、確認筆數 → 先清 Demo 租戶並抽查 → 再清真實租戶。
+
+### 還原
+
+CSV 的欄位與資料表相同，`payload` 是 JSON 文字，時間是 UTC 的 ISO 8601。需要還原時，把 CSV 匯入暫存表後 `INSERT INTO case_events (id, "caseId", "actorType", "actorId", "eventType", payload, "createdAt")` 與 `INSERT INTO notifications (...)` 寫回（`tenantId` 欄位只供核對，`case_events` 沒有這個欄位）。工單已經刪除的列無法寫回。
 
 ## 目前的限制
 
