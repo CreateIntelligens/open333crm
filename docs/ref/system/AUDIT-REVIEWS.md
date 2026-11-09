@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：UAT 的向量欄位維度（DB-01）
+
+#337 階段 4 第五批（change `migrate-embedding-tenant-ctx`）討論 DB-01 時，以 `~/workbase/SRE/host_connacts.md` 的 Open333 UAT 連線唯讀查詢，沒有修改任何東西。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| DB-01 | 未處理，描述修正 | UAT 的 `km_articles.embedding` 是 `vector(1024)`（`format_type(atttypid, atttypmod)`），與 schema 一致。原本寫「執行中的欄位都是 `vector(1536)`」，只在由 migration 建立的本機與測試資料庫成立。改寫成「migration 歷史落後於 UAT」，並註明補 migration 前要查每個環境的實際維度。`long_term_memories.embedding` 沒有查 |
+
 ## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
 
 issue #414 後續，分支 `fix/erasure-export-deleted-requester-414`，change `keep-completion-audit-for-purged-requester`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。

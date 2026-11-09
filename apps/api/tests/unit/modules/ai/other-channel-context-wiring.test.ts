@@ -25,10 +25,10 @@ vi.mock('#src/modules/ai/llm.service.js', async (orig) => ({
   },
 }));
 vi.mock('#src/modules/embedding/embedding.service.js', () => ({
-  generateEmbedding: async () => [0.1],
+  readEmbeddingInputs: async () => ({ settings: { baseUrl: 'http://embed.test', model: 'bge-m3', topK: 3, threshold: 0.5 }, policy: { enabled: false } }),
   searchSimilarArticles: async () => [{ id: 'kb1', title: '漏水', content: '先關電源', summary: '', similarity: 0.9 }],
 }));
-vi.mock('#src/modules/settings/embedding-settings.service.js', () => ({ getEmbeddingSettings: async () => ({ topK: 3, threshold: 0.5 }) }));
+vi.mock('#src/modules/embedding/embedding-client.js', () => ({ embedText: async () => [0.1] }));
 vi.mock('#src/modules/settings/chat-settings.service.js', () => ({
   getChatSettings: async () => ({ provider: 'gemini', model: 'm', temperature: 0, maxTokens: 10, clarifyThreshold: 0.5, clarifyMaxAttempts: 2 }),
 }));
