@@ -18,7 +18,7 @@ description: >
   - 追問次數達到上限、或追問的 LLM 呼叫失敗時，與自動轉真人共用 `handOffConversation()` 真的轉接（#419，HC-KNOWLEDGE-01 已修正）。
   - 注意：其中與 AUDIT LLM-04「Embedding 一律失敗」與 UAT 現況不符，UAT Demo 租戶靠 Compose 的 Ollama 正常產生向量。
 - 健檢結果與已知問題：`docs/ref/features/health/KNOWLEDGE.md`
-- 規格：`openspec/specs/km-ingestion/spec.md`（前兩條需求已與程式脫節）、`openspec/specs/knowledge-base-information-architecture/spec.md`、`openspec/specs/token-quota/spec.md`、`openspec/specs/usage-quota-alerts/spec.md`、`openspec/specs/ai-usage-recording/spec.md`、`openspec/specs/agentic-llm-orchestration/spec.md`、`openspec/specs/bot-handoff-config/spec.md`。**KB 自動回覆分流、型號守門、KB 回報、問答表拆分都沒有主規格**
+- 規格：`openspec/specs/km-ingestion/spec.md`（第一條「Multi-modal Ingestion via Markitdown」已與程式脫節；第二條「Automated Vectorization and Indexing」已由 change `migrate-embedding-tenant-ctx` 改成現況）、`openspec/specs/embedding-settings/spec.md`、`openspec/specs/knowledge-base-information-architecture/spec.md`、`openspec/specs/token-quota/spec.md`、`openspec/specs/usage-quota-alerts/spec.md`、`openspec/specs/ai-usage-recording/spec.md`、`openspec/specs/agentic-llm-orchestration/spec.md`、`openspec/specs/bot-handoff-config/spec.md`。**KB 自動回覆分流、型號守門、KB 回報、問答表拆分都沒有主規格**
 - 手冊：`apps/web/public/manual/ch06-knowledge.html`、`apps/web/public/manual/ch07-ai-settings.html`
 - 影響分析：`node scripts/feature-impact.mjs --domain knowledge`
 
