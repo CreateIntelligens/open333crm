@@ -57,11 +57,17 @@ export function prepareArticleText(article: {
 
 // ─── 文章的向量 ─────────────────────────────────────────────────────────────
 
-/** 向量化一篇文章要用的文字，以及讀取當下的 `updatedAt`（寫入時比對）。文章不存在時回 null */
+/** 向量化一篇文章的輸入：組成的文字與文章的狀態。寫入前以這兩者判斷文章有沒有被改過（design D2） */
+export interface ArticleEmbeddingSource {
+  text: string;
+  status: string;
+}
+
+/** 讀一篇文章的向量化輸入。文章不存在或屬於另一個租戶時回 null */
 export async function readArticleForEmbedding(
   ctx: TenantCtx,
   articleId: string,
-): Promise<{ text: string; updatedAt: Date } | null> {
+): Promise<ArticleEmbeddingSource | null> {
   const article = await ctx.tx.kmArticle.findFirst({
     where: { id: articleId, tenantId: ctx.tenantId },
     select: {
@@ -71,35 +77,43 @@ export async function readArticleForEmbedding(
       summary: true,
       content: true,
       spec: true,
-      updatedAt: true,
+      status: true,
       attachments: { select: { filename: true } },
     },
   });
   if (!article) return null;
-  return { text: prepareArticleText(article), updatedAt: article.updatedAt };
+  return { text: prepareArticleText(article), status: article.status };
 }
 
 /**
- * 只在文章的 `updatedAt` 仍是讀取時的值時寫入向量與模型名稱（design D2）。回傳是否寫入。
+ * 只在文章的向量化文字與狀態仍和 `source` 相同時寫入向量與模型名稱（design D2）。回傳是否寫入。
  *
- * 以 raw SQL 寫入：Prisma 不會更新 `updatedAt`，所以寫入向量不會讓之後的比對失敗。
- * `updatedAt` 是 timestamp(3)，Prisma 以 UTC 存，所以把讀到的時間換成 UTC 再比對。
+ * 先以 `FOR UPDATE` 鎖住文章再重組文字：比對與寫入之間，其他交易改不了這篇文章。
+ * 不比對 `updatedAt`：瀏覽次數這類不進向量化文字的欄位也會更新 `updatedAt`。
  */
 export async function writeArticleEmbedding(
   ctx: TenantCtx,
   articleId: string,
-  input: { vector: number[]; model: string; readUpdatedAt: Date },
+  input: { vector: number[]; model: string; source: ArticleEmbeddingSource },
 ): Promise<boolean> {
-  const updated = await ctx.tx.$executeRawUnsafe(
-    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2
-     WHERE id = $3::uuid AND "tenantId" = $4::uuid AND "updatedAt" = ($5::timestamptz AT TIME ZONE 'UTC')`,
+  const locked = await ctx.tx.$queryRawUnsafe<Array<{ id: string }>>(
+    `SELECT id FROM km_articles WHERE id = $1::uuid AND "tenantId" = $2::uuid FOR UPDATE`,
+    articleId,
+    ctx.tenantId,
+  );
+  if (locked.length === 0) return false;
+
+  const current = await readArticleForEmbedding(ctx, articleId);
+  if (!current || current.text !== input.source.text || current.status !== input.source.status) return false;
+
+  await ctx.tx.$executeRawUnsafe(
+    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2 WHERE id = $3::uuid AND "tenantId" = $4::uuid`,
     `[${input.vector.join(',')}]`,
     input.model,
     articleId,
     ctx.tenantId,
-    input.readUpdatedAt.toISOString(),
   );
-  return updated > 0;
+  return true;
 }
 
 /** 已發布文章的 id，供批次重新向量化逐篇處理 */

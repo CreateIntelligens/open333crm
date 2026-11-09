@@ -2538,7 +2538,7 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 <a id="llm-04"></a>
 ### LLM-04：Embedding 只能呼叫 Ollama
 
-`tenant_settings` 的 Chat 設定有 `chatProvider`，可以選 Ollama 或 Gemini。Embedding 設定沒有對應的供應商欄位。`embedding.service.ts` 的 `embedOnce()` 一律以 Ollama 的 embed API 格式呼叫 `embeddingBaseUrl`；`embedding-settings.service.ts` 的健康檢查與模型清單也只查 Ollama。
+`tenant_settings` 的 Chat 設定有 `chatProvider`，可以選 Ollama 或 Gemini。Embedding 設定沒有對應的供應商欄位。`embedding/embedding-client.ts` 的 `embedText()` 一律以 Ollama 的 embed API 格式呼叫 `embeddingBaseUrl`；同一個檔案的 `probeEmbeddingService()`（健康檢查與模型清單）也只查 Ollama 的 `/api/tags`。
 
 組織決定不部署 Ollama。拿掉 Ollama 之後，所有產生向量的路徑都會失敗：
 
@@ -2546,14 +2546,22 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 | --- | --- |
 | 知識庫自動回覆（`kb-autoreply.service.ts` 的 `attemptKbAutoReply()`） | 回傳 `failed`，agent 也沒回覆時轉真人，原因「AI 暫時無法回覆（AI 服務發生錯誤）」（KB-06，#445）。客人收不到 AI 回覆 |
 | AI 建議回覆（`ai.service.ts` 的 `suggestReply()`） | 回傳空的建議清單 |
-| 知識庫語意搜尋（`knowledge.service.ts` 的 `semanticSearch()`） | 拋出錯誤 |
-| 建立或修改文章時產生向量（`embedArticle()`） | 在背景失敗，只記 log。文章仍可發布，但不會被檢索到 |
+| 知識庫語意搜尋（`embedding.flow.ts` 的 `searchArticlesByTextFlow()`） | 拋出錯誤 |
+| 建立或修改文章時產生向量（`embedding.flow.ts` 的 `embedArticleFlow()`） | 在背景失敗，只記 log。文章仍可發布，但不會被檢索到 |
 
 自動回覆的失敗原本最不容易察覺：客人收不到回覆，對話也沒有轉給客服。#445 之後改為轉真人，但每則文字訊息都會轉給客服（KB-06）。
 
 **UAT 目前仍正常產生向量（2026-10-30 功能健檢）。** UAT Demo 租戶的 `GET /knowledge/embedding-status` 回 `{ok: true, model: "bge-m3:latest"}`，1180 篇已發布文章抽查前 200 篇都有向量。UAT 靠 Compose 內仍在執行的 Ollama 服務（LLM-02）運作。「Embedding 只能呼叫 Ollama」仍然成立；上表是拿掉 Ollama 之後的結果，不是 UAT 目前的現況。原本這裡寫成「所有產生向量的路徑都會失敗」，依健檢改成條件式（[KNOWLEDGE 健檢](../features/health/KNOWLEDGE.md)）。
 
 改用其他 embedding 服務時，資料庫欄位的維度要配合新的模型，與 DB-01 一起處理。
+
+**一起評估：在文章記下產生向量的文字雜湊（`embeddingSourceHash`）。** change `migrate-embedding-tenant-ctx` 審查時討論過，決定等這一項再做（2026-11-09，使用者決定）：
+
+- 存「產生目前向量的文字 + 模型名稱」的雜湊。雜湊要包含模型：只存文字時，換模型後的批次重新向量化會把每一篇都當成沒變而略過。
+- 用途一：找出過期的向量。現在只改分類或標籤時不重新向量化，文章保留舊向量（spec `km-ingestion`「向量化期間文章被修改時不寫入向量」的已知限制）。比對雜湊就能列出需要重新向量化的文章，批次重新向量化也可以只處理這些文章。
+- 用途二：文字沒變時不呼叫 embedding 服務。換成付費的 embedding API 之後才省得到錢，這是等這一項的理由。
+- 換模型時本來就要改欄位維度（migration）並重新向量化所有文章，一起加欄位只要一個 migration，重新向量化時也順便寫入每篇的雜湊。
+- 和「向量化期間文章被修改就不寫入」的比對互不影響：那個比對在寫入向量的交易內重組文字比較，判斷的是向量化期間有沒有被改；雜湊判斷的是目前的向量和目前的內容對不對得上。
 
 <a id="llm-05"></a>
 ### LLM-05：AI 摘要失敗時回傳固定範本

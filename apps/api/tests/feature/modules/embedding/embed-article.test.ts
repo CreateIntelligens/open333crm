@@ -130,6 +130,21 @@ describe('向量化期間文章被修改時不寫入向量', () => {
   });
 });
 
+describe('向量化期間只有不影響向量化文字的欄位改變', () => {
+  test('向量化期間有人瀏覽文章', async () => {
+    const a = await fx.articleOf(fx.A, 'viewed', { status: 'PUBLISHED' });
+    ollama.state.vector = markedVector(9);
+    // 同 getArticle()：以 Prisma 的 update 累加瀏覽次數，@updatedAt 跟著改變
+    ollama.state.beforeEmbedReturns = async () => {
+      await fx.owner.kmArticle.update({ where: { id: a.id }, data: { viewCount: { increment: 1 } } });
+    };
+
+    assert.equal(await embed(fx.A, a.id), 'written');
+
+    assert.equal((await stored(a.id)).marker, 9);
+  });
+});
+
 describe('只寫入本租戶的文章', () => {
   test('另一個租戶的文章不向量化', async () => {
     const other = await fx.articleOf(fx.B, 'other-tenant', { status: 'PUBLISHED' });

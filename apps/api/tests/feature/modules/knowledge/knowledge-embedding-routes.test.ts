@@ -98,6 +98,19 @@ describe('單篇重新向量化的回應', () => {
     assert.equal((await storedVector(a.id)).marker, 5);
   });
 
+  test('重新向量化期間有人瀏覽文章', async () => {
+    const a = await fx.articleOf(fx.A, 'reembed-viewed', { status: 'PUBLISHED' });
+    ollama.state.vector = markedVector(10);
+    // 後台按「編輯」時先呼叫 GET /knowledge/:id，瀏覽次數加一
+    ollama.state.beforeEmbedReturns = async () => {
+      const viewed = await call(appA, 'GET', `${base}/${a.id}`);
+      assert.equal(viewed.status, 200);
+    };
+    const res = await call(appA, 'POST', `${base}/${a.id}/embed`);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal((await storedVector(a.id)).marker, 10);
+  });
+
   test('重新向量化期間文章被修改', async () => {
     const a = await fx.articleOf(fx.A, 'reembed-changed', { status: 'PUBLISHED' });
     ollama.state.beforeEmbedReturns = async () => {

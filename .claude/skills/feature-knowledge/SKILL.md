@@ -51,7 +51,7 @@ description: >
 - 每則入站訊息最多一則機器人回覆：寫入要包在 `BotReplyGuard.persist()` 交易裡，不要繞過。
 - 檢索只能取 `status = 'PUBLISHED'`（規格 `km-ingestion`「Archived Articles Excluded」）；夥伴 DELETE 是軟刪 `ARCHIVED`，網頁刪除是硬刪除。
 - 向量化與刪除附件檔案都在 commit 之後開始，最多一次，不等結果（`knowledge-effects.ts` 的 `startEmbedAfterCommit`、`removeFilesAfterCommit`，change `migrate-knowledge-tenant-ctx`）。不要在交易內呼叫 `embedText()`（`embedding/embedding-client.ts`）或儲存服務：向量化服務與 S3 都是外部呼叫。處理程序中途結束時文章沒有向量，由重新向量化補上。
-- 向量化是「交易 → 交易外呼叫 Ollama → 交易」（`embedding.flow.ts` 的 `embedArticleFlow`，change `migrate-embedding-tenant-ctx`）。寫入向量時比對交易 1 讀到的 `updatedAt`，文章在向量化期間被修改、封存或刪除就不寫入；`POST /knowledge/:id/embed` 回 409 `ARTICLE_CHANGED`。寫入向量用 raw SQL，不會更新 `updatedAt`，不要改成 Prisma 的 `update`。
+- 向量化是「交易 → 交易外呼叫 Ollama → 交易」（`embedding.flow.ts` 的 `embedArticleFlow`，change `migrate-embedding-tenant-ctx`）。寫入向量時鎖住文章、重組向量化的文字，與交易 1 的文字和狀態比對，文章在向量化期間被修改、封存或刪除就不寫入（不比對 `updatedAt`：瀏覽次數也會改它）；`POST /knowledge/:id/embed` 回 409 `ARTICLE_CHANGED`。向量化文字由 `prepareArticleText()` 決定，比對跟著它走。
 - 夥伴推送分三段（`knowledge.flow.ts` 的 `ingestPartnerDocFlow`）：交易 1 判斷 `cmd` 與 `Ver` → 交易外上傳附件 → 交易 2 以 `FOR UPDATE` 鎖住文章，用同一個 `decidePartnerWrite()` 重新判斷再寫入。確定沒有寫入時（`skipped`、寫入途中丟錯）刪除這次上傳的檔案；寫入都做完而 commit 回錯誤時保留檔案，因為資料庫可能已經寫入。UAT 在這個改動之前已有約 46 個這樣的檔案（`media/kb/` 比 `km_article_attachments` 多出的數量，推測，2026-11-06）。
 - 向量維度：程式寫 1024，部分環境欄位是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
 - 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply` 超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback：依文章回答的路徑改送文章原文（HC-KNOWLEDGE-04），追問路徑回「已為您轉接」並真的轉接（`handoffReason`「AI 月額度已用完，無法自動回覆」）。

@@ -24,7 +24,7 @@
 
 - [x] 4.1 寫測試（`tests/feature/modules/embedding/embed-article.test.ts`）：「Successful vectorization」「向量化服務失敗時不改向量」「向量化期間文章沒有被修改」。以假的向量化服務回傳固定向量。
 - [x] 4.2 寫測試「向量化期間文章被修改」「向量化期間文章被封存」：假的向量化服務在回傳前修改或封存文章。確認在搬遷前的程式上因為寫入了舊的向量而失敗。
-- [x] 4.3 新增 `embedding.flow.ts` 的 `embedArticleFlow()`；`embedding.service.ts` 改成收 `TenantCtx` 的查詢：讀文章、條件寫入向量、列出已發布文章的 id、相似度搜尋（`topK`、`threshold` 必填）。讓 4.1、4.2 通過。
+- [x] 4.3（review-loop 第 1 輪改成比對文字與狀態，見 design D2；補測試「向量化期間有人瀏覽文章」「重新向量化期間有人瀏覽文章」）新增 `embedding.flow.ts` 的 `embedArticleFlow()`；`embedding.service.ts` 改成收 `TenantCtx` 的查詢：讀文章、條件寫入向量、列出已發布文章的 id、相似度搜尋（`topK`、`threshold` 必填）。讓 4.1、4.2 通過。
 - [x] 4.4 寫測試「重新向量化成功」「重新向量化期間文章被修改」（`knowledge-embedding-routes.test.ts`，見 1.1）。確認後者在搬遷前的程式上失敗（回 200）。
 - [x] 4.5 `KnowledgeEffects.embed` 改成回傳結果；`createKnowledgeEffects()` 呼叫 `embedArticleFlow()`；`embedArticleNowFlow()` 遇到 `skipped` 丟 409 `ARTICLE_CHANGED`、遇到 `not_found` 丟 404。讓 4.4 通過。
 - [x] 4.6 `bulkEmbedFlow()` 先在交易內讀 id 清單，再逐篇呼叫 `embedArticleFlow()`。主規格「ARCHIVED article is skipped by bulk re-embed」的測試仍然通過。

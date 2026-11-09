@@ -39,6 +39,7 @@
 - `chat-settings.service.ts` 讀取時建立設定列的寫法。這一批不改，留到搬 `ai` 時處理。
 - 向量化改成至少一次。使用者打算換掉 Ollama（AUDIT LLM-04），換的時候再評估。
 - 批次重新向量化的並行控制與進度回報。
+- 在文章記下產生向量的文字雜湊（`embeddingSourceHash`），用來找出過期的向量、略過文字沒變的向量化。等 AUDIT LLM-04 換 embedding 模型時一起做，理由寫在 LLM-04。
 
 **審查基準：** 向量化達到 Laravel `DB::afterCommit()` 加 queued job 的「最多一次」水準：處理程序中斷時遺失，由管理員重新向量化補上。寫回結果時，以樂觀鎖的方式比對版本（同 Laravel 以 `updated_at` 判斷資料是否被改過）。Laravel 專案也會有的情況，記錄在「Risks / Trade-offs」，不另外處理。
 
@@ -55,19 +56,23 @@
 
 不放在 service 檔：結構規則 2 規定 service 不呼叫外部服務。用戶端檔不收 `TenantCtx`，所以呼叫端在交易內呼叫 `embedText()` 時，型別檢查擋不住。這一點由 code review 與規劃檔 5.2 的檢查清單把關。
 
-### D2. 向量化拆成三段，以 `updatedAt` 判斷文章是否被改過
+### D2. 向量化拆成三段，寫入前比對向量化的文字與狀態
 
 `embedding.flow.ts` 的 `embedArticleFlow(deps, tenantId, articleId)` 依序執行：
 
-1. 交易 1（`inTenant`）：讀向量化設定、遮罩政策與文章。文章的欄位包含 `updatedAt`。文章不存在時回 `not_found`。
-2. 交易外：以 `prepareArticleText()` 組文字，再呼叫 `embedText()`。
-3. 交易 2：`UPDATE km_articles SET embedding, "embeddingModel" WHERE id AND "tenantId" AND "updatedAt" = 交易 1 讀到的值`。更新 0 列時回 `skipped`，並寫 warn log。
+1. 交易 1（`inTenant`）：讀向量化設定、遮罩政策與文章，以 `prepareArticleText()` 組成向量化的文字，並記下文章的狀態。文章不存在時回 `not_found`。
+2. 交易外：以交易 1 的文字呼叫 `embedText()`。
+3. 交易 2：以 `SELECT ... FOR UPDATE` 鎖住文章，再讀一次文章、重組文字。文字與狀態都和交易 1 相同時，才 `UPDATE km_articles SET embedding, "embeddingModel" WHERE id AND "tenantId"`。文章不存在、文字或狀態不同時回 `skipped`，並寫 warn log。
 
-寫入向量用 raw SQL，Prisma 不會更新 `updatedAt`，所以寫入向量不會讓之後的比對失敗。模型名稱用交易 1 讀到的設定，與實際產生向量的模型相同。搬遷前的程式在向量化之後才讀設定：設定在向量化期間被修改時，記下的模型名稱會與實際產生向量的模型不同。
+只比對進入向量化文字的欄位（標題、分類、標籤、規格、摘要、內容、附件檔名）與狀態，所以瀏覽次數這類欄位的寫入不影響結果。比對文字由 `prepareArticleText()` 決定，之後文字多用一個欄位，比對自動跟著改。兩段文字都在記憶體內，直接比較字串，不另算雜湊。鎖住文章之後才比對，比對與寫入之間其他交易改不了這篇文章；交易 2 沒有外部呼叫，鎖只持有幾毫秒。模型名稱用交易 1 讀到的設定，與實際產生向量的模型相同。搬遷前的程式在向量化之後才讀設定：設定在向量化期間被修改時，記下的模型名稱會與實際產生向量的模型不同。
 
 不用 `externalVer`：`externalVer` 是合作方系統的版本號，只有合作方推送會寫入，後台編輯不會遞增。
 
-替代方案：比對組成的文字（交易 2 要鎖住文章再重組文字），或新增內容版本欄位（要 migration，而且每個寫入點都要記得遞增，漏掉一處不會報錯）。`updatedAt` 由 Prisma 自動更新，新增的寫入路徑不會漏。
+不用 `updatedAt`（review-loop 第 1 輪）：最初的實作比對 `updatedAt`。`getArticle()` 以 Prisma 的 `update` 累加瀏覽次數，`@updatedAt` 跟著改變。後台按「編輯」會先讀文章，所以建立文章後馬上點編輯，這次的向量就被略過；沒有存檔時，文章一直沒有向量。只讓瀏覽次數不改 `updatedAt` 也不夠：之後新增的統計欄位以 Prisma 寫入時，會再撞到同樣的問題。
+
+不用內容版本欄位：
+- 由程式遞增：文章與附件有 8 個寫入點，新增的寫入路徑忘了遞增不會報錯。
+- 由資料庫 trigger 遞增：要 migration，repo 目前沒有 trigger；附件在另一張表，要另外加 trigger；`prepareArticleText()` 多用一個欄位時，trigger 的欄位清單也要記得改。
 
 不用悲觀鎖：
 
@@ -116,6 +121,7 @@ const results = await searchSimilarArticles(ctx, vector, { topK: settings.topK, 
 ## Risks / Trade-offs
 
 - 向量化進行中只改分類或標籤時，那次結果被略過，而這種修改不會開始新的向量化，文章保留舊向量。要碰到秒級的巧合才會發生，管理員可以重新向量化補上。Laravel 以 `updated_at` 做樂觀鎖時也有同樣的情況。
+- 附件的寫入不會鎖住文章列。向量化的交易 2 比對時，另一個交易正在新增附件、還沒 commit，比對看不到這個附件，這次照樣寫入。新增附件的那次寫入之後，文章保留不含這個附件檔名的向量，直到下次重新向量化。合作方推送寫入附件時會先鎖住文章，不受影響。
 - 交易 1 與交易 2 之間最久約 51 秒（Ollama 逾時與重試）。期間沒有任何鎖，所以不會擋住後台編輯。代價是被修改的那次向量化白做。
 - `embedText()` 不收 `TenantCtx`，型別檢查擋不住「在交易內呼叫」（D1）。`check-tenant-ctx.mjs` 也不計算這種呼叫，和其他外部呼叫一樣接受為已知限制（規劃檔 5.1）。
 - 主規格 `km-ingestion` 改寫「Automated Vectorization and Indexing」：原本的需求描述的是沒有實作的 LanceDB 與分段，這次改成實際的 pgvector 做法。沒有程式依賴原本的描述。
