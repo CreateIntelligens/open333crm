@@ -46,6 +46,25 @@ export class MinioStorageProvider implements StorageProvider {
     return `${endpoint}/${bucket}/${key}`;
   }
 
+  /**
+   * 列出 bucket 裡以 prefix 開頭的所有物件 key（遞迴，含子目錄）。回收孤兒檔的一次性腳本用（issue #474）。
+   * 列出途中出錯時整個丟出，不回傳部分結果：只拿到一部分會讓呼叫端以為其他檔案不存在。
+   */
+  list(bucket: string, prefix: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const keys: string[] = [];
+      const stream = this.client.listObjectsV2(bucket, prefix, true);
+      stream.on('data', (item: { name?: string }) => {
+        if (item.name) keys.push(item.name);
+      });
+      stream.on('error', (err: Error) => {
+        logger.error('MinIO list error:', err);
+        reject(err);
+      });
+      stream.on('end', () => resolve(keys));
+    });
+  }
+
   async delete(bucket: string, key: string): Promise<void> {
     try {
       await this.client.removeObject(bucket, key);

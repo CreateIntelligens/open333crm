@@ -86,6 +86,49 @@
 
 點擊紀錄、群發收件紀錄、知識庫回報與 Canvas 執行紀錄的資料表只存 `contactId`，沒有外鍵，兩種模式都不處理。刪除完成之後才併入的聯絡人也不處理。見 `../../system/AUDIT.md` 的 ERASE-01。
 
+### 回收 #329 前匿名化留下的媒體檔
+
+#329（2026-11-09 部署）之前，匿名化把客人的進站訊息改成 `{ redacted: true }` 時沒有先讀出 `storageKey`，客人傳來的圖片、影片與檔案留在物件儲存的 `{tenantId}/media/{conversationId}/`，資料庫再也找不到。一次性腳本 `scripts/recover-erased-media-orphans.mjs` 找出並刪除這些檔案（issue #474），SQL 在 `scripts/sql/recover-erased-media-orphans.sql`。不需要 migration。
+
+**回收規則**
+
+| 項目 | 規則 |
+| --- | --- |
+| 對象 | `status` 是 `completed`、`mode` 是 `anonymize` 的刪除請求，其聯絡人目前的對話。硬刪除的對話已刪除，找不到媒體目錄，只列出請求筆數、不處理（硬刪除本來就刪媒體檔） |
+| 列出 | 每個對話的 `{tenantId}/media/{conversationId}/` 底下的所有物件（遞迴） |
+| 只刪 | `{tenantId}/media/{conversationId}/{uuid}{.副檔名}` 格式的 key，與資料刪除 worker 共用 `@open333crm/core` 的 `isConversationMediaKey()`。格式不符（例如 `report.csv`、多一層路徑）的略過並列出 |
+| 保留 | 同一租戶任何訊息的內容仍出現這個 key 的物件（`storageKey`、`url`、`mediaUrl` 都算），例如客服上傳的出站媒體檔 |
+
+**操作步驟**
+
+以下指令在 repo 根目錄執行；在 API 容器內，把 `scripts/` 整個資料夾（含 `sql/`）複製到 `/app/scripts/`，在 `/app` 執行。
+
+- 資料庫連線需要能略過 RLS 的身分：優先用 `MIGRATE_DATABASE_URL`（owner），否則用 `DATABASE_URL`。身分不能略過 RLS 時，腳本直接失敗，不會回報 0 筆。
+- 物件儲存用 `@open333crm/core` 的 `MinioStorageProvider`，讀 `MINIO_ENDPOINT`、`MINIO_PORT`、`MINIO_USE_SSL`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`。沒有設定 `MINIO_ENDPOINT` 時，腳本從 api 的 `S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY` 換算（`../../system/AUDIT.md` 的 STO-01）。bucket 是 `S3_BUCKET`，預設 `open333crm`。
+
+1. **本機演練**：用 `scripts/sync-uat-db.sh` 把 UAT 資料拉回本機，在本機執行預覽（物件儲存是本機的 MinIO，通常沒有對應的檔案，用來確認對話清單與流程）。
+2. **UAT 預覽**（dry-run，預設模式；只讀資料庫與列出物件，不刪除）：
+
+   ```bash
+   node scripts/recover-erased-media-orphans.mjs
+   node scripts/recover-erased-media-orphans.mjs --tenant <租戶 ID>
+   ```
+
+   `--tenant` 可以重複，不帶時處理所有租戶。輸出各租戶的對話數、列出的物件數、仍被訊息引用而保留的數量、格式不符而略過的 key、要刪的 key 清單，以及已完成的硬刪除請求筆數，最後印出建議的 `--expect-objects`。
+3. **確認**：對照清單抽查幾個 key（例如以 MinIO 主控台或 `mc ls` 看檔案，確認屬於已匿名化的客人）。物件刪除無法還原。
+4. **執行**（先 Demo 租戶並抽查，再真實租戶）：
+
+   ```bash
+   node scripts/recover-erased-media-orphans.mjs --tenant <租戶 ID> --apply --expect-objects 12 --out-dir /tmp
+   ```
+
+   - `--apply` 一定要帶 `--expect-objects`。這次算出的筆數不同時不刪除，以非零結束，請重新預覽。
+   - 刪除前把清單寫成 `media-orphans-<時間>.csv`（`tenantId`、`conversationId`、`key`），放在 `--out-dir`（預設目前目錄），檔案已存在時不覆蓋。
+   - 每個 key 最多刪一次、不重試。有失敗時印出失敗的 key 並以非零結束；之後重新預覽，清單只剩沒刪掉的。
+5. **確認結果**：再執行一次預覽，要刪的物件是 0。
+
+建議順序（issue #474）：本機演練 → UAT 只跑預覽、確認筆數 → 先清 Demo 租戶並抽查 → 再清真實租戶。
+
 ## 對外 Webhook
 
 租戶可以訂閱系統事件，事件發生時系統把事件 POST 到指定網址。

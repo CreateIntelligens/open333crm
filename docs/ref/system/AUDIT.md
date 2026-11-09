@@ -2166,7 +2166,7 @@ LINE 文件建議以 `webhookEventId` 去重，程式只有下游轉發的迴圈
 - `anonymize`（預設）：清空聯絡人的個人欄位，刪除屬性、渠道身分、`IdentityMap` 與長期記憶，把進站訊息的內容換成 `{ redacted: true }`，並刪除進站訊息的媒體檔。
 - `hard_delete`：刪除聯絡人與他的對話、訊息、工單、積分、活動提交與媒體檔。
 
-**部分修正（2026-11-09，#329，change `erase-inbound-media-on-anonymize`）：** `anonymize` 原本在改寫進站訊息前沒有讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫也找不到。現在改寫前讀出、交易 commit 之後刪除，兩種模式只刪 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，刪除失敗的筆數記在 `affected.mediaObjectsFailed`。修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。
+**部分修正（2026-11-09，#329，change `erase-inbound-media-on-anonymize`）：** `anonymize` 原本在改寫進站訊息前沒有讀出 `storageKey`，客人傳來的媒體檔留在物件儲存，資料庫也找不到。現在改寫前讀出、交易 commit 之後刪除，兩種模式只刪 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，刪除失敗的筆數記在 `affected.mediaObjectsFailed`。修正之前已匿名化的客人，媒體檔仍留在物件儲存：一次性腳本 `scripts/recover-erased-media-orphans.mjs`（#474）可以找出並刪除，各環境還沒有執行，操作手冊見 [GOVERNANCE](../features/tenant/GOVERNANCE.md)「回收 #329 前匿名化留下的媒體檔」。
 
 **部分修正（2026-11-09，#473，change `erase-merged-contacts`）：** 兩種模式沿 `mergedIntoId` 逐層找出併入目標的封存聯絡人，套用與目標相同的規則（匿名化清空個人欄位、刪除子資料與頭像檔；硬刪除連同資料一起刪除），筆數記在 `affected.mergedContacts`。被併入方或合併鏈上任何一位有完成的刪除請求時，解除合併回 409 `CONTACT_ERASED`。下表其他列都還沒有修正。
 

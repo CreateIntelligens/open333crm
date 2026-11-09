@@ -4,6 +4,7 @@ export * from "./redis/create-client.js";
 export * from "./event-bus/event-bus.js";
 export * from "./storage/index.js";
 export * from "./storage/minio-provider.js";
+export * from "./storage/media-key.js";
 export * from "./inbox/inbox-service.js";
 export * from "./contacts/contact-service.js";
 export * from "./channels/channel-adapter.js";

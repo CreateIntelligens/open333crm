@@ -16,7 +16,7 @@
 import type { Job } from 'bullmq';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
-import { claimOne, logger, MinioStorageProvider } from '@open333crm/core';
+import { claimOne, isConversationMediaKey, logger, MinioStorageProvider } from '@open333crm/core';
 import { enqueueNotification } from '../lib/notification-queue.js';
 import { requesterExists } from '../lib/requester.js';
 
@@ -62,21 +62,6 @@ interface MessageMediaObjects {
   shared: number;
   /** 不是本租戶、本次對話媒體目錄格式的 key，沒刪的檔案數 */
   skipped: number;
-}
-
-/**
- * 是否為本次刪除對話的媒體檔：{tenantId}/media/{conversationId}/{uuid}{.ext}
- * （apps/api storage.service buildStorageKey 的格式；寫法比照 isTenantQuarantineKey）。
- */
-function isConversationMediaKey(key: string, tenantId: string, convIds: Set<string>): boolean {
-  const parts = key.split('/');
-  return (
-    parts.length === 4 &&
-    parts[0] === tenantId &&
-    parts[1] === 'media' &&
-    convIds.has(parts[2]) &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.\w+)?$/.test(parts[3])
-  );
 }
 
 /**

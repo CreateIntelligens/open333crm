@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：匿名化與媒體下載的競態、#329 前的媒體孤兒檔（ERASE-01）
+
+issue #475（change `skip-media-write-after-erasure`）與 #474，分支 `fix/erasure-followups-473`。以本機 feature 測試資料庫、單元測試與假的物件儲存驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 匿名化期間完成的進站媒體下載把原文寫回（#475） | 已修正 | `inbound-media-erasure.test.ts` 的三個匿名化情境修正前失敗在斷言上。mutation：拿掉 `FOR SHARE`，「匿名化的交易進行中下載完成」失敗（剛上傳的物件沒刪）；拿掉內容相等的條件，三個匿名化情境失敗 |
+| ERASE-01 的「#329 前已匿名化的客人留下的媒體檔」（#474） | 已有回收腳本，尚未在任何環境執行；ERASE-01 維持部分修正 | `recover-erased-media-orphans.test.ts`（真資料庫、假物件儲存）與參數單元測試。mutation：拿掉引用檢查、拿掉格式檢查、拿掉 `--expect-objects` 比對，各有對應的測試失敗 |
+
 ## 2026-11-09：資料刪除一併處理被合併的封存聯絡人（ERASE-01）
 
 issue #473，分支 `fix/erasure-followups-473`，change `erase-merged-contacts`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
