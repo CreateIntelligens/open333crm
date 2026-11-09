@@ -24,6 +24,11 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **上傳被拒時的錯誤訊息改成中文，並說明原因**（issue #470，change `localize-upload-error-messages`）— 上傳的檔案被內容偵測拒絕時，畫面原本顯示英文的 `File content type rejected: file content type is unknown`。現在 `message` 依原因顯示中文：檔案是空的、無法辨識檔案內容（列出允許的格式）、這裡不接受某種檔案（說出偵測到的格式與允許的格式）、檔案內容與副檔名不符、檔案內容與上傳時標示的檔案類型不符（副檔名正確時不提副檔名）；偵測暫時無法使用（503）也改成中文。英文原因放在 `details.reason`，並寫進 log（不含檔名與內容）。錯誤碼與 HTTP 狀態不變。同時處理：
+  - 收件匣傳圖片、影片的 `Unsupported file type…`、`File exceeds N MB limit` 改成中文，並列出允許的格式。
+  - 網站聊天室背景圖的 `{ "error": "No file uploaded" }`、`{ "error": "Unsupported background image type" }` 改用 `AppError`，回應變成標準格式的中文訊息。
+  - 直傳超過上限的訊息改用同一個函式（`apps/api/src/shared/messages/upload.ts`），多了「請壓縮後再上傳」。
+  - 素材的圖片、影片欄位（`CompactImageField`、`CompactVideoField`）改用 `getApiErrorMessage()`：後端沒回訊息時（例如代理伺服器的 413）顯示「檔案過大，請換小一點的檔案」，不再顯示「上傳失敗」或英文的 `Request failed with status code 413`。
 - **收件匣聊天視窗可以載入更早的訊息**（issue #468，健檢 HC-INBOX-07，change `fix-chat-window-load-older-468`）— 聊天視窗原本只載入最近 50 則，長對話看不到前面的內容。
   - `GET /api/v1/conversations/:id/messages` 新增 `before` 參數：上一頁回傳的 `meta.nextCursor`，與 `GET /contacts/:id/messages` 用同一種游標。訊息依 `createdAt` 再 `id` 排序，同一毫秒的多則訊息不重複也不遺漏。回應 `meta` 加 `hasMore`、`nextCursor`。不帶 `before` 時 `page`／`limit`／`order` 照舊。`before` 搭配 `page` 不是 1 或 `order=asc` 時回 400。
   - 查詢條件補上 `conversation.tenantId`（多租戶第一層）。`getMessages()` 改收 `TenantCtx`，路由改呼叫 `conversation.flow.ts` 的 `getMessagesFlow`。游標的編碼、解碼與查詢條件移到 `apps/api/src/shared/utils/message-cursor.ts`，聯絡人端點也改用它。

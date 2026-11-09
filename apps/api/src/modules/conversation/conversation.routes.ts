@@ -23,6 +23,7 @@ import { uploadFile } from '../storage/storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { fileTooLargeMessage, unsupportedFileTypeMessage } from '../../shared/messages/upload.js';
 import { validateOutboundMessage } from '@open333crm/shared';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { caseAssignIfAssigning } from '../case/case-permission.js';
@@ -61,12 +62,15 @@ async function handleSendMedia(
   if (!file) throw new AppError('請選擇要上傳的檔案', 'BAD_REQUEST', 400);
 
   if (!config.allowedMimes.includes(file.mimetype)) {
-    throw new AppError(`Unsupported file type. Allowed: ${config.allowedMimes.join(', ')}`, 'BAD_REQUEST', 400);
+    throw new AppError(unsupportedFileTypeMessage(config.allowedMimes), 'BAD_REQUEST', 400, {
+      mimeType: file.mimetype,
+      allowedMimes: config.allowedMimes,
+    });
   }
 
   const buffer = await file.toBuffer();
   if (buffer.length > config.maxBytes) {
-    throw new AppError(`File exceeds ${Math.round(config.maxBytes / 1024 / 1024)} MB limit`, 'BAD_REQUEST', 400);
+    throw new AppError(fileTooLargeMessage(config.maxBytes), 'BAD_REQUEST', 400, { maxBytes: config.maxBytes });
   }
 
   const detected = await assertUploadContent(
