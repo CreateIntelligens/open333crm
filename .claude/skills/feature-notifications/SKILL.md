@@ -62,7 +62,7 @@ description: >
 - 站內通知的寫入只在 workers（`apps/workers/src/handlers/notification.handler.ts`）；API 的 `notification.worker.ts` 只送 job（規格 `standalone-worker-runtime`「Notification Job Consumer」）。CSAT 與權杖失效是現存例外，不要再新增 `createAndDispatch` 的呼叫端。
 - 同一個事件不重複通知：job id 一律 `<事件 id>__<成員 id>`（自動化是 `<事件 id>__<規則 id>#<序號>__<成員 id>`）。新增收件人邏輯時沿用 `enqueueDispatch`，不要自己 `add` 沒有 jobId 的 job。
 - 推播失敗只記 log、job 照常完成；寫入失敗要丟錯讓 BullMQ 重試（3 次、指數退避 5 秒）。不要把寫入失敗吞掉。
-- 只寫給同租戶、仍啟用的成員：每個寫入 `notifications` 的地方寫入前呼叫 `packages/core` 的 `isNotifiableAgent()`（workers `notification.handler.ts`、`createAndDispatch`、`recordExportNotice`）。不符合時略過、寫 info log、不丟錯（永久刪除的成員會撞外鍵，丟錯只會重試三次再失敗）；重新啟用不補送（#484）。新增寫入點要沿用同一個函式，不要另寫查詢。
+- 只寫給同租戶、仍啟用的成員：每個寫入 `notifications` 的地方都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入（workers `notification.handler.ts`、`createAndDispatch`、`recordExportNotice`），它是一條條件寫入，回 `null` 表示略過。不符合時寫 info log、不丟錯（永久刪除的成員會撞外鍵，丟錯只會重試三次再失敗）；重新啟用不補送（#484）。不要改回「先查再 `notification.create`」：查完到寫入之間成員可能被刪除；也不要 catch P2003，交易內接住後交易已中止（PR #489 審查）。新增寫入點要沿用同一個函式。
 - 用量告警不可阻擋 AI 回覆：整段 fire-and-forget；告警信一定經佇列，不在訂閱者內直接寄。
 - 告警信與權杖失效信的使用者輸入（租戶名稱、渠道名稱）要 HTML 轉義。
 - 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、CSAT、用量告警、權杖失效七個地方。

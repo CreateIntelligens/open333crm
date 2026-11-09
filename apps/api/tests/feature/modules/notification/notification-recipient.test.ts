@@ -15,6 +15,7 @@ import { createAndDispatch } from '#src/modules/notification/notification.servic
 import { notifyExportResult } from '#src/modules/coupon/coupon-export.flow.js';
 import { recordingIo, type PushRecord } from '#tests/support/tenant-run.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+import { backendPid, waitUntilBlockedBy } from '#tests/support/wait-for-lock-wait.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -124,5 +125,47 @@ describe('序號明細背景匯出的通知只寫給仍啟用的匯出者', () =
     await notifyExportResult({ prisma, io }, exportNotice(active));
     assert.equal(await countFor(active), 1);
     assert.equal(pushesTo(active).length, 1);
+  });
+});
+
+/**
+ * 查詢通過、寫入之前成員被永久刪除（PR #489 審查）：交易 1 刪除成員、停在提交前，
+ * 通知的寫入卡在這列的鎖上；交易 1 提交後，寫入不可撞 notifications.agentId 外鍵，要略過。
+ */
+async function raceWithPurge(write: (agentId: string) => Promise<unknown>) {
+  const victim = await mkAgent(`race-${Math.random().toString(36).slice(2, 8)}`);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let deleted!: (pid: number) => void;
+  const deletedP = new Promise<number>((r) => { deleted = r; });
+  const purge = owner.$transaction(async (tx) => {
+    const pid = await backendPid(tx as never);
+    await tx.agent.delete({ where: { id: victim } });
+    deleted(pid);
+    await gate;
+  }, { timeout: 20_000 });
+  const pid = await deletedP;
+  const writing = write(victim);
+  try {
+    await waitUntilBlockedBy(owner, pid);
+  } finally {
+    release();
+  }
+  await purge;
+  return { victim, result: await writing };
+}
+
+describe('查詢通過後收件成員被永久刪除', () => {
+  it('createAndDispatch：寫入時成員已被永久刪除，略過不丟錯', async () => {
+    const { victim, result } = await raceWithPurge((id) => createAndDispatch(tenantScopedClient(prisma, T), io, input(id)));
+    assert.equal(result, null);
+    assert.equal(await countFor(victim), 0);
+    assert.equal(pushesTo(victim).length, 0);
+  });
+
+  it('序號明細匯出：寫入時匯出者已被永久刪除，交易正常結束', async () => {
+    const { victim } = await raceWithPurge((id) => notifyExportResult({ prisma, io }, exportNotice(id)));
+    assert.equal(await countFor(victim), 0);
+    assert.equal(pushesTo(victim).length, 0);
   });
 });

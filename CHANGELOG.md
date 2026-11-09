@@ -18,7 +18,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **站內通知不再寫給已被永久刪除或已停用的成員**（issue #484，change `skip-inactive-notification-recipient-484`）— 通知是非同步的：排進佇列時收件成員還在，worker 處理時他可能已被永久刪除，`notifications.agentId` 的外鍵讓寫入失敗，佇列重試三次後進入 failed set，佇列監控多出失敗紀錄。已停用（`isActive: false`）的成員也仍然收到新通知。現在：
   - 三個寫入通知的地方在寫入前以 `tenantId` 查收件成員：workers 的 `notification:dispatch`（工單指派、升級、SLA、新訊息、轉接、自動化、AI 用量、資料匯出與刪除完成）、API 的 `createAndDispatch`（CSAT 低分、權杖失效）、序號明細背景匯出的完成與失敗通知。
   - 成員不存在或已停用時略過這則通知、寫 info log，不丟錯、不重試；重新啟用後不補送停用期間的通知。
-  - 檢查共用 `packages/core` 的 `isNotifiableAgent()`；PR #483 的 `requesterExists()` 改用同一個查詢（`agentExistsInTenant()`，只看存在，停用的成員仍可當稽核的 actorId）。
+  - 三處共用 `packages/core` 的 `createNotificationForActiveAgent()`：一條條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`），不先查再寫，查完才被永久刪除的競爭也不撞外鍵，在交易內也不會讓交易中止（PR #489 審查）；停用的競爭（判斷之後才停用）照樣寫入，可以接受；PR #483 的 `requesterExists()` 改用同一個查詢（`agentExistsInTenant()`，只看存在，停用的成員仍可當稽核的 actorId）。
   - 收件人計算不變（#440 的「負責客服停用改通知主管」照舊）。工單指派、SLA 預警的收件人是已停用的負責人時，這則通知現在被略過、沒有人收到（原本只寫給停用的人）；改發主管見 AUDIT CONV-06。
 
 - **IG 綁定說明改成請顧客送出代碼**（PR #437，change `fix-ig-binding-invite-text`）— 綁定邀請訊息的 IG 段落原本寫「開啟後請傳送任一訊息」。顧客跟 IG 帳號已經有對話時，Meta 不會把 `ig.me` 連結的 ref 送進 webhook，照做不會綁定（2026-11-02 UAT 實測）。現在改成「開啟後請傳送這組代碼：{代碼}」，代碼直接寫在 IG 段落。LINE、FB、網站客服段落不變。

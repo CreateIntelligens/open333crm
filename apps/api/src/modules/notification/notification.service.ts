@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
-import { isNotifiableAgent, logger } from '@open333crm/core';
+import { createNotificationForActiveAgent, logger } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
 
@@ -23,21 +23,11 @@ export async function createAndDispatch(
   io: SocketIOServer,
   input: CreateNotificationInput,
 ) {
-  if (!(await isNotifiableAgent(prisma, input.tenantId, input.agentId))) {
+  const notification = await createNotificationForActiveAgent(prisma, input);
+  if (!notification) {
     logger.info(`[Notification] 略過通知 ${input.type}：收件成員 ${input.agentId} 已不存在或已停用（tenant ${input.tenantId}）`);
     return null;
   }
-
-  const notification = await prisma.notification.create({
-    data: {
-      tenantId: input.tenantId,
-      agentId: input.agentId,
-      type: input.type,
-      title: input.title,
-      body: input.body,
-      clickUrl: input.clickUrl,
-    },
-  });
 
   // Emit to agent-specific room
   io.to(`agent:${input.agentId}`).emit('notification.new', notification);

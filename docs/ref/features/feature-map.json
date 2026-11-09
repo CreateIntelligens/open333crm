@@ -377,7 +377,7 @@
         "apps/api/src/modules/email/email.service.ts",
         "apps/workers/src/handlers/notification.handler.ts",
         "apps/workers/src/lib/notification-queue.ts",
-        "packages/core/src/agent/notifiable-agent.ts"
+        "packages/core/src/agent/agent-lookup.ts"
       ],
       "pages": [
         "apps/web/src/app/dashboard/notifications/**",

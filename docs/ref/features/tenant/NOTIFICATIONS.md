@@ -28,7 +28,7 @@
 
 AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理員送一個工作進 `usage-alert-email` queue，工作的 id 是 `<事件 id>__<成員 ID>`，由 API 行程的 `usage-alert-email.worker.ts` 寄出。所以事件重送時不會重寄；寄送失敗時，BullMQ 重試，共 3 次。
 
-**收件成員已被永久刪除或已停用時不寫入。** 每個寫入通知的地方（workers 的通知工作、API 的 `createAndDispatch()`、序號明細背景匯出的通知）寫入前都以 `tenantId` 查收件成員，用的是 `packages/core` 的 `isNotifiableAgent()`。成員不存在或 `isActive` 為 `false` 時，這則通知被略過：不寫入、不推送，寫一行 info log，工作正常完成，不重試。成員重新啟用後，停用期間略過的通知不會補送（issue #484）。
+**收件成員已被永久刪除或已停用時不寫入。** 每個寫入通知的地方（workers 的通知工作、API 的 `createAndDispatch()`、序號明細背景匯出的通知）都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入：一條條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`），只有收件成員同租戶、還在、仍啟用時才寫入。查完才被永久刪除的競爭也不會撞外鍵；在交易內也不會讓交易中止。成員不存在或 `isActive` 為 `false` 時，這則通知被略過：不寫入、不推送，寫一行 info log，工作正常完成，不重試。成員重新啟用後，停用期間略過的通知不會補送（issue #484）。
 
 下列來源不經過上面的流程：
 
