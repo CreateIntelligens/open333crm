@@ -4,7 +4,7 @@
  *
  * - bcrypt 在開啟交易之前執行，不佔住交易與連線。
  * - 寫入與稽核一起 commit；稽核寫入失敗時整筆 rollback（主規格 tenant-audit-log）。
- * - 稽核的 payload 只放非 PII 摘要：email、密碼都不寫入。
+ * - 稽核的 payload 只放非 PII 摘要：email、密碼都不寫入（agent.purge 只記被刪成員的名稱）。
  */
 import type { PrismaClient } from '@prisma/client';
 import { inTenant } from '../../lib/tenant-ctx.js';
@@ -164,12 +164,14 @@ export async function reactivateAgentFlow(deps: AgentFlowDeps, actor: RequestAct
 export async function purgeAgentFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
   if (actor.agentId === agentId) throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
   await inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    await purgeAgent(scope, agentId, actor.roleId);
+    const { name } = await purgeAgent(scope, agentId, actor.roleId);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'agent.purge',
       targetType: 'agent',
       targetId: agentId,
+      // 記下被刪成員的名稱，刪除後 targetId 查不到是誰（issue #414）；email 留在快照欄位，不放 payload
+      payload: { name },
       ip: actor.ip,
     });
     resyncChannelRooms(scope, deps.syncSocketChannelRooms, agentId);
