@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Loader2, Lightbulb, XCircle } from 'lucide-react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useMessages } from '@/hooks/useMessages';
@@ -53,12 +53,23 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIssueCoupon }: ChatWindowProps) {
-  const { messages, isLoading, sendMessage, mutate: mutateMessages } = useMessages(
-    conversation?.id || null
-  );
+  const {
+    messages,
+    isLoading,
+    error: messagesError,
+    sendMessage,
+    mutate: mutateMessages,
+    hasMore,
+    loadOlder,
+    loadingOlder,
+    olderError,
+  } = useMessages(conversation?.id || null);
   const [couponDialogOpen, setCouponDialogOpen] = useState(false);
   const { toast, showOk } = useCouponToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // 按「載入更早的訊息」當下的捲動狀態；更早的訊息畫上去後用來還原位置（design D5）
+  const pendingRestoreRef = useRef<{ height: number; top: number } | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [templateText, setTemplateText] = useState<string | null>(null);
   const [templateQuickReplies, setTemplateQuickReplies] = useState<Array<{ label: string; text?: string }> | null>(null);
@@ -174,10 +185,37 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
     setTemplateQuickReplies(extra?.quickReplies ?? null);
   };
 
-  // Auto-scroll on new messages
+  // 依時間排序；同一毫秒再依 id，與後端的游標排序一致
+  const sortedMessages = useMemo(
+    () =>
+      [...messages].sort((a, b) => {
+        const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return diff !== 0 ? diff : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      }),
+    [messages],
+  );
+  const newestMessageId = sortedMessages.at(-1)?.id;
+
+  // 只有最新一則改變（第一次載入、socket 推來、自己送出）才捲到底；載入更早的訊息不捲
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (newestMessageId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [newestMessageId]);
+
+  // 更早的訊息接在前面後，scrollTop 加上增加的高度，畫面停在原本那則訊息
+  useLayoutEffect(() => {
+    const pending = pendingRestoreRef.current;
+    const el = scrollRef.current;
+    if (!pending || !el || el.scrollHeight === pending.height) return;
+    el.scrollTop = el.scrollHeight - pending.height + pending.top;
+    pendingRestoreRef.current = null;
+  }, [sortedMessages]);
+
+  const handleLoadOlder = useCallback(async () => {
+    const el = scrollRef.current;
+    pendingRestoreRef.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
+    // 失敗或沒有新增訊息時不還原；成功時由上面的 useLayoutEffect 在畫面更新後還原並清掉
+    if (!(await loadOlder())) pendingRestoreRef.current = null;
+  }, [loadOlder]);
 
   // Apply selected template into MessageInput (text + optional quick replies)
   useEffect(() => {
@@ -221,11 +259,6 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
     AGENT_HANDLED: '已處理',
     CLOSED: '已關閉',
   };
-
-  const sortedMessages = [...messages].sort(
-    (a: { createdAt: string }, b: { createdAt: string }) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  );
 
   return (
     <div className="relative flex h-full flex-col">
@@ -313,12 +346,20 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
       />
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-muted/30">
+      <div ref={scrollRef} data-testid="chat-messages" className="flex-1 overflow-y-auto bg-muted/30">
+        {messagesError && (
+          <div role="alert" className="flex items-center justify-between gap-2 border-b bg-destructive-subtle px-4 py-2 text-xs text-destructive">
+            <span>訊息載入失敗：{getApiErrorMessage(messagesError, '請稍後重試')}</span>
+            <Button variant="outline" size="sm" className="h-7" onClick={() => void mutateMessages()}>
+              重試
+            </Button>
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : sortedMessages.length === 0 ? (
+        ) : sortedMessages.length === 0 && messagesError ? null : sortedMessages.length === 0 ? (
           <EmptyState
             title="尚無訊息"
             description="傳送訊息開始對話"
@@ -326,6 +367,21 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
           />
         ) : (
           <div className="py-4">
+            {olderError ? (
+              <div role="alert" className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-md bg-destructive-subtle px-3 py-2 text-xs text-destructive">
+                <span>更早的訊息載入失敗：{olderError}</span>
+                <Button variant="outline" size="sm" className="h-7" disabled={loadingOlder} onClick={() => void handleLoadOlder()}>
+                  重試
+                </Button>
+              </div>
+            ) : hasMore ? (
+              <div className="mb-3 flex justify-center">
+                <Button variant="outline" size="sm" disabled={loadingOlder} onClick={() => void handleLoadOlder()}>
+                  {loadingOlder && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  載入更早的訊息
+                </Button>
+              </div>
+            ) : null}
             {sortedMessages.map((msg: { id: string; direction: string; contentType: string; content: string | { text?: string }; senderType?: string; senderName?: string; createdAt: string; metadata?: Record<string, unknown> }) => {
               // Render CSAT survey card for csat messages
               // 對話發券的訊息：後台畫成券卡

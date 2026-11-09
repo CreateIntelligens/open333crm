@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-09：收件匣聊天視窗載入更早的訊息（HC-INBOX-07）
+
+issue #468，分支 `fix/chat-load-older-468`，change `fix-chat-window-load-older-468`。以本機 feature 測試資料庫（`open333crm_test_p6f`）與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| HC-INBOX-07（聊天視窗只載 50 則訊息） | 已修正 | `GET /conversations/:id/messages` 新增游標 `before`（`createdAt` 再 `id`，與聯絡人訊息共用 `shared/utils/message-cursor.ts`），回應帶 `hasMore`、`nextCursor`；`page` 分頁照舊。`useMessages().loadOlder()` 改用游標、失敗回傳原因；`ChatWindow` 加「載入更早的訊息」、往上載入保持捲動位置、只在最新一則改變時捲到底、最新與更早訊息失敗都顯示原因與重試。`conversation-messages-cursor.test.ts`（feature）7 項中 4 項修正前以 assertion 失敗，3 項（第一頁、其他租戶、舊的 page 呼叫）以突變驗證；`chat-window-load-older.test.tsx` 8 項中 7 項修正前失敗，「沒有更早的訊息時不顯示按鈕」以突變驗證 |
+| `getMessages()` 的 `where` 沒有 `tenantId` | 已修正 | 查詢與計數改帶 `conversation: { tenantId }`。feature 測試走 RLS，拿掉 `tenantId` 看不出來；`get-messages-tenant-scope.test.ts`（單元）修正前失敗。突變：改用 BYPASSRLS 連線並拿掉 `tenantId` 時，feature「其他租戶的對話」失敗 |
+
 ## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
 
 issue #414 後續，分支 `fix/erasure-export-deleted-requester-414`，change `keep-completion-audit-for-purged-requester`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
@@ -169,7 +178,7 @@ issue #422，change `fix-inbox-conversation-pagination`。以本機測試資料�
 | CONV-04（HC-INBOX-01） | 已修正，從 `AUDIT.md` 移除 | `useConversations()` 改用 `useSWRInfinite`，每頁 50 段，依 `meta.totalPages` 顯示「載入更多對話」；多頁依 `id` 去重、依 `updatedAt desc` 排序，socket 的 `message.new`、`conversation.updated` 合併到各頁。「未讀」送 `unread=true`、「我的」送 `assigneeId`，搜尋框送新的 `search` 參數（去頭尾空白後最多 100 字，比對聯絡人名稱或任一則訊息的 `content.text`，不分大小寫）。`list-conversations-search.test.ts`（feature）8 項中 6 項修正前失敗，2 項以突變驗證；`use-conversations-pagination.test.tsx` 9 項中 6 項、`conversation-list-server-filters.test.tsx` 7 項中 6 項修正前失敗，「下一頁載入失敗」在實作時補寫 |
 | HC-INBOX-08（socket 更新不套用篩選） | 已修正（PR #449 審查） | `useConversations()` 以 `matchesFilters()` 依列上的狀態、指派與未讀數重新判斷，不符合的列移除，選取中的保留；搜尋與 `closedAfter` 無法從列判斷 |
 | 搜尋關鍵字的 LIKE 萬用字元 | 已修正（PR #449 審查） | `escapeLikeKeyword()`（`apps/api/src/shared/utils/like-pattern.ts`）跳脫 `\`、`%`、`_`。聯絡人與優惠券的搜尋（`contact.service.ts`、`coupon.service.ts`）有同樣的寫法，未改 |
-| HC-INBOX-07（聊天視窗只載 50 則訊息） | 未處理 | 不在這次範圍。`useMessages().loadOlder()` 以 offset 分頁，新訊息進來時頁界會位移、失敗只寫 console，接上前要先改成以時間或序號往前取 |
+| HC-INBOX-07（聊天視窗只載 50 則訊息） | 未處理（2026-11-09 已修正，見該日紀錄） | 不在這次範圍。`useMessages().loadOlder()` 以 offset 分頁，新訊息進來時頁界會位移、失敗只寫 console，接上前要先改成以時間或序號往前取 |
 
 搜尋比對任一則訊息，不只最後一則：Prisma 無法表達「最後一則訊息」的條件（change 的 design D3）。訊息量很大的租戶搜尋可能變慢，之後需要時再加索引。
 
