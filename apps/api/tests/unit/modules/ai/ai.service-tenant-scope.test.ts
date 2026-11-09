@@ -4,9 +4,10 @@ import { beforeEach, test, vi } from 'vitest';
 // 第一層租戶隔離：AI 輔助以 conversationId 讀對話時，查詢條件要帶 tenantId，不能只靠 RLS。
 
 vi.mock('#src/modules/embedding/embedding.service.js', () => ({
-  generateEmbedding: async () => [0.1],
+  readEmbeddingInputs: async () => ({ settings: { baseUrl: 'http://embed.test', model: 'bge-m3', topK: 3, threshold: 0.5 }, policy: { enabled: false } }),
   searchSimilarArticles: async () => [],
 }));
+vi.mock('#src/modules/embedding/embedding-client.js', () => ({ embedText: async () => [0.1] }));
 vi.mock('#src/modules/ai/llm.service.js', () => ({ generateReply: async () => 'summary' }));
 
 const TENANT = 'tenant-1';
