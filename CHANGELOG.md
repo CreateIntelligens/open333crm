@@ -2,6 +2,16 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-09]
+
+### Fixed
+
+- **資料刪除的匿名化也刪除客人傳來的媒體檔，兩種模式只刪本次對話的媒體檔**（#329，AUDIT ERASE-01 部分修正，change `erase-inbound-media-on-anonymize`）— 匿名化（預設模式）把進站訊息的內容改成 `{ redacted: true }`，改寫前沒有讀出 `storageKey`，客人傳來的圖片、影片與檔案留在物件儲存，而且資料庫再也找不到這些檔案。硬刪除只要 `storageKey` 是字串就照刪，不確認檔案屬於哪個租戶或哪個對話。物件刪除失敗時只寫 log。現在：
+  - 匿名化在同一個交易內、改寫進站訊息前讀出媒體檔，交易 commit 之後刪除。客服上傳的出站訊息媒體檔保留。
+  - 兩種模式只刪除 `{tenantId}/media/{本次對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。
+  - 每個檔案最多刪一次、不重試。刪除失敗時請求仍是 `completed`，失敗筆數記在 `affected.mediaObjectsFailed`（訊息媒體檔）與 `affected.avatarObjectsFailed`（頭像檔），完成稽核的 `affected` 相同，失敗的 key 寫進 log。
+  - 這次修正之前已匿名化的客人，媒體檔仍留在物件儲存（#474）。
+
 ## [2026-11-06]
 
 ### Changed

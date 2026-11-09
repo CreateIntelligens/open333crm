@@ -9,6 +9,13 @@ import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 
 const notified = vi.hoisted(() => [] as string[]);
+const storage = vi.hoisted(() => ({ remove: async (_bucket: string, _key: string): Promise<void> => undefined }));
+vi.mock('@open333crm/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@open333crm/core')>()),
+  MinioStorageProvider: class {
+    delete = (bucket: string, key: string) => storage.remove(bucket, key);
+  },
+}));
 vi.mock('#src/lib/notification-queue.js', () => ({
   enqueueNotification: async (input: { type: string }) => {
     notified.push(input.type);
@@ -20,11 +27,14 @@ const { handleDataErasureJob } = await import('#src/handlers/data-erasure.handle
 const TENANT = 'a0000000-0000-0000-0000-000000000001';
 const REQUEST = 'f0000000-0000-0000-0000-00000000000f';
 const CONTACT = 'c0000000-0000-0000-0000-00000000000c';
+const CONVERSATION = 'd0000000-0000-0000-0000-00000000000d';
 
 interface State {
   request: { id: string; tenantId: string; status: string; error: string | null; affected: unknown };
   contact: { id: string; tenantId: string; displayName: string } | null;
   audits: string[];
+  auditPayloads: unknown[];
+  messages: { direction: string; content: unknown }[];
 }
 
 function matchesStatus(status: string, where: { status?: string | { in: string[] } }) {
@@ -33,14 +43,12 @@ function matchesStatus(status: string, where: { status?: string | { in: string[]
 }
 
 /** 沒有特別處理的 model 方法回傳空結果 */
-function emptyModel(): Record<string, unknown> {
-  return new Proxy(
-    {},
-    {
-      get: (_t, method: string) => async () =>
-        method === 'findMany' ? [] : method === 'count' ? 0 : method.endsWith('Many') ? { count: 0 } : {},
-    },
-  );
+function emptyModel(methods: Record<string, unknown> = {}): Record<string, unknown> {
+  return new Proxy(methods, {
+    get: (t, method: string) =>
+      t[method] ??
+      (async () => (method === 'findMany' ? [] : method === 'count' ? 0 : method.endsWith('Many') ? { count: 0 } : {})),
+  });
 }
 
 function fakeDb(state: State) {
@@ -83,9 +91,14 @@ function fakeDb(state: State) {
           return {};
         },
       },
+      conversation: emptyModel({
+        findMany: async () => (state.messages.length > 0 ? [{ id: CONVERSATION }] : []),
+      }),
+      message: emptyModel({ findMany: async () => state.messages }),
       tenantAuditLog: {
-        create: async ({ data }: { data: { action: string } }) => {
+        create: async ({ data }: { data: { action: string; payload: unknown } }) => {
           state.audits.push(data.action);
+          state.auditPayloads.push(data.payload);
           return data;
         },
       },
@@ -124,6 +137,8 @@ function state(status: string, contact = true): State {
     request: { id: REQUEST, tenantId: TENANT, status, error: null, affected: null },
     contact: contact ? { id: CONTACT, tenantId: TENANT, displayName: '王小明' } : null,
     audits: [],
+    auditPayloads: [],
+    messages: [],
   };
 }
 
@@ -131,6 +146,7 @@ const redis = { publish: async () => 1 } as never;
 
 beforeEach(() => {
   notified.length = 0;
+  storage.remove = async () => undefined;
 });
 
 test('已完成的請求再執行一次：請求仍是 completed，error 是空值，不寫新的稽核或通知', async () => {
@@ -162,4 +178,24 @@ test('兩次同時執行：請求是 completed，error 是空值，只送出一�
   assert.equal(s.request.error, null);
   assert.deepEqual(notified, ['data_erasure_done']);
   assert.deepEqual(s.audits, ['data.erasure.complete']);
+});
+
+test('物件刪除失敗時請求仍然完成：affected.mediaObjectsFailed 記失敗筆數，與完成稽核一致', async () => {
+  const s = state('pending');
+  const key = `${TENANT}/media/${CONVERSATION}/e0000000-0000-0000-0000-00000000000e.jpg`;
+  s.messages = [{ direction: 'INBOUND', content: { storageKey: key } }];
+  const attempts: string[] = [];
+  storage.remove = async (_bucket, k) => {
+    attempts.push(k);
+    throw new Error('minio down');
+  };
+  await handleDataErasureJob(job('anonymize'), fakeDb(s) as never, redis);
+
+  assert.deepEqual(attempts, [key], '最多刪一次，不重試');
+  assert.equal(s.request.status, 'completed');
+  const affected = s.request.affected as Record<string, number>;
+  assert.equal(affected.mediaObjects, 1);
+  assert.equal(affected.mediaObjectsFailed, 1);
+  assert.equal(affected.avatarObjectsFailed, 0);
+  assert.deepEqual((s.auditPayloads[0] as { affected: unknown }).affected, affected);
 });
