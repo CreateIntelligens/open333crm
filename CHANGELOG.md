@@ -24,6 +24,13 @@ All notable changes to **open333CRM** will be documented in this file.
   - migration `20261109100000_preserve_audit_actor_snapshot` 只加可為空值的欄位，不回填：之前刪除的成員留下的紀錄沒有快照。
   - 未修：刪除請求排隊中、發起人被永久刪除時，worker 寫 `data.erasure.complete` 稽核會違反外鍵，等 #329 合併後另補。
 
+### Security
+
+- **升級三個有安全警示的間接依賴**（Dependabot #179、#180、#181）— 根目錄 `pnpm.overrides` 原本把前兩個套件釘在有漏洞的版本，Dependabot 無法自動升級：
+  - `follow-redirects` 1.16.1 → 1.16.2（GHSA-mrwp-f3q8-3g9p，高風險：重新導向時自訂的認證標頭可能被帶到其他網站）。axios 與 LINE SDK 使用。
+  - `decode-uri-component` 0.5.0 → 0.5.1（GHSA-qr28-fpjm-wq7f，高風險：特定 percent-encoding 字串造成 CPU 阻斷）。minio 使用。
+  - `@fastify/static` 10.1.7 → 10.1.10，連帶把 `glob` 13.0.6 換成 14.0.4（GHSA-3g3m-2fjr-6pw4，中風險：取消逾時後仍可能繼續掃描檔案）。bull-board 的佇列監控頁使用。
+
 ## [2026-11-06]
 
 ### Changed
