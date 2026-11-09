@@ -1,5 +1,6 @@
 ## Purpose
 定義自動化規則契約：事件、事實、動作的目錄，依事件組合可用的條件與動作，解析器語意，前端可直接使用的契約資料，以及規則與事件的相容性驗證。
+
 ## Requirements
 
 ### Requirement: Automation Contract Catalog
@@ -14,11 +15,15 @@ The system SHALL define automation event, fact, action, operator, and scope meta
 - **THEN** the event definition includes case-related scopes such as tenant, contact, and case
 
 ### Requirement: Fact And Action Definitions
-Fact definitions SHALL declare their fact key, label, type, allowed operators, value options when applicable, and required scopes. Action definitions SHALL declare their action type, label, required scopes, mutated scopes, and parameter metadata.
+Fact definitions SHALL declare their fact key, label, type, allowed operators, value options when applicable, and required scopes. Action definitions SHALL declare their action type, label, required scopes, mutated scopes, and parameter metadata. The status options of `update_case_status` SHALL include every Case status, including `PENDING`.
 
 #### Scenario: Action declares required context
 - **WHEN** the contract defines `update_case_status`
 - **THEN** the action definition requires case context before it can be selected for an event
+
+#### Scenario: Case status action offers pending
+- **WHEN** the contract lists the status options of `update_case_status`
+- **THEN** the options include `PENDING` with the label「待處理」, and a rule that sets status `PENDING` passes validation
 
 ### Requirement: Event Contract Composer
 The system SHALL provide a composer function that accepts an automation event name and returns the event definition plus the facts and actions that are valid for that event. A fact or action SHALL be included only when its required scopes are available from the event's native provided scopes or from explicitly enabled resolvable scopes.
@@ -66,7 +71,7 @@ The composed contract SHALL include UI-ready metadata for condition and action a
 - **THEN** it uses the action parameter metadata to render the required fields
 
 ### Requirement: Contract Compatibility Validation
-The system SHALL provide validation helpers that verify a rule's event name, condition tree, condition facts, operators, and actions against the composed contract for that event. Validation SHALL reject unknown events, unknown facts, unsupported operators, missing values for value-required operators, and actions whose required scopes are unavailable for the selected event.
+The system SHALL provide validation helpers that verify a rule's event name, condition tree, condition facts, operators, and actions against the composed contract for that event. Validation SHALL reject unknown events, unknown facts, unsupported operators, missing values for value-required operators, actions whose required scopes are unavailable for the selected event, and a `select` action parameter whose value is not one of the parameter's options. An empty optional `select` parameter SHALL pass.
 
 #### Scenario: Invalid fact rejected
 - **WHEN** validation receives a `case.created` rule whose conditions reference `message.text`
@@ -78,6 +83,14 @@ The system SHALL provide validation helpers that verify a rule's event name, con
 
 #### Scenario: Valid rule accepted
 - **WHEN** validation receives a `message.received` rule using message facts and a conversation-compatible action
+- **THEN** validation succeeds
+
+#### Scenario: Select parameter outside the options rejected
+- **WHEN** an API client saves a `case.created` rule whose `update_case_status` action has status `FOO`
+- **THEN** the API returns 400 with an error that names the action and the parameter, and the rule is not saved
+
+#### Scenario: Empty optional select parameter accepted
+- **WHEN** validation receives a `message.received` rule whose `create_case` action has a title and an empty `priority`
 - **THEN** validation succeeds
 
 ### Requirement: Contract Validation Errors Use Contract Labels

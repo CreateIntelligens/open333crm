@@ -115,7 +115,7 @@
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
 | [CONV-05](#conv-05) | 對話、工單與自動化 | P2 | 未處理 | 重新開啟已關閉的對話，不檢查同一聯絡人在同一渠道是否已有未關閉的對話，造成兩段同時進行 | 執行時確認 |
-| [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 未處理 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440） | 執行時確認 |
+| [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440；所有通知不再寫給停用成員，#484，但工單指派與 SLA 預警因此沒有人收到） | 執行時確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷已可送出（#416） | 靜態確認 |
 | [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 部分修正 | 工單狀態轉換不維護 `csatSentAt`：重開再解決的工單 1 分鐘內被自動結案；`resolvedAt` 的部分（重開保留舊值，報表的已解決數與 SLA 達成率失真）#417 已修正 | 執行時確認 |
 | [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 部分修正 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息；時間軸已有紀錄（#444） | 執行時確認 |
@@ -129,9 +129,9 @@
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
 | [AUTO-08](#auto-08) | 對話、工單與自動化 | P2 | 未處理 | 「聯絡人加標籤」觸發的規則在聯絡人每被貼上任何標籤時都再執行；重複貼同一個標籤也再發一次事件 | 執行時確認 |
-| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的工單類動作繞過工單模組：不驗證狀態轉換、不寫工單事件、不通知被指派的人，`assign_agent`、`escalate_case` 的查詢不帶 `tenantId`；`update_case_status` 的 `resolvedAt`／`closedAt` 與 `tenantId` #417 已修正 | 執行時確認 |
+| [AUTO-10](#auto-10) | 對話、工單與自動化 | P2 | 部分修正 | workers 的 `assign_agent` 不通知被指派的人，`assign_agent`、`escalate_case`、`set_case_priority` 的更新不帶 `tenantId`；`update_case_status` 已依狀態轉換規則並寫工單事件（#417、#469） | 執行時確認 |
 | [AUTO-11](#auto-11) | 對話、工單與自動化 | P2 | 部分修正 | Canvas 用 API 建不出串接的節點；agent 預設可用 Canvas，`API_FETCH` 節點不擋內網。手動觸發不再接受草稿、封存的流程與不存在的聯絡人 | 執行時確認 |
-| [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 未處理 | 自動化動作的參數只檢查有填，不檢查值：狀態可存 `"FOO"`，負責人可存其他租戶的成員 | 執行時確認 |
+| [AUTO-12](#auto-12) | 對話、工單與自動化 | P2 | 部分修正 | 自動化動作的負責人、通知對象可存非 UUID、不存在或其他租戶的成員；下拉參數的值 #469 已檢查 | 執行時確認 |
 | [AUTO-13](#auto-13) | 對話、工單與自動化 | P2 | 未處理 | 「短連結被點擊」的觸發說明可以依連結決定動作，但契約沒有連結的條件欄位，用到時存檔被拒 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
 | [IDENT-03](#ident-03) | 聯絡人、行銷與報表 | P2 | 部分修正 | 一位聯絡人在同一個渠道可以有兩個身分，回覆會送給另一位客人，進站訊息會放進另一段對話；合併已改為拒絕（`89014327`）；UAT 有 8 位 WebChat 測試聯絡人有兩個身分，是修正前 E2E 測試的合併產生；資料庫沒有限制 | 執行時確認 |
@@ -1553,7 +1553,7 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 | --- | --- |
 | 對話：`PATCH /conversations/:id` 的 `assignedToId`、`/handoff` 的 `assignToId` | 停用的成員、看不到該渠道的成員都能被指派。指派給停用成員時，負責人下拉顯示「未指派」；指派給看不到渠道的成員時，他的「我的」分頁是空的，收到新訊息通知但點開 404 |
 | 工單：`/assign`、`PATCH assigneeId`、建立時帶 `assigneeId`、升級時改派 | 不檢查負責人看不看得到工單的渠道。被指派的人收到通知，點進去 404，工單也不在他的列表。自動指派有這個檢查，手動沒有；負責人下拉列出租戶全部成員 |
-| 停用成員 | `deactivateAgent()` 不解除指派。`case.assigned` 與 SLA 通知不檢查 `isActive`。對話的「收到新訊息」與「轉接真人」通知已由 #440 修正：負責人停用或看不到渠道時，改通知看得到該渠道的主管與管理員（change `notify-visible-assignee-440`） |
+| 停用成員 | `deactivateAgent()` 不解除指派。對話的「收到新訊息」與「轉接真人」通知已由 #440 修正：負責人停用或看不到渠道時，改通知看得到該渠道的主管與管理員（change `notify-visible-assignee-440`）。**部分修正（#484）**：所有站內通知寫入前檢查收件成員，停用的成員不再收到 `case.assigned` 與 SLA 通知（change `skip-inactive-notification-recipient-484`）；但這兩種通知不會改發主管，負責人停用時沒有人收到。停用不解除指派、指派不驗證負責人仍未處理 |
 
 指派他租戶的成員見 CASE-07。
 
@@ -1731,6 +1731,8 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 
 **部分修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`update_case_status` 改成先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，`resolvedAt`／`closedAt` 用 API 共用的 `caseTransitionTimestamps()`（CASE-04）。因此規則改成「已解決」的工單會有 `resolvedAt`，問卷排程會照常寄滿意度調查。仍未處理：不檢查轉換是否合法、不寫工單事件、不發 `case.resolved`／`case.closed`、`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`。
 
+**部分修正**（#469，2026-11-09，change `fix-automation-case-status-469`）：`update_case_status` 寫入前用 `@open333crm/shared` 的 `canTransition()`。不合法（含不存在的狀態值）時不改工單，工單時間軸寫 `automation_status_skipped`（規則名稱、原狀態、目標狀態）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫 `status_changed`（`actorType: 'automation'`、`source: 'automation'`）與 `case.resolved`／`case.closed`（outbox，內容與手動轉換共用 `caseStatusOutcomeEvent()`），socket 的 `source` 改成 `automation`。仍未處理：`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`，這兩個動作的 socket `source` 仍寫 `sla_worker`。
+
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-05（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`apps/workers/src/lib/automation-actions.ts:295-305,385-428`；`case.created` 規則設定 URGENT、指派、改成 RESOLVED 之後 `resolvedAt` 為 null、`case_events` 只有 `created`、被指派的人沒有通知（健檢實測）。
 
 <a id="auto-11"></a>
@@ -1750,6 +1752,8 @@ RLS-01 與 APP-07 記錄的是 Canvas 引擎的連線與喚醒，與這一項不
 ### AUTO-12：自動化動作的參數不檢查值
 
 `packages/automation/src/contracts/validation.ts` 只檢查動作參數「有填」：`update_case_status` 可以存 `status: "FOO"`，`assign_agent`、`notify` 的 `agentId` 可以存非 UUID、不存在或其他租戶的成員。規則編輯器用下拉選單，不會送出這些值；API、CLI、MCP 可以。執行時才在 workers 失敗，而且只寫 log。
+
+**部分修正**（#469，2026-11-09，change `fix-automation-case-status-469`）：`validateActionParams()` 檢查 `type: 'select'` 的參數值必須是選項之一（空白的選填參數照常通過），存規則時回 400，API、CLI、MCP 都走這裡。`update_case_status` 的狀態選項加入「待處理（PENDING）」。仍未處理：`assign_agent`、`notify` 的 `agentId` 不檢查格式、是否存在與租戶。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-AUTOMATION-07（[AUTOMATION 健檢](../features/health/AUTOMATION.md)）。證據：`packages/automation/src/contracts/validation.ts:147-160`、`apps/api/src/modules/automation/automation.service.ts:205-209`；`POST /automation/rules` 帶上述值都回 201（健檢實測，規則建成停用、未執行）。
 
