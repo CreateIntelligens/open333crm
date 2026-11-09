@@ -6,13 +6,8 @@
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { flowOf, inTenant } from '../../lib/tenant-ctx.js';
-import { tenantScopedClient } from '../../lib/tenant-db.js';
-import {
-  bulkReembed,
-  checkOllamaHealth,
-  generateEmbedding,
-  searchSimilarArticles,
-} from '../embedding/embedding.service.js';
+import { reembedPublishedArticlesFlow, searchArticlesByTextFlow } from '../embedding/embedding.flow.js';
+import { notFound } from '../../shared/messages/resource.js';
 import { getKnownModelKeys, refreshModelKeys } from '../ai/model-registry.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
@@ -149,35 +144,38 @@ export async function importArticlesFlow(
 
 // ── 向量化與搜尋（交易外，design D6） ─────────────────────────────────────
 
-/** 強制重新向量化一篇文章：先確認文章屬於本租戶，再在交易外等向量化完成 */
+/**
+ * 強制重新向量化一篇文章：先確認文章屬於本租戶，再在交易外等向量化完成（spec km-ingestion「單篇重新向量化的回應」）。
+ * 向量化期間文章被修改時回 409；文章在確認之後被刪除時回 404
+ */
 export async function embedArticleNowFlow(deps: KnowledgeDeps, tenantId: string, id: string): Promise<void> {
   await inTenant(deps.prisma, tenantId, (scope) => assertArticleExists(scope, id));
-  await deps.effects.embed(tenantId, id);
+  const result = await deps.effects.embed(tenantId, id);
+  if (result === 'skipped') {
+    throw new AppError('向量化期間文章被修改，這次的結果沒有寫入，請重新向量化', 'ARTICLE_CHANGED', 409);
+  }
+  if (result === 'not_found') throw new AppError(notFound('article'), 'NOT_FOUND', 404);
 }
 
 /** 重新向量化所有已發布文章：回傳篇數，向量化在背景進行、不等結果（行為同搬遷前） */
 export async function bulkEmbedFlow(deps: { prisma: PrismaClient }, tenantId: string): Promise<number> {
   const total = await inTenant(deps.prisma, tenantId, (scope) => countPublishedArticles(scope));
-  bulkReembed(tenantScopedClient(deps.prisma, tenantId), tenantId).catch((err: unknown) => {
+  reembedPublishedArticlesFlow(deps, tenantId).catch((err: unknown) => {
     logger.error('[Knowledge] Background bulk re-embed failed', err);
   });
   return total;
 }
 
-export async function semanticSearchFlow(
+export function semanticSearchFlow(
   deps: { prisma: PrismaClient },
   tenantId: string,
   query: string,
   options: { topK?: number; threshold?: number },
 ) {
-  const db = tenantScopedClient(deps.prisma, tenantId);
-  const queryEmbedding = await generateEmbedding(db, tenantId, query);
-  return searchSimilarArticles(db, queryEmbedding, tenantId, options);
+  return searchArticlesByTextFlow(deps, tenantId, query, options);
 }
 
-export function embeddingStatusFlow(deps: { prisma: PrismaClient }, tenantId: string) {
-  return checkOllamaHealth(tenantScopedClient(deps.prisma, tenantId), tenantId);
-}
+export { embeddingStatusFlow } from '../embedding/embedding.flow.js';
 
 // ── 合作方推送（design D4） ──────────────────────────────────────────────
 

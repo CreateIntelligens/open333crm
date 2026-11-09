@@ -20,8 +20,10 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { getConfig } from '../../config/env.js';
-import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
-import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
+import { readEmbeddingInputs, searchSimilarArticles } from '../embedding/embedding.service.js';
+import { embedText } from '../embedding/embedding-client.js';
+import type { EmbeddingSettings } from '../settings/embedding-settings.service.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
 import { generateReply, CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
 import { prepareStoredMessageContent } from './deidentification.service.js';
@@ -215,9 +217,15 @@ export async function attemptKbAutoReply(
   const otherChannelContext = await loadOtherChannelContext(prisma, tenantId, conversationId);
 
   // 6. Generate embedding for inbound message
+  // ai 還沒搬（#337），以自己的連線組成 TenantCtx，一次處理只讀一次向量化設定
+  // （change migrate-embedding-tenant-ctx，design D5）。prismaAdmin 沒有 RLS，查詢都明確帶 tenantId
+  const embeddingCtx: TenantCtx = { tx: prisma as TenantCtx['tx'], tenantId };
+  let embeddingSettings: EmbeddingSettings;
   let queryEmbedding: number[];
   try {
-    queryEmbedding = await generateEmbedding(prisma, tenantId, messageText);
+    const inputs = await readEmbeddingInputs(embeddingCtx);
+    embeddingSettings = inputs.settings;
+    queryEmbedding = await embedText(inputs.settings, inputs.policy, messageText);
   } catch (err) {
     // 沒有向量就無法檢索，也無法回覆：回 failed，由呼叫端轉接真人（issue #445）
     logger.error('[KbAutoReply] Failed to generate embedding:', err);
@@ -225,8 +233,7 @@ export async function attemptKbAutoReply(
   }
 
   // 7. KB similarity search
-  const embeddingSettings = await getEmbeddingSettings(prisma, tenantId);
-  const results = await searchSimilarArticles(prisma, queryEmbedding, tenantId, {
+  const results = await searchSimilarArticles(embeddingCtx, queryEmbedding, {
     topK: embeddingSettings.topK,
     threshold: embeddingSettings.threshold,
   });
