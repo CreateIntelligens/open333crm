@@ -33,6 +33,7 @@ import { notFound } from '../../shared/messages/resource.js';
 import { validateLineVideoUrl } from '@open333crm/shared';
 import { prepareStoredMaterialBody } from '../ai/deidentification.service.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -334,9 +335,11 @@ export async function listMaterials(
   if (status) where.status = status;
   if (tags && tags.length > 0) where.tags = { hasSome: tags }; // 有任一標籤即命中
   if (q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(q);
     where.OR = [
-      { name: { contains: q, mode: 'insensitive' } },
-      { description: { contains: q, mode: 'insensitive' } },
+      { name: { contains: keyword, mode: 'insensitive' } },
+      { description: { contains: keyword, mode: 'insensitive' } },
     ];
   }
 
