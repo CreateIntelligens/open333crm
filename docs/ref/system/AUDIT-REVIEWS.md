@@ -11,6 +11,13 @@ issue #467，分支 `fix/escape-like-search-467`。以本機 feature 測試資�
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
 | 搜尋關鍵字的 LIKE 萬用字元（2026-11-04 CONV-04 紀錄中「聯絡人與優惠券的搜尋…未改」） | 已修正 | 聯絡人、優惠券列表、優惠券序號明細（含序號的原生 SQL `LIKE`）、知識庫、行銷範本、素材庫、短連結的搜尋都先以 `escapeLikeKeyword()` 跳脫。全 repo 搜尋 `contains`／`startsWith`／`endsWith`／`string_contains` 與原生 SQL 的 `LIKE`，接使用者輸入的只剩試用申請的 `endsWith('@網域')`：只用來縮小候選，之後在應用層逐一比對正規化 email，萬用字元不影響結果，未改。`like-escape-search.test.ts`（feature）17 個欄位各 3 種輸入（`_`、`%`、反斜線）共 51 項加 1 項 email 案例，修正前 51 項失敗在斷言上，序號的反斜線案例因測試資料撞到序號正規化唯一索引而報錯，改測試資料後以 mutation 驗證；另以 mutation 只還原單一欄位（聯絡人電話、知識庫內文、序號原生 SQL），對應欄位的案例失敗 |
+## 2026-11-09：UAT 的向量欄位維度（DB-01）
+
+#337 階段 4 第五批（change `migrate-embedding-tenant-ctx`）討論 DB-01 時，以 `~/workbase/SRE/host_connacts.md` 的 Open333 UAT 連線唯讀查詢，沒有修改任何東西。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| DB-01 | 未處理，描述修正 | UAT 的 `km_articles.embedding` 是 `vector(1024)`（`format_type(atttypid, atttypmod)`），與 schema 一致。原本寫「執行中的欄位都是 `vector(1536)`」，只在由 migration 建立的本機與測試資料庫成立。改寫成「migration 歷史落後於 UAT」，並註明補 migration 前要查每個環境的實際維度。`long_term_memories.embedding` 沒有查 |
 
 ## 2026-11-09：發起人被永久刪除後，刪除與匯出的完成稽核與通知（AUD-03）
 

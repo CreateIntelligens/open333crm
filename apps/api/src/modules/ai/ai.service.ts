@@ -4,7 +4,9 @@
 
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
-import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
+import { readEmbeddingInputs, searchSimilarArticles } from '../embedding/embedding.service.js';
+import { embedText } from '../embedding/embedding-client.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 import { readModelMessageContent } from './deidentification.service.js';
@@ -36,12 +38,14 @@ export async function suggestReply(prisma: TenantDb, tenantId: string, conversat
   }
 
   try {
-    const queryEmbedding = await generateEmbedding(prisma, conversation.tenantId, userText);
-    const results = await searchSimilarArticles(
-      prisma,
-      queryEmbedding,
-      conversation.tenantId,
-    );
+    // ai 還沒搬（#337），以自己的連線組成 TenantCtx（change migrate-embedding-tenant-ctx，design D5）
+    const embeddingCtx: TenantCtx = { tx: prisma as TenantCtx['tx'], tenantId: conversation.tenantId };
+    const { settings, policy } = await readEmbeddingInputs(embeddingCtx);
+    const queryEmbedding = await embedText(settings, policy, userText);
+    const results = await searchSimilarArticles(embeddingCtx, queryEmbedding, {
+      topK: settings.topK,
+      threshold: settings.threshold,
+    });
 
     if (results.length === 0) {
       return { suggestions: [] };

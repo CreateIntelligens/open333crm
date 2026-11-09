@@ -3,7 +3,7 @@
  *   npx tsx src/__tests__/embedding-timeout.test.ts
  *
  * 背景（Wave 6 欄位級測試）：
- * `generateEmbedding` 原本的 fetch 沒有任何 timeout。Ollama 閒置一段時間會把
+ * `generateEmbedding`（現在是 embedding-client.ts 的 `embedText`）原本的 fetch 沒有任何 timeout。Ollama 閒置一段時間會把
  * bge-m3 卸載，下一個請求要等模型重載，期間每個請求都卡滿 Caddy 的 60s
  * gateway timeout。
  *
@@ -30,7 +30,7 @@ const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 // ─── 從原始碼讀出實際設定值（避免測試與實作各寫一份常數而失真）──────────
 
-const code = src('modules/embedding/embedding.service.ts');
+const code = src('modules/embedding/embedding-client.ts');
 
 function readConst(name: string): number {
   const m = code.match(new RegExp(`const ${name} = ([0-9_]+)`));
@@ -137,7 +137,7 @@ t('持續逾時：耗盡重試後回逾時，不會無限等待', async () => {
 
 // ─── 回歸防護 ─────────────────────────────────────────────────────────────
 
-t('generateEmbedding 確實帶了 AbortController 逾時', () => {
+t('embedText 確實帶了 AbortController 逾時', () => {
   assert.ok(code.includes('AbortController'), 'fetch 未設逾時，冷啟動會卡滿 gateway');
   assert.ok(code.includes('signal: controller.signal'), 'AbortController 未接到 fetch');
 });
