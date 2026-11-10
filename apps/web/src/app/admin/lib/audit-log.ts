@@ -45,6 +45,7 @@ export const PLATFORM_AUDIT_ACTION_LABELS: Record<string, string> = {
   'plan.update': '修改方案',
   'plan_change.approve': '核准方案申請',
   'plan_change.reject': '駁回方案申請',
+  'plan_change.notify_platform': '通知平台方有新申請',
   'setting.update': '修改平台設定',
   'queue.job.retry': '重送佇列工作',
 };

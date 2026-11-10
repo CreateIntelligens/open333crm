@@ -64,7 +64,7 @@
 平台後台顯示稽核紀錄的頁面 SHALL 共用同一份動作中文名稱表，涵蓋 API 與排程寫入 `PlatformAuditLog` 的所有動作。表中沒有的動作 SHALL 顯示原始代碼。
 
 #### Scenario: 已知動作顯示中文
-- **WHEN** 頁面顯示下列任一動作的紀錄：`platform_user.provision`、`platform_user.update`、`platform_user.enable`、`platform_user.disable`、`platform_user.resend_welcome`、`platform_user.change_password`、`tenant.provision`、`tenant.update`、`tenant.enable`、`tenant.disable`、`tenant.contract.update`、`tenant.agent.email.update`、`tenant.agent.resend_welcome`、`tenant.ai_privacy.update`、`tenant.trial.extend`、`tenant.trial.convert`、`tenant.trial.restore`、`tenant.trial.expire`、`tenant.trial.purge`、`trial.signup.fail`、`plan.update`、`plan_change.approve`、`plan_change.reject`、`setting.update`、`queue.job.retry`
+- **WHEN** 頁面顯示下列任一動作的紀錄：`platform_user.provision`、`platform_user.update`、`platform_user.enable`、`platform_user.disable`、`platform_user.resend_welcome`、`platform_user.change_password`、`tenant.provision`、`tenant.update`、`tenant.enable`、`tenant.disable`、`tenant.contract.update`、`tenant.agent.email.update`、`tenant.agent.resend_welcome`、`tenant.ai_privacy.update`、`tenant.trial.extend`、`tenant.trial.convert`、`tenant.trial.restore`、`tenant.trial.expire`、`tenant.trial.purge`、`trial.signup.fail`、`plan.update`、`plan_change.approve`、`plan_change.reject`、`plan_change.notify_platform`、`setting.update`、`queue.job.retry`
 - **THEN** 操作欄顯示中文名稱，不顯示代碼
 
 #### Scenario: 未知動作顯示代碼

@@ -35,6 +35,7 @@ const PLATFORM_ACTIONS = [
   'plan.update',
   'plan_change.approve',
   'plan_change.reject',
+  'plan_change.notify_platform',
   'setting.update',
   'queue.job.retry',
 ];

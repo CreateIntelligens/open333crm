@@ -6,7 +6,7 @@
 | ---------- | -------- | ---- |
 | `tenant` | 租戶 id | `tenant.provision`、`tenant.update`、`tenant.enable`、`tenant.disable`、`tenant.contract.update`、`tenant.ai_privacy.update`、`tenant.trial.extend`、`tenant.trial.convert`、`tenant.trial.restore`、`tenant.trial.expire`（系統）、`tenant.trial.purge`（系統） |
 | `agent` | 成員 id，`payload.tenantId` = 租戶 id | `tenant.agent.email.update`（payload 另有新 `email`）、`tenant.agent.resend_welcome` |
-| `plan_change_request` | 申請 id（`PlanChangeRequest.tenantId` 指向租戶） | `plan_change.approve`、`plan_change.reject` |
+| `plan_change_request` | 申請 id（`PlanChangeRequest.tenantId` 指向租戶） | `plan_change.approve`、`plan_change.reject`、`plan_change.notify_platform`（系統動作，change add-plan-change-platform-notify） |
 | `plan` | 方案 id | `plan.update` |
 | `platform_user` | 平台帳號 id | `platform_user.*`（6 個） |
 | `trial_signup` | 申請記錄 id | `trial.signup.fail` |
