@@ -6,7 +6,12 @@ import { buildPlatformRegistry, PERMISSION_CODES } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { platformLogin } from './platform-auth.service.js';
-import { writePlatformAudit } from './platform-audit.service.js';
+import {
+  writePlatformAudit,
+  listTenantPlatformAuditLogs,
+  TENANT_AUDIT_LOG_DEFAULT_LIMIT,
+  TENANT_AUDIT_LOG_MAX_LIMIT,
+} from './platform-audit.service.js';
 import { listPlans, listTenantIdsOnPlan, updatePlan } from './plan.service.js';
 import {
   listPlatformUsers,
@@ -32,6 +37,7 @@ import {
   resendWelcomeEmail,
 } from './platform-tenant.service.js';
 import { getPlatformSetting, setPlatformSetting } from './platform-setting.service.js';
+import { CONTRACT_REMINDER_DAYS_KEY, parseContractReminderDays } from './contract-policy.service.js';
 import aiPrivacyRoutes from './ai-privacy.routes.js';
 import {
   getUsageOverview,
@@ -333,6 +339,20 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       return success(result);
     },
   );
+  // 依租戶查平台稽核：對象是該租戶、其成員或其方案申請的紀錄（規格 platform-audit-log）
+  fastify.get<{ Params: { id: string } }>('/tenants/:id/audit-logs', guard, async (request) => {
+    const { limit } = z
+      .object({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(TENANT_AUDIT_LOG_MAX_LIMIT)
+          .default(TENANT_AUDIT_LOG_DEFAULT_LIMIT),
+      })
+      .parse(request.query);
+    return success(await listTenantPlatformAuditLogs(fastify.prismaAdmin, request.params.id, { limit }));
+  });
   fastify.patch<{ Params: { id: string } }>('/tenants/:id/active', guard, async (request) => {
     const { isActive } = z.object({ isActive: z.boolean() }).parse(request.body);
     const tenant = await setTenantActive(fastify.prismaAdmin, request.params.id, isActive);
@@ -511,7 +531,9 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     return success(await getPlatformSetting(fastify.prismaAdmin, request.params.key));
   });
   fastify.put<{ Params: { key: string } }>('/settings/:key', guard, async (request) => {
-    const { value } = z.object({ value: z.unknown() }).parse(request.body);
+    const { value: raw } = z.object({ value: z.unknown() }).parse(request.body);
+    // 合約到期提醒天數有型別：不合法回 400、不改存預設值；其他鍵仍無型別（AUDIT TRIAL-02）
+    const value = request.params.key === CONTRACT_REMINDER_DAYS_KEY ? parseContractReminderDays(raw) : raw;
     await setPlatformSetting(fastify.prismaAdmin, request.params.key, value);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,

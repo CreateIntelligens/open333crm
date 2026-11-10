@@ -82,7 +82,7 @@
 | inbound-message-processing／停用租戶的渠道收到訊息（參考） | LINE/FB/IG 有；**WebChat 無**（HC-01） | 只測 FB | — |
 | auth-session／停用租戶的長效憑證與既有連線失效（參考） | **無**（AUTH-02） | 無 | — |
 
-**有後端、沒有前端入口**：平台稽核只能依平台帳號查（`GET /platform-users/:id/audit-logs`），沒有依租戶查的介面；詳細頁沒有復原鈕（在 `/admin/trial`）。
+**有後端、沒有前端入口**：詳細頁沒有復原鈕（在 `/admin/trial`）。平台稽核原本只能依平台帳號查，2026-11-10 起租戶詳細頁有「操作紀錄」區塊（`GET /tenants/:id/audit-logs`，#496）。
 
 **前端送出的值與後端 Zod**：開通 `planSlug` 寫死 5 個（後端只查存在，不查停售）；合約 `YYYY-MM-DD` 或 `null`，後端接受；改名 trim 後送出；改 email 不 trim，前後有空白時 400。沒有發現前端送出、後端拒絕的合法值。
 

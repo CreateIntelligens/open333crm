@@ -2751,7 +2751,7 @@
         },
         {
           "domain": "platform-usage",
-          "why": "monthlyTokens 硬擋讀 AiUsage 與 Redis 計數器 aiquota:{tenantId}:{YYYY-MM}；只算 keySource=platform"
+          "why": "monthlyTokens 硬擋讀 AiUsage 與 Redis 計數器 aiquota:{tenantId}:{YYYY-MM}:tpe（台灣月份）；只算 keySource=platform"
         }
       ],
       "usedBy": [
@@ -2844,15 +2844,15 @@
         },
         {
           "domain": "platform-tenants",
-          "why": "平台稽核唯一的查詢端點 GET /platform-users/:id/audit-logs，租戶開通、停用、改方案的紀錄只能從操作者的帳號頁查"
+          "why": "平台稽核可依操作者查（GET /platform-users/:id/audit-logs）；租戶開通、停用、改方案的紀錄另可從租戶詳細頁的操作紀錄查（GET /tenants/:id/audit-logs，#496）。動作中文名稱與對象顯示規則共用 admin/lib/audit-log.ts"
         },
         {
           "domain": "platform-plan-changes",
-          "why": "審核者 reviewedBy 存 platformUserId（非外鍵）；核准／駁回紀錄只能從平台帳號頁的操作紀錄查（PLAN-11）"
+          "why": "審核者 reviewedBy 存 platformUserId（非外鍵）；核准／駁回的稽核可從平台帳號頁或租戶詳細頁的操作紀錄查，但不含申請內容（PLAN-11）"
         },
         {
           "domain": "platform-trials",
-          "why": "試用延長、轉正、復原的平台稽核同樣只能從平台帳號頁查"
+          "why": "試用延長、轉正、復原的平台稽核可從平台帳號頁或租戶詳細頁的操作紀錄查"
         },
         {
           "domain": "platform-queue-monitoring",

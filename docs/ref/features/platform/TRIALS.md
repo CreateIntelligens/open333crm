@@ -15,7 +15,14 @@
 | 提醒、到期停用、保留期滿軟刪 | `apps/api` 的每小時排程 | 掃全部試用租戶 |
 | 延長試用、轉正式方案、復原軟刪 | 平台人員在 `/admin/trial` | 指定的單一租戶 |
 | 記錄合約日期 | 平台人員在 `/admin/tenants` 或 `/admin/tenants/:id` | 指定的單一租戶，不限試用租戶 |
+| 合約到期前提醒（只寄信，不停用） | `apps/api` 的每小時排程 `contract-reminder.scheduler.ts` | 啟用中、合約迄日未過的租戶，寄給所有啟用中的平台帳號 |
 | 重寄驗證信、作廢申請 | 平台人員在 `/admin/trial` | 指定的單一筆申請 |
+
+**合約到期提醒**（change `add-contract-expiry-reminder`，issue #494）：剩餘天數是迄日的日期減台灣今天的日期。檔位存平台設定
+`contract.reminderDaysBefore`（預設 `[30, 7, 1]`），在 `/admin/tenants` 的「合約到期提醒」設定卡修改，按「儲存」才送出。
+寫入時前端與 API 都驗證：1 到 365 的整數組成的非空陣列，去重、由大到小；不合法回 400 `VALIDATION_ERROR`，不改存預設值。排程挑「大於或等於剩餘天數」的最小檔位，未寄過才寄，並把較大的檔位一起記入 `tenants.contractRemindersSent`，
+晚設定的合約不會連收多封。平台人員修改迄日時清空 `contractRemindersSent`。`/admin/tenants` 列表標示「已過期」與
+「30 天內到期」，可依迄日排序。合約到期**不會**停用租戶，是否自動停用尚待產品決定。
 
 ## 生命週期
 
@@ -132,6 +139,8 @@
 `resendVerification(signupId)` 重寄驗證信，而且**刻意繞過使用者端的重寄節流**（使用者寄滿 5 封之後，只能由平台人員重寄），避免平台人員的操作靜默失敗。只有 `pending_verification` 的申請能重寄，其餘回 400。
 
 `markSignupFailed(signupId, reason)` 手動把申請標記為 `failed` 並清掉驗證 token，供排查或作廢使用。已開通的申請不能標記，回 400。
+
+`/admin/trial` 的「申請記錄」以中文顯示狀態：`pending_verification` 等待驗證、`provisioned` 已開通、`failed` 失敗／已作廢（email 衝突與平台作廢都是 `failed`，原因見「備註」欄）。其他狀態顯示原值。
 
 `updateTenantContract(tenantId, dates)` 只是記錄，不觸發任何自動生命週期行為。兩個日期都是選用的：傳 `undefined` 不動該欄、傳 `null` 清除、傳日期設值。更新後兩者都有值時，迄日必須不早於起日，否則回 422 `CONTRACT_DATE_INVALID`。這個檢查會合併資料庫現值比對，因此只傳其中一個日期也擋得住。
 

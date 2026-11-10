@@ -8,6 +8,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { JobScheduler, ScheduleDefinition } from '#src/lib/job-scheduler.js';
 import { setupTrialScheduler } from '#src/modules/trial/trial.scheduler.js';
+import { setupContractReminderScheduler } from '#src/modules/platform/contract-reminder.scheduler.js';
 import { setupAnalyticsScheduler } from '#src/modules/analytics/analytics.scheduler.js';
 import { setupCanvasScheduler } from '#src/modules/canvas/canvas.scheduler.js';
 import { setupCsatScheduler } from '#src/modules/csat/csat.scheduler.js';
@@ -54,6 +55,14 @@ test('trial：每小時，以 withoutOverlapping 防重疊，鎖最久 30 分鐘
   setupTrialScheduler(scheduler, prisma);
   assert.deepEqual(defs.map(shape), [
     { id: 'trial-lifecycle', every: 3_600_000, pattern: undefined, withoutOverlapping: { expiresInMs: 1_800_000 } },
+  ]);
+});
+
+test('contract-reminder：每小時，以 withoutOverlapping 防重疊，鎖最久 30 分鐘（短於週期）', () => {
+  const { scheduler, defs } = fakeScheduler();
+  setupContractReminderScheduler(scheduler, prisma);
+  assert.deepEqual(defs.map(shape), [
+    { id: 'contract-reminder', every: 3_600_000, pattern: undefined, withoutOverlapping: { expiresInMs: 1_800_000 } },
   ]);
 });
 

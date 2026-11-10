@@ -6,7 +6,7 @@
  * 沒人領的券也算進去，讓數字失真。
  */
 import type { Prisma } from '@prisma/client';
-import { taipeiDateStart, taipeiDateString } from '@open333crm/core';
+import { taipeiDatesBetween } from '@open333crm/core';
 import { csvRow } from '@open333crm/shared';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
@@ -265,11 +265,7 @@ export interface CouponAnalytics {
 /** 補齊期間內每一天（台灣日期），圖表的時間軸才是連續的；超過 400 天只列有資料的日期，避免回應過大 */
 const MAX_FILL_DAYS = 400;
 function fillDays(from: Date, to: Date): string[] {
-  const days: string[] = [];
-  for (let d = taipeiDateStart(taipeiDateString(from)); d <= to && days.length <= MAX_FILL_DAYS; d = new Date(d.getTime() + 86_400_000)) {
-    days.push(taipeiDateString(d));
-  }
-  return days.length > MAX_FILL_DAYS ? [] : days;
+  return taipeiDatesBetween(from, to, MAX_FILL_DAYS) ?? [];
 }
 
 const rate = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);

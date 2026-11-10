@@ -42,7 +42,7 @@ P0：無。P1：無。
 | AUTH-03 | 本領域相關的兩種情況實測：停用帳號後舊 token 立即 401 `PLATFORM_USER_DISABLED`；重寄開通信後舊 token 只能呼叫改密碼（403 `MUST_CHANGE_PASSWORD`）。自助改密碼後舊 token 仍可用，PLATFORM-AUTH 已實測 |
 | AUTH-04 | 仍存在：沒有角色分級，任何平台帳號都能開通、停用、改 email、重寄開通信給其他帳號；改 email 不通知（實測） |
 | SEC-02 | 仍存在（實測） |
-| PLAN-11 | 相關：平台稽核唯一的查詢端點就是本領域的 `GET /platform-users/:id/audit-logs`，最多 200 筆、不能依租戶或 action 篩選（讀程式，與 AUDIT 描述一致） |
+| PLAN-11 | 相關：本領域的 `GET /platform-users/:id/audit-logs` 最多 200 筆、不能依 action 篩選。2026-11-10 起另有依租戶查的 `GET /tenants/:id/audit-logs`（#496），兩者都回傳操作者與對象名稱 |
 
 ## 流程逐條結果
 

@@ -107,7 +107,7 @@
 | `plans` | 方案。`slug` 唯一，`isActive` 是 `false` 代表停售軟下架 |
 | `model_pricings` | LLM 單價，含分級費率與生效日期 |
 | `trial_signups` | 試用申請。`emailNormalized` 唯一，用來擋 Gmail 別名重複申請 |
-| `tenants` | 租戶。`planId`、`limitOverrides`、`trialEndsAt`、`purgedAt`、合約起訖日 |
+| `tenants` | 租戶。`planId`、`limitOverrides`、`trialEndsAt`、`purgedAt`、合約起訖日、`contractRemindersSent`（合約到期提醒已寄檔位） |
 
 `plan_change_requests` 有 `tenantId`，屬於租戶表，有 RLS。
 
