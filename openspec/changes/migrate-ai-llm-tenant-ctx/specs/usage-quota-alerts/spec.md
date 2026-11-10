@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: 告警不影響 AI 回覆
-告警的偵測與發送 MUST NOT 阻擋 AI 回覆：Redis 無法使用、告警事件寫入失敗、站內通知入列失敗或 email 寄送失敗時，系統只寫日誌，AI 回覆照常完成。AI 回覆最多多等一次 Redis 指令的逾時（1 秒）。告警事件 `usage.quota.threshold` SHALL 在用量紀錄 commit 之後經 outbox 送出，至少送出一次；重送時不重複寄信，見「事件重送時不重複寄出告警信」。
+告警的偵測與發送 MUST NOT 阻擋 AI 回覆：Redis 無法使用、告警事件寫入失敗、站內通知入列失敗或 email 寄送失敗時，系統只寫日誌，AI 回覆照常完成。Redis 沒有回應時，告警的處理最多讓 AI 回覆多等一個 Redis 指令的逾時（1 秒）。告警事件 `usage.quota.threshold` SHALL 在用量紀錄 commit 之後經 outbox 送出，至少送出一次；重送時不重複寄信，見「事件重送時不重複寄出告警信」。
 
 #### Scenario: Redis 無法使用時跳過告警
 - **GIVEN** 累加計數器時 Redis 無法連線

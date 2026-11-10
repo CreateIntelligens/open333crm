@@ -2,7 +2,7 @@
 
 ## 1. 搬遷前補測試
 
-- [ ] 1.1 確認現有測試涵蓋搬遷前的行為：`tests/unit/modules/ai/usage-quota.test.ts`（用量紀錄、金鑰來源、月額度、告警條件）、`tests/feature/modules/trial/token-quota-alert.test.ts`、`tests/unit/modules/ai/pricing.test.ts`、`llm-system-prompt.test.ts`、`ai.service-tenant-scope.test.ts`、`auto-classify-new-case.test.ts`、`tests/unit/modules/automation/sentiment-llm-fallback.test.ts`、`tests/unit/modules/platform/plan-change.test.ts`。列出搬遷時要改寫注入方式的測試（`usage-quota.test.ts` 以 `vi.mock('@open333crm/core')` 換掉 `redis`，改成注入假的 Redis），改寫後在搬遷後的程式上斷言不變。
+- [ ] 1.1 確認下列現有測試涵蓋搬遷前的行為：`tests/unit/modules/ai/usage-quota.test.ts`（用量紀錄、金鑰來源、月額度、告警條件）、`tests/feature/modules/trial/token-quota-alert.test.ts`、`tests/unit/modules/ai/pricing.test.ts`、`llm-system-prompt.test.ts`、`ai.service-tenant-scope.test.ts`、`auto-classify-new-case.test.ts`、`tests/unit/modules/automation/sentiment-llm-fallback.test.ts`、`tests/unit/modules/platform/plan-change.test.ts`。列出搬遷時要改寫注入方式的測試。例如 `usage-quota.test.ts` 以 `vi.mock('@open333crm/core')` 換掉 `redis`，要改成注入假的 Redis。改寫時只改注入方式，不改斷言。
 - [ ] 1.2 新增 `tests/feature/modules/settings/chat-settings.test.ts`（路由走真實的 `requirePermission` 與 app_tenant 連線，provider 換成假的 fetch）：「有設定列時回已存的值」「只讀到本租戶的設定」「換 provider」「清除金鑰」「Gemini 以租戶的金鑰檢查」「服務連不到」。搬遷前的程式已經有這些行為，以突變驗證，突變記在 9.1。
 
 ## 2. LLM 的用戶端（design D1）
@@ -24,7 +24,7 @@
 
 ## 5. LLM 呼叫的三段與用量紀錄（design D2、D4）
 
-- [ ] 5.1 寫測試「呼叫端收到回覆時紀錄已寫入」（`tests/feature/modules/ai/ai-routes.test.ts`，`POST /api/v1/ai/rewrite`，provider 換成假的 fetch）：回應之後立即查 `AiUsage`。在搬遷前的程式上執行，記下結果：寫入不 await，若因時序而偶爾通過，改以讓假的價目查詢延遲來重現，確認因為還沒寫入而失敗。
+- [ ] 5.1 寫測試「呼叫端收到回覆時紀錄已寫入」（`tests/feature/modules/ai/ai-routes.test.ts`，`POST /api/v1/ai/rewrite`，provider 換成假的 fetch）：收到回應之後立即查 `AiUsage`。在搬遷前的程式上執行，確認測試因為還沒寫入而失敗。搬遷前的程式不 await 寫入，所以測試可能因為時序而偶爾通過。這時讓寫入路徑延遲（例如延遲價目查詢），再確認測試失敗。
 - [ ] 5.2 寫測試「告警事件寫進 outbox」「告警事件寫入失敗」（`usage-quota.test.ts` 或新的 feature 測試）。確認前者在搬遷前的程式上因為事件走 `eventBus.publish`、outbox 沒有資料列而失敗。
 - [ ] 5.3 `llm.service.ts` 改成收 `TenantCtx` 的查詢：`readLlmInputs()`、`writeAiUsage()`；`pricing.service.ts` 的 `getPricing()` 收 `TenantCtx`。新增 `ai/llm.flow.ts`：`prepareLlmCall()`、`runLlmCall()`、`generateReply(deps, …)`，`usage.quota.threshold` 以 `publishEvent()` 寫 outbox。讓 4.2、5.1、5.2 與 `ai-usage-recording` 的既有 Scenario 測試（`usage-quota.test.ts`）通過。
 

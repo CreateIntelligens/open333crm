@@ -10,15 +10,15 @@
 4. 讀遮罩政策，遮罩後呼叫 LLM。
 5. 記用量：寫 `AiUsage`，累加 Redis 計數器，跨過門檻時發出告警事件。
 
-所以 flow 沒辦法把 LLM 呼叫拆成「交易 → 外部呼叫 → 交易」，呼叫 `generateReply()` 的 service 也都收 `TenantDb`。
+因此 flow 無法把 LLM 呼叫拆成「交易 → 外部呼叫 → 交易」。呼叫 `generateReply()` 的 service 也只能收 `TenantDb`。
 
 盤點時另外發現這些問題：
 
-- 用量紀錄在回傳之後才寫入，不等結果。部署重啟時正在寫的紀錄會遺失，測試也要等待才檢查得到。
+- `generateReply()` 回傳之後才寫用量紀錄，而且不等寫入結果。部署重啟時，正在寫的紀錄會遺失。測試也要等待一段時間，才查得到紀錄。
 - 用量告警事件 `usage.quota.threshold` 以 `eventBus.publish` 發出，不寫 outbox。行程在送出之前結束時，告警遺失。
 - `token-quota.service.ts` 直接 import core 的 `redis`（結構規則 2 的 ratchet 有記）。
-- 讀 Chat 設定時，沒有設定列就建立一列：讀取路徑會寫資料庫，兩個請求同時第一次讀取時，其中一個會違反 unique 限制。第五批 `embedding-settings` 已修正同樣的寫法。
-- `PUT /settings/chat` 與 `PUT /settings/gemini-key` 以 `writeTenantAudit()` 寫稽核。稽核寫入失敗時，設定照樣寫入，請求也回成功。
+- 讀 Chat 設定時，租戶沒有設定列就建立一列，所以讀取也會寫資料庫。兩個請求同時第一次讀取時，其中一個請求會違反 unique 限制。第五批已在 `embedding-settings` 修正同樣的寫法。
+- `PUT /settings/chat` 與 `PUT /settings/gemini-key` 以 `writeTenantAudit()` 寫稽核。稽核寫入失敗時，系統照樣寫入設定，請求也回成功。
 
 `ai` 的前置（第四批遮罩函式、第五批 `embedding`）都已搬完。`kb-autoreply.service.ts` 與 `agent/` 規模大，留到 6b。
 
@@ -32,11 +32,14 @@
 - `usage.quota.threshold` 改走 outbox：至少送出一次。告警信已經以事件 id 去重（主規格 `usage-quota-alerts`「事件重送時不重複寄出告警信」）。
 - `token-quota.service.ts` 不再 import core 的 `redis`，由呼叫端傳入。API 行程用 `fastify.redis`。
 - 讀 Chat 設定時，沒有設定列就回預設值，不建立設定列。`PUT /api/v1/settings/chat` 改用 upsert。
-- Chat 的預設 temperature 改成 0.2（使用者決定）。commit `bee7bd47` 為了降低編造，把程式常數改成 0.2，但資料庫欄位的預設值仍是 0.3；讀設定時會先建立設定列，所以新租戶實際用的是 0.3。這次以 migration 把欄位的預設值改成 0.2。已經存了設定列的租戶保留原本的值。
+- Chat 的預設 temperature 改成 0.2（使用者決定）：
+  - commit `bee7bd47` 為了減少編造的回答，把程式常數改成 0.2。資料庫欄位的預設值仍是 0.3。
+  - 讀設定時，系統會先建立設定列，所以新租戶實際用的是 0.3。
+  - 這次以 migration 把欄位的預設值改成 0.2。已經存了設定列的租戶保留原本的值。
 - `PUT /api/v1/settings/chat` 與 `PUT /api/v1/settings/gemini-key` 改在同一個交易內以 `recordTenantAudit()` 寫稽核。稽核寫入失敗時，請求失敗、設定不變。
 - `ai.routes.ts` 的 6 條路由（`GET /ai/privacy/status`、`POST /ai/suggest-reply`、`/summarize`、`/analyze-sentiment`、`/classify`、`/rewrite`）與 settings 的 5 條路由（`GET`、`PUT /settings/chat`、`POST /settings/chat/health`、`GET`、`PUT /settings/gemini-key`）改成呼叫 flow。回應不變。
 - 建議回覆（`POST /ai/suggest-reply`）一次請求只讀一次 Chat 設定與月額度。原本每篇搜尋結果各讀一次。
-- 還沒搬的呼叫端（`kb-autoreply`、`agent`、`flex-ai` 的 `generateFlexFromPrompt`、automation worker 的情緒分析與自動分類）改成呼叫新的函式，Redis 由呼叫端傳入。
+- 還沒搬的呼叫端改成呼叫新的函式，並傳入 Redis：`kb-autoreply`、`agent`、`flex-ai` 的 `generateFlexFromPrompt`、automation worker 的情緒分析與自動分類。
 
 ## Capabilities
 

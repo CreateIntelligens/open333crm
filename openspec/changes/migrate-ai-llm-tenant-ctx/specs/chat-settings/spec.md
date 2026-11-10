@@ -8,7 +8,7 @@
 
 ### Requirement: 讀取 Chat 設定不寫入資料庫
 
-`GET /api/v1/settings/chat`、`POST /api/v1/settings/chat/health` 與所有呼叫 LLM 之前讀取 Chat 設定的處理 SHALL 只讀資料庫。租戶沒有設定列時，系統 SHALL 使用預設值：provider `ollama`、模型 `qwen2.5:3b`、服務網址 `http://localhost:11434`、temperature 0.2、maxTokens 500、四段系統提示詞都是空字串、clarifyThreshold 0.5、clarifyMaxAttempts 2。讀取 MUST NOT 建立設定列。資料庫欄位的預設值 SHALL 與這組預設值相同，所以第一次修改設定時建立的設定列，沒有收到的欄位也是這組值。
+`GET /api/v1/settings/chat`、`POST /api/v1/settings/chat/health` 與所有呼叫 LLM 之前讀取 Chat 設定的處理 SHALL 只讀資料庫。租戶沒有設定列時，系統 SHALL 使用預設值：provider `ollama`、模型 `qwen2.5:3b`、服務網址 `http://localhost:11434`、temperature 0.2、maxTokens 500、四段系統提示詞都是空字串、clarifyThreshold 0.5、clarifyMaxAttempts 2。讀取 MUST NOT 建立設定列。資料庫欄位的預設值 SHALL 與這組預設值相同。因此第一次修改設定時，系統建立的設定列中，請求沒有帶的欄位也是這組值。
 
 #### Scenario: 沒有設定列時回預設值
 - **WHEN** 租戶沒有設定列，成員呼叫 `GET /api/v1/settings/chat`
