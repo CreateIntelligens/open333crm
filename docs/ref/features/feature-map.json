@@ -677,6 +677,7 @@
       "specs": [
         "km-ingestion",
         "embedding-settings",
+        "chat-settings",
         "knowledge-base-information-architecture",
         "token-quota",
         "usage-quota-alerts",

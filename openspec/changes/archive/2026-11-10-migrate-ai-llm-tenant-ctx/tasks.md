@@ -52,7 +52,8 @@
 - [x] 9.5 `node scripts/feature-impact.mjs` 列出的直接受影響領域，逐項走過回歸清單。
 - [x] 9.6 `CHANGELOG.md` 的 `Changed` 寫明可觀察的差異：預設 temperature 改成 0.2、讀 Chat 設定不建立設定列、設定與金鑰的稽核一起寫入、用量紀錄寫完才回傳、用量告警改走 outbox。
 - [x] 9.7 `node scripts/validate-openspec.mjs migrate-ai-llm-tenant-ctx` 與 `--specs` 通過。
-- [ ] 9.8 部署到 UAT 後重跑規劃檔 6.2 的腳本，`bench.mjs` 加上 `GET /settings/chat`、`GET /settings/gemini-key`、`GET /ai/privacy/status`。
+- [x] 9.8 部署到 UAT 後重跑規劃檔 6.2 的腳本，`bench.mjs` 加上 `GET /settings/chat`、`GET /settings/gemini-key`、`GET /ai/privacy/status`。
+  - 2026-11-10，main `83ea06f9`：`GET /settings/chat` p50 106.0 ms（大多是交易外呼叫 Gemini 列模型與健康檢查，搬遷前的路由也呼叫這兩項）、每請求 1.1 個交易；`GET /settings/gemini-key` p50 4.0 ms、1.1 個交易；`GET /ai/privacy/status` p50 3.4 ms、1.0 個交易。10 人併發 p50 143.2 ms、p95 192.5 ms，P2024 與 `Transaction already closed` 都是 0。
 
 ## 9.1 突變紀錄
 
@@ -77,4 +78,4 @@
 
 「只讀到本租戶的設定」沒有應用層的突變會失敗：查詢帶 `tenantId`，連線也受 RLS 約束，拿掉其中一層，另一層仍擋住其他租戶的設定列。
 
-9.5：直接受影響的 9 個領域（knowledge、settings、platform-usage、notifications、automation、inbox、marketing、platform-plans、platform-plan-changes），回歸清單的自動測試都在 9.2、9.3 的範圍內。需要真的 LLM、UAT 或瀏覽器的手動步驟沒有執行。
+9.5：直接受影響的 9 個領域（knowledge、settings、platform-usage、notifications、automation、inbox、marketing、platform-plans、platform-plan-changes），回歸清單的自動測試都在 9.2、9.3 的範圍內。需要真的 LLM、UAT 或瀏覽器的手動步驟交給負責 UAT 手動測試的人（使用者 2026-11-10 決定）。
