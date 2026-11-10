@@ -10,6 +10,8 @@
 - 補日期用 `@open333crm/core` 的 `taipeiDatesBetween()`，券統計的 `fillDays()` 也改用它。超過 400 天只列有用量的日子。
 - 總覽、排行與趨勢用同一組 `from`、`to` 時間點過濾，加總一致。前端「近 N 天」把 `from` 對齊台灣今天往前 N−1 天的 00:00，所以趨勢剛好 N 格。
 
+- 沒帶 `from`、`to` 時的預設期間是 `taipeiRecentDays(30)`：台灣今天往前 29 天的 00:00 到現在，和前端 `usageRange(30)` 同一條公式。web 不依賴 `@open333crm/core`：core 的入口會載入 Redis 與 Prisma，`apps/web/Dockerfile` 也沒有複製 core。所以前端保留自己的 `usageRange()`，由 web 的測試直接讀 core 的原始檔（`taipei-time.ts` 沒有任何 import）比對兩者。
+
 ### D2 月額度的月份全部改用台灣月份
 
 月份只在 `apps/api/src/modules/trial/token-quota.service.ts` 計算，其他地方都從這裡取得：

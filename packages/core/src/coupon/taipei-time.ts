@@ -45,6 +45,19 @@ export function taipeiDatesBetween(from: Date, to: Date, maxDays: number): strin
   return days;
 }
 
+/**
+ * @description 最近 N 天（含今天）的區間：從台灣今天往前 N−1 天的 00:00 到 now。
+ * 以台灣日期分日時剛好 N 天。平台用量查詢的預設期間用這個函式；
+ * 前端 `apps/web/src/app/admin/lib/usage-range.ts` 有同一條公式（web 不能依賴 core），由 web 的測試比對兩者一致。
+ * @param days 天數（含今天），至少 1
+ * @param now 現在時間
+ * @returns from 與 to
+ */
+export function taipeiRecentDays(days: number, now: Date = new Date()): { from: Date; to: Date } {
+  const todayStart = taipeiDateStart(taipeiDateString(now));
+  return { from: new Date(todayStart.getTime() - (days - 1) * DAY_MS), to: now };
+}
+
 /** 這個時間點在台灣是哪個月（YYYY-MM）。AI 月額度的計數器與告警以這個月份為準 */
 export function taipeiMonthString(at: Date): string {
   return taipeiDateString(at).slice(0, 7);

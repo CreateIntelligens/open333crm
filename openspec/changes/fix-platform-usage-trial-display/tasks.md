@@ -23,12 +23,18 @@
 - [x] 4.2 `packages/core/src/coupon/taipei-time.ts` 新增 `taipeiMonthString()`、`taipeiMonthStart()`、`taipeiNextMonthStart()`（unit 測試 `taipei-time.test.ts`，含跨年）
 - [x] 4.3 `token-quota.service.ts` 的 `monthKey()`、`monthStart()`、`nextMonthStart()`、`counterKey()` 改用上述函式；`verify-quota.mts` 同步（design D2、D3）
 
-## 5. 完成定義
+## 5. 後端預設期間對齊台灣日期
 
-- [x] 5.1 `pnpm --filter @open333crm/core test`、`@open333crm/api test`、`@open333crm/web test`
-- [x] 5.2 `pnpm test:feature`（獨立測試庫 `TEST_DATABASE_NAME=open333crm_test_p497`）
-- [x] 5.3 api、web 的 `tsc --noEmit`
-- [x] 5.4 `check-tenant-scoping`、`check-prisma-admin-usage` 加 `--strict`
-- [x] 5.5 `node scripts/validate-openspec.mjs fix-platform-usage-trial-display`
-- [x] 5.6 `CHANGELOG.md` 的 `## [2026-11-10]` Fixed 加條目；`docs/ref/features/platform/USAGE.md`、`TRIALS.md`、`feature-map.json`、`AUDIT.md` 更新
-- [ ] 5.7 歸檔（合併後執行 `pnpm exec openspec archive fix-platform-usage-trial-display`）
+- [x] 5.1 測試 `apps/api/tests/feature/modules/platform/platform-usage.test.ts`：「預設期間對齊台灣日期」在現有程式上斷言失敗（每日用量 31 筆）
+- [x] 5.2 `packages/core/src/coupon/taipei-time.ts` 新增 `taipeiRecentDays()`（unit 測試 `taipei-time.test.ts`）；`platform-usage.service.ts` 的 `defaultRange()` 改用它
+- [x] 5.3 測試 `apps/web/tests/unit/app/admin/usage-range.test.ts`：web 的 `usageRange()` 與 core 的 `taipeiRecentDays()` 結果一致（web 不依賴 core，見 `usage-range.ts` 的註解）。公式原本就一致，寫好就通過；突變驗證：`usageRange()` 改成往前 N 天時失敗
+
+## 6. 完成定義
+
+- [x] 6.1 `pnpm --filter @open333crm/core test`、`@open333crm/api test`、`@open333crm/web test`
+- [x] 6.2 `pnpm test:feature`（獨立測試庫 `TEST_DATABASE_NAME=open333crm_test_p497`）
+- [x] 6.3 api、web 的 `tsc --noEmit`
+- [x] 6.4 `check-tenant-scoping`、`check-prisma-admin-usage` 加 `--strict`
+- [x] 6.5 `node scripts/validate-openspec.mjs fix-platform-usage-trial-display`
+- [x] 6.6 `CHANGELOG.md` 的 `## [2026-11-10]` Fixed 加條目；`docs/ref/features/platform/USAGE.md`、`TRIALS.md`、`feature-map.json`、`AUDIT.md` 更新
+- [ ] 6.7 歸檔（合併後執行 `pnpm exec openspec archive fix-platform-usage-trial-display`）

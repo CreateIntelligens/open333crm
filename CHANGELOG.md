@@ -19,6 +19,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 用量統計的單一租戶每日趨勢（`GET /api/v1/platform/usage/tenants/:tenantId` 的 `trend`）原本只回有用量的日子，長條圖一根接一根排，空白期看不出來（UAT 近 30 天只畫 16 根、擠在左半邊）。現在期間內每個日期都有一筆，沒有用量的日子回 `tokens: 0`、`costUsd: "0"`、`calls: 0`；期間超過 400 天時仍只列有用量的日子。
   - 每日趨勢原本以 UTC 分日，台灣 00:00–08:00 的用量算到前一天。現在以台灣日期（`Asia/Taipei`）分日，`day` 是台灣日期。期間的過濾不變，總覽、排行與趨勢的加總一致。月額度的月份見上方 Changed。
   - `/admin/usage` 的「近 7／30／90 天」改從台灣今天往前 N−1 天的 00:00 起算，三個查詢共用同一個區間，趨勢剛好 N 格；沒有用量的日子不畫長條。
+  - 三個用量 API 沒帶 `from`、`to` 時的預設期間，從「最近 30×24 小時」改為台灣今天往前 29 天的 00:00 到現在（`@open333crm/core` 的 `taipeiRecentDays(30)`），每日趨勢剛好 30 筆，與畫面的「近 30 天」相同。
   - 補齊日期的邏輯移到 `@open333crm/core` 的 `taipeiDatesBetween()`，券統計的每日趨勢也改用它，行為不變。
 
 ## [2026-11-09]

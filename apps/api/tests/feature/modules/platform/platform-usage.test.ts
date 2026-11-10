@@ -127,6 +127,29 @@ scenario('預設查詢最近 30 天：只含昨天的呼叫，不含 40 天前�
   assert.deepEqual(detail.byFeature.map((f) => f.totalTokens), [100]);
 });
 
+/** 台灣日期（UTC+8） */
+const taipeiDate = (at: Date) => new Date(at.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+
+scenario('預設期間對齊台灣日期：每日用量剛好 30 筆，從台灣 29 天前到今天，三個查詢共用', async ({ tx, tenant, usage }) => {
+  const now = new Date();
+  const first = taipeiDate(new Date(now.getTime() - 29 * DAY));
+  // 台灣 29 天前的 00:00
+  const fromStart = new Date(Date.parse(`${first}T00:00:00.000Z`) - 8 * 3600_000);
+  const t = await tenant('A');
+  await usage(t, { totalTokens: 400, createdAt: new Date(fromStart.getTime() - 60_000) }); // 期間開始前 1 分鐘
+  await usage(t, { totalTokens: 100, createdAt: new Date(fromStart.getTime() + 60_000) }); // 期間開始後 1 分鐘
+
+  const detail = await getTenantUsageDetail(tx, t);
+  const ranking = await getTenantUsageRanking(tx);
+
+  assert.equal(detail.trend.length, 30);
+  assert.equal(detail.trend[0].day, first);
+  assert.equal(detail.trend[29].day, taipeiDate(now));
+  assert.equal(detail.trend[0].tokens, 100);
+  assert.equal(ranking.find((r) => r.tenantId === t)?.totalTokens, 100);
+  assert.equal(detail.range.from.toISOString(), fromStart.toISOString());
+});
+
 // 台灣時間 2001-01-01 00:00 到 2001-01-05 23:59:59.999（UTC+8，沒有日光節約時間）
 const TAIPEI_5_DAYS = { from: new Date('2000-12-31T16:00:00.000Z'), to: new Date('2001-01-05T15:59:59.999Z') };
 

@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { afterClaimExpiry, parseDateOnly, taipeiDateEnd, taipeiDateStart, taipeiDateString, taipeiDatesBetween, taipeiMonthStart, taipeiMonthString, taipeiNextMonthStart } from '#src/coupon/taipei-time.js';
+import { afterClaimExpiry, parseDateOnly, taipeiDateEnd, taipeiDateStart, taipeiDateString, taipeiDatesBetween, taipeiMonthStart, taipeiMonthString, taipeiNextMonthStart, taipeiRecentDays } from '#src/coupon/taipei-time.js';
 
 describe('固定效期的起訖以台灣時間計算', () => {
   test('生效日從台灣時間 00:00 起算', () => {
@@ -73,5 +73,19 @@ describe('台灣月份（AI 月額度）', () => {
     const at = new Date('2026-12-15T00:00:00.000Z');
     assert.equal(taipeiMonthString(at), '2026-12');
     assert.equal(taipeiNextMonthStart(at).toISOString(), '2026-12-31T16:00:00.000Z');
+  });
+});
+
+describe('最近 N 天（含今天，台灣日期對齊）', () => {
+  test('從台灣今天往前 N−1 天的 00:00 到現在', () => {
+    const now = new Date('2026-11-10T02:00:00.000Z'); // 台灣 11-10 10:00
+    const { from, to } = taipeiRecentDays(30, now);
+    assert.equal(from.toISOString(), '2026-10-11T16:00:00.000Z'); // 台灣 10-12 00:00
+    assert.equal(to.toISOString(), now.toISOString());
+    assert.equal(taipeiDatesBetween(from, to, 400)?.length, 30);
+  });
+  test('UTC 還是前一天、台灣已經換日時以台灣日期為準', () => {
+    const now = new Date('2026-11-09T17:00:00.000Z'); // 台灣 11-10 01:00
+    assert.equal(taipeiRecentDays(1, now).from.toISOString(), '2026-11-09T16:00:00.000Z');
   });
 });

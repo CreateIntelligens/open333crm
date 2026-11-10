@@ -5,17 +5,16 @@
  */
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
-import { taipeiDatesBetween } from '@open333crm/core';
+import { taipeiDatesBetween, taipeiRecentDays } from '@open333crm/core';
 
 export interface UsageRange {
   from: Date;
   to: Date;
 }
 
+/** 預設期間：最近 30 天（含今天），從台灣今天往前 29 天的 00:00 到現在；每日趨勢剛好 30 筆。總覽、排行與鑽取共用 */
 function defaultRange(): UsageRange {
-  const to = new Date();
-  const from = new Date(to.getTime() - 30 * 86400_000);
-  return { from, to };
+  return taipeiRecentDays(30);
 }
 
 /** 跨租戶總覽：總 token / 總成本 / 呼叫數 / 各 provider 佔比。 */
