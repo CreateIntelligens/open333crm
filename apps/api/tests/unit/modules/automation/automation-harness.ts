@@ -172,7 +172,7 @@ export function createHarness(
         return state.privacyEnabled && where.key === `ai.privacy.${TENANT}` ? { value: { enabled: true } } : null;
       },
     },
-    // agent 回覆的執行紀錄（agent.service 的 runAgentReply）
+    // agent 回覆的執行紀錄（agent.flow 的 runAgentReplyFlow）
     agentRun: {
       create: async ({ data }: { data: { expiresAt: Date } }) => ({ id: randomUUID(), expiresAt: data.expiresAt }),
       updateMany: async () => ({ count: 1 }),

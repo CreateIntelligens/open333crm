@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeAll, beforeEach, test, vi } from 'vitest';
-import { mockLlmDeps } from '#tests/support/llm-deps.js';
+import { mockAgentDeps, mockLlmDeps } from '#tests/support/llm-deps.js';
 
 const OTHER = '以下是同一位顧客最近在其他渠道的訊息…\n[LINE 2 天前] 顧客：冷氣漏水怎麼處理';
 const loadCalls: unknown[][] = [];
@@ -55,13 +55,13 @@ vi.mock('#src/config/env.js', async (orig) => ({
 }));
 
 let attemptKbAutoReply: typeof import('#src/modules/ai/kb-autoreply.service.js').attemptKbAutoReply;
-let runAgentReply: typeof import('#src/modules/ai/agent/agent.service.js').runAgentReply;
+let runAgentReplyFlow: typeof import('#src/modules/ai/agent/agent.flow.js').runAgentReplyFlow;
 
 // vi.mock 的 factory 用到上面宣告的變數，所以等檔案執行到這裡才載入。在 beforeAll 載入，
 // 載入時間不算進第一個 test 的時間上限：放在 test 裡時，turbo 同時執行其他套件就會逾時（#299）
 beforeAll(async () => {
   ({ attemptKbAutoReply } = await import('#src/modules/ai/kb-autoreply.service.js'));
-  ({ runAgentReply } = await import('#src/modules/ai/agent/agent.service.js'));
+  ({ runAgentReplyFlow } = await import('#src/modules/ai/agent/agent.flow.js'));
 });
 
 beforeEach(() => {
@@ -85,7 +85,7 @@ test('KB 自動回覆：generateReply 收到其他渠道的訊息', async () => 
   } as never;
   // 回覆送出需要的其他資料不在這個測試範圍；送出失敗不影響已發生的 generateReply 呼叫
   await attemptKbAutoReply(prisma, mockLlmDeps(prisma), { to: () => ({ emit: () => {} }) } as never, 'tenant-1', 'c1', '維修進度如何').catch(() => {});
-  assert.deepEqual(loadCalls[0], [prisma, 'tenant-1', 'c1']);
+  assert.deepEqual(loadCalls[0], [{ tx: prisma, tenantId: 'tenant-1' }, 'c1']);
   assert.equal(generateReplyOptions.length, 1);
   assert.equal(generateReplyOptions[0].otherChannelContext, OTHER);
 });
@@ -98,10 +98,10 @@ test('Agent 模式：系統指示包含其他渠道的訊息；沒有對話時�
     conversation: { findFirst: async () => ({ id: 'c1' }) },
     message: { findMany: async () => [] },
   } as never;
-  await runAgentReply(prisma, mockLlmDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000001', conversationId: 'c1', userMessage: '維修進度如何' });
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000001', conversationId: 'c1', userMessage: '維修進度如何' });
   assert.ok(agentInputs[0].systemPrompt.includes(OTHER), agentInputs[0].systemPrompt);
 
-  await runAgentReply(prisma, mockLlmDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000001', userMessage: '沒有對話' });
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000001', userMessage: '沒有對話' });
   assert.equal(loadCalls.length, 1, '沒有 conversationId 時不讀取');
   assert.ok(!agentInputs[1].systemPrompt.includes(OTHER));
 });
@@ -115,8 +115,8 @@ test('Agent 模式：有指定可見渠道時交給讀取函式；沒有指定�
     message: { findMany: async () => [] },
   } as never;
   const visible = new Set(['ch-branch']);
-  await runAgentReply(prisma, mockLlmDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x', accessibleChannels: visible });
-  assert.equal(loadCalls[0][4], visible);
-  await runAgentReply(prisma, mockLlmDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x' });
-  assert.equal(loadCalls[1][4], undefined);
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x', accessibleChannels: visible });
+  assert.equal(loadCalls[0][3], visible);
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x' });
+  assert.equal(loadCalls[1][3], undefined);
 });

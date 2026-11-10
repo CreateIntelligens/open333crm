@@ -18,7 +18,7 @@ test('loadAgentHistory：去掉綁定訊息、遮掉代碼、依時間由舊到�
       },
     },
   } as never;
-  const history = await loadAgentHistory(prisma, 't1', 'c1');
+  const history = await loadAgentHistory({ tx: prisma, tenantId: 't1' }, 'c1');
   assert.ok(selected?.metadata, '要讀 metadata 才能辨識綁定訊息');
   assert.deepEqual(history, [
     { role: 'user', content: '綁定帳號' },
@@ -39,7 +39,7 @@ test('loadAgentHistory：最近的訊息大多是綁定訊息時，仍保留 10 
       },
     },
   } as never;
-  const history = await loadAgentHistory(prisma, 't1', 'c1');
+  const history = await loadAgentHistory({ tx: prisma, tenantId: 't1' }, 'c1');
   assert.equal(history.length, 10, `取 ${take} 則、過濾後應保留 10 則一般對話`);
   assert.equal(history.at(-1)?.content, '訊息20', '最新的一般對話在最後');
 });

@@ -38,11 +38,18 @@ vi.mock('#src/modules/ai/ai.flow.js', () => ({
   summarizeConversationFlow: async (_deps: unknown, tenantId: string, id: string) => { serviceCalls.push(`summarize:${tenantId}:${id}`); return { summary: 's' }; },
 }));
 
-vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
-  runAgentReply: async (_p: unknown, _llm: unknown, input: { conversationId?: string; accessibleChannels?: unknown }) => {
+vi.mock('#src/modules/ai/agent/agent.flow.js', () => ({
+  runAgentReplyFlow: async (_deps: unknown, input: { conversationId?: string; accessibleChannels?: unknown }) => {
     agentInputs.push(input);
     serviceCalls.push(`agent:${input.conversationId ?? 'none'}`);
     return { handled: true, text: 'ok' };
+  },
+  readAgentRunFlow: async (_deps: unknown, tenantId: string, id: string) => {
+    const run = runs.get(id);
+    // 模擬 Prisma：只有 id 與 tenantId 都符合才回傳
+    if (!run || run.tenantId !== tenantId) return null;
+    const { tenantId: _t, ...selected } = run;
+    return selected;
   },
 }));
 
@@ -64,13 +71,6 @@ async function buildApp() {
   const app = Fastify();
   app.decorate('authenticate', async (request: any) => {
     request.agent = { id: 'agent-1', tenantId: 'tenant-1' };
-    request.tenantPrisma = { agentRun: { findFirst: async ({ where }: any) => {
-      const run = runs.get(where.id);
-      // 模擬 Prisma：只有 id 與 tenantId 都符合才回傳
-      if (!run || run.tenantId !== where.tenantId) return null;
-      const { tenantId: _t, ...selected } = run;
-      return selected;
-    } } };
   });
   app.decorateRequest('tenantPrisma', null);
   app.setErrorHandler((err: any, _req, reply) => {

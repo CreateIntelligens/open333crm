@@ -56,6 +56,7 @@ description: >
 - 向量維度：程式、schema 與 UAT 是 1024，由 migration 建立的資料庫（本機、feature 測試）是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
 - 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply()`（`llm.flow.ts`）超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback：依文章回答的路徑改送文章原文（HC-KNOWLEDGE-04），追問路徑回「已為您轉接」並真的轉接（`handoffReason`「AI 月額度已用完，無法自動回覆」）。
 - LLM 呼叫是「交易 1 → 交易外呼叫 LLM → 交易 2」（`llm.flow.ts`，change `migrate-ai-llm-tenant-ctx`）：交易 1 的 `readLlmInputs()` 讀 Chat 設定、金鑰、遮罩政策與月額度上限；交易外以 Redis 計數器檢查月額度、`llm-client.ts` 呼叫 provider；交易 2 的 `writeAiUsage()` 寫用量，寫完才回傳。不要在交易內呼叫 `llm-client.ts` 或 `generateReply()`。一次請求要呼叫多次 LLM 時（建議回覆），呼叫一次 `prepareLlmCall()`、每次 `runLlmCall()`。
+- Agent（`agent/agent.flow.ts` 的 `runAgentReplyFlow`，change `migrate-ai-agent-tenant-ctx`）：資料庫的讀寫各自開短交易，LLM、工具與去識別化服務在交易外呼叫；每次工具呼叫後先 commit 工具紀錄，再進行下一次呼叫。automation worker、`POST /ai/agent/run`、A2A（`handleA2ATask`）都呼叫它。不要把 Agent 包進 `withTenant()` 或 `inTenant()`：交易 5 秒逾時，Agent 可以跑 120 秒（搬遷前 A2A 就是這樣失敗）。送到渠道的 `deliverToChannel()` 屬於還沒搬的 conversation，仍用 `prismaAdmin`。
 - 讀 Chat 設定（`getChatSettings(ctx)`）不建立設定列，沒有設定列時回 `DEFAULT_CHAT_SETTINGS`；`DEFAULT_CHAT_SETTINGS` 要與 schema 的欄位預設值相同（`chat-settings-defaults.test.ts`）。因此新租戶的閒置自動關閉要等設定列建立後才開始，見 AUDIT CONV-01。
 - 個資遮罩啟用時，所有模型輸入與 `embedText()` 都先經 2md 去識別化；失敗就停止，不可用原文當 fallback。
 - 進站訊息在 2md 無法使用時存原文、標 `metadata.privacy.mode: 'inbound_unmasked'`（#466）。新增任何讀訊息內容送模型的地方，都要經 `readModelMessageContent()`／`toAiHistory()` 或先檢查 `isUnmaskedInbound()`，不可讀 `content` 原文。

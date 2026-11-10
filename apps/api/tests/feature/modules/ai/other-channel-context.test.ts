@@ -73,7 +73,7 @@ scenario('歸戶後在另一個渠道發問', async (f) => {
   await f.say(line, '冷氣漏水怎麼處理', 2 * DAY + 60_000);
   await f.say(line, '請先關閉電源', 2 * DAY, { direction: 'OUTBOUND' });
   await f.say(fb, '維修進度如何', 0);
-  const ctx = await loadOtherChannelContext(f.tx, T, fb, NOW);
+  const ctx = await loadOtherChannelContext({ tx: f.tx, tenantId: T }, fb, NOW);
   assert.ok(ctx.includes('[LINE 2 天前] 顧客：冷氣漏水怎麼處理'), ctx);
   assert.ok(ctx.includes('[LINE 2 天前] 客服：請先關閉電源'), ctx);
   assert.ok(!ctx.includes('維修進度如何'), '目前對話的訊息不重複出現');
@@ -84,14 +84,14 @@ scenario('超過 30 天的訊息', async (f) => {
   const line = await f.conv('LINE');
   const fb = await f.conv('FB');
   await f.say(line, '很久以前的問題', 31 * DAY);
-  assert.equal(await loadOtherChannelContext(f.tx, T, fb, NOW), '');
+  assert.equal(await loadOtherChannelContext({ tx: f.tx, tenantId: T }, fb, NOW), '');
 });
 
 scenario('其他渠道訊息超過上限', async (f) => {
   const line = await f.conv('LINE');
   const fb = await f.conv('FB');
   for (let i = 1; i <= 25; i++) await f.say(line, `第${i}則`, (26 - i) * 60_000);
-  const ctx = await loadOtherChannelContext(f.tx, T, fb, NOW);
+  const ctx = await loadOtherChannelContext({ tx: f.tx, tenantId: T }, fb, NOW);
   const lines = ctx.split('\n').filter((l) => l.startsWith('['));
   assert.equal(lines.length, 10);
   assert.ok(lines[0].endsWith('第16則') && lines[9].endsWith('第25則'), lines.join('\n'));
@@ -100,7 +100,7 @@ scenario('其他渠道訊息超過上限', async (f) => {
 scenario('目前對話不重複', async (f) => {
   const line = await f.conv('LINE');
   await f.say(line, '只有這段對話', 60_000);
-  assert.equal(await loadOtherChannelContext(f.tx, T, line, NOW), '');
+  assert.equal(await loadOtherChannelContext({ tx: f.tx, tenantId: T }, line, NOW), '');
 });
 
 scenario('其他聯絡人的對話不讀取', async (f) => {
@@ -108,7 +108,7 @@ scenario('其他聯絡人的對話不讀取', async (f) => {
   const fb = await f.conv('FB');
   const othersLine = await f.conv('LINE', other.id);
   await f.say(othersLine, '別人的問題', 60_000);
-  assert.equal(await loadOtherChannelContext(f.tx, T, fb, NOW), '');
+  assert.equal(await loadOtherChannelContext({ tx: f.tx, tenantId: T }, fb, NOW), '');
 });
 
 scenario('綁定訊息不給 AI', async (f) => {
@@ -120,7 +120,7 @@ scenario('綁定訊息不給 AI', async (f) => {
     metadata: { source: 'identity_binding' },
   });
   await f.say(line, '朋友傳給我 https://crm.example.com/bind/email/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ 和 BIND-7K2M9QH4TX', 60_000);
-  const ctx = await loadOtherChannelContext(f.tx, T, fb, NOW);
+  const ctx = await loadOtherChannelContext({ tx: f.tx, tenantId: T }, fb, NOW);
   assert.ok(!ctx.includes('請選擇要綁定') && !ctx.includes('請點選'), '系統發的綁定與登記訊息不提供');
   assert.ok(ctx.includes('朋友傳給我'), ctx);
   assert.ok(!ctx.includes('/bind/email/') && !ctx.includes('BIND-7K2M9QH4TX'), '代碼與登記連結遮蔽');
@@ -130,7 +130,7 @@ scenario('提示包含個資規則', async (f) => {
   const line = await f.conv('LINE');
   const fb = await f.conv('FB');
   await f.say(line, '我的電話是 0912345678', 60_000);
-  const ctx = await loadOtherChannelContext(f.tx, T, fb, NOW);
+  const ctx = await loadOtherChannelContext({ tx: f.tx, tenantId: T }, fb, NOW);
   assert.ok(ctx.includes('不主動') && ctx.includes('電話') && ctx.includes('地址') && ctx.includes('訂單'), ctx);
 });
 
@@ -141,8 +141,8 @@ scenario('客服觸發時只讀客服看得到的渠道', async (f) => {
   await f.say(fb, '總部 FB 的問題', 2 * 60_000);
   await f.say(web, '網站上的問題', 60_000);
   const visible = new Set([await f.channelOf(line), await f.channelOf(web)]);
-  const ctx = await loadOtherChannelContext(f.tx, T, line, NOW, visible);
+  const ctx = await loadOtherChannelContext({ tx: f.tx, tenantId: T }, line, NOW, visible);
   assert.ok(ctx.includes('網站上的問題'), ctx);
   assert.ok(!ctx.includes('總部 FB'), '看不到的渠道不提供給 AI');
-  assert.equal(await loadOtherChannelContext(f.tx, T, line, NOW, new Set([await f.channelOf(line)])), '', '只看得到目前渠道時沒有其他訊息');
+  assert.equal(await loadOtherChannelContext({ tx: f.tx, tenantId: T }, line, NOW, new Set([await f.channelOf(line)])), '', '只看得到目前渠道時沒有其他訊息');
 });

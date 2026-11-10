@@ -20,16 +20,25 @@ vi.mock('bullmq', async (importOriginal) => ({
     async add() {}
   },
 }));
-vi.mock('#src/modules/ai/agent/agent.service.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('#src/modules/ai/agent/agent.service.js')>();
+vi.mock('#src/modules/ai/agent/agent.service.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  isAgentEnabled: () => true,
+}));
+vi.mock('#src/modules/ai/agent/agent.flow.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#src/modules/ai/agent/agent.flow.js')>();
   return {
     ...actual,
-    isAgentEnabled: () => true,
     // LLM 換成固定的回覆，寫入與送出走真的 persistAndDeliverAgentReply()
-    runAgentReply: async (prisma: unknown, _llm: unknown, input: { tenantId: string; conversationId: string; io: never; replyGuard: never }) => {
+    runAgentReplyFlow: async (
+      deps: { io: never; replyGuard: never; deliverDb: never },
+      input: { tenantId: string; conversationId: string },
+    ) => {
       calls.agent += 1;
       if (calls.agentMode === 'throw') throw new Error('LLM down');
-      await actual.persistAndDeliverAgentReply(prisma as never, input.tenantId, input.conversationId, 'agent 回覆', 'run-1', input.io, {}, false, input.replyGuard);
+      await actual.persistAndDeliverAgentReply(
+        { io: deps.io, replyGuard: deps.replyGuard, deliverDb: deps.deliverDb },
+        { tenantId: input.tenantId, conversationId: input.conversationId, text: 'agent 回覆', runId: 'run-1', privacy: { enabled: false }, delivery: {}, bindingCodeBlocked: false },
+      );
       return { handled: true, runId: 'run-1' };
     },
   };
@@ -70,7 +79,7 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({
 }));
 
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
-const { persistAndDeliverAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
+const { persistAndDeliverAgentReply } = await import('#src/modules/ai/agent/agent.flow.js');
 const { createBotReplyGuard } = await import('#src/modules/automation/bot-reply-guard.js');
 const { createHarness, messageReceived, MESSAGE, TENANT, CONVERSATION } = await import('./automation-harness.js');
 
@@ -102,8 +111,10 @@ test('同一則訊息處理兩次：客人只收到一則回覆，對話只有�
 test('同一則訊息處理兩次，兩次都已呼叫 LLM：只有一次寫入並送出回覆', async () => {
   const h = createHarness();
   const reply = () =>
-    persistAndDeliverAgentReply(h.adminPrisma as never, TENANT, CONVERSATION, 'agent 回覆', 'run-1', h.io as never, {}, false,
-      createBotReplyGuard(h.tenantPrisma as never, h.adminPrisma as never, TENANT, MESSAGE));
+    persistAndDeliverAgentReply(
+      { io: h.io as never, replyGuard: createBotReplyGuard(h.tenantPrisma as never, h.adminPrisma as never, TENANT, MESSAGE), deliverDb: h.adminPrisma as never },
+      { tenantId: TENANT, conversationId: CONVERSATION, text: 'agent 回覆', runId: 'run-1', privacy: { enabled: false }, delivery: {}, bindingCodeBlocked: false },
+    );
   await Promise.all([reply(), reply()]);
 
   assert.equal(calls.delivered.length, 1);

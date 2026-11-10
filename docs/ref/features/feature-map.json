@@ -729,6 +729,7 @@
         "apps/api/tests/feature/modules/settings/embedding-settings.test.ts",
         "apps/api/tests/feature/modules/settings/chat-settings.test.ts",
         "apps/api/tests/feature/modules/ai/ai-routes.test.ts",
+        "apps/api/tests/feature/modules/ai/agent-flow.test.ts",
         "apps/api/tests/unit/modules/settings/chat-settings-defaults.test.ts",
         "apps/web/tests/unit/app/knowledge-feedback-page.test.tsx",
         "apps/web/tests/unit/components/knowledge/**"
@@ -2926,7 +2927,7 @@
       "dependsOn": [
         {
           "domain": "knowledge",
-          "why": "用量的寫入端 recordAiUsage()、月額度檢查的呼叫點 generateReply() 與 Agent 回覆、金鑰來源 resolveGeminiKey()（BYOK）都在 ai 模組"
+          "why": "用量的寫入端 recordLlmUsage()（llm.flow.ts）、月額度檢查的呼叫點 prepareLlmCall() 與 Agent 回覆、金鑰來源 resolveGeminiKey()（BYOK）都在 ai 模組"
         },
         {
           "domain": "platform-plans",

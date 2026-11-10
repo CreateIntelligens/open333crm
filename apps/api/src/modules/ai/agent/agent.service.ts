@@ -1,22 +1,14 @@
-import type { TenantDb } from '../../../lib/tenant-db.js';
+/**
+ * Agent 的查詢（change migrate-ai-agent-tenant-ctx，design D2）。
+ *
+ * 每個函式收 TenantCtx，只讀寫資料庫。呼叫 LLM、工具與去識別化服務的流程在 agent.flow.ts，
+ * 每一步各自開一個短交易，再呼叫這裡的函式。
+ */
 import type { Prisma } from '@open333crm/database';
-import type { Server } from 'socket.io';
+import type { TenantCtx } from '../../../lib/tenant-ctx.js';
 import { getConfig } from '../../../config/env.js';
-import { getChatProvider } from '../providers/index.js';
-import { deidentifyTenantData, deidentifyTenantText, getPrivacyAwareChatProvider, prepareStoredMessageContent } from '../deidentification.service.js';
 import type { HistoryMessage } from '../providers/types.js';
-import { prepareLlmCall, recordLlmUsage, type LlmDeps } from '../llm.flow.js';
-import { AppError } from '../../../shared/utils/response.js';
-import { readAiPrivacyPolicy } from '../../platform/ai-privacy.service.js';
-import { addRetentionExpiry } from './retention.js';
-import { executeAgentTool, getAgentToolDefinitions } from './tool-registry.js';
-import { runAgent, type AgentRunResult, type AgentRunStore } from './runner.js';
-import { deliverToChannel } from '../../conversation/conversation.service.js';
-import { loadOtherChannelContext, withOtherChannelContext } from '../other-channel-context.js';
-import type { AccessibleChannels } from '../../../services/channel-visibility.js';
-import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
-import type { BotReplyGuard } from '../../automation/bot-reply-guard.js';
-import { emitToChannel } from '../../../events/socket-push.js';
+import { AI_HISTORY_FETCH_FACTOR, toAiHistory } from '../../identity-binding/ai-guard.js';
 
 export const AGENT_SYSTEM_PROMPT =
   '你是 Open333CRM 的專業客服與研究助手，使用繁體中文回答。' +
@@ -26,242 +18,72 @@ export const AGENT_SYSTEM_PROMPT =
 
 const AGENT_HISTORY_LIMIT = 10;
 
-export interface AgentReplyInput {
-  tenantId: string;
-  userMessage: string;
-  conversationId?: string;
-  messageId?: string;
-  initiatedById?: string;
-  canPublishWiki?: boolean;
-  replyToken?: string;
-  receivedAt?: string;
-  deliver?: boolean;
-  io?: Server;
-  /** deliver 時必填：以 bot_reply 認領這則入站訊息，每則入站訊息最多一則機器人回覆 */
-  replyGuard?: BotReplyGuard;
-  /** 客服在後台觸發時傳入客服的可見渠道；讀其他渠道的訊息時依此過濾。客人觸發時不傳（不限制） */
-  accessibleChannels?: AccessibleChannels;
-}
-
-/**
- * llm：設定、金鑰、月額度與用量紀錄經由 llm.flow（change migrate-ai-llm-tenant-ctx，design D6）。
- * Agent 的其他資料存取仍用 prisma，留到 6b。
- */
-export async function runAgentReply(prisma: TenantDb, llm: LlmDeps, input: AgentReplyInput): Promise<AgentRunResult & { handled: boolean; runId: string }> {
-  const config = getConfig();
-  if (input.conversationId) {
-    const eligible = await prisma.conversation.findFirst({
-      where: { id: input.conversationId, tenantId: input.tenantId, status: 'BOT_HANDLED' },
-      select: { id: true },
-    });
-    if (!eligible) throw new Error('Conversation is not eligible for Agent reply');
-  }
-  // 月額度已滿時丟出 403 PLAN_LIMIT_EXCEEDED
-  const prepared = await prepareLlmCall(llm, input.tenantId);
-  const { settings, privacy } = prepared;
-  const provider = getChatProvider(settings.provider);
-  const key = { key: prepared.apiKey, source: prepared.keySource };
-  const protectedProvider = getPrivacyAwareChatProvider(privacy, provider);
-  const storedUserMessage = await deidentifyTenantText(privacy, input.userMessage);
-  const now = new Date();
-  const run = await prisma.agentRun.create({
-    data: {
-      tenantId: input.tenantId,
-      conversationId: input.conversationId,
-      initiatedById: input.initiatedById,
-      provider: provider.id,
-      model: settings.model,
-      userMessage: storedUserMessage,
-      expiresAt: addRetentionExpiry(now),
-    },
+/** 對話不是 BOT_HANDLED 時丟錯：客服接手之後，Agent 不再回覆 */
+export async function assertAgentEligible(ctx: TenantCtx, conversationId: string): Promise<void> {
+  const eligible = await ctx.tx.conversation.findFirst({
+    where: { id: conversationId, tenantId: ctx.tenantId, status: 'BOT_HANDLED' },
+    select: { id: true },
   });
-  const expiresAt = run.expiresAt;
-  const store: AgentRunStore = {
-    async recordToolCall(record) {
-      const safeTrace = await deidentifyTenantData(privacy, {
-        arguments: record.call.arguments,
-        result: record.result,
-      }) as { arguments: Record<string, unknown>; result: string };
-      await prisma.agentToolCall.create({
-        data: {
-          tenantId: input.tenantId,
-          runId: run.id,
-          turn: record.turn,
-          toolName: record.call.name,
-          arguments: JSON.parse(JSON.stringify(safeTrace.arguments)),
-          result: safeTrace.result,
-          status: record.status === 'success' ? 'SUCCESS' : 'FAILED',
-          durationMs: record.durationMs,
-          expiresAt,
-        },
-      });
-    },
-    async recordUsage(usage) {
-      // 寫入失敗只記 log，不中斷 Agent（ai-usage-recording「AiUsage 寫入失敗不影響回覆」）
-      await recordLlmUsage(llm, prepared, {
-        provider: provider.id,
-        model: settings.model,
-        usage,
-        success: true,
-        meta: { feature: 'agent', conversationId: input.conversationId },
-      });
-    },
-    async finishRun(result) {
-      const finalText = result.finalText === undefined
-        ? undefined
-        : await deidentifyTenantText(privacy, result.finalText);
-      await prisma.agentRun.updateMany({
-        where: { id: run.id, tenantId: input.tenantId },
-        data: {
-          status: result.status === 'completed' ? 'COMPLETED' : 'FAILED',
-          stopReason: result.stopReason,
-          turnCount: result.turns,
-          toolCallCount: result.toolCalls,
-          finalText,
-          completedAt: new Date(),
-        },
-      });
-    },
-  };
-
-  let result: AgentRunResult;
-  try {
-    const history = input.conversationId
-      ? await loadAgentHistory(prisma, input.tenantId, input.conversationId, input.messageId)
-      : [];
-    result = await runAgent({
-      provider: protectedProvider,
-      systemPrompt: withOtherChannelContext(
-        settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
-        // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
-        input.conversationId
-          ? await loadOtherChannelContext(prisma, input.tenantId, input.conversationId, undefined, input.accessibleChannels)
-          : '',
-      ),
-      userMessage: input.userMessage,
-      history: history.map((message) => ({ ...message })),
-      tools: getAgentToolDefinitions({ canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH }),
-      executeTool: (name, args) => executeAgentTool(name, args, {
-        tenantId: input.tenantId,
-        runId: run.id,
-        canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH,
-        wikiApiToken: config.WIKI_API_TOKEN,
-        prisma,
-        onWikiPublished: async ({ path, shareUrl }) => {
-          await prisma.agentReportDraft.upsert({
-            where: { runId: run.id },
-            create: { tenantId: input.tenantId, runId: run.id, path, markdown: null, status: 'PUBLISHED', shareUrl, expiresAt },
-            update: { path, markdown: null, status: 'PUBLISHED', shareUrl },
-          });
-        },
-      }),
-      store,
-      model: settings.model,
-      temperature: settings.temperature,
-      maxTokens: settings.maxTokens,
-      maxTurns: config.AGENT_MAX_TURNS,
-      maxToolCalls: config.AGENT_MAX_TOOL_CALLS,
-      timeoutMs: config.AGENT_TIMEOUT_MS,
-      maxTotalTokens: config.AGENT_MAX_TOTAL_TOKENS,
-      baseUrl: settings.baseUrl,
-      apiKey: key.key,
-    });
-  } catch (error) {
-    const privacyFailure = error instanceof AppError &&
-      (error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE' || error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
-    try {
-      await prisma.agentRun.updateMany({
-        where: { id: run.id, tenantId: input.tenantId },
-        data: {
-          status: 'FAILED',
-          stopReason: privacyFailure ? 'privacy_processing_failed' : 'agent_execution_failed',
-          completedAt: new Date(),
-        },
-      });
-    } catch {
-      // Preserve the original bounded error and never persist unprocessed trace content.
-    }
-    throw error;
-  }
-  // 綁定代碼只能由綁定流程產生：AI 回覆含代碼就整則換成固定說明
-  const guarded = result.status === 'completed'
-    ? await guardAiReplyForTenant(prisma, input.tenantId, result.text, { conversationId: input.conversationId, source: 'agentic_llm' })
-    : { text: result.text, blocked: false };
-  const output = { ...result, text: guarded.text, handled: result.status === 'completed', runId: run.id };
-  if (output.handled && input.deliver && input.conversationId && input.io) {
-    if (!input.replyGuard) throw new Error('runAgentReply：deliver 時要傳 replyGuard');
-    await persistAndDeliverAgentReply(prisma, input.tenantId, input.conversationId, output.text, output.runId, input.io, {
-      replyToken: input.replyToken,
-      receivedAt: input.receivedAt,
-    }, guarded.blocked, input.replyGuard);
-  }
-  return output;
+  if (!eligible) throw new Error('Conversation is not eligible for Agent reply');
 }
 
-/**
- * 寫入 agent 的回覆並送出。遮罩會呼叫去識別化服務，所以在交易之前；
- * 寫入在 replyGuard 的交易內，與 bot_reply 認領一起 commit，commit 之後才送出。
- */
-export async function persistAndDeliverAgentReply(
-  prisma: TenantDb,
-  tenantId: string,
-  conversationId: string,
-  text: string,
-  runId: string,
-  io: Server,
-  delivery: { replyToken?: string; receivedAt?: string },
-  bindingCodeBlocked: boolean,
-  replyGuard: BotReplyGuard,
+export function createAgentRun(
+  ctx: TenantCtx,
+  data: { conversationId?: string; initiatedById?: string; provider: string; model: string; userMessage: string; expiresAt: Date },
+) {
+  return ctx.tx.agentRun.create({ data: { tenantId: ctx.tenantId, ...data } });
+}
+
+export async function recordAgentToolCall(
+  ctx: TenantCtx,
+  data: {
+    runId: string;
+    turn: number;
+    toolName: string;
+    arguments: Prisma.InputJsonValue;
+    result: string;
+    status: 'SUCCESS' | 'FAILED';
+    durationMs: number;
+    expiresAt: Date;
+  },
 ): Promise<void> {
-  const now = new Date();
-  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text }, 'system');
-  type PersistedAgentMessage = { id: string; metadata: unknown; conversation: { channelId: string } };
-  const message = await replyGuard.persist(async (db: Prisma.TransactionClient): Promise<PersistedAgentMessage | null> => {
-    const claimed = await db.conversation.updateMany({
-      where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-      data: { botRepliesCount: { increment: 1 }, lastMessageAt: now },
-    });
-    if (claimed.count !== 1) return null;
-
-    return db.message.create({
-      data: {
-        conversationId,
-        direction: 'OUTBOUND',
-        senderType: 'BOT',
-        contentType: 'text',
-        content: storedContent.content,
-        metadata: { source: 'agentic_llm', agentRunId: runId, ...storedContent.metadata, ...(bindingCodeBlocked ? { bindingCodeBlocked: true } : {}) },
-        createdAt: now,
-      },
-      // channelId：推播只送給看得到這個渠道的成員（issue #427）
-      select: { id: true, metadata: true, conversation: { select: { channelId: true } } },
-    }) as unknown as PersistedAgentMessage;
-  });
-  if (!message) return;
-
-  const payload = {
-    conversationId,
-    message: {
-      id: message.id,
-      conversationId,
-      direction: 'OUTBOUND',
-      senderType: 'BOT',
-      contentType: 'text',
-      content: storedContent.content,
-      metadata: message.metadata,
-      createdAt: now.toISOString(),
-      sender: null,
-    },
-  };
-  emitToChannel(io, tenantId, { channelId: message.conversation.channelId, conversationId }, 'message.new', payload);
-  await deliverToChannel(prisma, conversationId, { contentType: 'text', content: storedContent.content, delivery });
+  await ctx.tx.agentToolCall.create({ data: { tenantId: ctx.tenantId, ...data } });
 }
 
-export async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversationId: string, excludeMessageId?: string): Promise<HistoryMessage[]> {
-  const rows = await prisma.message.findMany({
+/** 發布 Wiki 之後記下路徑與分享網址；草稿內容不保存 */
+export async function upsertAgentReportDraft(
+  ctx: TenantCtx,
+  runId: string,
+  data: { path: string; shareUrl: string; expiresAt: Date },
+): Promise<void> {
+  await ctx.tx.agentReportDraft.upsert({
+    where: { runId },
+    create: { tenantId: ctx.tenantId, runId, path: data.path, markdown: null, status: 'PUBLISHED', shareUrl: data.shareUrl, expiresAt: data.expiresAt },
+    update: { path: data.path, markdown: null, status: 'PUBLISHED', shareUrl: data.shareUrl },
+  });
+}
+
+export async function finishAgentRun(
+  ctx: TenantCtx,
+  runId: string,
+  data: { status: 'COMPLETED' | 'FAILED'; stopReason?: string; turnCount: number; toolCallCount: number; finalText?: string },
+): Promise<void> {
+  await ctx.tx.agentRun.updateMany({ where: { id: runId, tenantId: ctx.tenantId }, data: { ...data, completedAt: new Date() } });
+}
+
+/** 執行中途丟錯時只寫固定的停止原因，不保存未處理的文字 */
+export async function markAgentRunFailed(ctx: TenantCtx, runId: string, stopReason: string): Promise<void> {
+  await ctx.tx.agentRun.updateMany({
+    where: { id: runId, tenantId: ctx.tenantId },
+    data: { status: 'FAILED', stopReason, completedAt: new Date() },
+  });
+}
+
+export async function loadAgentHistory(ctx: TenantCtx, conversationId: string, excludeMessageId?: string): Promise<HistoryMessage[]> {
+  const rows = await ctx.tx.message.findMany({
     where: {
       conversationId,
-      conversation: { tenantId },
+      conversation: { tenantId: ctx.tenantId },
       ...(excludeMessageId ? { id: { not: excludeMessageId } } : {}),
     },
     orderBy: { createdAt: 'desc' },
@@ -271,6 +93,22 @@ export async function loadAgentHistory(prisma: TenantDb, tenantId: string, conve
   });
   // 系統發的綁定訊息不給 AI 看、代碼遮掉：AI 曾照抄綁定訊息編出不存在的代碼
   return toAiHistory(rows.reverse()).slice(-AGENT_HISTORY_LIMIT);
+}
+
+/** `GET /ai/agent/runs/:id`：執行紀錄與工具紀錄，過了保留期限的已被清除內容 */
+export function readAgentRun(ctx: TenantCtx, runId: string) {
+  return ctx.tx.agentRun.findFirst({
+    where: { id: runId, tenantId: ctx.tenantId },
+    select: {
+      id: true, conversationId: true, status: true, provider: true, model: true, finalText: true,
+      stopReason: true, turnCount: true, toolCallCount: true, expiresAt: true,
+      completedAt: true, createdAt: true,
+      toolCalls: {
+        orderBy: { turn: 'asc' },
+        select: { id: true, turn: true, toolName: true, arguments: true, result: true, status: true, durationMs: true, createdAt: true },
+      },
+    },
+  });
 }
 
 export function isAgentEnabled(): boolean {

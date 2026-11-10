@@ -19,7 +19,7 @@ vi.mock('bullmq', async (importOriginal) => ({
   },
 }));
 vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({ attemptKbAutoReply: async () => false }));
-vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false, runAgentReply: async () => ({ handled: false }) }));
+vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false }));
 vi.mock('#src/modules/ai/ai.flow.js', () => ({
   analyzeSentimentFlow: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
   autoClassifyNewCaseFlow: async () => {},

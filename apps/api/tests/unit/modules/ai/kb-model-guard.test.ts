@@ -57,7 +57,7 @@ vi.mock('#src/modules/identity-binding/ai-guard.js', async (orig) => ({
   ...(await orig<object>()),
   guardAiReplyForTenant: async (_p: unknown, _t: string, text: string) => ({ text, blocked: false }),
 }));
-vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false, runAgentReply: async () => ({ handled: false }) }));
+vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false }));
 vi.mock('#src/modules/ai/ai.flow.js', () => ({
   analyzeSentimentFlow: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
   autoClassifyNewCaseFlow: async () => {},

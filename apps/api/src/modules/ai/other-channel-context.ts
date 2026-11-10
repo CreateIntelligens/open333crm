@@ -4,7 +4,7 @@
  * 以獨立的系統指示區塊提供，不和目前對話的 user／assistant turn 交錯：交錯會讓模型以為那些回覆
  * 是在這個渠道說的。一律以「聯絡人目前擁有的對話」查詢，合併解除、對話搬回原聯絡人後自然讀不到。
  */
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { AI_HISTORY_FETCH_FACTOR, toAiHistory } from '../identity-binding/ai-guard.js';
 import { channelLabel } from '../identity-binding/binding-links.js';
@@ -30,17 +30,17 @@ function ago(ms: number): string {
  *   不可透過 AI 讀到客服看不到的渠道（CM-173）。回覆對象是客人本人時（KB 自動回覆、自動化觸發）不限制
  */
 export async function loadOtherChannelContext(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   conversationId: string,
   now: number = Date.now(),
   accessibleChannels: AccessibleChannels = ALL_CHANNELS,
 ): Promise<string> {
   const channelId = channelIdWhereFilter(accessibleChannels);
-  const current = await db.conversation.findFirst({ where: { id: conversationId, tenantId }, select: { contactId: true } });
+  const { tenantId } = ctx;
+  const current = await ctx.tx.conversation.findFirst({ where: { id: conversationId, tenantId }, select: { contactId: true } });
   if (!current) return '';
 
-  const rows = await db.message.findMany({
+  const rows = await ctx.tx.message.findMany({
     where: {
       conversation: { tenantId, contactId: current.contactId, id: { not: conversationId }, ...(channelId ? { channelId } : {}) },
       createdAt: { gte: new Date(now - OTHER_CHANNEL_WINDOW_MS) },

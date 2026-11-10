@@ -81,7 +81,7 @@ t('agent 路徑：關鍵字命中時略過 AI 回覆', () => {
   );
   assert.ok(
     /if \(!keywordWillHandle && isAgentEnabled\(\)/.test(code),
-    '讓步判斷沒有實際套用在 runAgentReply 的條件上',
+    '讓步判斷沒有實際套用在 runAgentReplyFlow 的條件上',
   );
 });
 
@@ -97,14 +97,14 @@ t('KB 路徑：原本就有的讓步判斷不可被移除', () => {
   );
 });
 
-t('讓步判斷要在 runAgentReply 之前（擋在呼叫前才有意義）', () => {
+t('讓步判斷要在 runAgentReplyFlow 之前（擋在呼叫前才有意義）', () => {
   const code = src('modules/automation/automation.worker.ts');
   const guardAt = code.indexOf('const keywordWillHandle');
-  const callAt = code.indexOf('await runAgentReply(');
+  const callAt = code.indexOf('await runAgentReplyFlow(');
   assert.ok(guardAt > 0 && callAt > 0, '找不到判斷或呼叫');
   assert.ok(
     guardAt < callAt,
-    '讓步判斷寫在 runAgentReply 之後——AI 已經回過了，擋不住',
+    '讓步判斷寫在 runAgentReplyFlow 之後——AI 已經回過了，擋不住',
   );
 });
 

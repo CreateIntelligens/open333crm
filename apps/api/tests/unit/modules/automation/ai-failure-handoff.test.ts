@@ -2,7 +2,7 @@
  * AI 與知識庫回覆都因錯誤失敗時轉接真人（issue #445，change handoff-on-ai-reply-failure-445：
  * bot-handoff-config「AI 與知識庫回覆都因錯誤失敗時轉接真人」「正常不回覆時不轉接」「AI 失敗的轉接每則訊息最多一次」）。
  *
- * 經過 workers 的 message.received 流程（setupAutomationWorker），agent 回覆（runAgentReply）、
+ * 經過 workers 的 message.received 流程（setupAutomationWorker），agent 回覆（runAgentReplyFlow）、
  * 知識庫自動回覆（attemptKbAutoReply）與去識別化服務都是真的。只換掉最底層的邊界：
  * HTTP（fetch：2md 去識別化與 embedding 服務）、模型供應商、LLM、向量檢索、Redis 額度與送出渠道。
  * 資料庫是 automation-harness 的假交易（丟錯時還原）。
