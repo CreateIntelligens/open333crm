@@ -8,7 +8,6 @@ import {
 } from './web-client.js';
 import { getLiveWeather } from './weather.js';
 import { publishWikiReport } from './wiki.js';
-import type { TenantDb } from '../../../lib/tenant-db.js';
 
 export interface AgentToolContext {
   tenantId: string;
@@ -16,7 +15,6 @@ export interface AgentToolContext {
   canPublishWiki: boolean;
   wikiApiToken?: string;
   fetchImpl?: typeof fetch;
-  prisma?: TenantDb;
   onWikiPublished?: (input: { path: string; markdown: string; shareUrl: string }) => Promise<void>;
 }
 

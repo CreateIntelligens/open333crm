@@ -361,9 +361,9 @@ scenario('解除後回覆', async (f) => {
     data: { conversationId: a.conversationId, direction: 'INBOUND', senderType: 'CONTACT', contentType: 'text', content: { text: 'A 在 LINE 的問題' } },
   });
   await submit(f, await linkFor(f, a), 'amy@example.com');
-  assert.ok((await loadOtherChannelContext(f.tx, T, b.conversationId)).includes('A 在 LINE 的問題'), '合併後讀得到');
+  assert.ok((await loadOtherChannelContext({ tx: f.tx, tenantId: T }, b.conversationId)).includes('A 在 LINE 的問題'), '合併後讀得到');
   assert.equal(await sendUnbind(f, a, b.contactId), 'unbound');
-  assert.ok(!(await loadOtherChannelContext(f.tx, T, b.conversationId)).includes('A 在 LINE 的問題'), '解除後讀不到');
+  assert.ok(!(await loadOtherChannelContext({ tx: f.tx, tenantId: T }, b.conversationId)).includes('A 在 LINE 的問題'), '解除後讀不到');
 });
 
 // ── 另一種識別不一致（change add-phone-identity-merge，design D6） ────────────

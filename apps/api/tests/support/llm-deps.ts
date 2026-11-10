@@ -41,3 +41,15 @@ export function mockLlmDeps(
     log,
   };
 }
+
+/**
+ * Agent flow 的假依賴（change migrate-ai-agent-tenant-ctx）：Agent 的交易與 LLM 的交易共用同一個 mock，
+ * 所以測試給的 model 方法兩邊都讀得到。
+ */
+export function mockAgentDeps(
+  tx: unknown,
+  opts: { redis?: LlmDeps['redis']; log?: FlowLog } = {},
+): { prisma: never; llm: LlmDeps; log: FlowLog } {
+  const llm = mockLlmDeps(tx, opts);
+  return { prisma: llm.prisma as never, llm, log: llm.log };
+}

@@ -10,8 +10,8 @@ Agent 執行時，系統 MUST NOT 在資料庫交易內呼叫 LLM、外部工具
 - **THEN** bridge 收到這個回答，執行紀錄的狀態是 `COMPLETED`
 
 #### Scenario: 執行到一半失敗時保留之前的工具紀錄
-- **WHEN** Agent 第 1 輪呼叫一個工具並成功，第 2 輪呼叫 LLM 失敗
-- **THEN** 執行紀錄的狀態是 `FAILED`，停止原因是 `provider_error`
+- **WHEN** Agent 第 1 輪呼叫工具並寫入工具紀錄，第 2 輪呼叫工具之後，寫入工具紀錄失敗
+- **THEN** 執行紀錄的狀態是 `FAILED`
 - **AND** 第 1 輪的工具紀錄仍然保存
 
 #### Scenario: 工具紀錄寫入失敗

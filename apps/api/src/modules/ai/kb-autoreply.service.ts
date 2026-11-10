@@ -218,7 +218,8 @@ export async function attemptKbAutoReply(
   // 5. Fetch conversation history (excluding the just-arrived message we're replying to)
   const history = await loadKbHistory(prisma, conversationId);
   // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
-  const otherChannelContext = await loadOtherChannelContext(prisma, tenantId, conversationId);
+  // kb-autoreply 還沒搬（#337 6b-2），以自己的連線組成 TenantCtx（change migrate-ai-agent-tenant-ctx，design D5）
+  const otherChannelContext = await loadOtherChannelContext({ tx: prisma as TenantCtx['tx'], tenantId }, conversationId);
 
   // 6. Generate embedding for inbound message
   // ai 還沒搬（#337），以自己的連線組成 TenantCtx，一次處理只讀一次向量化設定

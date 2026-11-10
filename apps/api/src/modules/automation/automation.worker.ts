@@ -40,7 +40,8 @@ import {
 } from '../ai/deidentification.service.js';
 import { analyzeSentimentFlow, autoClassifyNewCaseFlow } from '../ai/ai.flow.js';
 import type { LlmDeps } from '../ai/llm.flow.js';
-import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
+import { isAgentEnabled } from '../ai/agent/agent.service.js';
+import { runAgentReplyFlow } from '../ai/agent/agent.flow.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { ClaimTransactionError, createBotReplyGuard } from './bot-reply-guard.js';
 import { handOffAfterAiFailure, UNMASKED_INBOUND_HANDOFF } from './ai-failure-handoff.flow.js';
@@ -345,17 +346,20 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
             } else {
               if (!keywordWillHandle && isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
                 try {
-                  const agentResult = await runAgentReply(prisma, tenantDeps.llm, {
-                    tenantId: event.tenantId,
-                    conversationId,
-                    messageId,
-                    userMessage: text,
-                    replyToken,
-                    receivedAt,
-                    deliver: true,
-                    io,
-                    replyGuard,
-                  });
+                  // Agent 的讀寫用 app_tenant 連線；送到渠道的 deliverToChannel() 屬於還沒搬的 conversation，
+                  // 仍用 prismaAdmin（change migrate-ai-agent-tenant-ctx，design D4）
+                  const agentResult = await runAgentReplyFlow(
+                    { prisma: tenantDeps.tenantPrisma, llm: tenantDeps.llm, io, replyGuard, deliverDb: prisma },
+                    {
+                      tenantId: event.tenantId,
+                      conversationId,
+                      messageId,
+                      userMessage: text,
+                      replyToken,
+                      receivedAt,
+                      deliver: true,
+                    },
+                  );
                   agentHandled = agentResult.handled;
                 } catch (err) {
                   if (err instanceof ClaimTransactionError) throw err;

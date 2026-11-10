@@ -42,6 +42,11 @@ All notable changes to **open333CRM** will be documented in this file.
   - 用量告警 `usage.quota.threshold` 改寫進 outbox，至少送出一次，原本以 `eventBus.publish` 送出。告警的 Redis 旗標寫入之後，outbox 寫入失敗時，這個月不再發送這個門檻的告警。
   - 建議回覆（`POST /api/v1/ai/suggest-reply`）一次請求只讀一次 Chat 設定與月額度，原本每篇搜尋結果各讀一次。
   - AI Agent 的用量紀錄寫入失敗時只寫 log，不再讓 Agent 回覆失敗。A2A 路徑的用量累加與告警不再使用已經結束的交易（健檢 HC-PLATFORM-USAGE-06）。
+- **AI Agent 改成入口開交易，A2A 不再把 Agent 包在一個交易內**（#337 階段 4 第六批 6b-1，change `migrate-ai-agent-tenant-ctx`）— Agent 的資料庫讀寫各自在短交易內，LLM、工具與去識別化服務在交易外呼叫（新檔 `ai/agent/agent.flow.ts`）。automation worker、`POST /api/v1/ai/agent/run`、`GET /api/v1/ai/agent/runs/:id` 與 A2A bridge 改呼叫 flow，請求與回應不變。可觀察的差異如下：
+  - A2A 的任務原本在 `withTenant()` 的交易內執行整段 Agent，交易 5 秒逾時，Agent 可以跑 120 秒。執行超過 5 秒的任務原本失敗（`Transaction already closed`），現在可以完成。
+  - A2A 的任務執行到一半失敗時，原本整個交易 rollback，執行紀錄與工具紀錄全部消失。現在執行紀錄標成 `FAILED`，之前的工具紀錄保留。
+  - automation 觸發的 Agent 讀寫資料改用 `app_tenant` 連線，受 RLS 約束，原本用 `prismaAdmin`。送到渠道仍用 `prismaAdmin`，隨 `conversation` 搬遷。
+  - A2A 仍以最早建立的啟用租戶執行任務（AUDIT A2A-01），這次沒有改。
 
 ### Fixed
 

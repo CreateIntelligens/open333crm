@@ -21,7 +21,7 @@ vi.mock('#src/modules/ai/llm.flow.js', () => ({
   },
 }));
 vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({ attemptKbAutoReply: async () => false }));
-vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false, runAgentReply: async () => ({ handled: false }) }));
+vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false }));
 vi.mock('#src/modules/ai/ai.flow.js', async (orig) => ({
   ...(await orig<object>()),
   autoClassifyNewCaseFlow: async () => {},

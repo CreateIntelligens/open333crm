@@ -24,9 +24,9 @@ vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
     calls.kb.push(text);
   },
 }));
-vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
-  isAgentEnabled: () => true,
-  runAgentReply: async (_p: unknown, _llm: unknown, input: { userMessage: string }) => {
+vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => true }));
+vi.mock('#src/modules/ai/agent/agent.flow.js', () => ({
+  runAgentReplyFlow: async (_deps: unknown, input: { userMessage: string }) => {
     calls.agent.push(input.userMessage);
     return { handled: true };
   },

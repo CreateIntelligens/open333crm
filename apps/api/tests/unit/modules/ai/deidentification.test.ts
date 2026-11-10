@@ -25,10 +25,10 @@ vi.mock('#src/modules/ai/ai-key.service.js', () => ({ resolveGeminiKey: async ()
 vi.mock('#src/modules/ai/agent/tool-registry.js', () => ({ getAgentToolDefinitions: () => [], executeAgentTool: mocks.executeTool }));
 
 import { generateReply } from '#src/modules/ai/llm.flow.js';
-import { mockLlmDeps } from '#tests/support/llm-deps.js';
+import { mockAgentDeps, mockLlmDeps } from '#tests/support/llm-deps.js';
 import { readEmbeddingInputs } from '#src/modules/embedding/embedding.service.js';
 import { embedText } from '#src/modules/embedding/embedding-client.js';
-import { runAgentReply } from '#src/modules/ai/agent/agent.service.js';
+import { runAgentReplyFlow } from '#src/modules/ai/agent/agent.flow.js';
 import { loadEnvConfig } from '#src/config/env.js';
 
 loadEnvConfig();
@@ -40,7 +40,7 @@ async function generateEmbedding(prisma: never, tenantId: string, text: string) 
 }
 /** Agent 的資料存取與 LLM 的三段用同一個 mock */
 function withLlm(prisma: unknown) {
-  return [prisma as never, mockLlmDeps(prisma)] as const;
+  return [mockAgentDeps(prisma)] as const;
 }
 const PHONE = '0912345678';
 const EMAIL = 'qa@example.invalid';
@@ -100,7 +100,7 @@ test('Disabled AI call', async () => {
     assert.equal(mocks.generate.mock.calls.at(-1)![0].userMessage, PHONE);
     await generateEmbedding(prisma as never, TENANT, PHONE);
     assert.equal(embedRequests.at(-1)!.input, PHONE);
-    await runAgentReply(prisma as never, mockLlmDeps(prisma), { tenantId: TENANT, userMessage: PHONE });
+    await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: TENANT, userMessage: PHONE });
     assert.equal(mocks.turn.mock.calls.at(-1)![0].messages.at(-1)!.content, PHONE);
   }
   assert.equal(deidRequests.length, 0);
@@ -131,7 +131,7 @@ test('Agent tool result and arguments', async () => {
   const call = { id: 'call-1', name: 'search_web', arguments: { query: PHONE, nested: [EMAIL, { value: PHONE, count: 2, flag: true }], nullable: null } };
   mocks.turn.mockResolvedValueOnce({ text: `查詢 ${PHONE}`, toolCalls: [call] }).mockResolvedValueOnce({ text: '完成', toolCalls: [] });
   mocks.executeTool.mockResolvedValue({ contact: PHONE, text: EMAIL });
-  const result = await runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE });
+  const result = await runAgentReplyFlow(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE });
   assert.equal(result.status, 'completed');
   const second = mocks.turn.mock.calls[1]![0];
   assert.equal(second.messages[0].content, '[手機]');
@@ -144,7 +144,7 @@ test('Agent tool result and arguments', async () => {
 test('Agent execution record stores masked user input', async () => {
   const prisma = db();
   mocks.turn.mockResolvedValueOnce({ text: '已完成', toolCalls: [] });
-  await runAgentReply(prisma as never, mockLlmDeps(prisma), { tenantId: TENANT, userMessage: `聯絡方式 ${PHONE}` });
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: TENANT, userMessage: `聯絡方式 ${PHONE}` });
   const runCreate = records.find((entry) => JSON.stringify(entry).includes('userMessage'));
   assert.ok(runCreate);
   assert.equal(JSON.stringify(runCreate).includes(PHONE), false);
@@ -164,7 +164,7 @@ test('Agent trace masking failure marks the run failed without persisting raw tr
   });
 
   await assert.rejects(
-    runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: 'safe question' }),
+    runAgentReplyFlow(...withLlm(db()), { tenantId: TENANT, userMessage: 'safe question' }),
     (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE',
   );
 
@@ -232,7 +232,7 @@ test('Privacy service unavailable blocks Embedding and Agent dispatch', async ()
   await assert.rejects(generateEmbedding(db() as never, TENANT, PHONE), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
   assert.equal(embedRequests.length, 0);
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-  await assert.rejects(runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
+  await assert.rejects(runAgentReplyFlow(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
   assert.equal(mocks.turn.mock.calls.length, 0);
   assert.equal(records.length, 0, 'unmasked AgentRun input is not persisted');
   assert.equal(JSON.stringify(log.mock.calls).includes(PHONE), false);
@@ -241,7 +241,7 @@ test('Privacy service unavailable blocks Embedding and Agent dispatch', async ()
 test('Policy unavailable blocks Embedding and Agent dispatch', async () => {
   const prisma = db({ enabled: 'false' });
   await assert.rejects(generateEmbedding(prisma as never, TENANT, PHONE), (error: any) => error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
-  await assert.rejects(runAgentReply(prisma as never, mockLlmDeps(prisma), { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
+  await assert.rejects(runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
   assert.equal(fetchMock.mock.calls.length, 0);
   assert.equal(mocks.turn.mock.calls.length, 0);
 });
@@ -250,7 +250,7 @@ test('Mapping remains outside model input', async () => {
   const log = vi.spyOn(console, 'log');
   const error = vi.spyOn(console, 'error');
   await generateReply(mockLlmDeps(db()), TENANT, PHONE);
-  await runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE });
+  await runAgentReplyFlow(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE });
   for (const value of [mocks.generate.mock.calls, mocks.turn.mock.calls, records, log.mock.calls, error.mock.calls]) {
     assert.equal(JSON.stringify(value).includes(PHONE), false);
     assert.equal(JSON.stringify(value).includes('csvMapping'), false);

@@ -104,7 +104,7 @@
 
 **知識庫回覆因錯誤失敗時轉真人。** 產生訊息向量失敗（去識別化服務、embedding 服務故障），或讀設定、檢索、寫入前的遮罩丟出錯誤，而 AI agent 也沒有回覆時，`attemptKbAutoReply()` 回傳 `failed`，系統轉真人，原因寫「AI 暫時無法回覆（…）」（issue #445，見[收件匣的轉真人](./INBOX.md#轉真人)）。`attemptKbAutoReply()` 的結果分三種：`replied`（已回覆，含 LLM 失敗時的備援內容）、`skipped`（正常不回覆：停用、對話不是 `BOT_HANDLED`、關鍵字規則讓步、`botMode`、已有回覆）與 `failed`。
 
-**AI agent 優先。** 環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，機器人先交給 AI agent 回覆；AI agent 沒有處理時，才走上面的知識庫流程。AI agent 可以呼叫外部工具，執行紀錄存在 `AgentRun`，可以用 `GET /ai/agent/runs/:id` 查看；紀錄關聯的對話所在渠道看不到時回 404。
+**AI agent 優先。** 環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，機器人先交給 AI agent 回覆；AI agent 沒有處理時，才走上面的知識庫流程。AI agent 可以呼叫外部工具，執行紀錄存在 `AgentRun`，可以用 `GET /ai/agent/runs/:id` 查看；紀錄關聯的對話所在渠道看不到時回 404。Agent 的資料庫寫入各自在短交易內，LLM 與工具在交易外呼叫：每次工具呼叫之後，系統先寫入工具紀錄，再進行下一次呼叫。執行到一半失敗時，執行紀錄標成 `FAILED`，之前的工具紀錄保留（change `migrate-ai-agent-tenant-ctx`）。
 
 ## AI 設定
 
