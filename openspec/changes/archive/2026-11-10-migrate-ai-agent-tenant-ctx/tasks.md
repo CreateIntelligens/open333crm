@@ -51,7 +51,8 @@
   - 5 個領域的回歸清單中，與這次改動有關的只有 knowledge 的 3a「AI 失敗轉接」，`ai-failure-handoff.test.ts` 涵蓋，通過。其他項目是角色、權限與畫面的流程，這次沒有改到。要瀏覽器的手動步驟比照 6a，交給負責 UAT 手動測試的人。
 - [x] 7.6 `CHANGELOG.md` 的 `Changed` 寫明可觀察的差異：A2A 任務執行超過 5 秒可以完成；執行中途失敗時保留執行紀錄與之前的工具紀錄；automation 觸發的 Agent 改用 app_tenant 連線。
 - [x] 7.7 `node scripts/validate-openspec.mjs migrate-ai-agent-tenant-ctx` 與 `--specs` 通過。
-- [ ] 7.8 部署到 UAT 後重跑規劃檔 6.2 的腳本，`bench.mjs` 加上 `GET /ai/agent/runs/:id`（不存在的 id，回 404）。
+- [x] 7.8 部署到 UAT 後重跑規劃檔 6.2 的腳本，`bench.mjs` 加上 `GET /ai/agent/runs/:id`（不存在的 id，回 404）。
+  - 2026-11-10，main `cf5efca2`：`GET /ai/agent/runs/:id`（回 404）p50 4.8 ms、每請求 1.1 個交易。10 人併發 p50 134.6 ms、p95 182.9 ms，P2024 與 `Transaction already closed` 都是 0。
 
 ## 7.1 突變紀錄
 
