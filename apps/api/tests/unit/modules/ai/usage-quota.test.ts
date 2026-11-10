@@ -458,3 +458,17 @@ test('成功呼叫寫入完整記錄：回傳時已有一筆 AiUsage，success �
   assert.equal(db.usages[0]!.success, true);
   assert.equal(db.usages[0]!.totalTokens, 1500);
 });
+
+test('告警的 Redis 指令失敗時停止認領：同時跨越 80% 與 100%，只送出一個指令', async () => {
+  let sets = 0;
+  const failingSet = {
+    ...fakeRedis,
+    set: async () => {
+      sets += 1;
+      throw new Error('Command timed out');
+    },
+  };
+  const crossed = await claimCrossedThresholds(failingSet as never, TENANT, 1000, 400, 1100);
+  assert.deepEqual(crossed, []);
+  assert.equal(sets, 1, 'spec usage-quota-alerts：告警最多讓回覆多等一個 Redis 指令的逾時');
+});

@@ -175,7 +175,10 @@ export async function claimCrossedThresholds(
           crossed.push({ level, limitTokens: limit, usedTokens: after, monthKey: monthKey() });
         }
       } catch (err) {
-        logger.warn('[TokenQuota] alert flag set failed, skip:', err);
+        // 第一個指令失敗就停止：Redis 不回應時，告警最多讓回覆多等一個指令的逾時（spec usage-quota-alerts）。
+        // 已經認領到的門檻照樣回傳
+        logger.warn('[TokenQuota] alert flag set failed, skip remaining thresholds:', err);
+        break;
       }
     }
   }
