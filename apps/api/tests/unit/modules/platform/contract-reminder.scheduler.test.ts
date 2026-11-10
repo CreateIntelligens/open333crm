@@ -100,7 +100,7 @@ test('到達檔位時寄給所有啟用中的平台帳號', async () => {
     assert.ok(m.html.includes('測試租戶'), '信中有租戶名稱');
     assert.ok(m.html.includes('2026/11/17'), '信中有迄日');
     assert.ok(m.html.includes('<strong>7</strong> 天後到期'), '信中有剩餘天數');
-    assert.ok(m.html.includes('https://crm.example.test/admin/tenants/t1'), '信中有租戶詳細頁連結');
+    assert.match(m.html, /href="https:\/\/crm\.example\.test\/admin\/tenants\/t1"/, '信中的按鈕連到租戶詳細頁');
   }
   assert.deepEqual(rows[0]!.contractRemindersSent, [30, 7]);
 });
