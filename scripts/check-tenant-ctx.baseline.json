@@ -3,16 +3,8 @@
     "lib/tenant-db.ts": 1,
     "modules/ai/agent/agent.service.ts": 4,
     "modules/ai/agent/tool-registry.ts": 2,
-    "modules/ai/ai-key.service.ts": 4,
-    "modules/ai/ai.routes.ts": 1,
-    "modules/ai/ai.service.ts": 3,
-    "modules/ai/classify.service.ts": 4,
-    "modules/ai/flex-ai.service.ts": 3,
-    "modules/ai/llm.service.ts": 3,
-    "modules/ai/model-registry.service.ts": 3,
+    "modules/ai/flex-ai.service.ts": 2,
     "modules/ai/other-channel-context.ts": 2,
-    "modules/ai/pricing.service.ts": 2,
-    "modules/ai/sentiment.service.ts": 2,
     "modules/auth/auth.service.ts": 2,
     "modules/case/case.service.ts": 3,
     "modules/channel/channel.routes.ts": 3,
@@ -40,16 +32,14 @@
     "modules/notification/notification.service.ts": 7,
     "modules/platform/ai-privacy.service.ts": 3,
     "modules/platform/plan-limits.service.ts": 2,
-    "modules/settings/chat-settings.service.ts": 3,
     "modules/tenant-audit/tenant-audit.service.ts": 2,
-    "modules/trial/token-quota.service.ts": 6,
     "modules/webhook-subscriptions/webhook-dispatcher.ts": 2,
     "services/channel-team-access.ts": 7,
     "services/channel-visibility.ts": 4,
     "services/permission.service.ts": 4
   },
   "request.tenantPrisma": {
-    "modules/ai/ai.routes.ts": 8,
+    "modules/ai/ai.routes.ts": 2,
     "modules/case/case.routes.ts": 1,
     "modules/channel/channel.routes.ts": 31,
     "modules/contact/contact.routes.ts": 7,
@@ -60,7 +50,7 @@
     "modules/mcp/mcp.routes.ts": 1,
     "modules/meta-connect/meta-connect.routes.ts": 3,
     "modules/notification/notification.routes.ts": 4,
-    "modules/settings/settings.routes.ts": 14,
+    "modules/settings/settings.routes.ts": 4,
     "modules/webhook-subscriptions/webhook-subscription.routes.ts": 2,
     "modules/webhook/webhook.routes.ts": 1,
     "services/channel-visibility.ts": 6
@@ -76,17 +66,11 @@
   "service 內的 inTenant(": {},
   "service 直接 import Redis client": {
     "modules/chatbox/chatbox.service.ts": 1,
-    "modules/conversation/conversation.service.ts": 1,
-    "modules/trial/token-quota.service.ts": 1
+    "modules/conversation/conversation.service.ts": 1
   },
   "service 直接 import LLM 入口": {
     "modules/ai/agent/agent.service.ts": 2,
-    "modules/ai/ai.service.ts": 1,
-    "modules/ai/classify.service.ts": 1,
     "modules/ai/flex-ai.service.ts": 1,
-    "modules/ai/kb-autoreply.service.ts": 1,
-    "modules/ai/llm.service.ts": 1,
-    "modules/ai/sentiment.service.ts": 1,
-    "modules/settings/chat-settings.service.ts": 1
+    "modules/ai/kb-autoreply.service.ts": 1
   }
 }

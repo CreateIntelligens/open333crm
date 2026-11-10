@@ -28,6 +28,7 @@ vi.mock('#src/modules/trial/token-quota.service.js', () => ({
 }));
 
 import { runAgentReply } from '#src/modules/ai/agent/agent.service.js';
+import { createFlowLog, mockTransactionPrisma, recordingPublisher } from '#tests/support/flow-harness.js';
 import { AppError } from '#src/shared/utils/response.js';
 import { loadEnvConfig } from '#src/config/env.js';
 
@@ -45,8 +46,19 @@ test('Agent 回覆達到上限：拋出 403 PLAN_LIMIT_EXCEEDED，不呼叫 LLM�
     },
   };
 
+  // 設定、金鑰與月額度經由 llm.flow 的 prepareLlmCall()（change migrate-ai-llm-tenant-ctx，design D6）
+  const log = createFlowLog();
+  const llm = {
+    prisma: mockTransactionPrisma(log, {
+      tenant: { findUnique: async () => ({ limitOverrides: {}, plan: { limits: { monthlyTokens: 1000 } } }) },
+      platformSetting: { findUnique: async () => null },
+    }),
+    redis: {} as never,
+    events: recordingPublisher(log),
+  };
+
   await assert.rejects(
-    runAgentReply(prisma as never, {
+    runAgentReply(prisma as never, llm, {
       tenantId: '11111111-1111-4111-8111-111111111111',
       userMessage: '幫我查訂單',
       conversationId: '22222222-2222-4222-8222-222222222222',

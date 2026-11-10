@@ -1,6 +1,7 @@
 /**
- * 用量告警核心邏輯測試（checkQuotaThresholdCrossing）。
- * 真連 Redis（冪等旗標）；prisma 以 stub 提供固定 monthlyTokens 上限，不依賴特定租戶資料。
+ * 用量告警核心邏輯測試（claimCrossedThresholds）。
+ * 真連 Redis（冪等旗標），以 'command' 建立連線並傳入（change migrate-ai-llm-tenant-ctx，design D3）。
+ * 上限是呼叫 LLM 之前讀到的值，由呼叫端傳入，不依賴特定租戶資料。
  *
  * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
@@ -8,30 +9,21 @@ import assert from 'node:assert/strict';
 import { test, afterAll } from 'vitest';
 
 
-import {
-  checkQuotaThresholdCrossing,
-  clearQuotaAlertFlags,
-} from '#src/modules/trial/token-quota.service.js';
-import { redis } from '@open333crm/core';
+import { claimCrossedThresholds, clearQuotaAlertFlags as clearFlags } from '#src/modules/trial/token-quota.service.js';
+import { createRedisClient } from '@open333crm/core';
 
-/** stub prisma：讓 getEffectiveLimit 回固定 monthlyTokens（limit 為 null 表無上限）。 */
-function stubPrisma(limit: number | null) {
-  return {
-    tenant: {
-      findUnique: async () => ({
-        limitOverrides: {},
-        plan: limit === null ? null : { limits: { monthlyTokens: limit } },
-      }),
-    },
-  } as never;
-}
+const redis = createRedisClient(process.env.REDIS_URL!, 'command');
+const clearQuotaAlertFlags = (tenantId: string) => clearFlags(redis, tenantId);
+/** limit 是 null 時表示沒有上限 */
+const checkQuotaThresholdCrossing = (limit: number | null, tenantId: string, added: number, after: number) =>
+  claimCrossedThresholds(redis, tenantId, limit, added, after);
 
 const TID = '00000000-0000-0000-0000-0000000000aa';
 
 test('剛跨越 80% → 回 warning', async () => {
   await clearQuotaAlertFlags(TID);
   // limit=1000，80%=800。before=790 → after=810 跨越 800（未達 1000）
-  const crossed = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 20, 810);
+  const crossed = await checkQuotaThresholdCrossing(1000, TID, 20, 810);
   assert.equal(crossed.length, 1);
   assert.equal(crossed[0].level, 'warning');
   assert.equal(crossed[0].limitTokens, 1000);
@@ -41,7 +33,7 @@ test('剛跨越 80% → 回 warning', async () => {
 test('剛跨越 100% → 回 critical', async () => {
   await clearQuotaAlertFlags(TID);
   // before=990 → after=1010 跨越 1000（但 before 990 已 > 800，不重發 warning）
-  const crossed = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 20, 1010);
+  const crossed = await checkQuotaThresholdCrossing(1000, TID, 20, 1010);
   assert.equal(crossed.length, 1);
   assert.equal(crossed[0].level, 'critical');
 });
@@ -49,7 +41,7 @@ test('剛跨越 100% → 回 critical', async () => {
 test('單次巨量同時跨越 80% 與 100% → 兩者都回', async () => {
   await clearQuotaAlertFlags(TID);
   // before=0 → after=1500，一次跨越 800 與 1000
-  const crossed = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 1500, 1500);
+  const crossed = await checkQuotaThresholdCrossing(1000, TID, 1500, 1500);
   const levels = crossed.map((c) => c.level).sort();
   assert.deepEqual(levels, ['critical', 'warning']);
 });
@@ -57,31 +49,31 @@ test('單次巨量同時跨越 80% 與 100% → 兩者都回', async () => {
 test('未跨越門檻 → 回 []', async () => {
   await clearQuotaAlertFlags(TID);
   // before=100 → after=200，都 < 800
-  const crossed = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 100, 200);
+  const crossed = await checkQuotaThresholdCrossing(1000, TID, 100, 200);
   assert.equal(crossed.length, 0);
 });
 
 test('無上限（limit=null）→ 回 []', async () => {
   await clearQuotaAlertFlags(TID);
-  const crossed = await checkQuotaThresholdCrossing(stubPrisma(null), TID, 999999, 999999);
+  const crossed = await checkQuotaThresholdCrossing(null, TID, 999999, 999999);
   assert.equal(crossed.length, 0);
 });
 
 test('冪等：同門檻連續跨越只回一次', async () => {
   await clearQuotaAlertFlags(TID);
-  const first = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 20, 810);
+  const first = await checkQuotaThresholdCrossing(1000, TID, 20, 810);
   assert.equal(first.length, 1, '第一次應發 warning');
   // 再次「跨越」同門檻（例如另一筆用量 before<800 的重放不會發生，但模擬重複偵測）
-  const second = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 20, 810);
+  const second = await checkQuotaThresholdCrossing(1000, TID, 20, 810);
   assert.equal(second.length, 0, '第二次應被冪等旗標擋下');
 });
 
 test('清旗標後可再發（跨月語意）', async () => {
   await clearQuotaAlertFlags(TID);
-  const a = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 20, 810);
+  const a = await checkQuotaThresholdCrossing(1000, TID, 20, 810);
   assert.equal(a.length, 1);
   await clearQuotaAlertFlags(TID); // 模擬跨月旗標過期
-  const b = await checkQuotaThresholdCrossing(stubPrisma(1000), TID, 20, 810);
+  const b = await checkQuotaThresholdCrossing(1000, TID, 20, 810);
   assert.equal(b.length, 1, '清旗標後應可再發');
 });
 

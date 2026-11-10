@@ -1,20 +1,15 @@
 /**
- * AI Service — provides KB-powered reply suggestions and conversation summaries.
+ * AI Service — 建議回覆與對話摘要讀的資料（change migrate-ai-llm-tenant-ctx，design D7）。
+ * 呼叫 LLM 與搜尋知識庫的順序在 ai.flow.ts。
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { readEmbeddingInputs, searchSimilarArticles } from '../embedding/embedding.service.js';
-import { embedText } from '../embedding/embedding-client.js';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
-import { generateReply } from './llm.service.js';
-import { logger } from '@open333crm/core';
 import { readModelMessageContent } from './deidentification.service.js';
 
-export async function suggestReply(prisma: TenantDb, tenantId: string, conversationId: string) {
-  // Fetch last few inbound messages for context
-  const messages = await prisma.message.findMany({
-    where: { conversationId, conversation: { tenantId } },
+/** 建議回覆的查詢文字：最近 5 則訊息中最新的顧客訊息。沒有可用的文字或找不到對話時回 null */
+export async function readSuggestReplyQuery(ctx: TenantCtx, conversationId: string): Promise<string | null> {
+  const messages = await ctx.tx.message.findMany({
+    where: { conversationId, conversation: { tenantId: ctx.tenantId } },
     orderBy: { createdAt: 'desc' },
     take: 5,
     select: { content: true, metadata: true, senderType: true },
@@ -22,66 +17,30 @@ export async function suggestReply(prisma: TenantDb, tenantId: string, conversat
 
   const lastInbound = messages.find((m) => m.senderType === 'CONTACT');
   const userText = lastInbound ? readModelMessageContent(lastInbound.content, lastInbound.metadata) : '';
+  if (!userText) return null;
 
-  if (!userText) {
-    return { suggestions: [] };
-  }
-
-  // Look up conversation tenantId
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, tenantId },
-    select: { tenantId: true },
+  const conversation = await ctx.tx.conversation.findFirst({
+    where: { id: conversationId, tenantId: ctx.tenantId },
+    select: { id: true },
   });
-
-  if (!conversation) {
-    return { suggestions: [] };
-  }
-
-  try {
-    // ai 還沒搬（#337），以自己的連線組成 TenantCtx（change migrate-embedding-tenant-ctx，design D5）
-    const embeddingCtx: TenantCtx = { tx: prisma as TenantCtx['tx'], tenantId: conversation.tenantId };
-    const { settings, policy } = await readEmbeddingInputs(embeddingCtx);
-    const queryEmbedding = await embedText(settings, policy, userText);
-    const results = await searchSimilarArticles(embeddingCtx, queryEmbedding, {
-      topK: settings.topK,
-      threshold: settings.threshold,
-    });
-
-    if (results.length === 0) {
-      return { suggestions: [] };
-    }
-
-    // Generate LLM-based suggestions for each KB result
-    const suggestions = await Promise.all(
-      results.map(async (r) => {
-        const kbContext = `【${r.title}】\n${(r.content || r.summary).slice(0, 1500)}`;
-        let text: string;
-        try {
-          text = await generateReply(prisma, conversation.tenantId, userText, kbContext, {
-            meta: { feature: 'suggestion', conversationId },
-          });
-        } catch {
-          // Fallback to article content/summary if LLM fails
-          text = r.content || r.summary || r.title;
-        }
-        return {
-          text,
-          confidence: Math.round(r.similarity * 100) / 100,
-          kmRefs: [{ id: r.id, title: r.title, url: `/dashboard/knowledge?id=${r.id}` }],
-        };
-      }),
-    );
-
-    return { suggestions };
-  } catch (err) {
-    logger.error('[AI] suggestReply error, returning empty:', err);
-    return { suggestions: [] };
-  }
+  return conversation ? userText : null;
 }
 
-export async function summarizeConversation(prisma: TenantDb, tenantId: string, conversationId: string) {
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, tenantId },
+export interface ConversationTranscript {
+  contactName: string;
+  msgCount: number;
+  botMsgs: number;
+  /** 送給 LLM 的逐字稿 */
+  transcript: string;
+}
+
+/** 對話的前 20 則訊息組成逐字稿。找不到對話時回 null */
+export async function readConversationTranscript(
+  ctx: TenantCtx,
+  conversationId: string,
+): Promise<ConversationTranscript | null> {
+  const conversation = await ctx.tx.conversation.findFirst({
+    where: { id: conversationId, tenantId: ctx.tenantId },
     include: {
       contact: { select: { displayName: true } },
       messages: {
@@ -91,16 +50,9 @@ export async function summarizeConversation(prisma: TenantDb, tenantId: string, 
       },
     },
   });
-
-  if (!conversation) {
-    return { summary: '找不到對話記錄。' };
-  }
+  if (!conversation) return null;
 
   const contactName = conversation.contact?.displayName || '客戶';
-  const msgCount = conversation.messages.length;
-  const botMsgs = conversation.messages.filter((m) => m.senderType === 'BOT').length;
-
-  // Build conversation transcript for LLM
   const transcript = conversation.messages
     .map((m) => {
       const sender =
@@ -114,20 +66,15 @@ export async function summarizeConversation(prisma: TenantDb, tenantId: string, 
     })
     .join('\n');
 
-  try {
-    const summary = await generateReply(
-      prisma,
-      conversation.tenantId,
-      transcript,
-      '',
-      { promptKind: 'summarize', meta: { feature: 'summary', conversationId } },
-    );
-    return { summary };
-  } catch (err) {
-    // Fallback to static template if LLM fails
-    logger.error('[AI] summarizeConversation LLM failed, using fallback:', err);
-    return {
-      summary: `${contactName} 的對話共 ${msgCount} 則訊息，其中 Bot 回覆了 ${botMsgs} 則。客戶主要詢問了產品相關問題，Bot 提供了初步回覆但客戶可能需要更詳細的人工協助。建議確認客戶需求後提供具體解決方案。`,
-    };
-  }
+  return {
+    contactName,
+    msgCount: conversation.messages.length,
+    botMsgs: conversation.messages.filter((m) => m.senderType === 'BOT').length,
+    transcript,
+  };
+}
+
+/** LLM 失敗時的固定格式摘要 */
+export function fallbackSummary(t: ConversationTranscript): string {
+  return `${t.contactName} 的對話共 ${t.msgCount} 則訊息，其中 Bot 回覆了 ${t.botMsgs} 則。客戶主要詢問了產品相關問題，Bot 提供了初步回覆但客戶可能需要更詳細的人工協助。建議確認客戶需求後提供具體解決方案。`;
 }

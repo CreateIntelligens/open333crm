@@ -9,6 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
+import { downRedis } from '#tests/support/llm-deps.js';
 
 const calls = vi.hoisted(() => ({
   delivered: [] as string[],
@@ -59,8 +60,6 @@ vi.mock('#src/modules/ai/providers/index.js', () => ({
     },
   }),
 }));
-// 月額度計數在 Redis：測試不連 Redis
-vi.mock('#src/modules/trial/token-quota.service.js', () => ({ isMonthlyTokenExceeded: async () => false }));
 vi.mock('#src/modules/settings/chat-settings.service.js', () => ({
   getChatSettings: async () => ({
     provider: 'test',
@@ -79,7 +78,7 @@ vi.mock('#src/modules/embedding/embedding.service.js', async (orig) => ({
   ...(await orig<object>()),
   searchSimilarArticles: async () => calls.searchResults,
 }));
-vi.mock('#src/modules/ai/llm.service.js', async (orig) => ({
+vi.mock('#src/modules/ai/llm.flow.js', async (orig) => ({
   ...(await orig<object>()),
   generateReply: async () => {
     calls.kbLlm += 1;
@@ -95,11 +94,11 @@ vi.mock('#src/modules/identity-binding/ai-guard.js', async (orig) => ({
   ...(await orig<object>()),
   guardAiReplyForTenant: async (_p: unknown, _t: string, text: string) => ({ text, blocked: false }),
 }));
-vi.mock('#src/modules/ai/sentiment.service.js', () => ({
-  analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+vi.mock('#src/modules/ai/ai.flow.js', () => ({
+  analyzeSentimentFlow: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+  autoClassifyNewCaseFlow: async () => {},
+  summarizeConversationFlow: async () => ({ summary: '' }),
 }));
-vi.mock('#src/modules/ai/classify.service.js', () => ({ autoClassifyNewCase: async () => {} }));
-vi.mock('#src/modules/ai/ai.service.js', () => ({ summarizeConversation: async () => ({ summary: '' }) }));
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async (_p: unknown, _c: string, payload: unknown) => {
     calls.delivered.push(typeof payload === 'string' ? payload : JSON.stringify(payload));
@@ -162,7 +161,7 @@ function setup(overrides: Parameters<typeof createHarness>[0] = {}) {
       },
     }),
   };
-  const handle = setupAutomationWorker(h.adminPrisma as never, io as never, h.tenantPrisma as never);
+  const handle = setupAutomationWorker(h.adminPrisma as never, io as never, h.tenantPrisma as never, downRedis);
   return { h, handle, emitted };
 }
 

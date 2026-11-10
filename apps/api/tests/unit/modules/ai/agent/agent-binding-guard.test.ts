@@ -1,6 +1,7 @@
 /** AI 回覆含綁定代碼時，runAgentReply 回傳與送出的都是固定說明（change add-cross-channel-one-id，防 AI 偽造代碼） */
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
+import { mockLlmDeps } from '#tests/support/llm-deps.js';
 
 vi.mock('#src/modules/ai/agent/runner.js', () => ({
   runAgent: async () => ({
@@ -33,7 +34,7 @@ test('runAgentReply：AI 回覆含代碼 → 換成引導傳送綁定關鍵字�
     platformSetting: { findUnique: async () => null },
     tenantSettings: { findFirst: async () => ({ identityBinding: { enabled: true, bindKeywords: ['綁定帳號'] } }) },
   } as never;
-  const out = await runAgentReply(prisma, { tenantId: 'agent-guard-tenant', userMessage: '綁定帳號綁定帳號' });
+  const out = await runAgentReply(prisma, mockLlmDeps(prisma), { tenantId: 'a1a1a1a1-0000-4000-8000-000000000001', userMessage: '綁定帳號綁定帳號' });
   assert.doesNotMatch(out.text, /BIND-/);
   assert.match(out.text, /「綁定帳號」/);
 });
@@ -63,7 +64,7 @@ test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說
   delivered.length = 0;
   // 認領換成直接在 tx 上寫入：這裡只測寫入與送出的內容
   const replyGuard = { alreadyReplied: async () => false, persist: (write: (t: typeof tx) => Promise<unknown>) => write(tx) } as never;
-  await runAgentReply(prisma, { tenantId: 'agent-guard-tenant-2', conversationId: 'c1', userMessage: 'x', deliver: true, io, replyGuard });
+  await runAgentReply(prisma, mockLlmDeps(prisma), { tenantId: 'a1a1a1a1-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x', deliver: true, io, replyGuard });
   const expected = '如需綁定其他帳號，請直接傳送「綁定帳號」，系統會提供專屬的綁定連結與代碼。';
   assert.equal(created.length, 1);
   assert.equal(created[0]!.metadata.bindingCodeBlocked, true);

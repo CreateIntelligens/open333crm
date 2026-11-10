@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { readModelMessageContent } from '#src/modules/ai/deidentification.service.js';
 import { toAiHistory } from '#src/modules/identity-binding/ai-guard.js';
-import { autoClassifyNewCase } from '#src/modules/ai/classify.service.js';
+import { autoClassifyNewCaseFlow } from '#src/modules/ai/ai.flow.js';
+import { mockLlmDeps } from '#tests/support/llm-deps.js';
 
 const PHONE = '0912345678';
 const unmasked = {
@@ -41,7 +42,7 @@ test('新工單最新的進站訊息未遮罩', async () => {
     },
     message: { findFirst: async () => ({ content: unmasked.content, metadata: unmasked.metadata }) },
   };
-  const result = await autoClassifyNewCase(prisma as never, 'tenant-1', 'case-1', 'conv-1', async () => {
+  const result = await autoClassifyNewCaseFlow(mockLlmDeps(prisma), '00000000-0000-4000-8000-000000000001', 'case-1', 'conv-1', async () => {
     classified += 1;
     return { category: 'billing', confidence: 0.9 } as never;
   });

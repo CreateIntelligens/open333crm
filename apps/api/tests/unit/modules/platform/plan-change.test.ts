@@ -52,7 +52,12 @@ import {
   listTenantPlanChangeRequests,
   rejectRequest,
 } from '#src/modules/platform/plan-change.service.js';
-import { checkQuotaThresholdCrossing, isMonthlyTokenExceeded } from '#src/modules/trial/token-quota.service.js';
+import {
+  claimCrossedThresholds,
+  isMonthlyTokenExceeded,
+  readMonthlyTokensFromDb,
+} from '#src/modules/trial/token-quota.service.js';
+import { getEffectiveLimit } from '#src/modules/platform/plan-limits.service.js';
 import { AppError } from '#src/shared/utils/response.js';
 
 loadEnvConfig();
@@ -503,17 +508,29 @@ test('有效額度是無上限時不能加購：回 400 TOPUP_UNLIMITED，覆寫
   assert.equal(db.requests[0]!.status, 'pending');
 });
 
+/** 呼叫 LLM 之前的月額度檢查：交易 1 讀上限，再讀 Redis 計數器（ai/llm.flow.ts 的 prepareLlmCall） */
+async function quotaExceeded(prisma: never, tenantId: string): Promise<boolean> {
+  const limit = await getEffectiveLimit(prisma, tenantId, 'monthlyTokens');
+  return isMonthlyTokenExceeded(redis, tenantId, limit, () => readMonthlyTokensFromDb({ tx: prisma, tenantId }));
+}
+
+/** 累加之後的門檻檢查：上限是這次呼叫 LLM 之前讀到的值 */
+async function crossedThresholds(prisma: never, tenantId: string, tokensAdded: number, after: number) {
+  const limit = await getEffectiveLimit(prisma, tenantId, 'monthlyTokens');
+  return claimCrossedThresholds(redis, tenantId, limit, tokensAdded, after);
+}
+
 test('核准加購後立即恢復 AI：用量等於上限時被擋，核准後月額度檢查放行', async () => {
   const db = createDb();
   const plan = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
   const tenant = db.addTenant(plan.id);
   db.setUsage(tenant.id, 1_000_000);
-  assert.equal(await isMonthlyTokenExceeded(db.prisma, tenant.id), true);
+  assert.equal(await quotaExceeded(db.prisma, tenant.id), true);
   const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 500_000 });
 
   await approveRequest(db.prisma, redis, req.id, REVIEWER);
 
-  assert.equal(await isMonthlyTokenExceeded(db.prisma, tenant.id), false);
+  assert.equal(await quotaExceeded(db.prisma, tenant.id), false);
 });
 
 test('核准加購後再次跨越門檻：本月已發過 warning 與 critical，加購後跨越新上限的 80% 時再次告警', async () => {
@@ -521,7 +538,7 @@ test('核准加購後再次跨越門檻：本月已發過 warning 與 critical�
   const plan = db.addPlan('trial', ['core'], { monthlyTokens: 200_000 });
   const tenant = db.addTenant(plan.id);
   // 本月用量從 150,000 一次累加到 200,000：同時跨越 80% 與 100%，兩個門檻都已告警
-  const first = await checkQuotaThresholdCrossing(db.prisma, tenant.id, 50_000, 200_000);
+  const first = await crossedThresholds(db.prisma, tenant.id, 50_000, 200_000);
   assert.deepEqual(first.map((c) => c.level), ['warning', 'critical']);
   db.setUsage(tenant.id, 200_000);
   const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 300_000 });
@@ -529,7 +546,7 @@ test('核准加購後再次跨越門檻：本月已發過 warning 與 critical�
   await approveRequest(db.prisma, redis, req.id, REVIEWER);
 
   // 新上限 500,000：用量從 390,000 累加到 400,000，跨越 80%
-  const crossed = await checkQuotaThresholdCrossing(db.prisma, tenant.id, 10_000, 400_000);
+  const crossed = await crossedThresholds(db.prisma, tenant.id, 10_000, 400_000);
   assert.deepEqual(crossed.map((c) => [c.level, c.limitTokens]), [['warning', 500_000]]);
 });
 

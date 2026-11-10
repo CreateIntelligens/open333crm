@@ -15,7 +15,7 @@
 
 啟用後，下列文字會先送至 2md 的 `/api/deid`，再把完整類別標記遮罩（`mode=label`、`retentionMode=none`）的結果送往模型：
 
-- 一般 AI 回覆、摘要、分類、情緒分析、文字改寫與 Flex 產生所經過的 `generateReply`：包含最終組裝的系統提示、知識庫／跨渠道上下文、本次訊息及歷史。
+- 一般 AI 回覆、摘要、分類、情緒分析、文字改寫與 Flex 產生所經過的 `generateReply()`（`ai/llm.flow.ts`）：包含最終組裝的系統提示、知識庫／跨渠道上下文、本次訊息及歷史。
 - Agent 每輪送往模型的訊息、工具結果與巢狀工具參數的文字值。保留角色、工具名稱、呼叫 ID 與非文字參數。OCR／文件擷取結果在進入後續模型時亦套用。
 - 向量化（`embedding-client.ts` 的 `embedText()`）的文字輸入，涵蓋客戶查詢及新產生的知識庫向量。既有向量保留，啟用可能影響檢索排序。
 
@@ -35,9 +35,9 @@
 | `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由。`embedding-client.ts` 呼叫 Ollama，不碰資料庫；`embedding.flow.ts` 把向量化拆成「交易 → 交易外呼叫 Ollama → 交易」 |
 | `ai` 的 `kb-autoreply.service.ts` | 機器人依知識庫回覆 |
 | `ai` 的 `agent/` | AI agent：可以呼叫工具（搜尋網頁、讀網頁、OCR、解析文件、查天氣、發布 Wiki）的多輪回覆 |
-| `ai` 的 `llm.service.ts`、`providers/` | 呼叫 LLM。支援 Ollama 與 Gemini；組織不部署 Ollama，因此只能用 Gemini |
+| `ai` 的 `llm.flow.ts`、`llm.service.ts`、`llm-client.ts`、`providers/` | 呼叫 LLM。`llm.flow.ts` 把一次呼叫拆成「交易 1 讀設定、金鑰、遮罩政策與月額度上限 → 交易外檢查月額度並呼叫 LLM → 交易 2 寫用量紀錄」；`llm.service.ts` 是兩個交易內的查詢與提示詞的組裝；`llm-client.ts` 呼叫 provider，不碰資料庫。支援 Ollama 與 Gemini；組織不部署 Ollama，因此只能用 Gemini |
 | `ai` 的 `ai-key.service.ts` | 決定用平台的 Gemini 金鑰還是租戶自備的金鑰 |
-| `settings` 的 chat、embedding、gemini-key 部分 | 租戶的 Chat 設定、Embedding 設定與自備金鑰 |
+| `settings` 的 chat、embedding、gemini-key 部分 | 租戶的 Chat 設定、Embedding 設定與自備金鑰。讀設定時，沒有設定列就回預設值，不建立設定列；修改時設定與稽核在同一個交易寫入 |
 | `trial` 的 `token-quota.service.ts` | AI 月額度的計數與告警 |
 
 側欄「知識庫」底下有文章管理、語義搜尋、回報調教，以及「AI 設定」的 Embedding 與 Chat & Prompt 兩頁。
@@ -125,7 +125,9 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 
 ## 額度
 
-使用平台金鑰時，每次成功的 AI 呼叫把 token 數累加到該租戶當月的計數器。Ollama 的成本記 0，但同樣會累加。`llm.service.ts` 與 AI agent 在呼叫前以 `isMonthlyTokenExceeded()` 檢查，超過月額度就不呼叫 LLM。用量達 80% 與 100% 時通知租戶的 `ADMIN` 並寄信，見[通知](./NOTIFICATIONS.md)。
+使用平台金鑰時，每次成功的 AI 呼叫把 token 數累加到該租戶當月的計數器。Ollama 的成本記 0，但同樣會累加。一般 AI 呼叫與 AI agent 都經由 `llm.flow.ts` 的 `prepareLlmCall()`，在呼叫前檢查月額度，超過就不呼叫 LLM。
+
+每次呼叫 LLM 之後，系統寫一筆 `AiUsage`，寫完才把回覆交給呼叫端；寫入失敗只寫 log，回覆照常。寫入 commit 之後才累加計數器。用量跨越 80% 與 100% 時，系統把 `usage.quota.threshold` 寫進 outbox，通知租戶的 `ADMIN` 並寄信，見[通知](./NOTIFICATIONS.md)。Redis 的 client 由呼叫端傳入（API 行程用 `fastify.redis`）。
 
 額度的上限怎麼算、加購怎麼影響額度，見平台後台的[方案與上限](../platform/PLANS.md)；成本怎麼算，見[用量統計](../platform/USAGE.md)。
 

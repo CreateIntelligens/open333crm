@@ -186,9 +186,9 @@ calls the service inside `withTenant`".
 real function. If the real function catches the error and returns a fallback, a mock that throws
 tests a path that does not exist. To test a failure, make the lowest boundary fail (for example,
 the LLM call or the HTTP request), and keep the real code between that boundary and the code
-under test. Example: `analyzeSentiment()` catches an LLM error and returns a keyword result, so
+under test. Example: `analyzeSentimentFlow()` catches an LLM error and returns a keyword result, so
 `apps/api/tests/unit/modules/automation/sentiment-llm-fallback.test.ts` mocks the LLM, not
-`analyzeSentiment()`.
+`analyzeSentimentFlow()`.
 
 **When a test passes as soon as you write it.** A test for behavior that the code already has
 cannot fail first. Verify the test with a mutation:
@@ -398,7 +398,8 @@ so these functions do not change its result.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
   - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
   - a reference from a service file to a Redis client (`redis`, `createRedisClient` or the
-    whole module from `@open333crm/core`, `ioredis`, or `lib/redis-client`) or to an LLM module (`ai/llm.service.js`, a file in
+    whole module from `@open333crm/core`, `ioredis`, or `lib/redis-client`) or to an LLM module
+    (`ai/llm-client.js`, `ai/llm.flow.js`, a file in
     `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
     module-level clients inside the transaction, so a flow receives them as dependencies instead.
 

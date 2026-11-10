@@ -1,24 +1,39 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
-import { suggestReply, summarizeConversation } from './ai.service.js';
-import { analyzeSentiment } from './sentiment.service.js';
-import { classifyIssue } from './classify.service.js';
-import { rewriteText } from './flex-ai.service.js';
+import {
+  analyzeSentimentFlow,
+  classifyIssueFlow,
+  getAiPrivacyStatusFlow,
+  rewriteTextFlow,
+  suggestReplyFlow,
+  summarizeConversationFlow,
+} from './ai.flow.js';
+import type { LlmDeps } from './llm.flow.js';
+import { createOutboxPublisher, type EventPublisher } from '../../events/outbox-publisher.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { success } from '../../shared/utils/response.js';
 import { runAgentReply } from './agent/agent.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
-import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
-export default async function aiRoutes(fastify: FastifyInstance) {
-  // 傳入 embedding/llm 等尚未改造為 TenantDb 的跨模組服務；待相依服務全數放寬後，
+export interface AiRoutesOptions {
+  /** 測試注入假的 publisher；未傳時寫 outbox */
+  events?: EventPublisher;
+}
+
+export default async function aiRoutes(fastify: FastifyInstance, opts: AiRoutesOptions = {}) {
   fastify.addHook('preHandler', fastify.authenticate);
+  const llm = (): LlmDeps => ({
+    prisma: fastify.prisma,
+    redis: fastify.redis,
+    events: opts.events ?? createOutboxPublisher(fastify.prisma),
+  });
 
   // 可供客服編輯器決定預設送出表示法；只回目前租戶的布林狀態。
   fastify.get('/privacy/status', async (request, reply) =>
-    reply.send(success(await readAiPrivacyPolicy(request.tenantPrisma, request.agent.tenantId))),
+    reply.send(success(await getAiPrivacyStatusFlow(fastify, actorOf(request).tenantId))),
   );
 
   // POST /api/v1/ai/suggest-reply
@@ -29,7 +44,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
 
     // 不可見渠道的對話回 404，不把對話內容送進 AI（AUDIT RBAC-04）
     await assertConversationChannelVisible(request, conversationId, 'read_only');
-    const result = await suggestReply(request.tenantPrisma, request.agent.tenantId, conversationId);
+    const result = await suggestReplyFlow(llm(), actorOf(request).tenantId, conversationId);
     return reply.send(success(result));
   });
 
@@ -41,7 +56,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
 
     // 不可見渠道的對話回 404，不把對話內容送進 AI（AUDIT RBAC-04）
     await assertConversationChannelVisible(request, conversationId, 'read_only');
-    const result = await summarizeConversation(request.tenantPrisma, request.agent.tenantId, conversationId);
+    const result = await summarizeConversationFlow(llm(), actorOf(request).tenantId, conversationId);
     return reply.send(success(result));
   });
 
@@ -51,7 +66,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ text: z.string().min(1) })
       .parse(request.body);
 
-    const result = await analyzeSentiment(request.tenantPrisma, request.agent.tenantId, text);
+    const result = await analyzeSentimentFlow(llm(), actorOf(request).tenantId, text);
     return reply.send(success(result));
   });
 
@@ -61,7 +76,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ text: z.string().min(1) })
       .parse(request.body);
 
-    const result = await classifyIssue(request.tenantPrisma, request.agent.tenantId, text);
+    const result = await classifyIssueFlow(llm(), actorOf(request).tenantId, text);
     return reply.send(success(result));
   });
 
@@ -74,7 +89,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       })
       .parse(request.body);
 
-    const result = await rewriteText(request.tenantPrisma, request.agent.tenantId, text, action);
+    const result = await rewriteTextFlow(llm(), actorOf(request).tenantId, text, action);
     return reply.send(success({ text: result }));
   });
 
@@ -92,7 +107,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     if (data.conversationId) {
       await assertConversationChannelVisible(request, data.conversationId, 'read_only');
     }
-    const result = await runAgentReply(request.tenantPrisma, {
+    const result = await runAgentReply(request.tenantPrisma, llm(), {
       tenantId: request.agent.tenantId,
       userMessage: data.userMessage,
       conversationId: data.conversationId,

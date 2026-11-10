@@ -52,7 +52,7 @@ description: >
 | `maxAgents` | `apps/api/src/modules/agent/agent.service.ts` 建立與重新啟用前 count `isActive` | 403 `PLAN_LIMIT_EXCEEDED`，`details {limitKey,current,max}` |
 | `maxChannels` | `apps/api/src/modules/channel/channel.service.ts` `createChannel` | 同上；**重新啟用渠道不檢查**（PLAN-07） |
 | `allowedChannelTypes` | 同上 | 403 `CHANNEL_TYPE_NOT_ALLOWED`，`details {channelType, allowed}` |
-| `monthlyTokens` | `apps/api/src/modules/ai/llm.service.ts` `generateReply`、`apps/api/src/modules/ai/agent/agent.service.ts`（只對 `keySource=platform`） | 403 `PLAN_LIMIT_EXCEEDED`，`details.limitKey='monthlyTokens'` |
+| `monthlyTokens` | `apps/api/src/modules/ai/llm.flow.ts` `prepareLlmCall`（`generateReply` 與 Agent 都經過；只對 `keySource=platform`） | 403 `PLAN_LIMIT_EXCEEDED`，`details.limitKey='monthlyTokens'` |
 | `maxTags` | 無 | 不擋（PLAN-04） |
 
 ## 有後端沒前端
@@ -74,7 +74,7 @@ description: >
 - 換方案不刪 `RolePermission`：降級後權限只是被天花板擋住，升回原方案自動恢復。
 - `PLAN_LIMIT_EXCEEDED` 一律 403 並帶 `limitKey`、`current`、`max`（AI 只帶 `limitKey`）。新增上限時照這個形狀，前端才能共用錯誤訊息。
 - 計數只算 `isActive: true` 的成員與渠道；把停用的資源改回啟用也要檢查上限（成員已做，渠道還沒做）。
-- AI 計數器 `aiquota:{tenantId}:{YYYY-MM}` 用 UTC 月份，只累加平台金鑰的成功呼叫；BYOK 不計不擋。
+- AI 計數器 `aiquota:{tenantId}:{YYYY-MM}:tpe` 用台灣月份，只累加平台金鑰的成功呼叫；BYOK 不計不擋。
 - 新增權限碼或 feature：權限碼宣告在 `packages/shared/src/rbac/permissions.ts`，feature 在 `packages/core/src/rbac/features.ts`，平台頁自動出現。既有租戶的系統角色要跑 `scripts/grant-new-role-permissions.mjs`。
 - seed（API 容器每次啟動都跑）只建立不存在的方案，**不可以更新既有方案**，平台後台的修改要在部署後保留（issue #441，`tenant-plan` 規格「部署後保留平台修改」）。不要把 `seedPlans()` 改回 upsert 的 `update`。
 - 程式要改既有方案的內容時，寫一次性的資料 migration：以 `slug` 篩選、只改目標欄位、加「還沒改過」條件可重複執行、檔頭寫回滾 SQL，並同步更新 `SEED_PLANS`。範例 `20261103120000_enable_channels_on_trial_light`；細節見 `docs/ref/features/platform/PLANS.md`「seed 建立的五個方案」。
@@ -91,7 +91,7 @@ description: >
 2. `/admin/plans` 勾上該 feature → 儲存 → 同一個 token 立即 200；再 deny 一個權限碼 → 立即消失。
 3. `maxAgents`：建到上限回 403 `PLAN_LIMIT_EXCEEDED`；停用一位 → 建新的 → 重新啟用舊的要 403。
 4. `maxChannels` 與 `allowedChannelTypes`：建第二個渠道 403；建白名單外類型回 `CHANNEL_TYPE_NOT_ALLOWED`。
-5. `monthlyTokens`：把 Redis `aiquota:{tenantId}:{YYYY-MM}` 設成上限值 → `POST /ai/rewrite` 回 403 `PLAN_LIMIT_EXCEEDED`（不會呼叫 LLM）；`limitOverrides.monthlyTokens=null` 後不擋。
+5. `monthlyTokens`：把 Redis `aiquota:{tenantId}:{YYYY-MM}:tpe` 設成上限值 → `POST /ai/rewrite` 回 403 `PLAN_LIMIT_EXCEEDED`（不會呼叫 LLM）；`limitOverrides.monthlyTokens=null` 後不擋。
 6. 平台 `PATCH /platform/tenants/:id {planSlug}` 換方案 → 下一個請求即套新天花板。
 7. `/dashboard/plan` 用 admin、supervisor、agent 各開一次（agent 應 403）。
 - 自動測試：`pnpm --filter @open333crm/api test -- tests/unit/modules/platform/plan tests/unit/modules/platform/tenant-plan tests/unit/modules/channel/channel-plan-limits tests/unit/modules/ai/usage-quota tests/unit/modules/ai/agent-quota tests/unit/modules/agent/agent-reactivate`；`pnpm --filter @open333crm/web test -- plans-page`；`pnpm --filter @open333crm/core test -- rbac`；`pnpm --filter @open333crm/database test`（seed 方案內容與不覆寫既有方案）；feature：`test:feature modules/trial/token-quota`（要搶鎖）。

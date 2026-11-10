@@ -2,14 +2,12 @@ import type { TenantDb } from '../../../lib/tenant-db.js';
 import type { Prisma } from '@open333crm/database';
 import type { Server } from 'socket.io';
 import { getConfig } from '../../../config/env.js';
-import { getChatSettings } from '../../settings/chat-settings.service.js';
 import { getChatProvider } from '../providers/index.js';
 import { deidentifyTenantData, deidentifyTenantText, getPrivacyAwareChatProvider, prepareStoredMessageContent } from '../deidentification.service.js';
 import type { HistoryMessage } from '../providers/types.js';
-import { resolveGeminiKey } from '../ai-key.service.js';
-import { isMonthlyTokenExceeded } from '../../trial/token-quota.service.js';
-import { recordAiUsage } from '../llm.service.js';
+import { prepareLlmCall, recordLlmUsage, type LlmDeps } from '../llm.flow.js';
 import { AppError } from '../../../shared/utils/response.js';
+import { readAiPrivacyPolicy } from '../../platform/ai-privacy.service.js';
 import { addRetentionExpiry } from './retention.js';
 import { executeAgentTool, getAgentToolDefinitions } from './tool-registry.js';
 import { runAgent, type AgentRunResult, type AgentRunStore } from './runner.js';
@@ -19,7 +17,6 @@ import type { AccessibleChannels } from '../../../services/channel-visibility.js
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
 import type { BotReplyGuard } from '../../automation/bot-reply-guard.js';
 import { emitToChannel } from '../../../events/socket-push.js';
-import { readAiPrivacyPolicy } from '../../platform/ai-privacy.service.js';
 
 export const AGENT_SYSTEM_PROMPT =
   '你是 Open333CRM 的專業客服與研究助手，使用繁體中文回答。' +
@@ -46,7 +43,11 @@ export interface AgentReplyInput {
   accessibleChannels?: AccessibleChannels;
 }
 
-export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): Promise<AgentRunResult & { handled: boolean; runId: string }> {
+/**
+ * llm：設定、金鑰、月額度與用量紀錄經由 llm.flow（change migrate-ai-llm-tenant-ctx，design D6）。
+ * Agent 的其他資料存取仍用 prisma，留到 6b。
+ */
+export async function runAgentReply(prisma: TenantDb, llm: LlmDeps, input: AgentReplyInput): Promise<AgentRunResult & { handled: boolean; runId: string }> {
   const config = getConfig();
   if (input.conversationId) {
     const eligible = await prisma.conversation.findFirst({
@@ -55,14 +56,11 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     });
     if (!eligible) throw new Error('Conversation is not eligible for Agent reply');
   }
-  const settings = await getChatSettings(prisma, input.tenantId);
+  // 月額度已滿時丟出 403 PLAN_LIMIT_EXCEEDED
+  const prepared = await prepareLlmCall(llm, input.tenantId);
+  const { settings, privacy } = prepared;
   const provider = getChatProvider(settings.provider);
-  const key = provider.id === 'gemini' ? await resolveGeminiKey(prisma, input.tenantId) : { key: undefined, source: 'platform' as const };
-  if (key.source === 'platform' && await isMonthlyTokenExceeded(prisma, input.tenantId)) {
-    throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
-  }
-
-  const privacy = await readAiPrivacyPolicy(prisma, input.tenantId);
+  const key = { key: prepared.apiKey, source: prepared.keySource };
   const protectedProvider = getPrivacyAwareChatProvider(privacy, provider);
   const storedUserMessage = await deidentifyTenantText(privacy, input.userMessage);
   const now = new Date();
@@ -99,11 +97,10 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
       });
     },
     async recordUsage(usage) {
-      await recordAiUsage(prisma, {
-        tenantId: input.tenantId,
+      // 寫入失敗只記 log，不中斷 Agent（ai-usage-recording「AiUsage 寫入失敗不影響回覆」）
+      await recordLlmUsage(llm, prepared, {
         provider: provider.id,
         model: settings.model,
-        keySource: key.source,
         usage,
         success: true,
         meta: { feature: 'agent', conversationId: input.conversationId },

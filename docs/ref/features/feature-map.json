@@ -627,7 +627,10 @@
         "apps/api/src/modules/embedding/*",
         "apps/api/src/modules/ai/kb-autoreply.service.ts",
         "apps/api/src/modules/ai/llm.service.ts",
+        "apps/api/src/modules/ai/llm.flow.ts",
+        "apps/api/src/modules/ai/llm-client.ts",
         "apps/api/src/modules/ai/ai.service.ts",
+        "apps/api/src/modules/ai/ai.flow.ts",
         "apps/api/src/modules/ai/ai.routes.ts",
         "apps/api/src/modules/ai/ai-key.service.ts",
         "apps/api/src/modules/ai/model-matcher.ts",
@@ -640,6 +643,7 @@
         "apps/api/src/modules/ai/providers/*",
         "apps/api/src/modules/ai/agent/*",
         "apps/api/src/modules/settings/chat-settings.service.ts",
+        "apps/api/src/modules/settings/chat-settings.flow.ts",
         "apps/api/src/modules/settings/embedding-settings.service.ts",
         "apps/api/src/modules/settings/embedding-settings.flow.ts",
         "apps/api/src/modules/trial/token-quota.service.ts",
@@ -722,6 +726,9 @@
         "apps/api/tests/feature/modules/knowledge/**",
         "apps/api/tests/feature/modules/embedding/**",
         "apps/api/tests/feature/modules/settings/embedding-settings.test.ts",
+        "apps/api/tests/feature/modules/settings/chat-settings.test.ts",
+        "apps/api/tests/feature/modules/ai/ai-routes.test.ts",
+        "apps/api/tests/unit/modules/settings/chat-settings-defaults.test.ts",
         "apps/web/tests/unit/app/knowledge-feedback-page.test.tsx",
         "apps/web/tests/unit/components/knowledge/**"
       ],
@@ -770,7 +777,7 @@
         },
         {
           "domain": "automation",
-          "why": "自動轉接時呼叫 summarizeConversation；自動化 AI 動作與情緒分析用 llm.service"
+          "why": "自動轉接時呼叫 summarizeConversationFlow；自動化的情緒分析與自動分類用 ai.flow，KB 自動回覆與 Agent 用 llm.flow"
         },
         {
           "domain": "cases",
@@ -778,7 +785,7 @@
         },
         {
           "domain": "marketing",
-          "why": "素材 Flex AI 生成與文字潤稿用 llm.service、計入月額度"
+          "why": "素材 Flex AI 生成與文字潤稿用 llm.flow、計入月額度"
         },
         {
           "domain": "platform-usage",
@@ -3123,7 +3130,7 @@
         },
         {
           "domain": "knowledge",
-          "why": "ModelPricing 的讀取端 pricing.service.ts 與成本寫入 llm.service.ts 的 recordAiUsage() 在 AI 模組；模型白名單在 gemini.provider.ts"
+          "why": "ModelPricing 的讀取端 pricing.service.ts 與成本寫入 llm.service.ts 的 writeAiUsage() 在 AI 模組；模型白名單在 gemini.provider.ts"
         }
       ],
       "usedBy": [

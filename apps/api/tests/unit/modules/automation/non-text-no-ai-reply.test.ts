@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeAll, beforeEach, test, vi } from 'vitest';
+import { downRedis } from '#tests/support/llm-deps.js';
 import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const calls = vi.hoisted(() => ({ kb: [] as string[], agent: [] as string[], enqueued: 0 }));
@@ -19,23 +20,23 @@ vi.mock('bullmq', async (importOriginal) => ({
   },
 }));
 vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
-  attemptKbAutoReply: async (_p: unknown, _io: unknown, _t: string, _c: string, text: string) => {
+  attemptKbAutoReply: async (_p: unknown, _llm: unknown, _io: unknown, _t: string, _c: string, text: string) => {
     calls.kb.push(text);
   },
 }));
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
   isAgentEnabled: () => true,
-  runAgentReply: async (_p: unknown, input: { userMessage: string }) => {
+  runAgentReply: async (_p: unknown, _llm: unknown, input: { userMessage: string }) => {
     calls.agent.push(input.userMessage);
     return { handled: true };
   },
 }));
 // 真的 analyzeSentiment() 不會丟錯（LLM 失敗時改用關鍵字判斷），這裡回傳固定的中性結果
-vi.mock('#src/modules/ai/sentiment.service.js', () => ({
-  analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+vi.mock('#src/modules/ai/ai.flow.js', () => ({
+  analyzeSentimentFlow: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+  autoClassifyNewCaseFlow: async () => {},
+  summarizeConversationFlow: async () => ({ summary: '' }),
 }));
-vi.mock('#src/modules/ai/classify.service.js', () => ({ autoClassifyNewCase: async () => {} }));
-vi.mock('#src/modules/ai/ai.service.js', () => ({ summarizeConversation: async () => ({ summary: '' }) }));
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({ deliverToChannel: async () => true }));
 
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
@@ -82,7 +83,7 @@ const prisma = {
 let handle: Awaited<ReturnType<typeof setupAutomationWorker>>;
 
 beforeAll(() => {
-  handle = setupAutomationWorker(prisma as never, { to: () => ({ emit: () => {} }) } as never, prisma as never);
+  handle = setupAutomationWorker(prisma as never, { to: () => ({ emit: () => {} }) } as never, prisma as never, downRedis);
 });
 
 beforeEach(() => {

@@ -1246,7 +1246,7 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 <a id="plan-13"></a>
 ### PLAN-13：換方案或調高方案的額度之後，當月的額度告警不會再發
 
-用量告警以 Redis 的告警旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 做冪等：`checkQuotaThresholdCrossing()` 用 `SET NX` 寫入旗標，寫入成功才發送，旗標到月底才過期。月額度提高之後，本月已經寫入的旗標還在。用量跨越新上限的門檻時，系統不會再通知。
+用量告警以 Redis 的告警旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 做冪等：`claimCrossedThresholds()` 用 `SET NX` 寫入旗標，寫入成功才發送，旗標到月底才過期。月額度提高之後，本月已經寫入的旗標還在。用量跨越新上限的門檻時，系統不會再通知。
 
 核准加購會清除這兩個旗標（`clearQuotaAlertFlags()`，2026-10-08 修正）。其他會提高月額度的操作都不清除：
 
@@ -1335,9 +1335,9 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 | --- | --- | --- |
 | 呼叫用誰的金鑰 | 租戶自備的 | 平台的 `GEMINI_API_KEY` |
 | Google 的帳單開給誰 | 租戶 | **平台** |
-| `AiUsage.costUsd` | 記 0 | 依 `ModelPricing` 實算（`llm.service.ts` 的 `recordAiUsage()` 以 `!isByok` 判斷） |
+| `AiUsage.costUsd` | 記 0 | 依 `ModelPricing` 實算（`llm.service.ts` 的 `writeAiUsage()` 以 `!isByok` 判斷） |
 | 是否計入租戶月額度 | 否 | **是**（`incrMonthlyTokens()` 只累加 `platform`） |
-| 額度用完是否被擋 | 否 | **是**（`llm.service.ts` 的 `generateReply()`） |
+| 額度用完是否被擋 | 否 | **是**（`llm.flow.ts` 的 `prepareLlmCall()`） |
 
 租戶不會因此多付錢，系統沒有計費機制（見 PLAN-10）。他付出的是額度：原本不計數的呼叫開始消耗 `monthlyTokens`，用完還會被擋下。平台則開始承擔本來由租戶負擔的 LLM 費用。
 
@@ -1387,7 +1387,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 **快取讓這段期間更長。** `pricingCache` 是行程內的 `Map`，TTL 10 分鐘，而且**連查無價目的 `null` 一起快取**。補上價目之後最久還要再等 10 分鐘才會套用，多個 API 行程各自計時。`clearPricingCache()` 的註解寫「測試/改價後手動清快取用」，但全 repo 沒有任何呼叫端，也沒有對外端點。
 
-**平台看不出帳面被低估。** `/admin/usage` 不看 `usageMissing`（見 USAGE-01），畫面上的成本只會偏低，沒有任何提示。唯一的線索是 `recordAiUsage()` 留的一則 warn log。
+**平台看不出帳面被低估。** `/admin/usage` 不看 `usageMissing`（見 USAGE-01），畫面上的成本只會偏低，沒有任何提示。唯一的線索是 `writeAiUsage()` 留的一則 warn log。
 
 **修正方向（2026-09-30 提出，尚未實作）**
 
@@ -1402,11 +1402,11 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 <a id="usage-03"></a>
 ### USAGE-03：AI 額度計數器少算用量之後，當月不會再校正
 
-`token-quota.service.ts` 的月額度檢查讀 Redis 計數器 `aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份）。只有計數器**不存在**時，`getMonthlyTokens()` 與 `incrMonthlyTokens()` 才會從 `AiUsage` 的加總補建。計數器存在、但少算了用量時（計數器的數字小於 `AiUsage` 的實際加總），沒有任何程式會再拿 `AiUsage` 校正，少算的用量一直留到月底 key 過期。
+`token-quota.service.ts` 的月額度檢查讀 Redis 計數器 `aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份）。只有計數器**不存在**時，`readMonthlyTokens()` 與 `incrMonthlyTokens()` 才會從 `AiUsage` 的加總補建。計數器存在、但少算了用量時（計數器的數字小於 `AiUsage` 的實際加總），沒有任何程式會再拿 `AiUsage` 校正，少算的用量一直留到月底 key 過期。
 
 有三種情況會讓計數器少算用量：
 
-- **累加失敗。** `recordAiUsage()` 寫入 `AiUsage` 之後，以 fire-and-forget 呼叫 `incrMonthlyTokens()`。`incrby` 失敗時只記一則 warn log，這次的 token 不會再加進計數器。
+- **累加失敗。** `llm.flow.ts` 的 `recordLlmUsage()` 在 `AiUsage` commit 之後呼叫 `incrMonthlyTokens()`。`incrby` 失敗時只記一則 warn log，這次的 token 不會再加進計數器。
 - **Redis 重啟後還原舊的快照。** `docker-compose.yml` 與 `docker-compose.dev.yml` 的 Redis 掛載資料 volume，沒有指定設定檔，使用 image 預設的 RDB 快照，沒有開啟 AOF。重啟時還原最後一次快照，快照之後的累加都會遺失，而計數器仍然存在，所以不會補建。
 - **核准加購刪除計數器時，有一筆累加正在進行。** `incrMonthlyTokens()` 先用 `exists()` 確認計數器存在，再呼叫 `incrby()`，這兩步不是原子操作。`approveRequest()` 在兩步之間刪除計數器時，`incrby()` 會建立一個新的計數器，值只有這次呼叫的 token 數。計數器存在，所以不會從 `AiUsage` 補建。這個新的 key 也沒有過期時間，月底之後仍留在 Redis。
 
@@ -1517,7 +1517,19 @@ UAT Demo 租戶 10 張工單中有 7 張 `priority = URGENT`、`slaPolicy = "中
 
 這個欄位沒有寫入端。`settings.routes.ts` 沒有對應的路由，前端、CLI 與 seed 都不設定它。租戶無法調整時限，也無法停用自動關閉；要改只能直接更新資料庫。
 
-掃描以 `tenant_settings` 的列為單位，因此還有一個邊界情況：沒有這一列的租戶不會被掃描，對話永遠不會自動關閉。開通租戶時不會建立這一列。第一次呼叫 AI，或打開 Chat、Embedding、營業時間、追蹤設定等設定頁時，才會建立。收過文字訊息的租戶通常已有這一列，因為情緒分析會經由 `llm.service.ts` 呼叫 `getChatSettings()`。
+掃描以 `tenant_settings` 的列為單位，因此還有一個邊界情況：沒有這一列的租戶不會被掃描，對話永遠不會自動關閉。開通租戶時不會建立這一列。打開營業時間、追蹤設定頁，或第一次修改任何設定時，才會建立。
+
+change `migrate-ai-llm-tenant-ctx`（#337 6a）之前，讀 Chat 設定時沒有設定列就會建立一列。每則客人的文字訊息都會跑情緒分析並讀 Chat 設定，所以收過文字訊息的租戶都有這一列。這個 change 讓讀 Chat 設定不再寫資料庫，之後的新租戶要等有人打開上述設定頁或改過設定，才會開始自動關閉。
+
+評估過的做法（2026-11-10，使用者決定先不改程式）：
+
+| 做法 | 與 change 之前的差別 | 代價 |
+| --- | --- | --- |
+| 掃描「有設定列，或有任何 `ai_usages` 紀錄」的租戶 | 幾乎沒有 | 自動關閉與 AI 用量的寫法綁在一起，兩者在產品上無關 |
+| 掃描所有租戶，沒有設定列時用 schema 預設的 72 小時 | 只差在從沒收過文字訊息、也沒開過設定頁的租戶 | 這些租戶也開始自動關閉 |
+| 開通租戶時建立設定列，並以 migration 補齊既有租戶 | 同上 | 要改平台開通與試用開通兩條路徑 |
+
+哪些租戶適用自動關閉是產品規則，決定之後再選做法。
 
 **修正方向**：在 `settings` 模組加一組讀寫閒置時限的路由，驗證範圍（0 代表停用），寫入時記錄租戶稽核。前端放在設定頁，例如與營業時間同一頁。開通租戶時一併建立 `TenantSettings`，讓掃描涵蓋所有租戶。
 

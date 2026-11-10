@@ -1,34 +1,26 @@
 /**
- * LLM Service — generates RAG replies via the per-tenant chat provider.
+ * LLM 呼叫的資料存取與提示詞（change migrate-ai-llm-tenant-ctx，design D2）。
  *
- * Provider (Ollama / Gemini), model, temperature, max tokens, and system
- * prompts are all loaded from TenantSettings at call time. Defaults below
- * are used as fallback when a tenant's prompt fields are empty strings.
+ * - readLlmInputs()：呼叫 LLM 之前，在交易 1 讀 Chat 設定、金鑰與來源、遮罩政策與月額度上限。
+ * - writeAiUsage()：呼叫 LLM 之後，在交易 2 寫一筆 AiUsage。
+ * - 系統提示詞的組裝是純函式。
+ *
+ * 呼叫 provider 在 llm-client.ts，三段的順序與 Redis 計數器在 llm.flow.ts。
  */
 
 import { Prisma } from '@prisma/client';
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { withOtherChannelContext } from './other-channel-context.js';
 import { logger } from '@open333crm/core';
-import { getChatProvider } from './providers/index.js';
-import type { HistoryMessage } from './providers/index.js';
+import type { HistoryMessage } from './providers/types.js';
 import type { TokenUsage } from './providers/types.js';
 import { getPricing, calcCostUsd } from './pricing.service.js';
 import { resolveGeminiKey } from './ai-key.service.js';
-import {
-  isMonthlyTokenExceeded,
-  incrMonthlyTokens,
-  checkQuotaThresholdCrossing,
-} from '../trial/token-quota.service.js';
-import { eventBus } from '../../events/event-bus.js';
-import { getConfig } from '../../config/env.js';
-import { AppError } from '../../shared/utils/response.js';
-import { getChatSettings } from '../settings/chat-settings.service.js';
-import { getPrivacyAwareChatProvider } from './deidentification.service.js';
-import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import { getEffectiveLimit } from '../platform/plan-limits.service.js';
+import { getChatSettings, type ChatSettings } from '../settings/chat-settings.service.js';
+import { readAiPrivacyPolicy, type AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
-export type { HistoryMessage } from './providers/index.js';
+export type { HistoryMessage } from './providers/types.js';
 
 /** AI 呼叫來源標記（AiUsage.feature） */
 export type AiFeature =
@@ -56,29 +48,55 @@ const ZERO_USAGE: TokenUsage = {
   thoughtsTokens: 0,
 };
 
+/** 呼叫 LLM 需要的資料（交易 1 讀取） */
+export interface LlmInputs {
+  settings: ChatSettings;
+  apiKey: string | undefined;
+  /** byok：租戶自備的 Gemini 金鑰；platform：平台的金鑰或 Ollama */
+  keySource: 'byok' | 'platform';
+  privacy: AiPrivacyPolicy;
+  /**
+   * 月額度上限；null 是沒有上限。
+   * 只在 keySource 是 platform 時讀取：BYOK 的用量不計額度、也不擋（主規格 token-quota）。
+   * 註：ollama 雖成本 0，但其 keySource 仍為 'platform' 且會被計入計數器，故一併受擋。
+   */
+  monthlyTokens: number | null;
+}
+
+export async function readLlmInputs(ctx: TenantCtx): Promise<LlmInputs> {
+  const settings = await getChatSettings(ctx);
+  // BYOK：gemini 才需 key；取租戶自備 key（無則退回平台 env）
+  const { key: apiKey, source: keySource } =
+    settings.provider === 'gemini'
+      ? await resolveGeminiKey(ctx)
+      : { key: undefined, source: 'platform' as const };
+  const monthlyTokens =
+    keySource === 'platform' ? await getEffectiveLimit(ctx.tx, ctx.tenantId, 'monthlyTokens') : null;
+  const privacy = await readAiPrivacyPolicy(ctx.tx, ctx.tenantId);
+  return { settings, apiKey, keySource, privacy, monthlyTokens };
+}
+
+export interface AiUsageInput {
+  provider: string;
+  model: string;
+  keySource?: string;
+  meta?: AiUsageMeta;
+  usage?: TokenUsage;
+  success: boolean;
+  errorCode?: string;
+}
+
 /**
- * 寫入一筆 AiUsage（fire-and-forget 的實體）。
- * 用量記錄是計費輔助非金流帳本：任何失敗只 log、絕不影響 AI 回覆主流程。
+ * 寫入一筆 AiUsage。回傳要累加進月額度計數器的 token 數：只計成功、平台金鑰的呼叫，其餘是 0。
+ * 用量記錄是計費輔助非金流帳本：呼叫端 catch 寫入失敗、只記 log（ai-usage-recording）。
  */
-export async function recordAiUsage(
-  prisma: TenantDb,
-  input: {
-    tenantId: string;
-    provider: string;
-    model: string;
-    keySource?: string;
-    meta?: AiUsageMeta;
-    usage?: TokenUsage;
-    success: boolean;
-    errorCode?: string;
-  },
-): Promise<void> {
+export async function writeAiUsage(ctx: TenantCtx, input: AiUsageInput): Promise<{ quotaTokens: number }> {
   const usage = input.usage ?? ZERO_USAGE;
   const isByok = input.keySource === 'byok';
   // Ollama 本機模型 + BYOK（租戶自付）成本恆 0，不查價目表 / 不計平台成本
   const pricing =
     input.success && input.usage && input.provider !== 'ollama' && !isByok
-      ? await getPricing(prisma, input.model)
+      ? await getPricing(ctx, input.model)
       : null;
   const costUsd = input.success && input.usage && !isByok ? calcCostUsd(usage, pricing) : null;
   // BYOK 不查價目、不視為 usageMissing（成本本就不歸平台）
@@ -88,9 +106,10 @@ export async function recordAiUsage(
     logger.warn(`[AiUsage] no pricing found for model=${input.model}, costUsd recorded as 0`);
   }
 
-  await prisma.aiUsage.create({
+  const totalTokens = usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens;
+  await ctx.tx.aiUsage.create({
     data: {
-      tenantId: input.tenantId,
+      tenantId: ctx.tenantId,
       provider: input.provider,
       model: input.model,
       feature: input.meta?.feature ?? 'unknown',
@@ -99,7 +118,7 @@ export async function recordAiUsage(
       cachedTokens: usage.cachedTokens,
       candidatesTokens: usage.candidatesTokens,
       thoughtsTokens: usage.thoughtsTokens,
-      totalTokens: usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens,
+      totalTokens,
       costUsd: costUsd ?? new Prisma.Decimal(0),
       success: input.success,
       usageMissing: input.success ? usageMissing : false,
@@ -109,30 +128,8 @@ export async function recordAiUsage(
     },
   });
 
-  // Redis 即時額度累加：只計成功、platform key 的 token（BYOK 租戶自付不計額度）
-  const totalTokens = usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens;
-  if (input.success && !isByok && totalTokens > 0) {
-    // 累加後偵測是否剛跨越告警門檻（80%/100%），跨越則發事件；全程 fire-and-forget 不阻塞回覆
-    incrMonthlyTokens(prisma, input.tenantId, totalTokens)
-      .then(async (after) => {
-        if (after === null || getConfig().USAGE_QUOTA_ALERTS_ENABLED !== 1) return;
-        const crossed = await checkQuotaThresholdCrossing(prisma, input.tenantId, totalTokens, after);
-        for (const c of crossed) {
-          eventBus.publish({
-            name: 'usage.quota.threshold',
-            tenantId: input.tenantId,
-            timestamp: new Date(),
-            payload: {
-              level: c.level,
-              usedTokens: c.usedTokens,
-              limitTokens: c.limitTokens,
-              monthKey: c.monthKey,
-            },
-          });
-        }
-      })
-      .catch((e) => logger.error('[TokenQuota] incr/alert failed:', e));
-  }
+  // 月額度只計成功、platform key 的 token（BYOK 租戶自付不計額度）
+  return { quotaTokens: input.success && !isByok ? totalTokens : 0 };
 }
 
 /**
@@ -226,93 +223,31 @@ export const MODEL_GUIDE_SYSTEM_PROMPT =
 
 type PromptKind = 'reply' | 'summarize';
 
-/**
- * Generate a reply for a tenant. Uses tenant chat settings + system prompt.
- *
- * `promptKind` selects which system prompt to use:
- *   - 'reply'     → tenant.chatSystemPrompt    (fallback CRM_REPLY_SYSTEM_PROMPT)
- *   - 'summarize' → tenant.summarizeSystemPrompt (fallback SUMMARIZE_SYSTEM_PROMPT)
- *
- * `overrideSystemPrompt` lets callers (e.g. automation rules with custom
- * prompts) inject their own prompt without touching tenant defaults.
- */
-export async function generateReply(
-  prisma: TenantDb,
-  tenantId: string,
-  userMessage: string,
-  kbContext = '',
-  options: {
-    promptKind?: PromptKind;
-    overrideSystemPrompt?: string;
-    history?: HistoryMessage[];
-    /** 同一位顧客在其他渠道的近期訊息（loadOtherChannelContext 的結果），接在系統指示後面 */
-    otherChannelContext?: string;
-    /** 用量記錄的來源標記與關聯（未傳 feature 記為 unknown） */
-    meta?: AiUsageMeta;
-  } = {},
-): Promise<string> {
-  const settings = await getChatSettings(prisma, tenantId);
-  const provider = getChatProvider(settings.provider);
+/** 一次 LLM 呼叫的內容 */
+export interface LlmPrompt {
+  userMessage: string;
+  /** 知識庫內容；空字串代表本次未命中知識庫 */
+  kbContext?: string;
+  /**
+   * 選哪一段系統提示詞：
+   *   - 'reply'     → tenant.chatSystemPrompt    (fallback CRM_REPLY_SYSTEM_PROMPT)
+   *   - 'summarize' → tenant.summarizeSystemPrompt (fallback SUMMARIZE_SYSTEM_PROMPT)
+   */
+  promptKind?: PromptKind;
+  /** 呼叫端（例如自訂提示詞的自動化規則）自己的系統提示詞，不改租戶的設定 */
+  overrideSystemPrompt?: string;
+  history?: HistoryMessage[];
+  /** 同一位顧客在其他渠道的近期訊息（loadOtherChannelContext 的結果），接在系統指示後面 */
+  otherChannelContext?: string;
+}
 
-  // BYOK：gemini 才需 key；取租戶自備 key（無則退回平台 env）
-  const { key: apiKey, source: keySource } =
-    provider.id === 'gemini'
-      ? await resolveGeminiKey(prisma, tenantId)
-      : { key: undefined, source: 'platform' as const };
-
-  // 方案 token 月額度硬擋：達上限則擋 AI 回覆（真人回覆不受影響）。
-  // 只在 keySource==='platform' 時檢查——與 incrMonthlyTokens 只累加 platform 的設計一致：
-  // BYOK（租戶自備 key）成本租戶自付，不計額度也不擋；否則若租戶先前用 platform key
-  // 累計到接近上限，之後切換成 BYOK 仍會被舊 platform 累計量誤擋。
-  // 註：ollama 雖成本 0，但其 keySource 仍為 'platform' 且會被計入計數器，故此處一併受擋，
-  // 保持與 dbMonthlyTokens/incrMonthlyTokens 的計數範圍一致。
-  if (keySource === 'platform' && (await isMonthlyTokenExceeded(prisma, tenantId))) {
-    throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
-  }
-
-  const promptKind = options.promptKind ?? 'reply';
+/** 組出送給 provider 的系統提示詞：租戶設定或呼叫端的提示詞、其他渠道的訊息、知識庫約束（CM-178） */
+export function composeSystemPrompt(settings: ChatSettings, prompt: LlmPrompt): string {
+  const promptKind = prompt.promptKind ?? 'reply';
   const systemPrompt =
-    options.overrideSystemPrompt ??
+    prompt.overrideSystemPrompt ??
     (promptKind === 'summarize'
       ? settings.summarizeSystemPrompt || SUMMARIZE_SYSTEM_PROMPT
       : settings.chatSystemPrompt || CRM_REPLY_SYSTEM_PROMPT);
-
-  const usageBase = {
-    tenantId,
-    provider: provider.id,
-    model: settings.model,
-    keySource,
-    meta: options.meta,
-  };
-
-  let result;
-  try {
-    const protectedProvider = getPrivacyAwareChatProvider(await readAiPrivacyPolicy(prisma, tenantId), provider);
-    result = await protectedProvider.generate({
-      // 知識庫約束在此組裝完成，provider 只負責傳輸（CM-178）
-      systemPrompt: buildSystemPrompt(withOtherChannelContext(systemPrompt, options.otherChannelContext ?? ''), kbContext),
-      userMessage,
-      history: options.history,
-      model: settings.model,
-      temperature: settings.temperature,
-      maxTokens: settings.maxTokens,
-      baseUrl: settings.baseUrl,
-      apiKey,
-    });
-  } catch (err) {
-    // 失敗呼叫也留帳（成本 0），並原樣 rethrow 保持既有錯誤行為
-    recordAiUsage(prisma, {
-      ...usageBase,
-      success: false,
-      errorCode: (err as Error).message?.slice(0, 200),
-    }).catch((e) => logger.error('[AiUsage] failed to record error usage:', e));
-    throw err;
-  }
-
-  // fire-and-forget：不 await、不阻塞回覆，寫入失敗只 log
-  recordAiUsage(prisma, { ...usageBase, usage: result.usage, success: true }).catch((e) =>
-    logger.error('[AiUsage] failed to record usage:', e),
-  );
-
-  return result.text;
+  return buildSystemPrompt(withOtherChannelContext(systemPrompt, prompt.otherChannelContext ?? ''), prompt.kbContext ?? '');
 }
