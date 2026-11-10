@@ -91,6 +91,29 @@ often breaks a feature in a different module, and nobody notices until a user re
   frontend flows, the rules that must not break and a regression list.
   The `feature-impact-reviewer` subagent runs these steps and writes a report.
 
+#### Plan the platform layer in the same change
+
+The platform layer is the control plane at `/admin` (`docs/ref/features/platform/README.md`).
+It decides what each plan can use, counts AI usage, and lets the platform team see and control
+tenants. A tenant feature that needs the platform layer is not finished when the tenant side
+works. Plan and build its platform part in the same change.
+
+Before you write the proposal, check each item in this table. In `proposal.md`, write a section
+`## Platform layer` that lists each item that applies and what the change does for it. If no item
+applies, write one sentence that says why.
+
+| If the change | Then also |
+| ------------- | --------- |
+| adds a permission code | Give it a `feature` in `packages/shared/src/rbac/permissions.ts`. Guard its routes with `requirePermission()`. A route without the guard ignores the plan ceiling (AUDIT PLAN-04). |
+| adds a feature area that a plan can switch on or off | Add it to `packages/core/src/rbac/features.ts`. Decide which plans include it. Add it to existing plans with a one-time migration that only changes that field and can run again. The seed only creates missing plans (#441), so a seed change does not reach existing plans. |
+| adds a resource that a plan should limit (a count or a quota) | Add the limit key to `plan-limits.service.ts`, an input to `LIMIT_KEYS` in `apps/web/src/app/admin/plans/page.tsx`, and a check where the resource is created. Do not add a limit that nothing checks: `maxTags` shows on the plan page and limits nothing (AUDIT PLAN-04). |
+| calls an AI model | Record the call with `recordAiUsage()` and an `AiFeature` value in `apps/api/src/modules/ai/llm.service.ts`. Check the monthly quota (`token-quota.service.ts`) and the tenant AI privacy policy (`ai-privacy.service.ts`). A new model needs a price in `model_pricings`, or its cost is recorded as 0 (AUDIT USAGE-02). |
+| adds a channel type | Make sure the plan page can allow or block it (`allowedChannelTypes`). |
+| adds a tenant setting or state that the platform team must see or control | Add it to the platform API and pages. An example is the AI privacy switch on the tenant page. |
+| writes a new platform audit action | Add its label to the platform audit label table (`ACTION_LABELS` in `apps/web/src/app/admin/platform-users/[id]/page.tsx`). Otherwise the page shows the raw code. |
+| adds a BullMQ queue | Add it to `apps/api/src/modules/queue-monitoring/monitored-queues.ts`, so that the queue monitor shows its failed jobs. |
+| sends a request from a tenant to the platform team, or the other way | Notify the other side. A request that nobody sees waits forever (#495, AUDIT PLAN-17). |
+
 ### Step 2 — Write the failing test first (TDD)
 
 1. Write a test for the scenario or for the bug.
@@ -500,6 +523,9 @@ request:
 - [ ] `pnpm build` passes, if you changed a file in `packages/*`, a dependency, or a file that
       `apps/web` imports. Tests and `tsc` do not find a module that the browser bundle cannot
       load. Only the Next.js build finds it.
+- [ ] Each item of "Plan the platform layer in the same change" (Step 1) that applies is done in
+      this change, and `proposal.md` has its `## Platform layer` section. Do not leave the
+      platform part for a later change.
 - [ ] `pnpm test:feature` passes, if you changed the database, Redis, RLS or a feature test.
 - [ ] `node scripts/check-tenant-scoping.mjs --strict` and
       `node scripts/check-prisma-admin-usage.mjs --strict` show no violation that your change
