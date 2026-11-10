@@ -2,8 +2,8 @@
 
 租戶提出升級或加購申請，平台在此審核。
 
-- **資料來源**：`apps/api/src/modules/platform/plan-change.service.ts`、`apps/web/src/app/dashboard/plan/page.tsx`
-- **核對日期**：2026-09-23
+- **資料來源**：`apps/api/src/modules/platform/plan-change.service.ts`、`apps/api/src/modules/platform/plan-change.flow.ts`、`apps/web/src/app/dashboard/plan/page.tsx`、`apps/web/src/app/admin/layout.tsx`
+- **核對日期**：2026-11-10
 
 ## 一筆申請的流程
 
@@ -17,6 +17,12 @@
 | 駁回 | `PATCH /platform/plan-change-requests/:id/reject` | 只改狀態，不動租戶 |
 
 核准與駁回都只接受 `pending` 的申請，已處理過的回 400。兩者都會記下 `reviewedBy`、`reviewedAt` 與審核備註。
+
+## 平台方怎麼知道有新申請
+
+- **寄信**：申請建立後，`plan-change.flow.ts` 寄信給所有啟用中的平台帳號，信中有租戶名稱、類型、內容、備註與 `/admin/plan-changes` 的連結。寄信在回應之後進行，失敗不影響申請，也不重試。
+- **寄送紀錄**：每次寄送後寫一筆平台稽核 `plan_change.notify_platform`（`platformUserId` 是 null），`payload` 有 `recipients`、`sent`、`failed`（收件人與原因），寄信之前就失敗時有 `error`。平台後台沒有依 `action` 查稽核的介面（PLAN-11），要查 `platform_audit_logs`。
+- **側欄數量**：平台後台側欄的「升級申請」顯示待審數量（`GET /platform/plan-change-requests` 的筆數），沒有待審時不顯示。換頁、每 60 秒，以及在升級申請頁核准或駁回後重新載入。
 
 ## 各型別核准後做什麼
 

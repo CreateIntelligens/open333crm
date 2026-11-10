@@ -6,7 +6,8 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 export async function writePlatformAudit(
   prisma: PrismaClient,
   input: {
-    platformUserId: string;
+    /** null 代表系統動作（排程、寄送通知等），不是平台帳號的操作 */
+    platformUserId: string | null;
     action: string;
     targetType?: string;
     targetId?: string;

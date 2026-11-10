@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getPlatformToken, setPlatformToken, getMustChangePassword } from './lib/platform-api';
 import { QueueMonitorLink } from './lib/QueueMonitorLink';
+import { usePendingPlanChangeCount } from './lib/pending-plan-changes';
 
 const NAV = [
   { href: '/admin/plans', label: '方案與上限' },
@@ -24,6 +25,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const isPublicPage = PUBLIC_PATHS.includes(pathname ?? '');
   const isChangePasswordPage = pathname === '/admin/change-password';
+  // 側欄「升級申請」的待審數量：只在顯示側欄時載入（登入頁與強制改密碼時不載入）
+  const showSidebar = ready && !isPublicPage && !(isChangePasswordPage && getMustChangePassword());
+  const pendingPlanChanges = usePendingPlanChangeCount(pathname, showSidebar);
 
   useEffect(() => {
     if (isPublicPage) {
@@ -54,7 +58,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  const navItem = (href: string, labelText: string) => {
+  const navItem = (href: string, labelText: string, badge?: number | null) => {
     const active = pathname === href;
     return (
       <Link
@@ -78,6 +82,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }}
       >
         {labelText}
+        {badge != null && badge > 0 && (
+          <span
+            aria-label={`${badge} 筆待審申請`}
+            style={{
+              marginLeft: 8,
+              minWidth: 20,
+              padding: '1px 7px',
+              borderRadius: 999,
+              background: '#fff',
+              color: '#0b7a70',
+              fontSize: 12,
+              fontWeight: 700,
+              lineHeight: '18px',
+              textAlign: 'center',
+              display: 'inline-block',
+            }}
+          >
+            {badge}
+          </span>
+        )}
       </Link>
     );
   };
@@ -99,7 +123,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           平台控制台
         </div>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {NAV.map((n) => navItem(n.href, n.label))}
+          {NAV.map((n) => navItem(n.href, n.label, n.href === '/admin/plan-changes' ? pendingPlanChanges : null))}
           <QueueMonitorLink />
         </nav>
 

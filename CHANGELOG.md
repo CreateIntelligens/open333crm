@@ -2,6 +2,16 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-10]
+
+### Added
+
+- **租戶送出升級或加購申請時通知平台方**（issue #495，change `add-plan-change-platform-notify`）— 原本 `POST /api/v1/plan-change` 只寫入申請，平台方要自己打開 `/admin/plan-changes` 才知道。現在：
+  - 申請建立後寄信給所有啟用中的平台帳號（`platform_users.isActive=true`），信中有租戶名稱、類型（升級方案／加購 Token）、內容、備註，以及 `${WEB_BASE_URL}/admin/plan-changes` 的連結。寄信在回應之後進行，不拖慢送出；申請被拒絕（409、400、404）時不寄信。
+  - 寄信失敗不影響申請。每次寄送後寫一筆平台稽核 `plan_change.notify_platform`（`platformUserId` 為 null 的系統動作），`payload` 記收件人數、寄出數，以及失敗的收件人與原因；查詢收件人失敗或沒有啟用中的平台帳號時也會記錄。寄送失敗不自動重試。
+  - 平台後台側欄的「升級申請」顯示待審數量，沒有待審時不顯示；換頁、每 60 秒，以及在升級申請頁核准或駁回後重新載入。
+  - 平台審核後通知租戶（AUDIT PLAN-17）不在這次範圍。
+
 ## [2026-11-09]
 
 ### Changed

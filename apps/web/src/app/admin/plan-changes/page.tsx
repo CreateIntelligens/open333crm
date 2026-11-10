@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { platformApi } from '../lib/platform-api';
 import { fmtTokens } from '../lib/format';
+import { notifyPlanChangesUpdated } from '../lib/pending-plan-changes';
 
 interface Req {
   id: string;
@@ -31,6 +32,8 @@ export default function PlanChangesPage() {
     if (!window.confirm(`確定${verb}「${r.tenantName}」的申請？`)) return;
     await platformApi.patch(`/plan-change-requests/${r.id}/${action}`);
     await load();
+    // 側欄「升級申請」的待審數量跟著更新
+    notifyPlanChangesUpdated();
     setMsg(`已${verb}「${r.tenantName}」的申請`);
     setTimeout(() => setMsg(''), 3000);
   };
