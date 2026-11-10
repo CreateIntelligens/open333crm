@@ -1,5 +1,5 @@
 /**
- * 平台帳號（PlatformUser）相關信件：開通完成、忘記密碼重設。
+ * 平台帳號（PlatformUser）相關信件：開通完成、忘記密碼重設、租戶合約到期提醒。
  * 樣式與 trial-emails.ts 一致（純 HTML inline-style + table 佈局，不走 MJML——
  * mjml 為可選依賴、未安裝時 fallback 會把按鈕 href 吃掉，純 HTML 無此風險）。
  * 寄信一律 fire-and-forget，失敗只 log（呼叫端負責）。
@@ -78,6 +78,24 @@ const PLATFORM_PASSWORD_RESET_HTML = wrap({
     infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{resetUrl}}" style="color:' + BRAND + ';">{{resetUrl}}</a>'),
 });
 
+// 到期日高亮列（樣式同 trial-emails 的 highlight）
+const highlight = (label: string, value: string) =>
+  `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;"><tr>
+    <td style="font-size:13px;color:${MUTED};padding-right:10px;">${label}</td>
+    <td style="font-size:15px;font-weight:700;color:${INK};">${value}</td>
+  </tr></table>`;
+
+const CONTRACT_EXPIRY_REMINDER_HTML = wrap({
+  heading: '租戶合約即將到期',
+  accent: '#b7791f',
+  bodyHtml:
+    p('租戶 <strong>{{tenantName}}</strong> 的合約將在 <strong>{{daysLeft}}</strong> 天後到期。') +
+    highlight('合約迄日', '{{endDate}}') +
+    button('{{tenantUrl}}', '前往平台後台查看租戶') +
+    small('合約到期後系統不會自動停用租戶。請確認是否續約；如需停用，請由平台後台手動操作。') +
+    infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{tenantUrl}}" style="color:' + BRAND + ';">{{tenantUrl}}</a>'),
+});
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -120,4 +138,18 @@ export async function sendPlatformPasswordResetEmail(
     ttlMinutes: String(vars.ttlMinutes),
   });
   await safeSend(to, '【open333】重設您的平台帳號密碼', html, { resetUrl: vars.resetUrl });
+}
+
+/** 租戶合約到期提醒信：寄給啟用中的平台帳號，帶租戶名稱、迄日、剩餘天數與租戶詳細頁連結。 */
+export async function sendContractExpiryReminderEmail(
+  to: string,
+  vars: { tenantName: string; endDate: string; daysLeft: number; tenantUrl: string },
+): Promise<void> {
+  const html = render(CONTRACT_EXPIRY_REMINDER_HTML, {
+    tenantName: vars.tenantName,
+    endDate: vars.endDate,
+    daysLeft: String(vars.daysLeft),
+    tenantUrl: vars.tenantUrl,
+  });
+  await safeSend(to, `【open333】租戶合約即將到期：${vars.tenantName}`, html, { tenantUrl: vars.tenantUrl });
 }

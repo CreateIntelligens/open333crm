@@ -2,6 +2,16 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-10]
+
+### Added
+
+- **合約到期前提醒平台帳號，租戶列表標示到期狀態**（issue #494，change `add-contract-expiry-reminder`）— 合約日期原本只是紀錄，到期不提醒，列表也看不出即將到期。現在：
+  - 新排程每小時檢查啟用中的租戶，合約迄日距今（台灣日曆日）到達提醒檔位時，寄提醒信給所有啟用中的平台帳號（`platform_users.isActive=true`）。檔位存平台設定 `contract.reminderDaysBefore`，預設 `[30, 7, 1]`，設定缺漏或不合法時用預設值。
+  - `tenants` 新增 `contractRemindersSent`（migration `20261110100000_add_tenant_contract_reminders_sent`），同一租戶、同一檔位只寄一次；晚設定的合約只寄最接近的檔位，不會連收多封。平台人員修改合約迄日時清空，依新迄日重新提醒。
+  - `/admin/tenants` 列表在合約期間旁標示「已過期」與「30 天內到期」，按「合約期間」欄可依迄日排序（沒有迄日的排最後）。
+  - 合約到期**不會**自動停用租戶，是否停用與寬限期尚待產品決定。
+
 ## [2026-11-09]
 
 ### Changed

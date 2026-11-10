@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { platformApi } from '../lib/platform-api';
+import { CONTRACT_STATUS_META, contractStatus, sortByContractEnd } from '../lib/contract-status';
 
 interface Tenant {
   id: string;
@@ -25,6 +26,10 @@ export default function TenantsPage() {
   const [msg, setMsg] = useState('');
   const [form, setForm] = useState({ name: '', planSlug: 'trial', adminEmail: '', adminName: '', adminPassword: '' });
   const [creating, setCreating] = useState(false);
+  // 依合約迄日排序：null = 維持 API 順序（建立時間新到舊）
+  const [contractSort, setContractSort] = useState<'asc' | 'desc' | null>(null);
+  const rows = contractSort ? sortByContractEnd(tenants, contractSort) : tenants;
+  const toggleContractSort = () => setContractSort((d) => (d === 'asc' ? 'desc' : 'asc'));
 
   const load = async () => {
     const res = await platformApi.get('/tenants');
@@ -106,13 +111,22 @@ export default function TenantsPage() {
               <th style={th}>租戶</th>
               <th style={th}>方案</th>
               <th style={th}>客服數</th>
-              <th style={th}>合約期間</th>
+              <th style={th} aria-sort={contractSort === 'asc' ? 'ascending' : contractSort === 'desc' ? 'descending' : 'none'}>
+                <button type="button" onClick={toggleContractSort} style={sortBtn} title="依合約迄日排序">
+                  合約期間
+                  {contractSort && (
+                    <span style={{ marginLeft: 4, textTransform: 'none' }}>
+                      （迄日{contractSort === 'asc' ? '由近到遠' : '由遠到近'}）
+                    </span>
+                  )}
+                </button>
+              </th>
               <th style={th}>狀態</th>
               <th style={th}></th>
             </tr>
           </thead>
           <tbody>
-            {tenants.map((t) => (
+            {rows.map((t) => (
               <tr key={t.id} style={{ borderTop: '1px solid #eef1f5' }}>
                 <td style={td}>
                   <Link href={`/admin/tenants/${t.id}`} style={{ color: '#0d9488', fontWeight: 600, textDecoration: 'none' }}>
@@ -129,7 +143,10 @@ export default function TenantsPage() {
                       <input type="date" value={editing.end} onChange={(e) => setEditing({ ...editing, end: e.target.value })} style={dateInp} />
                     </span>
                   ) : t.contractStartDate || t.contractEndDate ? (
-                    <span>{toDateInput(t.contractStartDate) || '—'} ~ {toDateInput(t.contractEndDate) || '—'}</span>
+                    <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span>{toDateInput(t.contractStartDate) || '—'} ~ {toDateInput(t.contractEndDate) || '—'}</span>
+                      <ContractBadge contractEndDate={t.contractEndDate} />
+                    </span>
                   ) : (
                     <span style={{ color: '#97a0ae' }}>未設定</span>
                   )}
@@ -183,8 +200,21 @@ export default function TenantsPage() {
   );
 }
 
+/** 合約到期標籤：已過期 / 30 天內到期，其他不顯示（文字加顏色，不用 emoji） */
+function ContractBadge({ contractEndDate }: { contractEndDate: string | null }) {
+  const status = contractStatus(contractEndDate);
+  if (!status) return null;
+  const meta = CONTRACT_STATUS_META[status];
+  return (
+    <span style={{ color: meta.color, background: meta.background, borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>
+      {meta.label}
+    </span>
+  );
+}
+
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e3e8ef', borderRadius: 12, padding: 18 };
 const th: React.CSSProperties = { padding: '8px 10px', fontWeight: 600 };
+const sortBtn: React.CSSProperties = { border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', fontWeight: 600, textTransform: 'inherit' };
 const td: React.CSSProperties = { padding: '10px' };
 const miniBtn: React.CSSProperties = { border: '1px solid #cdd5e0', background: '#fff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
 const inp: React.CSSProperties = { border: '1px solid #e3e8ef', borderRadius: 8, padding: '9px 11px', fontSize: 14 };

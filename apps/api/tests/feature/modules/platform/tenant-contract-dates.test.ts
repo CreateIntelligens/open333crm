@@ -3,16 +3,26 @@
  *
  * 走真實的 platform.routes、updateTenantContract 與測試資料庫。平台認證換成固定的平台帳號；
  * 租戶 JWT 被拒絕由 tests/unit/modules/platform/platform-auth-guard.test.ts 對每一條平台路由檢查。
- * 租戶、平台帳號與稽核都帶 stamp，afterAll 刪除。試用排程的情境在交易內執行，結束時 rollback。
+ * 租戶、平台帳號與稽核都帶 stamp，afterAll 刪除。排程的情境在交易內執行，結束時 rollback。
+ * 合約提醒排程會寄信，寄信一律 mock，不真的寄出。
  */
 import assert from 'node:assert/strict';
-import { afterAll, test } from 'vitest';
+import { afterAll, beforeEach, test, vi } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import platformRoutes from '#src/modules/platform/platform.routes.js';
 import { runTrialLifecycle } from '#src/modules/trial/trial.scheduler.js';
+import { runContractReminders } from '#src/modules/platform/contract-reminder.scheduler.js';
+
+const sentMails: { to: string; html: string }[] = [];
+vi.mock('#src/modules/email/email.service.js', () => ({
+  sendEmail: async (input: { to: string; html: string }) => void sentMails.push(input),
+}));
+beforeEach(() => {
+  sentMails.length = 0;
+});
 
 loadEnvConfig();
 
@@ -24,7 +34,9 @@ const platformUser = await prisma.platformUser.create({
   data: { email: `ci-contract-${stamp}@example.test`, name: 'CI 合約日期測試', passwordHash: 'x' },
 });
 const tenantIds: string[] = [];
-async function mkTenant(data: { contractStartDate?: Date; contractEndDate?: Date } = {}) {
+async function mkTenant(
+  data: { contractStartDate?: Date; contractEndDate?: Date; contractRemindersSent?: number[] } = {},
+) {
   const t = await prisma.tenant.create({ data: { name: `CI 合約日期測試 ${stamp}-${tenantIds.length}`, ...data } });
   tenantIds.push(t.id);
   return t;
@@ -146,6 +158,7 @@ test('合約到期不觸發任何自動行為', async () => {
       });
 
       await runTrialLifecycle(tx);
+      await runContractReminders(tx, { webBaseUrl: 'https://crm.example.test' });
 
       for (const id of [paid.id, trial.id]) {
         const after = await tx.tenant.findUniqueOrThrow({ where: { id }, select: { isActive: true, purgedAt: true } });
@@ -157,8 +170,43 @@ test('合約到期不觸發任何自動行為', async () => {
         0,
         '排程不為這兩個租戶寫任何稽核',
       );
+      assert.ok(
+        !sentMails.some((m) => m.html.includes(paid.name) || m.html.includes(trial.name)),
+        '不為這兩個租戶寄提醒信',
+      );
       throw new Rollback();
     }),
     Rollback,
   );
+});
+
+const remindersOf = async (tenantId: string) =>
+  (await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { contractRemindersSent: true } }))
+    .contractRemindersSent;
+
+test('延長迄日後重新提醒', async () => {
+  const t = await mkTenant({
+    contractStartDate: new Date('2026-01-01'),
+    contractEndDate: new Date('2026-12-01'),
+    contractRemindersSent: [30, 7],
+  });
+  const res = await patchContract(t.id, { contractEndDate: '2027-12-01' });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(await remindersOf(t.id), []);
+});
+
+test('只改起日不重寄', async () => {
+  const t = await mkTenant({
+    contractStartDate: new Date('2026-01-01'),
+    contractEndDate: new Date('2026-12-01'),
+    contractRemindersSent: [30],
+  });
+  const start = await patchContract(t.id, { contractStartDate: '2026-02-01' });
+  assert.equal(start.statusCode, 200, start.body);
+  assert.deepEqual(await remindersOf(t.id), [30]);
+
+  // 送出與現值相同的迄日也不清空
+  const same = await patchContract(t.id, { contractEndDate: '2026-12-01' });
+  assert.equal(same.statusCode, 200, same.body);
+  assert.deepEqual(await remindersOf(t.id), [30]);
 });
