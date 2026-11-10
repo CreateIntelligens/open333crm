@@ -66,7 +66,7 @@
 
 ### 解決時間與關閉時間
 
-`resolvedAt` 與 `closedAt` 由 `packages/shared` 的 `caseTransitionTimestamps()` 決定（#417）。上表三條路徑、指派時的自動改狀態、評分後結案、問卷逾時結案，以及自動化規則的「改工單狀態」動作（workers 的 `update_case_status`）都用這個函式：
+`resolvedAt` 與 `closedAt` 由 `packages/shared` 的 `caseTransitionTimestamps()` 決定（#417）。上表三條路徑、指派時的自動改狀態、評分後結案、問卷逾時結案，以及自動化規則的「改工單狀態」動作（workers 的 `update_case_status`）都用這個函式。自動化的動作也用同一組轉換規則（`canTransition()`）：不允許的轉換不改工單，時間軸寫 `automation_status_skipped`；允許的轉換寫 `status_changed`（`actorType: 'automation'`），轉成已解決、已關閉時發布與手動轉換相同內容的 `case.resolved`、`case.closed`（`caseStatusOutcomeEvent()`，#469）：
 
 | 轉換 | `resolvedAt` | `closedAt` |
 | --- | --- | --- |

@@ -27,7 +27,7 @@
 
 政策存放於 `PlatformSetting` 的 `ai.privacy.<tenantId>`，值為 `{ enabled: boolean }`。每次 AI 作業起始都重新讀取，跨 API 行程不使用政策快取。設定損壞或讀取失敗時停止該次模型呼叫。專用 API 沿用平台帳號認證與強制改密碼限制；目標租戶不存在回 404，無效 UUID、非 boolean 或額外欄位回 400。成功寫入 `tenant.ai_privacy.update` 稽核，payload 只有 `enabled`。
 
-啟用後，待處理原文會先送至 `https://2md.aiurl.tw/api/deid`，使用完整類別標記遮罩後再送往 Chat、Agent 或 Embedding 模型。2md 異常時停止該次模型呼叫。原始客服紀錄依既有規則保存；文字遮罩的完整範圍見[知識庫與 AI](../tenant/KNOWLEDGE.md#模型輸入的個資遮罩)。
+啟用後，待處理原文會先送至 `https://2md.aiurl.tw/api/deid`，使用完整類別標記遮罩後再送往 Chat、Agent 或 Embedding 模型。2md 異常時（短暫故障先重試一次）停止該次模型呼叫；進站訊息改為存原文並標記未遮罩、不送模型、轉真人，並發出維運告警（issue #466）。原始客服紀錄依既有規則保存；文字遮罩的完整範圍見[知識庫與 AI](../tenant/KNOWLEDGE.md#模型輸入的個資遮罩)。
 
 ## 開通一個租戶建立了什麼
 

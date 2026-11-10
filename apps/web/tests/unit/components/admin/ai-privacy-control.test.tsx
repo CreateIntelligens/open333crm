@@ -24,6 +24,8 @@ beforeEach(() => {
       if (failLoad) throw new Error('load failed');
       return { data: { data: { enabled } } };
     }
+    // 租戶詳細頁也載入操作紀錄（change add-platform-tenant-audit-logs）
+    if (url.endsWith('/audit-logs')) return { data: { data: { items: [], hasMore: false } } };
     return { data: { data: url === '/plans' ? [] : detail } };
   });
   api.patch.mockImplementation(async (_url: string, input: { enabled: boolean }) => {

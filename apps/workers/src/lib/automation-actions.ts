@@ -1,7 +1,14 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { bumpSlaPriority, CASE_CATEGORIES, caseTransitionTimestamps, type CaseStatus } from '@open333crm/shared';
+import {
+  bumpSlaPriority,
+  canTransition,
+  CASE_CATEGORIES,
+  caseStatusOutcomeEvent,
+  caseTransitionTimestamps,
+  type CaseStatus,
+} from '@open333crm/shared';
 import { claimSideEffect, dispatchOutboxRows, logger, writeOutbox, type OutboxRow } from '@open333crm/core';
 import { publishSocketEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
@@ -255,6 +262,113 @@ async function dispatchAfterCommit(prisma: PrismaClient, row: OutboxRow) {
   await dispatchOutboxRows(prisma, [row]).catch((err) => logger.warn(`[automation] outbox dispatch failed (${row.name})`, err));
 }
 
+/**
+ * 「更新工單狀態」動作（issue #469，AUDIT AUTO-10；spec case-management
+ * 「Automation Case Status Changes Follow The Transition Rules」）。
+ *
+ * 與 API 的 transitionCase() 用同一組共用規則（@open333crm/shared），不另寫一份狀態機：
+ * - 狀態相同：不改、不寫紀錄（已經是規則要的狀態）。
+ * - canTransition() 不允許（含不存在的狀態值）：不改工單，時間軸寫 automation_status_skipped，
+ *   後台看得到規則為什麼沒有生效。只寫 log 的話，管理員只會看到「規則沒反應」。
+ * - 允許：以讀到的狀態做條件更新（讀取之後被別人改掉時不覆寫），同一個交易寫 status_changed
+ *   與 case.resolved／case.closed（outbox，與手動轉換送出相同的事件內容）。
+ * worker 走 BYPASSRLS 連線：每個查詢都自帶 tenantId。
+ */
+async function updateCaseStatusFromAutomation(
+  prisma: PrismaClient,
+  redisPublisher: IORedis,
+  caseId: string,
+  status: string,
+  context: WorkerActionContext,
+): Promise<void> {
+  const { tenantId } = context;
+  const rule = { ruleId: context.ruleId ?? null, ruleName: context.ruleName ?? null };
+  const result = await prisma.$transaction(async (tx) => {
+    const current = await tx.case.findFirst({
+      where: { id: caseId, tenantId },
+      select: {
+        status: true,
+        priority: true,
+        assigneeId: true,
+        contactId: true,
+        channelId: true,
+        title: true,
+        conversations: { select: { id: true } },
+      },
+    });
+    if (!current) return { kind: 'not_found' as const };
+    const from = current.status as CaseStatus;
+    if (from === status) return { kind: 'unchanged' as const };
+
+    if (!canTransition(from, status as CaseStatus)) {
+      await tx.caseEvent.create({
+        data: {
+          caseId,
+          actorType: 'automation',
+          actorId: null,
+          eventType: 'automation_status_skipped',
+          payload: { from, to: status, reason: 'invalid_transition', ...rule },
+        },
+      });
+      return { kind: 'rejected' as const, from };
+    }
+
+    const { count } = await tx.case.updateMany({
+      where: { id: caseId, tenantId, status: from },
+      data: {
+        status: status as CaseStatus,
+        ...caseTransitionTimestamps(from, status as CaseStatus, new Date()),
+      },
+    });
+    if (count === 0) return { kind: 'raced' as const };
+
+    await tx.caseEvent.create({
+      data: {
+        caseId,
+        actorType: 'automation',
+        actorId: null,
+        eventType: 'status_changed',
+        payload: { from, to: status, source: 'automation', ...rule },
+      },
+    });
+    const outcome = caseStatusOutcomeEvent(status, {
+      caseId,
+      contactId: current.contactId,
+      channelId: current.channelId,
+      assigneeId: current.assigneeId,
+      title: current.title,
+      conversationId: current.conversations[0]?.id ?? null,
+    });
+    const outboxRow = outcome
+      ? await writeOutbox(tx, { tenantId, kind: 'event', name: outcome.name, payload: outcome.payload })
+      : null;
+    return { kind: 'changed' as const, current, outboxRow };
+  });
+
+  if (result.kind === 'not_found') {
+    logger.info(`[automation] update_case_status skipped: case ${caseId} not found`);
+    return;
+  }
+  if (result.kind === 'unchanged') return;
+  if (result.kind === 'rejected') {
+    logger.info(`[automation] update_case_status skipped: case ${caseId} cannot change from ${result.from} to ${status}`);
+    return;
+  }
+  if (result.kind === 'raced') {
+    logger.info(`[automation] update_case_status skipped: case ${caseId} status changed concurrently`);
+    return;
+  }
+
+  await publishSocketEvent(redisPublisher, `tenant:${tenantId}`, 'case.updated', {
+    id: caseId,
+    status,
+    priority: result.current.priority,
+    assigneeId: result.current.assigneeId,
+    source: 'automation',
+  });
+  if (result.outboxRow) await dispatchAfterCommit(prisma, result.outboxRow);
+}
+
 /** 以 automation_action + 事件 id + <規則 id>#<動作序號> 認領 */
 async function claimAction(prisma: PrismaClient, context: WorkerActionContext, actionKey: string): Promise<boolean> {
   return prisma.$transaction((tx) =>
@@ -385,32 +499,7 @@ export async function executeWorkerAutomationActions(
       if (action.type === 'update_case_status') {
         const status = params['status'];
         if (typeof status === 'string' && status && context.caseId) {
-          // resolvedAt／closedAt 與 API 的 transitionCase() 用同一個規則（issue #417，AUDIT AUTO-10）。
-          // 以讀到的狀態做條件更新：讀取之後狀態被別人改掉時不覆寫，時間欄位不會依舊狀態算錯
-          const current = await prisma.case.findFirst({
-            where: { id: context.caseId, tenantId: context.tenantId },
-            select: { status: true },
-          });
-          if (!current) {
-            logger.info(`[automation] update_case_status skipped: case ${context.caseId} not found`);
-            continue;
-          }
-          const { count } = await prisma.case.updateMany({
-            where: { id: context.caseId, tenantId: context.tenantId, status: current.status },
-            data: {
-              status: status as any,
-              ...caseTransitionTimestamps(current.status as CaseStatus, status as CaseStatus, new Date()),
-            },
-          });
-          if (count === 0) {
-            logger.info(`[automation] update_case_status skipped: case ${context.caseId} status changed concurrently`);
-            continue;
-          }
-          await publishSocketEvent(redisPublisher, `tenant:${context.tenantId}`, 'case.updated', {
-            id: context.caseId,
-            status,
-            source: 'sla_worker',
-          });
+          await updateCaseStatusFromAutomation(prisma, redisPublisher, context.caseId, status, context);
         }
         continue;
       }

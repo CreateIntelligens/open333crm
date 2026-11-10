@@ -101,6 +101,7 @@ import mergeSuggestionRoutes from './modules/contact/merge-suggestion.routes.js'
 import { createBullJobScheduler } from './lib/job-scheduler.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
 import { setupTrialScheduler } from './modules/trial/trial.scheduler.js';
+import { setupContractReminderScheduler } from './modules/platform/contract-reminder.scheduler.js';
 import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
 import { setupAutomationWorker } from './modules/automation/automation.worker.js';
 import { setupNotificationWorker } from './modules/notification/notification.worker.js';
@@ -307,6 +308,8 @@ export async function bootstrap() {
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);
   setupCanvasScheduler(jobScheduler);
   setupTrialScheduler(jobScheduler, app.prismaAdmin);
+  // 合約到期前提醒平台帳號（平台層跨租戶；只提醒，不停用）
+  setupContractReminderScheduler(jobScheduler, app.prismaAdmin);
   setupCouponScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   setupOutboxSchedulers(jobScheduler, app.prismaAdmin);
   jobScheduler.start();

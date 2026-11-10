@@ -45,6 +45,40 @@ export async function createPlanChangeRequest(
   });
 }
 
+export interface PlanChangeNotifyContext {
+  tenantName: string;
+  /** 升級申請的目標方案名稱；方案已不存在時退回 slug，加購申請是 null */
+  targetPlanName: string | null;
+  /** 啟用中的平台帳號 */
+  recipients: Array<{ id: string; email: string; name: string }>;
+}
+
+/**
+ * 通知平台帳號需要的資料：租戶名稱、目標方案名稱與啟用中的平台帳號（change add-plan-change-platform-notify）。
+ * platform_users 是平台層資料表，呼叫端要傳 app_admin 連線。
+ */
+export async function getPlanChangeNotifyContext(
+  prisma: PrismaClient,
+  request: { tenantId: string; type: string; targetPlanSlug: string | null },
+): Promise<PlanChangeNotifyContext> {
+  const [tenant, plan, recipients] = await Promise.all([
+    prisma.tenant.findUnique({ where: { id: request.tenantId }, select: { name: true } }),
+    request.type === 'upgrade' && request.targetPlanSlug
+      ? prisma.plan.findUnique({ where: { slug: request.targetPlanSlug }, select: { name: true } })
+      : Promise.resolve(null),
+    prisma.platformUser.findMany({
+      where: { isActive: true },
+      select: { id: true, email: true, name: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ]);
+  return {
+    tenantName: tenant?.name ?? request.tenantId,
+    targetPlanName: request.type === 'upgrade' ? plan?.name ?? request.targetPlanSlug : null,
+    recipients,
+  };
+}
+
 /** 租戶查自己的申請。 */
 export async function listTenantPlanChangeRequests(prisma: PrismaClient, tenantId: string) {
   return prisma.planChangeRequest.findMany({

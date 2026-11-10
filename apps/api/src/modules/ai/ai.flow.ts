@@ -89,7 +89,14 @@ export async function summarizeConversationFlow(deps: LlmDeps, tenantId: string,
 }
 
 /** `POST /ai/analyze-sentiment` 與自動化的情緒分析。LLM 失敗時改用關鍵字判斷，不丟錯 */
-export async function analyzeSentimentFlow(deps: LlmDeps, tenantId: string, text: string): Promise<SentimentResult> {
+export async function analyzeSentimentFlow(
+  deps: LlmDeps,
+  tenantId: string,
+  text: string,
+  /** modelAllowed: false 時只用關鍵字判斷，不呼叫模型（沒有遮罩副本的進站訊息，issue #466） */
+  options: { modelAllowed?: boolean } = {},
+): Promise<SentimentResult> {
+  if (options.modelAllowed === false) return sentimentByKeywords(text);
   try {
     const raw = await generateReply(deps, tenantId, text, '', {
       overrideSystemPrompt: SENTIMENT_SYSTEM_PROMPT,

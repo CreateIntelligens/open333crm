@@ -142,6 +142,8 @@ function makeDb() {
   const db = {
     // 積分帳本的 advisory lock（points.service.ts 的 lockPointLedgers）；單元測試不測鎖，並行在 feature 組驗證
     $executeRaw: async () => 1,
+    // 解除合併前鎖住聯絡人（contact.service.ts 的 lockContactsForMerge）；鎖在 feature 組驗證
+    $queryRaw: async () => [],
     contact: table([
       contact('S', { email: 's@example.com' }),
       contact('M', { phone: '0912345678', email: 'm@example.com', avatarUrl: 'https://img/m.png' }),
@@ -210,6 +212,7 @@ function makeDb() {
       { id: 'sug-other', tenantId: T, status: 'PENDING', primaryContactId: 'X', secondaryContactId: 'S' },
     ]),
     contactMergeLog: table([]),
+    dataErasureRequest: table([]),
     channel: table([
       { id: 'ch-line', tenantId: T, displayName: '總店 LINE', channelType: 'LINE' },
       { id: 'ch-fb', tenantId: T, displayName: '總店粉專', channelType: 'FB' },
@@ -520,6 +523,30 @@ test('解除：重複解除回 409', async () => {
     revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' }),
     (e: { statusCode?: number }) => e.statusCode === 409,
   );
+});
+
+test('解除：持有方已完成資料刪除時回 409 CONTACT_ERASED，不改任何資料（#473）', async () => {
+  const db = makeDb();
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  db.dataErasureRequest.rows.push({ id: 'er-s', tenantId: T, contactId: 'S', status: 'completed' });
+  await assert.rejects(
+    revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' }),
+    (e: { statusCode?: number; code?: string }) => e.statusCode === 409 && e.code === 'CONTACT_ERASED',
+  );
+  const merged = db.contact.rows.find((r) => r.id === 'M');
+  assert.equal(merged?.isArchived, true);
+  assert.equal(db.contactMergeLog.rows[0].revertedAt ?? null, null);
+});
+
+test('解除：其他租戶或未完成的刪除請求不擋解除（#473）', async () => {
+  const db = makeDb();
+  const { mergeLogId } = await mergeContacts({ tx: asDb(db), tenantId: T }, { survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  db.dataErasureRequest.rows.push(
+    { id: 'er-pending', tenantId: T, contactId: 'S', status: 'pending' },
+    { id: 'er-other', tenantId: OTHER_T, contactId: 'S', status: 'completed' },
+  );
+  await revertMerge({ tx: asDb(db), tenantId: T }, { mergeLogId, revertedBy: 'agent-1' });
+  assert.equal(db.contact.rows.find((r) => r.id === 'M')?.isArchived, false);
 });
 
 test('解除：他租戶的合併紀錄回 404', async () => {

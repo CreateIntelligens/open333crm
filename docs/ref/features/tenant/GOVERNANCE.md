@@ -54,7 +54,7 @@
 - **完成通知連到不存在的頁面。** 通知的連結是 `/dashboard/settings/data-export/<申請 ID>`，前端沒有這一頁。
 - **`scope` 參數沒有作用。** 申請可以帶 `scope`，系統會存下來，但打包時不讀它，一律匯出聯絡人、對話、訊息與工單。
 - **資料全部讀進記憶體。** 打包時把租戶的聯絡人、對話、訊息與工單各自累積在陣列裡再寫成 JSON，資料量大的租戶可能讓 workers 記憶體不足。
-- **workers 連不上物件儲存時會失敗。** 開發環境的 workers 讀錯環境變數，見 `../../system/AUDIT.md` 的 STO-01。
+- **workers 的物件儲存設定與 api 相同。** workers 讀 `S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY` 與 `S3_BUCKET`（有 `MINIO_ENDPOINT` 時優先用 `MINIO_*`）。兩邊都沒設定時連本機預設的 `localhost:9000`，並寫一次 warn log；容器內這樣會連回自己，上傳與刪除失敗。
 
 ## 資料刪除
 
@@ -65,9 +65,13 @@
 | `anonymize`（預設） | 聯絡人的名稱改成佔位字串，清空頭像、電話與 email；刪除屬性、渠道身分、`IdentityMap` 與長期記憶；把客人傳進來的訊息內容換成 `{ redacted: true }`；刪除這些訊息在物件儲存的媒體檔與頭像檔。對話、工單與客服上傳的媒體檔保留，報表數字不變 |
 | `hard_delete` | 刪除聯絡人本身，以及他的對話、訊息、工單、積分、活動提交，並刪除物件儲存裡的媒體檔與頭像檔 |
 
-兩種模式都刪除這位聯絡人在物件儲存的頭像檔，但同租戶其他聯絡人還在用的檔案保留（合併時主聯絡人會沿用被併入那位的頭像）。workers 要設定與 api 相同的 `S3_PUBLIC_URL`；沒設定或不同時頭像檔不刪，筆數記在申請的 `affected.avatarObjectsSkipped`。
+**被合併的封存聯絡人一起處理（#473）。** 兩種模式沿 `mergedIntoId` 逐層往下，找出併入這位聯絡人的封存聯絡人（含舊版合併留下的多層），套用相同的規則：匿名化清空名稱、電話、email、頭像並刪除子資料，聯絡人維持封存；硬刪除連同他們的資料一起刪除。筆數記在 `affected.mergedContacts`（硬刪除的 `affected.contacts` 也包含他們）。刪除完成之後，這些合併紀錄不能再解除：被併入方或合併鏈上任何一位有 `completed` 的刪除請求時，`POST /contacts/merge-logs/:id/revert` 與顧客自助解除都回 409 `CONTACT_ERASED`。刪除還在排隊（`pending`）時可以解除，解除之後被恢復的聯絡人不在合併鏈上，不會被刪除。
+
+兩種模式都刪除這些聯絡人在物件儲存的頭像檔，但這次刪除處理的聯絡人以外、同租戶其他聯絡人還在用的檔案保留。合併時主聯絡人沿用被併入那位的頭像，兩位一起刪除，所以檔案也會刪。workers 要設定與 api 相同的 `S3_PUBLIC_URL`；沒設定或不同時頭像檔不刪，筆數記在申請的 `affected.avatarObjectsSkipped`。
 
 訊息的媒體檔只刪 `{tenantId}/media/{這位客人的對話}/{uuid}.{副檔名}` 格式的檔案，其他的不刪，筆數記在 `affected.mediaObjectsSkipped`。匿名化時，客服回覆的出站訊息還在引用的檔案保留，筆數記在 `affected.mediaObjectsShared`。檔案在交易 commit 之後刪，每個最多刪一次、不重試；刪除失敗時申請仍是完成，筆數記在 `affected.mediaObjectsFailed` 與 `affected.avatarObjectsFailed`，失敗的 key 寫進 workers 的 log。
+
+**刪除期間完成的媒體下載不寫回（#475）。** 進站媒體在 API 背景下載，下載完成或失敗後才寫回訊息。寫回在交易內先以 `FOR SHARE` 鎖住對話，只在訊息內容仍是下載前那份時寫入；資料刪除以 `FOR UPDATE` 鎖住對話才讀訊息，兩者互相等待。內容已被匿名化（或訊息已被硬刪除）時不寫入、不推送，並刪除剛上傳的物件（最多一次，失敗寫 api 的 log）。
 
 **兩種模式都有沒涵蓋的資料：**
 
@@ -79,9 +83,51 @@
 | 工單標題、描述、備註與 CSAT 留言 | 保留 | 刪除 |
 | 點擊紀錄（`ClickLog`，含 IP、User-Agent、LINE uid） | 保留 | 保留 |
 | 群發收件紀錄、知識庫回報、Canvas 執行紀錄 | 保留 | 保留 |
-| 被合併到這位聯絡人的封存聯絡人（名稱、電話、email、頭像與頭像檔） | 保留 | 保留 |
 
-點擊紀錄、群發收件紀錄、知識庫回報與 Canvas 執行紀錄的資料表只存 `contactId`，沒有外鍵，兩種模式都不處理。合併聯絡人時，被併入的聯絡人只會封存，個人欄位留著；刪除只處理指定的那一位，不會找到這些封存的聯絡人。見 `../../system/AUDIT.md` 的 ERASE-01。
+點擊紀錄、群發收件紀錄、知識庫回報與 Canvas 執行紀錄的資料表只存 `contactId`，沒有外鍵，兩種模式都不處理。刪除完成之後才併入的聯絡人也不處理。見 `../../system/AUDIT.md` 的 ERASE-01。
+
+### 回收 #329 前匿名化留下的媒體檔
+
+#329（2026-11-09 部署）之前，匿名化把客人的進站訊息改成 `{ redacted: true }` 時沒有先讀出 `storageKey`，客人傳來的圖片、影片與檔案留在物件儲存的 `{tenantId}/media/{conversationId}/`，資料庫再也找不到。一次性腳本 `scripts/recover-erased-media-orphans.mjs` 找出並刪除這些檔案（issue #474），SQL 在 `scripts/sql/recover-erased-media-orphans.sql`。不需要 migration。
+
+**回收規則**
+
+| 項目 | 規則 |
+| --- | --- |
+| 對象 | `status` 是 `completed`、`mode` 是 `anonymize` 的刪除請求，其聯絡人目前的對話。硬刪除的對話已刪除，找不到媒體目錄，只列出請求筆數、不處理（硬刪除本來就刪媒體檔） |
+| 列出 | 每個對話的 `{tenantId}/media/{conversationId}/` 底下的所有物件（遞迴） |
+| 只刪 | `{tenantId}/media/{conversationId}/{uuid}{.副檔名}` 格式的 key，與資料刪除 worker 共用 `@open333crm/core` 的 `isConversationMediaKey()`。格式不符（例如 `report.csv`、多一層路徑）的略過並列出 |
+| 保留 | 同一租戶任何訊息的內容仍出現這個 key 的物件（`storageKey`、`url`、`mediaUrl` 都算），例如客服上傳的出站媒體檔 |
+
+**操作步驟**
+
+以下指令在 repo 根目錄執行；在 API 容器內，把 `scripts/` 整個資料夾（含 `sql/`）複製到 `/app/scripts/`，在 `/app` 執行。
+
+- 資料庫連線需要能略過 RLS 的身分：優先用 `MIGRATE_DATABASE_URL`（owner），否則用 `DATABASE_URL`。身分不能略過 RLS 時，腳本直接失敗，不會回報 0 筆。
+- 物件儲存用 `@open333crm/core` 的 `MinioStorageProvider`，連線設定與 api 相同：`S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`（有 `MINIO_ENDPOINT` 時優先用 `MINIO_*`）。bucket 是 `S3_BUCKET`，預設 `open333crm`。在 API 容器內執行時，這些變數都已設定。
+
+1. **本機演練**：用 `scripts/sync-uat-db.sh` 把 UAT 資料拉回本機，在本機執行預覽（物件儲存是本機的 MinIO，通常沒有對應的檔案，用來確認對話清單與流程）。
+2. **UAT 預覽**（dry-run，預設模式；只讀資料庫與列出物件，不刪除）：
+
+   ```bash
+   node scripts/recover-erased-media-orphans.mjs
+   node scripts/recover-erased-media-orphans.mjs --tenant <租戶 ID>
+   ```
+
+   `--tenant` 可以重複，不帶時處理所有租戶。輸出各租戶的對話數、列出的物件數、仍被訊息引用而保留的數量、格式不符而略過的 key、要刪的 key 清單，以及已完成的硬刪除請求筆數，最後印出建議的 `--expect-objects`。
+3. **確認**：對照清單抽查幾個 key（例如以 MinIO 主控台或 `mc ls` 看檔案，確認屬於已匿名化的客人）。物件刪除無法還原。
+4. **執行**（先 Demo 租戶並抽查，再真實租戶）：
+
+   ```bash
+   node scripts/recover-erased-media-orphans.mjs --tenant <租戶 ID> --apply --expect-objects 12 --out-dir /tmp
+   ```
+
+   - `--apply` 一定要帶 `--expect-objects`。這次算出的筆數不同時不刪除，以非零結束，請重新預覽。
+   - 刪除前把清單寫成 `media-orphans-<時間>.csv`（`tenantId`、`conversationId`、`key`），放在 `--out-dir`（預設目前目錄），檔案已存在時不覆蓋。
+   - 每個 key 最多刪一次、不重試。有失敗時印出失敗的 key 並以非零結束；之後重新預覽，清單只剩沒刪掉的。
+5. **確認結果**：再執行一次預覽，要刪的物件是 0。
+
+建議順序（issue #474）：本機演練 → UAT 只跑預覽、確認筆數 → 先清 Demo 租戶並抽查 → 再清真實租戶。
 
 ## 對外 Webhook
 

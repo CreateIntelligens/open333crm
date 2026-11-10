@@ -1,8 +1,10 @@
 /**
  * Token 月額度即時硬擋（Redis 計數器版）。
  *
- * 計數器 key `aiquota:{tenantId}:{YYYY-MM}`，每次成功 AI 呼叫 incrby totalTokens，
- * 首次寫入設月底過期。硬擋檢查讀 Redis 計數器（miss 時從 DB 回填初始化）。
+ * 月份一律以台灣時間（Asia/Taipei）計算：計數器 key `aiquota:{tenantId}:{YYYY-MM}:tpe`，
+ * 每次成功 AI 呼叫 incrby totalTokens，首次寫入設台灣下個月 1 日 00:00 過期。
+ * key 加上 `:tpe` 與舊的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}` 分開：
+ * 舊計數器少了台灣 1 日 00:00–08:00 的用量，換版後不沿用，改從資料庫以台灣月份重建。硬擋檢查讀 Redis 計數器（miss 時從 DB 回填初始化）。
  * Redis 不可用時 fallback 回 DB 當月加總，不阻斷主流程。
  *
  * BYOK（租戶自備 key）的 token 不計入額度、也不擋——成本租戶自付，平台不該擋。
@@ -13,7 +15,7 @@
  * 取資料庫的加總，readDbTotal 由 flow 傳入，flow 在其中另開一個短交易。
  */
 import type { Redis } from 'ioredis';
-import { logger } from '@open333crm/core';
+import { logger, taipeiMonthStart, taipeiMonthString, taipeiNextMonthStart } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 /** 用量告警門檻：達額度百分比時各發一次通知。critical=100%（已耗盡）。 */
@@ -27,20 +29,20 @@ export type QuotaAlertLevel = (typeof QUOTA_ALERT_THRESHOLDS)[number]['level'];
 /** 計數器不存在時取資料庫當月加總的函式 */
 export type ReadDbTotal = () => Promise<number>;
 
+/** 本月（台灣月份 YYYY-MM） */
 function monthKey(): string {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  return taipeiMonthString(new Date());
 }
 function counterKey(tenantId: string): string {
-  return `aiquota:${tenantId}:${monthKey()}`;
+  return `aiquota:${tenantId}:${monthKey()}:tpe`;
 }
+/** 本月（台灣）1 日 00:00 */
 function monthStart(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return taipeiMonthStart(new Date());
 }
+/** 下個月（台灣）1 日 00:00，計數器與告警旗標在這時過期 */
 function nextMonthStart(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return taipeiNextMonthStart(new Date());
 }
 
 /** DB 當月 platform key 成功呼叫的 token 加總（Redis miss / 初始化 / Redis 無法使用時用）。 */
@@ -131,7 +133,7 @@ export async function isMonthlyTokenExceeded(
   return (await readMonthlyTokens(redis, tenantId, readDbTotal)) >= limit;
 }
 
-/** 用量告警旗標 key：aiquota-alert:{tenantId}:{YYYY-MM}:{level}。 */
+/** 用量告警旗標 key：aiquota-alert:{tenantId}:{YYYY-MM}:{level}（台灣月份）。 */
 function alertFlagKey(tenantId: string, level: QuotaAlertLevel): string {
   return `aiquota-alert:${tenantId}:${monthKey()}:${level}`;
 }

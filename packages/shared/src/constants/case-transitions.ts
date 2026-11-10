@@ -35,3 +35,38 @@ export function caseTransitionTimestamps(from: CaseStatus, to: CaseStatus, now: 
   if (to === 'CLOSED') return from === 'RESOLVED' ? { closedAt: now } : { closedAt: now, resolvedAt: null };
   return { resolvedAt: null };
 }
+
+/** 組 case.resolved／case.closed 需要的工單資料（轉換前讀到的資料） */
+export interface CaseOutcomeSource {
+  caseId: string;
+  contactId: string;
+  channelId: string;
+  assigneeId: string | null;
+  title: string;
+  /** 工單關聯的第一段對話；沒有時事件不帶 conversationId */
+  conversationId?: string | null;
+}
+
+export interface CaseOutcomeEvent {
+  name: 'case.resolved' | 'case.closed';
+  payload: Record<string, unknown>;
+}
+
+/**
+ * 工單轉成已解決、已關閉時要發的事件（issue #469）。API 的 caseTransitionedEffects() 與 workers 的
+ * update_case_status 動作共用，兩條路徑送出的事件內容一致。轉成其他狀態時回傳 null。
+ */
+export function caseStatusOutcomeEvent(toStatus: string, source: CaseOutcomeSource): CaseOutcomeEvent | null {
+  if (toStatus !== 'RESOLVED' && toStatus !== 'CLOSED') return null;
+  return {
+    name: toStatus === 'RESOLVED' ? 'case.resolved' : 'case.closed',
+    payload: {
+      caseId: source.caseId,
+      contactId: source.contactId,
+      channelId: source.channelId,
+      assigneeId: source.assigneeId,
+      title: source.title,
+      ...(source.conversationId ? { conversationId: source.conversationId } : {}),
+    },
+  };
+}

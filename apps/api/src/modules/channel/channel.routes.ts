@@ -38,6 +38,7 @@ import {
   type ChannelAccessLevel,
 } from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { unsupportedFileTypeMessage } from '../../shared/messages/upload.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { resolveBindingHandle } from '../identity-binding/binding-links.js';
 import { checkLineIdToken } from '../coupon/line-id-token.js';
@@ -232,6 +233,9 @@ const chatboxThemeSchema = z.object({
   foregroundColor: z.string().max(32).optional(),
   accentColor: z.string().max(32).optional(),
 });
+
+/** 網站聊天室背景圖可接受的類型 */
+const CHATBOX_BACKGROUND_MIMES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp'];
 
 async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: string) {
   const channel = await prisma.channel.findFirst({
@@ -629,10 +633,12 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
       const channel = await getTenantWebchatChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
       const file = await request.file();
       if (!file) {
-        return reply.status(400).send({ error: 'No file uploaded' });
+        throw new AppError('請選擇要上傳的檔案', 'BAD_REQUEST', 400);
       }
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) {
-        return reply.status(400).send({ error: 'Unsupported background image type' });
+      if (!CHATBOX_BACKGROUND_MIMES.includes(file.mimetype)) {
+        throw new AppError(unsupportedFileTypeMessage(CHATBOX_BACKGROUND_MIMES), 'BAD_REQUEST', 400, {
+          mimeType: file.mimetype,
+        });
       }
 
       const buffer = await file.toBuffer();

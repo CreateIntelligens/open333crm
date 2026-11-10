@@ -68,3 +68,12 @@ test('CSV 欄位：物件與陣列寫成 JSON，日期寫成 ISO，NULL 寫成�
   assert.equal(csvCell(true), '"true"');
   assert.equal(csvCell('含,逗號'), '"含,逗號"');
 });
+
+test('不帶值的旗標遇到 =值 時拒絕：--apply=false、--apply=true、--find-cutoff=1', () => {
+  for (const arg of ['--apply=false', '--apply=true']) {
+    assert.throws(() => parseArgs(['--cutoff', '2026-10-15T08:00:00Z', arg]), /--apply 不接受值/);
+  }
+  assert.throws(() => parseArgs(['--find-cutoff=1']), /--find-cutoff 不接受值/);
+  assert.equal(parseArgs(['--cutoff', '2026-10-15T08:00:00Z', '--apply']).apply, true);
+  assert.equal(parseArgs(['--find-cutoff']).mode, 'find-cutoff');
+});

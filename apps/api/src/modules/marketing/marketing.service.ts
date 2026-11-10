@@ -23,6 +23,7 @@ import { campaignHasOtherChannelsError, readableCampaignWhere, writableCampaignW
 import { COUPON_ISSUED_VIA, channelDisplayName, supportsProactivePush } from '@open333crm/shared';
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
 import { channelIdWhereFilter, type AccessibleChannels, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 // --- Broadcast channel ---
 
@@ -107,11 +108,13 @@ export async function listTemplates(
   if (category) where.category = category;
   if (channelType) where.channelType = channelType;
   if (q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(q);
     where.AND = [
       {
         OR: [
-          { name: { contains: q, mode: 'insensitive' } },
-          { description: { contains: q, mode: 'insensitive' } },
+          { name: { contains: keyword, mode: 'insensitive' } },
+          { description: { contains: keyword, mode: 'insensitive' } },
         ],
       },
     ];

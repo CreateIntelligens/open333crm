@@ -202,9 +202,11 @@ model Tenant {
   trialRemindersSent Json      @default("[]")
   // 試用停用後超過 dataRetentionDays 天，scheduler 軟刪標記（不真刪 DB；復原時清 null）
   purgedAt           DateTime?
-  // 合約起訖日（純記錄，供平台方管理；nullable，MUST NOT 觸發任何自動生命週期行為，與 trialEndsAt 區隔）
+  // 合約起訖日（nullable）。到期前提醒平台帳號，但 MUST NOT 自動停用或清除租戶，與 trialEndsAt 區隔
   contractStartDate  DateTime?
   contractEndDate    DateTime?
+  // 目前迄日已寄出的合約到期提醒檔位（如 [30, 7]），冪等閘避免重寄；修改迄日時清空
+  contractRemindersSent Json @default("[]")
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

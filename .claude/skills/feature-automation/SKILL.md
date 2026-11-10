@@ -54,7 +54,7 @@ description: >
 - 規則：`{name, description:'', trigger:{type, keywords?, match_mode?}, priority:number, isActive, stopOnMatch, conditions, actions:[{type, params}]}`。
 - 後端 Zod（`automation.routes.ts`）：`name` 1–200（trim）、`description` ≤1000、`priority` 0–10000 整數、`keywords` 每個 1–100 字、最多 50 個、`match_mode` `any|all`、`actions` 至少 1 個。不合格時 alert 只顯示「輸入內容有誤，請檢查後重新送出」，編輯器沒有讀 `details.issues`（例如執行順序填 -1）。
 - **條件值**：`apps/web/src/lib/automation/qb-to-engine.ts` 的 `parseValue` 依 `AUTOMATION_FACT_MAP` 的欄位型別轉值：`number` 欄位轉數字、`boolean` 欄位轉布林，文字欄位（訊息內容、聯絡人名稱、標籤）保留字串（#418 前會把 `"8888"` 存成數字）。`packages/automation` 的運算子遇到「字串欄位值、數字比較值」時轉字串比對，所以 #418 前存成數字的舊規則與 API 存入的數字也會命中；數字欄位維持嚴格比對。後端仍不檢查條件值型別（#405）。
-- 動作參數：契約只檢查「必填有值」，不檢查下拉值是否合法、`agentId` 是否同租戶啟用中的成員。API 可以存 `status:"FOO"`、`agentId:"not-a-uuid"`，執行時才在 workers 失敗、只寫 log（HC-AUTOMATION-07）。
+- 動作參數：下拉參數的值必須是契約選項之一，存檔回 400（#469）；`agentId` 仍不檢查是否同租戶啟用中的成員，API 可以存 `agentId:"not-a-uuid"`，執行時才在 workers 失敗、只寫 log（HC-AUTOMATION-07，AUTO-12）。
 - 渠道值：`LINE`、`FB`、`THREADS`（Instagram）、`WEBCHAT`。
 - `issue_coupon` 是 `editorHidden`，規則編輯器的動作下拉沒有；關鍵字回覆頁與加好友禮頁才有。
 
@@ -77,7 +77,7 @@ description: >
 | `create_case` | 建單、套 SLA、寫 `case_events`、發 `case.created` | 對話已有未結案工單時不開 |
 | `add_tag` / `remove_tag` | 正常；依名稱找不到就建標籤（AUTO-03） | SLA 規則永遠略過（沒有 contactId，HC-AUTOMATION-02） |
 | `set_case_priority` / `escalate_case` | 只改 `priority` | 不改狀態、不發 `case.escalated` |
-| `update_case_status` | 改成 RESOLVED 有 `resolvedAt`（與工單模組同規則，#417），問卷排程會寄 CSAT；沒有工單事件 | 不檢查狀態轉換、不發 `case.resolved`／`case.closed`（HC-AUTOMATION-05） |
+| `update_case_status` | 依 `canTransition()`（#469）：合法時寫 `status_changed`、發 `case.resolved`／`case.closed`、socket `source: automation`，`resolvedAt` 同工單模組（#417）；不合法時工單不變、時間軸寫 `automation_status_skipped`；狀態相同不寫 | 不經 `case.service.ts`；共用的只有 shared 的 `canTransition`、`caseTransitionTimestamps`、`caseStatusOutcomeEvent` |
 | `assign_agent` | 只改 `assigneeId` | 不通知、不發 `case.assigned`；`agentId` 不驗證 |
 | `notify` | 指定 → 工單負責人 → 對話負責人 → 全部 ADMIN/SUPERVISOR（看 `Agent.role`，RBAC-03） | — |
 | `notify_supervisor` | 全部 ADMIN/SUPERVISOR | RBAC-03 |
@@ -86,7 +86,7 @@ description: >
 ## 不可破壞的規則
 - 後端存 `{type, params}`、編輯器用 `{type, payload}`：`splitRuleActions` 載入時轉、`handleSave` 送出時轉回。workers 與契約驗證都同時接受 `params ?? payload`，但 API 的 Zod 會把 `payload` 丟掉（只送 `payload` 會變成空參數而 400）。
 - 動作只在 workers 執行；不要在 API 端重新加動作執行器。新增動作要同時改契約 `packages/automation/src/contracts/actions.ts`、workers 分支、編輯器，契約定義了但 workers 沒有分支的動作會只寫 warn。
-- workers 走 BYPASSRLS 連線，每個查詢都要自帶 `tenantId`。目前 `update_case_status`、`escalate_case`、`set_case_priority`、`assign_agent` 仍以 `where: { id: caseId }` 更新（`caseId` 來自內部事實，現況不可被外部指定，但不要照抄）。
+- workers 走 BYPASSRLS 連線，每個查詢都要自帶 `tenantId`。目前 `escalate_case`、`set_case_priority`、`assign_agent` 仍以 `where: { id: caseId }` 更新（`update_case_status` 已帶 `tenantId`）（`caseId` 來自內部事實，現況不可被外部指定，但不要照抄）。
 - 規則動作每個事件最多執行一次（`side_effect_claims`）；不要拿掉認領，否則客人會收到重複回覆。
 - 不合契約的規則不可啟用；停用永遠可以。契約拿掉動作時要附 migration 清既有規則（參考 `20261005100000_remove_retired_automation_actions`）。
 - `keyword.matched` 的 `keywords` 必須非空白，否則 `includes('')` 會讓規則對每則訊息觸發。
@@ -103,7 +103,7 @@ description: >
 ## 回歸清單
 1. 建 `message.received` 規則（條件「訊息內容 包含 退貨」，動作貼標＋建立工單＋傳送通知＋傳送訊息）→ 用 `POST /api/v1/simulator/send-message` 送含「退貨」的訊息 → 標籤、工單、通知、外送訊息（或失敗紀錄）都出現。
 2. 條件值用純數字（例如「包含 8888」）重走 1，確認會命中，且送出的條件 `value` 是字串（#418 已修正）。
-3. `case.created` 規則（指派、改優先級、改狀態、指定通知）→ 由 1 的建立工單觸發。改狀態為「已解決」時查 DB 有 `resolvedAt`；改回「處理中」的規則觸發後 `resolvedAt` 為 null（#417）。
+3. `case.created` 規則（指派、改優先級、改狀態、指定通知）→ 由 1 的建立工單觸發。改狀態為「處理中」時時間軸有「狀態：開啟 → 處理中（自動化規則「…」）」；改狀態為「已解決」時工單維持「開啟」、時間軸寫「沒有改狀態：不能從「開啟」直接改成「已解決」」（#469）。從「處理中」改成「已解決」的規則查 DB 有 `resolvedAt`、outbox 有 `case.resolved`；改回「處理中」的規則觸發後 `resolvedAt` 為 null（#417）。
 4. `contact.tagged` 規則 → 人工貼標觸發一次；自動化貼標不觸發；再貼別的標籤是否重觸發。
 5. 關鍵字回覆頁建 FB 規則 → FB 訊息觸發、LINE 訊息不觸發；WebChat 送不出（CHAN-02）。
 6. `stopOnMatch`：兩條同事件規則，高優先序勾停止 → 低的不執行。

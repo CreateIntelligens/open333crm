@@ -72,6 +72,7 @@
 | 自動轉真人 | 機器人回覆次數達到 `maxBotReplies`、訊息含 `handoffKeywords`，或客人傳圖片、檔案或影片 | `automation.worker.ts` 的 `checkAutoHandoff()` | 不指派 |
 | 知識庫追問用完 | 知識庫自動回覆的追問次數達到 `clarifyMaxAttempts`，或追問的 LLM 呼叫失敗（含月額度用完） | `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` | 不指派 |
 | AI 回覆失敗 | AI agent 沒有回覆，知識庫回覆又因錯誤失敗（例如去識別化服務、embedding 服務或模型供應商故障） | `automation/ai-failure-handoff.flow.ts` 的 `handOffAfterAiFailure()` | 不指派 |
+| 進站訊息未遮罩 | 去識別化服務無法使用，進站訊息沒有遮罩副本，而這則訊息原本會交給 AI agent 或知識庫自動回覆 | `automation.worker.ts` 呼叫 `handOffAfterAiFailure()`（固定原因） | 不指派 |
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
 每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求、自動轉真人與 AI 回覆失敗送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人、知識庫追問用完與 AI 回覆失敗會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派、且負責客服仍啟用並看得到該渠道時通知負責的客服；沒有指派，或負責客服已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。
@@ -87,6 +88,8 @@
 - 也走 `handOffConversation()`，並以 `bot_reply` 認領：同一則訊息只轉接一次，這則訊息已有機器人回覆時不轉接。轉接的交易失敗時，處理失敗、由佇列重試。
 - 正常的不回覆不轉接：關鍵字規則讓步、`botMode` 為 `off` 或 `keyword`、`KB_AUTO_REPLY_ENABLED` 關閉、這則訊息已有機器人回覆、對話已不是 `BOT_HANDLED`。`KB_AUTO_REPLY_ENABLED` 關閉時，agent 失敗的訊息仍然沒有回覆（KB-06）。
 - 不自動重試 AI 回覆：重試可能讓客人收到兩則回覆。
+
+**進站訊息未遮罩時轉真人（issue #466）。** 租戶開啟 AI 個資遮罩、去識別化服務重試後仍無法使用時，進站訊息照常存入收件匣（原文，`metadata.privacy.mode` 為 `inbound_unmasked`），不送模型。原本會交給 AI 時改轉真人：`handoffReason` 與系統訊息寫「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」，系統訊息的 `metadata.source` 是 `inbound_unmasked`，其餘（認領、`handoffMessage`、通知、不轉接的情況）與 AI 回覆失敗相同。自動轉真人的系統訊息在遮罩失敗時捨棄對話摘要，只寫「自動轉接人工客服：<原因>」，轉接照常完成。客人點「轉接客服」按鈕與客服接手時的預設轉接訊息是固定文字，不呼叫去識別化服務，所以服務無法使用時也能轉接。
 
 客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 
@@ -116,6 +119,10 @@
 | 搜尋框 | `search`：去頭尾空白後最多 100 字（超過回 400），不分大小寫比對聯絡人名稱或對話中任一則訊息的 `content.text`；只有空白時視為沒有搜尋 |
 
 篩選列的「篩選結果」顯示後端的 `meta.total`。所有條件都與 tenantId 及渠道可見範圍同時套用。socket 推來的 `message.new`、`conversation.updated` 合併到已載入的那一列並重排；更新後不再符合目前的狀態、「未讀」或「我的」篩選的列（例如讀過、改派、結案）從列表移除，選取中的對話保留到切換為止。搜尋與「近 30 天」無法從列判斷，維持顯示。列表沒有那段對話時重新載入已載入的各頁。搜尋關鍵字裡的 `%`、`_` 與反斜線當成一般文字比對。
+
+## 聊天視窗的訊息
+
+`GET /api/v1/conversations/:id/messages` 依 `createdAt` 再 `id` 由新到舊回傳，查詢限定在這段對話與目前的租戶（`conversation.tenantId`）。聊天視窗先請求 `limit=50&order=desc`。回應 `meta.hasMore` 為 `true` 時，訊息區頂端顯示「載入更早的訊息」；按下以 `before=<meta.nextCursor>` 往前取 50 則（游標與 `GET /contacts/:id/messages` 相同，`apps/api/src/shared/utils/message-cursor.ts`），同一毫秒的多則訊息不重複也不遺漏。往上載入時畫面停在原本那則訊息，只有最新一則改變（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出最新一頁的訊息留在畫面上。最新一頁或更早的訊息載入失敗時，訊息區顯示原因與「重試」，更早的訊息用同一個游標重試（issue #468）。已載入的更早訊息與游標以對話為鍵，切換對話時不會帶到新對話；切換前送出的請求在切換後才回來時丟棄。不帶 `before` 時照舊可用 `page`；`before` 搭配 `page` 不是 1 或 `order=asc` 回 400。
 
 ## 客服回覆怎麼送出
 

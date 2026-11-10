@@ -12,6 +12,7 @@ import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({ deliverToChannel: async () => true }));
 vi.mock('#src/modules/ai/deidentification.service.js', () => ({
   prepareStoredMessageContent: async (_policy: unknown, content: unknown) => ({ content, metadata: {} }),
+  fixedSystemMessageContent: (content: unknown) => ({ content, metadata: {} }),
 }));
 vi.mock('#src/events/event-bus.js', () => ({ eventBus: { publish: () => {} } }));
 

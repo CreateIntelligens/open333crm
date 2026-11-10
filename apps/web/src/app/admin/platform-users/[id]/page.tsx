@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { platformApi } from '../../lib/platform-api';
 import {
   C, card, pageTitle, sectionTitle, input, label, focusRing,
-  btnPrimary, primaryHover, btnSecondary, secondaryHover, badge, table, th, td, banner,
+  btnPrimary, primaryHover, btnSecondary, secondaryHover, badge, banner,
 } from '../../lib/ui';
+import { AuditLogTable } from '../../lib/AuditLogTable';
+import type { PlatformAuditEntry } from '../../lib/audit-log';
 
 interface PlatformUserDetail {
   id: string;
@@ -19,33 +21,14 @@ interface PlatformUserDetail {
   createdAt: string;
 }
 
-interface AuditLog {
-  id: string;
-  action: string;
-  targetType: string | null;
-  targetId: string | null;
-  payload: unknown;
-  createdAt: string;
-}
-
 function fmtDateTime(iso: string | null): string {
   return iso ? iso.slice(0, 16).replace('T', ' ') : '—';
 }
 
-// 稽核 action 轉中文可讀標籤（查無則顯示原碼）
-const ACTION_LABELS: Record<string, string> = {
-  'platform_user.provision': '開通帳號',
-  'platform_user.update': '編輯資料',
-  'platform_user.enable': '啟用帳號',
-  'platform_user.disable': '停用帳號',
-  'platform_user.resend_welcome': '重寄開通信',
-  'platform_user.change_password': '修改密碼',
-};
-
 export default function PlatformUserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [user, setUser] = useState<PlatformUserDetail | null>(null);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [logs, setLogs] = useState<PlatformAuditEntry[]>([]);
   const [msg, setMsg] = useState('');
   const [msgOk, setMsgOk] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -194,39 +177,8 @@ export default function PlatformUserDetailPage() {
         </div>
       </div>
 
-      {/* 操作紀錄 */}
-      <h2 style={{ ...sectionTitle, margin: '30px 0 14px' }}>操作紀錄（{logs.length}）</h2>
-      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>操作</th>
-              <th style={th}>對象</th>
-              <th style={th}>時間</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.length === 0 && (
-              <tr>
-                <td style={{ ...td, color: C.faint, textAlign: 'center' }} colSpan={3}>
-                  尚無紀錄
-                </td>
-              </tr>
-            )}
-            {logs.map((l) => (
-              <tr key={l.id}>
-                <td style={td}>
-                  <span style={{ fontWeight: 500, color: C.ink }}>{ACTION_LABELS[l.action] ?? l.action}</span>
-                </td>
-                <td style={{ ...td, color: C.muted }}>
-                  {l.targetType ? `${l.targetType}${l.targetId ? ` / ${l.targetId.slice(0, 8)}…` : ''}` : '—'}
-                </td>
-                <td style={{ ...td, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{fmtDateTime(l.createdAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* 操作紀錄（動作名稱與對象顯示規則與租戶詳細頁共用） */}
+      <AuditLogTable logs={logs} />
     </div>
   );
 }

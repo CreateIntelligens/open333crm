@@ -10,6 +10,9 @@
  * commit 之前的失敗往外丟，由佇列重試整個 message.received。不寫對話摘要：摘要也要呼叫 LLM。
  * 沿用：handOffConversation()（轉接本身）、createBotReplyGuard()（claimSideEffect 的 bot_reply 認領）、
  * kb-autoreply.service 的轉接原因（aiReplyFailedReason，與 clarifyLlmFailedReason 共用錯誤種類判斷）。
+ *
+ * 沒有遮罩副本的進站訊息（issue #466）也走這裡：worker 不呼叫 AI，直接以 UNMASKED_INBOUND_HANDOFF 轉接，
+ * 認領、系統訊息與送出轉接訊息的保證都相同。
  */
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
@@ -32,12 +35,26 @@ export interface AiFailureHandoffDeps {
   events: EventPublisher;
 }
 
+/** 轉接的原因與系統訊息的來源（metadata.source） */
+export interface HandoffCause {
+  reason: string;
+  source: 'ai_reply_failed' | 'inbound_unmasked';
+}
+
+/** 沒有遮罩副本的進站訊息不交給 AI，改轉真人（issue #466） */
+export const UNMASKED_INBOUND_HANDOFF: HandoffCause = {
+  reason: '去識別化服務無法使用，這則訊息未遮罩、未交給 AI',
+  source: 'inbound_unmasked',
+};
+
 export interface AiFailureHandoffInput {
   tenantId: string;
   conversationId: string;
   inboundMessageId: string | undefined;
-  kbError: unknown;
+  kbError?: unknown;
   agentError?: unknown;
+  /** 給定時用這個原因與來源，不從錯誤推導 */
+  cause?: HandoffCause;
 }
 
 /** 回傳是否轉接（false：對話已不是 BOT_HANDLED，或這則訊息已有機器人回覆） */
@@ -51,7 +68,7 @@ export async function handOffAfterAiFailure(deps: AiFailureHandoffDeps, input: A
   if (!conversation) return false;
   const botConfig = getBotConfig(conversation.channel?.settings);
 
-  const reason = aiReplyFailedReason(input.kbError, input.agentError);
+  const { reason, source } = input.cause ?? { reason: aiReplyFailedReason(input.kbError, input.agentError), source: 'ai_reply_failed' };
   // 個資設定讀不到可能正是 AI 失敗的原因（AI_PRIVACY_POLICY_UNAVAILABLE）：轉接不能因同一個讀取失敗而中止。
   // 系統訊息是不含個資的固定文字，讀取失敗時當作已開啟遮罩（遮罩副本就是原文），照常轉接（PR #450 審查）
   const privacyEnabled = await readAiPrivacyPolicy(prisma, tenantId).then(
@@ -75,7 +92,7 @@ export async function handOffAfterAiFailure(deps: AiFailureHandoffDeps, input: A
         reason,
         now,
         systemContent: stored.content,
-        systemMetadata: { type: 'auto_handoff', reason, source: 'ai_reply_failed', ...stored.metadata },
+        systemMetadata: { type: 'auto_handoff', reason, source, ...stored.metadata },
       },
     ),
   );
@@ -87,6 +104,6 @@ export async function handOffAfterAiFailure(deps: AiFailureHandoffDeps, input: A
   } catch (err) {
     logger.error('[AiFailureHandoff] 轉接之後送出轉接訊息失敗:', err);
   }
-  logger.warn(`[AiFailureHandoff] conv=${conversationId} AI 與知識庫回覆都失敗，已轉接真人：${reason}`);
+  logger.warn(`[AiFailureHandoff] conv=${conversationId} 已轉接真人（${source}）：${reason}`);
   return true;
 }

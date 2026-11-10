@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { afterAll, beforeEach, describe, test } from 'vitest';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
-import { createRedisClient } from '@open333crm/core';
+import { createRedisClient, taipeiMonthString } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
@@ -142,7 +142,7 @@ describe('LLM 失敗或月額度已滿時降級', () => {
     await owner.aiUsage.create({
       data: { tenantId: t, provider: 'ollama', model: 'qwen2.5:3b', keySource: 'platform', success: true, totalTokens: 100 },
     });
-    await redis.del(`aiquota:${t}:${new Date().toISOString().slice(0, 7)}`);
+    await redis.del(`aiquota:${t}:${taipeiMonthString(new Date())}:tpe`);
 
     const res = await call(app, 'POST', '/api/v1/ai/suggest-reply', { conversationId });
     assert.equal(res.status, 200, JSON.stringify(res.body));

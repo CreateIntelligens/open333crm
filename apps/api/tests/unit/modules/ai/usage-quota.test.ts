@@ -16,7 +16,7 @@ process.env.GEMINI_API_KEY = 'platform-gemini-key';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 
-const redisState = { store: new Map<string, string>(), down: false };
+const redisState = { store: new Map<string, string>(), expireAt: new Map<string, number>(), down: false };
 const check = () => {
   if (redisState.down) throw new Error('redis down');
 };
@@ -26,6 +26,8 @@ const fakeRedis = {
     check();
     if (args.includes('NX') && redisState.store.has(key)) return null;
     redisState.store.set(key, String(value));
+    const pxat = args.indexOf('PXAT');
+    if (pxat >= 0) redisState.expireAt.set(key, Number(args[pxat + 1]));
     return 'OK';
   },
   exists: async (key: string) => (check(), redisState.store.has(key) ? 1 : 0),
@@ -160,13 +162,15 @@ async function quotaExceeded(prisma: never): Promise<boolean> {
   return isMonthlyTokenExceeded(fakeRedis as never, TENANT, limit, () => readMonthlyTokensFromDb({ tx: prisma, tenantId: TENANT }));
 }
 
-const monthKey = (d = new Date()) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-const counterKey = (d?: Date) => `aiquota:${TENANT}:${monthKey(d)}`;
+/** 台灣月份（UTC+8，沒有日光節約時間） */
+const monthKey = (d = new Date()) => new Date(d.getTime() + 8 * 3600_000).toISOString().slice(0, 7);
+const counterKey = (d?: Date) => `aiquota:${TENANT}:${monthKey(d)}:tpe`;
 const setCounter = (n: number) => redisState.store.set(counterKey(), String(n));
 const counter = () => Number(redisState.store.get(counterKey()));
 
 beforeEach(() => {
   redisState.store.clear();
+  redisState.expireAt.clear();
   redisState.down = false;
   providerState.id = 'gemini';
   providerState.calls = [];
@@ -243,11 +247,51 @@ test('Redis 無法使用時改用資料庫的加總：本月用量是 3000', asy
 
 test('每個月重新計數：進入 2026-09 之後，不採用 2026-08 的計數', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date('2026-09-01T00:00:05Z'));
-  redisState.store.set(`aiquota:${TENANT}:2026-08`, '950000');
+  vi.setSystemTime(new Date('2026-08-31T16:00:05Z')); // 台灣 2026-09-01 00:00:05
+  redisState.store.set(`aiquota:${TENANT}:2026-08:tpe`, '950000');
 
   assert.equal(await quotaExceeded(createDb({ monthlyTokens: 1000 }).prisma), false);
-  assert.equal(redisState.store.get(`aiquota:${TENANT}:2026-09`), '0');
+  assert.equal(redisState.store.get(`aiquota:${TENANT}:2026-09:tpe`), '0');
+});
+
+const usageAt = (createdAt: Date, totalTokens: number): UsageRow => ({
+  tenantId: TENANT, keySource: 'platform', success: true, totalTokens, costUsd: new Prisma.Decimal(0), usageMissing: false, createdAt,
+});
+
+test('台灣月初凌晨的用量算在新月份：台灣 09-01 00:30 的呼叫計入 2026-09，08-31 23:00 的不計入', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-08-31T17:00:00Z')); // 台灣 2026-09-01 01:00
+  const usages = [
+    usageAt(new Date('2026-08-31T16:30:00Z'), 3000), // 台灣 09-01 00:30
+    usageAt(new Date('2026-08-31T15:00:00Z'), 9000), // 台灣 08-31 23:00
+  ];
+
+  assert.equal(await quotaExceeded(createDbWithUsages(usages, 3001)), false);
+  assert.equal(redisState.store.get(`aiquota:${TENANT}:2026-09:tpe`), '3000');
+});
+
+test('計數器在台灣下個月 1 日 0 時過期', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-30T15:00:00Z')); // 台灣 2026-09-30 23:00
+
+  await quotaExceeded(createDb({ monthlyTokens: 1000 }).prisma);
+
+  // 台灣 2026-10-01 00:00 = UTC 2026-09-30 16:00
+  assert.equal(redisState.expireAt.get(`aiquota:${TENANT}:2026-09:tpe`), Date.parse('2026-09-30T16:00:00Z'));
+});
+
+test('改用台灣月份後從 AiUsage 重建計數器：不沿用舊的 UTC 月份計數器', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-10T00:00:00Z'));
+  // 舊程式的計數器從 UTC 09-01 00:00 起算，少了台灣 09-01 00:00–08:00 的 2000
+  redisState.store.set(`aiquota:${TENANT}:2026-09`, '1000');
+  const usages = [
+    usageAt(new Date('2026-08-31T20:00:00Z'), 2000), // 台灣 09-01 04:00
+    usageAt(new Date('2026-09-05T00:00:00Z'), 1000),
+  ];
+
+  assert.equal(await quotaExceeded(createDbWithUsages(usages, 3000)), true);
+  assert.equal(redisState.store.get(`aiquota:${TENANT}:2026-09:tpe`), '3000');
 });
 
 // ── token-quota：呼叫 LLM 之前檢查月額度 ──
@@ -391,6 +435,16 @@ test('進入新的月份：上個月發送過 warning，新月份再次發送', 
   vi.setSystemTime(new Date('2026-09-15T00:00:00Z'));
   await crossFrom(700);
   assert.deepEqual(levels(), ['warning', 'warning']);
+});
+
+test('告警的月份是台灣月份：台灣 09-01 01:00 跨越 80%，告警與冪等旗標都是 2026-09', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-08-31T17:00:00Z')); // 台灣 2026-09-01 01:00
+  const crossed = await claimCrossedThresholds(fakeRedis as never, TENANT, 1000, 150, 850);
+
+  assert.deepEqual(crossed.map((c) => [c.level, c.monthKey]), [['warning', '2026-09']]);
+  assert.equal(redisState.store.get(`aiquota-alert:${TENANT}:2026-09:warning`), '1');
+  assert.equal(redisState.expireAt.get(`aiquota-alert:${TENANT}:2026-09:warning`), Date.parse('2026-09-30T16:00:00Z'));
 });
 
 test('沒有上限的租戶不告警', async () => {

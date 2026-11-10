@@ -14,8 +14,10 @@ import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { notFound } from '../../shared/messages/resource.js';
 import { markCaseFirstResponse } from '../case/case.service.js';
-import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { fixedSystemMessageContent, prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
+import { encodeMessageCursor, olderThanCursor, parseMessageCursor } from '../../shared/utils/message-cursor.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface ConversationFilters {
@@ -305,19 +307,29 @@ export async function markConversationRead(
   return updated;
 }
 
-export async function getMessages(
-  prisma: TenantDb,
-  conversationId: string,
-  page: number,
-  limit: number,
-  order: 'asc' | 'desc' = 'asc',
-) {
-  const [messages, total] = await Promise.all([
+export interface GetMessagesOptions {
+  page: number;
+  limit: number;
+  order: 'asc' | 'desc';
+  /** 上一頁回傳的 nextCursor：取比它更早的訊息（只用於 order=desc、page=1，由 route 驗證） */
+  before?: string;
+}
+
+/**
+ * 對話的訊息（change fix-chat-window-load-older-468）。
+ * 帶 `before` 時以游標往前取；不帶時照舊以 page 分頁。兩者都依 createdAt 再 id 排序，
+ * 取 limit + 1 則判斷是否還有下一頁；order=desc 還有更早的訊息時回傳 nextCursor。
+ */
+export async function getMessages(ctx: TenantCtx, conversationId: string, opts: GetMessagesOptions) {
+  const { tx: prisma, tenantId } = ctx;
+  const cursor = parseMessageCursor(opts.before);
+  const scope = { conversationId, conversation: { tenantId } };
+  const [rows, total] = await Promise.all([
     prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: order },
-      skip: (page - 1) * limit,
-      take: limit,
+      where: { ...scope, ...olderThanCursor(cursor) },
+      orderBy: [{ createdAt: opts.order }, { id: opts.order }],
+      skip: cursor ? 0 : (opts.page - 1) * opts.limit,
+      take: opts.limit + 1,
       include: {
         sender: {
           select: {
@@ -328,10 +340,14 @@ export async function getMessages(
         },
       },
     }),
-    prisma.message.count({ where: { conversationId } }),
+    prisma.message.count({ where: scope }),
   ]);
 
-  return { messages, total };
+  const messages = rows.slice(0, opts.limit);
+  const hasMore = rows.length > opts.limit;
+  const last = messages.at(-1);
+  const nextCursor = hasMore && opts.order === 'desc' && last ? encodeMessageCursor(last.createdAt, last.id) : null;
+  return { messages, total, hasMore, nextCursor };
 }
 
 export async function sendMessage(
@@ -697,8 +713,11 @@ export async function handoffConversation(
 
   // Send handoff system message
   const handoffText = data.handoffMessage || '稍等，正在為您轉接客服人員';
-  // 座席自填的轉接訊息維持遮罩；系統預設文案是固定字串，原文送出（避免 2md 誤判一般詞）
-  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: handoffText }, data.handoffMessage ? 'system' : 'system_template');
+  // 座席自填的轉接訊息遮罩；預設文案是固定字串，不呼叫去識別化服務（issue #466）
+  const privacy = await readAiPrivacyPolicy(prisma, tenantId);
+  const storedContent = data.handoffMessage
+    ? await prepareStoredMessageContent(privacy, { text: handoffText }, 'system')
+    : fixedSystemMessageContent({ text: handoffText }, privacy.enabled);
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,

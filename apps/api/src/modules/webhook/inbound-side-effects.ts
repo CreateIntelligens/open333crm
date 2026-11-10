@@ -1,11 +1,12 @@
 import { logger } from '@open333crm/core';
-import { uploadFile } from '../storage/storage.service.js';
+import type { Prisma } from '@prisma/client';
+import { deleteFile, uploadFile } from '../storage/storage.service.js';
 import { trackBroadcastReply } from '../marketing/broadcast.tracking.js';
 import { eventBus } from '../../events/event-bus.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { isUnmaskedInbound, prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig, getChannelSettings } from './inbound-message.types.js';
 import { renderTemplateBody } from '../marketing/template-renderer.js';
@@ -19,7 +20,16 @@ import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 const outsideHoursReplyCache = new Map<string, number>();
 const OUTSIDE_HOURS_DEDUP_MS = 30 * 60 * 1000; // 30 minutes
 
+/** 收訊管線呼叫：在背景下載進站媒體並寫回訊息，不等待（不拖慢 webhook 回應） */
 export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
+  void resolveInboundMedia(ctx);
+}
+
+/**
+ * 下載進站媒體、上傳到物件儲存並寫回訊息。不丟錯：失敗寫進訊息的 mediaError 或 log。
+ * 測試直接等待這個函式。
+ */
+export async function resolveInboundMedia(ctx: InboundMessageContext): Promise<void> {
   if (!ctx.plugin?.resolveInboundMedia || !ctx.message || !ctx.conversation) return;
 
   const { plugin, content, contentType, credentials, tenantId, conversation, message, prisma, io } = ctx;
@@ -30,11 +40,32 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
       ? (message.content as Record<string, unknown>)
       : { text: String(message.content ?? '') };
 
-  const writeContent = async (updatedContent: Record<string, unknown>) => {
-    await prisma.message.update({
-      where: { id: message.id },
-      data: { content: updatedContent as any },
+  /**
+   * 條件寫入（#475）：只在訊息內容仍是下載前讀到的那份時寫入，回傳是否寫入。
+   * 先以 FOR SHARE 鎖住對話：資料刪除以 FOR UPDATE 鎖住對話之後才讀訊息、改寫或刪除。
+   * 這裡先拿到鎖時，刪除等寫入 commit，之後讀得到 storageKey 並刪除媒體檔；刪除先拿到鎖時，
+   * 這裡等刪除 commit，之後內容已是 { redacted: true }（或訊息已刪除），條件不成立、不寫入。
+   */
+  const writeContent = async (updatedContent: Record<string, unknown>): Promise<boolean> => {
+    const written = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM conversations
+        WHERE id = ${conversation.id}::uuid AND "tenantId" = ${tenantId}::uuid
+        FOR SHARE`;
+      const res = await tx.message.updateMany({
+        where: {
+          id: message.id,
+          conversationId: conversation.id,
+          content: { equals: message.content as Prisma.InputJsonValue },
+        },
+        data: { content: updatedContent as Prisma.InputJsonValue },
+      });
+      return res.count > 0;
     });
+    if (!written) {
+      logger.info('[Webhook] Message changed during media download (erased?), skip write-back', { messageId: message.id });
+      return false;
+    }
     emitToConversationChannel(
       io,
       tenantId,
@@ -46,9 +77,10 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
         includeTypePayload: true,
       }),
     );
+    return true;
   };
 
-  (async () => {
+  {
     let stored: { url: string; storageKey: string } | null;
     try {
       stored = await plugin.resolveInboundMedia!(
@@ -70,16 +102,23 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
     if (!stored) return;
     try {
       // mediaUrl 也寫入儲存後的網址：前端與送出路徑都會讀它（issue #206）
-      await writeContent({
+      const written = await writeContent({
         ...baseContent,
         url: stored.url,
         mediaUrl: stored.url,
         storageKey: stored.storageKey,
       });
+      if (written) return;
     } catch (err) {
+      // 寫入是否成立不確定（例如連線中斷）：不刪檔，避免訊息引用到已刪除的物件
       logger.error('[Webhook] Failed to save resolved media:', err);
+      return;
     }
-  })();
+    // 訊息在下載期間被匿名化或刪除：剛上傳的物件沒有任何訊息引用，刪除，最多一次（#475）
+    await deleteFile(stored.storageKey).catch((err) =>
+      logger.error(`[Webhook] Failed to delete media uploaded for an erased message key=${stored.storageKey}:`, err),
+    );
+  }
 }
 
 export function trackInboundBroadcastReply(ctx: InboundMessageContext): void {
@@ -138,6 +177,8 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
       messageContent: (ctx.content.text as string) ?? '',
       replyToken,
       receivedAt: ctx.now.toISOString(),
+      // 去識別化服務無法使用時保存的訊息沒有遮罩副本：AI 不讀它、改轉真人（issue #466）
+      ...(isUnmaskedInbound(ctx.message.metadata) ? { privacyUnmasked: true } : {}),
       // 只有加入好友事件帶：自動化據此另外以「加入好友」（contact.followed）評估規則
       ...(typeof ctx.isFirstFollow === 'boolean' ? { isFirstFollow: ctx.isFirstFollow } : {}),
     },

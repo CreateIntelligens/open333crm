@@ -28,7 +28,7 @@ description: >
 | 1 | 平台用量總覽 | `/admin/usage`，「近 7／30／90 天」按鈕 | `GET /platform/usage/overview?from&to` → `getUsageOverview` | 無。只算 `success=true`；token 含 BYOK 與查無價目，成本不含（USAGE-01） | 平台 token（`platform.routes.ts` 的 guard）；租戶 token 401 |
 | 2 | 租戶排行 | 同頁表格 | `GET /platform/usage/tenants?from&to` → `getTenantUsageRanking`（`take: 50`） | 無。全部呼叫都失敗的租戶不會出現 | 同上 |
 | 3 | 單一租戶鑽取 | 點排行列 | `GET /platform/usage/tenants/:tenantId?from&to` → `getTenantUsageDetail`（`date_trunc('day')`，**UTC 日**） | 無。只列有資料的日子，沒有用量的日子不補 0 | 同上；切換天數會收起鑽取 |
-| 4 | AI 呼叫記帳（系統） | 任何經 `generateReply()` 或 Agent 的 AI 功能（自動回覆、建議回覆、摘要、分類、情緒、潤稿、Flex 生成、Agent） | `llm.flow.ts` 的 `recordLlmUsage()`（交易內呼叫 `llm.service.ts` 的 `writeAiUsage()`） | 寫一筆 `ai_usages`，寫完才回傳回覆；成功且非 BYOK 時以寫入當下的價目算成本；commit 之後累加 Redis `aiquota:{tenantId}:{YYYY-MM}` | — |
+| 4 | AI 呼叫記帳（系統） | 任何經 `generateReply()` 或 Agent 的 AI 功能（自動回覆、建議回覆、摘要、分類、情緒、潤稿、Flex 生成、Agent） | `llm.flow.ts` 的 `recordLlmUsage()`（交易內呼叫 `llm.service.ts` 的 `writeAiUsage()`） | 寫一筆 `ai_usages`，寫完才回傳回覆；成功且非 BYOK 時以寫入當下的價目算成本；commit 之後累加 Redis `aiquota:{tenantId}:{YYYY-MM}:tpe` | — |
 | 5 | 月額度硬擋（系統） | 同上，呼叫 LLM 之前 | `llm.flow.ts` 的 `prepareLlmCall()` → `isMonthlyTokenExceeded()`：計數器 ≥ 有效 `monthlyTokens` | 403 `PLAN_LIMIT_EXCEEDED`、`details.limitKey=monthlyTokens`；不呼叫 LLM、不寫 `ai_usages`。潤稿與 Agent 回 403；分類與情緒分析改用關鍵字降級、建議回覆改回知識庫原文、摘要回固定範本文字（HC-PLATFORM-USAGE-04），這四個都回 200、不告訴使用者是額度用完 | BYOK 與無上限不擋；Ollama 也計入、也會被擋 |
 | 6 | 用量告警（系統） | 累加後跨越 80%、100% | `claimCrossedThresholds()`（`SET NX` 旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`）→ 另一個交易把 `usage.quota.threshold` 寫進 outbox → `notification.worker.ts` | 每位 `role=ADMIN` 且啟用的成員：站內通知 `usage_quota_warning`／`usage_quota_critical`（連到 `/dashboard/plan`）＋一封信（`usage-alert-email` 佇列）。`USAGE_QUOTA_ALERTS_ENABLED=0` 時不發 | 依角色列舉 `ADMIN`，不是權限點 |
 | 7 | 租戶查看用量 | 告警信「查看用量與方案」、通知點擊 → `/dashboard/plan` | `GET /plan-change` | **頁面只有申請表與申請紀錄，不顯示目前方案、已用量、上限**（PLAN-10、HC-PLATFORM-USAGE-02） | `settings.manage` / 側欄依權限隱藏 |
@@ -65,7 +65,7 @@ description: >
 - **不要動 Demo 租戶的計數器與方案**；測額度用完一律自建租戶。
 
 ## 常見 bug 從哪裡查
-- 「AI 突然都不回」：先查有沒有用完額度（403 `PLAN_LIMIT_EXCEEDED`）。Redis `GET aiquota:{tenantId}:{YYYY-MM}`（UTC 月）對照有效上限（`tenants.limitOverrides.monthlyTokens ?? plans.limits.monthlyTokens`）。租戶後台看不到用量，只能查 Redis 或 `ai_usages`。
+- 「AI 突然都不回」：先查有沒有用完額度（403 `PLAN_LIMIT_EXCEEDED`）。Redis `GET aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份）對照有效上限（`tenants.limitOverrides.monthlyTokens ?? plans.limits.monthlyTokens`）。租戶後台看不到用量，只能查 Redis 或 `ai_usages`。
 - 「用量頁成本是 0 或偏低」：查 `ai_usages` 的 `keySource`（BYOK 記 0）、`usageMissing`（查無價目記 0）、`provider=ollama`（記 0）；再查該 model 在 `model_pricings` 有沒有價目。價目快取 10 分鐘（`apps/api/src/modules/ai/pricing.service.ts`）。
 - 「用量頁空白、顯示尚無用量資料」：可能是 API 失敗（頁面不顯示錯誤，HC-PLATFORM-USAGE-03），也可能該期間只有失敗的呼叫（失敗不計入）。用 `select success, count(*) from ai_usages ...` 分辨。
 - 「告警沒收到」：查旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:warning|critical` 是否已存在（本月發過、或換方案前發過，PLAN-13）；收件人只有 `role=ADMIN` 且啟用的成員；信件在 `usage-alert-email` 佇列（`apps/api/src/modules/notification/usage-alert-email.worker.ts`）。

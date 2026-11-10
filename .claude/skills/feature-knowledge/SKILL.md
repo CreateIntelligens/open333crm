@@ -58,6 +58,7 @@ description: >
 - LLM 呼叫是「交易 1 → 交易外呼叫 LLM → 交易 2」（`llm.flow.ts`，change `migrate-ai-llm-tenant-ctx`）：交易 1 的 `readLlmInputs()` 讀 Chat 設定、金鑰、遮罩政策與月額度上限；交易外以 Redis 計數器檢查月額度、`llm-client.ts` 呼叫 provider；交易 2 的 `writeAiUsage()` 寫用量，寫完才回傳。不要在交易內呼叫 `llm-client.ts` 或 `generateReply()`。一次請求要呼叫多次 LLM 時（建議回覆），呼叫一次 `prepareLlmCall()`、每次 `runLlmCall()`。
 - 讀 Chat 設定（`getChatSettings(ctx)`）不建立設定列，沒有設定列時回 `DEFAULT_CHAT_SETTINGS`；`DEFAULT_CHAT_SETTINGS` 要與 schema 的欄位預設值相同（`chat-settings-defaults.test.ts`）。因此新租戶的閒置自動關閉要等設定列建立後才開始，見 AUDIT CONV-01。
 - 個資遮罩啟用時，所有模型輸入與 `embedText()` 都先經 2md 去識別化；失敗就停止，不可用原文當 fallback。
+- 進站訊息在 2md 無法使用時存原文、標 `metadata.privacy.mode: 'inbound_unmasked'`（#466）。新增任何讀訊息內容送模型的地方，都要經 `readModelMessageContent()`／`toAiHistory()` 或先檢查 `isUnmaskedInbound()`，不可讀 `content` 原文。
 - 設定路由在 `settings.routes.ts`，整個模組掛 `requirePermission('settings.manage')`；`baseUrl` 用 `httpUrlSchema`（只許 http/https，但內網要放行，Ollama 就在內網）。
 - 本機不要為了測試把共用租戶的 Chat/Embedding 改指向外部付費服務；UAT 不可觸發 AI 回覆。
 
@@ -84,5 +85,5 @@ description: >
 - 「文章發布了卻搜不到」：`hasEmbedding`、Embedding 頁「未嵌入」數、`POST /knowledge/bulk-embed`；維度不符見 DB-01。
 - 「匯入後中文亂碼」或「CSV 被拒：無法辨識文字編碼」：CSV 由 `apps/api/src/modules/knowledge/file-parser.service.ts` 的 `decodeCsvText()` 解碼（UTF-8 去 BOM → 嚴格 UTF-8 → Big5，都不行或含 U+FFFD 就回 `CSV_ENCODING_UNREADABLE`，#421）。GBK、Shift-JIS 等其他編碼不支援，請使用者另存成「CSV UTF-8」；Big5 偶爾能把其他編碼「解成功」但字不對，這種情形不會被擋。
 - 「上傳被拒、英文錯誤」：內容偵測 `apps/api/src/modules/upload/upload-content-detector.ts` 的 `extensionMatches`。
-- 「額度用完／用量對不上」：`apps/api/src/modules/trial/token-quota.service.ts`（Redis `aiquota:{tenantId}:{YYYY-MM}`，失敗退回 DB 加總）、`apps/api/src/modules/ai/llm.flow.ts` 的 `recordLlmUsage()`；BYOK 解密失敗退回平台金鑰見 AI-01。
+- 「額度用完／用量對不上」：`apps/api/src/modules/trial/token-quota.service.ts`（Redis `aiquota:{tenantId}:{YYYY-MM}:tpe`，台灣月份，失敗退回 DB 加總）、`apps/api/src/modules/ai/llm.flow.ts` 的 `recordLlmUsage()`；BYOK 解密失敗退回平台金鑰見 AI-01。
 - 「設定頁顯示假資料或 403」：缺 `settings.manage`；`apps/web/src/components/knowledge/SettingsLoadError.tsx`。

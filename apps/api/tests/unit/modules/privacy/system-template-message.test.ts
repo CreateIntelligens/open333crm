@@ -130,11 +130,14 @@ function handoffFixture() {
   return { prisma, io, messages };
 }
 
-test('System template message keeps its authored text: default handoff notice', async () => {
+// change fix-deid-inbound-fallback-466（bot-handoff-config「程式固定的系統文字不呼叫去識別化服務」）：
+// 預設轉接訊息是固定文字，遮罩副本就是原文，不呼叫 2md
+test('座席轉接時沒有填寫轉接訊息', async () => {
   const f = handoffFixture();
   await handoffConversation(f.prisma, f.io, 'c1', TENANT, 'agent-a', {});
   assert.equal((f.messages[0].content as { text: string }).text, '稍等，正在為您轉接客服人員');
-  assert.equal(maskedCopy(f.messages[0].metadata).text, '稍等，正在為您轉接[姓名]');
+  assert.equal(maskedCopy(f.messages[0].metadata).text, '稍等，正在為您轉接客服人員');
+  assert.deepEqual(deidRequests, [], '沒有呼叫去識別化服務');
 });
 
 test('Agent-typed handoff notice stays masked', async () => {

@@ -37,7 +37,7 @@ MinIO 提供 S3 相容物件儲存。目前存在兩套儲存抽象：
 | 項目 | `packages/core/src/storage` | `apps/api/src/modules/storage` |
 | --- | --- | --- |
 | SDK | `minio` | S3 SDK |
-| 環境變數 | `MINIO_*` | `S3_*` |
+| 環境變數 | `S3_*`（有 `MINIO_ENDPOINT` 時優先用 `MINIO_*`，見 `resolveMinioConfig()`） | `S3_*` |
 | Bucket 模型 | 呼叫時傳入 bucket | 單一 bucket，以 tenant key 分區 |
 | 主要使用者 | Workers 的匯出與刪除工作 | API 的 Storage 與 LINE Imagemap |
 

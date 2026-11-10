@@ -4,6 +4,7 @@
  */
 
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { isUnmaskedInbound } from './deidentification.service.js';
 
 export interface ClassifyResult {
   category: string;
@@ -92,8 +93,10 @@ export async function readCaseToClassify(ctx: TenantCtx, caseId: string, convers
   const latest = await ctx.tx.message.findFirst({
     where: { conversationId, conversation: { tenantId: ctx.tenantId }, direction: 'INBOUND' },
     orderBy: { createdAt: 'desc' },
-    select: { content: true },
+    select: { content: true, metadata: true },
   });
+  // 去識別化服務無法使用時保存的進站訊息沒有遮罩副本，不交給模型分類（issue #466）
+  if (isUnmaskedInbound(latest?.metadata)) return null;
   const text = (latest?.content as Record<string, unknown> | null)?.text;
   return typeof text === 'string' && text ? text : null;
 }
