@@ -1,8 +1,9 @@
 /**
- * 平台帳號（PlatformUser）相關信件：開通完成、忘記密碼重設。
+ * 寄給平台帳號（PlatformUser）的信件：開通完成、忘記密碼重設、租戶送出方案異動申請的通知。
  * 樣式與 trial-emails.ts 一致（純 HTML inline-style + table 佈局，不走 MJML——
  * mjml 為可選依賴、未安裝時 fallback 會把按鈕 href 吃掉，純 HTML 無此風險）。
- * 寄信一律 fire-and-forget，失敗只 log（呼叫端負責）。
+ * 開通信與重設信 fire-and-forget，失敗只 log（呼叫端負責）；
+ * 方案異動通知信把錯誤丟給呼叫端，由呼叫端寫進平台稽核（change add-plan-change-platform-notify）。
  */
 import { renderTemplateBody } from '../marketing/template-renderer.js';
 import { sendEmail } from '../email/email.service.js';
@@ -78,6 +79,25 @@ const PLATFORM_PASSWORD_RESET_HTML = wrap({
     infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{resetUrl}}" style="color:' + BRAND + ';">{{resetUrl}}</a>'),
 });
 
+const detailRow = (label: string, value: string) =>
+  `<tr><td style="padding:8px 12px 8px 0;font-size:13px;color:${MUTED};white-space:nowrap;vertical-align:top;">${label}</td>` +
+  `<td style="padding:8px 0;font-size:14px;color:${INK};font-weight:600;word-break:break-all;white-space:pre-wrap;">${value}</td></tr>`;
+
+const PLAN_CHANGE_REQUESTED_HTML = wrap({
+  heading: '有新的方案異動申請',
+  bodyHtml:
+    p('租戶「<strong>{{tenantName}}</strong>」送出了方案異動申請，請到平台後台審核。') +
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;border-top:1px solid #eef1f5;width:100%;">` +
+    detailRow('租戶', '{{tenantName}}') +
+    detailRow('類型', '{{typeLabel}}') +
+    detailRow('內容', '{{content}}') +
+    detailRow('備註', '{{note}}') +
+    `</table>` +
+    button('{{reviewUrl}}', '前往審核') +
+    small('租戶同時只能有一筆待審申請，審核之前租戶無法再送出新的申請。') +
+    infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{reviewUrl}}" style="color:' + BRAND + ';">{{reviewUrl}}</a>'),
+});
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -108,6 +128,41 @@ export async function sendPlatformUserProvisionedEmail(
 ): Promise<void> {
   const html = render(PLATFORM_USER_PROVISIONED_HTML, vars);
   await safeSend(to, '【open333】平台帳號已開通', html, { loginUrl: vars.loginUrl });
+}
+
+export interface PlanChangeRequestedEmailVars {
+  tenantName: string;
+  type: 'upgrade' | 'token_topup';
+  /** 升級申請的目標方案名稱 */
+  targetPlanName: string | null;
+  topupTokens: number | null;
+  note: string | null;
+  reviewUrl: string;
+}
+
+/**
+ * 租戶送出方案異動申請的通知信，寄給一個平台帳號。
+ * 寄送失敗時丟出錯誤：呼叫端要記下哪些收件人失敗（不走 safeSend）。
+ */
+export async function sendPlanChangeRequestedEmail(to: string, vars: PlanChangeRequestedEmailVars): Promise<void> {
+  const typeLabel = vars.type === 'upgrade' ? '升級方案' : '加購 Token';
+  const content =
+    vars.type === 'upgrade'
+      ? `升級至「${vars.targetPlanName ?? '未指定'}」`
+      : `加購 ${(vars.topupTokens ?? 0).toLocaleString('en-US')} token`;
+  const html = render(PLAN_CHANGE_REQUESTED_HTML, {
+    tenantName: vars.tenantName,
+    typeLabel,
+    content,
+    note: vars.note?.trim() ? vars.note : '未填寫',
+    reviewUrl: vars.reviewUrl,
+  });
+  await sendEmail({
+    to,
+    subject: `【open333】${vars.tenantName} 送出${typeLabel}申請`,
+    html,
+    metadata: { reviewUrl: vars.reviewUrl },
+  });
 }
 
 /** 平台帳號忘記密碼重設信：帶明文 token 的重設連結，有效期提示。 */
