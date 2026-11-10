@@ -8,8 +8,7 @@
 
 **Goals**：列表標示到期狀態並可排序；到期前寄提醒信給平台帳號；同一檔位只寄一次；迄日修改後重新計算。
 
-**Non-Goals**：合約到期自動停用或寬限期（需要產品決定）；在平台後台加編輯 `contract.reminderDaysBefore` 的畫面
-（可用既有的 `PUT /api/v1/platform/settings/:key` 修改）。
+**Non-Goals**：合約到期自動停用或寬限期（需要產品決定）；替通用設定端點的其他鍵加型別（AUDIT TRIAL-02 的整體修正）。
 
 ## Decisions
 
@@ -44,6 +43,16 @@
 
 `setupContractReminderScheduler()` 每小時一次、`withoutOverlapping` 30 分鐘，與試用相同；在 `index.ts` 以 `prismaAdmin`
 接線（平台層跨租戶，AGENTS.md 允許）。
+
+### D7 提醒天數的編輯畫面與寫入驗證
+
+設定卡放在 `/admin/tenants`：合約日期在這一頁編輯、到期標籤也在這一頁，營運人員不必到試用管理頁找合約設定。
+欄位只在按「儲存」時送出，不學 `/admin/trial` 失焦即存（AUDIT TRIAL-02 記錄的誤觸問題）。
+
+通用的 `PUT /settings/:key` 不檢查型別（TRIAL-02）。這次不改通用端點的結構，只在路由對 `contract.reminderDaysBefore`
+套用 `parseContractReminderDays()`：必須是 1 到 365 的整數組成的非空陣列，去重、由大到小後存入；不合法回 400
+`VALIDATION_ERROR`，不改存預設值。上限 365 是為了擋下打錯的值（例如多打一個 0），一年以上的提醒沒有意義。
+前端以 `parseReminderDaysInput()` 套用同一套規則，即時顯示原因。讀取端與寫入端共用正規化，舊資料若不合法仍退回預設值。
 
 ## Risks / Trade-offs
 

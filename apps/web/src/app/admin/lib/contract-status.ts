@@ -37,6 +37,30 @@ export const CONTRACT_STATUS_META: Record<ContractStatus, { label: string; color
   expiring: { label: '30 天內到期', color: '#b7791f', background: '#fdf3e1' },
 };
 
+// ── 合約到期提醒天數（平台設定 contract.reminderDaysBefore）──
+
+export const CONTRACT_REMINDER_DAYS_KEY = 'contract.reminderDaysBefore';
+export const DEFAULT_CONTRACT_REMINDER_DAYS = [30, 7, 1];
+export const MAX_CONTRACT_REMINDER_DAY = 365;
+
+/** 檔位陣列 → 顯示用字串，例如 "30, 7, 1" */
+export function formatReminderDays(days: number[]): string {
+  return days.join(', ');
+}
+
+/**
+ * @description 解析使用者輸入的提醒天數（與 API 的 parseContractReminderDays 規則一致）
+ * @param input 逗號分隔的天數，例如 "7, 30, 7"
+ * @returns 合法時回去重、由大到小排序的天數；不合法時回原因（不改用預設值）
+ */
+export function parseReminderDaysInput(input: string): { ok: true; days: number[] } | { ok: false; error: string } {
+  const parts = input.split(/[,，]/).map((p) => p.trim());
+  if (parts.every((p) => p === '')) return { ok: false, error: '請輸入提醒天數' };
+  const valid = parts.every((p) => /^\d+$/.test(p) && Number(p) >= 1 && Number(p) <= MAX_CONTRACT_REMINDER_DAY);
+  if (!valid) return { ok: false, error: `提醒天數只能是 1 到 ${MAX_CONTRACT_REMINDER_DAY} 的整數，以逗號分隔` };
+  return { ok: true, days: [...new Set(parts.map(Number))].sort((a, b) => b - a) };
+}
+
 /** 依合約迄日排序（asc：近到遠），沒有迄日的一律排最後 */
 export function sortByContractEnd<T extends { contractEndDate: string | null }>(rows: T[], dir: 'asc' | 'desc'): T[] {
   return [...rows].sort((a, b) => {

@@ -19,12 +19,19 @@
 - [x] 4.1 測試 `apps/web/tests/unit/app/admin/tenants-page.test.tsx`：「列表標示已過期與 30 天內到期」「依合約迄日排序」，在現有程式上斷言失敗
 - [x] 4.2 新增 `apps/web/src/app/admin/lib/contract-status.ts`；`apps/web/src/app/admin/tenants/page.tsx` 顯示標籤與排序
 
-## 5. 完成定義
+## 5. 合約到期提醒天數的編輯畫面與寫入驗證
 
-- [x] 5.1 `pnpm --filter @open333crm/api test`、`pnpm --filter @open333crm/web test`
-- [x] 5.2 `pnpm --filter @open333crm/api test:feature`（測試庫）
-- [x] 5.3 api 與 web 的 tsc
-- [x] 5.4 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`
-- [x] 5.5 `node scripts/validate-openspec.mjs add-contract-expiry-reminder`
-- [x] 5.6 `CHANGELOG.md` 的 `## [2026-11-10]` Added 加條目；`docs/ref/` 描述合約日期的文件同步
-- [ ] 5.7 歸檔後把主規格 `tenant-contract-dates` 的 Purpose 改成「合約日期用於到期提醒，不自動停用」
+- [x] 5.1 測試 `apps/api/tests/feature/modules/platform/tenant-contract-dates.test.ts`：「儲存合法的提醒天數」「不合法的提醒天數被拒絕」，在現有程式上斷言失敗（已確認：`[]` 回 200）
+- [x] 5.2 `contract-policy.service.ts` 新增 `parseContractReminderDays()`（1–365 整數、非空、去重、由大到小，不合法丟 400 `VALIDATION_ERROR`）；`platform.routes.ts` 的 `PUT /settings/:key` 對 `contract.reminderDaysBefore` 套用，其他鍵不變；讀取端共用同一套規則
+- [x] 5.3 測試 `apps/web/tests/unit/app/admin/tenants-page.test.tsx`：「按儲存才送出提醒天數」「畫面擋下不合法的提醒天數」「儲存失敗顯示訊息」，在現有程式上失敗（找不到設定卡）；突變驗證：輸入欄位加上 `onBlur={save}` 時「按儲存才送出提醒天數」失敗（已驗證，已還原）
+- [x] 5.4 新增 `apps/web/src/app/admin/tenants/contract-reminder-card.tsx`（明確的「儲存」按鈕，成功與失敗都顯示訊息），`contract-status.ts` 新增 `parseReminderDaysInput()`，在 `/admin/tenants` 顯示
+
+## 6. 完成定義
+
+- [x] 6.1 `pnpm --filter @open333crm/api test`、`pnpm --filter @open333crm/web test`
+- [x] 6.2 `pnpm --filter @open333crm/api test:feature`（獨立測試庫 `TEST_DATABASE_NAME=open333crm_contract_test`、`TEST_REDIS_URL=redis://localhost:6380/13`；其他 worktree 同時在用預設的 `open333crm_test`）
+- [x] 6.3 api 與 web 的 tsc
+- [x] 6.4 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`
+- [x] 6.5 `node scripts/validate-openspec.mjs add-contract-expiry-reminder`
+- [x] 6.6 `CHANGELOG.md` 的 `## [2026-11-10]` Added 加條目（含提醒天數編輯畫面）；`docs/ref/` 描述合約日期的文件同步
+- [ ] 6.7 歸檔後把主規格 `tenant-contract-dates` 的 Purpose 改成「合約日期用於到期提醒，不自動停用」

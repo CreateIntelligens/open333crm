@@ -57,8 +57,15 @@ afterAll(async () => {
   await prisma.platformAuditLog.deleteMany({ where: { platformUserId: platformUser.id } });
   await prisma.platformUser.delete({ where: { id: platformUser.id } });
   await prisma.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+  await prisma.platformSetting.deleteMany({ where: { key: REMINDER_KEY } });
   await prisma.$disconnect();
 });
+
+const REMINDER_KEY = 'contract.reminderDaysBefore';
+const putReminderDays = (value: unknown) =>
+  app.inject({ method: 'PUT', url: `/api/v1/platform/settings/${REMINDER_KEY}`, payload: { value } });
+const storedReminderDays = async () =>
+  (await prisma.platformSetting.findUnique({ where: { key: REMINDER_KEY } }))?.value ?? null;
 
 const patchContract = (tenantId: string, payload: Record<string, unknown>) =>
   app.inject({ method: 'PATCH', url: `/api/v1/platform/tenants/${tenantId}/contract`, payload });
@@ -209,4 +216,30 @@ test('只改起日不重寄', async () => {
   const same = await patchContract(t.id, { contractEndDate: '2026-12-01' });
   assert.equal(same.statusCode, 200, same.body);
   assert.deepEqual(await remindersOf(t.id), [30]);
+});
+
+test('儲存合法的提醒天數', async () => {
+  const res = await putReminderDays([7, 30, 7]);
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(res.json().data.value, [30, 7]);
+  assert.deepEqual(await storedReminderDays(), [30, 7]);
+
+  const audits = await prisma.platformAuditLog.findMany({
+    where: { platformUserId: platformUser.id, action: 'setting.update', targetId: REMINDER_KEY },
+  });
+  assert.ok(audits.length >= 1);
+});
+
+test('不合法的提醒天數被拒絕', async () => {
+  await prisma.platformSetting.upsert({
+    where: { key: REMINDER_KEY },
+    update: { value: [30, 7] },
+    create: { key: REMINDER_KEY, value: [30, 7] },
+  });
+  for (const value of [[], [0], [-1], [1.5], [400], ['7'], '30,7', null]) {
+    const res = await putReminderDays(value);
+    assert.equal(res.statusCode, 400, `${JSON.stringify(value)} → ${res.body}`);
+    assert.equal(res.json().error.code, 'VALIDATION_ERROR');
+    assert.deepEqual(await storedReminderDays(), [30, 7], `${JSON.stringify(value)} 不修改設定`);
+  }
 });

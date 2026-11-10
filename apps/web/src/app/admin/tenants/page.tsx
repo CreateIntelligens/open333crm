@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { platformApi } from '../lib/platform-api';
 import { CONTRACT_STATUS_META, contractStatus, sortByContractEnd } from '../lib/contract-status';
+import { ContractReminderCard } from './contract-reminder-card';
 
 interface Tenant {
   id: string;
@@ -178,6 +179,8 @@ export default function TenantsPage() {
           </tbody>
         </table>
       </div>
+
+      <ContractReminderCard />
 
       <h2 style={{ fontSize: 16, margin: '28px 0 12px' }}>手動開通租戶</h2>
       <form onSubmit={provision} style={{ ...card, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
