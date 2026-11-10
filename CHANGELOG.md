@@ -23,6 +23,13 @@ All notable changes to **open333CRM** will be documented in this file.
   - 租戶詳細頁新增「操作紀錄」區塊，顯示操作、對象、操作者與時間（台灣時間）。
 
 ### Changed
+- **加購 AI token 只計入核准當月**（issue #222 第 26、27a 項、#228 第 4 項，change `make-token-topup-monthly`）— 原本核准加購把「當時有效額度 + 加購量」寫進 `tenant.limitOverrides.monthlyTokens`，等於永久提高每月額度，升級方案後額度也停在舊數字（AUDIT PLAN-02、PLAN-05）。現在：
+  - 本月 AI 月額度 = 基礎上限（`limitOverrides.monthlyTokens` 有設定時用它，否則用方案的 `limits.monthlyTokens`；null 是無上限）+ 本月（台灣時間）已核准的加購量總和。一筆加購屬於核准時間所在的台灣月份，下個月自動回到方案額度；換方案後加購加在新方案的額度上。基礎上限是無上限時仍是無上限。
+  - 當月加購量直接從已核准的 `token_topup` 申請加總，不新增欄位；有效上限只在 `plan-limits.service.ts` 的 `getEffectiveLimit()` 解析，`approveRequest()` 不再自己算。核准加購不再改寫租戶，改為條件更新申請狀態，同一筆申請同時核准兩次只有一次成功。核准後 AI 月額度的硬擋即時解除（既有行為）。
+  - migration `20261110120000_remove_topup_monthly_tokens_override` 移除所有租戶 `limitOverrides` 的 `monthlyTokens`（唯一的寫入端是舊版核准加購）。部署當月已核准的加購仍會計入，更早月份的加購不再計入。
+  - 核准升級、平台改租戶方案、試用轉付費、平台調高方案的 `limits.monthlyTokens` 之後，AI 月額度提高的租戶會清除本月的額度告警旗標，用量跨越新上限的 80%／100% 時再次告警（AUDIT PLAN-13）。上限不變或降低時保留旗標。
+  - `GET /api/v1/platform/plan-change-requests` 每筆申請新增 `monthlyTopupTokens`（租戶本月已核准的加購量）與 `monthlyTokenLimit`（目前本月上限，null 是無上限）。
+  - `/dashboard/plan` 與 `/admin/plan-changes` 說明「加購僅限核准當月（台灣時間），下個月回到方案額度」；租戶的申請記錄在已核准的加購旁顯示「限 YYYY-MM 使用」，平台審核頁在每筆加購申請顯示該租戶本月已加購與本月上限。
 - **AI 月額度改以台灣月份計算**（issue #497，change `fix-platform-usage-trial-display`）— 月額度原本以 UTC 月份計算，台灣每月 1 日 00:00–08:00 的用量算到上個月，告警信的「本月（YYYY-MM）」也是 UTC 月份。現在：
   - Redis 計數器 key 改為 `aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份），在台灣下個月 1 日 00:00 過期；計數器不存在時，從台灣本月 1 日 00:00 起的 `AiUsage` 加總補建。Redis 無法使用時的資料庫加總也用同一個起點。
   - 告警旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 的格式不變，月份改為台灣月份，在台灣下個月 1 日 00:00 過期；告警事件、站內通知與 email 的月份都是台灣月份。

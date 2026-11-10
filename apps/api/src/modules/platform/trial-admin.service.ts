@@ -10,6 +10,8 @@ import { getTrialPolicy } from '../trial/trial-policy.service.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { clearQuotaAlertFlags } from '../trial/token-quota.service.js';
+import { monthlyTokensRaisedByPlanChange } from './plan-limits.service.js';
 
 /**
  * 試用租戶轉為付費方案時一併寫入：脫離試用（不再受到期與軟刪排程管轄）、恢復啟用、
@@ -155,11 +157,14 @@ export async function extendTrial(prisma: PrismaClient, tenantId: string, addDay
 
 /** 轉正式方案：改 planId + 清 trialEndsAt（脫離試用）+ 確保啟用。 */
 export async function convertToPaid(prisma: PrismaClient, redis: Redis, tenantId: string, planSlug: string) {
-  const plan = await prisma.plan.findUnique({ where: { slug: planSlug }, select: { id: true, slug: true } });
+  const plan = await prisma.plan.findUnique({ where: { slug: planSlug }, select: { id: true, slug: true, limits: true } });
   if (!plan) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
   await assertNotTrialPlan(prisma, plan.slug);
 
-  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+  const t = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, limitOverrides: true, plan: { select: { limits: true } } },
+  });
   if (!t) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
 
   const updated = await prisma.tenant.update({
@@ -176,6 +181,8 @@ export async function convertToPaid(prisma: PrismaClient, redis: Redis, tenantId
   // update 非 transaction，直接在成功寫入後失效即可。
   await invalidatePlanPermissions(redis, plan.id);
   invalidateTenantPlan(tenantId);
+  // 付費方案的 AI 月額度較高時清掉本月的告警旗標，用量跨越新上限的門檻才會再通知（AUDIT PLAN-13）
+  if (monthlyTokensRaisedByPlanChange(t, plan)) await clearQuotaAlertFlags(redis, tenantId);
 
   return updated;
 }

@@ -4,6 +4,19 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-10：加購 AI token 只計入當月（PLAN-02、PLAN-03、PLAN-05、PLAN-13）
+
+issue #222（第 26、27a 項）與 #228 第 4 項，change `make-token-topup-monthly`。以單元測試、本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_topup`）與元件測試驗證，沒有連 UAT。使用者 2026-11-10 決定加購只加當月（台灣時間）。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| PLAN-02 | 已修正，從 `AUDIT.md` 移除 | 核准加購不再寫 `limitOverrides`，當月上限 = 基礎上限 + 本月已核准的加購（`plan-limits.service.ts` 的 `getEffectiveLimit()`，唯一一份解析）。核准改為條件更新。`plan-limits.test.ts` 的「同月多筆加購加總」「台灣月初凌晨核准的加購算在新月份」「升級方案後加購加在新方案的額度上」、`plan-change.test.ts` 的「沒有覆寫時加在方案的額度上」「已有覆寫時加在覆寫值上」「同月第二筆加購累加」「同一筆申請同時核准兩次」「待審的申請附本月加購量與本月上限」修正前失敗在斷言上。mutation：`getEffectiveLimit()` 不加加購量時，「核准加購後立即恢復 AI」「核准加購後再次跨越門檻」等 7 個失敗。既有資料由 migration `20261110120000_remove_topup_monthly_tokens_override` 移除（`token-topup-monthly-migration.test.ts`，feature） |
+| PLAN-05 | 已修正，從 `AUDIT.md` 移除 | 加購不再固定成覆寫值，升級後用新方案的額度加上當月加購。`plan-limits.test.ts`「升級方案後加購加在新方案的額度上」 |
+| PLAN-13 | 已修正，從 `AUDIT.md` 移除 | 核准升級、`updateTenant()`、`convertToPaid()`、`updatePlan()` 在 AI 月額度提高時清除本月告警旗標（`monthlyTokensRaisedByPlanChange()`）。`quota-alert-recalibration.test.ts` 的「平台變更租戶方案或試用轉付費後再次告警」「平台調高方案額度後再次告警」修正前失敗在斷言上；「升級方案後再次跨越門檻」以 mutation 驗證（拿掉核准升級的清除時失敗）；「降級不刪除告警紀錄」以 mutation 驗證（`isLimitRaised()` 一律回 true 時失敗） |
+| PLAN-03 | 部分修正：第二點（`limitOverrides` 不會被清除）因加購不再寫入而不再成立；第一點（不回收超額資源）與第三點（多行程方案快取）未處理 | 同 PLAN-02 |
+| PLAN-10 | 維持未處理，內文更新 | 第二、四點改寫：加購量可從已核准的申請逐筆加總，平台審核頁顯示本月加購量；仍沒有金額 |
+| PLAN-16 | 維持未處理，內文更新 | 加購的核准改為條件更新；升級的核准與駁回仍是無條件寫入，「一筆待審」仍只靠查詢後建立 |
+
 ## 2026-11-10：依租戶查詢平台稽核（PLAN-11 相關）
 
 issue #496，分支 `feat/platform-tenant-audit-logs`，change `add-platform-tenant-audit-logs`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。

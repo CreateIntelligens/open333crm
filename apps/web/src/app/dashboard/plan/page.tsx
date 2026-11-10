@@ -11,8 +11,16 @@ interface Req {
   topupTokens: number | null;
   note: string | null;
   status: 'pending' | 'approved' | 'rejected';
+  reviewedAt: string | null;
   createdAt: string;
 }
+
+/** 加購只在核准當月（台灣時間 UTC+8）有效：回傳核准時間所在的台灣月份 YYYY-MM */
+function taipeiMonth(iso: string): string {
+  return new Date(Date.parse(iso) + 8 * 60 * 60 * 1000).toISOString().slice(0, 7);
+}
+
+const TOPUP_MONTHLY_NOTE = '加購的額度只在核准當月（台灣時間）有效，下個月回到方案額度。';
 
 const PLANS = [
   { slug: 'standard', label: '標準版' },
@@ -62,7 +70,7 @@ export default function PlanPage() {
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="text-2xl font-semibold">方案</h1>
-      <p className="mt-1 text-sm text-muted-foreground">申請升級方案或加購 AI token 額度，由平台方審核後生效。</p>
+      <p className="mt-1 text-sm text-muted-foreground">申請升級方案或加購 AI token 額度，由平台方審核後生效。加購僅限核准當月（台灣時間），下個月回到方案額度。</p>
 
       {msg && <div className="mt-4 rounded-md bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
 
@@ -105,6 +113,7 @@ export default function PlanPage() {
                     </button>
                   ))}
                 </div>
+                <p className="mt-2 text-xs text-muted-foreground">{TOPUP_MONTHLY_NOTE}</p>
               </div>
             )}
 
@@ -128,6 +137,9 @@ export default function PlanPage() {
             <span className="font-medium">
               {r.type === 'upgrade' ? `升級 → ${r.targetPlanSlug}` : `加購 ${((r.topupTokens ?? 0) / 10000).toLocaleString()} 萬 token`}
             </span>
+            {r.type === 'token_topup' && r.status === 'approved' && r.reviewedAt && (
+              <span className="text-xs text-muted-foreground">限 {taipeiMonth(r.reviewedAt)} 使用</span>
+            )}
             {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
             <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_LABEL[r.status].cls}`}>
               {STATUS_LABEL[r.status].label}

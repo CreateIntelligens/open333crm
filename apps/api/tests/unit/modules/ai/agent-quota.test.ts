@@ -51,6 +51,7 @@ test('Agent 回覆達到上限：拋出 403 PLAN_LIMIT_EXCEEDED，不呼叫 LLM�
   const llm = {
     prisma: mockTransactionPrisma(log, {
       tenant: { findUnique: async () => ({ limitOverrides: {}, plan: { limits: { monthlyTokens: 1000 } } }) },
+      planChangeRequest: { aggregate: async () => ({ _sum: { topupTokens: null } }) },
       platformSetting: { findUnique: async () => null },
     }),
     redis: {} as never,
