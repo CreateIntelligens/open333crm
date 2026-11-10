@@ -15,6 +15,9 @@ context: |
 # copy the rules into the artifacts. The rules implement step 1 and step 2 of the Development
 # Workflow in AGENTS.md.
 rules:
+  proposal:
+    - Add a section "## Platform layer". Check each row of the table in "Plan the platform layer in the same change" in AGENTS.md. List each row that applies and what this change does for it. If no row applies, write one sentence that says why.
+    - Plan the platform part in this change. Do not move it to a later change.
   specs:
     - Write each scenario as WHEN / THEN. Name the input and the result that a caller can see, so that a test can check the scenario.
     - Include the failure cases and boundary cases that change behavior. Examples are data of another tenant, missing permissions and invalid input.
@@ -26,4 +29,5 @@ rules:
     - For each scenario, put a task that writes its failing test before the task that implements the scenario.
     - If the code already has the behavior of a scenario, the test cannot fail first. Its test task verifies the test with a mutation instead, as AGENTS.md describes.
     - In each test task, name the test file and the scenario that it covers. The test file is in tests/unit/ or tests/feature/ of the package (see AGENTS.md).
+    - Put the tasks for the platform part (the "## Platform layer" section of the proposal) in this list, with their tests, before the definition-of-done checks.
     - End the list with the definition-of-done checks from AGENTS.md. These checks include the CHANGELOG.md update when AGENTS.md requires one.
