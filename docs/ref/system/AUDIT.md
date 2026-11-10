@@ -1206,6 +1206,8 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 `reviewedBy` 存的是 `platformUserId`，但不是外鍵，因此即使查到紀錄，要顯示審核者姓名仍須自己查 `platform_users`。
 
+2026-11-10 起（#496，change `add-platform-tenant-audit-logs`），`GET /api/v1/platform/tenants/:id/audit-logs` 與租戶詳細頁的「操作紀錄」會列出該租戶的 `plan_change.approve`、`plan_change.reject` 稽核，附審核者姓名。稽核只記申請類型與是否脫離試用，不含目標方案、加購量與審核備註，所以本項維持未處理：已處理申請的內容仍沒有讀取途徑。
+
 連帶影響 PLAN-10。那一項提到加購量可以回頭加總 `plan_change_requests.topupTokens` 來還原，但平台後台沒有任何介面做得到這件事，只能直接查資料庫。
 
 <a id="plan-12"></a>

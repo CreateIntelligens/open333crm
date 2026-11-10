@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { platformApi } from '../../lib/platform-api';
 import { fmtNum } from '../../lib/format';
 import { AiPrivacyControl } from '../components/AiPrivacyControl';
+import { AuditLogTable } from '../../lib/AuditLogTable';
+import type { PlatformAuditEntry } from '../../lib/audit-log';
 
 interface TenantDetail {
   id: string;
@@ -49,13 +51,29 @@ export default function TenantDetailPage() {
   // 合約日期草稿
   const [contract, setContract] = useState({ start: '', end: '' });
 
+  // 平台對此租戶的操作紀錄（規格 platform-audit-log）；載入失敗要讓使用者看得到
+  const [audit, setAudit] = useState<{ items: PlatformAuditEntry[]; hasMore: boolean } | null>(null);
+  const [auditError, setAuditError] = useState('');
+
+  const loadAudit = useCallback(async () => {
+    try {
+      const res = await platformApi.get(`/tenants/${id}/audit-logs`);
+      setAudit(res.data.data);
+      setAuditError('');
+    } catch {
+      setAuditError('操作紀錄載入失敗，請重新整理頁面。');
+    }
+  }, [id]);
+
   const load = useCallback(async () => {
     const res = await platformApi.get(`/tenants/${id}`);
     const t: TenantDetail = res.data.data;
     setTenant(t);
     setForm({ name: t.name, planSlug: t.plan?.slug ?? '' });
     setContract({ start: toDateInput(t.contractStartDate), end: toDateInput(t.contractEndDate) });
-  }, [id]);
+    // 每次操作後重新載入時一併更新操作紀錄
+    await loadAudit();
+  }, [id, loadAudit]);
 
   useEffect(() => {
     load();
@@ -142,6 +160,7 @@ export default function TenantDetailPage() {
       await platformApi.post(`/tenants/${tenant.id}/agents/${agentId}/resend-welcome`);
       setMsgOk(true);
       setMsg(`開通信已重寄至 ${email}（信中不含密碼，密碼請自行轉交）`);
+      await loadAudit();
     } catch (err: unknown) {
       showError(err, '開通信重寄失敗');
     } finally {
@@ -352,6 +371,15 @@ export default function TenantDetailPage() {
           </tbody>
         </table>
       </div>
+
+      {/* 操作紀錄 */}
+      {auditError ? (
+        <p role="alert" style={{ color: '#d1443e', fontSize: 13, marginTop: 28 }}>
+          {auditError}
+        </p>
+      ) : (
+        audit && <AuditLogTable logs={audit.items} hasMore={audit.hasMore} />
+      )}
     </div>
   );
 }

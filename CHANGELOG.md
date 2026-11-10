@@ -17,14 +17,18 @@ All notable changes to **open333CRM** will be documented in this file.
   - `/admin/tenants` 列表在合約期間旁標示「已過期」與「30 天內到期」，按「合約期間」欄可依迄日排序（沒有迄日的排最後）。
   - `/admin/tenants` 新增「合約到期提醒」設定卡，顯示目前的提醒天數，按「儲存」才送出（不會失焦即存），成功與失敗都顯示訊息。輸入只接受逗號分隔、1 到 365 的整數，去重並由大到小排序；空值或不合法時顯示原因、不送出。`PUT /api/v1/platform/settings/contract.reminderDaysBefore` 也做相同驗證，不合法回 400 `VALIDATION_ERROR`，不改存預設值（通用設定端點的其他鍵不變，見 AUDIT TRIAL-02）。
   - 合約到期**不會**自動停用租戶，是否停用與寬限期尚待產品決定。
+- **平台後台可查某個租戶被做過哪些操作**（#496，change `add-platform-tenant-audit-logs`）— 原本平台稽核只能依操作者查，要知道「誰停用了 A 租戶」必須逐一點開每個平台帳號比對代碼。
+  - 新增 `GET /api/v1/platform/tenants/:id/audit-logs`：回傳對象是該租戶、該租戶成員（`payload.tenantId`）與該租戶方案申請的平台稽核紀錄，依時間新到舊。`limit` 預設 100、最多 200，回傳 `{ items, hasMore }`。租戶不存在時回 404 `NOT_FOUND`。
+  - 平台稽核紀錄的回應附上 `actor`（操作者的平台帳號名稱與 Email，系統排程為 `null`）、`targetLabel`（租戶名稱、成員 Email、方案名稱等）與 `targetTenantId`。`GET /platform-users/:id/audit-logs` 也回傳這些欄位。
+  - 租戶詳細頁新增「操作紀錄」區塊，顯示操作、對象、操作者與時間（台灣時間）。
 
 ### Changed
-
 - **AI 月額度改以台灣月份計算**（issue #497，change `fix-platform-usage-trial-display`）— 月額度原本以 UTC 月份計算，台灣每月 1 日 00:00–08:00 的用量算到上個月，告警信的「本月（YYYY-MM）」也是 UTC 月份。現在：
   - Redis 計數器 key 改為 `aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份），在台灣下個月 1 日 00:00 過期；計數器不存在時，從台灣本月 1 日 00:00 起的 `AiUsage` 加總補建。Redis 無法使用時的資料庫加總也用同一個起點。
   - 告警旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 的格式不變，月份改為台灣月份，在台灣下個月 1 日 00:00 過期；告警事件、站內通知與 email 的月份都是台灣月份。
   - 計數器 key 加上 `:tpe`，換版後不沿用舊的 UTC 月份計數器（少了台灣 1 日 00:00–08:00 的用量），第一次讀取時從資料庫重建。月中或台灣 1 日凌晨部署都不會重複計算或漏算；本月已發過的告警旗標照樣有效，不會重發。回滾時舊程式的計數器會少算新版期間的用量，要刪掉舊 key 讓它重建。
   - 新增 `@open333crm/core` 的 `taipeiMonthString()`、`taipeiMonthStart()`、`taipeiNextMonthStart()`。`apps/api/verify-quota.mts` 改用新的 key。
+- **平台稽核的動作名稱與對象改成看得懂的文字**（#496）— 動作翻譯表從平台帳號詳細頁搬到 `admin/lib/audit-log.ts`，由 6 個補齊為全部 25 個平台動作，租戶詳細頁與平台帳號詳細頁共用同一個表格。「對象」欄顯示租戶名稱、成員 Email、方案名稱並連到對應頁面，查不到時才退回「類型 / 代碼前 8 碼」。平台帳號詳細頁的操作紀錄多了「操作者」欄，時間改以台灣時間顯示（原本顯示 UTC）。
 
 ### Fixed
 
