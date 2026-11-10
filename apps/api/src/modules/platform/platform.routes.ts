@@ -6,7 +6,12 @@ import { buildPlatformRegistry, PERMISSION_CODES } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { platformLogin } from './platform-auth.service.js';
-import { writePlatformAudit } from './platform-audit.service.js';
+import {
+  writePlatformAudit,
+  listTenantPlatformAuditLogs,
+  TENANT_AUDIT_LOG_DEFAULT_LIMIT,
+  TENANT_AUDIT_LOG_MAX_LIMIT,
+} from './platform-audit.service.js';
 import { listPlans, listTenantIdsOnPlan, updatePlan } from './plan.service.js';
 import {
   listPlatformUsers,
@@ -333,6 +338,20 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       return success(result);
     },
   );
+  // 依租戶查平台稽核：對象是該租戶、其成員或其方案申請的紀錄（規格 platform-audit-log）
+  fastify.get<{ Params: { id: string } }>('/tenants/:id/audit-logs', guard, async (request) => {
+    const { limit } = z
+      .object({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(TENANT_AUDIT_LOG_MAX_LIMIT)
+          .default(TENANT_AUDIT_LOG_DEFAULT_LIMIT),
+      })
+      .parse(request.query);
+    return success(await listTenantPlatformAuditLogs(fastify.prismaAdmin, request.params.id, { limit }));
+  });
   fastify.patch<{ Params: { id: string } }>('/tenants/:id/active', guard, async (request) => {
     const { isActive } = z.object({ isActive: z.boolean() }).parse(request.body);
     const tenant = await setTenantActive(fastify.prismaAdmin, request.params.id, isActive);

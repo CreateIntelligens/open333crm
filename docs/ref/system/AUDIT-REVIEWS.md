@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-10：依租戶查詢平台稽核（PLAN-11 相關）
+
+issue #496，分支 `feat/platform-tenant-audit-logs`，change `add-platform-tenant-audit-logs`。以本機 feature 測試資料庫與單元測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| PLAN-11 的「從稽核紀錄反查不實用」 | 已改善，PLAN-11 維持未處理（已處理申請的內容仍讀不到） | 新增 `GET /tenants/:id/audit-logs`，含該租戶方案申請的 `plan_change.approve`、`plan_change.reject` 稽核與審核者姓名。`platform-tenant-audit-logs.test.ts`（feature）「回傳租戶、成員與方案申請的紀錄，不含其他租戶」修正前失敗在斷言上 |
+
 ## 2026-11-09：workers 改讀 S3_* 的物件儲存設定（STO-01）
 
 分支 `fix/erasure-followups-473`。以單元測試驗證，沒有連 UAT。UAT 已確認 workers 容器沒有任何 `MINIO_*`，`S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`、`S3_BUCKET`、`S3_PUBLIC_URL` 都有設定。

@@ -10,6 +10,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { normalizeEmail } from '../../shared/utils/email.js';
 import { sendPlatformUserProvisionedEmail } from './platform-user-emails.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { AUDIT_LOG_INCLUDE, describePlatformAuditLogs } from './platform-audit.service.js';
 
 const PUBLIC_SELECT = {
   id: true,
@@ -149,11 +150,14 @@ export async function getPlatformUserAuditLogs(prisma: PrismaClient, id: string)
   const existing = await prisma.platformUser.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw new AppError(notFound('platformUser'), 'NOT_FOUND', 404);
 
-  return prisma.platformAuditLog.findMany({
+  const rows = await prisma.platformAuditLog.findMany({
     where: {
       OR: [{ platformUserId: id }, { targetType: 'platform_user', targetId: id }],
     },
+    include: AUDIT_LOG_INCLUDE,
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
+  // 附上操作者與對象名稱（與租戶稽核查詢共用，規格 platform-audit-log）
+  return describePlatformAuditLogs(prisma, rows);
 }

@@ -2,6 +2,19 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-10]
+
+### Added
+
+- **平台後台可查某個租戶被做過哪些操作**（#496，change `add-platform-tenant-audit-logs`）— 原本平台稽核只能依操作者查，要知道「誰停用了 A 租戶」必須逐一點開每個平台帳號比對代碼。
+  - 新增 `GET /api/v1/platform/tenants/:id/audit-logs`：回傳對象是該租戶、該租戶成員（`payload.tenantId`）與該租戶方案申請的平台稽核紀錄，依時間新到舊。`limit` 預設 100、最多 200，回傳 `{ items, hasMore }`。租戶不存在時回 404 `NOT_FOUND`。
+  - 平台稽核紀錄的回應附上 `actor`（操作者的平台帳號名稱與 Email，系統排程為 `null`）、`targetLabel`（租戶名稱、成員 Email、方案名稱等）與 `targetTenantId`。`GET /platform-users/:id/audit-logs` 也回傳這些欄位。
+  - 租戶詳細頁新增「操作紀錄」區塊，顯示操作、對象、操作者與時間（台灣時間）。
+
+### Changed
+
+- **平台稽核的動作名稱與對象改成看得懂的文字**（#496）— 動作翻譯表從平台帳號詳細頁搬到 `admin/lib/audit-log.ts`，由 6 個補齊為全部 25 個平台動作，租戶詳細頁與平台帳號詳細頁共用同一個表格。「對象」欄顯示租戶名稱、成員 Email、方案名稱並連到對應頁面，查不到時才退回「類型 / 代碼前 8 碼」。平台帳號詳細頁的操作紀錄多了「操作者」欄，時間改以台灣時間顯示（原本顯示 UTC）。
+
 ## [2026-11-09]
 
 ### Changed
