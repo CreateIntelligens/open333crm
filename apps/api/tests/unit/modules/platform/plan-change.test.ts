@@ -190,7 +190,7 @@ function createDb() {
     /** 設定租戶本月的用量：資料庫的加總與 Redis 計數器一致 */
     setUsage(tenantId: string, tokens: number) {
       monthlyUsage.set(tenantId, tokens);
-      store.set(`aiquota:${tenantId}:${monthKey()}`, String(tokens));
+      store.set(`aiquota:${tenantId}:${monthKey()}:tpe`, String(tokens));
     },
     addPlan(slug: string, features: string[] = ['core'], limits: Record<string, number | null> = {}) {
       const plan: PlanRow = { id: uuid(), slug, name: `${slug} 方案`, features, limits, permissionOverrides: {} };
@@ -236,10 +236,8 @@ function createDb() {
 
 type Db = ReturnType<typeof createDb>;
 
-const monthKey = () => {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-};
+/** 台灣月份（UTC+8） */
+const monthKey = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 7);
 
 async function rejectsWith(promise: Promise<unknown>, statusCode: number, code?: string) {
   await assert.rejects(promise, (err: unknown) => {

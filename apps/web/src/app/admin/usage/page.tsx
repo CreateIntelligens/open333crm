@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { platformApi } from '../lib/platform-api';
 import { fmtTokens, fmtUsd, fmtNum } from '../lib/format';
+import { usageRange } from '../lib/usage-range';
 
 interface Overview {
   totalTokens: number;
@@ -36,15 +37,12 @@ export default function UsagePage() {
   const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [selected, setSelected] = useState<TenantRow | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
-
-  const rangeParams = () => {
-    const to = new Date();
-    const from = new Date(to.getTime() - days * 86400_000);
-    return { from: from.toISOString(), to: to.toISOString() };
-  };
+  // 總覽、排行與鑽取共用同一個區間（台灣日期對齊），三者的加總才一致
+  const [range, setRange] = useState(() => usageRange(30));
 
   useEffect(() => {
-    const params = rangeParams();
+    const params = usageRange(days);
+    setRange(params);
     platformApi.get('/usage/overview', { params }).then((r) => setOv(r.data.data));
     platformApi.get('/usage/tenants', { params }).then((r) => setTenants(r.data.data));
     setSelected(null);
@@ -53,7 +51,7 @@ export default function UsagePage() {
 
   const drill = async (t: TenantRow) => {
     setSelected(t);
-    const r = await platformApi.get(`/usage/tenants/${t.tenantId}`, { params: rangeParams() });
+    const r = await platformApi.get(`/usage/tenants/${t.tenantId}`, { params: range });
     setDetail(r.data.data);
   };
 
@@ -194,7 +192,8 @@ function TrendChart({ data }: { data: { day: string; tokens: number }[] }) {
             title={`${d.day}: ${d.tokens.toLocaleString()} token`}
             style={{
               width: barW,
-              height: Math.max(2, Math.round((d.tokens / max) * H)),
+              // 沒有用量的日子不畫長條（仍佔一格），有用量時至少 2px 才看得到
+              height: d.tokens > 0 ? Math.max(2, Math.round((d.tokens / max) * H)) : 0,
               background: '#0d9488',
               borderRadius: '3px 3px 0 0',
               flexShrink: 0,

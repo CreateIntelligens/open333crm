@@ -133,6 +133,8 @@
 
 `markSignupFailed(signupId, reason)` 手動把申請標記為 `failed` 並清掉驗證 token，供排查或作廢使用。已開通的申請不能標記，回 400。
 
+`/admin/trial` 的「申請記錄」以中文顯示狀態：`pending_verification` 等待驗證、`provisioned` 已開通、`failed` 失敗／已作廢（email 衝突與平台作廢都是 `failed`，原因見「備註」欄）。其他狀態顯示原值。
+
 `updateTenantContract(tenantId, dates)` 只是記錄，不觸發任何自動生命週期行為。兩個日期都是選用的：傳 `undefined` 不動該欄、傳 `null` 清除、傳日期設值。更新後兩者都有值時，迄日必須不早於起日，否則回 422 `CONTRACT_DATE_INVALID`。這個檢查會合併資料庫現值比對，因此只傳其中一個日期也擋得住。
 
 ## 哪些操作會讓租戶脫離試用
