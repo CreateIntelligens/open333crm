@@ -3,8 +3,9 @@
  * 主規格：token-quota、usage-quota-alerts、ai-usage-recording「記錄金鑰來源」、
  * model-pricing「成本計算公式」、trial-lifecycle「試用 token 額度硬擋（簡化版）」。
  *
- * Redis 換成記憶體版本（支援 NX 與「無法連線」），provider 換成假的，
- * 其餘走真的 generateReply → recordAiUsage → token-quota。
+ * Redis 換成記憶體版本（支援 NX 與「無法連線」），由 LlmDeps 注入；provider 換成假的；
+ * outbox 換成記錄用的 publisher。其餘走真的 generateReply（llm.flow）→ readLlmInputs／writeAiUsage → token-quota。
+ * 用量紀錄、計數器與告警在 generateReply 回傳之前完成（change migrate-ai-llm-tenant-ctx），所以斷言不必等待。
  */
 process.env.DATABASE_URL ||= 'postgresql://user:pass@localhost:5432/open333crm';
 process.env.REDIS_URL ||= 'redis://localhost:6379';
@@ -15,33 +16,27 @@ process.env.GEMINI_API_KEY = 'platform-gemini-key';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 
-const redisState = vi.hoisted(() => ({ store: new Map<string, string>(), down: false }));
-vi.mock('@open333crm/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@open333crm/core')>();
-  const check = () => {
-    if (redisState.down) throw new Error('redis down');
-  };
-  return {
-    ...actual,
-    redis: {
-      get: async (key: string) => (check(), redisState.store.get(key) ?? null),
-      set: async (key: string, value: string | number, ...args: unknown[]) => {
-        check();
-        if (args.includes('NX') && redisState.store.has(key)) return null;
-        redisState.store.set(key, String(value));
-        return 'OK';
-      },
-      exists: async (key: string) => (check(), redisState.store.has(key) ? 1 : 0),
-      incrby: async (key: string, n: number) => {
-        check();
-        const next = Number(redisState.store.get(key) ?? 0) + n;
-        redisState.store.set(key, String(next));
-        return next;
-      },
-      del: async (...keys: string[]) => (check(), keys.filter((k) => redisState.store.delete(k)).length),
-    },
-  };
-});
+const redisState = { store: new Map<string, string>(), down: false };
+const check = () => {
+  if (redisState.down) throw new Error('redis down');
+};
+const fakeRedis = {
+  get: async (key: string) => (check(), redisState.store.get(key) ?? null),
+  set: async (key: string, value: string | number, ...args: unknown[]) => {
+    check();
+    if (args.includes('NX') && redisState.store.has(key)) return null;
+    redisState.store.set(key, String(value));
+    return 'OK';
+  },
+  exists: async (key: string) => (check(), redisState.store.has(key) ? 1 : 0),
+  incrby: async (key: string, n: number) => {
+    check();
+    const next = Number(redisState.store.get(key) ?? 0) + n;
+    redisState.store.set(key, String(next));
+    return next;
+  },
+  del: async (...keys: string[]) => (check(), keys.filter((k) => redisState.store.delete(k)).length),
+};
 
 const providerState = vi.hoisted(() => ({
   id: 'gemini' as 'gemini' | 'ollama',
@@ -73,11 +68,13 @@ vi.mock('#src/modules/settings/chat-settings.service.js', () => ({
 
 import { Prisma } from '@prisma/client';
 import { loadEnvConfig, getConfig } from '#src/config/env.js';
-import { eventBus } from '#src/events/event-bus.js';
-import { generateReply } from '#src/modules/ai/llm.service.js';
+import { logger } from '@open333crm/core';
+import { generateReply, type LlmDeps } from '#src/modules/ai/llm.flow.js';
 import { encryptApiKey } from '#src/modules/ai/ai-key.service.js';
 import { clearPricingCache } from '#src/modules/ai/pricing.service.js';
-import { checkQuotaThresholdCrossing, isMonthlyTokenExceeded } from '#src/modules/trial/token-quota.service.js';
+import { claimCrossedThresholds, isMonthlyTokenExceeded, readMonthlyTokensFromDb } from '#src/modules/trial/token-quota.service.js';
+import { getEffectiveLimit } from '#src/modules/platform/plan-limits.service.js';
+import { createFlowLog, mockTransactionPrisma, recordingPublisher, type FlowLog } from '#tests/support/flow-harness.js';
 import { AppError } from '#src/shared/utils/response.js';
 
 loadEnvConfig();
@@ -137,14 +134,36 @@ function createDb(opts: { monthlyTokens?: number | null; byokKey?: string; slug?
   return { prisma: prisma as never, usages, pricingLookups };
 }
 
+let log: FlowLog;
+/** 在交易內寫 outbox 時丟錯（「告警事件寫入失敗」） */
+let outboxFails = false;
+
+/** flow 的依賴：交易用 createDb 的 mock，Redis 用記憶體版本，outbox 用記錄用的 publisher */
+function depsOf(db: ReturnType<typeof createDb>): LlmDeps {
+  const publisher = recordingPublisher(log);
+  return {
+    prisma: mockTransactionPrisma(log, db.prisma),
+    redis: fakeRedis as never,
+    events: {
+      ...publisher,
+      write: async (tx, input) => {
+        if (outboxFails) throw new Error('outbox insert failed');
+        return publisher.write(tx, input);
+      },
+    },
+  };
+}
+
+/** 呼叫 LLM 之前的月額度檢查：上限與 Redis 計數器，計數器不存在時讀 AiUsage 的加總（prepareLlmCall） */
+async function quotaExceeded(prisma: never): Promise<boolean> {
+  const limit = await getEffectiveLimit(prisma, TENANT, 'monthlyTokens');
+  return isMonthlyTokenExceeded(fakeRedis as never, TENANT, limit, () => readMonthlyTokensFromDb({ tx: prisma, tenantId: TENANT }));
+}
+
 const monthKey = (d = new Date()) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 const counterKey = (d?: Date) => `aiquota:${TENANT}:${monthKey(d)}`;
 const setCounter = (n: number) => redisState.store.set(counterKey(), String(n));
 const counter = () => Number(redisState.store.get(counterKey()));
-/** 用量的累加與告警是 fire-and-forget，等它們跑完 */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-
-const published: Array<{ name: string; payload: { level: string } }> = [];
 
 beforeEach(() => {
   redisState.store.clear();
@@ -153,11 +172,9 @@ beforeEach(() => {
   providerState.calls = [];
   providerState.fail = false;
   providerState.usage = { promptTokens: 1000, cachedTokens: 0, candidatesTokens: 500, thoughtsTokens: 0 };
-  published.length = 0;
+  log = createFlowLog();
+  outboxFails = false;
   clearPricingCache();
-  vi.spyOn(eventBus, 'publish').mockImplementation((event) => {
-    published.push(event as never);
-  });
 });
 
 afterEach(() => {
@@ -166,8 +183,8 @@ afterEach(() => {
   getConfig().USAGE_QUOTA_ALERTS_ENABLED = 1;
 });
 
-const reply = (db: ReturnType<typeof createDb>) => generateReply(db.prisma, TENANT, '你好');
-const levels = () => published.filter((e) => e.name === 'usage.quota.threshold').map((e) => e.payload.level);
+const reply = (db: ReturnType<typeof createDb>) => generateReply(depsOf(db), TENANT, '你好');
+const levels = () => log.events.filter((e) => e.name === 'usage.quota.threshold').map((e) => e.payload.level);
 
 // ── token-quota：本月 AI 用量的計數 ──
 
@@ -176,7 +193,6 @@ test('成功的呼叫累加用量：計數器從 400000 變成 401500', async ()
   setCounter(400_000);
 
   await reply(db);
-  await settle();
 
   assert.equal(counter(), 401_500);
 });
@@ -185,13 +201,11 @@ test('自備金鑰與失敗的呼叫不累加：計數器不變', async () => {
   const byok = createDb({ monthlyTokens: 1_000_000, byokKey: 'tenant-gemini-key' });
   setCounter(400_000);
   await reply(byok);
-  await settle();
   assert.equal(counter(), 400_000);
 
   const platform = createDb({ monthlyTokens: 1_000_000 });
   providerState.fail = true;
   await assert.rejects(reply(platform), /provider failed/);
-  await settle();
   assert.equal(counter(), 400_000);
 });
 
@@ -206,10 +220,10 @@ test('計數器不存在時從 AiUsage 建立：只加總平台金鑰的成功�
     { ...row, keySource: 'platform', success: true, totalTokens: 9000, createdAt: new Date(Date.UTC(2000, 0, 1)) },
   );
 
-  assert.equal(await isMonthlyTokenExceeded(db.prisma, TENANT), true);
+  assert.equal(await quotaExceeded(db.prisma), true);
   assert.equal(counter(), 3000);
   redisState.store.clear();
-  assert.equal(await isMonthlyTokenExceeded(createDbWithUsages(db.usages, 3001), TENANT), false);
+  assert.equal(await quotaExceeded(createDbWithUsages(db.usages, 3001)), false);
 });
 
 /** 同一批用量、不同上限 */
@@ -223,8 +237,8 @@ test('Redis 無法使用時改用資料庫的加總：本月用量是 3000', asy
   const row = { tenantId: TENANT, keySource: 'platform', success: true, totalTokens: 3000, costUsd: new Prisma.Decimal(0), usageMissing: false, createdAt: new Date() };
   redisState.down = true;
 
-  assert.equal(await isMonthlyTokenExceeded(createDbWithUsages([row], 3000), TENANT), true);
-  assert.equal(await isMonthlyTokenExceeded(createDbWithUsages([row], 3001), TENANT), false);
+  assert.equal(await quotaExceeded(createDbWithUsages([row], 3000)), true);
+  assert.equal(await quotaExceeded(createDbWithUsages([row], 3001)), false);
 });
 
 test('每個月重新計數：進入 2026-09 之後，不採用 2026-08 的計數', async () => {
@@ -232,7 +246,7 @@ test('每個月重新計數：進入 2026-09 之後，不採用 2026-08 的計�
   vi.setSystemTime(new Date('2026-09-01T00:00:05Z'));
   redisState.store.set(`aiquota:${TENANT}:2026-08`, '950000');
 
-  assert.equal(await isMonthlyTokenExceeded(createDb({ monthlyTokens: 1000 }).prisma, TENANT), false);
+  assert.equal(await quotaExceeded(createDb({ monthlyTokens: 1000 }).prisma), false);
   assert.equal(redisState.store.get(`aiquota:${TENANT}:2026-09`), '0');
 });
 
@@ -282,7 +296,6 @@ test('試用租戶用盡 token：LLM 不被呼叫，錯誤是 PLAN_LIMIT_EXCEEDE
 test('租戶設定了自備金鑰：以租戶的金鑰呼叫，keySource 是 byok', async () => {
   const db = createDb({ monthlyTokens: 1_000_000, byokKey: 'tenant-gemini-key' });
   await reply(db);
-  await settle();
 
   assert.equal(providerState.calls[0]!.apiKey, 'tenant-gemini-key');
   assert.equal(db.usages[0]!.keySource, 'byok');
@@ -291,7 +304,6 @@ test('租戶設定了自備金鑰：以租戶的金鑰呼叫，keySource 是 byo
 test('租戶沒有設定自備金鑰：以平台的金鑰呼叫，keySource 是 platform', async () => {
   const db = createDb({ monthlyTokens: 1_000_000 });
   await reply(db);
-  await settle();
 
   assert.equal(providerState.calls[0]!.apiKey, 'platform-gemini-key');
   assert.equal(db.usages[0]!.keySource, 'platform');
@@ -301,7 +313,6 @@ test('Ollama 的呼叫：keySource 是 platform', async () => {
   providerState.id = 'ollama';
   const db = createDb({ monthlyTokens: 1_000_000 });
   await reply(db);
-  await settle();
 
   assert.equal(db.usages[0]!.keySource, 'platform');
 });
@@ -312,7 +323,6 @@ test('Ollama 本機模型成本為零：不查 ModelPricing，costUsd 是 0', as
   providerState.id = 'ollama';
   const db = createDb({ monthlyTokens: 1_000_000 });
   await reply(db);
-  await settle();
 
   assert.deepEqual(db.pricingLookups, []);
   assert.equal(db.usages[0]!.costUsd.toString(), '0');
@@ -321,7 +331,6 @@ test('Ollama 本機模型成本為零：不查 ModelPricing，costUsd 是 0', as
 test('自備金鑰的呼叫成本為零：不查 ModelPricing，costUsd 是 0，usageMissing 是 false', async () => {
   const db = createDb({ monthlyTokens: 1_000_000, byokKey: 'tenant-gemini-key' });
   await reply(db);
-  await settle();
 
   assert.deepEqual(db.pricingLookups, []);
   assert.equal(db.usages[0]!.costUsd.toString(), '0');
@@ -335,7 +344,6 @@ async function crossFrom(start: number, opts: { monthlyTokens?: number | null; b
   providerState.usage = { promptTokens: 100, cachedTokens: 0, candidatesTokens: 50, thoughtsTokens: 0 };
   if (start >= 0) setCounter(start);
   await reply(createDb({ monthlyTokens: 1000, ...opts }));
-  await settle();
 }
 
 test('用量首次跨越 80%：發送 warning 告警', async () => {
@@ -352,7 +360,6 @@ test('一次呼叫同時跨越 80% 與 100%：warning 與 critical 各一次', a
   providerState.usage = { promptTokens: 300, cachedTokens: 0, candidatesTokens: 100, thoughtsTokens: 0 };
   setCounter(700);
   await reply(createDb({ monthlyTokens: 1000 }));
-  await settle();
   assert.deepEqual(levels(), ['warning', 'critical']);
 });
 
@@ -370,10 +377,9 @@ test('同月重複跨越同一個門檻：不再發送 warning 告警', async ()
 });
 
 test('兩次累加同時跨越同一個門檻：只發送一次告警', async () => {
-  const db = createDb({ monthlyTokens: 1000 });
   const results = await Promise.all([
-    checkQuotaThresholdCrossing(db.prisma, TENANT, 150, 850),
-    checkQuotaThresholdCrossing(db.prisma, TENANT, 150, 850),
+    claimCrossedThresholds(fakeRedis as never, TENANT, 1000, 150, 850),
+    claimCrossedThresholds(fakeRedis as never, TENANT, 1000, 150, 850),
   ]);
   assert.equal(results.flat().length, 1);
 });
@@ -402,6 +408,53 @@ test('Redis 無法使用時跳過告警：AI 回覆照常完成', async () => {
   redisState.down = true;
   const db = createDb({ monthlyTokens: 1000 });
   assert.equal(await reply(db), 'LLM 的回覆');
-  await settle();
   assert.deepEqual(levels(), []);
+});
+
+test('告警事件寫進 outbox：用量跨越 80%，outbox 有一筆 usage.quota.threshold，level 是 warning', async () => {
+  await crossFrom(700);
+  assert.deepEqual(log.events, [
+    { name: 'usage.quota.threshold', payload: { level: 'warning', usedTokens: 850, limitTokens: 1000, monthKey: monthKey() } },
+  ]);
+  // 事件與用量紀錄在不同的交易：用量紀錄 commit 之後才寫事件
+  assert.deepEqual(log.entries, ['commit', 'commit', 'event:usage.quota.threshold', 'commit', 'dispatch:usage.quota.threshold']);
+});
+
+test('告警事件寫入失敗：寫入錯誤日誌，AI 回覆照常完成，本月不再發送這個門檻的告警', async () => {
+  const errors = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+  outboxFails = true;
+  providerState.usage = { promptTokens: 100, cachedTokens: 0, candidatesTokens: 50, thoughtsTokens: 0 };
+  setCounter(700);
+
+  assert.equal(await reply(createDb({ monthlyTokens: 1000 })), 'LLM 的回覆');
+  assert.ok(errors.mock.calls.some(([msg]) => String(msg).includes('用量告警事件寫入失敗')));
+
+  // 門檻的 Redis 旗標已寫入：之後恢復正常，再次跨越 80% 也不發送
+  outboxFails = false;
+  await crossFrom(700);
+  assert.deepEqual(levels(), []);
+});
+
+// ── ai-usage-recording ──
+
+test('AiUsage 寫入失敗不影響回覆：呼叫端照常收到回覆文字，系統記錄一筆 error log', async () => {
+  const errors = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+  const db = createDb({ monthlyTokens: 1_000_000 });
+  (db.prisma as { aiUsage: { create: () => Promise<void> } }).aiUsage.create = async () => {
+    throw new Error('db down');
+  };
+  setCounter(400_000);
+
+  assert.equal(await reply(db), 'LLM 的回覆');
+  assert.ok(errors.mock.calls.some(([msg]) => String(msg).includes('[AiUsage] failed to record usage')));
+  // 沒有紀錄時計數器也不累加
+  assert.equal(counter(), 400_000);
+});
+
+test('成功呼叫寫入完整記錄：回傳時已有一筆 AiUsage，success 是 true、token 數與 provider 回傳一致', async () => {
+  const db = createDb({ monthlyTokens: 1_000_000 });
+  await reply(db);
+  assert.equal(db.usages.length, 1);
+  assert.equal(db.usages[0]!.success, true);
+  assert.equal(db.usages[0]!.totalTokens, 1500);
 });

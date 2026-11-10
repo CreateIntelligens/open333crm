@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
+import { downRedis } from '#tests/support/llm-deps.js';
 
 const calls = vi.hoisted(() => ({
   delivered: [] as unknown[],
@@ -25,7 +26,7 @@ vi.mock('#src/modules/ai/agent/agent.service.js', async (importOriginal) => {
     ...actual,
     isAgentEnabled: () => true,
     // LLM 換成固定的回覆，寫入與送出走真的 persistAndDeliverAgentReply()
-    runAgentReply: async (prisma: unknown, input: { tenantId: string; conversationId: string; io: never; replyGuard: never }) => {
+    runAgentReply: async (prisma: unknown, _llm: unknown, input: { tenantId: string; conversationId: string; io: never; replyGuard: never }) => {
       calls.agent += 1;
       if (calls.agentMode === 'throw') throw new Error('LLM down');
       await actual.persistAndDeliverAgentReply(prisma as never, input.tenantId, input.conversationId, 'agent 回覆', 'run-1', input.io, {}, false, input.replyGuard);
@@ -36,6 +37,7 @@ vi.mock('#src/modules/ai/agent/agent.service.js', async (importOriginal) => {
 vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
   attemptKbAutoReply: async (
     _p: unknown,
+    _llm: unknown,
     _io: unknown,
     _t: string,
     _c: string,
@@ -51,11 +53,11 @@ vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
     return row !== null;
   },
 }));
-vi.mock('#src/modules/ai/sentiment.service.js', () => ({
-  analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+vi.mock('#src/modules/ai/ai.flow.js', () => ({
+  analyzeSentimentFlow: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+  autoClassifyNewCaseFlow: async () => {},
+  summarizeConversationFlow: async () => ({ summary: '' }),
 }));
-vi.mock('#src/modules/ai/classify.service.js', () => ({ autoClassifyNewCase: async () => {} }));
-vi.mock('#src/modules/ai/ai.service.js', () => ({ summarizeConversation: async () => ({ summary: '' }) }));
 vi.mock('#src/modules/ai/deidentification.service.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   prepareStoredMessageContent: async (_policy: unknown, content: unknown) => ({ content, metadata: {} }),
@@ -81,7 +83,7 @@ beforeEach(() => {
 
 function setup() {
   const h = createHarness();
-  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never);
+  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never, downRedis);
   return { h, handle };
 }
 

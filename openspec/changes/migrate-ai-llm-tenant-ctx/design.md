@@ -52,6 +52,8 @@
 
 provider 呼叫不放在 service 檔，原因有兩個：結構規則 2 規定 service 不呼叫外部服務；`check-tenant-ctx.mjs` 也計算 service 引用 LLM 入口的處數。
 
+搬遷後 `llm.service.ts` 只剩交易內的查詢與提示詞的純函式，不呼叫 LLM。因此 `check-tenant-ctx.mjs` 計算的 LLM 入口改成 `llm-client.js`、`llm.flow.js` 與 `providers/`（`types.js` 除外），不再計算 `llm.service.js`。AGENTS.md 結構規則 2 的說明同步修改（實作時決定）。
+
 用戶端檔不收 `TenantCtx`，所以有人在交易內呼叫用戶端時，型別檢查擋不住。第五批的 `embedding-client.ts` 有同樣的限制（規劃檔「下一步」第 7 項）。
 
 ### D2. `generateReply()` 改成 flow，分成準備與呼叫兩步
@@ -86,7 +88,7 @@ provider 呼叫不放在 service 檔，原因有兩個：結構規則 2 規定 s
 `token-quota.service.ts` 拆成兩類函式：
 
 - 讀資料庫的函式收 `TenantCtx`：`readMonthlyTokensFromDb(ctx)`（本月平台金鑰的成功用量加總）。有效上限沿用 `getEffectiveLimit()`，在交易 1 內以 `scope.tx` 呼叫。
-- 讀寫 Redis 的函式收 `redis` 參數：`readMonthlyTokens(redis, tenantId, readDbTotal)`、`incrMonthlyTokens(redis, tenantId, tokens, readDbTotal)`、`claimCrossedThresholds(redis, tenantId, limit, tokensAdded, after)`、`clearTokenQuotaCache(redis, tenantId)`、`clearQuotaAlertFlags(redis, tenantId)`。
+- 讀寫 Redis 的函式收 `redis` 參數：`isMonthlyTokenExceeded(redis, tenantId, limit, readDbTotal)`（上限是 null 時不讀計數器，`prepareLlmCall()` 呼叫它）、`readMonthlyTokens(redis, tenantId, readDbTotal)`、`incrMonthlyTokens(redis, tenantId, tokens, readDbTotal)`、`claimCrossedThresholds(redis, tenantId, limit, tokensAdded, after)`、`clearTokenQuotaCache(redis, tenantId)`、`clearQuotaAlertFlags(redis, tenantId)`。
 - `readDbTotal` 是 flow 傳入的函式。計數器不存在時，token-quota 才呼叫 `readDbTotal`。`readDbTotal` 另開一個短交易讀加總。
 
 Redis 指令都在交易外執行。`fastify.redis` 以 `'command'` 建立，Redis 沒有回應時，每個指令最多 1 秒就失敗。token-quota 的函式在第一個指令失敗時就停止，所以 Redis 沒有回應時：
@@ -134,7 +136,7 @@ Redis 無法使用時的降級不變：額度檢查改用資料庫的加總，�
 | 呼叫端 | 改法 |
 | --- | --- |
 | `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` | 多收 `llm: LlmDeps`，3 處 `generateReply()` 傳 `llm`。讀 Chat 設定以過渡 `TenantCtx` 呼叫 `getChatSettings()`，同第五批的寫法 |
-| `agent/agent.service.ts` 的 `runAgentReply()` | 多收 `llm: LlmDeps`。讀設定、金鑰、額度改呼叫 `prepareLlmCall()` 拿到的資料；`recordUsage` 改呼叫 `writeAiUsage()` 加上 D4 的累加。Agent 的工具迴圈不動 |
+| `agent/agent.service.ts` 的 `runAgentReply()` | 多收 `llm: LlmDeps`。讀設定、金鑰、額度改呼叫 `prepareLlmCall()` 拿到的資料；`recordUsage` 改呼叫 `llm.flow.ts` 的 `recordLlmUsage()`（交易 2 的 `writeAiUsage()` 加上 D4 的累加與告警），與 `runLlmCall()` 共用。寫入失敗只寫 log，不再讓 Agent 失敗。Agent 的工具迴圈不動 |
 | `flex-ai.service.ts` 的 `generateFlexFromPrompt()` | 多收 `llm: LlmDeps`；`material.routes.ts` 傳 `fastify.prisma`、`fastify.redis` 與 outbox publisher |
 | `automation.worker.ts` | `setupAutomationWorker()` 多收 `redis`，`index.ts` 傳 `app.redis`。`LlmDeps.prisma` 用 `tenantDeps.tenantPrisma`（app_tenant），不用 `prismaAdmin` |
 | `a2a-bridge.worker.ts` | 傳 `fastify.prisma`、`fastify.redis` 給 `runAgentReply()`；交易內呼叫 Agent 的寫法不變（6b） |
@@ -145,7 +147,7 @@ Redis 無法使用時的降級不變：額度檢查改用資料庫的加總，�
 
 新增 `ai/ai.flow.ts`：
 
-- `suggestReplyFlow`：交易 1 讀最近的訊息、向量化與 LLM 的輸入 → 交易外查額度、向量化 → 交易 2 搜尋 → 每篇結果各呼叫一次 `runLlmCall()`。
+- `suggestReplyFlow`：交易 1 讀最近的顧客訊息 → `searchArticlesByTextFlow()`（第五批，交易內讀向量化設定 → 交易外向量化 → 交易內搜尋）→ 有結果時呼叫一次 `prepareLlmCall()` → 每篇結果各呼叫一次 `runLlmCall()`。`prepareLlmCall()` 失敗（月額度已滿、讀不到遮罩政策）時，每篇結果都改用文章內容。沒有搜尋結果時不讀 LLM 的輸入（實作時調整：重用既有的搜尋 flow，不另寫一份）。
 - `summarizeConversationFlow`：交易 1 讀對話與訊息 → `generateReply()`。LLM 失敗時改用固定格式的摘要（不變）。
 - `analyzeSentimentFlow`、`classifyIssueFlow`、`rewriteTextFlow`：只呼叫 `generateReply()`。解析回覆與關鍵字降級留在原本的 service 檔，改成純函式。
 - `autoClassifyNewCaseFlow`：交易 1 讀工單分類與最新訊息 → 分類 → 交易 2 以「仍無分類」為條件寫入（主規格「新工單的自動分類不覆蓋既有分類」不變）。
@@ -171,6 +173,7 @@ Redis 無法使用時的降級不變：額度檢查改用資料庫的加總，�
 - [`callChatModel()` 不收 `TenantCtx`，型別擋不住在交易內呼叫] → 同第五批，由 code review 與規劃檔 5.2 的檢查清單把關，執行期檢查見規劃檔「下一步」第 7 項。
 - [6b 之前，`kb-autoreply` 與 `agent` 的資料存取仍在交易外，用自己的連線] → 這一批只改它們呼叫 LLM 核心的方式，行為不變。
 - [回覆多等交易 2 與 Redis 累加] → 交易 2 只寫一筆，累加最多等 1 秒。LLM 本身要數秒，所以多等的時間影響很小。spec `usage-quota-alerts` 改成允許這個等待。
+- [讀 Chat 設定不再建立設定列，新租戶的閒置對話自動關閉要等設定列建立後才開始] → 使用者決定先不改程式，評估過的做法記在 `docs/ref/system/AUDIT.md` CONV-01。
 - [預設 temperature 改成 0.2] → 只影響還沒有設定列的租戶。既有設定列保留 0.3，要統一時另開 migration 更新資料（需要產品決定）。
 
 ## Migration Plan

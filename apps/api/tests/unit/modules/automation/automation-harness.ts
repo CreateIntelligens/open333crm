@@ -177,6 +177,10 @@ export function createHarness(
       create: async ({ data }: { data: { expiresAt: Date } }) => ({ id: randomUUID(), expiresAt: data.expiresAt }),
       updateMany: async () => ({ count: 1 }),
     },
+    // LLM 呼叫前後的讀寫（ai/llm.flow.ts）：沒有方案上限、不保存用量紀錄
+    tenant: { findUnique: async () => null },
+    aiUsage: { create: async () => ({}), aggregate: async () => ({ _sum: { totalTokens: 0 } }) },
+    modelPricing: { findFirst: async () => null },
     material: { findMany: async () => [] },
     contact: { findFirst: async () => null },
     case: { findFirst: async () => null, count: async () => 0 },

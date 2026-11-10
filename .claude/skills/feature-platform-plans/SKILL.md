@@ -52,7 +52,7 @@ description: >
 | `maxAgents` | `apps/api/src/modules/agent/agent.service.ts` 建立與重新啟用前 count `isActive` | 403 `PLAN_LIMIT_EXCEEDED`，`details {limitKey,current,max}` |
 | `maxChannels` | `apps/api/src/modules/channel/channel.service.ts` `createChannel` | 同上；**重新啟用渠道不檢查**（PLAN-07） |
 | `allowedChannelTypes` | 同上 | 403 `CHANNEL_TYPE_NOT_ALLOWED`，`details {channelType, allowed}` |
-| `monthlyTokens` | `apps/api/src/modules/ai/llm.service.ts` `generateReply`、`apps/api/src/modules/ai/agent/agent.service.ts`（只對 `keySource=platform`） | 403 `PLAN_LIMIT_EXCEEDED`，`details.limitKey='monthlyTokens'` |
+| `monthlyTokens` | `apps/api/src/modules/ai/llm.flow.ts` `prepareLlmCall`（`generateReply` 與 Agent 都經過；只對 `keySource=platform`） | 403 `PLAN_LIMIT_EXCEEDED`，`details.limitKey='monthlyTokens'` |
 | `maxTags` | 無 | 不擋（PLAN-04） |
 
 ## 有後端沒前端

@@ -46,7 +46,7 @@ description: >
 | SLA 預警／逾時 | workers `sla.handler.ts` | 負責人；逾時再加 ADMIN+SUPERVISOR | workers 直接 `enqueueNotification` | `sla_warning`、`sla_breached`、`first_response_*`、`customer_waiting_breached` |
 | 自動化「傳送通知」 | workers `automation-actions.ts` | 指定客服 → 工單負責人 → 對話負責人（都要啟用中）→ 都沒有時 ADMIN+SUPERVISOR | 同上 | `sla_rule` / 工單或對話 |
 | 自動化「通知主管」 | 同上 | ADMIN+SUPERVISOR | 同上 | `sla_rule` / 只有工單時才有連結 |
-| AI 用量 80%／100% | `usage.quota.threshold`（`llm.service.ts` 累加後偵測，Redis `SET NX` 每月每門檻一次） | 所有啟用中的 `ADMIN` | 站內通知走佇列；email 走 `usage-alert-email` 佇列，job id `<事件 id>__<管理員 id>` | `usage_quota_warning`、`usage_quota_critical` / `/dashboard/plan` |
+| AI 用量 80%／100% | `usage.quota.threshold`（`llm.flow.ts` 累加後偵測，Redis `SET NX` 每月每門檻一次，經 outbox 送出） | 所有啟用中的 `ADMIN` | 站內通知走佇列；email 走 `usage-alert-email` 佇列，job id `<事件 id>__<管理員 id>` | `usage_quota_warning`、`usage_quota_critical` / `/dashboard/plan` |
 | FB/IG 權杖失效 | `meta-token-health.ts` 每 6 小時；持續失效每 3 天再提醒 | 所有 `ADMIN` | API 行程 `createAndDispatch` + `sendEmail` | `channel_token_invalid` / `/dashboard/settings/channels` |
 | 資料匯出／刪除完成 | workers `data-export.handler.ts`、`data-erasure.handler.ts` | 發起人 | `enqueueNotification` | `data_export_ready`、`data_export_failed`（連到不存在的頁面，EXPORT-01）、`data_erasure_done`（無連結） |
 
@@ -60,7 +60,7 @@ description: >
 - 站內通知的寫入只在 workers（`apps/workers/src/handlers/notification.handler.ts`）；API 的 `notification.worker.ts` 只送 job（規格 `standalone-worker-runtime`「Notification Job Consumer」）。CSAT 與權杖失效是現存例外，不要再新增 `createAndDispatch` 的呼叫端。
 - 同一個事件不重複通知：job id 一律 `<事件 id>__<成員 id>`（自動化是 `<事件 id>__<規則 id>#<序號>__<成員 id>`）。新增收件人邏輯時沿用 `enqueueDispatch`，不要自己 `add` 沒有 jobId 的 job。
 - 推播失敗只記 log、job 照常完成；寫入失敗要丟錯讓 BullMQ 重試（3 次、指數退避 5 秒）。不要把寫入失敗吞掉。
-- 用量告警不可阻擋 AI 回覆：整段 fire-and-forget；告警信一定經佇列，不在訂閱者內直接寄。
+- 用量告警不可阻擋 AI 回覆：每一步失敗只寫 log，回覆最多多等一個 Redis 指令的逾時（1 秒）；告警信一定經佇列，不在訂閱者內直接寄。
 - 告警信與權杖失效信的使用者輸入（租戶名稱、渠道名稱）要 HTML 轉義。
 - 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、CSAT、用量告警、權杖失效七個地方。
 - worker 走 BYPASSRLS 連線（`app.prismaAdmin` 傳給 `setupNotificationWorker`），每個查詢都要自帶 `tenantId`。

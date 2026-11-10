@@ -2,7 +2,7 @@
 
 跨租戶與單一租戶的 AI 用量與成本統計。
 
-- **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`
+- **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`、`llm.flow.ts`
 - **核對日期**：2026-09-23
 
 ## 每個端點回傳什麼

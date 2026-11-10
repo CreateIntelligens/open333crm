@@ -33,13 +33,13 @@ vi.mock('#src/services/channel-visibility.js', () => ({
   resolveChannelVisibility: async () => BRANCH_CHANNELS,
 }));
 
-vi.mock('#src/modules/ai/ai.service.js', () => ({
-  suggestReply: async (_p: unknown, tenantId: string, id: string) => { serviceCalls.push(`suggest:${tenantId}:${id}`); return { suggestion: 'hi' }; },
-  summarizeConversation: async (_p: unknown, tenantId: string, id: string) => { serviceCalls.push(`summarize:${tenantId}:${id}`); return { summary: 's' }; },
+vi.mock('#src/modules/ai/ai.flow.js', () => ({
+  suggestReplyFlow: async (_deps: unknown, tenantId: string, id: string) => { serviceCalls.push(`suggest:${tenantId}:${id}`); return { suggestion: 'hi' }; },
+  summarizeConversationFlow: async (_deps: unknown, tenantId: string, id: string) => { serviceCalls.push(`summarize:${tenantId}:${id}`); return { summary: 's' }; },
 }));
 
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
-  runAgentReply: async (_p: unknown, input: { conversationId?: string; accessibleChannels?: unknown }) => {
+  runAgentReply: async (_p: unknown, _llm: unknown, input: { conversationId?: string; accessibleChannels?: unknown }) => {
     agentInputs.push(input);
     serviceCalls.push(`agent:${input.conversationId ?? 'none'}`);
     return { handled: true, text: 'ok' };

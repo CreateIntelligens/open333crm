@@ -2,6 +2,24 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-10]
+
+### Changed
+
+- **LLM 呼叫改成交易外呼叫 provider，用量紀錄寫完才回傳**（#337 階段 4 第六批 6a，change `migrate-ai-llm-tenant-ctx`）— `ai` 模組的 LLM 入口與 Chat 設定改成入口開交易：
+  - 交易 1 讀 Chat 設定、金鑰、遮罩政策與月額度上限。
+  - 交易外檢查月額度，再呼叫 provider（新檔 `ai/llm-client.ts`）。
+  - 交易 2 寫 `AiUsage`。
+
+  `ai.routes.ts` 的 6 條路由與 settings 的 Chat、Gemini key 5 條路由改成呼叫 flow。`token-quota.service.ts` 不再 import core 的 `redis`，改由呼叫端傳入，API 行程用 `fastify.redis`。可觀察的差異如下：
+  - Chat 的預設 temperature 改成 0.2。migration 把 `tenant_settings.chatTemperature` 的欄位預設值從 0.3 改成 0.2，不更新既有的列。還沒有設定列的租戶，AI 回覆的 temperature 從 0.3 變成 0.2。
+  - 讀 Chat 設定（`GET /api/v1/settings/chat`、健康檢查、每次 LLM 呼叫）時，沒有設定列就回預設值，不建立設定列。`PUT /api/v1/settings/chat` 改用 upsert。新租戶的閒置對話自動關閉因此要等設定列建立後才開始，見 `docs/ref/system/AUDIT.md` CONV-01。
+  - `PUT /api/v1/settings/chat` 與 `PUT /api/v1/settings/gemini-key` 的設定與稽核在同一個交易寫入。稽核寫入失敗時，請求失敗，設定或金鑰不變。原本稽核失敗只記 log，請求回成功。
+  - 用量紀錄（`AiUsage`）寫完才把回覆交給呼叫端，原本呼叫後不等結果。寫入失敗時只寫 log，回覆照常，這一點不變。
+  - 用量告警 `usage.quota.threshold` 改寫進 outbox，至少送出一次，原本以 `eventBus.publish` 送出。告警的 Redis 旗標寫入之後，outbox 寫入失敗時，這個月不再發送這個門檻的告警。
+  - 建議回覆（`POST /api/v1/ai/suggest-reply`）一次請求只讀一次 Chat 設定與月額度，原本每篇搜尋結果各讀一次。
+  - AI Agent 的用量紀錄寫入失敗時只寫 log，不再讓 Agent 回覆失敗。A2A 路徑的用量累加與告警不再使用已經結束的交易（健檢 HC-PLATFORM-USAGE-06）。
+
 ## [2026-11-09]
 
 ### Changed

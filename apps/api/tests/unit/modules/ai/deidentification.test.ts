@@ -22,10 +22,10 @@ vi.mock('#src/modules/ai/providers/index.js', () => ({
   getChatProvider: () => ({ id: 'gemini', generate: mocks.generate, generateToolTurn: mocks.turn }),
 }));
 vi.mock('#src/modules/ai/ai-key.service.js', () => ({ resolveGeminiKey: async () => ({ key: 'never-send-this-key-to-deid', source: 'byok' }) }));
-vi.mock('#src/modules/trial/token-quota.service.js', () => ({ isMonthlyTokenExceeded: async () => false }));
 vi.mock('#src/modules/ai/agent/tool-registry.js', () => ({ getAgentToolDefinitions: () => [], executeAgentTool: mocks.executeTool }));
 
-import { generateReply } from '#src/modules/ai/llm.service.js';
+import { generateReply } from '#src/modules/ai/llm.flow.js';
+import { mockLlmDeps } from '#tests/support/llm-deps.js';
 import { readEmbeddingInputs } from '#src/modules/embedding/embedding.service.js';
 import { embedText } from '#src/modules/embedding/embedding-client.js';
 import { runAgentReply } from '#src/modules/ai/agent/agent.service.js';
@@ -37,6 +37,10 @@ const TENANT = '11111111-1111-4111-8111-111111111111';
 async function generateEmbedding(prisma: never, tenantId: string, text: string) {
   const { settings, policy } = await readEmbeddingInputs({ tx: prisma, tenantId });
   return embedText(settings, policy, text);
+}
+/** Agent 的資料存取與 LLM 的三段用同一個 mock */
+function withLlm(prisma: unknown) {
+  return [prisma as never, mockLlmDeps(prisma)] as const;
 }
 const PHONE = '0912345678';
 const EMAIL = 'qa@example.invalid';
@@ -92,11 +96,11 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(
 test('Disabled AI call', async () => {
   for (const value of [null, { enabled: false }]) {
     const prisma = db(value);
-    await generateReply(prisma as never, TENANT, PHONE);
+    await generateReply(mockLlmDeps(prisma), TENANT, PHONE);
     assert.equal(mocks.generate.mock.calls.at(-1)![0].userMessage, PHONE);
     await generateEmbedding(prisma as never, TENANT, PHONE);
     assert.equal(embedRequests.at(-1)!.input, PHONE);
-    await runAgentReply(prisma as never, { tenantId: TENANT, userMessage: PHONE });
+    await runAgentReply(prisma as never, mockLlmDeps(prisma), { tenantId: TENANT, userMessage: PHONE });
     assert.equal(mocks.turn.mock.calls.at(-1)![0].messages.at(-1)!.content, PHONE);
   }
   assert.equal(deidRequests.length, 0);
@@ -105,7 +109,7 @@ test('Disabled AI call', async () => {
 test('Enabled Chat and Embedding calls', async () => {
   const prisma = db();
   const history = [{ role: 'user' as const, content: `歷史 ${PHONE}` }];
-  await generateReply(prisma as never, TENANT, PHONE, `知識庫 ${EMAIL}`, { history, otherChannelContext: `其他渠道 ${PHONE}` });
+  await generateReply(mockLlmDeps(prisma), TENANT, PHONE, `知識庫 ${EMAIL}`, { history, otherChannelContext: `其他渠道 ${PHONE}` });
   const received = mocks.generate.mock.calls[0]![0];
   assert.equal(received.userMessage, '[手機]');
   assert.equal(received.history![0].content, '歷史 [手機]');
@@ -127,7 +131,7 @@ test('Agent tool result and arguments', async () => {
   const call = { id: 'call-1', name: 'search_web', arguments: { query: PHONE, nested: [EMAIL, { value: PHONE, count: 2, flag: true }], nullable: null } };
   mocks.turn.mockResolvedValueOnce({ text: `查詢 ${PHONE}`, toolCalls: [call] }).mockResolvedValueOnce({ text: '完成', toolCalls: [] });
   mocks.executeTool.mockResolvedValue({ contact: PHONE, text: EMAIL });
-  const result = await runAgentReply(db() as never, { tenantId: TENANT, userMessage: PHONE });
+  const result = await runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE });
   assert.equal(result.status, 'completed');
   const second = mocks.turn.mock.calls[1]![0];
   assert.equal(second.messages[0].content, '[手機]');
@@ -140,7 +144,7 @@ test('Agent tool result and arguments', async () => {
 test('Agent execution record stores masked user input', async () => {
   const prisma = db();
   mocks.turn.mockResolvedValueOnce({ text: '已完成', toolCalls: [] });
-  await runAgentReply(prisma as never, { tenantId: TENANT, userMessage: `聯絡方式 ${PHONE}` });
+  await runAgentReply(prisma as never, mockLlmDeps(prisma), { tenantId: TENANT, userMessage: `聯絡方式 ${PHONE}` });
   const runCreate = records.find((entry) => JSON.stringify(entry).includes('userMessage'));
   assert.ok(runCreate);
   assert.equal(JSON.stringify(runCreate).includes(PHONE), false);
@@ -160,7 +164,7 @@ test('Agent trace masking failure marks the run failed without persisting raw tr
   });
 
   await assert.rejects(
-    runAgentReply(db() as never, { tenantId: TENANT, userMessage: 'safe question' }),
+    runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: 'safe question' }),
     (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE',
   );
 
@@ -185,13 +189,13 @@ test('Privacy service unavailable', async () => {
   ];
   for (const failure of failures) {
     fetchMock.mockImplementation(failure);
-    await assert.rejects(generateReply(db() as never, TENANT, PHONE), (error: any) => {
+    await assert.rejects(generateReply(mockLlmDeps(db()), TENANT, PHONE), (error: any) => {
       assert.equal(error.code, 'AI_DEIDENTIFICATION_UNAVAILABLE');
       assert.equal(error.message.includes(PHONE), false);
       return true;
     });
   }
-  await assert.rejects(generateReply(db() as never, TENANT, 'x'.repeat(100_001)));
+  await assert.rejects(generateReply(mockLlmDeps(db()), TENANT, 'x'.repeat(100_001)));
   assert.equal(mocks.generate.mock.calls.length, 0);
   assert.equal(JSON.stringify(records).includes(PHONE), false);
 });
@@ -201,7 +205,7 @@ test('Privacy timeout aborts request before model dispatch', async () => {
   fetchMock.mockImplementation((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
     options.signal!.addEventListener('abort', () => reject(new Error('aborted')));
   }));
-  const pending = assert.rejects(generateReply(db() as never, TENANT, PHONE), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
+  const pending = assert.rejects(generateReply(mockLlmDeps(db()), TENANT, PHONE), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
   await vi.advanceTimersByTimeAsync(10_001);
   await pending;
   assert.equal(mocks.generate.mock.calls.length, 0);
@@ -209,11 +213,11 @@ test('Privacy timeout aborts request before model dispatch', async () => {
 
 test('Policy unavailable', async () => {
   for (const value of [{ enabled: 'false' }, {}, false]) {
-    await assert.rejects(generateReply(db(value) as never, TENANT, PHONE));
+    await assert.rejects(generateReply(mockLlmDeps(db(value)), TENANT, PHONE));
   }
   const prisma = db();
   prisma.platformSetting.findUnique.mockRejectedValue(new Error(PHONE));
-  await assert.rejects(generateReply(prisma as never, TENANT, PHONE), (error: any) => {
+  await assert.rejects(generateReply(mockLlmDeps(prisma), TENANT, PHONE), (error: any) => {
     assert.equal(error.message.includes(PHONE), false);
     return true;
   });
@@ -225,7 +229,7 @@ test('Privacy service unavailable blocks Embedding and Agent dispatch', async ()
   await assert.rejects(generateEmbedding(db() as never, TENANT, PHONE), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
   assert.equal(embedRequests.length, 0);
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-  await assert.rejects(runAgentReply(db() as never, { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
+  await assert.rejects(runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
   assert.equal(mocks.turn.mock.calls.length, 0);
   assert.equal(records.length, 0, 'unmasked AgentRun input is not persisted');
   assert.equal(JSON.stringify(log.mock.calls).includes(PHONE), false);
@@ -234,7 +238,7 @@ test('Privacy service unavailable blocks Embedding and Agent dispatch', async ()
 test('Policy unavailable blocks Embedding and Agent dispatch', async () => {
   const prisma = db({ enabled: 'false' });
   await assert.rejects(generateEmbedding(prisma as never, TENANT, PHONE), (error: any) => error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
-  await assert.rejects(runAgentReply(prisma as never, { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
+  await assert.rejects(runAgentReply(prisma as never, mockLlmDeps(prisma), { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
   assert.equal(fetchMock.mock.calls.length, 0);
   assert.equal(mocks.turn.mock.calls.length, 0);
 });
@@ -242,13 +246,13 @@ test('Policy unavailable blocks Embedding and Agent dispatch', async () => {
 test('Mapping remains outside model input', async () => {
   const log = vi.spyOn(console, 'log');
   const error = vi.spyOn(console, 'error');
-  await generateReply(db() as never, TENANT, PHONE);
-  await runAgentReply(db() as never, { tenantId: TENANT, userMessage: PHONE });
+  await generateReply(mockLlmDeps(db()), TENANT, PHONE);
+  await runAgentReply(...withLlm(db()), { tenantId: TENANT, userMessage: PHONE });
   for (const value of [mocks.generate.mock.calls, mocks.turn.mock.calls, records, log.mock.calls, error.mock.calls]) {
     assert.equal(JSON.stringify(value).includes(PHONE), false);
     assert.equal(JSON.stringify(value).includes('csvMapping'), false);
   }
   const previous = deidRequests.length;
-  await generateReply(db() as never, '22222222-2222-4222-8222-222222222222', PHONE);
+  await generateReply(mockLlmDeps(db()), '22222222-2222-4222-8222-222222222222', PHONE);
   assert.ok(deidRequests.length > previous, 'no shared text cache across tenants or calls');
 });

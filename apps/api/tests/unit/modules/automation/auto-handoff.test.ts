@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
+import { downRedis } from '#tests/support/llm-deps.js';
 
 const calls = vi.hoisted(() => ({ delivered: [] as string[], evaluate: 0, kb: 0, deliveryFails: false }));
 
@@ -23,13 +24,11 @@ vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
   },
 }));
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false, runAgentReply: async () => ({ handled: false }) }));
-vi.mock('#src/modules/ai/sentiment.service.js', () => ({
-  analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
-}));
-vi.mock('#src/modules/ai/classify.service.js', () => ({ autoClassifyNewCase: async () => {} }));
-vi.mock('#src/modules/ai/ai.service.js', () => ({
+vi.mock('#src/modules/ai/ai.flow.js', () => ({
+  analyzeSentimentFlow: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+  autoClassifyNewCaseFlow: async () => {},
   // 讓出執行權：兩次處理同時進行時，都先讀到 BOT_HANDLED 才進交易
-  summarizeConversation: async () => {
+  summarizeConversationFlow: async () => {
     await new Promise((r) => setTimeout(r, 5));
     return { summary: '摘要' };
   },
@@ -60,7 +59,7 @@ beforeEach(() => {
 function setup() {
   // 機器人已回覆 5 次，達到上限：下一則訊息觸發自動轉接
   const h = createHarness({ botRepliesCount: 5 });
-  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never);
+  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never, downRedis);
   return { h, handle };
 }
 
@@ -113,7 +112,7 @@ test('轉接的 message.new 送到渠道房間（與其他 message.new 相同）
   h.io.to = ((rooms: string | string[]) => ({
     emit: (event: string) => { emitted.push({ rooms: ([] as string[]).concat(rooms), event }); },
   })) as never;
-  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never);
+  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never, downRedis);
   await handle(messageReceived());
 
   const messageNew = emitted.find((e) => e.event === 'message.new');
@@ -132,7 +131,7 @@ test('自動轉接：worker 推播 conversation.updated 到渠道房間，帶對
       },
     }),
   };
-  await setupAutomationWorker(h.adminPrisma as never, io as never, h.tenantPrisma as never)(messageReceived());
+  await setupAutomationWorker(h.adminPrisma as never, io as never, h.tenantPrisma as never, downRedis)(messageReceived());
 
   const updated = emitted.filter((e) => e.name === 'conversation.updated');
   assert.equal(updated.length, 1);

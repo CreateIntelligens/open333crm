@@ -7,8 +7,8 @@
  */
 
 import { Prisma } from '@prisma/client';
-import type { PrismaClient, ModelPricing } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { ModelPricing } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { TokenUsage } from './providers/types.js';
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -16,14 +16,15 @@ const pricingCache = new Map<string, { value: ModelPricing | null; expiresAt: nu
 
 const MILLION = new Prisma.Decimal(1_000_000);
 
+/** model_pricings 是平台表，app_tenant 可讀（AGENTS.md Multi-Tenancy）；以租戶交易查詢，不需要 tenantId 條件 */
 export async function getPricing(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   model: string,
 ): Promise<ModelPricing | null> {
   const cached = pricingCache.get(model);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const pricing = await prisma.modelPricing.findFirst({
+  const pricing = await ctx.tx.modelPricing.findFirst({
     where: { model, effectiveFrom: { lte: new Date() } },
     orderBy: { effectiveFrom: 'desc' },
   });

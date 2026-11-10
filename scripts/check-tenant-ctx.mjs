@@ -77,10 +77,11 @@ const PATTERNS = [
       ).length,
     applies: isServiceFile,
   },
-  // LLM：llm.service 或 providers/ 底下（型別檔 types.js 除外）的任何值 import
+  // LLM：llm-client、llm.flow 或 providers/ 底下（型別檔 types.js 除外）的任何值 import。
+  // llm.service 只剩交易內的查詢與提示詞的純函式，不呼叫 LLM（change migrate-ai-llm-tenant-ctx，design D1）
   {
     name: 'service 直接 import LLM 入口',
-    count: (sf) => moduleRefs(sf).filter(({ from }) => /(?:^|\/)(?:llm\.service|providers\/(?!types\.js$)[^/]+)\.js$/.test(from)).length,
+    count: (sf) => moduleRefs(sf).filter(({ from }) => /(?:^|\/)(?:llm-client|llm\.flow|providers\/(?!types\.js$)[^/]+)\.js$/.test(from)).length,
     applies: isServiceFile,
   },
 ];

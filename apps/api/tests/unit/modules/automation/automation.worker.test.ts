@@ -4,6 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
+import { downRedis } from '#tests/support/llm-deps.js';
 
 const queued = vi.hoisted(() => [] as Array<{ name: string; data: Record<string, unknown>; opts?: Record<string, unknown> }>);
 const redis = vi.hoisted(() => ({ down: false }));
@@ -19,11 +20,11 @@ vi.mock('bullmq', async (importOriginal) => ({
 }));
 vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({ attemptKbAutoReply: async () => false }));
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false, runAgentReply: async () => ({ handled: false }) }));
-vi.mock('#src/modules/ai/sentiment.service.js', () => ({
-  analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+vi.mock('#src/modules/ai/ai.flow.js', () => ({
+  analyzeSentimentFlow: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
+  autoClassifyNewCaseFlow: async () => {},
+  summarizeConversationFlow: async () => ({ summary: '' }),
 }));
-vi.mock('#src/modules/ai/classify.service.js', () => ({ autoClassifyNewCase: async () => {} }));
-vi.mock('#src/modules/ai/ai.service.js', () => ({ summarizeConversation: async () => ({ summary: '' }) }));
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({ deliverToChannel: async () => true }));
 
 const { EVENT_AUTOMATION_QUEUE, subscriberQueuesOf } = await import('@open333crm/core');
@@ -38,7 +39,7 @@ beforeEach(() => {
 
 function setup() {
   const h = createHarness({ botConfig: { botMode: 'off' } });
-  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never);
+  const handle = setupAutomationWorker(h.adminPrisma as never, h.io as never, h.tenantPrisma as never, downRedis);
   return { h, handle };
 }
 

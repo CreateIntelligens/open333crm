@@ -9,6 +9,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { Redis } from 'ioredis';
 import type { Server } from 'socket.io';
 import { Queue } from 'bullmq';
 import { claimSideEffect, hasSideEffectClaim, logger } from '@open333crm/core';
@@ -19,15 +20,19 @@ import { createOutboxPublisher, publishEvent, type EventPublisher } from '../../
 import { inTenant } from '../../lib/tenant-ctx.js';
 import { handOffConversation } from './handoff.flow.js';
 
-/** 認領與寫入結果的交易：tenantPrisma 是 inTenant() 的基礎連線（受 RLS 約束），events 寫 outbox */
+/**
+ * 認領與寫入結果的交易：tenantPrisma 是 inTenant() 的基礎連線（受 RLS 約束），events 寫 outbox。
+ * llm 是呼叫 LLM 的依賴，基礎連線同樣用 tenantPrisma，不用 prismaAdmin（change migrate-ai-llm-tenant-ctx，design D6）
+ */
 interface TenantDeps {
   tenantPrisma: PrismaClient;
   events: EventPublisher;
+  llm: LlmDeps;
 }
 import { attemptKbAutoReply, type KbAutoReplyResult } from '../ai/kb-autoreply.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
-import { analyzeSentiment } from '../ai/sentiment.service.js';
-import { autoClassifyNewCase } from '../ai/classify.service.js';
+import { analyzeSentimentFlow, autoClassifyNewCaseFlow } from '../ai/ai.flow.js';
+import type { LlmDeps } from '../ai/llm.flow.js';
 import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { ClaimTransactionError, createBotReplyGuard } from './bot-reply-guard.js';
@@ -138,8 +143,8 @@ async function checkAutoHandoff(
   // 外部呼叫在交易之前：摘要（LLM）與系統訊息的遮罩（去識別化服務）
   let summary = '';
   try {
-    const { summarizeConversation } = await import('../ai/ai.service.js');
-    const summaryResult = await summarizeConversation(prisma, tenantId, conversationId);
+    const { summarizeConversationFlow } = await import('../ai/ai.flow.js');
+    const summaryResult = await summarizeConversationFlow(tenantDeps.llm, tenantId, conversationId);
     summary = summaryResult.summary;
   } catch (err) {
     logger.error('[AutoHandoff] Failed to generate summary:', err);
@@ -182,7 +187,7 @@ async function checkAutoHandoff(
 /**
  * 情緒分析（automation-engine「情緒分析每則訊息最多一次」）。呼叫 LLM 之前先查有沒有 sentiment 認領；
  * LLM 之後在一個交易內認領、寫入結果，負面且信心值至少 0.6 時發出 sentiment.negative。
- * LLM 失敗時改用關鍵字判斷的結果（analyzeSentiment() 內的降級）；查認領紀錄與交易的失敗往外丟，由佇列重試。
+ * LLM 失敗時改用關鍵字判斷的結果（analyzeSentimentFlow() 內的降級）；查認領紀錄與交易的失敗往外丟，由佇列重試。
  */
 async function analyzeSentimentOnce(
   prisma: PrismaClient,
@@ -195,8 +200,8 @@ async function analyzeSentimentOnce(
   const key = { tenantId, kind: 'sentiment' as const, sourceId: messageId };
   if (await hasSideEffectClaim(prisma, key)) return;
 
-  // LLM 失敗時，analyzeSentiment() 自己改用關鍵字判斷，不丟錯（降級）
-  const sentimentResult = await analyzeSentiment(prisma, tenantId, text);
+  // LLM 失敗時，analyzeSentimentFlow() 自己改用關鍵字判斷，不丟錯（降級）
+  const sentimentResult = await analyzeSentimentFlow(tenantDeps.llm, tenantId, text);
   const written = await inTenant(tenantDeps.tenantPrisma, tenantId, async (scope) => {
     // 兩次處理同時通過上面的檢查時，只有一次寫入結果
     if (!(await claimSideEffect(scope.tx, key))) return false;
@@ -232,9 +237,10 @@ async function analyzeSentimentOnce(
  * prisma：交易外的查詢與 LLM 階段用的 admin 連線，查詢都自帶 tenantId。
  * tenantPrisma：inTenant() 的基礎連線（受 RLS 約束），認領與寫入結果用它。
  */
-export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPrisma: PrismaClient): EventHandler {
+export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPrisma: PrismaClient, redis: Redis): EventHandler {
   const events = createEventRouter();
-  const tenantDeps: TenantDeps = { tenantPrisma, events: createOutboxPublisher(tenantPrisma) };
+  const outbox = createOutboxPublisher(tenantPrisma);
+  const tenantDeps: TenantDeps = { tenantPrisma, events: outbox, llm: { prisma: tenantPrisma, redis, events: outbox } };
 
   // ── message.received ────────────────────────────────────────────────────
   events.on('message.received', async (event: SubscribedEvent) => {
@@ -307,7 +313,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
             }
             if (!keywordWillHandle && isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
               try {
-                const agentResult = await runAgentReply(prisma, {
+                const agentResult = await runAgentReply(prisma, tenantDeps.llm, {
                   tenantId: event.tenantId,
                   conversationId,
                   messageId,
@@ -328,7 +334,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
             if (!agentHandled) {
               let kbResult: KbAutoReplyResult;
               try {
-                kbResult = await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard, tenantDeps.events);
+                kbResult = await attemptKbAutoReply(prisma, tenantDeps.llm, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard, tenantDeps.events);
               } catch (err) {
                 if (err instanceof ClaimTransactionError) throw err;
                 logger.error('[AutomationWorker] KB auto-reply error:', err);
@@ -355,7 +361,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
         try {
           await analyzeSentimentOnce(prisma, tenantDeps, event.tenantId, messageId, text, { conversationId, contactId });
         } catch (err) {
-          // LLM 失敗已在 analyzeSentiment() 內降級；走到這裡的是查認領紀錄或寫入結果的失敗
+          // LLM 失敗已在 analyzeSentimentFlow() 內降級；走到這裡的是查認領紀錄或寫入結果的失敗
           logger.error('[AutomationWorker] Sentiment analysis failed, will retry:', err);
           failures.push(err);
         }
@@ -412,7 +418,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
       // Auto-classify issue based on latest inbound message
       // 重複執行時不改變結果（主規格「新工單的自動分類不覆蓋既有分類」），只多一次 LLM 費用
       if (caseId && conversationId) {
-        await autoClassifyNewCase(prisma, event.tenantId, caseId, conversationId).catch((err) =>
+        await autoClassifyNewCaseFlow(tenantDeps.llm, event.tenantId, caseId, conversationId).catch((err) =>
           logger.error('[AutomationWorker] Auto-classification error:', err),
         );
       }

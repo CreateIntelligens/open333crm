@@ -1215,7 +1215,7 @@ model TenantSettings {
   chatProvider           String   @default("ollama")
   chatModel              String   @default("qwen2.5:3b")
   chatBaseUrl            String   @default("http://localhost:11434")
-  chatTemperature        Float    @default(0.3)
+  chatTemperature        Float    @default(0.2)
   chatMaxTokens          Int      @default(500)
   chatSystemPrompt       String   @default("")
   summarizeSystemPrompt  String   @default("")

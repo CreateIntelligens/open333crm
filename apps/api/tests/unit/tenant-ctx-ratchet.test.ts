@@ -149,7 +149,7 @@ test('service 檔 import core 建立連線的函式：算增加', { timeout: 30_
 });
 
 test('service 檔直接 import LLM 入口：算增加',{ timeout: 30_000 }, async () => {
-  await put('modules/l1/l1.service.ts', ["import { generateReply } from '../ai/llm.service.js';"]);
+  await put('modules/l1/l1.service.ts', ["import { generateReply } from '../ai/llm.flow.js';"]);
   await put('modules/l2/l2.service.ts', ["import { getChatProvider } from '../ai/providers/index.js';"]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 1, output);
@@ -161,7 +161,7 @@ test('service 檔直接 import LLM 入口：算增加',{ timeout: 30_000 }, asyn
 test('namespace import 與直接 import provider 檔：也算增加', { timeout: 30_000 }, async () => {
   await put('modules/n1/n1.service.ts', ["import * as IORedis from 'ioredis';"]);
   await put('modules/n2/n2.service.ts', ["import * as core from '@open333crm/core';"]);
-  await put('modules/n3/n3.service.ts', ["import * as llm from '../ai/llm.service.js';"]);
+  await put('modules/n3/n3.service.ts', ["import * as llm from '../ai/llm.flow.js';"]);
   await put('modules/n4/n4.service.ts', ["import { openaiProvider } from '../ai/providers/openai.js';"]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 1, output);
@@ -174,7 +174,7 @@ test('其他合法寫法也算增加：註解、前置空白、多行、re-expor
   await put('modules/w3/w3.service.ts', ['import {', '  logger,', '  redis,', "} from '@open333crm/core';"]);
   await put('modules/w4/w4.service.ts', ["export { redis } from '@open333crm/core';"]);
   await put('modules/w5/w5.service.ts', ["const { default: IORedis } = await import('ioredis');"]);
-  await put('modules/w6/w6.service.ts', ["const llm = require('../ai/llm.service.js');"]);
+  await put('modules/w6/w6.service.ts', ["const llm = require('../ai/llm.flow.js');"]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 1, output);
   for (const f of ['w1', 'w2', 'w3', 'w4', 'w5', 'w6']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
@@ -184,7 +184,7 @@ test('註解或字串裡的 import 不算', { timeout: 30_000 }, async () => {
   await put('modules/c1/c1.service.ts', [
     "// import { redis } from '@open333crm/core';",
     "/* import IORedis from 'ioredis'; */",
-    "const doc = \"import { generateReply } from '../ai/llm.service.js'\";",
+    "const doc = \"import { generateReply } from '../ai/llm.flow.js'\";",
   ]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 0, output);
@@ -193,11 +193,11 @@ test('註解或字串裡的 import 不算', { timeout: 30_000 }, async () => {
 test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout: 30_000 }, async () => {
   await put('modules/t1/t1.service.ts', [
     "import type { Redis } from 'ioredis';",
-    "import type { HistoryMessage } from '../ai/llm.service.js';",
+    "import type { HistoryMessage } from '../ai/llm.flow.js';",
     "import { type Redis as R } from 'ioredis';",
     "import type { ChatProvider } from '../ai/providers/types.js';",
   ]);
-  await put('modules/t2/t2.flow.ts', ["import { redis } from '@open333crm/core';", "import { generateReply } from '../ai/llm.service.js';"]);
+  await put('modules/t2/t2.flow.ts', ["import { redis } from '@open333crm/core';", "import { generateReply } from '../ai/llm.flow.js';"]);
   await put('modules/t3/t3.routes.ts', ["import IORedis from 'ioredis';"]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 0, output);

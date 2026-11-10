@@ -25,7 +25,8 @@ import { embedText } from '../embedding/embedding-client.js';
 import type { EmbeddingSettings } from '../settings/embedding-settings.service.js';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
-import { generateReply, CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
+import { CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
+import { generateReply, type LlmDeps } from './llm.flow.js';
 import { prepareStoredMessageContent } from './deidentification.service.js';
 import type { HistoryMessage } from './llm.service.js';
 import { detectModels, isKnownModel, findRelatedModels, hasKnownPrefix } from './model-matcher.js';
@@ -144,6 +145,8 @@ type ReplyKind =
 
 export async function attemptKbAutoReply(
   prisma: PrismaClient,
+  /** 呼叫 LLM 的依賴：設定、月額度與用量紀錄經由 llm.flow（change migrate-ai-llm-tenant-ctx，design D6） */
+  llm: LlmDeps,
   io: Server,
   tenantId: string,
   conversationId: string,
@@ -209,7 +212,8 @@ export async function attemptKbAutoReply(
   if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return skipped('bot_mode');
 
   // 4. Load tenant chat settings (clarify thresholds + system prompts)
-  const chatSettings = await getChatSettings(prisma, tenantId);
+  // kb-autoreply 還沒搬（#337 6b），以自己的連線組成 TenantCtx（change migrate-ai-llm-tenant-ctx，design D6）
+  const chatSettings = await getChatSettings({ tx: prisma as TenantCtx['tx'], tenantId });
 
   // 5. Fetch conversation history (excluding the just-arrived message we're replying to)
   const history = await loadKbHistory(prisma, conversationId);
@@ -275,7 +279,7 @@ export async function attemptKbAutoReply(
         ? `相近型號清單：\n${relatedList.join('\n')}`
         : '';
     try {
-      replyText = await generateReply(prisma, tenantId, messageText, guideContext, {
+      replyText = await generateReply(llm, tenantId, messageText, guideContext, {
         overrideSystemPrompt: chatSettings.modelGuideSystemPrompt || MODEL_GUIDE_SYSTEM_PROMPT,
         history,
         otherChannelContext,
@@ -334,7 +338,7 @@ export async function attemptKbAutoReply(
       try {
         const overridePrompt =
           chatSettings.clarifySystemPrompt || CLARIFY_SYSTEM_PROMPT;
-        const llmReply = await generateReply(prisma, tenantId, messageText, '', {
+        const llmReply = await generateReply(llm, tenantId, messageText, '', {
           overrideSystemPrompt: overridePrompt,
           history,
           otherChannelContext,
@@ -358,7 +362,7 @@ export async function attemptKbAutoReply(
     const kbContext = buildKbContext(results);
 
     try {
-      const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, {
+      const llmReply = await generateReply(llm, tenantId, messageText, kbContext, {
         history,
         otherChannelContext,
         meta: { feature: 'kb-autoreply', conversationId },
@@ -418,7 +422,7 @@ async function checkModelGuard(
 
   let knownKeys: ReadonlySet<string>;
   try {
-    knownKeys = await getKnownModelKeys(prisma, tenantId, Date.now());
+    knownKeys = await getKnownModelKeys({ tx: prisma as TenantCtx['tx'], tenantId }, Date.now());
   } catch (err) {
     // 白名單載入失敗時不要擋人，退回原本流程。
     logger.error('[KbAutoReply] Failed to load model registry, skipping model guard:', err);

@@ -14,7 +14,7 @@
 
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
-import { generateReply } from './llm.service.js';
+import { generateReply, type LlmDeps } from './llm.flow.js';
 import { validateLineFlexDraft } from '../marketing/material.service.js';
 
 /** 給 AI 的 few-shot：一個精簡但合法的單 bubble（商品促銷版型）。 */
@@ -101,6 +101,7 @@ export interface GeneratedFlex {
  * 仍失敗則 throw AppError（建議改用範本）。
  */
 export async function generateFlexFromPrompt(
+  llm: LlmDeps,
   prisma: TenantDb,
   tenantId: string,
   prompt: string,
@@ -108,7 +109,8 @@ export async function generateFlexFromPrompt(
   const altText = prompt.slice(0, 60);
 
   const attempt = async (userMessage: string): Promise<GeneratedFlex> => {
-    const raw = await generateReply(prisma, tenantId, userMessage, '', {
+    // 過渡寫法：service 呼叫 llm.flow；搬 marketing 時改成 flow（change migrate-ai-llm-tenant-ctx，design D6）
+    const raw = await generateReply(llm, tenantId, userMessage, '', {
       overrideSystemPrompt: FLEX_SYSTEM_PROMPT,
       meta: { feature: 'flex-generate' },
     });
@@ -140,28 +142,10 @@ export async function generateFlexFromPrompt(
   }
 }
 
-/** 對單一文字做 AI 潤稿 / 縮短 / 改語氣。回改寫後的純文字。 */
-export async function rewriteText(
-  prisma: TenantDb,
-  tenantId: string,
-  text: string,
-  action: RewriteAction,
-): Promise<string> {
-  const systemPrompt = [
+/** 潤稿 / 縮短 / 改語氣的系統提示詞。呼叫 LLM 在 ai.flow.ts 的 rewriteTextFlow() */
+export function rewriteSystemPrompt(action: RewriteAction): string {
+  return [
     REWRITE_INSTRUCTION[action],
     '只輸出改寫後的文字本身，不要加引號、說明或多餘標點。輸出繁體中文。',
   ].join('\n');
-
-  try {
-    const result = await generateReply(prisma, tenantId, text, '', {
-      overrideSystemPrompt: systemPrompt,
-      meta: { feature: 'ai-rewrite' },
-    });
-    return result.trim();
-  } catch (error) {
-    // 額度硬擋（PLAN_LIMIT_EXCEEDED）等 AppError 原樣往上；其餘（如 provider 呼叫失敗）
-    // 包成明確的 422，避免裸 500 污染 log。潤稿是輔助功能，前端失敗時靜默略過。
-    if (error instanceof AppError) throw error;
-    throw new AppError('AI 潤稿暫時無法使用，請稍後再試。', 'AI_REWRITE_FAILED', 422);
-  }
 }

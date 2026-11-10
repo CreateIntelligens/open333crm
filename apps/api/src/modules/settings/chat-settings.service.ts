@@ -2,13 +2,11 @@
  * Chat Settings Service
  *
  * Per-tenant chat / RAG configuration: provider, model, generation params,
- * and system prompts. Used by llm.service.ts and ai.service.ts.
+ * and system prompts. 讀取只讀資料庫，沒有設定列時回 DEFAULT_CHAT_SETTINGS；修改以 upsert 寫入
+ * （spec chat-settings，change migrate-ai-llm-tenant-ctx design D5）。呼叫 provider 的函式在 ai/llm-client.ts。
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { getChatProvider, listChatProviders } from '../ai/providers/index.js';
-import type { ChatModelInfo, ChatProviderHealth } from '../ai/providers/index.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 export interface ChatSettings {
   provider: 'ollama' | 'gemini';
@@ -39,14 +37,21 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   clarifyMaxAttempts: 2,
 };
 
-export async function getChatSettings(
-  prisma: TenantDb,
-  tenantId: string,
-): Promise<ChatSettings> {
-  let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
-  if (!s) {
-    s = await prisma.tenantSettings.create({ data: { tenantId } });
-  }
+type ChatSettingsRow = {
+  chatProvider: string;
+  chatModel: string;
+  chatBaseUrl: string;
+  chatTemperature: number;
+  chatMaxTokens: number;
+  chatSystemPrompt: string;
+  summarizeSystemPrompt: string;
+  clarifySystemPrompt: string;
+  modelGuideSystemPrompt: string;
+  clarifyThreshold: number;
+  clarifyMaxAttempts: number;
+};
+
+function toChatSettings(s: ChatSettingsRow): ChatSettings {
   return {
     provider: (s.chatProvider as ChatSettings['provider']) ?? DEFAULT_CHAT_SETTINGS.provider,
     model: s.chatModel,
@@ -62,69 +67,42 @@ export async function getChatSettings(
   };
 }
 
-export async function updateChatSettings(
-  prisma: TenantDb,
-  tenantId: string,
-  patch: Partial<ChatSettings>,
-): Promise<{ settings: ChatSettings; providerChanged: boolean; previousProvider: string }> {
-  const current = await getChatSettings(prisma, tenantId);
-  const next: ChatSettings = { ...current, ...patch };
-  const providerChanged = patch.provider !== undefined && patch.provider !== current.provider;
-
-  const updated = await prisma.tenantSettings.update({
-    where: { tenantId },
-    data: {
-      chatProvider: next.provider,
-      chatModel: next.model,
-      chatBaseUrl: next.baseUrl,
-      chatTemperature: next.temperature,
-      chatMaxTokens: next.maxTokens,
-      chatSystemPrompt: next.chatSystemPrompt,
-      summarizeSystemPrompt: next.summarizeSystemPrompt,
-      clarifySystemPrompt: next.clarifySystemPrompt,
-      modelGuideSystemPrompt: next.modelGuideSystemPrompt,
-      clarifyThreshold: next.clarifyThreshold,
-      clarifyMaxAttempts: next.clarifyMaxAttempts,
-    },
-  });
-
+function toRowData(s: ChatSettings) {
   return {
-    settings: {
-      provider: updated.chatProvider as ChatSettings['provider'],
-      model: updated.chatModel,
-      baseUrl: updated.chatBaseUrl,
-      temperature: updated.chatTemperature,
-      maxTokens: updated.chatMaxTokens,
-      chatSystemPrompt: updated.chatSystemPrompt,
-      summarizeSystemPrompt: updated.summarizeSystemPrompt,
-      clarifySystemPrompt: updated.clarifySystemPrompt,
-      modelGuideSystemPrompt: updated.modelGuideSystemPrompt,
-      clarifyThreshold: updated.clarifyThreshold,
-      clarifyMaxAttempts: updated.clarifyMaxAttempts,
-    },
-    providerChanged,
-    previousProvider: current.provider,
+    chatProvider: s.provider,
+    chatModel: s.model,
+    chatBaseUrl: s.baseUrl,
+    chatTemperature: s.temperature,
+    chatMaxTokens: s.maxTokens,
+    chatSystemPrompt: s.chatSystemPrompt,
+    summarizeSystemPrompt: s.summarizeSystemPrompt,
+    clarifySystemPrompt: s.clarifySystemPrompt,
+    modelGuideSystemPrompt: s.modelGuideSystemPrompt,
+    clarifyThreshold: s.clarifyThreshold,
+    clarifyMaxAttempts: s.clarifyMaxAttempts,
   };
 }
 
-export async function listChatModels(
-  providerId: string,
-  baseUrl?: string,
-): Promise<ChatModelInfo[]> {
-  const provider = getChatProvider(providerId);
-  return provider.listModels({ baseUrl });
+/** 只讀：沒有設定列時回預設值，不建立設定列 */
+export async function getChatSettings(ctx: TenantCtx): Promise<ChatSettings> {
+  const s = await ctx.tx.tenantSettings.findUnique({ where: { tenantId: ctx.tenantId } });
+  return s ? toChatSettings(s) : { ...DEFAULT_CHAT_SETTINGS };
 }
 
-export async function checkChatHealth(
-  providerId: string,
-  model: string,
-  baseUrl?: string,
-  apiKey?: string,
-): Promise<ChatProviderHealth> {
-  const provider = getChatProvider(providerId);
-  return provider.health({ baseUrl, model, apiKey });
-}
+/** 沒有設定列時建立一列：沒有收到的欄位用預設值 */
+export async function updateChatSettings(
+  ctx: TenantCtx,
+  patch: Partial<ChatSettings>,
+): Promise<{ settings: ChatSettings; providerChanged: boolean; previousProvider: string }> {
+  const current = await getChatSettings(ctx);
+  const next: ChatSettings = { ...current, ...patch };
+  const providerChanged = patch.provider !== undefined && patch.provider !== current.provider;
 
-export function getProviderList(): { id: string; label: string }[] {
-  return listChatProviders();
+  const updated = await ctx.tx.tenantSettings.upsert({
+    where: { tenantId: ctx.tenantId },
+    create: { tenantId: ctx.tenantId, ...toRowData(next) },
+    update: toRowData(next),
+  });
+
+  return { settings: toChatSettings(updated), providerChanged, previousProvider: current.provider };
 }

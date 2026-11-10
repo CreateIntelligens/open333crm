@@ -78,14 +78,15 @@ describe('租戶路徑需要的讀取仍可用', () => {
     assert.equal(typeof policy.enabled, 'boolean');
   });
 
-  test('getPricing 以綁定租戶的 client 讀 model_pricings', async () => {
+  test('getPricing 在租戶交易內讀 model_pricings', async () => {
     clearPricingCache();
     const model = `grants-test-${Date.now()}`;
     await ownerDb.modelPricing.create({
       data: { model, inputPer1M: 1, outputPer1M: 2, cachedPer1M: 0.5, effectiveFrom: new Date(Date.now() - 60_000) },
     });
     try {
-      const pricing = await getPricing(tenantScopedClient(tenantDb, TENANT_A), model);
+      // getPricing 收 TenantCtx，在交易 2 內讀價目（change migrate-ai-llm-tenant-ctx）
+      const pricing = await withTenant(tenantDb, TENANT_A, (tx) => getPricing({ tx, tenantId: TENANT_A }, model));
       assert.equal(pricing?.model, model);
     } finally {
       await ownerDb.modelPricing.deleteMany({ where: { model } });

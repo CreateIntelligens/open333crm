@@ -96,7 +96,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `sla.warning`、`sla.breached` | **無** | 通知。見 APP-05 |
 | `portal.activity.submitted` | `portal/portal.flow.ts` 的 `submitActivityFlow()`（outbox） | 自動化 |
 | `link.clicked` | `shortlink/shortlink.flow.ts` 的 `trackClickFlow()`（outbox） | 自動化 |
-| `usage.quota.threshold` | `ai/llm.service.ts` | 通知 |
+| `usage.quota.threshold` | `ai/llm.flow.ts` 的 `recordLlmUsage()`（outbox） | 通知 |
 
 標「outbox」的發布端已經是至少一次，其他發布端仍用 `eventBus.publish()`。「無」發布端的事件，訂閱者永遠不會執行；自動化規則若以這些事件觸發，也永遠不會生效，見 `../system/AUDIT.md` 的 AUTO-05。
 

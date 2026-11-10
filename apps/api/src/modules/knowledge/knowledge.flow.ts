@@ -71,11 +71,11 @@ export const recordKbFeedbackFlow = flowOf((ctx, input: RecordFeedbackInput) => 
 
 /** 型號白名單：ai/model-registry.service.ts 只讀資料庫，傳 scope.tx（design D6） */
 export function listKnownModelsFlow(deps: { prisma: PrismaClient }, tenantId: string) {
-  return inTenant(deps.prisma, tenantId, (scope) => getKnownModelKeys(scope.tx, tenantId, Date.now()));
+  return inTenant(deps.prisma, tenantId, (scope) => getKnownModelKeys(scope, Date.now()));
 }
 
 export function refreshKnownModelsFlow(deps: { prisma: PrismaClient }, tenantId: string) {
-  return inTenant(deps.prisma, tenantId, (scope) => refreshModelKeys(scope.tx, tenantId, Date.now()));
+  return inTenant(deps.prisma, tenantId, (scope) => refreshModelKeys(scope, Date.now()));
 }
 
 // ── 寫入文章 ────────────────────────────────────────────────────────────

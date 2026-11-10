@@ -8,19 +8,13 @@ import {
 } from "./embedding-settings.flow.js";
 import { actorOf } from "../../lib/request-actor.js";
 import {
-  getChatSettings,
-  updateChatSettings,
-  listChatModels,
-  checkChatHealth,
-  getProviderList,
-} from "./chat-settings.service.js";
-import {
-  CRM_REPLY_SYSTEM_PROMPT,
-  SUMMARIZE_SYSTEM_PROMPT,
-  CLARIFY_SYSTEM_PROMPT,
-  MODEL_GUIDE_SYSTEM_PROMPT,
-} from "../ai/llm.service.js";
-import { getTenantGeminiKeyStatus, setTenantGeminiKey, resolveGeminiKey } from "../ai/ai-key.service.js";
+  checkChatHealthFlow,
+  getChatSettingsPageFlow,
+  getGeminiKeyStatusFlow,
+  setGeminiKeyFlow,
+  updateChatSettingsFlow,
+} from "./chat-settings.flow.js";
+import { listChatModels } from "../ai/llm-client.js";
 import { requirePermission } from "../../guards/rbac.guard.js";
 import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
@@ -145,57 +139,18 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // ─── Chat Settings ───────────────────────────────────────────────────────
   // GET /api/v1/settings/chat — settings + provider list + models + health + prompt defaults
   fastify.get("/chat", async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    const settings = await getChatSettings(request.tenantPrisma, tenantId);
-    // gemini 健康檢查要走三層 fallback 取租戶 BYOK key（否則 env 未設會誤報 not configured）。
-    const chatApiKey =
-      settings.provider === "gemini"
-        ? (await resolveGeminiKey(request.tenantPrisma, tenantId)).key
-        : undefined;
-    const [models, health] = await Promise.all([
-      listChatModels(settings.provider, settings.baseUrl),
-      checkChatHealth(settings.provider, settings.model, settings.baseUrl, chatApiKey),
-    ]);
-    return reply.send(
-      success({
-        settings,
-        providers: getProviderList(),
-        models,
-        health,
-        defaults: {
-          chatSystemPrompt: CRM_REPLY_SYSTEM_PROMPT,
-          summarizeSystemPrompt: SUMMARIZE_SYSTEM_PROMPT,
-          clarifySystemPrompt: CLARIFY_SYSTEM_PROMPT,
-          modelGuideSystemPrompt: MODEL_GUIDE_SYSTEM_PROMPT,
-        },
-      }),
-    );
+    return reply.send(success(await getChatSettingsPageFlow(fastify, actorOf(request).tenantId)));
   });
 
-  // PUT /api/v1/settings/chat — update settings
+  // PUT /api/v1/settings/chat — update settings；設定與稽核在同一個交易寫入
   fastify.put("/chat", async (request, reply) => {
     const patch = chatSettingsSchema.parse(request.body);
-    const result = await updateChatSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      patch,
-    );
-    // 稽核：變更 Chat/LLM 設定（只記變更的欄位名，不放 prompt/model 明文）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "chat", keys: Object.keys(patch) },
-      ip: request.ip,
-    });
-    return reply.send(success(result));
+    return reply.send(success(await updateChatSettingsFlow(fastify, actorOf(request), patch)));
   });
 
   // GET /api/v1/settings/gemini-key — 查 BYOK key 狀態（遮罩，不回明文）
   fastify.get("/gemini-key", async (request, reply) => {
-    const status = await getTenantGeminiKeyStatus(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success(status));
+    return reply.send(success(await getGeminiKeyStatusFlow(fastify, actorOf(request).tenantId)));
   });
 
   // PUT /api/v1/settings/gemini-key — 設定/清除 BYOK key（body: { apiKey: string | null }）
@@ -203,18 +158,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     const { apiKey } = z
       .object({ apiKey: z.string().min(1).nullable() })
       .parse(request.body);
-    await setTenantGeminiKey(request.tenantPrisma, request.agent.tenantId, apiKey);
-    // 稽核：設定/清除 BYOK 金鑰（絕不記金鑰明文，只記「設定」或「清除」動作）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "gemini-key", operation: apiKey ? "set" : "clear" },
-      ip: request.ip,
-    });
-    const status = await getTenantGeminiKeyStatus(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success(status));
+    return reply.send(success(await setGeminiKeyFlow(fastify, actorOf(request), apiKey)));
   });
 
   // GET /api/v1/settings/chat/models?provider=gemini&baseUrl=...
@@ -226,22 +170,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/settings/chat/health — re-check health on demand
   fastify.post("/chat/health", async (request, reply) => {
-    const settings = await getChatSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-    );
-    // gemini 健康檢查要走三層 fallback 取租戶 BYOK key（否則 env 未設會誤報 not configured）。
-    const chatApiKey =
-      settings.provider === "gemini"
-        ? (await resolveGeminiKey(request.tenantPrisma, request.agent.tenantId)).key
-        : undefined;
-    const health = await checkChatHealth(
-      settings.provider,
-      settings.model,
-      settings.baseUrl,
-      chatApiKey,
-    );
-    return reply.send(success(health));
+    return reply.send(success(await checkChatHealthFlow(fastify, actorOf(request).tenantId)));
   });
 }
 

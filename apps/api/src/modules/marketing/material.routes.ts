@@ -24,6 +24,7 @@ import {
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { generateFlexFromPrompt } from '../ai/flex-ai.service.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 
@@ -289,7 +290,9 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   // POST /materials/line-flex/ai-generate — 一句話描述 → AI 產合法 Flex body（進填空編輯器微調）
   fastify.post('/materials/line-flex/ai-generate', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = lineFlexAiGenerateSchema.parse(request.body);
-    const result = await generateFlexFromPrompt(request.tenantPrisma, request.agent.tenantId, data.prompt);
+    // LINE 驗證仍用舊的租戶連線，留到搬 marketing（change migrate-ai-llm-tenant-ctx，design D6）
+    const llm = { prisma: fastify.prisma, redis: fastify.redis, events: createOutboxPublisher(fastify.prisma) };
+    const result = await generateFlexFromPrompt(llm, request.tenantPrisma, request.agent.tenantId, data.prompt);
     return reply.send(success(result));
   });
 

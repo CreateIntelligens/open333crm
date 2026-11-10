@@ -6,7 +6,7 @@ description: >
   （kb-autoreply、追問 clarify、轉真人）、型號守門 model guard 與型號白名單、「沒幫到我」KB 回報調教、
   AI 設定頁（Embedding、Chat & Prompt、系統提示詞、自備 Gemini 金鑰 BYOK）、AI 月額度 monthlyTokens 與用量 AiUsage、
   AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影響。當需求、bug 或新功能碰到 /dashboard/knowledge、
-  knowledge、embedding、ai、llm.service、kb-autoreply、model-matcher、chat-settings、embedding-settings、
+  knowledge、embedding、ai、llm.service、llm.flow、kb-autoreply、model-matcher、chat-settings、embedding-settings、
   token-quota 模組，或有人說「AI 亂回／不回」「AI 說轉接了但沒人接」「匯入變亂碼」「搜不到文章」「型號查不到」時使用。
   也在改渠道 botConfig、自動轉接、收件匣 AI 建議回覆、方案 token 額度前使用，確認不破壞 AI 回覆。
 ---
@@ -54,7 +54,9 @@ description: >
 - 向量化是「交易 → 交易外呼叫 Ollama → 交易」（`embedding.flow.ts` 的 `embedArticleFlow`，change `migrate-embedding-tenant-ctx`）。寫入向量時鎖住文章、重組向量化的文字，與交易 1 的文字比對，文章的向量化文字在向量化期間被修改或文章被刪除就不寫入。不要加比對 `updatedAt` 或狀態：瀏覽次數會改 `updatedAt`，發布會改狀態，兩者都不影響向量（design D2）；`POST /knowledge/:id/embed` 回 409 `ARTICLE_CHANGED`。向量化文字由 `prepareArticleText()` 決定，比對跟著它走。
 - 夥伴推送分三段（`knowledge.flow.ts` 的 `ingestPartnerDocFlow`）：交易 1 判斷 `cmd` 與 `Ver` → 交易外上傳附件 → 交易 2 以 `FOR UPDATE` 鎖住文章，用同一個 `decidePartnerWrite()` 重新判斷再寫入。確定沒有寫入時（`skipped`、寫入途中丟錯）刪除這次上傳的檔案；寫入都做完而 commit 回錯誤時保留檔案，因為資料庫可能已經寫入。UAT 在這個改動之前已有約 46 個這樣的檔案（`media/kb/` 比 `km_article_attachments` 多出的數量，推測，2026-11-06）。
 - 向量維度：程式、schema 與 UAT 是 1024，由 migration 建立的資料庫（本機、feature 測試）是 1536（DB-01）；Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。換模型前先決定維度。
-- 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply` 超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback：依文章回答的路徑改送文章原文（HC-KNOWLEDGE-04），追問路徑回「已為您轉接」並真的轉接（`handoffReason`「AI 月額度已用完，無法自動回覆」）。
+- 額度：只有 `keySource === 'platform'` 計入與檢查 `monthlyTokens`；BYOK 不計不擋。`generateReply()`（`llm.flow.ts`）超額丟 403 `PLAN_LIMIT_EXCEEDED`，呼叫端的 fallback：依文章回答的路徑改送文章原文（HC-KNOWLEDGE-04），追問路徑回「已為您轉接」並真的轉接（`handoffReason`「AI 月額度已用完，無法自動回覆」）。
+- LLM 呼叫是「交易 1 → 交易外呼叫 LLM → 交易 2」（`llm.flow.ts`，change `migrate-ai-llm-tenant-ctx`）：交易 1 的 `readLlmInputs()` 讀 Chat 設定、金鑰、遮罩政策與月額度上限；交易外以 Redis 計數器檢查月額度、`llm-client.ts` 呼叫 provider；交易 2 的 `writeAiUsage()` 寫用量，寫完才回傳。不要在交易內呼叫 `llm-client.ts` 或 `generateReply()`。一次請求要呼叫多次 LLM 時（建議回覆），呼叫一次 `prepareLlmCall()`、每次 `runLlmCall()`。
+- 讀 Chat 設定（`getChatSettings(ctx)`）不建立設定列，沒有設定列時回 `DEFAULT_CHAT_SETTINGS`；`DEFAULT_CHAT_SETTINGS` 要與 schema 的欄位預設值相同（`chat-settings-defaults.test.ts`）。因此新租戶的閒置自動關閉要等設定列建立後才開始，見 AUDIT CONV-01。
 - 個資遮罩啟用時，所有模型輸入與 `embedText()` 都先經 2md 去識別化；失敗就停止，不可用原文當 fallback。
 - 設定路由在 `settings.routes.ts`，整個模組掛 `requirePermission('settings.manage')`；`baseUrl` 用 `httpUrlSchema`（只許 http/https，但內網要放行，Ollama 就在內網）。
 - 本機不要為了測試把共用租戶的 Chat/Embedding 改指向外部付費服務；UAT 不可觸發 AI 回覆。
@@ -82,5 +84,5 @@ description: >
 - 「文章發布了卻搜不到」：`hasEmbedding`、Embedding 頁「未嵌入」數、`POST /knowledge/bulk-embed`；維度不符見 DB-01。
 - 「匯入後中文亂碼」或「CSV 被拒：無法辨識文字編碼」：CSV 由 `apps/api/src/modules/knowledge/file-parser.service.ts` 的 `decodeCsvText()` 解碼（UTF-8 去 BOM → 嚴格 UTF-8 → Big5，都不行或含 U+FFFD 就回 `CSV_ENCODING_UNREADABLE`，#421）。GBK、Shift-JIS 等其他編碼不支援，請使用者另存成「CSV UTF-8」；Big5 偶爾能把其他編碼「解成功」但字不對，這種情形不會被擋。
 - 「上傳被拒、英文錯誤」：內容偵測 `apps/api/src/modules/upload/upload-content-detector.ts` 的 `extensionMatches`。
-- 「額度用完／用量對不上」：`apps/api/src/modules/trial/token-quota.service.ts`（Redis `aiquota:{tenantId}:{YYYY-MM}`，失敗退回 DB 加總）、`apps/api/src/modules/ai/llm.service.ts` 的 `recordAiUsage`；BYOK 解密失敗退回平台金鑰見 AI-01。
+- 「額度用完／用量對不上」：`apps/api/src/modules/trial/token-quota.service.ts`（Redis `aiquota:{tenantId}:{YYYY-MM}`，失敗退回 DB 加總）、`apps/api/src/modules/ai/llm.flow.ts` 的 `recordLlmUsage()`；BYOK 解密失敗退回平台金鑰見 AI-01。
 - 「設定頁顯示假資料或 403」：缺 `settings.manage`；`apps/web/src/components/knowledge/SettingsLoadError.tsx`。

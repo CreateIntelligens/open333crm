@@ -122,8 +122,12 @@ export async function startA2ABridgeWorker(fastify: FastifyInstance): Promise<vo
               // Dynamically import runAgentReply to prevent top-level module load side-effects
               const { runAgentReply } = await import('../ai/agent/agent.service.js');
 
+              const { createOutboxPublisher } = await import('../../events/outbox-publisher.js');
+              const llm = { prisma: fastify.prisma, redis: fastify.redis, events: createOutboxPublisher(fastify.prisma) };
+
+              // 交易內呼叫 Agent 的寫法留到 #337 6b；設定、月額度與用量紀錄經由 llm 另開交易（change migrate-ai-llm-tenant-ctx，design D6）
               const agentResult = await withTenant(fastify.prisma, tenant.id, async (tx) => {
-                return runAgentReply(tx, {
+                return runAgentReply(tx, llm, {
                   tenantId: tenant.id,
                   userMessage: item.message,
                   canPublishWiki: config.AGENT_WIKI_AUTO_PUBLISH,
