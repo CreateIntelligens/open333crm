@@ -113,11 +113,16 @@ export async function updateTenantContract(
     throw new AppError('合約迄日不可早於起日', 'CONTRACT_DATE_INVALID', 422);
   }
 
+  // 迄日改變（含清除）時清空合約到期提醒的已寄檔位，依新迄日重新提醒；只改起日或送相同迄日不清空，避免重寄
+  const endChanged =
+    input.contractEndDate !== undefined && (input.contractEndDate?.getTime() ?? null) !== (t.contractEndDate?.getTime() ?? null);
+
   return prisma.tenant.update({
     where: { id: tenantId },
     data: {
       ...(input.contractStartDate !== undefined ? { contractStartDate: input.contractStartDate } : {}),
       ...(input.contractEndDate !== undefined ? { contractEndDate: input.contractEndDate } : {}),
+      ...(endChanged ? { contractRemindersSent: [] } : {}),
     },
     select: { id: true, name: true, contractStartDate: true, contractEndDate: true },
   });

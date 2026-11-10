@@ -32,6 +32,7 @@ import {
   resendWelcomeEmail,
 } from './platform-tenant.service.js';
 import { getPlatformSetting, setPlatformSetting } from './platform-setting.service.js';
+import { CONTRACT_REMINDER_DAYS_KEY, parseContractReminderDays } from './contract-policy.service.js';
 import aiPrivacyRoutes from './ai-privacy.routes.js';
 import {
   getUsageOverview,
@@ -511,7 +512,9 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     return success(await getPlatformSetting(fastify.prismaAdmin, request.params.key));
   });
   fastify.put<{ Params: { key: string } }>('/settings/:key', guard, async (request) => {
-    const { value } = z.object({ value: z.unknown() }).parse(request.body);
+    const { value: raw } = z.object({ value: z.unknown() }).parse(request.body);
+    // 合約到期提醒天數有型別：不合法回 400、不改存預設值；其他鍵仍無型別（AUDIT TRIAL-02）
+    const value = request.params.key === CONTRACT_REMINDER_DAYS_KEY ? parseContractReminderDays(raw) : raw;
     await setPlatformSetting(fastify.prismaAdmin, request.params.key, value);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
