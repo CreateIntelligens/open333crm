@@ -93,4 +93,4 @@ description: >
 - 「成員說沒收到通知」：先查他是不是停用中（`isActive=false`），停用期間的通知被略過，重新啟用也不補送；workers log 有「略過通知」。
 - 「通知類型顯示『通知』」：`apps/web/src/app/dashboard/notifications/page.tsx` 的 `TYPE_CONFIG` 沒有那個 type；鈴鐺的圖示表在 `NotificationBell.tsx`，兩份要一起改。
 - 「通知寫進資料庫但沒即時跳」：Redis `socket:emit` → `apps/api/src/plugins/socket.plugin.ts` 的訂閱轉送；前端 `apps/web/src/hooks/useNotifications.ts` 監聽 `notification.new`。推播是盡力而為，60 秒輪詢會補上。
-- 「AI 用量告警沒寄」：`USAGE_QUOTA_ALERTS_ENABLED`、Redis 旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 是否已存在（換方案後不重發，PLAN-13）、BYOK 不計、`usage-alert-email` 佇列失敗紀錄、`EMAIL_DELIVERY_MODE`（`apps/api/src/modules/email/email.service.ts`）。
+- 「AI 用量告警沒寄」：`USAGE_QUOTA_ALERTS_ENABLED`、Redis 旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 是否已存在（月額度提高的換方案與核准加購會清旗標；上限沒提高時不清）、BYOK 不計、`usage-alert-email` 佇列失敗紀錄、`EMAIL_DELIVERY_MODE`（`apps/api/src/modules/email/email.service.ts`）。

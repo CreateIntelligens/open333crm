@@ -14,6 +14,10 @@ interface Req {
   topupTokens: number | null;
   note: string | null;
   createdAt: string;
+  /** 租戶本月（台灣時間）已核准的加購量 */
+  monthlyTopupTokens: number;
+  /** 租戶目前本月的 AI 月額度上限（含本月加購），null 是無上限 */
+  monthlyTokenLimit: number | null;
 }
 
 const PLAN_LABEL: Record<string, string> = {
@@ -42,7 +46,7 @@ export default function PlanChangesPage() {
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>升級/加購申請</h1>
       <p style={{ color: '#66707f', fontSize: 13, marginBottom: 20 }}>
-        租戶發起的方案升級與加購 token 申請。核准後即時生效。
+        租戶發起的方案升級與加購 token 申請。核准後即時生效。加購僅限核准當月（台灣時間），下個月回到方案額度。
       </p>
       {msg && <div style={{ background: '#e4f5ec', color: '#17935b', padding: '8px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>{msg}</div>}
 
@@ -73,6 +77,12 @@ export default function PlanChangesPage() {
                   {r.type === 'upgrade'
                     ? `→ ${PLAN_LABEL[r.targetPlanSlug ?? ''] ?? r.targetPlanSlug}`
                     : `+${fmtTokens(r.topupTokens ?? 0)} token`}
+                  {r.type === 'token_topup' && (
+                    <div style={{ fontSize: 11, color: '#97a0ae', marginTop: 2 }}>
+                      <div>{`本月已加購 ${fmtTokens(r.monthlyTopupTokens)} token`}</div>
+                      <div>{`本月上限 ${r.monthlyTokenLimit === null ? '無上限' : `${fmtTokens(r.monthlyTokenLimit)} token`}`}</div>
+                    </div>
+                  )}
                 </td>
                 <td style={{ ...td, fontSize: 12, color: '#66707f', maxWidth: 200 }}>{r.note ?? '—'}</td>
                 <td style={td}>

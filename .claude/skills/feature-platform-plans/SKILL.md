@@ -58,7 +58,8 @@ description: >
 ## 有後端沒前端
 - 新增方案、刪除方案：**沒有 API 也沒有 UI**，只能改 `packages/database/prisma/seed-data/plans.ts`（只在資料庫沒有該 slug 時建立）、寫 migration 或直接寫資料庫。
 - 改方案名稱、月費、停售（`name`、`priceMonthly`、`isActive`）：API 接受，`/admin/plans` 沒有欄位。停售本身沒有效果（PLAN-01）。
-- 租戶覆寫 `Tenant.limitOverrides`：沒有任何讀寫 UI，也沒有 API；唯一寫入端是核准加購（PLAN-03、PLAN-05）。
+- 租戶覆寫 `Tenant.limitOverrides`：沒有任何讀寫 UI，也沒有 API，目前沒有寫入端（2026-11-10 起核准加購不再寫，migration 已移除既有的 `monthlyTokens`）。
+- AI 月額度 = 基礎上限 + 本月（台灣時間）已核准的加購加總，只在 `plan-limits.service.ts` 的 `getEffectiveLimit()` 計算；加購只加當月（change make-token-topup-monthly）。
 - `billing.view` 權限碼：沒有任何路由或頁面使用（RBAC-01）。
 
 ## 前端實際送出的值
@@ -83,7 +84,7 @@ description: >
 ## 跨功能牽連
 由 `docs/ref/features/feature-map.json` 產生，執行 `node scripts/feature-impact.mjs --domain platform-plans` 看最新版本。重點：
 - **依賴**：平台登入（superuser token）、成員與角色（`requirePermission`、權限快取）、平台租戶管理（`planId` 寫入與失效）、平台用量（`AiUsage` 加總）。
-- **被依賴**：渠道（類型白名單、渠道數）、成員（人數上限、角色頁不套天花板）、知識庫/AI（月額度硬擋）、行銷（`marketing` feature 與 deny）、方案異動（依 slug 找方案、加購寫覆寫）、試用（`trial` 方案內容）、通知（額度告警連到 `/dashboard/plan`）、收件匣（socket 房間授權與渠道可見範圍也套天花板）。
+- **被依賴**：渠道（類型白名單、渠道數）、成員（人數上限、角色頁不套天花板）、知識庫/AI（月額度硬擋）、行銷（`marketing` feature 與 deny）、方案異動（依 slug 找方案、當月加購量計入月額度）、試用（`trial` 方案內容）、通知（額度告警連到 `/dashboard/plan`）、收件匣（socket 房間授權與渠道可見範圍也套天花板）。
 
 ## 回歸清單
 改到本領域時，至少重走（本機用 `hc-` 前綴的自建方案與租戶，不要改 seed 方案或 Demo 租戶的方案）：
@@ -104,4 +105,5 @@ description: >
 - 「平台改了上限卻沒生效」：同時編輯兩張方案卡片時，先存的那張會重載資料，另一張輸入框顯示新值、送出的卻是舊值（HC-PLATFORM-PLANS-02）；也檢查租戶有沒有 `limitOverrides`（覆寫優先）。
 - 「方案人數上限擋不住」：看是不是從停用改回啟用的渠道（成員已檢查）；`maxTags` 本來就不擋。
 - 「AI 額度用完卻還能用」：該租戶是 BYOK（不計不擋），或 `monthlyTokens` 是 null；BYOK 解密失敗會退回平台金鑰開始計數（AI-01）。
-- 「升級後 AI 額度沒變」：租戶有加購留下的 `limitOverrides.monthlyTokens`（PLAN-05），只能改資料庫。
+- 「升級後 AI 額度沒變」：先查租戶是否有 `limitOverrides.monthlyTokens`（應已由 migration 移除；有的話是有人直接改資料庫）。
+- 「加購的額度下個月不見了」：正常，加購只計入核准當月（台灣時間）。

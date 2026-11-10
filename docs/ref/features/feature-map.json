@@ -405,7 +405,6 @@
       "audit": [
         "RBAC-03",
         "CONV-02",
-        "PLAN-13",
         "EXPORT-01",
         "APP-04",
         "APP-05"
@@ -688,8 +687,6 @@
       "audit": [
         "RBAC-01",
         "PLAN-12",
-        "PLAN-02",
-        "PLAN-13",
         "AI-01",
         "USAGE-03",
         "LLM-01",
@@ -2620,12 +2617,9 @@
       ],
       "audit": [
         "PLAN-01",
-        "PLAN-02",
         "PLAN-03",
-        "PLAN-05",
         "PLAN-10",
         "PLAN-11",
-        "PLAN-13",
         "USAGE-03",
         "RBAC-01"
       ],
@@ -2637,12 +2631,16 @@
       ],
       "tests": [
         "apps/api/tests/unit/modules/platform/plan-change.test.ts",
-        "apps/api/tests/feature/modules/platform/plan-change-trial-exit.test.ts"
+        "apps/api/tests/feature/modules/platform/plan-change-trial-exit.test.ts",
+        "apps/api/tests/unit/modules/platform/quota-alert-recalibration.test.ts",
+        "apps/api/tests/feature/modules/platform/token-topup-monthly-migration.test.ts",
+        "apps/web/tests/unit/app/dashboard/plan-page.test.tsx",
+        "apps/web/tests/unit/app/admin/plan-changes-page.test.tsx"
       ],
       "dependsOn": [
         {
           "domain": "platform-plans",
-          "why": "申請的目標方案依 slug 查 Plan；方案的 features 決定核准後的功能天花板，limits.monthlyTokens 是加購的計算基準（覆寫優先，見 PLAN-05）"
+          "why": "申請的目標方案依 slug 查 Plan；方案的 features 決定核准後的功能天花板；當月加購量與有效 monthlyTokens 由 plan-limits.service.ts 的 getEffectiveLimit() 計算（基礎上限 + 本月已核准加購）"
         },
         {
           "domain": "platform-auth",
@@ -2658,7 +2656,7 @@
         },
         {
           "domain": "knowledge",
-          "why": "核准加購呼叫 token-quota.service 的 clearTokenQuotaCache、clearQuotaAlertFlags，月額度檢查擋 AI 回覆"
+          "why": "核准加購呼叫 token-quota.service 的 clearTokenQuotaCache、clearQuotaAlertFlags，核准升級在月額度提高時清 clearQuotaAlertFlags；月額度檢查擋 AI 回覆"
         },
         {
           "domain": "platform-tenants",
@@ -2672,7 +2670,7 @@
         },
         {
           "domain": "platform-usage",
-          "why": "加購量寫進 limitOverrides.monthlyTokens，改變用量統計與額度告警的上限"
+          "why": "已核准的加購量計入核准當月（台灣時間）的有效 monthlyTokens，改變額度告警與硬擋的上限"
         },
         {
           "domain": "notifications",
@@ -2718,13 +2716,11 @@
         "PLAN-01",
         "PLAN-03",
         "PLAN-04",
-        "PLAN-05",
         "PLAN-07",
         "PLAN-08",
         "PLAN-09",
         "PLAN-10",
         "PLAN-12",
-        "PLAN-13",
         "RBAC-01"
       ],
       "manual": [
@@ -2781,7 +2777,7 @@
         },
         {
           "domain": "platform-plan-changes",
-          "why": "升級申請依 slug 查 Plan、核准後換 planId 並失效快取；加購寫 limitOverrides.monthlyTokens（覆寫優先）"
+          "why": "升級申請依 slug 查 Plan、核准後換 planId 並失效快取；已核准的 token_topup 申請是 getEffectiveLimit() 當月加購量的來源"
         },
         {
           "domain": "platform-trials",
@@ -2905,7 +2901,6 @@
         "USAGE-01",
         "USAGE-02",
         "USAGE-03",
-        "PLAN-13",
         "PLAN-10"
       ],
       "manual": [
@@ -2930,11 +2925,11 @@
         },
         {
           "domain": "platform-plans",
-          "why": "月額度的數值是有效 monthlyTokens（plan-limits.service.ts 的 getEffectiveLimit：limitOverrides ?? Plan.limits）"
+          "why": "月額度的數值是有效 monthlyTokens（plan-limits.service.ts 的 getEffectiveLimit：(limitOverrides ?? Plan.limits) + 本月已核准加購）；換方案與改方案 limits 在月額度提高時清告警旗標"
         },
         {
           "domain": "platform-plan-changes",
-          "why": "核准加購會呼叫 clearTokenQuotaCache() 與 clearQuotaAlertFlags()；升級與平台換方案不清告警旗標（PLAN-13）"
+          "why": "核准加購會呼叫 clearTokenQuotaCache() 與 clearQuotaAlertFlags()；核准升級、平台換方案、試用轉付費、改方案 limits 在月額度提高時清告警旗標"
         },
         {
           "domain": "notifications",

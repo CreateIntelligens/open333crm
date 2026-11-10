@@ -42,7 +42,7 @@ vi.mock('@open333crm/core', async (importOriginal) => {
   };
 });
 
-import { redis } from '@open333crm/core';
+import { redis, taipeiMonthStart } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { getEffectiveTenantPermissions } from '#src/services/permission.service.js';
 import { getTenantPlanId } from '#src/services/tenant-plan.cache.js';
@@ -170,6 +170,23 @@ function createDb() {
         const row = requests.find((r) => r.id === where.id)!;
         Object.assign(row, data);
         return { ...row };
+      },
+      /** 條件更新：where 的每個欄位都相符才更新。await 讓兩個同時進行的核准交錯執行 */
+      updateMany: async ({ where, data }: { where: Partial<RequestRow>; data: Partial<RequestRow> }) => {
+        await Promise.resolve();
+        const rows = requests.filter((r) =>
+          Object.entries(where).every(([k, v]) => r[k as keyof RequestRow] === v));
+        for (const row of rows) Object.assign(row, data);
+        return { count: rows.length };
+      },
+      aggregate: async ({ where }: {
+        where: { tenantId: string; type: string; status: string; reviewedAt: { gte: Date; lt: Date } };
+      }) => {
+        const sum = requests
+          .filter((r) => r.tenantId === where.tenantId && r.type === where.type && r.status === where.status
+            && r.reviewedAt !== null && r.reviewedAt >= where.reviewedAt.gte && r.reviewedAt < where.reviewedAt.lt)
+          .reduce((acc, r) => acc + (r.topupTokens ?? 0), 0);
+        return { _sum: { topupTokens: sum === 0 ? null : sum } };
       },
     },
     rolePermission: {
@@ -425,6 +442,33 @@ test('只列出待審的申請：舊的在前，附租戶名稱與目前方案',
   );
 });
 
+test('待審的申請附本月加購量與本月上限：只算本月已核准的加購，無上限的方案回 null', async () => {
+  const db = createDb();
+  const light = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
+  const enterprise = db.addPlan('enterprise', ['core'], { monthlyTokens: null });
+  const a = db.addTenant(light.id, {}, '甲租戶');
+  const b = db.addTenant(enterprise.id, {}, '乙租戶');
+  db.addRequest(a.id, { type: 'token_topup', topupTokens: 200_000, status: 'approved', reviewedAt: new Date() });
+  // 上個月（台灣時間）核准的加購：本月 1 日 00:00 的前一毫秒
+  const lastMonth = new Date(taipeiMonthStart(new Date()).getTime() - 1);
+  db.addRequest(a.id, { type: 'token_topup', topupTokens: 300_000, status: 'approved', reviewedAt: lastMonth });
+  db.addRequest(a.id, { type: 'token_topup', topupTokens: 100_000 });
+  db.addRequest(b.id, { type: 'upgrade', targetPlanSlug: 'light' });
+
+  const app = await platformApp(db);
+  const res = await app.inject({ method: 'GET', url: '/api/v1/platform/plan-change-requests' });
+
+  assert.equal(res.statusCode, 200, res.body);
+  const rows = res.json().data as Array<{ tenantName: string; monthlyTopupTokens: number; monthlyTokenLimit: number | null }>;
+  assert.deepEqual(
+    rows.map((r) => [r.tenantName, r.monthlyTopupTokens, r.monthlyTokenLimit]),
+    [
+      ['甲租戶', 200_000, 1_200_000],
+      ['乙租戶', 0, null],
+    ],
+  );
+});
+
 // ── 核准升級申請 ──
 
 test('核准升級後立即生效：新方案的權限立即可用，申請記錄審核者、時間與備註', async () => {
@@ -471,7 +515,7 @@ test('目標方案已不存在：回 404，租戶的方案與申請都不變', a
 
 // ── 核准加購申請 ──
 
-test('沒有覆寫時加在方案的額度上：方案 1,000,000，加購 500,000，覆寫值變成 1,500,000', async () => {
+test('沒有覆寫時加在方案的額度上：方案 1,000,000，加購 500,000，本月上限 1,500,000，覆寫值仍是空的', async () => {
   const db = createDb();
   const plan = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
   const tenant = db.addTenant(plan.id);
@@ -479,14 +523,15 @@ test('沒有覆寫時加在方案的額度上：方案 1,000,000，加購 500,00
 
   const result = await approveRequest(db.prisma, redis, req.id, REVIEWER, '加購一包');
 
-  assert.equal(db.tenant(tenant.id).limitOverrides.monthlyTokens, 1_500_000);
+  assert.equal(await getEffectiveLimit(db.prisma, tenant.id, 'monthlyTokens'), 1_500_000);
+  assert.deepEqual(db.tenant(tenant.id).limitOverrides, {});
   assert.equal(result.status, 'approved');
   assert.equal(result.reviewedBy, REVIEWER);
   assert.equal(result.reviewNote, '加購一包');
   assert.ok(result.reviewedAt instanceof Date);
 });
 
-test('已有覆寫時加在覆寫值上：覆寫 1,200,000，加購 500,000，覆寫值變成 1,700,000', async () => {
+test('已有覆寫時加在覆寫值上：覆寫 1,200,000，加購 500,000，本月上限 1,700,000，覆寫值不變', async () => {
   const db = createDb();
   const plan = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
   const tenant = db.addTenant(plan.id, { monthlyTokens: 1_200_000, maxAgents: 8 });
@@ -494,7 +539,39 @@ test('已有覆寫時加在覆寫值上：覆寫 1,200,000，加購 500,000，�
 
   await approveRequest(db.prisma, redis, req.id, REVIEWER);
 
-  assert.deepEqual(db.tenant(tenant.id).limitOverrides, { monthlyTokens: 1_700_000, maxAgents: 8 });
+  assert.equal(await getEffectiveLimit(db.prisma, tenant.id, 'monthlyTokens'), 1_700_000);
+  assert.deepEqual(db.tenant(tenant.id).limitOverrides, { monthlyTokens: 1_200_000, maxAgents: 8 });
+});
+
+test('同月第二筆加購累加：本月已核准 200,000，再核准 300,000，本月上限 1,500,000', async () => {
+  const db = createDb();
+  const plan = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
+  const tenant = db.addTenant(plan.id);
+  const first = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 200_000 });
+  await approveRequest(db.prisma, redis, first.id, REVIEWER);
+  const second = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 300_000 });
+
+  await approveRequest(db.prisma, redis, second.id, REVIEWER);
+
+  assert.equal(await getEffectiveLimit(db.prisma, tenant.id, 'monthlyTokens'), 1_500_000);
+});
+
+test('同一筆申請同時核准兩次：一個成功、另一個回 400，本月上限只加一次', async () => {
+  const db = createDb();
+  const plan = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
+  const tenant = db.addTenant(plan.id);
+  const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 500_000 });
+
+  const results = await Promise.allSettled([
+    approveRequest(db.prisma, redis, req.id, REVIEWER),
+    approveRequest(db.prisma, redis, req.id, REVIEWER),
+  ]);
+
+  assert.deepEqual(results.map((r) => r.status).sort(), ['fulfilled', 'rejected']);
+  const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+  assert.ok(failed.reason instanceof AppError && failed.reason.statusCode === 400, String(failed.reason));
+  assert.equal(await getEffectiveLimit(db.prisma, tenant.id, 'monthlyTokens'), 1_500_000);
+  assert.deepEqual(db.tenant(tenant.id).limitOverrides, {});
 });
 
 test('有效額度是無上限時不能加購：回 400 TOPUP_UNLIMITED，覆寫值與申請都不變', async () => {

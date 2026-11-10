@@ -68,7 +68,7 @@ API 容器每次啟動都跑 seed（`apps/api/docker-entrypoint.sh`）。平台�
 
 ## 有效上限怎麼算
 
-`plan-limits.service.ts` 解析單一租戶的有效上限。**這支服務不屬於平台後台**，沒有任何平台路由呼叫它，呼叫者都在租戶側：`agent.service.ts`、`channel.service.ts` 與 `trial/token-quota.service.ts`。
+`plan-limits.service.ts` 解析單一租戶的有效上限。租戶側的呼叫者是 `agent.service.ts`、`channel.service.ts` 與 `ai/llm.service.ts`（月額度檢查）；平台側的方案異動審核（`plan-change.service.ts`）、改租戶方案、試用轉付費與改方案也呼叫它，判斷加購是否有意義與換方案是否提高 AI 月額度。
 
 判斷順序是「租戶的覆寫優先」，但判斷的是 key 存不存在，不是值是不是空：
 
@@ -78,6 +78,8 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 ```
 
 差別在 `null`。`Tenant.limitOverrides` 寫 `{ "maxAgents": null }` 的意思是「這個租戶的人數改成無上限」，而不是「沒設定，回去看方案」。程式用 `hasOwnProperty` 判斷，不是 `??`。
+
+`monthlyTokens` 依這個順序得到的是**基礎上限**。AI 月額度另外加上本月（台灣時間）已核准的加購量；基礎上限是 `null` 時仍是無上限，見[方案異動審核](./PLAN-CHANGES.md#加購只計入核准當月)。
 
 ## 什麼情況會變成無上限
 
@@ -102,16 +104,16 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 
 `updatePlan()` 寫入後，若 `features` 或 `permissionOverrides` 有變動，就呼叫 `invalidatePlanPermissions()` 清掉該方案所有租戶的天花板交集快取。下一個請求即用新的天花板重算。沒有灰度，也沒有延遲。
 
+`limits.monthlyTokens` 提高時，該方案下沒有覆寫 `monthlyTokens` 的租戶，本月的額度告警旗標會被清除，用量跨越新上限的 80%、100% 時會再次通知（原 PLAN-13，2026-11-10 修正）。
+
 `limits` 與 `allowedChannelTypes` 不需要失效快取，因為兩者都不快取，每次都查資料庫。
 
 操作者在按下儲存之前，看不到這次改動影響幾個租戶；事後也查不到改動前的值。詳見 `../../system/AUDIT.md` 的 PLAN-09。
 
 租戶端不會知道天花板變了。角色與權限頁顯示的是資料庫的授予紀錄，不套天花板，因此被方案擋掉的權限在那一頁仍然顯示為已勾選，詳見 `../../system/AUDIT.md` 的 PLAN-08。
 
-## 加購會改寫覆寫值
+## 加購只加當月
 
-AI 月額度的加購直接改寫 `limitOverrides.monthlyTokens`，寫進去的值是「加購當時的方案額度 + 加購量」，見[方案異動審核](./PLAN-CHANGES.md#加購是永久提高每月額度)。
-
-因為覆寫值優先於方案的 `limits`，而且解析時不比大小，加購過的租戶升級方案之後，AI 月額度會停在升級前的數字，見 `../../system/AUDIT.md` 的 PLAN-05。
+AI 月額度的加購不寫 `limitOverrides`，只計入核准當月（台灣時間），下個月回到方案額度。換方案之後加購加在新方案的額度上。詳見[方案異動審核](./PLAN-CHANGES.md#加購只計入核准當月)。2026-11-10 以前加購寫進 `limitOverrides.monthlyTokens` 的值已由 migration 移除（PLAN-02、PLAN-05）。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

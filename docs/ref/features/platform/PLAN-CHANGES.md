@@ -2,7 +2,7 @@
 
 租戶提出升級或加購申請，平台在此審核。
 
-- **資料來源**：`apps/api/src/modules/platform/plan-change.service.ts`、`apps/api/src/modules/platform/plan-change.flow.ts`、`apps/web/src/app/dashboard/plan/page.tsx`、`apps/web/src/app/admin/layout.tsx`
+- **資料來源**：`apps/api/src/modules/platform/plan-change.service.ts`、`apps/api/src/modules/platform/plan-limits.service.ts`、`apps/web/src/app/admin/plan-changes/page.tsx`、`apps/api/src/modules/platform/plan-change.flow.ts`、`apps/web/src/app/dashboard/plan/page.tsx`、`apps/web/src/app/admin/layout.tsx`
 - **核對日期**：2026-11-10
 
 ## 一筆申請的流程
@@ -12,7 +12,7 @@
 | 階段 | 端點 | 規則 |
 | --- | --- | --- |
 | 送出 | `POST /api/v1/plan-change` | 同一個租戶同時只能有一筆 `pending`，否則回 409。`upgrade` 當場檢查目標方案存在，`token_topup` 檢查加購量是正整數 |
-| 待審 | `GET /platform/plan-change-requests` | 只回傳 `pending`，依申請時間舊到新。附租戶名稱與目前方案 |
+| 待審 | `GET /platform/plan-change-requests` | 只回傳 `pending`，依申請時間舊到新。附租戶名稱、目前方案、本月已核准的加購量（`monthlyTopupTokens`）與目前本月的 AI 月額度上限（`monthlyTokenLimit`，null 是無上限） |
 | 核准 | `PATCH /platform/plan-change-requests/:id/approve` | 依型別執行動作，見下文 |
 | 駁回 | `PATCH /platform/plan-change-requests/:id/reject` | 只改狀態，不動租戶 |
 
@@ -28,35 +28,40 @@
 
 | 型別 | 核准後的動作 | 失效的快取 |
 | --- | --- | --- |
-| `upgrade` | 改 `tenant.planId`。試用租戶同時脫離試用，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用) | 權限天花板快取、租戶方案快取 |
-| `token_topup` | 把加購量加進 `tenant.limitOverrides.monthlyTokens`，並清除本月的額度告警旗標 | 租戶方案快取、AI 額度計數器 |
+| `upgrade` | 改 `tenant.planId`。試用租戶同時脫離試用，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用)。新方案的 AI 月額度較高時，清除本月的額度告警旗標 | 權限天花板快取、租戶方案快取 |
+| `token_topup` | 只把申請改成 `approved`（條件更新，只更新仍是 `pending` 的申請），不改租戶。加購量計入核准當月的 AI 月額度，並清除本月的額度告警旗標 | AI 額度計數器 |
 
 `upgrade` 只是換方案，**沒有任何「比較貴」的檢查**。目標方案是更便宜或功能更少的方案時，核准一樣會照做。唯一的例外是試用方案（試用政策 `trial.planSlug` 指定的方案）：建立與核准申請都回 400，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用)。系統也沒有 `downgrade` 型別，租戶要降級只能請平台直接改，見[租戶管理](./TENANTS.md#改方案的連帶效果)。
 
 核准之後租戶不會收到通知。沒有寄信，也沒有站內通知，租戶要自己回 `/dashboard/plan` 才看得到狀態。
 
-## 加購是永久提高每月額度
+## 加購只計入核准當月
 
-`token_topup` 的計算是「現有有效額度加上加購量」，寫回 `limitOverrides.monthlyTokens`：
+2026-11-10 起（change `make-token-topup-monthly`），加購只加當月，下個月自動回到方案額度。月份一律用台灣時間：
 
 ```text
-新的每月額度 = 現有有效額度 + topupTokens
+本月 AI 月額度 = 基礎上限 + 本月（台灣時間）已核准的 token_topup 加總
+基礎上限       = limitOverrides.monthlyTokens（有這個 key 時）?? Plan.limits.monthlyTokens；null 是無上限
 ```
 
-現有有效額度的解析方式與其他上限相同，覆寫優先，見[方案與上限](./PLANS.md#有效上限怎麼算)。
+- 一筆加購屬於**核准時間**（`reviewedAt`）所在的台灣月份，不是申請時間。月底送出、隔月 1 日才核准的加購算在隔月。
+- 當月加購量直接從已核准的申請加總（`plan-limits.service.ts` 的 `sumMonthlyTopupTokens()`），不另外存，也不寫 `limitOverrides`。每一筆加購都是一筆申請，有審核者、時間與備註，可以對帳。
+- 解析只有一份：`plan-limits.service.ts` 的 `getEffectiveLimit()`。LLM 呼叫前的月額度檢查、告警門檻與平台審核頁都呼叫它，`approveRequest()` 也用 `resolveEffectiveLimit()` 判斷基礎上限，不再自己算。
+- 換方案之後，加購加在新方案的額度上（PLAN-05 已修正）。
+- 基礎上限是無上限時，核准會被擋下並回 400 `TOPUP_UNLIMITED`。核准之後才換到無上限方案時，本月仍是無上限。
+- 核准是條件更新：同一筆申請同時核准兩次，只有一次成功，另一次回 400。
 
-這個欄位是**每月額度的上限**，不是可消耗的餘額。額度計數器的 Redis key 帶年月、月底過期，每個月從零開始重算，但 `limitOverrides` 留著不動。因此核准一次加購 20 萬 token，是把這個租戶**往後每一個月**的額度都提高 20 萬，不是給他一次 20 萬。
+兩邊畫面都寫明「加購僅限核准當月（台灣時間），下個月回到方案額度」。租戶頁的申請記錄在已核准的加購旁顯示「限 YYYY-MM 使用」；平台審核頁在每筆加購申請下方顯示該租戶「本月已加購」與「本月上限」。
 
-介面兩邊寫的都是「加購 Token」，看不出是一次性還是長期，詳見 `../../system/AUDIT.md` 的 PLAN-02。
+2026-11-10 以前的核准會把「當時有效額度 + 加購量」寫進 `limitOverrides.monthlyTokens`，等於永久提高每月額度（PLAN-02）。migration `20261110120000_remove_topup_monthly_tokens_override` 移除所有租戶的這個 key；部署當月已核准的加購仍由新的計算計入。
 
-有一道保護：目前有效額度已經是無上限時，核准會被擋下並回 400 `TOPUP_UNLIMITED`。若不擋，加算出來的值沒有意義，管理員還會以為加購生效了。
+## 額度告警旗標
 
-核准時會清除本月的額度告警旗標。旗標到月底才過期，不清除的話，用量跨越新上限的 80%、100% 時，系統不會再通知。換方案而提高額度時，系統不清除旗標，見 `../../system/AUDIT.md` 的 PLAN-13。
+核准加購時一律清除本月的額度告警旗標與用量計數器。旗標到月底才過期，不清除的話，用量跨越新上限的 80%、100% 時，系統不會再通知。
 
-核准之後還有兩個連帶結果：
+換方案也會清除，但只在 AI 月額度提高時（比較換方案前後的基礎上限，`plan-limits.service.ts` 的 `monthlyTokensRaisedByPlanChange()`）：核准升級、平台改租戶方案（`updateTenant()`）、試用轉付費（`convertToPaid()`），以及平台調高方案的 `limits.monthlyTokens`（`updatePlan()`，只清沒有覆寫 `monthlyTokens` 的租戶）。上限不變或降低時保留旗標。修正紀錄（原 PLAN-13）見 `../../system/AUDIT-REVIEWS.md`。
 
-- 升級方案不會把額度改成新方案的值。覆寫值優先且不比大小，因此加購過的租戶升級後額度停在升級前的數字，見 `../../system/AUDIT.md` 的 PLAN-05。
-- 事後無法對帳。申請不記金額，覆寫值也拆不開，見 `../../system/AUDIT.md` 的 PLAN-10。
+申請仍不記金額，系統沒有計費，見 `../../system/AUDIT.md` 的 PLAN-10。
 
 ## 平台看不到歷史
 

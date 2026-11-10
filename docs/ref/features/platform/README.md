@@ -116,7 +116,6 @@
 | 限制 | 說明 |
 | --- | --- |
 | **方案的停售沒有生效** | `Plan.isActive` 沒有任何讀取端，設為停售之後仍可被指派給租戶。詳見 `../../system/AUDIT.md` 的 PLAN-01 |
-| **加購 token 是永久提高每月額度** | `token_topup` 核准後改寫 `limitOverrides.monthlyTokens`，兩邊介面都只寫「加購 Token」。詳見 `../../system/AUDIT.md` 的 PLAN-02 |
 | **登入與密碼重設沒有稽核紀錄** | `POST /auth/login`、`/auth/forgot-password`、`/auth/reset-password` 與 `/trial-signups/:id/resend` 沒有呼叫 `writePlatformAudit()`，對應的服務內部也沒有寫。詳見 `../../system/AUDIT.md` 的 SEC-02 |
 | **rate-limit 綁在路由 scope 內** | `@fastify/rate-limit` 在整個 API 只註冊一次，而且註冊在 `platformRoutes()` 函式內部。拆分 `platform.routes.ts` 之前必讀 `../../system/AUDIT.md` 的 SEC-03 |
 | 沒有任何測試 | `apps/api/tests/` 沒有檔案涵蓋這個模組。所有路由與服務都沒有回歸保護，CI 也沒有執行測試，見 `../../system/AUDIT.md` 的 CI-01 |

@@ -103,6 +103,8 @@ function createDb(opts: { monthlyTokens?: number | null; byokKey?: string; slug?
     tenant: {
       findUnique: async () => ({ limitOverrides: {}, plan: { slug: opts.slug ?? 'standard', limits } }),
     },
+    // 本月沒有已核准的加購（getEffectiveLimit 的 monthlyTokens 會加上當月加購量）
+    planChangeRequest: { aggregate: async () => ({ _sum: { topupTokens: null } }) },
     tenantSettings: {
       findUnique: async () => ({ geminiApiKeyEnc: opts.byokKey ? encryptApiKey(opts.byokKey) : null }),
     },

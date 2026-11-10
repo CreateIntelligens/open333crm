@@ -16,7 +16,7 @@ description: >
   - 注意：其中「`resolveGeminiKey()` 依序找租戶自填的金鑰、平台代設的金鑰、全域 `GEMINI_API_KEY`」已過時，程式只有兩層（租戶自填、全域 env），見健檢「文件過時之處」。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-USAGE.md`
 - 規格：`openspec/specs/ai-usage-recording/spec.md`、`openspec/specs/model-pricing/spec.md`、`openspec/specs/platform-usage/spec.md`、`openspec/specs/token-quota/spec.md`、`openspec/specs/usage-quota-alerts/spec.md`
-- 已知問題：`docs/ref/system/AUDIT.md` 的 AI-01、USAGE-01、USAGE-02、USAGE-03、PLAN-13、PLAN-10
+- 已知問題：`docs/ref/system/AUDIT.md` 的 AI-01、USAGE-01、USAGE-02、USAGE-03、PLAN-10（PLAN-13 已於 2026-11-10 修正）
 - 影響分析：`node scripts/feature-impact.mjs --domain platform-usage`
 
 ## 前端操作流程
@@ -44,7 +44,7 @@ description: >
 - 金額全程 `Prisma.Decimal`，欄位 `Decimal(12,8)`，API 回字串；前端只顯示、不加總。
 - 計數器只累加「成功且 `keySource=platform`」的呼叫；BYOK 不計、不擋、不告警。資料庫回填（`readMonthlyTokensFromDb`）也要用同一組條件，兩邊母體不一致會讓額度判斷錯。
 - 月份一律用 **UTC**（規格 `token-quota` 明定）：台灣時間每月 1 日 08:00 才換月，1 日 00:00–08:00 的用量算上個月。平台每日趨勢也是 UTC 日。要改成台灣時間，計數器 key、`monthStart()`、告警旗標、信件的 `monthKey`、`date_trunc` 要一起改，並改規格。
-- 告警旗標到月底才過期。任何「提高月額度」的操作要考慮清旗標（目前只有核准加購會清，PLAN-13）；清計數器（`clearTokenQuotaCache`）會讓下一次讀取從 `ai_usages` 補建。
+- 告警旗標到月底才過期。「提高月額度」的操作都會清旗標：核准加購一律清；核准升級、平台改租戶方案、試用轉付費、改方案 `limits.monthlyTokens` 只在上限提高時清（`monthlyTokensRaisedByPlanChange()`，PLAN-13 已修正）。新增會提高月額度的入口要照做；清計數器（`clearTokenQuotaCache`）會讓下一次讀取從 `ai_usages` 補建。
 - 用量紀錄、累加與告警在回覆之前完成，每一步失敗都只寫 log，不能讓 AI 回覆失敗（`recordLlmUsage()`）。告警的 Redis 旗標寫入之後、outbox 寫入失敗時，這個月不再發送這個門檻的告警（spec `usage-quota-alerts`）。token-quota 的 Redis 由呼叫端傳入，API 行程用 `fastify.redis`。
 - `apps/api/verify-quota.mts` 會清 Demo 租戶的計數器並累加假用量，**不要在共用環境或 UAT 執行**。
 
@@ -68,6 +68,6 @@ description: >
 - 「AI 突然都不回」：先查有沒有用完額度（403 `PLAN_LIMIT_EXCEEDED`）。Redis `GET aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份）對照有效上限（`tenants.limitOverrides.monthlyTokens ?? plans.limits.monthlyTokens`）。租戶後台看不到用量，只能查 Redis 或 `ai_usages`。
 - 「用量頁成本是 0 或偏低」：查 `ai_usages` 的 `keySource`（BYOK 記 0）、`usageMissing`（查無價目記 0）、`provider=ollama`（記 0）；再查該 model 在 `model_pricings` 有沒有價目。價目快取 10 分鐘（`apps/api/src/modules/ai/pricing.service.ts`）。
 - 「用量頁空白、顯示尚無用量資料」：可能是 API 失敗（頁面不顯示錯誤，HC-PLATFORM-USAGE-03），也可能該期間只有失敗的呼叫（失敗不計入）。用 `select success, count(*) from ai_usages ...` 分辨。
-- 「告警沒收到」：查旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:warning|critical` 是否已存在（本月發過、或換方案前發過，PLAN-13）；收件人只有 `role=ADMIN` 且啟用的成員；信件在 `usage-alert-email` 佇列（`apps/api/src/modules/notification/usage-alert-email.worker.ts`）。
+- 「告警沒收到」：查旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:warning|critical` 是否已存在（本月發過；換方案只在月額度提高時清旗標）；收件人只有 `role=ADMIN` 且啟用的成員；信件在 `usage-alert-email` 佇列（`apps/api/src/modules/notification/usage-alert-email.worker.ts`）。
 - 「用量對不起來、超用」：計數器少算的三種情況見 AUDIT USAGE-03；BYOK 金鑰解密失敗退回平台金鑰見 AI-01。
 - 「某天的用量算到前一天」：每日趨勢是 UTC 日（`apps/api/src/modules/platform/platform-usage.service.ts` 的 `date_trunc('day', "createdAt")`），台灣 00:00–08:00 的呼叫落在前一天。
