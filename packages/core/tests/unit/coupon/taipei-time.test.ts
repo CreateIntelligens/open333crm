@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { afterClaimExpiry, parseDateOnly, taipeiDateEnd, taipeiDateStart, taipeiDateString } from '#src/coupon/taipei-time.js';
+import { afterClaimExpiry, parseDateOnly, taipeiDateEnd, taipeiDateStart, taipeiDateString, taipeiDatesBetween } from '#src/coupon/taipei-time.js';
 
 describe('固定效期的起訖以台灣時間計算', () => {
   test('生效日從台灣時間 00:00 起算', () => {
@@ -33,5 +33,28 @@ describe('領取後 N 天到期以台灣日期計算', () => {
 describe('台灣日期字串', () => {
   test('UTC 16:00 已是台灣隔天', () => {
     assert.equal(taipeiDateString(new Date('2026-10-31T16:00:00.000Z')), '2026-11-01');
+  });
+});
+
+describe('期間內每一個台灣日期（taipeiDatesBetween）', () => {
+  test('從 from 的台灣日期列到 to 的台灣日期，頭尾不足一天也算', () => {
+    // 台灣 2026-11-01 08:00 到 2026-11-03 07:59
+    assert.deepEqual(
+      taipeiDatesBetween(new Date('2026-11-01T00:00:00.000Z'), new Date('2026-11-02T23:59:00.000Z'), 400),
+      ['2026-11-01', '2026-11-02', '2026-11-03'],
+    );
+  });
+  test('UTC 前一天晚上 16:00 起就是台灣隔天', () => {
+    assert.deepEqual(
+      taipeiDatesBetween(new Date('2026-10-31T16:00:00.000Z'), new Date('2026-11-01T15:59:59.999Z'), 400),
+      ['2026-11-01'],
+    );
+  });
+  test('from 晚於 to 回空陣列', () => {
+    assert.deepEqual(taipeiDatesBetween(new Date('2026-11-05T00:00:00.000Z'), new Date('2026-11-01T00:00:00.000Z'), 400), []);
+  });
+  test('超過上限天數回 null', () => {
+    assert.equal(taipeiDatesBetween(new Date('2026-11-01T00:00:00.000Z'), new Date('2026-11-05T00:00:00.000Z'), 4), null);
+    assert.equal(taipeiDatesBetween(new Date('2026-11-01T00:00:00.000Z'), new Date('2026-11-04T00:00:00.000Z'), 4)?.length, 4);
   });
 });

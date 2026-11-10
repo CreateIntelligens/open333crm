@@ -3,7 +3,7 @@
 跨租戶與單一租戶的 AI 用量與成本統計。
 
 - **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`
-- **核對日期**：2026-09-23
+- **核對日期**：2026-11-10
 
 ## 每個端點回傳什麼
 
@@ -13,7 +13,15 @@
 | --- | --- | --- |
 | `GET /usage/overview` | 全系統的 token、成本、呼叫數，加上各 provider 的佔比與有用量的租戶數 | 無 |
 | `GET /usage/tenants` | 各租戶排行，依 token 由多到少 | 只取前 50 名 |
-| `GET /usage/tenants/:tenantId` | 單一租戶的每日趨勢與各 feature 分佈 | 每日趨勢用 `$queryRaw` 的 `date_trunc`，Prisma 的 `groupBy` 不能截斷日期 |
+| `GET /usage/tenants/:tenantId` | 單一租戶的每日趨勢與各 feature 分佈 | 每日趨勢用 `$queryRaw` 依台灣日期分組（Prisma 的 `groupBy` 不能截斷日期），再補齊期間內每一天，見下方「每日趨勢的分日」 |
+
+### 每日趨勢的分日
+
+- `trend` 以台灣時間（`Asia/Taipei`）的日期分日，`day` 是台灣日期。台灣 00:00–08:00 的呼叫算在台灣當天（2026-11-10 以前用 UTC 分日，算到前一天）。
+- 期間內從 `from` 的台灣日期到 `to` 的台灣日期每天一筆，依日期排序；沒有用量的日子 `tokens: 0`、`costUsd: "0"`、`calls: 0`。期間超過 400 天時只列有用量的日子（`MAX_TREND_DAYS`，與券統計相同）。
+- 期間的過濾與總覽、排行相同（同一組 `from`、`to` 時間點），只有分日方式不同，所以趨勢加總等於該租戶在排行中的數字。頭尾兩天可能不足一整天。
+- `/admin/usage` 的「近 N 天」送出的區間是台灣今天往前 N−1 天的 00:00 到現在（`apps/web/src/app/admin/lib/usage-range.ts`），三個查詢共用，趨勢剛好 N 格。沒有用量的日子不畫長條，但仍佔一格。
+- AI 月額度仍以 UTC 月份計算（見下方「AI 月額度」）。
 
 排行只有前 50 名，所以把排行的數字加起來不會等於總覽的數字。租戶數多於 50 時，差額落在沒進榜的那些租戶身上。介面沒有標示這個上限，見 `../../system/AUDIT.md` 的 USAGE-01。
 

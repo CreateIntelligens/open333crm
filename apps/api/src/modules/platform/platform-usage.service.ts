@@ -5,6 +5,7 @@
  */
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
+import { taipeiDatesBetween } from '@open333crm/core';
 
 export interface UsageRange {
   from: Date;
@@ -83,7 +84,38 @@ export async function getTenantUsageRanking(prisma: PrismaClient, range?: Partia
   }));
 }
 
-/** 單租戶鑽取：近 N 日每日趨勢 + feature 分佈。 */
+export interface UsageTrendDay {
+  /** 台灣日期 YYYY-MM-DD */
+  day: string;
+  tokens: number;
+  costUsd: string;
+  calls: number;
+}
+
+/** 補齊期間內每一天的上限；超過時只列有用量的日子，避免回應過大（與券統計相同） */
+const MAX_TREND_DAYS = 400;
+
+/**
+ * @description 把依台灣日期分組的用量補成期間內每天一筆，沒有用量的日子為 0，圖表才是一天一格。
+ * @param rows 依台灣日期分組的用量（只有有用量的日子）
+ * @param from 期間起點
+ * @param to 期間終點
+ * @returns 依日期由舊到新的每日用量；期間超過 MAX_TREND_DAYS 天時只含有用量的日子
+ */
+function fillTrendDays(
+  rows: { day: string; tokens: bigint; cost: string | null; calls: bigint }[],
+  from: Date,
+  to: Date,
+): UsageTrendDay[] {
+  const byDay = new Map<string, UsageTrendDay>(
+    rows.map((r) => [r.day, { day: r.day, tokens: Number(r.tokens), costUsd: r.cost ?? '0', calls: Number(r.calls) }]),
+  );
+  const days = taipeiDatesBetween(from, to, MAX_TREND_DAYS);
+  if (!days) return [...byDay.values()];
+  return days.map((day) => byDay.get(day) ?? { day, tokens: 0, costUsd: '0', calls: 0 });
+}
+
+/** 單租戶鑽取：期間內每日趨勢（台灣日期，每天一筆）+ feature 分佈。 */
 export async function getTenantUsageDetail(
   prisma: PrismaClient,
   tenantId: string,
@@ -92,11 +124,12 @@ export async function getTenantUsageDetail(
   const { from, to } = { ...defaultRange(), ...range };
   const where = { tenantId, success: true, createdAt: { gte: from, lte: to } };
 
-  // 每日趨勢：用 $queryRaw 依日期 group（Prisma groupBy 無法 truncate date）
-  const trend = await prisma.$queryRaw<
-    { day: Date; tokens: bigint; cost: string; calls: bigint }[]
+  // 每日趨勢：用 $queryRaw 依台灣日期 group（Prisma groupBy 無法 truncate date）。
+  // "createdAt" 是不帶時區的 timestamp（存 UTC），先標成 UTC 再轉台灣時間，才是台灣日期
+  const rows = await prisma.$queryRaw<
+    { day: string; tokens: bigint; cost: string | null; calls: bigint }[]
   >`
-    SELECT date_trunc('day', "createdAt") AS day,
+    SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD') AS day,
            SUM("totalTokens")::bigint AS tokens,
            SUM("costUsd")::text AS cost,
            COUNT(*)::bigint AS calls
@@ -115,12 +148,7 @@ export async function getTenantUsageDetail(
 
   return {
     range: { from, to },
-    trend: trend.map((r) => ({
-      day: r.day.toISOString().slice(0, 10),
-      tokens: Number(r.tokens),
-      costUsd: r.cost ?? '0',
-      calls: Number(r.calls),
-    })),
+    trend: fillTrendDays(rows, from, to),
     byFeature: byFeature.map((g) => ({
       feature: g.feature,
       totalTokens: g._sum.totalTokens ?? 0,

@@ -28,6 +28,23 @@ export function taipeiDateEnd(date: string): Date {
   return new Date(taipeiDateStart(date).getTime() + DAY_MS - 1);
 }
 
+/**
+ * @description 期間內每一個台灣日期（YYYY-MM-DD），從 from 的台灣日期到 to 的台灣日期，頭尾不足一天也算。
+ * 圖表補齊沒有資料的日子時用，時間軸才是連續的。
+ * @param from 期間起點
+ * @param to 期間終點
+ * @param maxDays 最多列幾天；超過時回 null，呼叫端改為只列有資料的日子，避免回應過大
+ * @returns 台灣日期陣列；from 晚於 to 時是空陣列；超過 maxDays 時是 null
+ */
+export function taipeiDatesBetween(from: Date, to: Date, maxDays: number): string[] | null {
+  const days: string[] = [];
+  for (let d = taipeiDateStart(taipeiDateString(from)); d <= to; d = new Date(d.getTime() + DAY_MS)) {
+    if (days.length >= maxDays) return null;
+    days.push(taipeiDateString(d));
+  }
+  return days;
+}
+
 /** 領取後 N 天到期：領取當天（台灣日期）加 N 天，當天結束時到期 */
 export function afterClaimExpiry(claimedAt: Date, days: number): Date {
   const start = taipeiDateStart(taipeiDateString(claimedAt));

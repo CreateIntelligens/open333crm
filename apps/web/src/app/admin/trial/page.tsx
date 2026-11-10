@@ -49,6 +49,13 @@ const STATUS_META: Record<TrialTenant['status'], { label: string; color: string 
   purged: { label: '已清除', color: '#6b7280' },
 };
 
+// 申請記錄的狀態（trial_signups.status）；未列出的狀態顯示原值
+const SIGNUP_STATUS_META: Record<string, { label: string; color: string }> = {
+  pending_verification: { label: '等待驗證', color: '#66707f' },
+  provisioned: { label: '已開通', color: '#17935b' },
+  failed: { label: '失敗／已作廢', color: '#d1443e' },
+};
+
 export default function TrialAdminPage() {
   const [tab, setTab] = useState<'tenants' | 'signups' | 'settings'>('tenants');
   const [values, setValues] = useState<Record<string, unknown>>({});
@@ -237,8 +244,8 @@ export default function TrialAdminPage() {
                   <td style={td}>{s.email}</td>
                   <td style={td}>{s.siteName}</td>
                   <td style={td}>
-                    <span style={{ color: s.status === 'provisioned' ? '#17935b' : s.status === 'failed' ? '#d1443e' : '#66707f', fontSize: 12 }}>
-                      {s.status}
+                    <span style={{ color: SIGNUP_STATUS_META[s.status]?.color ?? '#66707f', fontSize: 12 }}>
+                      {SIGNUP_STATUS_META[s.status]?.label ?? s.status}
                     </span>
                   </td>
                   <td style={{ ...td, fontSize: 12, color: '#66707f' }}>{s.failureReason ?? '—'}</td>

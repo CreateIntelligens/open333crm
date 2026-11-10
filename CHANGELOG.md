@@ -2,6 +2,17 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-10]
+
+### Fixed
+
+- **平台後台：試用申請狀態改顯示中文，用量趨勢一天一格並以台灣日期分日**（issue #497，change `fix-platform-usage-trial-display`）— 平台後台兩處原本直接顯示原始資料：
+  - 試用管理「申請記錄」的狀態原本顯示 `pending_verification`、`provisioned`、`failed`。現在顯示「等待驗證」、「已開通」、「失敗／已作廢」，未知的狀態顯示原值。
+  - 用量統計的單一租戶每日趨勢（`GET /api/v1/platform/usage/tenants/:tenantId` 的 `trend`）原本只回有用量的日子，長條圖一根接一根排，空白期看不出來（UAT 近 30 天只畫 16 根、擠在左半邊）。現在期間內每個日期都有一筆，沒有用量的日子回 `tokens: 0`、`costUsd: "0"`、`calls: 0`；期間超過 400 天時仍只列有用量的日子。
+  - 每日趨勢原本以 UTC 分日，台灣 00:00–08:00 的用量算到前一天。現在以台灣日期（`Asia/Taipei`）分日，`day` 是台灣日期。期間的過濾不變，總覽、排行與趨勢的加總一致。月額度仍以 UTC 月份計算。
+  - `/admin/usage` 的「近 7／30／90 天」改從台灣今天往前 N−1 天的 00:00 起算，三個查詢共用同一個區間，趨勢剛好 N 格；沒有用量的日子不畫長條。
+  - 補齊日期的邏輯移到 `@open333crm/core` 的 `taipeiDatesBetween()`，券統計的每日趨勢也改用它，行為不變。
+
 ## [2026-11-09]
 
 ### Changed
