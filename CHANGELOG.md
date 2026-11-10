@@ -4,12 +4,20 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-10]
 
+### Changed
+
+- **AI 月額度改以台灣月份計算**（issue #497，change `fix-platform-usage-trial-display`）— 月額度原本以 UTC 月份計算，台灣每月 1 日 00:00–08:00 的用量算到上個月，告警信的「本月（YYYY-MM）」也是 UTC 月份。現在：
+  - Redis 計數器 key 改為 `aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份），在台灣下個月 1 日 00:00 過期；計數器不存在時，從台灣本月 1 日 00:00 起的 `AiUsage` 加總補建。Redis 無法使用時的資料庫加總也用同一個起點。
+  - 告警旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}` 的格式不變，月份改為台灣月份，在台灣下個月 1 日 00:00 過期；告警事件、站內通知與 email 的月份都是台灣月份。
+  - 計數器 key 加上 `:tpe`，換版後不沿用舊的 UTC 月份計數器（少了台灣 1 日 00:00–08:00 的用量），第一次讀取時從資料庫重建。月中或台灣 1 日凌晨部署都不會重複計算或漏算；本月已發過的告警旗標照樣有效，不會重發。回滾時舊程式的計數器會少算新版期間的用量，要刪掉舊 key 讓它重建。
+  - 新增 `@open333crm/core` 的 `taipeiMonthString()`、`taipeiMonthStart()`、`taipeiNextMonthStart()`。`apps/api/verify-quota.mts` 改用新的 key。
+
 ### Fixed
 
 - **平台後台：試用申請狀態改顯示中文，用量趨勢一天一格並以台灣日期分日**（issue #497，change `fix-platform-usage-trial-display`）— 平台後台兩處原本直接顯示原始資料：
   - 試用管理「申請記錄」的狀態原本顯示 `pending_verification`、`provisioned`、`failed`。現在顯示「等待驗證」、「已開通」、「失敗／已作廢」，未知的狀態顯示原值。
   - 用量統計的單一租戶每日趨勢（`GET /api/v1/platform/usage/tenants/:tenantId` 的 `trend`）原本只回有用量的日子，長條圖一根接一根排，空白期看不出來（UAT 近 30 天只畫 16 根、擠在左半邊）。現在期間內每個日期都有一筆，沒有用量的日子回 `tokens: 0`、`costUsd: "0"`、`calls: 0`；期間超過 400 天時仍只列有用量的日子。
-  - 每日趨勢原本以 UTC 分日，台灣 00:00–08:00 的用量算到前一天。現在以台灣日期（`Asia/Taipei`）分日，`day` 是台灣日期。期間的過濾不變，總覽、排行與趨勢的加總一致。月額度仍以 UTC 月份計算。
+  - 每日趨勢原本以 UTC 分日，台灣 00:00–08:00 的用量算到前一天。現在以台灣日期（`Asia/Taipei`）分日，`day` 是台灣日期。期間的過濾不變，總覽、排行與趨勢的加總一致。月額度的月份見上方 Changed。
   - `/admin/usage` 的「近 7／30／90 天」改從台灣今天往前 N−1 天的 00:00 起算，三個查詢共用同一個區間，趨勢剛好 N 格；沒有用量的日子不畫長條。
   - 補齊日期的邏輯移到 `@open333crm/core` 的 `taipeiDatesBetween()`，券統計的每日趨勢也改用它，行為不變。
 

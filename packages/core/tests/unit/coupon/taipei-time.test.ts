@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { afterClaimExpiry, parseDateOnly, taipeiDateEnd, taipeiDateStart, taipeiDateString, taipeiDatesBetween } from '#src/coupon/taipei-time.js';
+import { afterClaimExpiry, parseDateOnly, taipeiDateEnd, taipeiDateStart, taipeiDateString, taipeiDatesBetween, taipeiMonthStart, taipeiMonthString, taipeiNextMonthStart } from '#src/coupon/taipei-time.js';
 
 describe('固定效期的起訖以台灣時間計算', () => {
   test('生效日從台灣時間 00:00 起算', () => {
@@ -56,5 +56,22 @@ describe('期間內每一個台灣日期（taipeiDatesBetween）', () => {
   test('超過上限天數回 null', () => {
     assert.equal(taipeiDatesBetween(new Date('2026-11-01T00:00:00.000Z'), new Date('2026-11-05T00:00:00.000Z'), 4), null);
     assert.equal(taipeiDatesBetween(new Date('2026-11-01T00:00:00.000Z'), new Date('2026-11-04T00:00:00.000Z'), 4)?.length, 4);
+  });
+});
+
+describe('台灣月份（AI 月額度）', () => {
+  test('UTC 月底 16:00 起就是台灣的下個月', () => {
+    assert.equal(taipeiMonthString(new Date('2026-08-31T15:59:59.999Z')), '2026-08');
+    assert.equal(taipeiMonthString(new Date('2026-08-31T16:00:00.000Z')), '2026-09');
+  });
+  test('月初是台灣 1 日 00:00，下個月初是台灣下個月 1 日 00:00', () => {
+    const at = new Date('2026-08-31T17:00:00.000Z'); // 台灣 09-01 01:00
+    assert.equal(taipeiMonthStart(at).toISOString(), '2026-08-31T16:00:00.000Z');
+    assert.equal(taipeiNextMonthStart(at).toISOString(), '2026-09-30T16:00:00.000Z');
+  });
+  test('跨年：台灣 12 月的下個月初是隔年 1 月 1 日 00:00', () => {
+    const at = new Date('2026-12-15T00:00:00.000Z');
+    assert.equal(taipeiMonthString(at), '2026-12');
+    assert.equal(taipeiNextMonthStart(at).toISOString(), '2026-12-31T16:00:00.000Z');
   });
 });

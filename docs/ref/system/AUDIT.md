@@ -981,7 +981,7 @@ PlatformSetting（KV，不知道型別）
 這個欄位是每月額度的上限，不是可消耗的餘額：
 
 - 額度的判斷在 `token-quota.service.ts` 的 `isMonthlyTokenExceeded()`，拿當月累計用量與 `getEffectiveLimit(..., 'monthlyTokens')` 比較。
-- 計數器的 Redis key 是 `aiquota:{tenantId}:{YYYY-MM}`，月底過期，每個月從零開始。
+- 計數器的 Redis key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份，2026-11-10 以前是 UTC 月份的 `aiquota:{tenantId}:{YYYY-MM}`），台灣月底過期，每個月從零開始。
 - `limitOverrides` 沒有期限欄位，核准後一直留著。
 
 所以核准一次加購，是把該租戶往後每一個月的額度都提高同樣的量，不是給他一次性的配額。
@@ -1400,7 +1400,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 <a id="usage-03"></a>
 ### USAGE-03：AI 額度計數器少算用量之後，當月不會再校正
 
-`token-quota.service.ts` 的月額度檢查讀 Redis 計數器 `aiquota:{tenantId}:{YYYY-MM}`。只有計數器**不存在**時，`getMonthlyTokens()` 與 `incrMonthlyTokens()` 才會從 `AiUsage` 的加總補建。計數器存在、但少算了用量時（計數器的數字小於 `AiUsage` 的實際加總），沒有任何程式會再拿 `AiUsage` 校正，少算的用量一直留到月底 key 過期。
+`token-quota.service.ts` 的月額度檢查讀 Redis 計數器 `aiquota:{tenantId}:{YYYY-MM}:tpe`（台灣月份）。只有計數器**不存在**時，`getMonthlyTokens()` 與 `incrMonthlyTokens()` 才會從 `AiUsage` 的加總補建。計數器存在、但少算了用量時（計數器的數字小於 `AiUsage` 的實際加總），沒有任何程式會再拿 `AiUsage` 校正，少算的用量一直留到月底 key 過期。
 
 有三種情況會讓計數器少算用量：
 

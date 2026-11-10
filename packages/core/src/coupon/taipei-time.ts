@@ -45,6 +45,23 @@ export function taipeiDatesBetween(from: Date, to: Date, maxDays: number): strin
   return days;
 }
 
+/** 這個時間點在台灣是哪個月（YYYY-MM）。AI 月額度的計數器與告警以這個月份為準 */
+export function taipeiMonthString(at: Date): string {
+  return taipeiDateString(at).slice(0, 7);
+}
+
+/** 這個時間點所在台灣月份的 1 日 00:00 */
+export function taipeiMonthStart(at: Date): Date {
+  return taipeiDateStart(`${taipeiMonthString(at)}-01`);
+}
+
+/** 這個時間點所在台灣月份的下個月 1 日 00:00 */
+export function taipeiNextMonthStart(at: Date): Date {
+  const [y, m] = taipeiMonthString(at).split('-').map(Number);
+  // Date.UTC 的月份從 0 起算，傳入 m 就是下個月；12 月會自動進位到隔年 1 月
+  return new Date(Date.UTC(y, m, 1) - TAIPEI_OFFSET_MS);
+}
+
 /** 領取後 N 天到期：領取當天（台灣日期）加 N 天，當天結束時到期 */
 export function afterClaimExpiry(claimedAt: Date, days: number): Date {
   const start = taipeiDateStart(taipeiDateString(claimedAt));

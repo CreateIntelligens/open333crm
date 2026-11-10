@@ -2751,7 +2751,7 @@
         },
         {
           "domain": "platform-usage",
-          "why": "monthlyTokens 硬擋讀 AiUsage 與 Redis 計數器 aiquota:{tenantId}:{YYYY-MM}；只算 keySource=platform"
+          "why": "monthlyTokens 硬擋讀 AiUsage 與 Redis 計數器 aiquota:{tenantId}:{YYYY-MM}:tpe（台灣月份）；只算 keySource=platform"
         }
       ],
       "usedBy": [

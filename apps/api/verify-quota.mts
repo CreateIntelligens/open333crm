@@ -1,7 +1,7 @@
 import { loadEnvConfig } from './src/config/env.js';
 loadEnvConfig();
 import { PrismaClient } from '@prisma/client';
-import { redis } from '@open333crm/core';
+import { redis, taipeiMonthString } from '@open333crm/core';
 import { incrMonthlyTokens, isMonthlyTokenExceeded, clearTokenQuotaCache } from './src/modules/trial/token-quota.service.js';
 const prisma = new PrismaClient();
 const TENANT = 'a0000000-0000-0000-0000-000000000001';
@@ -16,8 +16,8 @@ async function main() {
   await clearTokenQuotaCache(TENANT);
   await incrMonthlyTokens(prisma, TENANT, 1000);
   await incrMonthlyTokens(prisma, TENANT, 500);
-  const now = new Date();
-  const key = `aiquota:${TENANT}:${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
+  // 月份以台灣時間計算，key 與 token-quota.service.ts 的 counterKey() 相同
+  const key = `aiquota:${TENANT}:${taipeiMonthString(new Date())}:tpe`;
   const val = await redis.get(key);
   // 注意：incr 前會先回填 DB 值（可能非0），故驗證「累加了 1500」而非絕對值
   console.log(`[2] 計數器 key=${key} 值=${val}（含 DB 回填 + 1500 累加）`);

@@ -21,7 +21,7 @@
 - 期間內從 `from` 的台灣日期到 `to` 的台灣日期每天一筆，依日期排序；沒有用量的日子 `tokens: 0`、`costUsd: "0"`、`calls: 0`。期間超過 400 天時只列有用量的日子（`MAX_TREND_DAYS`，與券統計相同）。
 - 期間的過濾與總覽、排行相同（同一組 `from`、`to` 時間點），只有分日方式不同，所以趨勢加總等於該租戶在排行中的數字。頭尾兩天可能不足一整天。
 - `/admin/usage` 的「近 N 天」送出的區間是台灣今天往前 N−1 天的 00:00 到現在（`apps/web/src/app/admin/lib/usage-range.ts`），三個查詢共用，趨勢剛好 N 格。沒有用量的日子不畫長條，但仍佔一格。
-- AI 月額度仍以 UTC 月份計算（見下方「AI 月額度」）。
+- AI 月額度也以台灣月份計算（2026-11-10 起，見下方「這裡的數字不等於額度用掉的數字」）。
 
 排行只有前 50 名，所以把排行的數字加起來不會等於總覽的數字。租戶數多於 50 時，差額落在沒進榜的那些租戶身上。介面沒有標示這個上限，見 `../../system/AUDIT.md` 的 USAGE-01。
 
@@ -86,8 +86,10 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 | | 平台用量統計 | AI 月額度 |
 | --- | --- | --- |
 | 條件 | `success` | `success` 且 `keySource = 'platform'` |
-| 區間 | 呼叫端指定，預設最近 30 天 | 當月，UTC 月初起算 |
+| 區間 | 呼叫端指定，預設最近 30 天 | 當月，台灣時間 1 日 00:00 起算（2026-11-10 以前是 UTC 月初） |
 | 來源 | 每次都查資料庫 | Redis 計數器，miss 時從資料庫回填 |
+
+AI 月額度的月份一律是台灣月份（`taipeiMonthString()`）：Redis 計數器 key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，告警旗標是 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`，兩者都在台灣下個月 1 日 00:00 過期；告警站內通知與 email 的「本月（YYYY-MM）」也是台灣月份。舊的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}`（沒有 `:tpe`）不再被讀取，換版後計數器從資料庫以台灣月份重建，部署當下跨月的行為見 change `fix-platform-usage-trial-display` 的 design D3。
 
 BYOK 的呼叫出現在用量統計裡，但不計入額度，也不會被額度擋下。額度的判斷見 `apps/api/src/modules/trial/token-quota.service.ts`。計數器少算用量之後，當月不會校正，見 `../../system/AUDIT.md` 的 USAGE-03。
 
