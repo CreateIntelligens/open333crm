@@ -53,7 +53,7 @@ overrides:
 
 patchedDependencies:
   minio@8.0.7:
-    hash: cvfbonlczv4vpy54uomikhc22e
+    hash: n5bzkupnsp2atqzqieqmva4dum
     path: patches/minio@8.0.7.patch
 
 importers:
@@ -541,7 +541,7 @@ importers:
         version: 7.3.1
       minio:
         specifier: ^8.0.0
-        version: 8.0.7(patch_hash=cvfbonlczv4vpy54uomikhc22e)
+        version: 8.0.7(patch_hash=n5bzkupnsp2atqzqieqmva4dum)
       winston:
         specifier: ^3.13.0
         version: 3.19.0
@@ -11784,7 +11784,7 @@ snapshots:
 
   minimist@1.2.8: {}
 
-  minio@8.0.7(patch_hash=cvfbonlczv4vpy54uomikhc22e):
+  minio@8.0.7(patch_hash=n5bzkupnsp2atqzqieqmva4dum):
     dependencies:
       async: 3.2.6
       block-stream2: 2.1.0

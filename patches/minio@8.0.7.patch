@@ -21,7 +21,7 @@ index 2fe075b73a9f98ece945993ebc151f601e0d52ee..5b3319ef415c1b48ded768907a488dcc
          // Data is flushed periodically (every 5 seconds), so we should
          // handle it after flushing from the JSON parser.
 diff --git a/dist/main/notification.js b/dist/main/notification.js
-index 8d8e8b389bc313de072c603b302e4c39d373d345..e0b39dea06b23823e1fa933c495f6548d029473f 100644
+index 8d8e8b389bc313de072c603b302e4c39d373d345..91ef064e617571e19d460463d6cbef46e3ab22e5 100644
 --- a/dist/main/notification.js
 +++ b/dist/main/notification.js
 @@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", {
@@ -38,7 +38,7 @@ index 8d8e8b389bc313de072c603b302e4c39d373d345..e0b39dea06b23823e1fa933c495f6548
        query
      }, '', [200], region).then(response => {
 -      const asm = _Parser.make();
-+      const asm = _Parser.asStream();
++      const asm = _Parser.default.asStream();
        (0, _helper.pipesetup)(response, asm).on('data', data => {
          // Data is flushed periodically (every 5 seconds), so we should
          // handle it after flushing from the JSON parser.
