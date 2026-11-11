@@ -217,7 +217,7 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
     if (outsideMsg) {
       try {
         const botConfig = await getBotConfig(ctx);
-        if (botConfig.offlineGreeting && typeof botConfig.offlineGreeting === 'string') {
+        if (botConfig.offlineGreeting) {
           outsideMsg = botConfig.offlineGreeting;
         }
       } catch {

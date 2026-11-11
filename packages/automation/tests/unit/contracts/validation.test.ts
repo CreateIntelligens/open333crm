@@ -59,3 +59,49 @@ test('Case status action offers pending：狀態選項有待處理，設 PENDING
   const result = validate('case.created', [{ type: 'update_case_status', params: { status: 'PENDING' } }]);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
+
+// ── 參數型別（change validate-bot-config-and-action-params，issue #405）──────
+// 修正前只檢查必填與下拉選項：send_message 的 text 是物件時，workers 以 String() 送出「[object Object]」。
+
+test('Text parameter that is not a string rejected：訊息內容是物件被擋，錯誤寫出動作與參數', () => {
+  const result = validate('message.received', [{ type: 'send_message', params: { text: { a: 1 } } }]);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.errors, ['第 1 個動作「傳送訊息」的「訊息內容」必須是文字']);
+});
+
+test('Text parameter that is not a string rejected：標籤名稱、客服、素材、優惠券是數字或陣列也被擋', () => {
+  const cases: Array<[string, Record<string, unknown>, RegExp]> = [
+    ['add_tag', { tagName: 123 }, /「新增標籤」的「標籤名稱」必須是文字/],
+    ['notify', { message: '有新訊息', agentId: 7 }, /「傳送通知」的「通知誰」必須是文字/],
+    ['send_material', { materialId: ['x'] }, /「傳送素材」的「素材」必須是文字/],
+    ['issue_coupon', { couponId: 'c1', failureText: true }, /「發送優惠券」的「發不出時回覆顧客」必須是文字/],
+    ['create_case', { title: { zh: '標題' } }, /「建立工單」的「工單標題」必須是文字/],
+  ];
+  for (const [type, params, message] of cases) {
+    const result = validate('message.received', [{ type, params }]);
+    assert.equal(result.valid, false, type);
+    assert.match(result.errors[0]!, message);
+  }
+});
+
+test('Parameters sent by the rule editor accepted：規則編輯器、關鍵字回覆、加好友禮送出的參數都是字串，通過', () => {
+  const result = validate('message.received', [
+    { type: 'send_message', params: { text: '您好，請稍候' } },
+    { type: 'create_case', params: { title: '客訴', priority: 'HIGH', category: '退換貨' } },
+    { type: 'add_tag', params: { tagName: 'VIP' } },
+    { type: 'remove_tag', params: { tagName: '潛在客戶' } },
+    { type: 'send_material', params: { materialId: '0b1c2d3e-4f50-4a6b-8c7d-8e9f0a1b2c3d' } },
+    { type: 'issue_coupon', params: { couponId: '1b1c2d3e-4f50-4a6b-8c7d-8e9f0a1b2c3d', failureText: '您已經領過這張券囉' } },
+    { type: 'notify', params: { message: '有新訊息', agentId: '2b1c2d3e-4f50-4a6b-8c7d-8e9f0a1b2c3d' } },
+    { type: 'notify_supervisor', params: { message: '請主管處理' } },
+  ]);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.valid, true);
+});
+
+test('Parameters not in the contract are not checked：send_material 的 variables 照舊接受', () => {
+  const result = validate('message.received', [
+    { type: 'send_material', params: { materialId: '0b1c2d3e-4f50-4a6b-8c7d-8e9f0a1b2c3d', variables: { name: '王' } } },
+  ]);
+  assert.equal(result.valid, true);
+});

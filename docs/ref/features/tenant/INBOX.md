@@ -43,6 +43,11 @@
 | `offlineGreeting` | 營業時間外的自動回覆，優先於營業時間設定的訊息 |
 | `handoffPromptEnabled`、`handoffPromptStyle`、`handoffButtonLabel` | 機器人回答後，要不要附上「轉接客服」的提示，以及用按鈕還是文字 |
 
+每個欄位的型別與範圍定義在 `botConfigSchema`（同一個檔案，issue #405）：
+
+- **寫入**：建立渠道時檢查；更新渠道時，送出的 `botConfig` 與已存的不同才檢查（`channel/bot-config-settings.ts`），不合法回 400 `VALIDATION_ERROR`。`handoffKeywords` 每個元素必須是不空白的字串，`handoffPromptEnabled` 必須是布林，`handoffButtonLabel` 最多 20 字。
+- **讀取**：一律經過 `getBotConfig()`，不合法的欄位改用預設值，不丟例外。`handoffKeywords` 只使用不空白的字串（空字串會讓每則訊息都轉真人），`handoffMessage` 空白時用預設轉接訊息。
+
 自動化訂閱者（`setupAutomationWorker()`）從 `event-automation` 佇列收到 `message.received` 後，對 `BOT_HANDLED` 的對話依序做下列事情：
 
 1. **檢查自動轉真人**（`checkAutoHandoff()`）。見[轉真人](#轉真人)。
