@@ -19,6 +19,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import { AUTOMATION_DELIVERY_CHANNEL_TYPES, type ChannelPlugin } from '@open333crm/channel-plugins';
 import {
+  advisoryXactLock,
   buildCouponMessage,
   confirmPendingInstance,
   couponLiffConfig,
@@ -187,7 +188,7 @@ export async function issueCouponForRule(
   // 1. 保留：鎖住這張券、確認仍是進行中，建立發送中的券
   const reserved = await prisma.$transaction(async (tx) => {
     // 先鎖再讀狀態：讀到進行中之後才被暫停的話，暫停會等這次保留提交（issueInstances 內同一把鎖，可重入）
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${coupon.id}, 0))`;
+    await advisoryXactLock(tx, coupon.id);
     const locked = await tx.coupon.findFirst({ where: { id: coupon.id, tenantId } });
     if (!locked) return { ok: false as const, reason: 'COUPON_NOT_FOUND' as const };
     if (locked.status !== 'ACTIVE' || isCouponPastFixedEnd(locked)) return { ok: false as const, reason: 'COUPON_INACTIVE' as const };

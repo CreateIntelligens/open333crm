@@ -27,5 +27,6 @@ export * from "./coupon/delivery.js";
 export * from "./coupon/wallet-link.js";
 export * from "./coupon/taipei-time.js";
 export * from "./db/db-invariants.js";
+export * from "./db/advisory-lock.js";
 export * from "./agent/agent-lookup.js";
 export * from "./outbox/index.js";

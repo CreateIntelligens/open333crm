@@ -5,6 +5,7 @@
  * 已結束的券若能復活，顧客手上過期的券會突然又能用。
  */
 import type { Prisma } from '@prisma/client';
+import { advisoryXactLock } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { CouponValidationError } from './coupon.service.js';
 
@@ -105,8 +106,9 @@ export async function changeStatus(
   const db = ctx.tx;
   const { tenantId } = ctx;
   // 與發券同一把鎖（core issueInstances）：結束時等進行中的發券提交後才作廢，不會漏掉剛發出的券。
-  // ctx.tx 是入口開的交易，鎖會維持到交易結束
-  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${couponId}, 0))`;
+  // ctx.tx 是入口開的交易，鎖會維持到交易結束。couponId 來自路由參數，大小寫不固定：
+  // 鎖鍵經 advisoryXactLock 轉成小寫，大寫 id 也與發券同一把鎖（issue #403）
+  await advisoryXactLock(db, couponId);
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId } });
   if (!coupon) return { ok: false, reason: 'NOT_FOUND' };
 

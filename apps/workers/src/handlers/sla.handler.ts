@@ -11,7 +11,7 @@ import {
   minutesUntil,
 } from '@open333crm/shared';
 import type { SlaEventName, SlaKind, SlaState } from '@open333crm/shared';
-import { logger } from '@open333crm/core';
+import { advisoryXactLock, logger } from '@open333crm/core';
 import { publishSocketEvent } from '../lib/socket-bridge.js';
 import { enqueueNotification } from '../lib/notification-queue.js';
 import {
@@ -289,8 +289,7 @@ async function dispatchSlaOutcome(
   // 兩次掃描重疊（例如 BullMQ 判定 stalled 後重跑）時，第二次會等第一次提交後再查，
   // 看到已寫入的事件就略過。只有真正寫入事件的那次才發 socket、通知與自動化規則。
   const recorded = await prisma.$transaction(async (tx) => {
-    const lockKey = `sla:${c.id}:${eventType}`;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+    await advisoryXactLock(tx, 'sla', c.id, eventType);
 
     if (await hasCaseEventSince(tx, c.id, eventType, params.dedupSince)) return null;
 

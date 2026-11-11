@@ -8,7 +8,7 @@
  * ⚠️ 全程在交易內：配額檢查與建立之間若被插隊，總量會超發。
  */
 
-import { couponSourceName, isCouponPastFixedEnd, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
+import { advisoryXactLock, couponSourceName, isCouponPastFixedEnd, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { ContactTagged } from '../tag/tagging.service.js';
 import { applyClaimTag } from './coupon-tagging.js';
@@ -69,8 +69,9 @@ export async function issueCoupons(
   if (opts.contactIds.length === 0) {
     throw new CouponValidationError('請選擇發放對象');
   }
-  // 先鎖再讀狀態：讀到「進行中」之後才被結束的話，結束會等這次發券提交後再作廢（同一把鎖，可重入）
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${couponId}, 0))`;
+  // 先鎖再讀狀態：讀到「進行中」之後才被結束的話，結束會等這次發券提交後再作廢（同一把鎖，可重入）。
+  // couponId 來自路由參數，大小寫不固定，鎖鍵經 advisoryXactLock 轉成小寫（issue #403）
+  await advisoryXactLock(tx, couponId);
   const coupon = await tx.coupon.findFirst({ where: { id: couponId, tenantId } });
   if (!coupon) throw new CouponValidationError('查無此券');
   if (coupon.status !== 'ACTIVE') {

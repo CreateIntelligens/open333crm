@@ -8,7 +8,7 @@
  * 兩種登記的差異由 RegistrationKind 描述。
  */
 import { randomBytes } from 'node:crypto';
-import { logger } from '@open333crm/core';
+import { advisoryXactLock, logger } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
@@ -360,8 +360,7 @@ async function register(
   // 同一個值的登記依序處理（AUDIT IDENT-04）：沒有這個鎖時，兩位聯絡人同時登記一個新的值，
   // 兩邊都查不到使用者、都寫入但不合併。鎖在交易結束時釋放，db 必須是 withTenant 的 tx。
   // 以統一格式後的值為 key：同一支手機寫成不同格式也會依序處理
-  const lockKey = `${kind.name}-registration:${tenantId}:${value}`;
-  await (db as Prisma.TransactionClient).$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+  await advisoryXactLock(db as Prisma.TransactionClient, `${kind.name}-registration`, tenantId, value);
 
   // 最早使用這個值的聯絡人代表這個 One ID（含登記方自己）：登記方就是最早的一位時不合併，
   // 否則會把最早的一位併入較新的一位

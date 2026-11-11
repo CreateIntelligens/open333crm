@@ -5,6 +5,7 @@
  * 因此：名稱在租戶內不可重複、改名要同步工單、仍有未結案工單時不能刪（G20）。
  */
 import type { Prisma, Priority } from '@prisma/client';
+import { advisoryXactLock } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
@@ -28,7 +29,7 @@ const CLOSED_CASE_STATUSES = ['RESOLVED', 'CLOSED'] as const;
  * 交易結束自動釋放。
  */
 async function lockTenantSlaPolicies(tx: Prisma.TransactionClient, tenantId: string) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`sla-policy:${tenantId}`}, 0))`;
+  await advisoryXactLock(tx, 'sla-policy', tenantId);
 }
 
 async function assertNameAvailable(tx: Prisma.TransactionClient, tenantId: string, name: string, exceptId?: string) {

@@ -7,7 +7,7 @@
  * 函式收 TenantCtx。查詢外部會員系統不在交易內，由 member-binding.flow.ts 串接（AGENTS.md 結構規則 2）。
  */
 import type { Prisma } from '@prisma/client';
-import { logger } from '@open333crm/core';
+import { advisoryXactLock, logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { encryptCredentials, decryptCredentials } from '../channel/channel.service.js';
 import { addTagToTarget, type ContactTagged } from '../tag/tagging.service.js';
@@ -92,9 +92,9 @@ export async function writeBinding(
   const { tx, tenantId } = ctx;
   const attributeKey = config.attributeKey || DEFAULT_ATTRIBUTE_KEY;
 
-  // 同一個會員編號的綁定依序處理：先查再寫之間沒有鎖的話，兩人同時綁都查不到對方、都會成功
-  const lockKey = `member-binding:${tenantId}:${lookup.memberId}`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+  // 同一個會員編號的綁定依序處理：先查再寫之間沒有鎖的話，兩人同時綁都查不到對方、都會成功。
+  // 會員編號由外部系統回傳，下面的查重以字串比對、分大小寫，所以鎖鍵也保留原本的大小寫
+  await advisoryXactLock(tx, 'member-binding', tenantId, lookup.memberId);
   // 同一會員編號不可綁到多個聯絡人——否則兩人共享同一會員權益
   const conflicting = await tx.contactAttribute.findFirst({
     where: {
