@@ -32,8 +32,10 @@
 - [x] 6.1 在本檔記下 3.1、3.2 的突變與結果。
 - [x] 6.2 `pnpm test` 通過。
   - 2026-11-11：17 個套件，api 1759 個測試。
+  - 2026-11-11 review-loop 之後：17 個套件，api 287 檔、1760 個測試。
 - [x] 6.3 `pnpm test:feature` 通過。
   - 2026-11-11：151 檔、1504 個測試。
+  - 2026-11-11 review-loop 之後：151 檔、1505 個測試。
 - [x] 6.4 `node scripts/check-tenant-ctx.mjs --strict` 通過，執行 `--update-baseline`；`check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規。
 - [x] 6.5 `node scripts/feature-impact.mjs` 列出的直接受影響領域（knowledge、automation、inbox），逐項走過回歸清單。要瀏覽器的手動步驟交給負責 UAT 手動測試的人。
   - 與這次改動有關的項目：knowledge 的 3「KB 自動回覆」與 3a「AI 失敗轉接」、inbox 的 6「AI 與知識庫回覆都失敗」、automation 的「同一則訊息回兩次」。由 `kb-model-guard.test.ts`、`kb-clarify-handoff.test.ts`、`ai-failure-handoff.test.ts`、`bot-reply-claim.test.ts`、`keyword-suppresses-ai.test.ts` 涵蓋，通過。其他項目是畫面、權限與渠道的流程，這次沒有改到。
