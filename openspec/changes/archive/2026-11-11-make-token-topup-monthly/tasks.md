@@ -42,4 +42,4 @@
 - [x] 7.4 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx`、`check-workspace-esm` 加 `--strict`；`feature-impact.mjs --check`
 - [x] 7.5 `node scripts/validate-openspec.mjs --specs` 與 `node scripts/validate-openspec.mjs make-token-topup-monthly`
 - [x] 7.6 `CHANGELOG.md` 的 `## [2026-11-10]` 加條目
-- [ ] 7.7 歸檔：UAT 驗證後、`fix-platform-usage-trial-display` 歸檔之後，執行 `pnpm exec openspec archive make-token-topup-monthly`
+- [x] 7.7 歸檔：UAT 驗證後、`fix-platform-usage-trial-display` 歸檔之後，執行 `pnpm exec openspec archive make-token-topup-monthly`

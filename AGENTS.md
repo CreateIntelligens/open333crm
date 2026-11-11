@@ -110,7 +110,7 @@ applies, write one sentence that says why.
 | calls an AI model | Record the call with `recordLlmUsage()` in `apps/api/src/modules/ai/llm.flow.ts`, with an `AiFeature` value from `apps/api/src/modules/ai/llm.service.ts`. Check the monthly quota (`token-quota.service.ts`) and the tenant AI privacy policy (`ai-privacy.service.ts`). A new model needs a price in `model_pricings`, or its cost is recorded as 0 (AUDIT USAGE-02). |
 | adds a channel type | Make sure the plan page can allow or block it (`allowedChannelTypes`). |
 | adds a tenant setting or state that the platform team must see or control | Add it to the platform API and pages. An example is the AI privacy switch on the tenant page. |
-| writes a new platform audit action | Add its label to the platform audit label table (`ACTION_LABELS` in `apps/web/src/app/admin/platform-users/[id]/page.tsx`). Otherwise the page shows the raw code. |
+| writes a new platform audit action | Add its label to the platform audit label table (`PLATFORM_AUDIT_ACTION_LABELS` in `apps/web/src/app/admin/lib/audit-log.ts`). The tenant detail page and the platform user detail page both read it. Otherwise they show the raw code. |
 | adds a BullMQ queue | Add it to `apps/api/src/modules/queue-monitoring/monitored-queues.ts`, so that the queue monitor shows its failed jobs. |
 | sends a request from a tenant to the platform team, or the other way | Notify the other side. A request that nobody sees waits forever (#495, AUDIT PLAN-17). |
 
