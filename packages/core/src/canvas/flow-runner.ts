@@ -18,12 +18,24 @@ const MAX_STEP_LIMIT_DEFAULT = 100;
 
 // ── FlowRunner ─────────────────────────────────────────────────────────────
 
+export interface FlowRunOptions {
+  /**
+   * 由等待節點喚醒（processResumeQueue 認領成功之後）。
+   *
+   * 暫停時 currentNodeId 停在讓流程暫停的等待節點；喚醒時略過這個等待節點，從它的 nextNodeId 繼續，
+   * 沒有下一個節點時流程完成（issue #334）。不在暫停時把 currentNodeId 改成 nextNodeId：
+   * 那樣「等待節點後面接另一個等待節點」與「舊資料停在等待節點本身」無法區分，
+   * 而等待節點是最後一個節點時，currentNodeId 變成空值，喚醒會從 TRIGGER 重新開始。
+   */
+  resumeFromWait?: boolean;
+}
+
 export class FlowRunner {
   /**
    * Resume or start a FlowExecution by its ID.
    * Loads execution state from DB, traverses nodes until WAIT or terminal node.
    */
-  static async run(executionId: string): Promise<void> {
+  static async run(executionId: string, options: FlowRunOptions = {}): Promise<void> {
     const execution = await prisma.flowExecution.findUniqueOrThrow({
       where: { id: executionId },
       include: { flow: { include: { nodes: true } } },
@@ -50,6 +62,19 @@ export class FlowRunner {
     // Determine starting node
     let currentNodeId: string | null | undefined =
       execution.currentNodeId ?? findTriggerNode(execution.flow.nodes as FlowNode[]);
+
+    if (options.resumeFromWait) {
+      const waitNode = currentNodeId ? nodeMap.get(currentNodeId) : undefined;
+      if (waitNode?.nodeType === 'WAIT') {
+        await logAction(executionId, waitNode.id, 'wait_resumed', {});
+        currentNodeId = waitNode.nextNodeId ?? null;
+      } else {
+        // 不該發生：喚醒的 execution 一定停在等待節點。照原本的 currentNodeId 繼續
+        logger.warn(
+          `[FlowRunner] Execution ${executionId} 喚醒時 currentNodeId（${currentNodeId ?? 'null'}）不是等待節點，從這個節點繼續`,
+        );
+      }
+    }
 
     let stepCount = execution.stepCount ?? 0;
 
@@ -79,7 +104,8 @@ export class FlowRunner {
         const result = await executeNode(node, ctx, executionId);
 
         if (result.pause) {
-          // WAIT node — execution suspended; scheduler will resume later
+          // WAIT node — execution suspended; scheduler will resume later.
+          // currentNodeId 留在這個等待節點，喚醒時以 resumeFromWait 從它的下一個節點繼續
           await prisma.flowExecution.update({
             where: { id: executionId },
             data: {

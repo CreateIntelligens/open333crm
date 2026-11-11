@@ -74,7 +74,7 @@ test('analytics：每天 02:00（cron），不加鎖', () => {
 
 test('canvas：每 60 秒，以 withoutOverlapping 防重疊，鎖最久 10 分鐘', () => {
   const { scheduler, defs } = fakeScheduler();
-  setupCanvasScheduler(scheduler);
+  setupCanvasScheduler(scheduler, { admin: prisma, prisma });
   assert.deepEqual(defs.map(shape), [
     { id: 'canvas-resume', every: 60_000, pattern: undefined, withoutOverlapping: { expiresInMs: 600_000 } },
   ]);

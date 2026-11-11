@@ -48,7 +48,7 @@
 
 | ID | 範圍 | 優先 | 處理狀態 | 問題 | 驗證狀態 |
 | --- | --- | --- | --- | --- | --- |
-| [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效，目前沒有租戶使用 Canvas | 靜態確認 |
+| [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 部分修正 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效，目前沒有租戶使用 Canvas；手動觸發與等待節點喚醒的認領已改走租戶交易 | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-08](#rls-08) | 租戶隔離與權限 | P2 | 已定方向 | service 收到的 client 決定了它的 RLS 與交易保證；背景工作多半傳 `prismaAdmin`，沒有 RLS | 靜態確認 |
@@ -178,7 +178,7 @@
 | [APP-06](#app-06) | 部署與應用程式 | P3 | 未處理 | 訊息模擬器的 API 在正式環境可用，成員可偽造進站訊息 | 靜態確認 |
 | [APP-07](#app-07) | 部署與應用程式 | P4 | 已提建議 | Canvas 等待節點的 BullMQ 路徑永遠失敗，佇列也沒有消費者 | 靜態確認 |
 | [APP-08](#app-08) | 部署與應用程式 | P3 | 部分修正 | Redis 沒有記憶體上限；所有 BullMQ 佇列已設定完成與失敗工作的保留期限 | 靜態確認 |
-| [APP-09](#app-09) | 部署與應用程式 | P3 | 部分修正 | API 行程假設只有一份：Canvas 的 Redis 廣播會重複處理、行程記憶體的狀態各自一份，無法水平擴充；排程已改為每一期只產生一筆 job，job 重跑時大多以條件更新擋住重複處理，只剩 Canvas 等待節點喚醒（#334）；業務事件已改走佇列 | 靜態確認 |
+| [APP-09](#app-09) | 部署與應用程式 | P3 | 部分修正 | API 行程假設只有一份：Canvas 的 Redis 廣播會重複處理、行程記憶體的狀態各自一份，無法水平擴充；排程已改為每一期只產生一筆 job，job 重跑時以條件更新擋住重複處理（Canvas 等待節點喚醒已於 #334 修正）；業務事件已改走佇列 | 靜態確認 |
 | [APP-10](#app-10) | 部署與應用程式 | P2 | 已提建議 | 沒有獨立的正式環境：合併到 `main` 就直接部署到客戶在用的環境 | 間接確認 |
 | [APP-11](#app-11) | 部署與應用程式 | P2 | 未處理 | 後台多處操作失敗時畫面沒有任何訊息，錯誤只成為 console 裡的未處理 rejection | 執行時確認 |
 | [APP-12](#app-12) | 部署與應用程式 | P2 | 未處理 | 多個週期工作在頂層吞掉錯誤，job 照常完成；SLA 掃描整輪失敗時佇列監控仍全綠、不告警 | 靜態確認 |
@@ -211,7 +211,7 @@
 <a id="rls-01"></a>
 ### RLS-01：Canvas 引擎不走租戶連線
 
-`packages/core/src/canvas/flow-runner.ts` 在檔案開頭匯入 `@open333crm/database` 的 module-level `prisma` singleton。`packages/core/src/canvas/scheduler.ts` 的 `processResumeQueue()` 與 `apps/api/src/modules/canvas/canvas.webhook.ts` 也用同一個 singleton。
+`packages/core/src/canvas/flow-runner.ts` 在檔案開頭匯入 `@open333crm/database` 的 module-level `prisma` singleton。`apps/api/src/modules/canvas/canvas.webhook.ts` 也用同一個 singleton。
 
 這個 client 由 `packages/database/src/client.ts` 以 `new PrismaClient()` 建立，沒有指定 datasource，因此連線字串是 `DATABASE_URL`。這個 singleton 與 `apps/api/src/plugins/prisma.plugin.ts` 建立的租戶連線不是同一條連線，連線上也不會有 `app.current_tenant`。`AGENTS.md` 明文禁止 `packages/*` 使用這個 singleton。
 
@@ -224,7 +224,7 @@
 
 `DATABASE_URL` 同時決定 API 的租戶連線：`prisma.plugin.ts` 在沒有設定 `DATABASE_URL_TENANT` 時，租戶連線就用 `DATABASE_URL`。因此 API 要讓 RLS 生效，通常 `DATABASE_URL` 就指向 `app_tenant`，Canvas 落在第二種情況。這時 `inbound-side-effects.ts` 每處理一則進站訊息，都呼叫 `canvas.webhook.ts` 的 `handleWebhookFlowTrigger()`；這個函式以 singleton 查 `interactionFlow`，結果是空陣列，流程永遠不會觸發，也沒有錯誤。
 
-**等待節點也受影響。** Canvas 的等待節點只靠 `canvas.scheduler.ts` 每 60 秒呼叫 `processResumeQueue()` 恢復，BullMQ 路徑從來沒有成功過（[APP-07](#app-07)）。`processResumeQueue()` 也用 singleton，所以同樣受上面兩種情況影響。修正 RLS-01 時，一併處理 APP-07。
+**等待節點也受影響。** Canvas 的等待節點只靠 `canvas.scheduler.ts` 每 60 秒呼叫 `processResumeQueue()` 恢復，BullMQ 路徑從來沒有成功過（[APP-07](#app-07)）。`processResumeQueue()` 已不用 singleton（#334，change `fix-canvas-wait-resume`）：以 `prismaAdmin` 掃描到期的 execution，在 execution 所屬租戶的 `withTenant` 交易內以條件更新認領，`where` 帶 `tenantId`。認領之後交給 `FlowRunner`，`FlowRunner` 仍用 singleton，所以喚醒後的執行同樣受上面兩種情況影響。修正 RLS-01 時，一併處理 APP-07。
 
 **優先順序。** 安全面是 P2。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，流程 id 由這個函式自己查出，不接受外部指定的 ID。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`，而且 `interaction_flows` 與 `flow_executions` 都是 0 筆（2026-10-02），沒有租戶使用 Canvas，因此維持 P2。
 
@@ -233,7 +233,7 @@
 - PostgreSQL 的外鍵檢查不套用 RLS。呼叫端傳入另一個租戶的流程 id 時，API 也回 202，並在呼叫端的租戶建立 execution。之後引擎執行另一個租戶的流程節點。本機以 `app_tenant` 連線實測，結果相同。
 - `flow_executions.contactId` 沒有外鍵，任何 UUID 都能寫入。
 
-現在手動觸發在租戶交易內先檢查流程與聯絡人屬於本租戶，再建立 execution，commit 之後才交給引擎（見 AUTO-11）。引擎、`processResumeQueue()` 與 `canvas.webhook.ts` 仍用 singleton，本項的其他部分未處理。
+現在手動觸發在租戶交易內先檢查流程與聯絡人屬於本租戶，再建立 execution，commit 之後才交給引擎（見 AUTO-11）。等待節點喚醒的認領也改走租戶交易（2026-11-11，#334）。引擎（`FlowRunner`）與 `canvas.webhook.ts` 仍用 singleton，本項的其他部分未處理。
 
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
@@ -2314,7 +2314,7 @@ BullMQ 預設保留所有完成與失敗的工作。
 
 | 機制 | 多個 API 行程時 |
 | --- | --- |
-| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總、權杖檢查） | **重複觸發已修正，重複處理只剩 Canvas。** 改由 BullMQ Job Scheduler 觸發（`apps/api/src/lib/job-scheduler.ts`），不論有幾個行程，每一期只產生一筆 job。這筆 job 仍可能執行不只一次：執行中的行程被強制結束時，BullMQ 會重新執行。同一個排程的兩期也可能重疊（一期跑超過週期時），Canvas 與試用以 `withoutOverlapping` 防止。寄送滿意度問卷、問卷逾時結案（#333）、閒置關閉（#302）與群發都以條件更新認領資料，重跑或和使用者操作同時發生時不會重複處理。Canvas 等待節點喚醒仍只以 id 更新，鎖過期後兩期同時執行時可能重複恢復同一個流程（#334） |
+| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總、權杖檢查） | **重複觸發與重複處理都已修正。** 改由 BullMQ Job Scheduler 觸發（`apps/api/src/lib/job-scheduler.ts`），不論有幾個行程，每一期只產生一筆 job。這筆 job 仍可能執行不只一次：執行中的行程被強制結束時，BullMQ 會重新執行。同一個排程的兩期也可能重疊（一期跑超過週期時），Canvas 與試用以 `withoutOverlapping` 防止。寄送滿意度問卷、問卷逾時結案（#333）、閒置關閉（#302）、群發與 Canvas 等待節點喚醒（#334）都以條件更新認領資料，重跑或和使用者操作同時發生時不會重複處理。Canvas 在 execution 所屬租戶的交易內以 `status = 'WAITING'` 與 `resumeAt` 已到期為條件認領，更新 0 筆時不恢復 |
 | `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
 | 行程記憶體的狀態 | 非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |
 | Socket.IO | 沒有 Redis adapter。`@socket.io/redis-adapter` 列在 `apps/api/package.json`，但程式沒有使用。API 直接推送的事件只送到同一個行程的客戶端 |

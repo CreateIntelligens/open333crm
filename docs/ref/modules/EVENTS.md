@@ -236,7 +236,7 @@ Job Scheduler 的行為：
 - Redis 斷線期間，排程停止執行。Redis 恢復後，到期的那一期補跑一次，更早錯過的期數不補。
 - 部署時，API 收到 SIGTERM 後等執行中的 job 跑完；Docker 等 10 秒後強制結束。被強制結束的 job，由新的行程重新執行。用 BullMQ 的預設設定（`lockDuration` 30 秒、`stalledInterval` 30 秒）實測，約 60 秒後重新執行；改了這兩個設定，時間也會不同。
 
-Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取走這一期的 job 時就產生下一期，所以一期跑得比週期久時，下一期可能在這一期跑完前開始。可能跑得比週期久的排程，註冊時設定 `withoutOverlapping`，目前有 `canvas-resume`、`trial-lifecycle` 與 `outbox-relay` 設定。`withoutOverlapping` 只在鎖有效期間防止兩期重疊：job 結束時釋放鎖；行程停掉或執行超過存活時間時，鎖到期失效，下一期就能開始。它也不防止被強制結束的 job 重跑，所以設定了鎖的排程，`run` 仍要以條件更新認領資料。`outbox-relay` 重跑時，以 job id 去重。其他排程避免重複處理，靠的是資料庫的條件更新，例如群發以條件更新把狀態改成 `sending`。
+Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取走這一期的 job 時就產生下一期，所以一期跑得比週期久時，下一期可能在這一期跑完前開始。可能跑得比週期久的排程，註冊時設定 `withoutOverlapping`，目前有 `canvas-resume`、`trial-lifecycle` 與 `outbox-relay` 設定。`withoutOverlapping` 只在鎖有效期間防止兩期重疊：job 結束時釋放鎖；行程停掉或執行超過存活時間時，鎖到期失效，下一期就能開始。它也不防止被強制結束的 job 重跑，所以設定了鎖的排程，`run` 仍要以條件更新認領資料。`outbox-relay` 重跑時，以 job id 去重。其他排程避免重複處理，靠的是資料庫的條件更新，例如群發以條件更新把狀態改成 `sending`，`canvas-resume` 以條件更新把 `WAITING` 改成 `RUNNING`（#334）。
 
 ## 失敗與重試
 

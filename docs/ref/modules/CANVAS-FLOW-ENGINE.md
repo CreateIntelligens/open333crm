@@ -3,7 +3,7 @@
 Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，由系統自動推進。每個聯繫人各自持有一份執行狀態。流程可以停下來等待數天，之後再繼續。
 
 - **資料來源**：`apps/api/src/modules/canvas/*`、`packages/core/src/canvas/*`、`packages/database/prisma/schema.prisma`、`apps/api/src/modules/webhook/inbound-side-effects.ts`
-- **核對日期**：2026-09-23
+- **核對日期**：2026-11-11
 
 ## 這份文件回答的問題
 
@@ -107,9 +107,15 @@ commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNN
 
 ### 暫停與喚醒
 
-`WAIT` 節點回傳 `pause`。`FlowRunner` 接著把狀態改成 `WAITING`、寫入 `resumeAt`，然後結束這一次 `run()`。
+`WAIT` 節點回傳 `pause`。`FlowRunner` 接著把狀態改成 `WAITING`、寫入 `resumeAt`，然後結束這一次 `run()`。`currentNodeId` 停在這個等待節點。
 
-喚醒實際上只靠資料庫輪詢：`apps/api/src/modules/canvas/canvas.scheduler.ts` 每 60 秒執行一次 `processResumeQueue()`，一次取最多 50 筆 `resumeAt` 已到期的 `WAITING` 執行，先改成 `RUNNING` 再交給 `FlowRunner.run()`。先改狀態，避免輪詢器重複處理同一筆執行。因此喚醒時間的精度是 60 秒。
+喚醒實際上只靠資料庫輪詢：`apps/api/src/modules/canvas/canvas.scheduler.ts` 每 60 秒執行一次 `processResumeQueue()`，因此喚醒時間的精度是 60 秒。每一次：
+
+1. 以 `prismaAdmin` 跨租戶取最多 50 筆 `resumeAt` 已到期的 `WAITING` 執行。
+2. 每筆在所屬租戶的 `withTenant` 交易內認領：`updateMany` 的條件是 `id`、`tenantId`、`status = 'WAITING'`、`resumeAt` 已到期，改成 `RUNNING` 並清空 `resumeAt`。更新 0 筆代表另一次喚醒已經認領，這一筆略過。兩次喚醒同時認領同一筆時，PostgreSQL 讓後到的等前一個 commit 再重新判斷條件，所以只有一次成功（#334）。
+3. 認領 commit 之後呼叫 `FlowRunner.run(id, { resumeFromWait: true })`，不等流程執行完。`FlowRunner` 寫一筆 `wait_resumed` 紀錄，略過 `currentNodeId` 指向的等待節點，從它的 `nextNodeId` 繼續；等待節點沒有下一個節點時流程直接完成。
+
+2026-11-11 以前，喚醒會從 `currentNodeId` 重新執行同一個等待節點，流程永遠停在等待節點，直到 `stepCount` 達到上限被標成 `FAILED`（#334）。修正前停在等待節點的資料與修正後的形狀相同，喚醒後一樣從下一個節點繼續，不需要修補。
 
 `packages/core/src/canvas/scheduler.ts` 的 `scheduleWaitNode()` 會先嘗試送出 BullMQ 的延遲工作，但佇列名稱 `flow:resume` 含冒號，BullMQ 建立佇列時直接拋出錯誤，每次都退回輪詢並寫一筆 warning；這個佇列也沒有消費者。見 `../system/AUDIT.md` 的 APP-07。
 
@@ -125,9 +131,9 @@ commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNN
 | `apps/api/src/modules/canvas/canvas-effects.ts` | `startFlowAfterCommit()`：commit 之後開始執行流程 |
 | `apps/api/src/modules/canvas/canvas.webhook.ts` | 比對 webhook 事件與流程的 `triggerConfig` |
 | `apps/api/src/modules/canvas/canvas.worker.ts` | 訂閱 `crm:events`，實際發訊息、寄信、貼標籤 |
-| `apps/api/src/modules/canvas/canvas.scheduler.ts` | 每 60 秒輪詢到期的 `WAITING` 執行 |
+| `apps/api/src/modules/canvas/canvas.scheduler.ts` | 每 60 秒輪詢到期的 `WAITING` 執行，傳入 `prismaAdmin` 與租戶交易 |
 | `packages/core/src/canvas/flow-runner.ts` | 狀態機主體 |
-| `packages/core/src/canvas/scheduler.ts` | 排定喚醒時間，以及 `processResumeQueue()` |
+| `packages/core/src/canvas/scheduler.ts` | 排定喚醒時間，以及 `processResumeQueue()`、`claimDueExecution()` |
 | `packages/core/src/canvas/api-fetch-node.ts` | `API_FETCH` 節點 |
 | `packages/core/src/canvas/ai-gen-node.ts` | `AI_GEN` 節點 |
 | `packages/core/src/canvas/smart-window.ts` | 安靜時段順延 |
@@ -147,5 +153,5 @@ commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNN
 | `AI_GEN` 節點無法運作 | 節點呼叫 `BRAIN_SERVICE_URL` 的 `/api/generate`。這個環境變數在 repo 內沒有任何地方設定，預設值 `http://localhost:3001` 指向 API 自己，而 API 沒有這個路由。節點會拋錯，該次執行轉為 `FAILED`。相關項目見 `../system/AUDIT.md` 的 PKG-03 |
 | `ACTION` 只支援 `add_tag` | 其他 `actionType` 會被 `canvas.worker.ts` 直接忽略，不會報錯 |
 | `schedule` 與 `event` 兩種 `triggerType` 沒有觸發來源 | Zod schema 接受這兩個值，但沒有程式會依它們啟動流程 |
-| 引擎與自動觸發不走租戶連線 | `flow-runner.ts` 與 `canvas.webhook.ts` 使用未綁租戶的 `prisma` singleton，引擎的查詢以主鍵定位且不帶 `tenantId`。詳見 `../system/AUDIT.md` 的 RLS-01 |
+| 引擎與自動觸發不走租戶連線 | `flow-runner.ts` 與 `canvas.webhook.ts` 使用未綁租戶的 `prisma` singleton，引擎的查詢以主鍵定位且不帶 `tenantId`。喚醒的認領已走租戶交易。詳見 `../system/AUDIT.md` 的 RLS-01 |
 | `CONDITION` 沒有數值或日期比較 | 運算子只有 `eq`、`neq`、`contains`、`exists`，比較一律以字串進行 |
