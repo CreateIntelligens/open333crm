@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-11]
+
+### Fixed
+
+- **平台升級/加購申請頁按「核准」失敗時沒有任何反應**：`/admin/plan-changes` 的核准與駁回沒有接住 API 錯誤，例如 AI 月額度無上限的租戶核准加購時，後端回 400 `TOPUP_UNLIMITED`，畫面卻沒有提示。改為以紅色訊息顯示後端的錯誤原因；AI 月額度無上限的租戶，加購申請的「核准」按鈕停用，並提示「額度已無上限，加購不會生效，請駁回」。
+
 ## [2026-11-10]
 
 ### Added
