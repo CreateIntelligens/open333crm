@@ -19,6 +19,7 @@ const hooks = vi.hoisted(() => ({
   delivered: [] as string[],
   /** 條件資料的查詢以 SQL 錯誤失敗（buildAutomationFacts 收到的連線上執行） */
   failFacts: false,
+  factsCalls: 0,
 }));
 
 vi.mock('#src/modules/ai/providers/index.js', () => ({
@@ -48,6 +49,7 @@ vi.mock('@open333crm/automation', async (orig) => {
   return {
     ...actual,
     buildAutomationFacts: async (db: { $queryRawUnsafe(sql: string): Promise<unknown> }, context: unknown) => {
+      hooks.factsCalls += 1;
       // 在傳入的連線上執行一個會失敗的 SQL：交易內時 PostgreSQL 會把整個交易標成 aborted
       if (hooks.failFacts) await db.$queryRawUnsafe('select 1/0');
       return actual.buildAutomationFacts(db as never, context as never);
@@ -55,10 +57,25 @@ vi.mock('@open333crm/automation', async (orig) => {
   };
 });
 
+// worker 會把規則評估送進 BullMQ：測試不送
+vi.mock('bullmq', async (orig) => ({
+  ...(await orig<object>()),
+  Queue: class {
+    async add() {}
+    async close() {}
+  },
+}));
+// 只測知識庫：關掉 agent
+vi.mock('#src/config/env.js', async (orig) => {
+  const real = await orig<typeof import('#src/config/env.js')>();
+  return { ...real, getConfig: () => ({ ...real.getConfig(), AGENTIC_LLM_ENABLED: false, KB_AUTO_REPLY_ENABLED: true }) };
+});
+
 loadEnvConfig();
 const { attemptKbAutoReplyFlow } = await import('#src/modules/ai/kb-autoreply.flow.js');
 const { createBotReplyGuard } = await import('#src/modules/automation/bot-reply-guard.js');
 const { createOutboxPublisher } = await import('#src/events/outbox-publisher.js');
+const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
 
 const owner = new PrismaClient();
 const tenantDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
@@ -83,7 +100,7 @@ async function makeConversation(tenantId: string) {
     data: { conversationId: conversation.id, direction: 'INBOUND', senderType: 'CONTACT', contentType: 'text', content: { text: '請問一下' } },
   });
   inboundIds.push(inbound.id);
-  return { conversationId: conversation.id, inboundId: inbound.id };
+  return { conversationId: conversation.id, inboundId: inbound.id, contactId: contact.id };
 }
 
 async function runKb(tenantId: string, conversationId: string, inboundId: string) {
@@ -103,6 +120,7 @@ beforeEach(() => {
   hooks.llmCalls = 0;
   hooks.delivered = [];
   hooks.failFacts = false;
+  hooks.factsCalls = 0;
 });
 
 afterAll(async () => {
@@ -110,11 +128,12 @@ afterAll(async () => {
   const ids = conversations.map((c) => c.id);
   await owner.message.deleteMany({ where: { conversationId: { in: ids } } });
   // 只刪這個檔案建立的資料：其他測試檔可能同時在 TENANT_A、TENANT_B 寫入認領與用量
-  await owner.sideEffectClaim.deleteMany({ where: { kind: 'bot_reply', sourceId: { in: inboundIds } } });
+  // worker 另外認領情緒分析：刪除這些進站訊息的所有認領
+  await owner.sideEffectClaim.deleteMany({ where: { sourceId: { in: inboundIds } } });
   await owner.conversation.deleteMany({ where: { id: { in: ids } } });
   await owner.contact.deleteMany({ where: { displayName: MARK } });
   await owner.channel.deleteMany({ where: { id: { in: channelIds } } });
-  await owner.aiUsage.deleteMany({ where: { conversationId: { in: ids } } });
+  await owner.aiUsage.deleteMany({ where: { OR: [{ conversationId: { in: ids } }, { tenantId: { in: ownTenantIds } }] } });
   await owner.outbox.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
   await owner.automationRule.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
   await owner.material.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
@@ -150,9 +169,10 @@ test('對話屬於其他租戶：結果是略過（not_bot_handled），租戶 B
   assert.deepEqual(await botMessagesOf(conversationId), []);
 });
 
-// automation-engine「條件資料讀取失敗」：關鍵字讓步由 worker 在交易外判斷，知識庫不在交易內讀關鍵字規則
-// （design D7）。review-loop 第 1、2 輪：在交易內判斷時，條件資料讀取失敗會讓同一個交易之後的查詢失敗（25P02）
-test('條件資料讀取失敗，訊息也命中其他渠道素材的無條件規則：知識庫照常回覆', async () => {
+// automation-engine「條件資料讀取失敗」：經由 worker 的 message.received 處理。關鍵字讓步由 worker 判斷，
+// 知識庫不在交易內讀關鍵字規則（design D7）。review-loop 第 1、2 輪：在知識庫的交易內判斷時，
+// 條件資料讀取失敗會讓同一個交易之後的查詢失敗（25P02），知識庫改成轉接真人。第 3 輪：改從 worker 執行
+test('條件資料讀取失敗，訊息也命中其他渠道素材的無條件規則：worker 不讓步，知識庫照常回覆', async () => {
   const tenantId = (await owner.tenant.create({ data: { name: `${MARK}-mixed` } })).id;
   ownTenantIds.push(tenantId);
   const material = await owner.material.create({
@@ -178,12 +198,23 @@ test('條件資料讀取失敗，訊息也命中其他渠道素材的無條件�
       },
     ],
   });
-  const { conversationId, inboundId } = await makeConversation(tenantId);
+  const { conversationId, inboundId, contactId } = await makeConversation(tenantId);
   hooks.failFacts = true;
 
-  const result = await runKb(tenantId, conversationId, inboundId);
+  const handle = setupAutomationWorker(owner, io, tenantDb, redis);
+  await handle({
+    id: crypto.randomUUID(),
+    name: 'message.received',
+    tenantId,
+    timestamp: new Date(),
+    payload: { conversationId, messageId: inboundId, contactId, channelType: 'LINE', contentType: 'text', messageContent: '請問一下' },
+  } as never);
 
-  assert.deepEqual(result, { status: 'replied' });
-  assert.equal((await botMessagesOf(conversationId)).length, 1);
-  assert.deepEqual(hooks.delivered, [conversationId]);
+  assert.ok(hooks.factsCalls >= 1, '讓步判斷讀了條件資料，注入的 SQL 錯誤有發生');
+  const bot = await botMessagesOf(conversationId);
+  assert.equal(bot.length, 1, '知識庫寫入一則回覆');
+  assert.equal((bot[0]!.metadata as { source?: string }).source, 'kb_auto_reply');
+  assert.ok(hooks.delivered.includes(conversationId), '回覆送到渠道');
+  const conversation = await owner.conversation.findUniqueOrThrow({ where: { id: conversationId } });
+  assert.equal(conversation.status, 'BOT_HANDLED', '沒有轉接真人');
 });
