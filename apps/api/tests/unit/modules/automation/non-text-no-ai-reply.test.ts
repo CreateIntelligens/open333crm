@@ -19,9 +19,9 @@ vi.mock('bullmq', async (importOriginal) => ({
     }
   },
 }));
-vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
-  attemptKbAutoReply: async (_p: unknown, _llm: unknown, _io: unknown, _t: string, _c: string, text: string) => {
-    calls.kb.push(text);
+vi.mock('#src/modules/ai/kb-autoreply.flow.js', () => ({
+  attemptKbAutoReplyFlow: async (_deps: unknown, input: { messageText: string }) => {
+    calls.kb.push(input.messageText);
   },
 }));
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => true }));

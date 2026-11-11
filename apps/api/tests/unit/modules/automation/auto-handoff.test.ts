@@ -17,10 +17,10 @@ vi.mock('bullmq', async (importOriginal) => ({
     }
   },
 }));
-vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
-  attemptKbAutoReply: async () => {
+vi.mock('#src/modules/ai/kb-autoreply.flow.js', () => ({
+  attemptKbAutoReplyFlow: async () => {
     calls.kb += 1;
-    return false;
+    return { status: 'skipped', reason: 'kb_disabled' };
   },
 }));
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false }));

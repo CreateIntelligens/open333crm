@@ -43,23 +43,16 @@ vi.mock('#src/modules/ai/agent/agent.flow.js', async (importOriginal) => {
     },
   };
 });
-vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
-  attemptKbAutoReply: async (
-    _p: unknown,
-    _llm: unknown,
-    _io: unknown,
-    _t: string,
-    _c: string,
-    _text: string,
-    _d: unknown,
-    guard: { persist(write: (tx: { message: { create(a: unknown): Promise<unknown> } }) => Promise<unknown>): Promise<unknown> },
-  ) => {
+vi.mock('#src/modules/ai/kb-autoreply.flow.js', () => ({
+  attemptKbAutoReplyFlow: async (deps: {
+    replyGuard: { persist(write: (tx: { message: { create(a: unknown): Promise<unknown> } }) => Promise<unknown>): Promise<unknown> };
+  }) => {
     calls.kb += 1;
-    const row = await guard.persist((tx) =>
+    const row = await deps.replyGuard.persist((tx) =>
       tx.message.create({ data: { senderType: 'BOT', contentType: 'text', content: { text: 'KB 回覆' } } }),
     );
     if (row) calls.delivered.push('KB 回覆');
-    return row !== null;
+    return row !== null ? { status: 'replied' } : { status: 'skipped', reason: 'already_handled' };
   },
 }));
 vi.mock('#src/modules/ai/ai.flow.js', () => ({

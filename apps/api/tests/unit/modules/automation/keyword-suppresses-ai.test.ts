@@ -92,7 +92,8 @@ t('KB 路徑：原本就有的讓步判斷不可被移除', () => {
   assert.ok(
     // change fix-keyword-yield-ig-delivery 起多傳對話渠道，只在規則能回覆這個渠道時讓步；
     // change fix-automation-rule-gaps 起再多傳對話與聯絡人，用來評估規則條件
-    /if \(\s*await hasMatchingKeywordRule\(prisma, tenantId, messageText, conversation\.channel\.channelType\b/.test(code),
+    // change migrate-ai-kb-autoreply-tenant-ctx 起在 readKbReplyContext() 以交易的 tx 呼叫
+    /if \(\s*await hasMatchingKeywordRule\(ctx\.tx, tenantId, messageText, conversation\.channel\.channelType\b/.test(code),
     'KB 的關鍵字讓步判斷不見了',
   );
 });

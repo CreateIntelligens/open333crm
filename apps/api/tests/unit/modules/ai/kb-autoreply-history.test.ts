@@ -10,7 +10,7 @@ test('loadKbHistory：去掉正在回覆的那則與綁定訊息、遮掉代碼'
     { direction: 'INBOUND', senderType: 'CONTACT', content: { text: '代碼 BIND-75G6P389DQ' }, metadata: null },
   ];
   const prisma = { message: { findMany: async () => rows } } as never;
-  assert.deepEqual(await loadKbHistory(prisma, 'c1'), [{ role: 'user', content: '代碼 [綁定代碼]' }]);
+  assert.deepEqual(await loadKbHistory({ tx: prisma, tenantId: 't1' }, 'c1'), [{ role: 'user', content: '代碼 [綁定代碼]' }]);
 });
 
 test('loadKbHistory：最近的訊息大多是綁定訊息時，仍保留 10 則一般對話', async () => {
@@ -18,7 +18,7 @@ test('loadKbHistory：最近的訊息大多是綁定訊息時，仍保留 10 則
   const binding = Array.from({ length: 8 }, () => ({ direction: 'OUTBOUND', senderType: 'BOT', content: { text: '請選擇…' }, metadata: { source: 'identity_binding' } }));
   const normal = Array.from({ length: 20 }, (_, i) => ({ direction: 'INBOUND', senderType: 'CONTACT', content: { text: `訊息${20 - i}` }, metadata: null }));
   const prisma = { message: { findMany: async (args: { take: number }) => [current, ...binding, ...normal].slice(0, args.take) } } as never;
-  const history = await loadKbHistory(prisma, 'c1');
+  const history = await loadKbHistory({ tx: prisma, tenantId: 't1' }, 'c1');
   assert.equal(history.length, 10);
   assert.equal(history.at(-1)?.content, '訊息20');
 });
