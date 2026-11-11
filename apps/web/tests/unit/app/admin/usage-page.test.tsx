@@ -79,3 +79,52 @@ test('沒有用量的日子不畫長條，仍佔一格', async () => {
   const used = screen.getByTitle('2026-11-08: 100 token');
   assert.ok(Number.parseInt(used.style.height, 10) > 0);
 });
+
+// issue #502：每日 Token 長條圖只占左半邊、和下方起訖日期對不上
+const barsOf = () => screen.getAllByTitle(/^\d{4}-\d{2}-\d{2}: .* token$/);
+
+test('長條數等於區間天數', async () => {
+  render(<UsagePage />);
+  fireEvent.click(await screen.findByText('創造智能'));
+  await screen.findByTitle('2026-11-08: 100 token');
+
+  assert.equal(barsOf().length, 3);
+});
+
+test('長條跟著容器寬度平均伸展，不是固定 px 寬，並保留最大與最小寬度', async () => {
+  render(<UsagePage />);
+  fireEvent.click(await screen.findByText('創造智能'));
+  await screen.findByTitle('2026-11-08: 100 token');
+
+  for (const bar of barsOf()) {
+    assert.equal(bar.style.flexGrow, '1', `${bar.title} 沒有 flex-grow`);
+    assert.equal(bar.style.flexShrink, '1', `${bar.title} 不能收縮`);
+    assert.equal(bar.style.width, '', `${bar.title} 不應寫死 px 寬度`);
+    assert.ok(bar.style.maxWidth.endsWith('px'), `${bar.title} 沒有最大寬度`);
+    assert.ok(bar.style.minWidth.endsWith('px'), `${bar.title} 沒有最小寬度`);
+  }
+});
+
+test('起訖日期與長條在同一個寬度的容器內，首尾長條貼齊左右兩端', async () => {
+  render(<UsagePage />);
+  fireEvent.click(await screen.findByText('創造智能'));
+  await screen.findByTitle('2026-11-08: 100 token');
+
+  const bars = barsOf();
+  const barRow = bars[0].parentElement;
+  assert.ok(barRow !== null);
+  // 長條數少、碰到最大寬度時，用 space-between 讓第一根貼左、最後一根貼右，跟日期列一致
+  assert.equal(barRow.style.justifyContent, 'space-between');
+
+  const start = screen.getByText('2026-11-08', { selector: 'span' });
+  const end = screen.getByText('2026-11-10', { selector: 'span' });
+  const dateRow = start.parentElement;
+  assert.ok(dateRow !== null && dateRow === end.parentElement);
+  assert.equal(dateRow.style.justifyContent, 'space-between');
+  // 日期列與長條列是同一個寬度容器的子元素，橫向捲動時一起捲動
+  assert.ok(dateRow.parentElement === barRow.parentElement, '日期列和長條列不在同一個容器內');
+  // 該容器設定最小寬度（長條太多時撐出橫向捲軸），外層負責捲動
+  const inner = barRow.parentElement as HTMLElement;
+  assert.ok(inner.style.minWidth.endsWith('px'), '共用容器沒有最小寬度');
+  assert.equal((inner.parentElement as HTMLElement).style.overflowX, 'auto');
+});

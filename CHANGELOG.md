@@ -15,6 +15,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **平台升級/加購申請頁按「核准」失敗時沒有任何反應**：`/admin/plan-changes` 的核准與駁回沒有接住 API 錯誤，例如 AI 月額度無上限的租戶核准加購時，後端回 400 `TOPUP_UNLIMITED`，畫面卻沒有提示。改為以紅色訊息顯示後端的錯誤原因；AI 月額度無上限的租戶，加購申請的「核准」按鈕停用，並提示「額度已無上限，加購不會生效，請駁回」。
 - **知識庫產生回覆期間客服接手時，不再送出這則回覆**（change `migrate-ai-kb-autoreply-tenant-ctx`）— 原本只在處理開始時確認對話是 `BOT_HANDLED`。呼叫 embedding 與 LLM 的幾秒內客服接手時，系統仍然寫入並送出知識庫的回覆，違反 `bot-handoff-config`「轉接後關鍵字規則照常回覆」。現在寫入回覆的交易內以條件更新確認狀態，不符合時不寫入、不送出，對話的 `botRepliesCount` 不變。追問次數也改在這個交易內讀最新的值再合併。
 - **以大寫券 id 呼叫結束券或發券時，兩邊不互斥**（issue #403）：券的 advisory lock 以字串當鎖鍵，PostgreSQL 比對 uuid 不分大小寫，字串卻分，所以大寫 id 與小寫 id 拿到兩把不同的鎖。以大寫 id 結束券時不用等進行中的發券，結束後剛發出的券沒有被作廢；以大寫 id 發券時，可能在結束 commit 之前讀到「進行中」，之後在已結束的券上發出券。違反主規格 `coupon-management` 的「停用券使已發出的券失效」。`packages/core` 新增 `advisoryLockKey()`／`advisoryXactLock()`，鎖鍵中 uuid 的段落一律轉成小寫，其他段落（外部會員編號、LINE uid）保留大小寫；結束券、後台發券、core 的 `issueInstances` 與 workers 的規則發券都改用它。member-binding、identity 登記、短連結點擊與兩處 SLA 的鎖也改用它，鎖鍵字串與原本相同，行為不變。前端送出的 id 都是小寫，正常操作不會觸發。
+- **平台用量統計的每日 Token 長條圖只占左半邊，和起訖日期對不上**（issue #502）：`/admin/usage` 租戶明細的長條原本用固定 560px 推算寬度且不會伸展，全部擠在左邊，下方日期卻貼齊整個容器。改為每根長條平均分配容器寬度（最寬 32px、最窄 5px），第一根與最後一根長條分別貼齊起訖日期；天數多到放不下時整張圖可橫向捲動，日期列跟著一起捲動。
 
 ## [2026-11-10]
 
