@@ -777,6 +777,9 @@ model Case {
   csatComment     String?
   csatRespondedAt DateTime?
   csatSentAt      DateTime?
+  /// 誰評的分：customer（客人回覆問卷）或 agent（客服代評）。報表平均只算客人自評（issue #339）；
+  /// 修正前沒有來源的舊評分為 null，報表視為客人自評
+  csatRatedBy     String?
   mergedIntoId    String?    @db.Uuid
   parentCaseId    String?    @db.Uuid
   createdAt       DateTime   @default(now())

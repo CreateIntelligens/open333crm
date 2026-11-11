@@ -36,6 +36,30 @@ export function caseTransitionTimestamps(from: CaseStatus, to: CaseStatus, now: 
   return { resolvedAt: null };
 }
 
+/** 狀態轉換時要清除的滿意度問卷欄位（值為 null 表示清除） */
+export interface CaseTransitionCsatFields {
+  csatSentAt?: null;
+  csatRespondedAt?: null;
+}
+
+/**
+ * 工單從 from 轉成 to 時要清除的問卷欄位（issue #339 決定 2，csat-survey「工單重新解決時的問卷」）。
+ * API 的 transitionCase() 與 workers 的 update_case_status 動作都用這個函式：
+ * - 轉成 RESOLVED、還沒有評分：清除上一輪的 csatSentAt 與 csatRespondedAt，問卷排程再寄一份，
+ *   逾時以重新寄出的 csatSentAt 起算（不清除的話，上一輪寄出超過 72 小時的工單一分鐘內就被逾時結案）。
+ * - 轉成 RESOLVED、已有評分：保留分數與問卷欄位，不再寄問卷，也不逾時結案。
+ * - 其他轉換、狀態沒有改變：不動問卷欄位。
+ */
+export function caseTransitionCsatFields(
+  from: CaseStatus,
+  to: CaseStatus,
+  current: { csatScore: number | null },
+): CaseTransitionCsatFields {
+  if (from === to || to !== 'RESOLVED') return {};
+  if (current.csatScore !== null) return {};
+  return { csatSentAt: null, csatRespondedAt: null };
+}
+
 /** 組 case.resolved／case.closed 需要的工單資料（轉換前讀到的資料） */
 export interface CaseOutcomeSource {
   caseId: string;

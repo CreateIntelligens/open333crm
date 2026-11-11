@@ -44,7 +44,7 @@ description: >
 | 客人傳訊息 | `message.received` | 對話有負責人、且負責人啟用中並看得到該渠道 → 只通知負責人；沒有負責人，或負責人已停用、看不到該渠道 → 看得到該渠道的啟用中 `ADMIN`、`SUPERVISOR`（#440，`getConversationRecipients()`） | `notification.worker.ts` → `notification` queue → workers | `new_message` / `/dashboard/inbox?conv=` |
 | 工單指派 | `case.assigned`（只有 `POST /cases/:id/assign` 與自動派案發布） | 被指派人 | 同上 | `case_assigned` / `/dashboard/cases/:id` |
 | 工單升級 | `case.escalated` | `resolveEscalationRecipients`：`notifyTargets` 含 `supervisor` → 所有 ADMIN+SUPERVISOR；含 `original_assignee` → 升級前負責人；沒帶 → 只有主管；`[]` → 沒人；升級的人自己一律排除。**升級時改派的新負責人不通知** | 同上 | `case_escalated` |
-| CSAT ≤ 2 分 | `recordCsatScore()` | 只有 `SUPERVISOR`（不含 ADMIN） | API 行程直接 `createAndDispatch`（不經佇列、不重試） | `csat_low_score` / `/dashboard/cases?id=`（列表頁不讀 id） |
+| CSAT ≤ 2 分 | `recordCsatScore()` → `notifyCsatLowScore()` | 有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`resolveCaseManagerRecipients()`，#339；預設客服角色也有 `case.assign`） | API 行程直接 `createAndDispatch`（不經佇列、不重試） | `csat_low_score` / `/dashboard/cases?id=`（列表頁不讀 id） |
 | SLA 預警／逾時 | workers `sla.handler.ts` | 負責人；逾時再加 ADMIN+SUPERVISOR | workers 直接 `enqueueNotification` | `sla_warning`、`sla_breached`、`first_response_*`、`customer_waiting_breached` |
 | 自動化「傳送通知」 | workers `automation-actions.ts` | 指定客服 → 工單負責人 → 對話負責人（都要啟用中）→ 都沒有時 ADMIN+SUPERVISOR | 同上 | `sla_rule` / 工單或對話 |
 | 自動化「通知主管」 | 同上 | ADMIN+SUPERVISOR | 同上 | `sla_rule` / 只有工單時才有連結 |
@@ -65,7 +65,7 @@ description: >
 - 只寫給同租戶、仍啟用的成員：每個寫入 `notifications` 的地方都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入（workers `notification.handler.ts`、`createAndDispatch`、`recordExportNotice`），它是一條條件寫入，回 `null` 表示略過。不符合時寫 info log、不丟錯（永久刪除的成員會撞外鍵，丟錯只會重試三次再失敗）；重新啟用不補送（#484）。不要改回「先查再 `notification.create`」：查完到寫入之間成員可能被刪除；也不要 catch P2003，交易內接住後交易已中止（PR #489 審查）。新增寫入點要沿用同一個函式。
 - 用量告警不可阻擋 AI 回覆：每一步失敗只寫 log，回覆最多多等一個 Redis 指令的逾時（1 秒）；告警信一定經佇列，不在訂閱者內直接寄。
 - 告警信與權杖失效信的使用者輸入（租戶名稱、渠道名稱）要 HTML 轉義。
-- 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、CSAT、用量告警、權杖失效七個地方。
+- 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、用量告警、權杖失效六個地方（CSAT 已由 #339 改看 `case.assign` 與渠道可見範圍，可沿用 `notification.service.ts` 的 `resolveCaseManagerRecipients()`）。
 - worker 走 BYPASSRLS 連線（`app.prismaAdmin` 傳給 `setupNotificationWorker`），每個查詢都要自帶 `tenantId`。
 - 成員清除（`purgeAgent`）會先刪他的通知（外鍵 RESTRICT）；新增掛在 Agent 上的通知相關表也要加進去。
 

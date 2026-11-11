@@ -1,15 +1,15 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { ChannelType, Prisma, PrismaClient } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
-import { deliverToChannel } from '../conversation/conversation.service.js';
-import { getChannelPlugin } from '@open333crm/channel-plugins';
+import { closeConversationsForCase, deliverToChannel } from '../conversation/conversation.service.js';
+import { getAllChannelPlugins, getChannelPlugin, type CsatSurveyInput } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
-import { createAndDispatch } from '../notification/notification.service.js';
+import { createAndDispatch, resolveCaseManagerRecipients } from '../notification/notification.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { emitToChannel } from '../../events/socket-push.js';
 import { logger } from '@open333crm/core';
-import { CHANNEL_TYPE, caseTransitionTimestamps, type CaseStatus } from '@open333crm/shared';
+import { caseTransitionTimestamps, type CaseStatus } from '@open333crm/shared';
 import { fixedSystemMessageContent } from '../ai/deidentification.service.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
@@ -20,65 +20,32 @@ export function csatReplyDisplayText(score: number): string {
   return `我的評分：${score} 分`;
 }
 
+/** 問卷的問題：LINE Flex 的內文與替代文字 */
+export const CSAT_SURVEY_QUESTION = '感謝您的耐心等候！請評價此次服務體驗（1-5 分）';
+
 /**
- * Build CSAT channel-specific message payload for LINE / FB / WEBCHAT.
+ * 問卷的內容：問題與五個分數選項。按鈕送回 csat:<分數>:<工單 ID>（進站攔截的格式），
+ * 客人看到的是 csatReplyDisplayText()。渠道的版型由外掛的 buildCsatSurvey() 決定（issue #339 決定 7）。
  */
-export function buildCsatChannelMessage(
-  channelType: string,
-  caseId: string,
-): { contentType: string; content: Record<string, unknown> } {
-  const question = '感謝您的耐心等候！請評價此次服務體驗（1-5 分）';
-
-  if (channelType === CHANNEL_TYPE.LINE) {
-    // LINE Flex Message with postback buttons
-    return {
-      contentType: 'flex',
-      content: {
-        type: 'flex',
-        altText: question,
-        contents: {
-          type: 'bubble',
-          body: {
-            type: 'box',
-            layout: 'vertical',
-            contents: [
-              { type: 'text', text: '滿意度調查', weight: 'bold', size: 'lg' },
-              { type: 'text', text: question, wrap: true, margin: 'md', size: 'sm' },
-            ],
-          },
-          footer: {
-            type: 'box',
-            layout: 'horizontal',
-            spacing: 'sm',
-            contents: [1, 2, 3, 4, 5].map((score) => ({
-              type: 'button',
-              action: {
-                type: 'postback',
-                label: `${score}`,
-                data: `csat:${score}:${caseId}`,
-                displayText: csatReplyDisplayText(score),
-              },
-              style: 'secondary',
-              height: 'sm',
-            })),
-          },
-        },
-      },
-    };
-  }
-
-  // FB / WEBCHAT: Quick Reply style (sent as text with structured buttons)
+export function csatSurveyInput(caseId: string): CsatSurveyInput {
   return {
-    contentType: 'quick_reply',
-    content: {
-      text: question,
-      quickReplies: [1, 2, 3, 4, 5].map((score) => ({
-        contentType: 'text',
-        title: `${'★'.repeat(score)}${'☆'.repeat(5 - score)} ${score}分`,
-        payload: `csat:${score}:${caseId}`,
-      })),
-    },
+    question: CSAT_SURVEY_QUESTION,
+    options: [1, 2, 3, 4, 5].map((score) => ({
+      label: `${score}`,
+      postbackData: `csat:${score}:${caseId}`,
+      displayText: csatReplyDisplayText(score),
+    })),
   };
+}
+
+/**
+ * 寄得出問卷的渠道類型：外掛實作 buildCsatSurvey() 的渠道（目前只有 LINE）。
+ * 依外掛能力判斷，不在這裡比對 channelType（AGENTS.md 結構規則 5，issue #339 決定 7）。
+ */
+export function csatSurveyChannelTypes(): string[] {
+  return getAllChannelPlugins()
+    .filter((plugin) => typeof plugin.buildCsatSurvey === 'function')
+    .map((plugin) => plugin.channelType);
 }
 
 /**
@@ -89,10 +56,12 @@ export async function sendCsatSurvey(
   io: SocketIOServer,
   caseId: string,
 ): Promise<boolean> {
+  // 只取寄得出問卷的渠道的對話（issue #339 決定 7）：沒有就不認領，工單停在已解決、不逾時結案
   const caseRecord = await prisma.case.findUnique({
     where: { id: caseId },
     include: {
       conversations: {
+        where: { channelType: { in: csatSurveyChannelTypes() as ChannelType[] } },
         include: { channel: true },
         take: 1,
       },
@@ -104,14 +73,16 @@ export async function sendCsatSurvey(
   if (caseRecord.csatSentAt) return false; // already sent
   const conversation = caseRecord.conversations[0];
   const conversationId = conversation?.id;
-  if (!conversationId) return false;
+  const plugin = conversation ? getChannelPlugin(conversation.channelType) : undefined;
+  if (!conversationId || !plugin?.buildCsatSurvey) return false;
 
   const now = new Date();
 
   // 先以條件更新認領工單再寄出：job 重跑、兩期重疊，或讀取後工單被重開時，只有認領成功的一次會寄。
   // 租戶在排程查詢之後才被停用時也認領不到（issue #410，PR #440 審查）
   const { count } = await prisma.case.updateMany({
-    where: { id: caseId, tenantId: caseRecord.tenantId, status: 'RESOLVED', csatSentAt: null, tenant: { isActive: true } },
+    // 已評分的工單不寄（issue #339 決定 2：客服代評後重新解決的工單保留分數，不再寄問卷）
+    where: { id: caseId, tenantId: caseRecord.tenantId, status: 'RESOLVED', csatSentAt: null, csatScore: null, tenant: { isActive: true } },
     data: { csatSentAt: now },
   });
   if (count === 0) {
@@ -161,40 +132,23 @@ export async function sendCsatSurvey(
   // 送不出時 failureReason 是給客服看的原因；認領之後最多寄一次，失敗不還原 csatSentAt、不自動重寄（issue #416）
   let failureReason: string | null = null;
   try {
-    const channelType = conversation.channelType;
-    const csatPayload = buildCsatChannelMessage(channelType, caseId);
+    const channel = conversation.channel;
+    const identity = channel?.isActive
+      ? await prisma.channelIdentity.findFirst({
+          where: { contactId: caseRecord.contactId, channelId: channel.id },
+        })
+      : null;
 
-    // For LINE, we need to send the Flex message via plugin directly
-    if (channelType === CHANNEL_TYPE.LINE) {
-      const channel = conversation.channel;
-      const identity = channel?.isActive
-        ? await prisma.channelIdentity.findFirst({
-            where: { contactId: caseRecord.contactId, channelId: channel.id },
-          })
-        : null;
-      const plugin = getChannelPlugin(CHANNEL_TYPE.LINE);
-
-      if (!channel?.isActive) {
-        failureReason = '渠道已停用或不存在，問卷沒有送到客人';
-      } else if (!identity) {
-        failureReason = '找不到這位聯絡人在此渠道的帳號，問卷沒有送到客人';
-      } else if (!plugin) {
-        failureReason = '這個渠道類型目前無法從後台送出訊息';
-      } else {
-        const credentials = decryptCredentials(channel.credentialsEncrypted);
-        const result = await plugin.sendMessage(identity.uid, csatPayload, credentials);
-        if (!result.success) {
-          failureReason = (result.error || 'LINE 沒有接受這份問卷').slice(0, 500);
-        }
-      }
+    if (!channel?.isActive) {
+      failureReason = '渠道已停用或不存在，問卷沒有送到客人';
+    } else if (!identity) {
+      failureReason = '找不到這位聯絡人在此渠道的帳號，問卷沒有送到客人';
     } else {
-      // FB / WEBCHAT: fallback to text-based CSAT
-      const delivered = await deliverToChannel(
-        prisma,
-        conversationId,
-        '感謝您的耐心等候！請評價此次服務體驗（1-5 分），回覆 csat:分數 即可，例如 csat:5',
-      );
-      if (!delivered) failureReason = '問卷沒有送到客人，請確認渠道設定';
+      const credentials = decryptCredentials(channel.credentialsEncrypted);
+      const result = await plugin.sendMessage(identity.uid, plugin.buildCsatSurvey(csatSurveyInput(caseId)), credentials);
+      if (!result.success) {
+        failureReason = (result.error || '渠道沒有接受這份問卷').slice(0, 500);
+      }
     }
   } catch (err) {
     logger.error('[CsatService] Channel delivery error:', err);
@@ -411,23 +365,30 @@ export async function recordCsatScore(
   const now = new Date();
   const conversation = caseRecord.conversations[0];
   const conversationId = conversation?.id;
+  const ratedBy: CsatRatedBy = scope.agentId ? 'agent' : 'customer';
 
-  // Update case with CSAT data
-  await prisma.case.update({
-    where: { id: caseId },
+  // 以條件更新認領（issue #339）：客人連點兩次、兩個請求同時通過上面的檢查時，只有一次寫得進去；
+  // 沒寫入就不送感謝訊息、不發低分通知、不發 case.closed、不關對話
+  const { count } = await prisma.case.updateMany({
+    where: { id: caseId, tenantId: scope.tenantId, contactId: scope.contactId, csatScore: null },
     data: {
       csatScore: score,
       csatComment: comment ?? null,
       csatRespondedAt: now,
+      csatRatedBy: ratedBy,
     },
   });
+  if (count === 0) {
+    logger.info(`[CsatService] Skip CSAT for case ${caseId}: already rated by another request`);
+    return false;
+  }
 
   // 問卷卡片顯示分數、時間軸記錄評分者（issue #444）。舊入口傳進來的 prisma 不一定綁定租戶，查詢自帶 tenantId
   const ratingCtx = { tx: prisma as TenantCtx['tx'], tenantId: caseRecord.tenantId };
   const ratedSurveys = await recordCsatRating(ratingCtx, {
     caseId,
     score,
-    ratedBy: scope.agentId ? 'agent' : 'customer',
+    ratedBy,
     agentId: scope.agentId,
   });
   // 先推問卷訊息再推感謝訊息：對話列表的最後一則仍是感謝訊息
@@ -493,26 +454,14 @@ export async function recordCsatScore(
     deliverToChannel(prisma, conversationId, followUp).catch(() => {});
   }
 
-  // Low score: notify supervisor
+  // 低分只通知、不升級工單（issue #339 決定 5）：收件人是有 case.assign、看得到這個渠道的啟用中成員
   if (score <= 2) {
-    try {
-      const supervisors = await prisma.agent.findMany({
-        where: { tenantId: caseRecord.tenantId, role: 'SUPERVISOR', isActive: true },
-      });
-
-      for (const supervisor of supervisors) {
-        await createAndDispatch(prisma, io, {
-          tenantId: caseRecord.tenantId,
-          agentId: supervisor.id,
-          type: 'csat_low_score',
-          title: 'CSAT 低分警報',
-          body: `案件「${caseRecord.title}」收到 ${score} 分評價，請關注處理。`,
-          clickUrl: `/dashboard/cases?id=${caseId}`,
-        });
-      }
-    } catch (err) {
-      logger.error('[CsatService] Failed to notify supervisors:', err);
-    }
+    await notifyCsatLowScore(ratingCtx, io, {
+      caseId,
+      channelId: caseRecord.channelId,
+      title: caseRecord.title,
+      score,
+    });
   }
 
   // Auto-close the case
@@ -555,6 +504,55 @@ export async function recordCsatScore(
     logger.error('[CsatService] Failed to close case after CSAT:', err);
   }
 
+  // 評分後關閉對話，與問卷逾時結案相同（issue #339 決定 6）
+  try {
+    await closeConversationsForCase(prisma as PrismaClient, io, caseId, caseRecord.tenantId, {
+      source: 'csat',
+      reason: ratedBy === 'agent' ? '客服代評滿意度後自動結案' : '客人評分後自動結案',
+    });
+  } catch (err) {
+    logger.error(`[CsatService] Failed to close conversations after CSAT for case ${caseId}:`, err);
+  }
+
   logger.info(`[CsatService] CSAT recorded for case ${caseId}: score=${score}`);
   return true;
+}
+
+/**
+ * CSAT 低分通知（issue #339 決定 5，csat-survey「低分只通知負責工單的成員」）：只發站內通知，不升級工單。
+ * 收件人見 resolveCaseManagerRecipients()。發送失敗時在工單時間軸寫一筆 csat_low_score_notify_failed，
+ * 客服看得到通知沒有送出，不只寫 log。
+ */
+export async function notifyCsatLowScore(
+  ctx: TenantCtx,
+  io: SocketIOServer,
+  input: { caseId: string; channelId: string; title: string; score: number },
+): Promise<void> {
+  try {
+    const recipients = await resolveCaseManagerRecipients(ctx, input.channelId);
+    for (const agentId of recipients) {
+      await createAndDispatch(ctx.tx, io, {
+        tenantId: ctx.tenantId,
+        agentId,
+        type: 'csat_low_score',
+        title: 'CSAT 低分警報',
+        body: `案件「${input.title}」收到 ${input.score} 分評價，請關注處理。`,
+        clickUrl: `/dashboard/cases?id=${input.caseId}`,
+      });
+    }
+  } catch (err) {
+    logger.error(`[CsatService] Failed to notify CSAT low score for case ${input.caseId}:`, err);
+    try {
+      await ctx.tx.caseEvent.create({
+        data: {
+          caseId: input.caseId,
+          actorType: 'system',
+          eventType: 'csat_low_score_notify_failed',
+          payload: { score: input.score, reason: '低分通知沒有送出，請手動通知負責的成員' },
+        },
+      });
+    } catch (recordErr) {
+      logger.error(`[CsatService] Failed to record low score notify failure for case ${input.caseId}:`, recordErr);
+    }
+  }
 }

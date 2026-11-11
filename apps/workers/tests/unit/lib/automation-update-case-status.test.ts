@@ -215,6 +215,27 @@ test('轉成處理中：寫 status_changed，不發 case.resolved／case.closed'
   assert.equal(written.outbox.length, 0);
 });
 
+/**
+ * issue #339（csat-survey「工單重新解決時的問卷」）：與 API 的 transitionCase() 共用 caseTransitionCsatFields()。
+ * 沒評分的工單重新解決時清除上一輪的問卷寄出時間，問卷排程再寄一份；已評分的保留。
+ */
+test('自動化重新解決工單時同樣處理問卷', async () => {
+  const sentAt = new Date('2026-01-01T00:00:00Z');
+  const row = Object.assign(caseOf('IN_PROGRESS', null), { csatScore: null, csatSentAt: sentAt, csatRespondedAt: null });
+  await run(row, 'RESOLVED');
+  assert.equal(row.status, 'RESOLVED');
+  assert.equal(row.csatSentAt, null, '清除上一輪的寄出時間');
+  assert.equal(row.csatRespondedAt, null);
+});
+
+test('自動化重新解決已評分的工單：保留問卷欄位', async () => {
+  const sentAt = new Date('2026-01-01T00:00:00Z');
+  const row = Object.assign(caseOf('IN_PROGRESS', null), { csatScore: 4, csatSentAt: sentAt, csatRespondedAt: sentAt });
+  await run(row, 'RESOLVED');
+  assert.equal(row.csatSentAt, sentAt);
+  assert.equal(row.csatScore, 4);
+});
+
 test('Automation sets the current status：狀態相同時不改、不寫任何紀錄', async () => {
   const row = caseOf('IN_PROGRESS', null);
   await run(row, 'IN_PROGRESS');

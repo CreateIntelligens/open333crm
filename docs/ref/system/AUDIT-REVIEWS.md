@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-11：滿意度問卷與工單重新開啟（CASE-04、CASE-02、CASE-05、RBAC-03）
+
+issue #339，change `csat-reresolve-decisions-339`。依使用者 2026-11-11 在 issue 留言的 8 項決定修改。以單元測試、元件測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_339`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-04 | 已修正，從 `AUDIT.md` 移除（`resolvedAt` 的部分 #417 已修正） | 新增 `@open333crm/shared` 的 `caseTransitionCsatFields()`，API 的 `transitionCase()` 與 workers 的 `update_case_status` 共用：轉成 `RESOLVED` 且沒有評分時清除 `csatSentAt`、`csatRespondedAt`，已評分的保留。`csat-reresolve.test.ts`（feature）「重新解決的未評分工單不會被立即結案」修正前失敗在斷言上（`Expected: "RESOLVED"`、`Received: "CLOSED"`），走真的 `transitionCase()` 與問卷逾時結案排程；「重新解決的未評分工單再寄一份問卷」「已評分的工單不寄問卷」修正前也失敗。workers 的「自動化重新解決工單時同樣處理問卷」（unit）修正前失敗。「已評分的工單重新解決不再寄問卷」寫好就通過，mutation：拿掉 `caseTransitionCsatFields()` 的已評分判斷時失敗 |
+| CASE-02 | 依決定處理，從 `AUDIT.md` 移除 | 使用者決定非 LINE 渠道先不寄問卷（等需要時再做快速回覆按鈕）。渠道外掛新增 `buildCsatSurvey()`，只有 LINE 實作；問卷排程與 `sendCsatSurvey()` 依外掛能力判斷，csat 模組不再以 `channelType` 分支（`AGENTS.md` 結構規則 5）。不寄問卷的工單停在已解決、不逾時結案。`csat-channel-capability.test.ts`（feature）「非 LINE 渠道的工單不寄問卷」「非 LINE 工單不佔排程名額」修正前失敗；「非 LINE 渠道的工單停在已解決」寫好就通過（修正前寄文字問卷、`csatSentAt` 是當下，不會在同一次執行結案），以 mutation 驗證：問卷逾時結案的查詢改成看 `resolvedAt` 時失敗。報表的 CSAT 仍只有 LINE 的客人自評 |
+| CASE-05 | 部分修正，狀態不變 | 評分後關閉對話、評分來源寫進 `csatRatedBy`、評分改條件更新認領。`csat-rating.test.ts`（feature）「客人評分後對話關閉」「客服代評後對話關閉」「客人評分記錄來源」「客服代評記錄來源」「客人連點兩次評分只處理一次」修正前失敗。仍未處理：不經狀態機、客服代評也送感謝訊息給顧客 |
+| RBAC-03 的 `recordCsatScore()` 一列 | 已修正，從表中移除；RBAC-03 維持部分修正 | 低分通知改看有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`resolveCaseManagerRecipients()`）。`csat-rating.test.ts`「低分通知有工單指派權限的管理員與主管」「沒有工單指派權限的成員不收低分通知」「看不到渠道的成員不收低分通知」修正前失敗；「停用的成員不收低分通知」以 mutation 驗證（拿掉收件人查詢的 `isActive` 條件時失敗；寫入通知的 `createNotificationForActiveAgent()` 也會擋，所以測試另外直接斷言收件人名單）；「3 分不發低分通知」以 mutation 驗證（門檻改成 3 分時失敗） |
+| 並行評分 | 已修正（未列入 `AUDIT.md`） | `csat-rating.test.ts`「客人連點兩次評分只處理一次」讓兩條連線都讀到「還沒評分」之後才繼續，修正前兩次都回傳已記錄（`2 !== 1`），修正後只有一次，感謝訊息一則、`case.closed` 一次 |
+
 ## 2026-11-11：Canvas 等待節點喚醒（APP-09、RLS-01）
 
 issue #334，change `fix-canvas-wait-resume`。以單元測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_334`）驗證，沒有連 UAT。UAT 的 `flow_executions` 是 0 筆，沒有資料要修補。

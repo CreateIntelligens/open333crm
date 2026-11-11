@@ -113,6 +113,9 @@ function formatEventDescription(
     // 滿意度問卷送出失敗（issue #416）：系統不會自動重寄
     case 'csat_send_failed':
       return `滿意度問卷沒有送出，客人沒有收到${payload?.reason ? `：${payload.reason}` : ''}`;
+    // 低分通知沒有送出（issue #339）：請客服手動通知負責的成員
+    case 'csat_low_score_notify_failed':
+      return `低分（${Number(payload?.score)} 分）通知沒有送出，請手動通知負責的成員`;
     default:
       return eventType;
   }
@@ -217,6 +220,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
       case 'escalated':
       case 'closed':
       case 'csat_send_failed':
+      case 'csat_low_score_notify_failed':
         return 'bg-destructive-subtle text-destructive';
       case 'automation_status_skipped':
         return 'bg-warning-subtle text-warning';

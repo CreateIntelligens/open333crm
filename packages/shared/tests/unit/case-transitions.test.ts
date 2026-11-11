@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { caseStatusOutcomeEvent, caseTransitionTimestamps } from '#src/constants/case-transitions.js';
+import { caseStatusOutcomeEvent, caseTransitionCsatFields, caseTransitionTimestamps } from '#src/constants/case-transitions.js';
 
 const NOW = new Date('2026-11-04T00:00:00Z');
 
@@ -30,6 +30,24 @@ test('重開：RESOLVED → IN_PROGRESS、CLOSED → OPEN 清除 resolvedAt', ()
 test('狀態沒有改變：不動任何時間欄位', () => {
   assert.deepEqual(caseTransitionTimestamps('RESOLVED', 'RESOLVED', NOW), {});
   assert.deepEqual(caseTransitionTimestamps('CLOSED', 'CLOSED', NOW), {});
+});
+
+// ── caseTransitionCsatFields（issue #339 決定 2，csat-survey「工單重新解決時的問卷」）──
+test('重新解決的未評分工單：清除上一輪的寄出與回覆時間', () => {
+  for (const from of ['IN_PROGRESS', 'PENDING'] as const) {
+    assert.deepEqual(caseTransitionCsatFields(from, 'RESOLVED', { csatScore: null }), { csatSentAt: null, csatRespondedAt: null }, from);
+  }
+});
+
+test('已評分的工單重新解決：保留問卷欄位', () => {
+  assert.deepEqual(caseTransitionCsatFields('IN_PROGRESS', 'RESOLVED', { csatScore: 4 }), {});
+});
+
+test('其他轉換與狀態沒有改變：不動問卷欄位', () => {
+  assert.deepEqual(caseTransitionCsatFields('RESOLVED', 'RESOLVED', { csatScore: null }), {});
+  assert.deepEqual(caseTransitionCsatFields('RESOLVED', 'IN_PROGRESS', { csatScore: null }), {});
+  assert.deepEqual(caseTransitionCsatFields('RESOLVED', 'CLOSED', { csatScore: null }), {});
+  assert.deepEqual(caseTransitionCsatFields('CLOSED', 'OPEN', { csatScore: null }), {});
 });
 
 // ── caseStatusOutcomeEvent（issue #469）：API 與 workers 共用的 case.resolved／case.closed 內容 ──

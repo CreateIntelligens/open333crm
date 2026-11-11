@@ -6,11 +6,21 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **滿意度問卷依 issue #339 的 8 項決定調整**（change `csat-reresolve-decisions-339`）：
+  - 寄問卷延遲從寫死的 5 分鐘改成 30 分鐘（常數 `CSAT_SURVEY_DELAY_MINUTES`），租戶不能調整，也不能關閉問卷。
+  - **非 LINE 渠道不再寄問卷**。原本送純文字「回覆 csat:分數」，缺工單 ID，客人回覆不了（AUDIT CASE-02）。渠道外掛新增選用方法 `buildCsatSurvey()`，只有 LINE 實作（Flex 版型從 `csat.service.ts` 移到 `packages/channel-plugins/src/line/builders.ts`）；問卷排程與 `sendCsatSurvey()` 依外掛能力判斷，不比對 `channelType`。這些工單停在已解決，不逾時結案，由客服手動結案。
+  - **低分（1～2 分）只通知、不升級**，通知對象改成有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員，含管理員；不再看舊的角色列舉 `role`（AUDIT RBAC-03 的 `recordCsatScore()` 一列）。預設的客服角色也有 `case.assign`，看得到該渠道的客服也會收到。通知送不出時工單時間軸寫一筆 `csat_low_score_notify_failed`。
+  - **評分後關閉工單底下的對話**，與問卷逾時結案相同（客人評分與客服代評都是）。
+  - **客服代評保留並標記來源**：工單新增 `csatRatedBy`（`customer`／`agent`，migration `20261111100000_add_case_csat_rated_by` 以時間軸的 `csat_rated` 事件回填）。報表的 CSAT 平均、好評率、客服績效與 `/analytics/csat` 只算客人自評；總覽新增 `csatAgentRatedCount`、`/analytics/csat` 新增 `agentRatedCount`，報表頁 CSAT 分數卡顯示「客服代評 N 筆（不計入平均）」，工單詳情標示「客服代評」。
+  - 文件以 `docs/19_CSAT_FLOW.md` 為準並依決定改寫；`docs/04_CASE_MANAGEMENT.md` 的 CSAT 段落標成過時。
+
 - **AI 月額度無上限的租戶不能申請加購 token**（change `block-topup-request-when-unlimited`）：`POST /api/v1/plan-change` 送出 `token_topup` 時，租戶的 AI 月額度基礎上限是無上限就回 400 `TOPUP_UNLIMITED`，不建立申請。新增 `GET /api/v1/plan-change/topup-eligibility`，`/dashboard/plan` 依此停用「加購 Token」並說明「目前方案的 AI 額度已無上限，不需要加購」。以前這類申請送得出去，平台卻無法核准，還會卡住租戶的下一筆申請。
 - **知識庫自動回覆改成入口開交易**（#337 階段 4 第六批 6b-2，change `migrate-ai-kb-autoreply-tenant-ctx`）— 讀寫改在綁定租戶的短交易內（`app_tenant` 連線，受 RLS 約束），原本以 `prismaAdmin` 讀取。embedding 服務、LLM 與去識別化服務在交易外呼叫（新檔 `ai/kb-autoreply.flow.ts`）。寫入回覆時的遮罩沿用處理開始時讀到的遮罩政策，不再另外讀一次。送到渠道的 `deliverToChannel()` 屬於還沒搬的 `conversation`，仍用 `prismaAdmin`。關鍵字規則的讓步改由 automation worker 判斷一次，AI agent 與知識庫回覆共用這個結果，知識庫不再自己判斷。
 
 ### Fixed
 
+- **工單重新解決後一分鐘內被自動結案**（issue #339，AUDIT CASE-04，change `csat-reresolve-decisions-339`）：重開再解決時沒有清掉上一輪的 `csatSentAt`，問卷逾時結案排程只看 `csatSentAt`，上一輪寄出超過 72 小時的工單重新解決後一分鐘內就被結案、底下的對話也被關閉，客人收不到這次的問卷。新增 `@open333crm/shared` 的 `caseTransitionCsatFields()`，API 的 `transitionCase()` 與 workers 的 `update_case_status` 共用：轉成 `RESOLVED` 時沒有評分就清除 `csatSentAt` 與 `csatRespondedAt`，30 分鐘後重寄一份，逾時從重新寄出起算；已評分的保留分數，不再寄、不逾時結案。
+- **客人連點兩次評分會處理兩次**（issue #339）：`recordCsatScore()` 先在程式裡檢查 `csatScore` 是空值，再只用 id 更新，兩個請求同時到達時都通過，客人收到兩則感謝訊息、低分通知發兩次、`case.closed` 發兩次。改成以 `csatScore: null` 為條件的條件更新認領，沒寫入就不送感謝訊息、不發通知、不發 `case.closed`、不關對話。
 - **Canvas 流程過不了等待節點，喚醒也可能重複執行**（issue #334，change `fix-canvas-wait-resume`）：流程走到等待節點暫停後，`currentNodeId` 停在等待節點，喚醒時又從它開始，再執行同一個等待節點、再暫停，直到步數上限被標成 `FAILED`。現在喚醒時 `FlowRunner.run(id, { resumeFromWait: true })` 略過暫停的等待節點，從它的下一個節點繼續；等待節點是最後一個節點時流程完成。暫停時寫入的資料形狀不變，已經停在等待節點的舊資料喚醒後也從下一個節點繼續。`processResumeQueue()` 原本只以 id 把 execution 改成 `RUNNING`，`withoutOverlapping` 的鎖過期後兩期同時執行時會恢復兩次、訊息送兩次（AUDIT APP-09）；現在以 `prismaAdmin` 掃描，在 execution 所屬租戶的 `withTenant` 交易內以 `status = 'WAITING'` 與 `resumeAt` 已到期為條件認領，更新 0 筆時不恢復，也不再使用未綁租戶的 `prisma` singleton（RLS-01 的這一部分）。`setupCanvasScheduler()` 改收 `{ admin, prisma }`。目前沒有 Canvas 前端頁面，UAT 的 `flow_executions` 是 0 筆，修正前沒有影響到使用者。
 - **渠道的機器人設定與自動化動作參數沒有驗證型別**（issue #405 第一批，change `validate-bot-config-and-action-params`）：
   - `settings.botConfig` 原本只檢查 `maxBotReplies`。`handoffKeywords` 存了空字串 `['']` 時，`'任何文字'.includes('')` 恆為 true，**每則訊息都自動轉接真人**；存成字串 `"真人,客服"` 時逐字比對；含數字時整個 `message.received` 處理丟例外。`handoffPromptEnabled` 是字串 `"false"` 時被當成開啟。新增 `botConfigSchema`（`packages/automation/src/bot-config.ts`）定義 8 個欄位的型別與範圍：建立渠道，或更新渠道且送出的 `botConfig` 與已存的不同時，不合法回 400 `VALIDATION_ERROR`，`details.issues` 指出欄位。送出的 `botConfig` 與已存的相同時不檢查，Downstream Webhook 設定視窗把整包 `settings` 送回時，不會被舊資料擋下（`maxBotReplies` 的檢查也從路由移到這裡）。讀取一律經過 `getBotConfig()`，不合法的欄位改用預設值，不丟例外；`kb-autoreply` 與 webhook 原本各自轉型的讀法改用它。設定畫面送出的值（`handoffMessage` 可為空字串、`handoffKeywords` 可為空陣列）都照常通過。

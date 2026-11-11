@@ -13,6 +13,7 @@ import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async () => true,
+  closeConversationsForCase: async () => 0,
 }));
 
 const { recordCsatScore } = await import('#src/modules/csat/csat.service.js');
@@ -52,6 +53,8 @@ function createDb() {
         csatScore: null,
         conversations: [{ id: 'conv-1', channelId: 'channel-1' }],
       }),
+      // issue #339：評分以條件更新認領
+      updateMany: async () => ({ count: 1 }),
       update: async () => ({}),
       count: async () => 1,
     },
@@ -84,6 +87,9 @@ function createDb() {
     },
     conversation: { update: async () => ({}) },
     agent: { findMany: async () => [] },
+    // issue #339：低分通知的收件人（沒有方案、沒有角色 → 沒有收件人）
+    tenant: { findUnique: async () => ({ planId: null }) },
+    role: { findMany: async () => [] },
   } as unknown as TenantDb;
 }
 
@@ -152,4 +158,21 @@ test('客服代評的時間軸紀錄標明客服', async () => {
   assert.equal(rated.actorType, 'agent');
   assert.equal(rated.actorId, AGENT_ID);
   assert.deepEqual(rated.payload, { score: 4, source: 'agent' });
+});
+
+/**
+ * issue #339（csat-survey「低分只通知負責工單的成員」）：低分通知送不出時不可只寫 log，
+ * 工單時間軸留一筆 csat_low_score_notify_failed，分數與結案照常。
+ */
+test('低分通知送不出時客服看得到', async () => {
+  const db = createDb() as unknown as Record<string, unknown>;
+  db.tenant = { findUnique: async () => { throw new Error('connection reset'); } };
+
+  const recorded = await recordCsatScore(db as unknown as TenantDb, io, CASE_ID, 2, undefined, { tenantId: TENANT_ID, contactId: 'contact-1' });
+
+  assert.equal(recorded, true);
+  const failed = caseEvents.find((e) => e.eventType === 'csat_low_score_notify_failed');
+  assert.ok(failed, '有 csat_low_score_notify_failed 事件');
+  assert.equal(failed.actorType, 'system');
+  assert.ok(caseEvents.some((e) => e.eventType === 'status_changed'), '工單照常結案');
 });

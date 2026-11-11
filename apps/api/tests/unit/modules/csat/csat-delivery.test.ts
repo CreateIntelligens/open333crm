@@ -23,7 +23,11 @@ vi.mock('#src/modules/channel/channel.service.js', () => ({
 }));
 vi.mock('@open333crm/channel-plugins', async () => {
   const actual = await vi.importActual<typeof import('@open333crm/channel-plugins')>('@open333crm/channel-plugins');
-  return { ...actual, getChannelPlugin: (type: string) => (type === 'LINE' ? actual.linePlugin : undefined) };
+  return {
+    ...actual,
+    getChannelPlugin: (type: string) => (type === 'LINE' ? actual.linePlugin : undefined),
+    getAllChannelPlugins: () => [actual.linePlugin],
+  };
 });
 
 const { sendCsatSurvey } = await import('#src/modules/csat/csat.service.js');
@@ -49,7 +53,10 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean; tenantActive?: boolean; privacyEnabled?: boolean } = {}) {
+function createHarness(
+  channelType: 'LINE' | 'FB',
+  opts: { identity?: boolean; tenantActive?: boolean; privacyEnabled?: boolean; channelActive?: boolean } = {},
+) {
   const emits: Array<{ event: string; data: { message: { metadata?: Record<string, unknown> } } }> = [];
   const io = {
     to: () => ({ emit: (event: string, data: never) => emits.push({ event, data }) }),
@@ -68,7 +75,7 @@ function createHarness(channelType: 'LINE' | 'FB', opts: { identity?: boolean; t
         status: 'RESOLVED',
         csatSentAt: null,
         conversations: [
-          { id: 'conv-1', channelId: 'channel-1', channelType, channel: { id: 'channel-1', isActive: true, credentialsEncrypted: 'x' } },
+          { id: 'conv-1', channelId: 'channel-1', channelType, channel: { id: 'channel-1', isActive: opts.channelActive !== false, credentialsEncrypted: 'x' } },
         ],
       }),
       // 模擬資料庫的條件：租戶已停用時，帶 tenant.isActive 條件的認領更新不到任何一列
@@ -157,14 +164,25 @@ test('問卷送出失敗時客服看得到：找不到客人的 LINE 帳號', as
   assert.equal(h.caseEvents[0]?.data.eventType, 'csat_send_failed');
 });
 
+// issue #339 決定 7：非 LINE 渠道不寄問卷（不認領、不建立問卷訊息），這個情境改成渠道已停用
 test('問卷送出失敗時客服看得到：其他渠道送不出', async () => {
-  fb.delivered = false;
-  const h = createHarness('FB');
+  const h = createHarness('LINE', { channelActive: false });
 
   await sendCsatSurvey(h.db, h.io, CASE_ID);
 
+  assert.equal(lineBodies.length, 0, '不呼叫渠道外掛送出');
   assert.equal(h.messageUpdates[0]?.data.metadata.deliveryFailed, true);
+  assert.match(String(h.messageUpdates[0]?.data.metadata.deliveryError), /渠道已停用/);
   assert.equal(h.caseEvents[0]?.data.eventType, 'csat_send_failed');
+});
+
+test('非 LINE 渠道的工單不寄問卷：不認領、不建立問卷訊息', async () => {
+  const h = createHarness('FB');
+
+  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), false);
+
+  assert.equal(h.messagesCreated.length, 0);
+  assert.equal(lineBodies.length, 0);
 });
 
 test('認領之前租戶被停用：不建立問卷訊息、不送給客人（PR #440 審查）', async () => {
@@ -199,7 +217,7 @@ test('去識別化服務無法使用時滿意度調查照常送出', async () =>
     lineBodies.push(JSON.parse(String(init?.body)));
     return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
-  const h = createHarness('FB', { privacyEnabled: true });
+  const h = createHarness('LINE', { privacyEnabled: true });
 
   assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), true);
 
