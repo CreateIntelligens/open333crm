@@ -97,9 +97,14 @@
           <tr><td>訊息總量</td><td>這段期間所有訊息的數量，包含客人傳來的、客服回的和 Bot 回的</td><td>Bot 回得多，這個數字也會變大</td></tr>
           <tr><td>開啟中案件</td><td><b>現在</b>還沒結案的案件（工單）數，包含開啟、處理中、等待中、已升級</td><td>不受上方期間影響，永遠是當下的數字</td></tr>
           <tr><td>SLA 達成率</td><td>這段期間解決的案件裡，有幾成是在規定時限內解決的</td><td>只算有設定處理時限（SLA）的案件；沒有這類案件時顯示「-」</td></tr>
-          <tr><td>CSAT 分數</td><td>客人滿意度評分的平均，滿分 5 分</td><td>依案件<b>建立</b>的日期歸到期間，不是依評分的日期；沒人評分時顯示「-」</td></tr>
+          <tr><td>CSAT 分數</td><td>客人<b>自己評</b>的滿意度平均，滿分 5 分</td><td>依案件<b>建立</b>的日期歸到期間，不是依評分的日期；沒有客人自評時顯示「-」。客服代評不計入平均，有代評時卡片多一行「客服代評 N 筆（不計入平均）」</td></tr>
         </tbody>
       </table>
+      <figure class="shot">
+        <img src="uploads/shots/ch13-kpi-csat.png" alt="四張數字卡，CSAT 分數 4.5 / 5.0，下方寫客服代評 1 筆（不計入平均）" loading="lazy">
+        <figcaption>CSAT 分數卡：平均只算客人自評，客服代評另外列出筆數。</figcaption>
+      </figure>
+      <div class="info"><span>ℹ️</span><div>目前只有 LINE 的工單會寄滿意度問卷，Facebook、Instagram、網站聊天室的工單沒有分數，所以 CSAT 分數只反映 LINE 顧客的評價。客服代評是客服在收件匣問卷卡片上替顧客點的分數（見「<a href="ch02-cases.html#p5">02 · 工單</a>」第 5 節），不是顧客親自給的，所以不算進平均和好評率。</div></div>
       <h3>訊息趨勢</h3>
       <p>每天各渠道的訊息量折線圖，可以看出哪幾天特別忙。</p>
       <!-- KNOWN-ISSUE: 訊息趨勢沒有 WhatsApp 的線（目前沒有 WhatsApp 渠道）。 -->
@@ -146,7 +151,7 @@
           <tr><td>處理案件</td><td>這段期間建立、<b>目前</b>指派給這位客服的案件數</td></tr>
           <tr><td>已解決</td><td>上面那些案件中已經解決的數量</td></tr>
           <tr><td>平均首次回應</td><td>案件建立後，平均多久第一次回覆客人。越短越好</td></tr>
-          <tr><td>CSAT</td><td>這位客服負責的案件，客人滿意度平均分數</td></tr>
+          <tr><td>CSAT</td><td>這位客服負責的案件，客人自評的滿意度平均分數（不含客服代評）</td></tr>
           <tr><td>SLA 達成</td><td>這位客服在時限內解決的比例</td></tr>
         </tbody>
       </table>
@@ -198,10 +203,12 @@
           <tr><td><code>slaAchievementRate</code></td><td>SLA 達成率（%）</td></tr>
           <tr><td><code>avgFirstResponseMinutes</code></td><td>平均首次回應（分鐘）</td></tr>
           <tr><td><code>avgResolutionMinutes</code></td><td>平均解決時間（分鐘）</td></tr>
-          <tr><td><code>csatAvg</code></td><td>CSAT 平均分數</td></tr>
-          <tr><td><code>csatPositiveRate</code></td><td>好評比例（%）</td></tr>
+          <tr><td><code>csatAvg</code></td><td>CSAT 平均分數（只算客人自評）</td></tr>
+          <tr><td><code>csatPositiveRate</code></td><td>好評比例（%），客人自評中 4～5 分的比例</td></tr>
+          <tr><td><code>csatAgentRatedCount</code></td><td>客服代評的筆數（不計入平均與好評比例）</td></tr>
         </tbody>
       </table>
+      <div class="info"><span>ℹ️</span><div>案件 CSV 的「CSAT」欄是每張案件的分數，<b>包含客服代評</b>，檔案裡看不出是誰評的；要分辨請打開那張工單看「客服代評」標籤。</div></div>
       <div class="info"><span>ℹ️</span><div>匯出的檔案含客服姓名、聯絡人名稱和案件標題，屬於內部資料，請不要外傳。</div></div>
     </section>
 
@@ -230,7 +237,7 @@
           <tr><td>已解決案件</td><td>上面那些案件中已經解決的數量</td><td></td></tr>
           <tr><td>平均首次回應</td><td>案件建立後平均多久第一次回覆</td><td>15 分鐘以內</td></tr>
           <tr><td>平均解決時間</td><td>案件從建立到解決平均花多久</td><td></td></tr>
-          <tr><td>CSAT 分數</td><td>客人滿意度平均，滿分 5</td><td>4 分以上</td></tr>
+          <tr><td>CSAT 分數</td><td>客人自評的滿意度平均，滿分 5（不含客服代評）</td><td>4 分以上</td></tr>
           <tr><td>SLA 達成率</td><td>在時限內解決的比例</td><td>90% 以上</td></tr>
         </tbody>
       </table>
