@@ -24,4 +24,4 @@
 - [x] 4.3 `node scripts/validate-openspec.mjs --specs`、`node scripts/validate-openspec.mjs validate-bot-config-and-action-params`
 - [x] 4.4 `pnpm build`
 - [x] 4.5 `CHANGELOG.md` 的 `## [2026-11-11]` 加條目；`docs/ref/system/AUDIT.md` 沒有對應項目（不需更新）；`docs/ref/features/tenant/INBOX.md` 補上寫入與讀取規則
-- [ ] 4.6 歸檔：部署到 UAT 驗證後才歸檔（部署前以 design.md「Risks」的 SQL 查 UAT 既有的 botConfig）
+- [x] 4.6 歸檔：部署到 UAT 驗證後才歸檔（部署前以 design.md「Risks」的 SQL 查 UAT 既有的 botConfig）。2026-11-11 已查：UAT 9 個渠道的 botConfig 都合法，220 條自動化規則沒有非字串參數；PR #512 部署後，渠道設定存檔回 200，LINE、FB 的 AI 照常回覆
