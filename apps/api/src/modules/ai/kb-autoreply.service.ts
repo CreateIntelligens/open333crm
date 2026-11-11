@@ -168,15 +168,24 @@ function resolveBotConfig(channelSettings: unknown): BotConfig {
   };
 }
 
+/** 交易 A1 確認可以回覆時回傳的對話資料（checkKbReplyEligibility） */
+export interface KbEligibleConversation {
+  channelId: string;
+  channelSettings: unknown;
+  metadata: unknown;
+}
+
 /**
- * 交易 A（design D1 步驟 1）：判斷要不要回覆，並讀回覆需要的資料。只讀，不呼叫外部服務。
- * 回傳略過原因時不再讀之後的資料。
+ * 交易 A1（design D1 步驟 1）：確認對話是 BOT_HANDLED，判斷要不要讓步給關鍵字規則。只讀。
+ *
+ * 關鍵字讓步判斷是這個交易的最後一步：規則有條件時，hasMatchingKeywordRule() 讀取條件資料失敗會
+ * catch 後當成不讓步。PostgreSQL 在查詢失敗後拒絕同一個交易的其他查詢，所以之後的讀取放在交易 A2。
  */
-export async function readKbReplyContext(
+export async function checkKbReplyEligibility(
   ctx: TenantCtx,
   conversationId: string,
   messageText: string,
-): Promise<{ skip: KbAutoReplySkipReason } | KbReplyContext> {
+): Promise<{ skip: KbAutoReplySkipReason } | KbEligibleConversation> {
   if (!getConfig().KB_AUTO_REPLY_ENABLED) return { skip: 'kb_disabled' };
   const { tenantId } = ctx;
 
@@ -203,8 +212,18 @@ export async function readKbReplyContext(
     logger.info(`[KbAutoReply] conv=${conversationId} skipped: keyword rule will handle`);
     return { skip: 'keyword_rule' };
   }
+  return { channelId: conversation.channel.id, channelSettings: conversation.channel.settings, metadata: conversation.metadata };
+}
 
-  const botConfig = resolveBotConfig(conversation.channel.settings);
+/**
+ * 交易 A2（design D1 步驟 1）：依 botConfig 判斷要不要回覆，並讀回覆需要的資料。只讀，不呼叫外部服務。
+ */
+export async function readKbReplyContext(
+  ctx: TenantCtx,
+  conversationId: string,
+  eligible: KbEligibleConversation,
+): Promise<{ skip: KbAutoReplySkipReason } | KbReplyContext> {
+  const botConfig = resolveBotConfig(eligible.channelSettings);
   if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return { skip: 'bot_mode' };
 
   const chatSettings = await getChatSettings(ctx);
@@ -215,9 +234,9 @@ export async function readKbReplyContext(
   // 一次處理只讀一次向量化設定與遮罩政策（change migrate-embedding-tenant-ctx，design D5）
   const { settings: embeddingSettings, policy } = await readEmbeddingInputs(ctx);
 
-  const convMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
+  const convMeta = (eligible.metadata ?? {}) as Record<string, unknown>;
   return {
-    channelId: conversation.channel.id,
+    channelId: eligible.channelId,
     botConfig,
     chatSettings,
     history,

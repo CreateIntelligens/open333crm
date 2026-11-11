@@ -17,6 +17,9 @@ const hooks = vi.hoisted(() => ({
   beforeLlmReply: async () => {},
   llmCalls: 0,
   delivered: [] as string[],
+  /** 條件資料的查詢以 SQL 錯誤失敗（buildAutomationFacts 收到的連線上執行） */
+  failFacts: false,
+  factsCalls: 0,
 }));
 
 vi.mock('#src/modules/ai/providers/index.js', () => ({
@@ -41,6 +44,19 @@ vi.mock('#src/modules/conversation/conversation.service.js', async (orig) => ({
   },
 }));
 
+vi.mock('@open333crm/automation', async (orig) => {
+  const actual = await orig<typeof import('@open333crm/automation')>();
+  return {
+    ...actual,
+    buildAutomationFacts: async (db: { $queryRawUnsafe(sql: string): Promise<unknown> }, context: unknown) => {
+      hooks.factsCalls += 1;
+      // 在傳入的連線上執行一個會失敗的 SQL：交易內時 PostgreSQL 會把整個交易標成 aborted
+      if (hooks.failFacts) await db.$queryRawUnsafe('select 1/0');
+      return actual.buildAutomationFacts(db as never, context as never);
+    },
+  };
+});
+
 loadEnvConfig();
 const { attemptKbAutoReplyFlow } = await import('#src/modules/ai/kb-autoreply.flow.js');
 const { createBotReplyGuard } = await import('#src/modules/automation/bot-reply-guard.js');
@@ -49,9 +65,10 @@ const { createOutboxPublisher } = await import('#src/events/outbox-publisher.js'
 const owner = new PrismaClient();
 const tenantDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
 const redis = createRedisClient(process.env.REDIS_URL!, 'command');
-const STARTED = new Date();
-const MARK = `ci-kb-flow-${STARTED.getTime()}`;
+const MARK = `ci-kb-flow-${Date.now()}`;
 const channelIds: string[] = [];
+const inboundIds: string[] = [];
+const ownTenantIds: string[] = [];
 const io = { to: () => ({ emit: () => {} }) } as never;
 
 /** 建一段 BOT_HANDLED 對話與一則進站訊息 */
@@ -67,6 +84,7 @@ async function makeConversation(tenantId: string) {
   const inbound = await owner.message.create({
     data: { conversationId: conversation.id, direction: 'INBOUND', senderType: 'CONTACT', contentType: 'text', content: { text: '請問一下' } },
   });
+  inboundIds.push(inbound.id);
   return { conversationId: conversation.id, inboundId: inbound.id };
 }
 
@@ -86,17 +104,23 @@ beforeEach(() => {
   hooks.beforeLlmReply = async () => {};
   hooks.llmCalls = 0;
   hooks.delivered = [];
+  hooks.failFacts = false;
+  hooks.factsCalls = 0;
 });
 
 afterAll(async () => {
   const conversations = await owner.conversation.findMany({ where: { channelId: { in: channelIds } }, select: { id: true } });
   const ids = conversations.map((c) => c.id);
   await owner.message.deleteMany({ where: { conversationId: { in: ids } } });
-  await owner.sideEffectClaim.deleteMany({ where: { tenantId: { in: [TENANT_A, TENANT_B] }, kind: 'bot_reply', createdAt: { gte: STARTED } } });
+  // 只刪這個檔案建立的資料：其他測試檔可能同時在 TENANT_A、TENANT_B 寫入認領與用量
+  await owner.sideEffectClaim.deleteMany({ where: { kind: 'bot_reply', sourceId: { in: inboundIds } } });
   await owner.conversation.deleteMany({ where: { id: { in: ids } } });
   await owner.contact.deleteMany({ where: { displayName: MARK } });
   await owner.channel.deleteMany({ where: { id: { in: channelIds } } });
-  await owner.aiUsage.deleteMany({ where: { tenantId: { in: [TENANT_A, TENANT_B] }, feature: 'kb-autoreply', createdAt: { gte: STARTED } } });
+  await owner.aiUsage.deleteMany({ where: { conversationId: { in: ids } } });
+  await owner.outbox.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
+  await owner.automationRule.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
+  await owner.tenant.deleteMany({ where: { id: { in: ownTenantIds } } });
   redis.disconnect();
   await owner.$disconnect();
   await tenantDb.$disconnect();
@@ -126,4 +150,30 @@ test('對話屬於其他租戶：結果是略過（not_bot_handled），租戶 B
   assert.deepEqual(result, { status: 'skipped', reason: 'not_bot_handled' });
   assert.equal(hooks.llmCalls, 0);
   assert.deepEqual(await botMessagesOf(conversationId), []);
+});
+
+// automation-engine「條件資料讀取失敗」：讀取在交易內失敗時，同一個交易之後的查詢不能被拖累（review-loop 第 1 輪）
+test('條件資料讀取失敗：有條件的關鍵字規則不讓步，知識庫照常回覆', async () => {
+  // 規則放在這個測試自己的租戶，不影響其他測試檔在 TENANT_A 的關鍵字判斷
+  const tenantId = (await owner.tenant.create({ data: { name: `${MARK}-facts` } })).id;
+  ownTenantIds.push(tenantId);
+  await owner.automationRule.create({
+    data: {
+      tenantId,
+      name: MARK,
+      isActive: true,
+      trigger: { type: 'keyword.matched', keywords: ['請問一下'] },
+      conditions: { all: [{ fact: 'contact.language', operator: 'equal', value: 'zh-TW' }] },
+      actions: [{ type: 'send_message', params: { text: '關鍵字回覆' } }],
+    },
+  });
+  const { conversationId, inboundId } = await makeConversation(tenantId);
+  hooks.failFacts = true;
+
+  const result = await runKb(tenantId, conversationId, inboundId);
+
+  assert.equal(hooks.factsCalls, 1, '有條件的規則讀了條件資料');
+  assert.deepEqual(result, { status: 'replied' });
+  assert.equal((await botMessagesOf(conversationId)).length, 1);
+  assert.deepEqual(hooks.delivered, [conversationId]);
 });

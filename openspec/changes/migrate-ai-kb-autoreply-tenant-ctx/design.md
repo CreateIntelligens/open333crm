@@ -49,7 +49,8 @@
 
 | 步驟 | 交易 | 保證 | 失敗時 |
 | --- | --- | --- | --- |
-| 1. 讀對話、關鍵字讓步、`botConfig`、Chat 設定、歷史、其他渠道的內容、向量化設定與遮罩政策 | 交易 A（只讀） | — | 丟錯，worker 當成 `failed` 轉接（原本的行為） |
+| 1a. 讀對話、關鍵字讓步 | 交易 A1（只讀） | — | 丟錯，worker 當成 `failed` 轉接（原本的行為）；條件資料讀取失敗時不讓步（原本的行為） |
+| 1b. `botConfig`、Chat 設定、歷史、其他渠道的內容、向量化設定與遮罩政策 | 交易 A2（只讀） | — | 丟錯，worker 當成 `failed` 轉接（原本的行為） |
 | 2. 向量化客人的訊息 | 交易外 | 最多一次 | 回 `failed`（原本的行為） |
 | 3. 搜尋知識庫；型號守門需要時讀型號白名單 | 交易 B（只讀） | — | 搜尋失敗時丟錯（原本的行為）；白名單讀取失敗時不守門（原本的行為） |
 | 4. 呼叫 LLM（`generateReply()`，6a 的交易） | 交易外 | 每種回覆最多一次 | 改用文章內容或轉接（原本的行為） |
@@ -58,7 +59,7 @@
 | 7. 認領、確認 `BOT_HANDLED`、寫入回覆、更新對話、轉接 | `replyGuard.persist()` | 每則進站訊息最多一則（原本的行為） | `ClaimTransactionError` 給佇列重試（原本的行為）；對話不是 `BOT_HANDLED` 時 rollback，回 `already_handled` |
 | 8. 推播 `message.new`、送到渠道 | commit 之後 | 最多一次（原本的行為） | 原本的行為 |
 
-步驟 1 合成一個交易：這些查詢都只讀、不呼叫外部服務，在處理開始時一起讀。關鍵字讓步或 `botMode` 略過時，提前回傳，不再讀之後的資料。
+步驟 1 分成兩個交易。`hasMatchingKeywordRule()` 讀取有條件規則的條件資料失敗時，catch 錯誤後當成不讓步；PostgreSQL 在查詢失敗後拒絕同一個交易的其他查詢，所以讓步判斷是交易 A1 的最後一步，之後的讀取放在交易 A2（review-loop 第 1 輪）。A1 失敗的查詢被 catch 之後，commit 這個交易不會丟錯（feature 測試「條件資料讀取失敗」）。關鍵字讓步或 `botMode` 略過時，提前回傳，不再讀之後的資料。
 
 步驟 3 與步驟 1 分開：兩者之間要呼叫 embedding 服務。
 
@@ -68,7 +69,8 @@
 
 `kb-autoreply.service.ts` 保留回覆內容的判斷（`buildKbContext()`、`buildKbReplyPayload()`、追問與轉接原因、`aiReplyFailedReason()`）。讀寫資料庫的部分改成收 `TenantCtx` 的函式：
 
-- `readKbReplyContext(ctx, conversationId, messageText)`：步驟 1。回傳略過原因，或回覆需要的資料。
+- `checkKbReplyEligibility(ctx, conversationId, messageText)`：步驟 1a。回傳略過原因，或對話的渠道設定與 `metadata`。
+- `readKbReplyContext(ctx, conversationId, eligible)`：步驟 1b。回傳略過原因，或回覆需要的資料。
 - `searchKbArticles(ctx, embedding, settings, messageText)`：步驟 3，含型號守門。
 - `loadKbHistory(ctx, conversationId)`：改收 `TenantCtx`。
 - `writeKbReply(ctx, input)`：步驟 7 的寫入。
@@ -89,7 +91,7 @@
 
 ### D4. 遮罩政策與推播
 
-- 步驟 6 的遮罩沿用步驟 1 由 `readEmbeddingInputs()` 讀到的政策，刪除 `persistAndDeliver()` 內的 `readAiPrivacyPolicy()`。`generateReply()` 經由 `prepareLlmCall()` 另外讀政策，這是 6a 的設計，不改。
+- 步驟 6 的遮罩沿用步驟 1b 由 `readEmbeddingInputs()` 讀到的政策，刪除 `persistAndDeliver()` 內的 `readAiPrivacyPolicy()`。`generateReply()` 經由 `prepareLlmCall()` 另外讀政策，這是 6a 的設計，不改。
 - 推播改用 `replyGuard.persist()` 提供的 scope 呼叫 `notifyChannel()`。`notifyChannel()` 在 commit 之後送出，rollback 時不送出。送出的時機與原本「commit 之後呼叫 `emitToChannel()`」相同。
 
 ### D5. 呼叫還沒搬的模組
