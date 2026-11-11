@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod/v3';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { listTenantPlanChangeRequests } from './plan-change.service.js';
+import { getTopupEligibility, listTenantPlanChangeRequests } from './plan-change.service.js';
 import { submitPlanChangeRequest } from './plan-change.flow.js';
 
 const createSchema = z.object({
@@ -24,6 +24,11 @@ export default async function planChangeRoutes(fastify: FastifyInstance) {
   // GET /api/v1/plan-change — 查自己的申請
   fastify.get('/', async (request) => {
     return success(await listTenantPlanChangeRequests(fastify.prismaAdmin, request.agent.tenantId));
+  });
+
+  // GET /api/v1/plan-change/topup-eligibility — 能不能申請加購（AI 月額度無上限時不能）與本月上限
+  fastify.get('/topup-eligibility', async (request) => {
+    return success(await getTopupEligibility(fastify.prismaAdmin, request.agent.tenantId));
   });
 
   // POST /api/v1/plan-change — 發起申請。寄信通知平台帳號在背景進行，不等寄完才回應

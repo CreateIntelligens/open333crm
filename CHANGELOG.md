@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-11]
 
+### Changed
+
+- **AI 月額度無上限的租戶不能申請加購 token**（change `block-topup-request-when-unlimited`）：`POST /api/v1/plan-change` 送出 `token_topup` 時，租戶的 AI 月額度基礎上限是無上限就回 400 `TOPUP_UNLIMITED`，不建立申請。新增 `GET /api/v1/plan-change/topup-eligibility`，`/dashboard/plan` 依此停用「加購 Token」並說明「目前方案的 AI 額度已無上限，不需要加購」。以前這類申請送得出去，平台卻無法核准，還會卡住租戶的下一筆申請。
+
 ### Fixed
 
 - **平台升級/加購申請頁按「核准」失敗時沒有任何反應**：`/admin/plan-changes` 的核准與駁回沒有接住 API 錯誤，例如 AI 月額度無上限的租戶核准加購時，後端回 400 `TOPUP_UNLIMITED`，畫面卻沒有提示。改為以紅色訊息顯示後端的錯誤原因；AI 月額度無上限的租戶，加購申請的「核准」按鈕停用，並提示「額度已無上限，加購不會生效，請駁回」。
