@@ -4,6 +4,8 @@
  * 資料庫的讀寫各自以 inTenant() 開短交易，受 RLS 約束；embedding、LLM 與去識別化服務在交易外呼叫。
  * 寫入回覆時以條件更新確認對話仍是 BOT_HANDLED，與 bot_reply 認領在同一個交易；commit 之後才推播與送出。
  * 回覆內容的判斷（追問、型號守門、轉接提示）在 kb-autoreply.service.ts。
+ *
+ * 呼叫端先判斷關鍵字規則的讓步：命中能回覆的關鍵字規則時不呼叫這個函式（design D7）。
  */
 import type { PrismaClient } from '@open333crm/database';
 import type { Server } from 'socket.io';
@@ -23,7 +25,6 @@ import {
   CLARIFY_HANDOFF_FALLBACK,
   buildKbContext,
   buildKbReplyPayload,
-  checkKbReplyEligibility,
   clarifyExhaustedReason,
   clarifyLlmFailedReason,
   readKbReplyContext,
@@ -75,10 +76,8 @@ interface KbReplyDecision {
 export async function attemptKbAutoReplyFlow(deps: KbAutoReplyDeps, input: KbAutoReplyInput): Promise<KbAutoReplyResult> {
   const { tenantId, conversationId, messageText } = input;
 
-  // 1. 交易 A1：確認對話狀態與關鍵字讓步；交易 A2：讀回覆需要的資料（design D1）
-  const eligible = await inTenant(deps.prisma, tenantId, (scope) => checkKbReplyEligibility(scope, conversationId, messageText));
-  if ('skip' in eligible) return skipped(eligible.skip);
-  const context = await inTenant(deps.prisma, tenantId, (scope) => readKbReplyContext(scope, conversationId, eligible));
+  // 1. 交易 A：判斷要不要回覆，讀回覆需要的資料。關鍵字讓步由呼叫端先判斷（design D7）
+  const context = await inTenant(deps.prisma, tenantId, (scope) => readKbReplyContext(scope, conversationId));
   if ('skip' in context) return skipped(context.skip);
 
   // 2. 交易外：向量化客人的訊息。沒有向量就無法檢索，也無法回覆：回 failed，由呼叫端轉接真人（issue #445）
@@ -220,7 +219,7 @@ async function persistAndDeliver(
   const guarded = await inTenant(deps.prisma, tenantId, (scope) =>
     guardAiReplyForTenant(scope.tx, tenantId, kbReply.text, { conversationId, source: 'kb_autoreply' }),
   );
-  // 遮罩沿用交易 A2 讀到的政策（design D4）。轉接的系統訊息也在交易外遮罩（與自動轉接相同的文字格式）
+  // 遮罩沿用交易 A 讀到的政策（design D4）。轉接的系統訊息也在交易外遮罩（與自動轉接相同的文字格式）
   const storedContent = await prepareStoredMessageContent(policy, { text: guarded.text }, 'system');
   const handoffContent = handoffReason
     ? await prepareStoredMessageContent(policy, { text: `自動轉接人工客服：${handoffReason}` }, 'system')

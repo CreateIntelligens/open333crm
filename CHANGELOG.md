@@ -6,7 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
-- **知識庫自動回覆改成入口開交易**（#337 階段 4 第六批 6b-2，change `migrate-ai-kb-autoreply-tenant-ctx`）— 讀寫改在綁定租戶的短交易內（`app_tenant` 連線，受 RLS 約束），原本以 `prismaAdmin` 讀取。embedding 服務、LLM 與去識別化服務在交易外呼叫（新檔 `ai/kb-autoreply.flow.ts`）。寫入回覆時的遮罩沿用處理開始時讀到的遮罩政策，不再另外讀一次。送到渠道的 `deliverToChannel()` 屬於還沒搬的 `conversation`，仍用 `prismaAdmin`。
+- **知識庫自動回覆改成入口開交易**（#337 階段 4 第六批 6b-2，change `migrate-ai-kb-autoreply-tenant-ctx`）— 讀寫改在綁定租戶的短交易內（`app_tenant` 連線，受 RLS 約束），原本以 `prismaAdmin` 讀取。embedding 服務、LLM 與去識別化服務在交易外呼叫（新檔 `ai/kb-autoreply.flow.ts`）。寫入回覆時的遮罩沿用處理開始時讀到的遮罩政策，不再另外讀一次。送到渠道的 `deliverToChannel()` 屬於還沒搬的 `conversation`，仍用 `prismaAdmin`。關鍵字規則的讓步改由 automation worker 判斷一次，AI agent 與知識庫回覆共用這個結果，知識庫不再自己判斷。
 
 ### Fixed
 

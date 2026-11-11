@@ -19,7 +19,6 @@ const hooks = vi.hoisted(() => ({
   delivered: [] as string[],
   /** 條件資料的查詢以 SQL 錯誤失敗（buildAutomationFacts 收到的連線上執行） */
   failFacts: false,
-  factsCalls: 0,
 }));
 
 vi.mock('#src/modules/ai/providers/index.js', () => ({
@@ -49,7 +48,6 @@ vi.mock('@open333crm/automation', async (orig) => {
   return {
     ...actual,
     buildAutomationFacts: async (db: { $queryRawUnsafe(sql: string): Promise<unknown> }, context: unknown) => {
-      hooks.factsCalls += 1;
       // 在傳入的連線上執行一個會失敗的 SQL：交易內時 PostgreSQL 會把整個交易標成 aborted
       if (hooks.failFacts) await db.$queryRawUnsafe('select 1/0');
       return actual.buildAutomationFacts(db as never, context as never);
@@ -105,7 +103,6 @@ beforeEach(() => {
   hooks.llmCalls = 0;
   hooks.delivered = [];
   hooks.failFacts = false;
-  hooks.factsCalls = 0;
 });
 
 afterAll(async () => {
@@ -120,6 +117,7 @@ afterAll(async () => {
   await owner.aiUsage.deleteMany({ where: { conversationId: { in: ids } } });
   await owner.outbox.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
   await owner.automationRule.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
+  await owner.material.deleteMany({ where: { tenantId: { in: ownTenantIds } } });
   await owner.tenant.deleteMany({ where: { id: { in: ownTenantIds } } });
   redis.disconnect();
   await owner.$disconnect();
@@ -152,27 +150,39 @@ test('對話屬於其他租戶：結果是略過（not_bot_handled），租戶 B
   assert.deepEqual(await botMessagesOf(conversationId), []);
 });
 
-// automation-engine「條件資料讀取失敗」：讀取在交易內失敗時，同一個交易之後的查詢不能被拖累（review-loop 第 1 輪）
-test('條件資料讀取失敗：有條件的關鍵字規則不讓步，知識庫照常回覆', async () => {
-  // 規則放在這個測試自己的租戶，不影響其他測試檔在 TENANT_A 的關鍵字判斷
-  const tenantId = (await owner.tenant.create({ data: { name: `${MARK}-facts` } })).id;
+// automation-engine「條件資料讀取失敗」：關鍵字讓步由 worker 在交易外判斷，知識庫不在交易內讀關鍵字規則
+// （design D7）。review-loop 第 1、2 輪：在交易內判斷時，條件資料讀取失敗會讓同一個交易之後的查詢失敗（25P02）
+test('條件資料讀取失敗，訊息也命中其他渠道素材的無條件規則：知識庫照常回覆', async () => {
+  const tenantId = (await owner.tenant.create({ data: { name: `${MARK}-mixed` } })).id;
   ownTenantIds.push(tenantId);
-  await owner.automationRule.create({
-    data: {
-      tenantId,
-      name: MARK,
-      isActive: true,
-      trigger: { type: 'keyword.matched', keywords: ['請問一下'] },
-      conditions: { all: [{ fact: 'contact.language', operator: 'equal', value: 'zh-TW' }] },
-      actions: [{ type: 'send_message', params: { text: '關鍵字回覆' } }],
-    },
+  const material = await owner.material.create({
+    data: { tenantId, name: MARK, channelType: 'fb', contentType: 'text', body: { text: 'FB 素材' } },
+  });
+  await owner.automationRule.createMany({
+    data: [
+      {
+        tenantId,
+        name: `${MARK}-conditional`,
+        isActive: true,
+        trigger: { type: 'keyword.matched', keywords: ['請問一下'] },
+        conditions: { all: [{ fact: 'contact.language', operator: 'equal', value: 'zh-TW' }] },
+        actions: [{ type: 'send_message', params: { text: '關鍵字回覆' } }],
+      },
+      {
+        tenantId,
+        name: `${MARK}-material`,
+        isActive: true,
+        trigger: { type: 'keyword.matched', keywords: ['請問一下'] },
+        conditions: { all: [] },
+        actions: [{ type: 'send_material', params: { materialId: material.id } }],
+      },
+    ],
   });
   const { conversationId, inboundId } = await makeConversation(tenantId);
   hooks.failFacts = true;
 
   const result = await runKb(tenantId, conversationId, inboundId);
 
-  assert.equal(hooks.factsCalls, 1, '有條件的規則讀了條件資料');
   assert.deepEqual(result, { status: 'replied' });
   assert.equal((await botMessagesOf(conversationId)).length, 1);
   assert.deepEqual(hooks.delivered, [conversationId]);

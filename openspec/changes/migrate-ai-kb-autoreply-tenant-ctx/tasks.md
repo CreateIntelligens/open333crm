@@ -12,11 +12,12 @@
 
 ## 3. 知識庫自動回覆的 flow（design D1、D2、D4、D5）
 
-- [x] 3.1 寫測試「呼叫外部服務之前交易已經結束」（新檔 `tests/unit/modules/ai/kb-autoreply-flow.test.ts`）。交易換成記錄「目前有幾個交易還沒結束」的 mock（比照 `tests/unit/modules/ai/agent/agent-flow.test.ts`），embedding、LLM、去識別化服務被呼叫時記下當時還沒結束的交易數，斷言都是 0。搬遷前的程式不開交易，這個測試無法先失敗，改以突變驗證：把向量化移進讀取資料的交易（當時的交易 A，現在的 A2）。突變記在 6.1。
+- [x] 3.1 寫測試「呼叫外部服務之前交易已經結束」（新檔 `tests/unit/modules/ai/kb-autoreply-flow.test.ts`）。交易換成記錄「目前有幾個交易還沒結束」的 mock（比照 `tests/unit/modules/ai/agent/agent-flow.test.ts`），embedding、LLM、去識別化服務被呼叫時記下當時還沒結束的交易數，斷言都是 0。搬遷前的程式不開交易，這個測試無法先失敗，改以突變驗證：把向量化移進交易 A。突變記在 6.1。
 - [x] 3.2 寫測試「對話屬於其他租戶」（`tests/feature/modules/ai/kb-autoreply-flow.test.ts`）。以租戶 A 執行，對話 id 是租戶 B 的 `BOT_HANDLED` 對話；斷言結果是 `not_bot_handled`，租戶 B 的對話沒有新的訊息。程式層的 `tenantId` 條件已經擋下，這個測試會直接通過，改以突變驗證：刪除讀對話查詢的 `tenantId` 條件，搬遷後仍由 RLS 擋下（測試通過）；同一個突變在搬遷前的 `prismaAdmin` 寫法下測試失敗。突變記在 6.1。
-- [x] 3.3 `kb-autoreply.service.ts` 改成收 `TenantCtx` 的函式：`checkKbReplyEligibility`、`readKbReplyContext`、`searchKbArticles`、`loadKbHistory`、`writeKbReply`。新增 `ai/kb-autoreply.flow.ts` 的 `attemptKbAutoReplyFlow`：步驟 1a、1b、3 各一個交易，綁定代碼檢查是交易 C，embedding、LLM、遮罩在交易外；遮罩沿用步驟 1 的政策，刪除 `readAiPrivacyPolicy()` 的呼叫；推播改用 `notifyChannel()`；`deliverToChannel()` 以 `deps.deliverDb` 呼叫。讓 3.1、3.2 與 1.1 列出的測試通過。
+- [x] 3.3 `kb-autoreply.service.ts` 改成收 `TenantCtx` 的函式：`readKbReplyContext`、`searchKbArticles`、`loadKbHistory`、`writeKbReply`。新增 `ai/kb-autoreply.flow.ts` 的 `attemptKbAutoReplyFlow`：步驟 1、3 各一個交易，綁定代碼檢查是交易 C，embedding、LLM、遮罩在交易外；遮罩沿用步驟 1 的政策，刪除 `readAiPrivacyPolicy()` 的呼叫；推播改用 `notifyChannel()`；`deliverToChannel()` 以 `deps.deliverDb` 呼叫。讓 3.1、3.2 與 1.1 列出的測試通過。
 
-- [x] 3.4 review-loop 第 1 輪：寫測試「條件資料讀取失敗」（`tests/feature/modules/ai/kb-autoreply-flow.test.ts`，對應主規格 `automation-engine` 的同名 scenario）。有條件的關鍵字規則讀取條件資料時以 SQL 錯誤失敗，斷言知識庫照常回覆。單一交易 A 的寫法下，這個測試以 `25P02 current transaction is aborted` 失敗。交易 A 拆成 A1（對話與關鍵字讓步）與 A2（其他讀取）之後通過。
+- [x] 3.4 review-loop 第 1、2 輪（design D7）：寫測試「條件資料讀取失敗，訊息也命中其他渠道素材的無條件規則」（`tests/feature/modules/ai/kb-autoreply-flow.test.ts`，對應主規格 `automation-engine`「條件資料讀取失敗」）。有條件的關鍵字規則讀取條件資料時以 SQL 錯誤失敗，另一條無條件規則送其他渠道的素材；斷言知識庫照常回覆。知識庫在交易內判斷關鍵字讓步時，這個測試以 `25P02 current transaction is aborted` 失敗。
+- [x] 3.5 寫測試「命中關鍵字規則的訊息：知識庫讓步，不呼叫 LLM、不回覆，也不算追問」（`tests/unit/modules/ai/kb-clarify-handoff.test.ts`，經由 worker，知識庫是真的）。知識庫刪除自己的讓步判斷，worker 在 `keywordWillHandle` 為 true 時不呼叫知識庫。`keyword-suppresses-ai.test.ts` 的原始碼斷言改成檢查 worker 的條件。讓 3.4、3.5 通過。突變記在 6.1。
 
 ## 4. 呼叫端（design D6）
 
@@ -46,6 +47,7 @@
 
 | 突變 | 測試 | 結果 |
 | --- | --- | --- |
-| `attemptKbAutoReplyFlow()` 把 `embedText()` 移進讀取資料的交易（當時的交易 A） | 3.1「呼叫外部服務之前交易已經結束」 | 失敗：向量化時 `openTransactions: 1` |
+| `attemptKbAutoReplyFlow()` 把 `embedText()` 移進交易 A | 3.1「呼叫外部服務之前交易已經結束」 | 失敗：向量化時 `openTransactions: 1` |
 | `readKbReplyContext()` 讀對話的查詢刪除 `tenantId` 條件，連線是 app_tenant | 3.2「對話屬於其他租戶」 | 通過：RLS 擋下租戶 B 的對話 |
 | 同上，flow 的連線改成沒有 RLS 的 owner 連線（等同搬遷前的 `prismaAdmin`） | 3.2「對話屬於其他租戶」 | 失敗：租戶 B 的對話被讀到並回覆 |
+| worker 呼叫知識庫的條件刪除 `!keywordWillHandle` | 3.5「命中關鍵字規則的訊息：知識庫讓步」 | 失敗：知識庫呼叫了 LLM 並回覆 |
