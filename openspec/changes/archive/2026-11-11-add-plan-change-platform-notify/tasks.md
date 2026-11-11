@@ -18,4 +18,4 @@
 - [x] 3.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict`
 - [x] 3.4 `node scripts/validate-openspec.mjs add-plan-change-platform-notify`
 - [x] 3.5 `CHANGELOG.md` 加條目；`docs/ref/features/platform/PLAN-CHANGES.md` 更新
-- [ ] 3.6 部署後在 UAT 送一筆申請，確認平台帳號收到信、`platform_audit_logs` 有 `plan_change.notify_platform`，之後歸檔本 change
+- [x] 3.6 部署後在 UAT 送一筆申請，確認平台帳號收到信、`platform_audit_logs` 有 `plan_change.notify_platform`，之後歸檔本 change

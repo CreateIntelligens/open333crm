@@ -34,4 +34,4 @@
 - [x] 6.4 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`
 - [x] 6.5 `node scripts/validate-openspec.mjs add-contract-expiry-reminder`
 - [x] 6.6 `CHANGELOG.md` 的 `## [2026-11-10]` Added 加條目（含提醒天數編輯畫面）；`docs/ref/` 描述合約日期的文件同步
-- [ ] 6.7 歸檔後把主規格 `tenant-contract-dates` 的 Purpose 改成「合約日期用於到期提醒，不自動停用」
+- [x] 6.7 歸檔後把主規格 `tenant-contract-dates` 的 Purpose 改成「合約日期用於到期提醒，不自動停用」

@@ -37,4 +37,4 @@
 - [x] 6.4 `check-tenant-scoping`、`check-prisma-admin-usage` 加 `--strict`
 - [x] 6.5 `node scripts/validate-openspec.mjs fix-platform-usage-trial-display`
 - [x] 6.6 `CHANGELOG.md` 的 `## [2026-11-10]` Fixed 加條目；`docs/ref/features/platform/USAGE.md`、`TRIALS.md`、`feature-map.json`、`AUDIT.md` 更新
-- [ ] 6.7 歸檔（合併後執行 `pnpm exec openspec archive fix-platform-usage-trial-display`）
+- [x] 6.7 歸檔（合併後執行 `pnpm exec openspec archive fix-platform-usage-trial-display`）

@@ -14,4 +14,4 @@
 
 - [x] 3.1 CHANGELOG、`docs/ref/features/platform/PLAN-CHANGES.md`
 - [x] 3.2 `validate-openspec`、`pnpm test`、strict 檢查
-- [ ] 3.3 UAT 驗證後歸檔（排在 `make-token-topup-monthly` 之後）
+- [x] 3.3 UAT 驗證後歸檔（排在 `make-token-topup-monthly` 之後）
