@@ -113,9 +113,7 @@
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
 | [CONV-05](#conv-05) | 對話、工單與自動化 | P2 | 未處理 | 重新開啟已關閉的對話，不檢查同一聯絡人在同一渠道是否已有未關閉的對話，造成兩段同時進行 | 執行時確認 |
 | [CONV-06](#conv-06) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話與工單不驗證負責人：停用的、看不到該渠道的成員都能被指派；停用成員不解除指派（對話通知已改發主管，#440；所有通知不再寫給停用成員，#484，但工單指派與 SLA 預警因此沒有人收到） | 執行時確認 |
-| [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄；LINE 的問卷已可送出（#416） | 靜態確認 |
-| [CASE-04](#case-04) | 對話、工單與自動化 | P1 | 部分修正 | 工單狀態轉換不維護 `csatSentAt`：重開再解決的工單 1 分鐘內被自動結案；`resolvedAt` 的部分（重開保留舊值，報表的已解決數與 SLA 達成率失真）#417 已修正 | 執行時確認 |
-| [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 部分修正 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息；時間軸已有紀錄（#444） | 執行時確認 |
+| [CASE-05](#case-05) | 對話、工單與自動化 | P2 | 部分修正 | 客服記錄滿意度時不檢查工單狀態，直接把工單改成 `CLOSED`，並對顧客送出「感謝評分」訊息；時間軸已有紀錄（#444），評分後關閉對話、標記代評來源（#339） | 執行時確認 |
 | [CASE-06](#case-06) | 對話、工單與自動化 | P2 | 未處理 | 連結對話到工單不檢查對話的聯絡人與渠道可見範圍，可以把別的顧客、看不到的渠道的對話掛上 | 執行時確認 |
 | [CASE-07](#case-07) | 對話、工單與自動化 | P2 | 未處理 | 建立與修改工單不驗證 `assigneeId`、`teamId` 屬於本租戶，可以把其他租戶的成員寫成負責人 | 執行時確認 |
 | [CASE-08](#case-08) | 對話、工單與自動化 | P2 | 未處理 | 工單的「團隊」下拉讀錯欄位，永遠只有「未指定」，畫面上無法觸發依團隊輪流指派 | 執行時確認 |
@@ -408,7 +406,6 @@ CLI token 的停用問題另見 AUTH-02。
 | 同一個檔案訂閱 `usage.quota.threshold` 的處理器 | AI 額度告警只通知 `ADMIN` |
 | `apps/workers/src/lib/automation-actions.ts` 的 `getSupervisorAndAdminAgentIds()` | 自動化的「通知主管」動作 |
 | `trial/trial.scheduler.ts` 的 `adminEmails()` | 試用到期的通知信只寄給 `ADMIN` |
-| `csat/csat.service.ts` 的 `recordCsatScore()` | CSAT 兩分以下只通知 `SUPERVISOR`，不含 `ADMIN` |
 
 2026-10-30 功能健檢補上兩點：
 
@@ -418,6 +415,8 @@ CLI token 的停用問題另見 AUTH-02。
 指派自訂角色時，`agent.service.ts` 的 `resolveRoleAssignment()` 讓 `role` 沿用成員原本的值。因此兩個同屬一個自訂角色的成員，行為可能正好相反：原本是 `ADMIN` 的人會收到所有主管通知，也永遠不會被自動指派工單；原本是 `AGENT` 的人則相反。「人員管理」頁只顯示細粒度角色，管理員看不到這個差異。
 
 **部分修正（#413，2026-11-03）。** 「最後一位啟用中的管理員」改依角色權限有沒有 `role.manage`（含 implies）判斷，不再看 `role` 列舉；停用、刪除與改角色共用同一個判斷（change `guard-agent-target-rank-last-admin`）。原本違反主規格 `agent-lifecycle` 的部分已消除，表中其餘規則沒有主規格規定，仍未處理。
+
+**部分修正（#339，2026-11-11）。** CSAT 兩分以下的通知改依權限判斷：有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`），不再看 `role` 列舉，管理員也會收到（change `csat-reresolve-decisions-339`）。表中已移除這一列。
 
 <a id="rbac-04"></a>
 ### RBAC-04：渠道可見範圍有多處沒有套用
@@ -1499,51 +1498,14 @@ change `migrate-ai-llm-tenant-ctx`（#337 6a）之前，讀 Chat 設定時沒有
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-INBOX-03（[INBOX 健檢](../features/health/INBOX.md)）、HC-CASES-04（[CASES 健檢](../features/health/CASES.md)）、HC-NOTIFICATIONS-02（[NOTIFICATIONS 健檢](../features/health/NOTIFICATIONS.md)）。證據：`apps/api/src/modules/conversation/conversation.service.ts:668-673, 898-903`、`apps/api/src/modules/case/case.service.ts:374-400`、`apps/api/src/modules/notification/notification.worker.ts:226-228`、`apps/api/src/modules/agent/agent.service.ts:376-396`；以上三種情況都在本機實測；`case.assigned` 與 `apps/workers/src/handlers/sla.handler.ts:205` 的 SLA 通知為讀程式。
 
-<a id="case-02"></a>
-### CASE-02：非 LINE 渠道的滿意度調查無法回覆
-
-`csat.service.ts` 的 `sendCsatSurvey()` 依渠道送出調查：
-
-| 渠道 | 實際送出的內容 | 客人能不能回覆 |
-| --- | --- | --- |
-| LINE | 設計上是 Flex Message，五個 postback 按鈕，資料是 `csat:<分數>:<工單 ID>` | 能（#416 修正 Flex 送出） |
-| 其他渠道 | `deliverToChannel()` 送出文字「回覆 csat:分數 即可，例如 csat:5」 | 不能 |
-
-`inbound-postback-interceptors.ts` 的 `handleCsatResponse()` 只認得 `csat:<分數>:<工單 ID>`。客人照提示回覆的 `csat:5` 沒有工單 ID，不符合這個格式，會被當成一般訊息交給 AI 回覆與自動化。
-
-另外兩個零件也沒有接上：
-
-- `buildCsatChannelMessage()` 為非 LINE 渠道組了五個快速回覆選項，但 `sendCsatSurvey()` 只在 LINE 分支使用它的回傳值。
-- 進站的 `postbackData` 只從 LINE 的 `rawPayload.postback.data` 取值，Facebook 的 postback 欄位沒有解析，因此即使改送快速回覆或按鈕，Facebook 送回的 payload 也到不了攔截器。
-
-結果是非 LINE 渠道的工單永遠不會有 CSAT 分數。報表的滿意度只反映 LINE 的客人。2026-10-30 功能健檢發現 LINE 的問卷也送不出去，2026-11-03 已修正（#416），問卷送不出時收件匣與工單時間軸會留下紀錄（[LINE 健檢](../features/health/LINE.md)）。
-
-<a id="case-04"></a>
-### CASE-04：工單狀態轉換不維護 `resolvedAt` 與 `csatSentAt`
-
-`case.service.ts` 只在狀態轉成 `RESOLVED` 時寫 `resolvedAt`，其他轉換不動 `resolvedAt` 與 `csatSentAt`。造成兩組後果：
-
-**報表失真。** 報表以 `resolvedAt` 判斷「已解決」：
-
-- 直接關閉（`OPEN`／`IN_PROGRESS` → `CLOSED`）不寫 `resolvedAt`，這類工單不算已解決，不進 SLA 達成率與平均解決時間。
-- 解決後重開（`RESOLVED` → `IN_PROGRESS`）保留舊的 `resolvedAt`，仍在處理中的工單被算成已解決，逾時的還會拉低 SLA 達成率。
-
-影響總覽的已解決數、SLA 達成率、平均解決時間，案件趨勢的「已解決」，客服績效與我的績效。UAT Demo 的 3 張 `CLOSED` 工單有 2 張 `resolvedAt` 為空。
-
-**重開後被自動結案。** 工單重開再解決時，若第一次的問卷寄出已超過 72 小時，問卷逾時結案排程（`csat.scheduler.ts`，只看 `csatSentAt`）在 1 分鐘內就把工單改成 `CLOSED`，並關閉工單底下所有對話，包括正在進行的。也不會寄第二份問卷。
-
-workers 的 `update_case_status` 動作也不寫 `resolvedAt`，見 AUTO-10。
-
-**`resolvedAt` 的部分已修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`@open333crm/shared` 的 `caseTransitionTimestamps()` 是唯一的規則，API 的 `transitionCase()`、`escalateCase()`、`assignCase()`、評分後結案、問卷逾時結案與 workers 的 `update_case_status` 都用它。轉成 `RESOLVED` 寫入 `resolvedAt`；從 `RESOLVED` 轉成 `CLOSED` 保留；直接關閉不算已解決（使用者決定，`resolvedAt` 為 null）；轉成其他狀態（重開）清除。既有資料不補值：修正前直接關閉的工單仍沒有 `resolvedAt`，修正前重開、目前仍在處理中的工單仍保留舊的 `resolvedAt`，直到下一次狀態轉換。**重開後被自動結案**（`csatSentAt`）未處理，由 #339 決定。
-
-**健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-ANALYTICS-02（[ANALYTICS 健檢](../features/health/ANALYTICS.md)）、HC-CASES-02（[CASES 健檢](../features/health/CASES.md)）。證據：`apps/api/src/modules/case/case.service.ts:487-492`、`apps/api/src/modules/analytics/analytics.service.ts:68-88, 211-214, 350-357`、`apps/api/src/modules/csat/csat.scheduler.ts:65-90`；本機以 API 直接關閉後 `resolvedAt: null`，重開後 `resolvedAt` 不變，固定資料下總覽 `resolvedCases` 為 2（期望 1）；`csatSentAt` 設為 80 小時前、重開再解決，約 1 分鐘後工單已是 `CLOSED`（健檢實測）。HC-ANALYTICS-02 子代理原列 P2，2026-10-30 使用者決定升為 P1。
-
 <a id="case-05"></a>
 ### CASE-05：客服記錄滿意度直接把工單改成已關閉
 
 `POST /cases/:id/csat`（收件匣 CSAT 卡片的星星）呼叫 `csat.service.ts`，不檢查工單狀態，直接把工單改成 `CLOSED`：不經狀態機、不關閉對話。同時把「感謝評分」的追蹤訊息送給顧客；2 分以下送「我們會立即安排主管為您跟進處理」，但顧客根本沒有評分。
 
-**2026-11-04 部分修正（#444，change `show-csat-score-444`）。** 記錄分數時寫一筆 `csat_rated` 時間軸事件（客服代評 `actorType: 'agent'`、`actorId` 是評分的客服，`payload.source: 'agent'`），評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`）。收件匣的問卷卡片有分數時唯讀，客人評過分後客服不會再點到 400。仍未處理：不經狀態機、不關閉對話、客服代評也送感謝訊息給顧客；客服代評的去留在 #339 討論。
+**2026-11-04 部分修正（#444，change `show-csat-score-444`）。** 記錄分數時寫一筆 `csat_rated` 時間軸事件（客服代評 `actorType: 'agent'`、`actorId` 是評分的客服，`payload.source: 'agent'`），評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`）。收件匣的問卷卡片有分數時唯讀，客人評過分後客服不會再點到 400。仍未處理：不經狀態機、客服代評也送感謝訊息給顧客。
+
+**2026-11-11 部分修正（#339，change `csat-reresolve-decisions-339`）。** 使用者決定保留客服代評並標記來源：工單新增 `csatRatedBy`（`customer`／`agent`），報表的 CSAT 平均只算客人自評、另外顯示代評筆數。評分後（含客服代評）關閉工單底下的對話，與問卷逾時結案相同。評分改成條件更新認領，同時送達兩次只處理一次。仍未處理：不經狀態機（`IN_PROGRESS` 的工單代評後直接 `CLOSED`）、客服代評也送感謝訊息與低分致歉給顧客。
 
 **規格依據。** 主規格 `case-management` 的「Case Status Transition Validation」規定狀態轉換 SHALL 經過狀態機驗證。現況違反這條需求。
 
@@ -1669,7 +1631,7 @@ workers 的 `sla.handler.ts` 自己查規則並執行動作，沒有經過一般
 
 功能文件 `AUTOMATION.md` 的「工單類動作繞過工單模組」已寫行為。
 
-**部分修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`update_case_status` 改成先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，`resolvedAt`／`closedAt` 用 API 共用的 `caseTransitionTimestamps()`（CASE-04）。因此規則改成「已解決」的工單會有 `resolvedAt`，問卷排程會照常寄滿意度調查。仍未處理：不檢查轉換是否合法、不寫工單事件、不發 `case.resolved`／`case.closed`、`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`。
+**部分修正**（#417，2026-11-04，change `fix-case-resolved-at-417`）：`update_case_status` 改成先以 `tenantId` 讀目前狀態，再以 `tenantId` 與讀到的狀態條件更新，`resolvedAt`／`closedAt` 用 API 共用的 `caseTransitionTimestamps()`（原 CASE-04，#339 已修正並移除）。因此規則改成「已解決」的工單會有 `resolvedAt`，問卷排程會照常寄滿意度調查。仍未處理：不檢查轉換是否合法、不寫工單事件、不發 `case.resolved`／`case.closed`、`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`。
 
 **部分修正**（#469，2026-11-09，change `fix-automation-case-status-469`）：`update_case_status` 寫入前用 `@open333crm/shared` 的 `canTransition()`。不合法（含不存在的狀態值）時不改工單，工單時間軸寫 `automation_status_skipped`（規則名稱、原狀態、目標狀態）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫 `status_changed`（`actorType: 'automation'`、`source: 'automation'`）與 `case.resolved`／`case.closed`（outbox，內容與手動轉換共用 `caseStatusOutcomeEvent()`），socket 的 `source` 改成 `automation`。仍未處理：`assign_agent` 不通知、`assign_agent` 與 `escalate_case`／`set_case_priority` 的 `case.update` 不帶 `tenantId`，這兩個動作的 socket `source` 仍寫 `sla_worker`。
 

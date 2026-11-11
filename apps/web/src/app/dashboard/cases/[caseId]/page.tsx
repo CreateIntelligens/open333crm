@@ -205,6 +205,7 @@ export default function CaseDetailPage() {
                 csatComment: caseData.csatComment as string | null | undefined,
                 csatSentAt: caseData.csatSentAt as string | null | undefined,
                 csatRespondedAt: caseData.csatRespondedAt as string | null | undefined,
+                csatRatedBy: caseData.csatRatedBy as string | null | undefined,
                 createdAt: caseData.createdAt as string,
                 updatedAt: caseData.updatedAt as string,
               }}

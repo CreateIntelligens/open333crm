@@ -10,6 +10,7 @@
  */
 
 import type { Redis } from 'ioredis';
+import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../lib/tenant-db.js';
 import { resolveImplied, permsForFeatures, CORE_FEATURE } from '@open333crm/core';
 
@@ -111,17 +112,7 @@ export async function getEffectiveTenantPermissions(
   }
 
   const roleEff = await getEffectivePermissions(prisma, redis, roleId);
-  const plan = await prisma.plan.findUnique({
-    where: { id: planId },
-    select: { features: true, permissionOverrides: true },
-  });
-  const features = new Set<string>((plan?.features as string[]) ?? []);
-  features.add(CORE_FEATURE); // core 恆開
-  const ceiling = permsForFeatures(features);
-
-  // 功能點細分：從天花板再扣掉方案 deny 的權限碼（deny 高階不連坐低階）
-  const overrides = (plan?.permissionOverrides ?? {}) as { deny?: string[] };
-  for (const code of overrides.deny ?? []) ceiling.delete(code);
+  const ceiling = await loadPlanCeiling(prisma, planId);
 
   const effective = new Set<string>();
   for (const code of roleEff) if (ceiling.has(code)) effective.add(code);
@@ -132,6 +123,25 @@ export async function getEffectiveTenantPermissions(
     /* 寫入失敗不阻斷 */
   }
   return effective;
+}
+
+/**
+ * 方案的權限天花板：方案功能涵蓋的權限碼（core 恆開），再扣掉方案 deny 的權限碼（deny 高階不連坐低階）。
+ * 只查資料庫、不讀快取：getEffectiveTenantPermissions() 與交易內、沒有 Redis 的背景路徑共用
+ * （例如 CSAT 低分通知的收件人，issue #339）。
+ */
+export async function loadPlanCeiling(prisma: Pick<Prisma.TransactionClient, 'plan'>, planId: string): Promise<Set<string>> {
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId },
+    select: { features: true, permissionOverrides: true },
+  });
+  const features = new Set<string>((plan?.features as string[]) ?? []);
+  features.add(CORE_FEATURE); // core 恆開
+  const ceiling = permsForFeatures(features);
+
+  const overrides = (plan?.permissionOverrides ?? {}) as { deny?: string[] };
+  for (const code of overrides.deny ?? []) ceiling.delete(code);
+  return ceiling;
 }
 
 /** 失效某方案所有租戶的天花板交集快取（改 plan.features 後呼叫）。 */

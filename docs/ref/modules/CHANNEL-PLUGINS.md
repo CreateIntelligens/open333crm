@@ -25,7 +25,7 @@
 實際上外掛只涵蓋收發訊息的主幹。下列兩件事要先知道：
 
 1. **註冊表是每個行程各自一份。** API 行程以 `registerChannelPlugin()` 註冊所有外掛；workers 行程不用這個註冊表，自己建一個 `Map`，只放 LINE 與 Facebook。所以 workers 送不出 Instagram 私訊與網站聊天室的訊息，見 `../system/AUDIT.md` 的 CHAN-02。
-2. **很多渠道專屬的功能不在外掛裡。** 設定 webhook、驗證憑證、圖文選單、群發的 multicast、滿意度調查的版型等，都在各模組內以 `channelType` 分支，直接呼叫渠道平台的 API。見[外掛之外的渠道專屬程式](#外掛之外的渠道專屬程式)。
+2. **很多渠道專屬的功能不在外掛裡。** 設定 webhook、驗證憑證、圖文選單、群發的 multicast 等，都在各模組內以 `channelType` 分支，直接呼叫渠道平台的 API。見[外掛之外的渠道專屬程式](#外掛之外的渠道專屬程式)。
 
 ## 外掛介面
 
@@ -37,6 +37,7 @@
 | `sendMessage()` | 是 | `conversation.service.ts`、workers 的 `channel-delivery.ts`、`canvas.worker.ts`、`csat.service.ts`、行銷群發等 | 送出一則訊息，回傳渠道的訊息 ID |
 | `setWebhook()` | 否 | 沒有呼叫端 | 在渠道平台設定 webhook 網址。LINE 的自動設定改由 `line-webhook-setup.service.ts` 直接呼叫 LINE API |
 | `resolveInboundMedia()` | 否 | `inbound-side-effects.ts` 的 `resolveInboundMediaAsync()` | 訊息寫入後，非同步下載渠道上的媒體並存到自己的儲存空間，儲存後的網址寫入 `content.url` 與 `content.mediaUrl`。LINE 下載圖片、影片、語音與檔案：待下載以 `contentId` 表示；上限 25 MB；只保留圖片（不含 SVG）、影片、語音的 MIME，其他存成 `application/octet-stream`；檔案保留副檔名；`contentProvider` 為 `external` 時直接用對方的網址、不下載。失敗時外掛拋出中文原因，寫進 `content.mediaError` 並推送給收件匣 |
+| `buildCsatSurvey()` | 否 | `csat.service.ts` 的 `sendCsatSurvey()`、`csatSurveyChannelTypes()` | 組滿意度問卷的訊息。只有客人能在渠道上直接點選分數的外掛實作，目前只有 LINE（Flex 訊息、五個 postback 按鈕）。沒有實作的渠道不寄問卷（#339）。LINE 外掛把它設成實例屬性，workers 的 registry 用同一個物件，能力相同 |
 | `extensions.ui` | 否 | workers 的 `rich-menu-bind.handler.ts` | 圖文選單的綁定與解除 |
 | `extensions.analytics` | 否 | `mcp.server.ts` | 查詢 LINE 的訊息額度 |
 | `extensions.audience` | 否 | 沒有呼叫端 | 分眾名單 |
@@ -83,7 +84,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 客服回覆（`conversation.service.ts` 的 `sendMessage()`、送媒體） | API | `getChannelPlugin()` | LINE 選擇 reply 或 push；WEBCHAT 另外推送到訪客的 socket 房間 |
 | 自動化與關鍵字回覆的 `send_message`、`send_material` | workers | workers 自己的 `Map` | LINE 選擇 reply 或 push |
 | Canvas 的 `MESSAGE` 節點 | API（`canvas.worker.ts`） | `getChannelPlugin()` | `email` 改走寄信 |
-| 滿意度調查 | API（`csat.service.ts`） | `getChannelPlugin()` | LINE 送附評分按鈕的 Flex 訊息，其他渠道送文字 |
+| 滿意度調查 | API（`csat.service.ts`） | `getChannelPlugin()` | 沒有分支：外掛的 `buildCsatSurvey()` 決定版型，沒有實作的渠道不寄（#339） |
 | 行銷群發、附券廣播、批次發券 | API（`marketing.service.ts`、`broadcast-coupon.flow.ts`） | `getChannelPlugin()` | LINE 在訊息不含個人化變數時改用 multicast，一次送給多人；只接受能主動推送的渠道，網站聊天室回 400 |
 
 **LINE 的 reply 與 push。** LINE 的 reply 不計入訊息額度，但 reply token 只在收到訊息後短時間內有效。`packages/shared/src/safe-reply.ts` 的 `selectSafeLineStrategy()` 決定用哪一種：帶著 reply token、而且收到訊息未滿 `LINE_REPLY_SAFE_WINDOW_MS` 時用 reply，否則用 push。API 與 workers 共用這個函式，但 reply 失敗後改用 push 的處理各寫一份。
@@ -122,7 +123,6 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | --- | --- |
 | `conversation/conversation.service.ts` | LINE 先用 reply token 回覆，失敗才 push；WebChat 推送給訪客的 socket |
 | `channel/channel.service.ts`、`channel.routes.ts` | 依渠道選擇憑證欄位與驗證方式；顯示 Facebook 權杖狀態 |
-| `csat/csat.service.ts` | LINE 送 Flex 調查，其他渠道送快速回覆 |
 | `webhook/webhook.service.ts` | 選擇驗簽用的秘密：`FB`、`THREADS` 用 `appSecret`，其他用 `channelSecret` |
 | `marketing/marketing.service.ts` | LINE 且素材沒有變數時用 multicast |
 | `identity-binding/binding-links.ts` | 依渠道產生導流連結（LINE 的加好友與預填文字、FB 的 `m.me`、IG 的 `ig.me`）與顧客看到的帳號稱呼 |

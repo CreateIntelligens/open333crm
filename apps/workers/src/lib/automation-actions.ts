@@ -6,6 +6,7 @@ import {
   canTransition,
   CASE_CATEGORIES,
   caseStatusOutcomeEvent,
+  caseTransitionCsatFields,
   caseTransitionTimestamps,
   type CaseStatus,
 } from '@open333crm/shared';
@@ -293,6 +294,7 @@ async function updateCaseStatusFromAutomation(
         contactId: true,
         channelId: true,
         title: true,
+        csatScore: true,
         conversations: { select: { id: true } },
       },
     });
@@ -318,6 +320,8 @@ async function updateCaseStatusFromAutomation(
       data: {
         status: status as CaseStatus,
         ...caseTransitionTimestamps(from, status as CaseStatus, new Date()),
+        // 與 API 的 transitionCase() 相同（issue #339）：重新解決的未評分工單清除上一輪的問卷寄出時間
+        ...caseTransitionCsatFields(from, status as CaseStatus, current),
       },
     });
     if (count === 0) return { kind: 'raced' as const };

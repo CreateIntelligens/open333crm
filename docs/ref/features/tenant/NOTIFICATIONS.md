@@ -32,7 +32,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 
 下列來源不經過上面的流程：
 
-- **CSAT 低分**：`csat.service.ts` 的 `recordCsatScore()` 直接呼叫 `createAndDispatch()`，在 API 行程寫入並推送。
+- **CSAT 低分**：`csat.service.ts` 的 `notifyCsatLowScore()` 直接呼叫 `createAndDispatch()`，在 API 行程寫入並推送。送不出時工單時間軸寫一筆 `csat_low_score_notify_failed`（#339）。
 - **SLA 預警與逾時**：workers 的 `sla.handler.ts` 自己送進 queue，見[服務水準協議](../SLA.md)。
 
 ## 哪些事件通知誰
@@ -43,7 +43,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 | 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派、且負責人仍啟用並看得到該渠道時只通知負責人；未指派，或負責人已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
 | 工單被指派 | `case_assigned` | 被指派的成員 | `case.assigned` |
 | 工單升級 | `case_escalated` | 依升級對話框的勾選：所有 `ADMIN` 與 `SUPERVISOR`、升級前的負責人，見[工單](./CASES.md#升級) | `case.escalated` |
-| CSAT 兩分以下 | `csat_low_score` | 所有 `SUPERVISOR`，不含 `ADMIN` | `recordCsatScore()` |
+| CSAT 兩分以下 | `csat_low_score` | 有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員，含管理員；不看舊的角色列舉（`resolveCaseManagerRecipients()`，#339）。預設的客服角色也有 `case.assign` | `recordCsatScore()` |
 | SLA 預警與逾時 | `sla_warning`、`sla_breached` | 見[服務水準協議](../SLA.md) | workers |
 | AI 額度達 80% 或 100% | `usage_quota_warning`、`usage_quota_critical` | 所有 `ADMIN`，另外寄 email | `usage.quota.threshold` |
 | 自動化規則的通知動作 | 依規則 | 工單負責人，或所有 `ADMIN` 與 `SUPERVISOR` | workers 的自動化動作 |

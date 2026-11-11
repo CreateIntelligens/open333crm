@@ -1,6 +1,6 @@
-import type { PrismaClient } from '@prisma/client';
+import type { ChannelType, PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
-import { sendCsatSurvey } from './csat.service.js';
+import { csatSurveyChannelTypes, sendCsatSurvey } from './csat.service.js';
 import { closeConversationsForCase } from '../conversation/conversation.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
@@ -8,7 +8,8 @@ import { caseTransitionTimestamps } from '@open333crm/shared';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
-const CSAT_DELAY_MINUTES = 5; // POC: 5 minutes after resolution (design doc: 30 min)
+/** 工單解決後多久寄問卷（issue #339 決定 4：30 分鐘，租戶不能調整） */
+export const CSAT_SURVEY_DELAY_MINUTES = 30;
 const AUTO_CLOSE_HOURS = 72; // auto-close after 72h without CSAT response
 
 /**
@@ -22,14 +23,17 @@ export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient
    */
   async function pollSendCsat() {
     try {
-      const cutoff = new Date(Date.now() - CSAT_DELAY_MINUTES * 60 * 1000);
+      const cutoff = new Date(Date.now() - CSAT_SURVEY_DELAY_MINUTES * 60 * 1000);
 
       const cases = await prisma.case.findMany({
         where: {
           status: 'RESOLVED',
           csatSentAt: null,
+          // 已評分（客服代評後重新解決）的工單不再寄問卷（issue #339 決定 2）
+          csatScore: null,
           resolvedAt: { lte: cutoff },
-          conversations: { some: {} },
+          // 只查寄得出問卷的渠道（issue #339 決定 7）：其他渠道的工單不進候選，不佔每期的名額
+          conversations: { some: { channelType: { in: csatSurveyChannelTypes() as ChannelType[] } } },
           // 租戶停用（含試用到期）時不寄問卷給客人（issue #410）
           tenant: { isActive: true },
         },

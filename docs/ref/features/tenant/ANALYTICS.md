@@ -20,13 +20,13 @@ CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`cr
 
 | 端點 | 內容 |
 | --- | --- |
-| `GET /analytics/overview` | 未結工單、新工單、已解決工單、SLA 達成率、平均首次回應與平均解決時間、CSAT 平均與好評率 |
+| `GET /analytics/overview` | 未結工單、新工單、已解決工單、SLA 達成率、平均首次回應與平均解決時間、CSAT 平均與好評率（只算客人自評），以及客服代評的筆數 `csatAgentRatedCount` |
 | `GET /analytics/message-trend` | 訊息量趨勢，可以依日、週、月分組 |
 | `GET /analytics/cases` | 工單趨勢、狀態、優先級與分類分布、SLA 逾時數、升級率 |
-| `GET /analytics/agents` | 每個客服的處理量、平均首次回應與解決時間、CSAT、SLA 達成率。可以用 `agentId` 只看一人 |
+| `GET /analytics/agents` | 每個客服的處理量、平均首次回應與解決時間、CSAT（只算客人自評）、SLA 達成率。可以用 `agentId` 只看一人 |
 | `GET /analytics/channels` | 各渠道類型的訊息量、對話量與新聯絡人數，以及機器人與真人處理的比例 |
 | `GET /analytics/contacts` | 新聯絡人趨勢、活躍聯絡人數、最常用的標籤 |
-| `GET /analytics/csat` | 期間內送出問卷的工單：回覆率、平均分數、滿意率（4 分以上），以及最多 20 張低分（2 分以下）工單。依送出問卷的時間篩選 |
+| `GET /analytics/csat` | 期間內送出問卷的工單：回覆率、平均分數、滿意率（4 分以上），以及最多 20 張低分（2 分以下）工單，都只算客人自評；另外回傳客服代評的筆數 `agentRatedCount`。依送出問卷的時間篩選 |
 | `GET /analytics/my` | 自己本月的績效，以及手上待處理與快到期的工單 |
 | `POST /analytics/export` | 匯出 CSV，可選總覽、工單、客服或渠道 |
 
@@ -42,7 +42,7 @@ CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`cr
 
 **平均首次回應時間**取 `Case.firstResponseAt` 不為空的工單計算。客服在工單關聯的對話第一次送出訊息時寫入這個欄位，AI 與系統自動回覆不算。沒有關聯對話的工單不會有這個值，因此不計入，見 `../../system/AUDIT.md` 的 SLA-05。
 
-**CSAT 好評率**是 4 分與 5 分佔全部評分的比例。
+**CSAT 好評率**是 4 分與 5 分佔客人自評的比例。CSAT 的平均與好評率只算客人自評：工單的 `csatRatedBy` 是 `agent`（客服代評）時不計入，報表頁的 CSAT 分數卡另外顯示「客服代評 N 筆（不計入平均）」。2026-11-04 之前沒有來源紀錄的舊評分視為客人自評（#339）。
 
 **日期以 UTC 切分。** 依日、週、月分組用的是資料庫的 `date_trunc()`，而時間欄位存的是不帶時區的 UTC 時間。台灣時間凌晨 0 點到 8 點的資料會被算到前一天。見 `../../system/AUDIT.md` 的 ANA-01。
 

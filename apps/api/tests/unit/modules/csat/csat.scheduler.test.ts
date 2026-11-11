@@ -18,7 +18,7 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({
     return 1;
   },
 }));
-vi.mock('#src/modules/csat/csat.service.js', () => ({ sendCsatSurvey: async () => false }));
+vi.mock('#src/modules/csat/csat.service.js', () => ({ sendCsatSurvey: async () => false, csatSurveyChannelTypes: () => ['LINE'] }));
 
 const { eventBus } = await import('#src/events/event-bus.js');
 const { setupCsatScheduler } = await import('#src/modules/csat/csat.scheduler.js');
@@ -122,6 +122,32 @@ test('排程讀取之後，別次執行已經結案', async () => {
   await getAutoCloseRun(db, io)();
 
   assertNothingClosed(emitted);
+});
+
+/**
+ * 寄送延遲 30 分鐘（issue #339 決定 4，csat-survey「工單解決 30 分鐘後寄出問卷」）：
+ * 排程只查 resolvedAt 早於「現在 − 30 分鐘」的工單。
+ */
+async function sendQueryCutoff(): Promise<Date> {
+  const findManyArgs: Array<{ where: { resolvedAt: { lte: Date } } }> = [];
+  const db = { case: { findMany: async (args: never) => { findManyArgs.push(args); return []; } } } as unknown as PrismaClient;
+  const runs = new Map<string, () => Promise<void>>();
+  setupCsatScheduler({ registerSchedule: (def: { id: string; run: () => Promise<void> }) => runs.set(def.id, def.run) } as unknown as JobScheduler, db, createIo().io);
+  await runs.get('csat-send')!();
+  assert.equal(findManyArgs.length, 1);
+  return findManyArgs[0].where.resolvedAt.lte;
+}
+
+test('解決未滿 30 分鐘不寄問卷', async () => {
+  const cutoff = await sendQueryCutoff();
+  const resolvedAt = new Date(Date.now() - 29 * 60 * 1000);
+  assert.equal(resolvedAt <= cutoff, false, '29 分鐘前解決的工單不在查詢範圍');
+});
+
+test('解決滿 30 分鐘寄出問卷', async () => {
+  const cutoff = await sendQueryCutoff();
+  const resolvedAt = new Date(Date.now() - 31 * 60 * 1000);
+  assert.equal(resolvedAt <= cutoff, true, '31 分鐘前解決的工單在查詢範圍');
 });
 
 test('問卷逾時沒有回覆，工單結案', async () => {

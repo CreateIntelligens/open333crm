@@ -1,7 +1,10 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
-import { createNotificationForActiveAgent, logger } from '@open333crm/core';
+import { createNotificationForActiveAgent, logger, resolveImplied } from '@open333crm/core';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { loadPlanCeiling } from '../../services/permission.service.js';
+import { getAccessibleChannelIds, isChannelAccessible } from '../../services/channel-visibility.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
 
@@ -108,6 +111,48 @@ export async function markAllAsRead(
   });
 
   return result.count;
+}
+
+/**
+ * 「負責工單的成員」依這個權限碼判斷（issue #339 決定 5）：權限註冊表沒有「工單管理」碼，
+ * case.assign（派工／改派給成員）最接近「安排人跟進」。預設的客服角色也有這個碼，租戶可在角色頁拿掉。
+ */
+export const CASE_MANAGER_PERMISSION = 'case.assign';
+
+/**
+ * 工單相關通知（目前是 CSAT 低分）的收件人（issue #339 決定 5，csat-survey「低分只通知負責工單的成員」）：
+ * 同租戶、啟用中、有效權限（角色權限 ∩ 方案天花板，含 implies）含 case.assign，而且看得到這個渠道
+ * （持 channel.view_all，或直綁、團隊授權該渠道）的成員。不看舊的角色列舉 role（AUDIT RBAC-03）。
+ * 只查資料庫、不讀 Redis：進站管線與交易內都能呼叫。
+ */
+export async function resolveCaseManagerRecipients(ctx: TenantCtx, channelId: string): Promise<string[]> {
+  const tenant = await ctx.tx.tenant.findUnique({ where: { id: ctx.tenantId }, select: { planId: true } });
+  // 租戶沒有方案時不設天花板（與 getEffectiveTenantPermissions 相同）
+  const ceiling = tenant?.planId ? await loadPlanCeiling(ctx.tx, tenant.planId) : null;
+
+  const roles = await ctx.tx.role.findMany({
+    where: { tenantId: ctx.tenantId },
+    select: { id: true, permissions: { select: { permissionCode: true } } },
+  });
+  const effectiveByRole = new Map<string, Set<string>>();
+  for (const role of roles) {
+    const granted = resolveImplied(role.permissions.map((p) => p.permissionCode));
+    effectiveByRole.set(role.id, ceiling ? new Set([...granted].filter((code) => ceiling.has(code))) : granted);
+  }
+  const managerRoleIds = [...effectiveByRole].filter(([, eff]) => eff.has(CASE_MANAGER_PERMISSION)).map(([id]) => id);
+  if (managerRoleIds.length === 0) return [];
+
+  const candidates = await ctx.tx.agent.findMany({
+    where: { tenantId: ctx.tenantId, isActive: true, roleId: { in: managerRoleIds } },
+    select: { id: true, roleId: true },
+  });
+  const recipients: string[] = [];
+  for (const agent of candidates) {
+    const hasViewAll = effectiveByRole.get(agent.roleId!)?.has('channel.view_all') ?? false;
+    const accessible = await getAccessibleChannelIds(ctx.tx, { tenantId: ctx.tenantId, agentId: agent.id, hasViewAll });
+    if (isChannelAccessible(accessible, channelId)) recipients.push(agent.id);
+  }
+  return recipients;
 }
 
 export type EscalationNotifyTarget = 'supervisor' | 'original_assignee';

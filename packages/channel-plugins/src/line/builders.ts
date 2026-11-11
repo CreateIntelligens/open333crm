@@ -317,3 +317,46 @@ export function buildLineVideoWithEndCard(content: Record<string, unknown>): Rec
 
   return video;
 }
+
+// ─── 滿意度問卷 ─────────────────────────────────────────────
+//
+// issue #339 決定 7：只有 LINE 外掛實作 buildCsatSurvey()。版型原本寫在 csat.service.ts 的
+// channelType 分支（AUDIT CASE-02），移到外掛後 csat 模組不必知道渠道。
+
+/**
+ * 滿意度問卷的 Flex 訊息：替代文字是問題，每個分數一個 postback 按鈕（主規格 csat-survey「LINE 客人收到 Flex 問卷」）。
+ */
+export function buildLineCsatSurvey(input: {
+  question: string;
+  options: Array<{ label: string; postbackData: string; displayText: string }>;
+}): { contentType: 'flex'; content: Record<string, unknown> } {
+  return {
+    contentType: 'flex',
+    content: {
+      type: 'flex',
+      altText: input.question,
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: '滿意度調查', weight: 'bold', size: 'lg' },
+            { type: 'text', text: input.question, wrap: true, margin: 'md', size: 'sm' },
+          ],
+        },
+        footer: {
+          type: 'box',
+          layout: 'horizontal',
+          spacing: 'sm',
+          contents: input.options.map((option) => ({
+            type: 'button',
+            action: actionToLine({ type: 'postback', label: option.label, data: option.postbackData, displayText: option.displayText }),
+            style: 'secondary',
+            height: 'sm',
+          })),
+        },
+      },
+    },
+  };
+}

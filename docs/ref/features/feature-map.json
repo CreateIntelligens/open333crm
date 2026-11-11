@@ -525,7 +525,6 @@
         "sla-policy-selection"
       ],
       "audit": [
-        "CASE-02",
         "RBAC-03",
         "RBAC-04",
         "SLA-04",
@@ -1013,7 +1012,6 @@
         "credential-encryption"
       ],
       "audit": [
-        "CASE-02",
         "HOOK-01",
         "PKG-06",
         "AI-01",

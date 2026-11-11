@@ -18,7 +18,22 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({
     if (delivery.error) throw delivery.error;
     return true;
   },
+  closeConversationsForCase: async () => 0,
 }));
+vi.mock('#src/modules/channel/channel.service.js', () => ({ decryptCredentials: () => ({}) }));
+// 問卷只寄給外掛實作 buildCsatSurvey() 的渠道（issue #339 決定 7）：這裡的 LINE 外掛替身把送出記在 delivered
+vi.mock('@open333crm/channel-plugins', () => {
+  const plugin = {
+    channelType: 'LINE',
+    buildCsatSurvey: () => ({ contentType: 'flex', content: {} }),
+    sendMessage: async (...args: unknown[]) => {
+      delivered.push(args);
+      if (delivery.error) throw delivery.error;
+      return { success: true };
+    },
+  };
+  return { getChannelPlugin: (type: string) => (type === 'LINE' ? plugin : undefined), getAllChannelPlugins: () => [plugin] };
+});
 
 const { sendCsatSurvey, recordCsatScore } = await import('#src/modules/csat/csat.service.js');
 
@@ -46,7 +61,7 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
         status: 'RESOLVED',
         csatSentAt: null,
         conversations: [
-          { id: 'conv-1', channelType: 'WEBCHAT', channel: { id: 'channel-1', isActive: true } },
+          { id: 'conv-1', channelType: 'LINE', channelId: 'channel-1', channel: { id: 'channel-1', isActive: true, credentialsEncrypted: 'x' } },
         ],
       }),
       updateMany: async (args: unknown) => {
@@ -81,6 +96,7 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
     conversation: {
       update: async () => ({}),
     },
+    channelIdentity: { findFirst: async () => ({ uid: 'U-line-user' }) },
   };
   return { db: db as unknown as TenantDb, order, updateManyCalls, messageCreateCalls, failureRecords };
 }
@@ -177,6 +193,7 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
       platformSetting: { findUnique: async () => ({ value: { enabled: true } }) },
       case: {
         findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, csatScore: null, conversations: [{ id: 'conv-1', channelId: 'ch-1' }] }),
+        updateMany: async () => ({ count: 1 }),
         update: async () => ({}),
       },
       message: {
@@ -223,6 +240,7 @@ async function closeUpdateAfterScore(status: string) {
         csatScore: null,
         conversations: [{ id: 'conv-1', channelId: 'ch-1' }],
       }),
+      updateMany: async () => ({ count: 1 }),
       update: async ({ data }: { data: Record<string, unknown> }) => {
         updates.push(data);
         return {};

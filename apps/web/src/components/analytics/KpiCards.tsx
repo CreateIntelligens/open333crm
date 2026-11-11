@@ -14,7 +14,10 @@ interface OverviewData {
   totalMessages: number;
   openCases: number;
   slaAchievementRate: number | null;
+  /** 只算客人自評的平均（issue #339） */
   csatAvg: number | null;
+  /** 期間內客服代評的工單數，不計入平均；舊版 API 沒有這個欄位 */
+  csatAgentRatedCount?: number;
 }
 
 interface KpiCardsProps {
@@ -27,11 +30,13 @@ interface KpiCardProps {
   title: string;
   value: string | number | null;
   subtitle?: string;
+  /** 數字下方的補充說明 */
+  note?: string;
   color: string;
   isLoading: boolean;
 }
 
-function KpiCard({ icon, title, value, subtitle, color, isLoading }: KpiCardProps) {
+function KpiCard({ icon, title, value, subtitle, note, color, isLoading }: KpiCardProps) {
   return (
     <Card>
       <CardContent className="p-6">
@@ -48,6 +53,9 @@ function KpiCard({ icon, title, value, subtitle, color, isLoading }: KpiCardProp
                 <p className="text-2xl font-bold">{value ?? '-'}</p>
                 {subtitle && (
                   <p className="text-xs text-muted-foreground">{subtitle}</p>
+                )}
+                {note && (
+                  <p className="text-xs text-muted-foreground">{note}</p>
                 )}
               </>
             )}
@@ -83,6 +91,8 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       title: 'CSAT 分數',
       value: data?.csatAvg ?? null,
       subtitle: data?.csatAvg != null ? '/ 5.0' : undefined,
+      // 客服代評不計入平均（issue #339 決定 8），另外列出筆數讓主管知道有多少分數不是客人給的
+      note: data?.csatAgentRatedCount ? `客服代評 ${data.csatAgentRatedCount} 筆（不計入平均）` : undefined,
       color: 'bg-amber-100',
     },
   ];

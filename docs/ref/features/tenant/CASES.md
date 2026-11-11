@@ -3,7 +3,7 @@
 對話記錄「客人說了什麼」，工單追蹤「這件事處理完了沒」。客服把需要追蹤的問題開成工單，指派負責人，依狀態推進到解決；解決後系統發出滿意度調查，客人評分後結案。
 
 - **資料來源**：`apps/api/src/modules/case/*`、`apps/api/src/modules/csat/*`、`packages/shared/src/constants/case-transitions.ts`、`packages/shared/src/constants/case-categories.ts`、`apps/web/src/components/case/*`、`apps/web/src/app/dashboard/cases/*`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-11-11（滿意度問卷依 #339 更新）
 
 ## 負責的模組
 
@@ -75,7 +75,9 @@
 | 其他狀態 → `CLOSED`（直接關閉） | null，不算已解決 | 寫入轉換時間 |
 | 轉成其他狀態（重開、處理中、待處理、升級） | 清除 | 不變 |
 
-報表以 `resolvedAt` 判斷「已解決」，所以直接關閉與重開的工單不算已解決。2026-11-04 之前的資料沒有補值：當時直接關閉的工單沒有 `resolvedAt`，當時重開、之後沒有再改狀態的工單仍保留舊的 `resolvedAt`。重開不清除 `closedAt` 與 `csatSentAt`（#339）。
+報表以 `resolvedAt` 判斷「已解決」，所以直接關閉與重開的工單不算已解決。2026-11-04 之前的資料沒有補值：當時直接關閉的工單沒有 `resolvedAt`，當時重開、之後沒有再改狀態的工單仍保留舊的 `resolvedAt`。重開不清除 `closedAt`。
+
+狀態機保留兩條離開「完成」狀態的轉換（#339 決定 1）：`CLOSED → OPEN`（重新開啟，客人說問題沒有解決）與 `RESOLVED → IN_PROGRESS`（改回處理中，客服誤按「標記解決」）。工單再次轉成 `RESOLVED` 時，API 的 `transitionCase()` 與 workers 的 `update_case_status` 都套用 `@open333crm/shared` 的 `caseTransitionCsatFields()`：還沒有評分時清除 `csatSentAt` 與 `csatRespondedAt`，問卷排程再寄一份；已有評分時保留，不再寄問卷、不逾時結案。
 
 推播（`case.updated` 等）在交易 commit 之後送出。事件與工單的變更在同一個交易寫進 outbox，保證至少送出一次，見[事件與背景工作](../../modules/EVENTS.md)。推播與事件的內容寫在 `case-effects.ts`。
 
@@ -139,14 +141,14 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 `csat.scheduler.ts` 的 `setupCsatScheduler()` 在 API 行程定期執行下列工作：
 
-1. **寄送滿意度問卷**（排程 id `csat-send`）。工單轉成 `RESOLVED` 一段時間後，對工單連結的其中一個對話寄出滿意度問卷。沒有連結對話的工單不寄。租戶停用（含試用到期）時不處理該租戶的工單（issue #410）；重新啟用後，解決時間已過的工單仍會寄出。
+1. **寄送滿意度問卷**（排程 id `csat-send`）。工單轉成 `RESOLVED` 30 分鐘後（`CSAT_SURVEY_DELAY_MINUTES`），對工單連結、而且渠道外掛實作 `buildCsatSurvey()` 的對話寄出滿意度問卷（目前只有 LINE）。沒有這種對話的工單不寄，停在已解決，也不會被逾時結案，由客服手動結案（#339 決定 7）。已有評分的工單不寄。租戶停用（含試用到期）時不處理該租戶的工單（issue #410）；重新啟用後，解決時間已過的工單仍會寄出。
 2. **問卷逾時結案**（排程 id `csat-auto-close`）。問卷寄出後超過時限仍沒有回覆，把工單轉成 `CLOSED`、發布 `case.closed`，並關閉該工單所有尚未關閉的對話。這個結案不寫時間軸事件。
 
 延遲與時限是 `csat.scheduler.ts` 開頭的常數，租戶不能調整。
 
 排程的 job 可能重跑，兩期也可能重疊，所以兩個工作都先以條件更新認領工單，認領成功才往下做：
 
-- 寄送滿意度問卷：`sendCsatSurvey()` 先寫入 `csatSentAt`，條件是工單仍是 `RESOLVED`、還沒有 `csatSentAt`。沒寫入就不建立問卷訊息、不送到渠道。每張工單因此最多寄一份。
+- 寄送滿意度問卷：`sendCsatSurvey()` 先寫入 `csatSentAt`，條件是工單仍是 `RESOLVED`、還沒有 `csatSentAt`、還沒有評分、租戶啟用中。沒寫入就不建立問卷訊息、不送到渠道。每次解決因此最多寄一份。
 - 問卷逾時結案：改成 `CLOSED` 的那次更新，條件是工單仍是 `RESOLVED`、還沒有 `csatRespondedAt`。沒寫入就不發事件、不關閉對話。排程讀取之後客服重開工單，或客人回覆評分，工單都不會被蓋回 `CLOSED`。
 
 兩個工作都是「最多一次」：認領之後任何一步失敗（建立問卷訊息、送到渠道），或行程中途結束，這張工單都不會再處理，問卷少寄一份，或工單已結案但沒有發事件、沒有關閉對話。寧可少寄，不重複寄。
@@ -156,27 +158,23 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 - 對話裡的問卷訊息 `metadata` 加上 `deliveryFailed: true` 與 `deliveryError`（原因），並再推一次 `message.new`。收件匣的問卷卡片顯示「這份問卷沒有送出，客人並未收到」與原因，對話列表也標紅。
 - 工單時間軸寫一筆 `csat_send_failed`（`actorType: 'system'`，`payload.reason`），顯示為「滿意度問卷沒有送出，客人沒有收到：<原因>」。
 
-要不要重寄是產品決定，見 #339。
+送不出的問卷不重寄（#339）。
 
-調查的形式依渠道而不同，由 `buildCsatChannelMessage()` 產生：
+問卷的版型由渠道外掛的 `buildCsatSurvey()` 產生，csat 模組不比對 `channelType`。LINE 是 Flex Message，五個分數按鈕；其他渠道沒有實作，不寄問卷。
 
-| 渠道 | 形式 |
-| --- | --- |
-| LINE | Flex Message，五個分數按鈕 |
-| 其他渠道 | 文字提示，請客人回覆 `csat:<分數>` |
+客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScore()` 記錄，並回一則感謝訊息。每張工單只記第一次評分：寫入分數的更新帶 `csatScore: null` 條件，客人連點兩次時只有一次寫入，感謝訊息、低分通知與 `case.closed` 都只有一次（#339）。客服也可以用 `POST /cases/:id/csat` 代評。評分後工單改成 `CLOSED`，並關閉工單底下的對話，與問卷逾時結案相同。
 
-客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScore()` 記錄，並回一則感謝訊息。每張工單只記第一次評分。客服也可以用 `POST /cases/:id/csat` 手動記錄。
+1～2 分只發站內通知 `csat_low_score`，不升級工單。收件人是有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`），不看舊的角色列舉。預設的客服角色也有 `case.assign`。通知送不出時，工單時間軸寫一筆 `csat_low_score_notify_failed`。
 
 記錄分數之後，客服在後台看得到結果（issue #444）：
 
 - 這張工單的問卷訊息 `metadata` 寫入 `csatScore` 與 `csatRatedBy`（`customer` 或 `agent`），系統再推一次 `message.new`。收件匣的問卷卡片改成唯讀，標題顯示「客人評 N 分」或「客服代評 N 分」。
 - 客人的評分訊息存成「我的評分：N 分」（與 LINE 按鈕的 `displayText` 相同），原始的 `csat:<分數>:<工單 ID>` 存在訊息的 `metadata.postbackData`。
 - 工單時間軸寫一筆 `csat_rated`（客人評分 `actorType: 'contact'`，客服代評 `actorType: 'agent'` 並記錄客服），顯示為「客人評分：N 分（說明）」或「客服代評滿意度：N 分（說明）」。評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`），顯示為「狀態：已解決 → 已關閉（評分後自動關閉）」。
-- 工單詳情頁的「滿意度」區塊顯示分數、說明與評分時間；問卷已寄出但還沒評分時顯示「問卷已寄出，客人尚未評分」。
+- 工單的 `csatRatedBy` 記錄評分來源（`customer` 或 `agent`，#339）。工單詳情頁的「滿意度」區塊顯示分數、說明與評分時間，客服代評時另外標示「客服代評」；問卷已寄出但還沒評分時顯示「問卷已寄出，客人尚未評分」。報表的 CSAT 平均只算客人自評，見[數據分析與報表](./ANALYTICS.md)。
 
 `recordCsatScore()` 只寫入屬於收訊租戶、而且聯絡人就是傳訊者的工單；客服手動記錄時只比對租戶。不符合條件的 CSAT 訊息仍會被攔截，但不寫入、不回覆。
 
-非 LINE 渠道的提示格式不含工單 ID，攔截器認不出客人的回覆，見 `../../system/AUDIT.md` 的 CASE-02。
 
 ## 刪除
 
@@ -213,7 +211,7 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 | 限制 | 說明 |
 | --- | --- |
-| 非 LINE 渠道無法回覆滿意度調查 | 詳見 `../../system/AUDIT.md` 的 CASE-02 |
+| 非 LINE 渠道不寄滿意度調查 | 使用者決定（#339）：等需要時再做快速回覆按鈕。這些工單停在已解決，由客服手動結案 |
 | **沒有關聯對話的工單，首次回應 SLA 必定逾時** | 詳見 `../../system/AUDIT.md` 的 SLA-05 |
 | 自動指派看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | 工單以政策名稱連結 SLA | 詳見 `../../system/AUDIT.md` 的 SLA-04 |
