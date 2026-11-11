@@ -19,6 +19,8 @@
 - [x] 3.4 review-loop 第 1～3 輪（design D7）：寫測試「條件資料讀取失敗，訊息也命中其他渠道素材的無條件規則：worker 不讓步，知識庫照常回覆」（`tests/feature/modules/ai/kb-autoreply-flow.test.ts`，對應主規格 `automation-engine`「條件資料讀取失敗」）。有條件的關鍵字規則讀取條件資料時以 SQL 錯誤失敗，另一條無條件規則送其他渠道的素材。測試經由 worker 的 `message.received` 處理（第 3 輪：直接呼叫 flow 時，讓步判斷不會執行，注入的錯誤不會發生），斷言注入的錯誤有發生、知識庫照常回覆、沒有轉接。知識庫在交易內判斷關鍵字讓步時，這個情境以 `25P02 current transaction is aborted` 失敗。
 - [x] 3.5 寫測試「命中關鍵字規則的訊息：知識庫讓步，不呼叫 LLM、不回覆，也不算追問」（`tests/unit/modules/ai/kb-clarify-handoff.test.ts`，經由 worker，知識庫是真的）。知識庫刪除自己的讓步判斷，worker 在 `keywordWillHandle` 為 true 時不呼叫知識庫。`keyword-suppresses-ai.test.ts` 的原始碼斷言改成檢查 worker 的條件。讓 3.4、3.5 通過。突變記在 6.1。
 
+- [x] 3.6 PR #508 審查：寫測試「知識庫自動回覆停用：不開交易，結果是略過（kb_disabled）」（`tests/unit/modules/ai/kb-autoreply-flow.test.ts`）。開關原本在交易 A 內檢查，測試以「開了 1 個交易」失敗；改成 flow 在開交易之前檢查之後通過。開關關閉時開交易失敗會變成 `failed` 而轉接真人，與搬遷前的行為不同。
+
 ## 4. 呼叫端（design D6）
 
 - [x] 4.1 `automation.worker.ts` 改呼叫 `attemptKbAutoReplyFlow()`：`prisma` 傳 `tenantDeps.tenantPrisma`，`deliverDb` 傳 `prismaAdmin`。`ClaimTransactionError` 與其他錯誤的處理不變。1.1 列出的 automation 測試通過。

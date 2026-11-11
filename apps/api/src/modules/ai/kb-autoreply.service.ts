@@ -21,7 +21,6 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { getConfig } from '../../config/env.js';
 import { readEmbeddingInputs, searchSimilarArticles, type ArticleSearchResult } from '../embedding/embedding.service.js';
 import type { EmbeddingSettings } from '../settings/embedding-settings.service.js';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
@@ -168,6 +167,7 @@ function resolveBotConfig(channelSettings: unknown): BotConfig {
 
 /**
  * 交易 A（design D1 步驟 1）：確認對話是 BOT_HANDLED、依 botConfig 判斷要不要回覆，並讀回覆需要的資料。
+ * `KB_AUTO_REPLY_ENABLED` 由 flow 在開交易之前檢查。
  * 只讀，不呼叫外部服務。回傳略過原因時不再讀之後的資料。
  *
  * 關鍵字規則的讓步由 automation worker 在呼叫之前判斷（design D7）。這裡不判斷：hasMatchingKeywordRule()
@@ -177,7 +177,6 @@ export async function readKbReplyContext(
   ctx: TenantCtx,
   conversationId: string,
 ): Promise<{ skip: KbAutoReplySkipReason } | KbReplyContext> {
-  if (!getConfig().KB_AUTO_REPLY_ENABLED) return { skip: 'kb_disabled' };
   const { tenantId } = ctx;
 
   const conversation = await ctx.tx.conversation.findFirst({
@@ -232,6 +231,8 @@ export async function searchKbArticles(
   logger.info(
     `[KbAutoReply] conv=${input.conversationId} kbResults=${results.length} topSim=${topSimilarity.toFixed(3)}`,
   );
+  // 型號守門必須是這個交易的最後一步：checkModelGuard() 讀白名單失敗時 catch 後繼續，
+  // PostgreSQL 在查詢失敗後拒絕同一個交易的其他查詢（25P02，見 design D7）
   const modelGuard = await checkModelGuard(ctx, input.messageText, topSimilarity);
   return { results, topResult, topSimilarity, modelGuard };
 }

@@ -15,11 +15,14 @@ const state = vi.hoisted(() => ({
   /** 呼叫外部服務當下還沒結束的交易數 */
   calls: [] as Array<{ kind: 'embedding' | 'llm' | 'deidentify'; openTransactions: number }>,
   delivered: 0,
+  kbEnabled: true,
+  /** 開過的交易數 */
+  transactions: 0,
 }));
 
 vi.mock('#src/config/env.js', async (orig) => ({
   ...(await orig<object>()),
-  getConfig: () => ({ KB_AUTO_REPLY_ENABLED: true }),
+  getConfig: () => ({ KB_AUTO_REPLY_ENABLED: state.kbEnabled }),
 }));
 vi.mock('#src/modules/embedding/embedding-client.js', () => ({
   embedText: async () => {
@@ -74,6 +77,7 @@ function countingPrisma() {
   return {
     async $transaction(cb: (t: unknown) => Promise<unknown>) {
       state.open += 1;
+      state.transactions += 1;
       try {
         return await cb(tx);
       } finally {
@@ -87,6 +91,29 @@ beforeEach(() => {
   state.open = 0;
   state.calls.length = 0;
   state.delivered = 0;
+  state.kbEnabled = true;
+  state.transactions = 0;
+});
+
+function deps(prisma: never) {
+  return {
+    prisma,
+    llm: {} as never,
+    io: { to: () => ({ emit: () => {} }) } as never,
+    replyGuard: createBotReplyGuard(prisma, {} as never, TENANT, undefined),
+    events: {} as never,
+    deliverDb: {} as never,
+  };
+}
+
+// 搬遷前 attemptKbAutoReply() 一開始就檢查開關、不碰資料庫：開關關閉時開交易失敗不能變成「AI 失敗」而轉接真人（KB-06）
+test('知識庫自動回覆停用：不開交易，結果是略過（kb_disabled）', async () => {
+  state.kbEnabled = false;
+  const result = await attemptKbAutoReplyFlow(deps(countingPrisma()), { tenantId: TENANT, conversationId: 'c1', messageText: '請問一下', delivery: {} });
+
+  assert.deepEqual(result, { status: 'skipped', reason: 'kb_disabled' });
+  assert.equal(state.transactions, 0);
+  assert.deepEqual(state.calls, []);
 });
 
 test('呼叫外部服務之前交易已經結束：向量化、呼叫 LLM、遮罩回覆時，沒有還沒結束的交易', async () => {

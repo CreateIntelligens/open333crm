@@ -10,6 +10,7 @@
 import type { PrismaClient } from '@open333crm/database';
 import type { Server } from 'socket.io';
 import { logger } from '@open333crm/core';
+import { getConfig } from '../../config/env.js';
 import { inTenant } from '../../lib/tenant-ctx.js';
 import { notifyChannel } from '../../events/socket-push.js';
 import type { EventPublisher } from '../../events/outbox-publisher.js';
@@ -74,6 +75,8 @@ interface KbReplyDecision {
 }
 
 export async function attemptKbAutoReplyFlow(deps: KbAutoReplyDeps, input: KbAutoReplyInput): Promise<KbAutoReplyResult> {
+  // 開關關閉時不碰資料庫：開交易失敗不能變成「AI 失敗」而轉接真人（PR #508 審查）
+  if (!getConfig().KB_AUTO_REPLY_ENABLED) return skipped('kb_disabled');
   const { tenantId, conversationId, messageText } = input;
 
   // 1. 交易 A：判斷要不要回覆，讀回覆需要的資料。關鍵字讓步由呼叫端先判斷（design D7）
