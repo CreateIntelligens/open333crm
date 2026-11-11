@@ -8,7 +8,7 @@
 
 import type { PrismaClient, ShortLink } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
-import { logger } from '@open333crm/core';
+import { advisoryXactLock, logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { OgSnapshot } from './og-scraper.js';
 import { addTagToTarget, type ContactTagged } from '../tag/tagging.service.js';
@@ -373,9 +373,10 @@ export async function recordClick(
   }
 
   // 同一個 lineUid 並行點擊時，兩個交易都看不到對方未 commit 的 ClickLog，各自判成唯一點擊。
-  // 以 (短連結, lineUid) 的交易級 advisory lock 排隊，後到的交易等前一個 commit 後才寫入與計數
+  // 以 (短連結, lineUid) 的交易級 advisory lock 排隊，後到的交易等前一個 commit 後才寫入與計數。
+  // lineUid 是 LINE 的 userId，唯一點擊的比對分大小寫，所以鎖鍵也保留原本的大小寫
   if (meta.lineUid) {
-    await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`shortlink-click:${link.id}:${meta.lineUid}`}, 0))`;
+    await advisoryXactLock(prisma, 'shortlink-click', link.id, meta.lineUid);
   }
 
   await prisma.clickLog.create({

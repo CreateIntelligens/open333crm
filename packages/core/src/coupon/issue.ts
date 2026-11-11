@@ -12,6 +12,7 @@ import { randomInt } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { COUPON_ISSUED_VIA, couponIssuedViaLabel } from '@open333crm/shared';
 import { afterClaimExpiry } from './taipei-time.js';
+import { advisoryXactLock } from '../db/advisory-lock.js';
 
 export type CouponTx = Prisma.TransactionClient;
 
@@ -191,7 +192,8 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
 
   // 鎖住這張券到交易結束：兩個請求同時發同一張券時依序處理，
   // 否則兩邊都數到「還沒達上限」，每人上限與發行總量會超發（design D14）
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${coupon.id}, 0))`;
+  // 鎖鍵與結束券（changeStatus）相同，經 advisoryXactLock 正規化大小寫（issue #403）
+  await advisoryXactLock(tx, coupon.id);
 
   const known = new Set(
     (await tx.contact.findMany({ where: { id: { in: params.contactIds }, tenantId }, select: { id: true } })).map((c) => c.id),

@@ -140,7 +140,12 @@ export default async function knowledgeRoutes(fastify: FastifyInstance, opts: Kn
   });
 
   // POST /api/v1/knowledge/import — 批量匯入
-  fastify.post('/import', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+  // 前端把 JSON 檔外層的文章陣列整份送出、不限筆數，一篇約 7 個欄位，全域的總數上限 100,000 在約 14,000 篇時就會擋下，
+  // 所以調高 JSON 內容上限（change limit-request-array-size design D3）
+  fastify.post('/import', {
+    preHandler: [requirePermission('knowledge.manage')],
+    config: { jsonPayloadLimits: { maxArrayLength: 50_000, maxTotalEntries: 500_000 } },
+  }, async (request, reply) => {
     const body = importSchema.parse(request.body);
     const result = await importArticlesFlow(deps, actorOf(request), body.articles);
     return reply.send(success(result));
