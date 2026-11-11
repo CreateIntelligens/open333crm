@@ -8,8 +8,9 @@
  * 編輯器在 media_type、currency、question_type、expires_in_days 沒有值時顯示預設值（image／TWD／csat／7），
  * FB 外掛也有預設，所以這幾個欄位只在有值時檢查，避免畫面顯示 TWD 卻被說幣別不正確。
  *
- * 網址沿用 LINE 的「先存草稿、發送前換成公開網址」：接受 http(s) 與站內路徑（編輯器預設的示範圖是
- * /material-samples/...），擋下 javascript:、data: 等其他 scheme。
+ * 網址接受 http(s) 與站內路徑（編輯器預設的示範圖是 /material-samples/...），擋下 javascript:、data: 等其他 scheme。
+ * 站內路徑在存檔前由 resolveSampleImageUrls() 換成 {WEB_BASE_URL}{路徑}；之前存的舊素材由 FB 外掛在發送時換
+ * （spec material-system「FB 素材儲存時把站內路徑換成公開網址」「FB 素材發送時把站內路徑換成公開網址」）。
  */
 import { AppError } from '../../shared/utils/response.js';
 
@@ -134,6 +135,11 @@ export function validateFbMaterialBody(contentType: string, body: Body): void {
       c.required(body, 'title', LIMIT.title, 'title', '優惠券標題');
       c.optional(body, 'subtitle', LIMIT.subtitle, 'subtitle', '優惠券副標題');
       c.url(body, 'image_url', false, 'image_url', '優惠券圖片網址');
+      // 折扣碼選填；編輯器輸入時就去掉空白，API 直打的也要一樣
+      if (body.coupon_code !== undefined && body.coupon_code !== null && body.coupon_code !== '') {
+        if (typeof body.coupon_code !== 'string') c.add('coupon_code', '折扣碼必須是文字');
+        else if (/\s/.test(body.coupon_code)) c.add('coupon_code', '折扣碼不可含空白');
+      }
       break;
     case 'fb_receipt': {
       c.required(body, 'recipient_name', LIMIT.title, 'recipient_name', '收件人');

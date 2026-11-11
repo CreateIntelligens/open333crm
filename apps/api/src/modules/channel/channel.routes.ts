@@ -1,5 +1,5 @@
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod/v3';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   listChannels,
@@ -31,10 +31,20 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { withTenant, type TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
-import { ALL_CHANNELS, resolveChannelVisibility } from '../../services/channel-visibility.js';
+import {
+  ALL_CHANNELS,
+  resolveChannelVisibility,
+  assertChannelVisible,
+  type ChannelAccessLevel,
+} from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { unsupportedFileTypeMessage } from '../../shared/messages/upload.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { resolveBindingHandle } from '../identity-binding/binding-links.js';
+import { checkLineIdToken } from '../coupon/line-id-token.js';
+import { getLiffTestResultFlow, startLiffTestFlow, type LiffTestDeps } from './liff-test.flow.js';
+import { liffTestIdSchema } from './liff-test-public.routes.js';
+import { botConfigIssues } from './bot-config-settings.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -71,13 +81,25 @@ const webchatCredentialsSchema = z.record(z.unknown());
 
 /** LIFF ID：10 位數字、-、8 個英數字（LINE 文件範例 1234567890-AbcdEfgh） */
 const LIFF_ID_PATTERN = /^\d{10}-[A-Za-z0-9]{8}$/;
+/** LINE Login Channel ID：10 位數字（優惠券以 LIFF 驗證顧客身分，add-coupon-system design D20） */
+const LOGIN_CHANNEL_ID_PATTERN = /^\d{10}$/;
 
 /**
  * 驗證 `settings.liffConfig.liffId`（BotConfigForm 寫入、短連結的 LIFF 轉址讀取）。
  * 去頭尾空白後比對格式；空字串表示清除。沒有這個鍵時不檢查。
  */
 function validateLiffIdSettings(settings: Record<string, unknown> | undefined, ctx: z.RefinementCtx): void {
-  const liffConfig = settings?.liffConfig as { liffId?: unknown } | undefined;
+  const liffConfig = settings?.liffConfig as { liffId?: unknown; loginChannelId?: unknown } | undefined;
+  const loginChannelId = typeof liffConfig?.loginChannelId === 'string' ? liffConfig.loginChannelId.trim() : liffConfig?.loginChannelId;
+  if (loginChannelId !== undefined && loginChannelId !== null && loginChannelId !== '') {
+    if (typeof loginChannelId !== 'string' || !LOGIN_CHANNEL_ID_PATTERN.test(loginChannelId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['settings', 'liffConfig', 'loginChannelId'],
+        message: 'LINE Login Channel ID 格式不正確，應為 10 位數字（在 LINE Developers 的 Login channel 基本設定可找到）',
+      });
+    }
+  }
   if (!liffConfig || liffConfig.liffId === undefined || liffConfig.liffId === null) return;
   const value = typeof liffConfig.liffId === 'string' ? liffConfig.liffId.trim() : liffConfig.liffId;
   if (value === '') return;
@@ -90,17 +112,27 @@ function validateLiffIdSettings(settings: Record<string, unknown> | undefined, c
   }
 }
 
-/** 存入前去掉 LIFF ID 的頭尾空白 */
-function normalizeLiffIdSettings<T extends { settings?: Record<string, unknown> }>(data: T): T {
-  const liffConfig = data.settings?.liffConfig as { liffId?: unknown } | undefined;
-  if (!liffConfig || typeof liffConfig.liffId !== 'string') return data;
-  return {
-    ...data,
-    settings: { ...data.settings, liffConfig: { ...liffConfig, liffId: liffConfig.liffId.trim() } },
-  };
+/**
+ * 建立渠道時檢查 settings.botConfig（規則在 @open333crm/automation 的 botConfigSchema）。
+ * 更新渠道在 updateChannel() 檢查，送出的 botConfig 與已存的相同時不檢查（需要讀舊值）。
+ */
+function validateBotConfigSettings(settings: Record<string, unknown> | undefined, ctx: z.RefinementCtx): void {
+  for (const issue of botConfigIssues(settings?.botConfig)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
+  }
 }
 
-const createChannelSchema = z.object({
+/** 存入前去掉 LIFF ID 與 Login Channel ID 的頭尾空白 */
+function normalizeLiffIdSettings<T extends { settings?: Record<string, unknown> }>(data: T): T {
+  const liffConfig = data.settings?.liffConfig as { liffId?: unknown; loginChannelId?: unknown } | undefined;
+  if (!liffConfig) return data;
+  const trimmed = { ...liffConfig };
+  if (typeof liffConfig.liffId === 'string') trimmed.liffId = liffConfig.liffId.trim();
+  if (typeof liffConfig.loginChannelId === 'string') trimmed.loginChannelId = liffConfig.loginChannelId.trim();
+  return { ...data, settings: { ...data.settings, liffConfig: trimmed } };
+}
+
+export const createChannelSchema = z.object({
   channelType: z.enum([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT, CHANNEL_TYPE.WHATSAPP] as [string, ...string[]]),
   displayName: z.string().min(1).max(100),
   credentials: z.record(z.unknown()),
@@ -128,17 +160,41 @@ const createChannelSchema = z.object({
   }
   validateDownstreamWebhookSettings(data.settings, ctx);
   validateLiffIdSettings(data.settings, ctx);
+  validateBotConfigSettings(data.settings, ctx);
 }).transform(normalizeLiffIdSettings);
 
-const updateWebhookBaseUrlSchema = z.object({
-  baseUrl: z.string().min(1),
+/**
+ * Webhook 公開網址會改寫全租戶所有渠道的 webhook 網址（G08）。
+ * LINE／Meta 只接受 https；查詢字串、片段或帳密拼上路徑後會變成無效的 webhook 網址。
+ */
+export const updateWebhookBaseUrlSchema = z.object({
+  baseUrl: z
+    .string()
+    .trim()
+    .min(1)
+    .superRefine((value, ctx) => {
+      let url: URL;
+      try {
+        url = new URL(value);
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '網址格式不正確，請填 https:// 開頭的公開網址' });
+        return;
+      }
+      if (url.protocol !== 'https:') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Webhook 公開網址必須是 https:// 開頭' });
+      } else if (url.search || url.hash || value.includes('?') || value.includes('#')) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Webhook 公開網址不可包含 ? 或 # 之後的內容' });
+      } else if (url.username || url.password) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Webhook 公開網址不可包含帳號密碼' });
+      }
+    }),
 });
 
 const chatboxLinkSchema = z.object({
   domain: z.string().url(),
 });
 
-const updateChannelSchema = z
+export const updateChannelSchema = z
   .object({
     displayName: z.string().min(1).max(100).optional(),
     isActive: z.boolean().optional(),
@@ -167,6 +223,9 @@ const chatboxThemeSchema = z.object({
   accentColor: z.string().max(32).optional(),
 });
 
+/** 網站聊天室背景圖可接受的類型 */
+const CHATBOX_BACKGROUND_MIMES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp'];
+
 async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: string) {
   const channel = await prisma.channel.findFirst({
     where: { id, tenantId, channelType: CHANNEL_TYPE.WEBCHAT },
@@ -180,6 +239,19 @@ async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: s
 const channelIdParamsSchema = z.object({
   id: z.string().uuid('渠道 id 格式錯誤'),
 });
+
+/**
+ * 單筆渠道路由的可見範圍守門（issue #408）：排在 requirePermission 之後。
+ * 看不到的渠道（含不存在、已停用）回 404，與渠道列表一致；看得到但層級不足回 403。
+ * 層級跟著權限碼走：channel.view 的讀取要 read_only；channel.update／channel.delete 的管理操作要 full。
+ * 總店（channel.view_all）不受限制。
+ */
+function requireVisibleChannel(level: ChannelAccessLevel) {
+  return async (request: FastifyRequest) => {
+    const { id } = channelIdParamsSchema.parse(request.params);
+    await assertChannelVisible(request, id, level);
+  };
+}
 
 const bindingHandleSchema = z.object({
   bindingHandle: z
@@ -214,7 +286,19 @@ function bindingHandleView(channel: { id: string; channelType: string; settings:
   };
 }
 
-export default async function channelRoutes(fastify: FastifyInstance) {
+export interface ChannelRoutesOptions {
+  /** 測試注入 LIFF 測試用的 Redis 替身、向 LINE 驗證的替身與時鐘（change add-liff-config-test） */
+  liffTest?: Partial<LiffTestDeps>;
+}
+
+export default async function channelRoutes(fastify: FastifyInstance, opts: ChannelRoutesOptions = {}) {
+  const liffTestDeps = (): LiffTestDeps => ({
+    prisma: fastify.prisma,
+    checkIdToken: checkLineIdToken,
+    ...opts.liffTest,
+    store: opts.liffTest?.store ?? fastify.redis,
+  });
+
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
@@ -260,12 +344,14 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       payload: { channelType: data.channelType, displayName: data.displayName },
       ip: request.ip,
     });
+    // 已連線成員的渠道房間依新的渠道與授權重新計算（issue #427）
+    await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.status(201).send(success(channel));
   });
 
   // GET /api/v1/channels/:id
-  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] }, async (request, reply) => {
     const channel = await getChannel(
       request.tenantPrisma,
       request.params.id,
@@ -276,7 +362,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/channels/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const parsed = updateChannelSchema.parse(request.body);
     const data = { ...parsed, credentials: stripSystemManagedCredentials(parsed.credentials) };
 
@@ -296,12 +382,14 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         request.log.warn({ err: err instanceof Error ? err.message : err, channelId: request.params.id }, '更新權杖後自動驗證失敗'),
       );
     }
+    // 停用、重新啟用改變可見渠道：已連線成員的渠道房間重新計算（issue #427）
+    if (data.isActive !== undefined) await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.send(success(channel));
   });
 
   // DELETE /api/v1/channels/:id
-  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.delete') }, async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('channel.delete'), requireVisibleChannel('full')] }, async (request, reply) => {
     const result = await deleteChannel(
       request.tenantPrisma,
       request.params.id,
@@ -317,12 +405,14 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       targetId: request.params.id,
       ip: request.ip,
     });
+    // 已連線成員的渠道房間依新的渠道與授權重新計算（issue #427）
+    await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
     return reply.send(success(result));
   });
 
   // POST /api/v1/channels/:id/verify
-  fastify.post<{ Params: { id: string } }>('/:id/verify', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/verify', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const result = await verifyChannel(
       request.tenantPrisma,
       request.params.id,
@@ -332,8 +422,25 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     return reply.send(success(result));
   });
 
+  // POST /api/v1/channels/:id/liff-test — 產生 LIFF 設定的測試連結（change add-liff-config-test）
+  fastify.post<{ Params: { id: string } }>('/:id/liff-test', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    return reply.send(success(await startLiffTestFlow(liffTestDeps(), request.agent.tenantId, id)));
+  });
+
+  // GET /api/v1/channels/:id/liff-test/:testId — 查詢手機回報的測試結果
+  fastify.get<{ Params: { id: string; testId: string } }>(
+    '/:id/liff-test/:testId',
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
+    async (request, reply) => {
+      const { id, testId } = z.object({ id: z.string().uuid(), testId: liffTestIdSchema }).parse(request.params);
+      return reply.send(success(await getLiffTestResultFlow(liffTestDeps(), request.agent.tenantId, id, testId)));
+    },
+  );
+
   // POST /api/v1/channels/webhook-base-url — 批次更新所有渠道的 Webhook URL
-  fastify.post('/webhook-base-url', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  // 改寫的是全租戶每個渠道（含分店看不到的），只限總店（channel.view_all）。issue #408
+  fastify.post('/webhook-base-url', { preHandler: [requirePermission('channel.update'), requirePermission('channel.view_all')] }, async (request, reply) => {
     const data = updateWebhookBaseUrlSchema.parse(request.body);
 
     const result = await updateWebhookBaseUrl(
@@ -346,7 +453,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/channels/:id/setup-webhook — LINE auto webhook setup
-  fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const result = await autoSetupLineWebhook(
       request.tenantPrisma,
       request.params.id,
@@ -356,7 +463,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/channels/:id/status — channel health status
-  fastify.get<{ Params: { id: string } }>('/:id/status', async (request, reply) => {
+  // 與渠道列表一致：看不到的渠道視為不存在（404）
+  fastify.get<{ Params: { id: string } }>('/:id/status', { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] }, async (request, reply) => {
     const channel = await request.tenantPrisma.channel.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });
@@ -386,8 +494,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     }));
   });
 
-  // GET /api/v1/channels/:id/embed-code — WebChat embed code
-  fastify.get<{ Params: { id: string } }>('/:id/embed-code', async (request, reply) => {
+  // GET /api/v1/channels/:id/embed-code — WebChat embed code（權限註冊表寫明 channel.view 涵蓋 embed-code）
+  fastify.get<{ Params: { id: string } }>('/:id/embed-code', { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] }, async (request, reply) => {
     const result = await generateEmbedCode(
       request.tenantPrisma,
       request.params.id,
@@ -399,7 +507,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /api/v1/channels/:id/chatbox-link — WebChat standalone page link
   fastify.post<{ Params: { id: string }; Body: unknown }>(
     '/:id/chatbox-link',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const body = chatboxLinkSchema.parse(request.body);
       const channel = await request.tenantPrisma.channel.findFirst({
@@ -438,7 +546,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // GET /api/v1/channels/:id/binding-handle
   fastify.get<{ Params: { id: string } }>(
     '/:id/binding-handle',
-    { preHandler: requirePermission('channel.view') },
+    { preHandler: [requirePermission('channel.view'), requireVisibleChannel('read_only')] },
     async (request, reply) => {
       const { id } = channelIdParamsSchema.parse(request.params);
       const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
@@ -449,7 +557,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/channels/:id/binding-handle
   fastify.patch<{ Params: { id: string }; Body: unknown }>(
     '/:id/binding-handle',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const { id } = channelIdParamsSchema.parse(request.params);
       const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
@@ -476,7 +584,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/channels/:id/chatbox-theme — WebChat chatbox public theme
   fastify.patch<{ Params: { id: string }; Body: unknown }>(
     '/:id/chatbox-theme',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const body = chatboxThemeSchema.parse(request.body);
       const channel = await getTenantWebchatChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
@@ -509,15 +617,17 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /api/v1/channels/:id/chatbox-theme/background — upload tenant-owned background image
   fastify.post<{ Params: { id: string } }>(
     '/:id/chatbox-theme/background',
-    { preHandler: requirePermission('channel.update') },
+    { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] },
     async (request, reply) => {
       const channel = await getTenantWebchatChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
       const file = await request.file();
       if (!file) {
-        return reply.status(400).send({ error: 'No file uploaded' });
+        throw new AppError('請選擇要上傳的檔案', 'BAD_REQUEST', 400);
       }
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) {
-        return reply.status(400).send({ error: 'Unsupported background image type' });
+      if (!CHATBOX_BACKGROUND_MIMES.includes(file.mimetype)) {
+        throw new AppError(unsupportedFileTypeMessage(CHATBOX_BACKGROUND_MIMES), 'BAD_REQUEST', 400, {
+          mimeType: file.mimetype,
+        });
       }
 
       const buffer = await file.toBuffer();
@@ -554,6 +664,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   );
 
   // ── 渠道↔團隊指派（CM-173，總店/分店渠道級可見性）──────────────────────
+  // 不套用操作者的渠道可見範圍：channel.assign_team 本來就是全租戶的渠道指派權
+  // （與 GET /assignable、resolveChannelGrantScope 一致），否則持有者無法把分店渠道指派給團隊。issue #408
 
   // GET /api/v1/channels/:channelId/teams — 列出某渠道被指派給哪些團隊
   fastify.get<{ Params: { channelId: string } }>(
@@ -596,6 +708,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         payload: { teamId: body.teamId, accessLevel: body.accessLevel },
         ip: request.ip,
       });
+      // 已連線成員的渠道房間依新的團隊授權重新計算（issue #427）
+      await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
       return reply.status(201).send(success(row));
     },
@@ -626,6 +740,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         payload: { teamId: request.params.teamId },
         ip: request.ip,
       });
+      // 已連線成員的渠道房間依撤銷後的團隊授權重新計算（issue #427）
+      await fastify.syncSocketChannelRooms?.(request.agent.tenantId);
 
       return reply.status(204).send();
     },

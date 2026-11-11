@@ -7,16 +7,20 @@
  *
  * 新增帶 contactId 的表時，必須同步更新本檔的搬移清單（否則合併後資料會留在封存聯絡人上）。
  *
- * 兩個函式都必須在呼叫端的交易內執行（withTenant 的 tx，或白名單路徑的 prismaAdmin.$transaction），
- * 本檔不自開交易，避免巢狀。
+ * 本檔的函式收呼叫端的 TenantCtx，在呼叫端的交易內執行，不自開交易（AGENTS.md 結構規則 2）。
+ * 客服手動合併與解除合併由 contact.flow.ts 開交易；其他入口（綁定代碼、email／手機登記、合併建議、收訊）
+ * 尚未搬遷，以自己的交易組成 TenantCtx 傳入。
  */
 
 import type { Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { AppError } from '../../shared/utils/response.js';
-import { addPointTransaction, getLatestPointEntry } from '../portal/points.service.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { addPointTransaction, getLatestPointEntry, lockPointLedgers } from '../portal/points.service.js';
+import { findCompletedErasure } from '../data-erasure/data-erasure.service.js';
+import { lockContactsForMerge } from './contact.service.js';
 
-export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL';
+export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL' | 'PHONE';
 
 /** 單次合併搬移的紀錄（存於 ContactMergeLog.movedRecords） */
 export interface MovedRecords {
@@ -34,6 +38,8 @@ export interface MovedRecords {
   flowExecution: string[];
   kbArticleFeedback: string[];
   broadcastRecipient: string[];
+  /** 搬過去的優惠券（舊紀錄沒有這個欄位） */
+  couponInstance?: string[];
   /** 搬過去的 tagId（解除時不回收） */
   contactTag: string[];
   /** 搬過去的屬性 key（解除時不回收） */
@@ -58,7 +64,6 @@ export interface MovedRecords {
 }
 
 export interface MergeContactsInput {
-  tenantId: string;
   survivorId: string;
   mergedId: string;
   source: MergeSource;
@@ -89,7 +94,8 @@ type RevertibleKey =
   | 'clickLog'
   | 'flowExecution'
   | 'kbArticleFeedback'
-  | 'broadcastRecipient';
+  | 'broadcastRecipient'
+  | 'couponInstance';
 
 async function moveIds(
   find: () => Promise<Array<{ id: string }>>,
@@ -104,7 +110,8 @@ async function moveIds(
  * 沿 mergedIntoId 走完合併鏈：回傳從 contactId 開始、依序被併入的聯絡人 id（最後一個是目前持有者）。
  * 有環或超過 20 層即停止。解除合併與綁定兌換都用這支，避免兩份邏輯漂移。
  */
-export async function resolveMergeChain(db: TenantDb, tenantId: string, contactId: string): Promise<string[]> {
+export async function resolveMergeChain(ctx: TenantCtx, contactId: string): Promise<string[]> {
+  const { tx: db, tenantId } = ctx;
   const chain = [contactId];
   let cursor = contactId;
   for (let i = 0; i < 20; i++) {
@@ -122,18 +129,17 @@ export async function resolveMergeChain(db: TenantDb, tenantId: string, contactI
  * 避免同一交易內寫入的多筆 now() 時間相同，讓「取最新一筆」的餘額計算不確定。
  */
 async function transferPoints(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   fromId: string,
   toId: string,
   reason: 'merge' | 'revert',
   amount?: number,
   expected?: number,
 ): Promise<number> {
-  const [from, to] = await Promise.all([
-    getLatestPointEntry(db, fromId, tenantId),
-    getLatestPointEntry(db, toId, tenantId),
-  ]);
+  // 先鎖住雙方的帳本再讀餘額：同時調整積分或另一個轉移時，才不會以舊餘額計算
+  await lockPointLedgers(ctx, [fromId, toId]);
+  const from = await getLatestPointEntry(ctx, fromId);
+  const to = await getLatestPointEntry(ctx, toId);
   const fromBalance = from?.balance ?? 0;
   const value = amount ?? fromBalance;
   if (value <= 0) return 0;
@@ -144,8 +150,8 @@ async function transferPoints(
   const note = reason === 'merge' ? '聯絡人合併：點數轉移' : `解除合併：點數轉回${partial}`;
 
   // 帳本寫入規則只在 points.service 一處（取最新餘額 + amount）
-  await addPointTransaction(db, { tenantId, contactId: fromId, amount: -value, type: `${reason}_transfer_out`, note, createdAt });
-  await addPointTransaction(db, { tenantId, contactId: toId, amount: value, type: `${reason}_transfer_in`, note, createdAt });
+  await addPointTransaction(ctx, { contactId: fromId, amount: -value, type: `${reason}_transfer_out`, note, createdAt });
+  await addPointTransaction(ctx, { contactId: toId, amount: value, type: `${reason}_transfer_in`, note, createdAt });
   return value;
 }
 
@@ -157,7 +163,8 @@ export function isSameChannelConflict(err: unknown): boolean {
 /**
  * 雙方在同一個渠道都有身分時丟出 409 SAME_CHANNEL_CONFLICT，details.channels 列出衝突的渠道。
  */
-async function assertNoSharedChannel(db: TenantDb, tenantId: string, survivorId: string, mergedId: string): Promise<void> {
+async function assertNoSharedChannel(ctx: TenantCtx, survivorId: string, mergedId: string): Promise<void> {
+  const { tx: db, tenantId } = ctx;
   const [survivorChannels, mergedChannels] = await Promise.all([
     db.channelIdentity.findMany({ where: { contactId: survivorId }, select: { channelId: true } }),
     db.channelIdentity.findMany({ where: { contactId: mergedId }, select: { channelId: true } }),
@@ -182,11 +189,12 @@ async function assertNoSharedChannel(db: TenantDb, tenantId: string, survivorId:
 /**
  * 將 mergedId 合併進 survivorId。
  *
- * @param db 呼叫端交易內的 Prisma 執行器
+ * @param ctx 呼叫端的交易與租戶
  * @returns 合併紀錄 id、雙方名稱與搬移明細
  */
-export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Promise<MergeContactsResult> {
-  const { tenantId, survivorId, mergedId, source, actorAgentId, meta } = input;
+export async function mergeContacts(ctx: TenantCtx, input: MergeContactsInput): Promise<MergeContactsResult> {
+  const { tx: db, tenantId } = ctx;
+  const { survivorId, mergedId, source, actorAgentId, meta } = input;
 
   if (survivorId === mergedId) {
     throw new AppError('無法將聯絡人與自己合併', 'BAD_REQUEST', 400);
@@ -225,7 +233,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   // （AUDIT IDENT-03）。必須在鎖定之後檢查：同時併入同一位 survivor 的另一個合併，要等它提交後
   // 才拿得到 survivor 的鎖，此時（read committed）才看得到它搬過來的渠道身分
   try {
-    await assertNoSharedChannel(db, tenantId, survivorId, mergedId);
+    await assertNoSharedChannel(ctx, survivorId, mergedId);
   } catch (err) {
     // 鎖定時已把被合併方標為封存；email 登記與綁定代碼會接住這個錯誤回覆顧客、讓交易照常提交，
     // 所以在這裡還原，不能只靠呼叫端回滾（鎖仍持有到交易結束）
@@ -261,7 +269,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   );
   // 點數帳本是 append-only、每筆記錄當下餘額（getPointBalance 取最新一筆的 balance），
   // 直接搬交易會讓餘額變成「兩人裡最新那筆」→ 改為被合併方轉出、survivor 轉入
-  const pointsTransferred = await transferPoints(db, tenantId, mergedId, survivorId, 'merge');
+  const pointsTransferred = await transferPoints(ctx, mergedId, survivorId, 'merge');
   const pointTransaction: string[] = [];
   const identityMap = await moveIds(
     () => db.identityMap.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
@@ -278,6 +286,11 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   const kbArticleFeedback = await moveIds(
     () => db.kbArticleFeedback.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
     (ids) => db.kbArticleFeedback.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
+  );
+  // 優惠券跟著顧客走：合併後顧客開票券夾看到的是保留方的券（add-coupon-system）
+  const couponInstance = await moveIds(
+    () => db.couponInstance.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
+    (ids) => db.couponInstance.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
   );
 
   // ── 2. 有唯一鍵的表：survivor 已有的保留 survivor，其餘搬過去 ─────────────
@@ -383,6 +396,12 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     fill.displayName = merged.displayName;
     filledFields.push('displayName');
   }
+  // 歸戶驗證跟著顧客：被合併方驗證過、保留方沒有時帶入，合併後不必再驗證一次
+  if (!survivor.identityVerifiedAt && merged.identityVerifiedAt) {
+    fill.identityVerifiedAt = merged.identityVerifiedAt;
+    fill.identityVerifiedVia = merged.identityVerifiedVia;
+    filledFields.push('identityVerified');
+  }
   if (filledFields.length > 0) {
     await db.contact.update({ where: { id: survivorId, tenantId }, data: fill });
   }
@@ -399,6 +418,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     flowExecution,
     kbArticleFeedback,
     broadcastRecipient,
+    couponInstance,
     contactTag,
     contactAttribute,
     filledFields,
@@ -427,8 +447,27 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   };
 }
 
+/**
+ * 鎖住被合併方與 survivor 的合併鏈，回傳鎖住之後的鏈（解除合併用）。
+ * 鏈要在取得鎖之後重新解析：等鎖期間另一筆合併可能把鏈上的聯絡人再併入新的聯絡人（它鎖住了我們在等的列），
+ * commit 之後鏈多了一位。出現新的聯絡人就鎖住它們再解析，直到鏈不再變動；每批依 lockContactsForMerge 的
+ * id 排序加鎖。鎖住之後，鏈上的聯絡人要再併入別人都得等這個交易結束，鏈不會再變。
+ */
+async function lockHolderChain(ctx: TenantCtx, mergedId: string, survivorId: string): Promise<string[]> {
+  const locked = new Set<string>();
+  let chain = await resolveMergeChain(ctx, survivorId);
+  // 合併鏈最多 20 層（resolveMergeChain），每輪至少多鎖一位
+  for (let round = 0; round < 22; round++) {
+    const pending = [mergedId, ...chain].filter((id) => !locked.has(id));
+    if (pending.length === 0) return chain;
+    await lockContactsForMerge(ctx, pending);
+    for (const id of pending) locked.add(id);
+    chain = await resolveMergeChain(ctx, survivorId);
+  }
+  return chain;
+}
+
 export interface RevertMergeInput {
-  tenantId: string;
   mergeLogId: string;
   /** agentId，或顧客自助解除時為 'customer' */
   revertedBy: string;
@@ -445,13 +484,25 @@ export interface RevertMergeResult {
 /**
  * 解除一次合併：取消封存被合併方，把當次搬走且仍在 survivor（或其後續合併對象）身上的
  * 渠道身分、對話、案件、活動報名、點數、身分對應搬回。標籤與屬性不回收。
+ *
+ * 被合併方或合併鏈上任何一位已完成資料刪除時回 409 CONTACT_ERASED（#473）：刪除已清掉被合併方的個資，
+ * 解除合併會讓他以「[已刪除]」或舊資料重新出現。檢查前先鎖住這些聯絡人，與資料刪除的交易互相等待：
+ * 刪除先鎖住時，這裡等它 commit 之後讀到 completed；這裡先鎖住時，刪除等解除合併 commit，
+ * 之後被恢復的聯絡人已不在合併鏈上，不會被刪除。
  */
-export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promise<RevertMergeResult> {
-  const { tenantId, mergeLogId, revertedBy } = input;
+export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Promise<RevertMergeResult> {
+  const { tx: db, tenantId } = ctx;
+  const { mergeLogId, revertedBy } = input;
 
   const log = await db.contactMergeLog.findFirst({ where: { id: mergeLogId, tenantId } });
   if (!log) throw new AppError('找不到此合併紀錄', 'NOT_FOUND', 404);
   if (log.revertedAt) throw new AppError('此合併已經解除過了', 'CONFLICT', 409);
+
+  // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈，鎖住後再檢查
+  const holderChain = await lockHolderChain(ctx, log.mergedId, log.survivorId);
+  if (await findCompletedErasure(ctx, [log.mergedId, ...holderChain])) {
+    throw new AppError('這位聯絡人的個資已依資料刪除請求清除，無法解除合併', 'CONTACT_ERASED', 409);
+  }
 
   const restored = await db.contact.findFirst({ where: { id: log.mergedId, tenantId } });
   if (!restored) throw new AppError('被合併的聯絡人已不存在，無法解除', 'NOT_FOUND', 404);
@@ -463,9 +514,6 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
     data: { revertedAt: new Date(), revertedBy },
   });
   if (claimed.count === 0) throw new AppError('此合併已經解除過了', 'CONFLICT', 409);
-
-  // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈
-  const holderChain = await resolveMergeChain(db, tenantId, log.survivorId);
 
   const moved = log.movedRecords as unknown as Partial<MovedRecords>;
   const back = { contactId: log.mergedId };
@@ -497,10 +545,12 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
   if (moved.pointsTransferred && moved.pointsTransferred > 0) {
     // 把當初轉入的點數轉回；survivor 若在合併後已用掉一部分，只轉回剩餘的
     const holderId = holderChain[holderChain.length - 1];
-    const holderBalance = (await getLatestPointEntry(db, holderId, tenantId))?.balance ?? 0;
+    // 先鎖住帳本再讀餘額：轉回的點數依這個餘額決定，讀完之後不能再被同時的扣點改掉
+    await lockPointLedgers(ctx, [holderId, log.mergedId]);
+    const holderBalance = (await getLatestPointEntry(ctx, holderId))?.balance ?? 0;
     const amount = Math.min(moved.pointsTransferred, Math.max(holderBalance, 0));
     if (amount > 0) {
-      await transferPoints(db, tenantId, holderId, log.mergedId, 'revert', amount, moved.pointsTransferred);
+      await transferPoints(ctx, holderId, log.mergedId, 'revert', amount, moved.pointsTransferred);
       // 這些點數當初是經由後續的合併（survivor → … → 持有者）一路轉過去的；那些合併紀錄記的
       // pointsTransferred 包含了這筆，扣掉，否則之後再解除它們會把同一批點數再轉一次
       for (let i = 0; i < holderChain.length - 1; i++) {
@@ -534,6 +584,9 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
   }
   if (has('kbArticleFeedback')) {
     await db.kbArticleFeedback.updateMany({ where: { tenantId, id: inList('kbArticleFeedback'), contactId: heldBy }, data: back });
+  }
+  if (has('couponInstance')) {
+    await db.couponInstance.updateMany({ where: { tenantId, id: inList('couponInstance'), contactId: heldBy }, data: back });
   }
   if (has('broadcastRecipient')) {
     await db.broadcastRecipient.updateMany({ where: { id: inList('broadcastRecipient'), contactId: heldBy }, data: back });
@@ -594,6 +647,15 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
           }
           // displayName 為必填，只在合併前 survivor 名稱為空白時才補過；清回空字串
           if (field === 'displayName' && holder.displayName === restoredContact.displayName) clear.displayName = '';
+          // 帶入的歸戶驗證屬於被合併方本人，解除後保留方要重新驗證
+          if (
+            field === 'identityVerified' &&
+            restoredContact.identityVerifiedAt &&
+            holder.identityVerifiedAt?.getTime() === restoredContact.identityVerifiedAt.getTime()
+          ) {
+            clear.identityVerifiedAt = null;
+            clear.identityVerifiedVia = null;
+          }
         }
         if (Object.keys(clear).length > 0) {
           await db.contact.update({ where: { id: holder.id, tenantId }, data: clear });
@@ -646,10 +708,68 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
 }
 
 /** 列出與某聯絡人相關（作為 survivor 或被合併方）的合併紀錄，新到舊 */
-export async function listMergeLogs(db: TenantDb, tenantId: string, contactId: string) {
-  return db.contactMergeLog.findMany({
-    where: { tenantId, OR: [{ survivorId: contactId }, { mergedId: contactId }] },
+/**
+ * 收訊依 IdentityMap 把新的渠道身分直接掛到既有聯絡人（不經合併）之後呼叫：
+ * 這個 uid 若是某次合併帶進來的（同平台、同 uid 的身分記在一筆未解除的合併紀錄裡，且該紀錄的資料目前由
+ * contactId 持有），把新身分也記進那筆紀錄。解除合併與顧客自助解除都只看紀錄，新身分才會跟著搬回。
+ * 不是合併帶進來的（例如聯絡人自己原本的 uid）就不記，新身分屬於這位聯絡人。
+ */
+export async function recordStitchedIdentity(
+  ctx: TenantCtx,
+  contactId: string,
+  identity: { id: string; channelType: string; uid: string },
+): Promise<void> {
+  const { tx: db, tenantId } = ctx;
+  const siblings = await db.channelIdentity.findMany({
+    where: { channelType: identity.channelType as never, uid: identity.uid, id: { not: identity.id }, contact: { tenantId } },
+    select: { id: true },
+  });
+  if (siblings.length === 0) return;
+
+  const logs = await db.contactMergeLog.findMany({
+    where: {
+      tenantId,
+      revertedAt: null,
+      OR: siblings.map((s) => ({ movedRecords: { path: ['channelIdentity'], array_contains: [s.id] } })),
+    },
+    select: { id: true, survivorId: true, movedRecords: true },
+  });
+  for (const log of logs) {
+    const chain = await resolveMergeChain(ctx, log.survivorId);
+    if (chain[chain.length - 1] !== contactId) continue;
+    const moved = log.movedRecords as unknown as Partial<MovedRecords>;
+    const list = moved.channelIdentity ?? [];
+    if (list.includes(identity.id)) continue;
+    await db.contactMergeLog.update({
+      where: { id: log.id, tenantId },
+      data: { movedRecords: { ...moved, channelIdentity: [...list, identity.id] } as unknown as Prisma.InputJsonValue },
+    });
+  }
+}
+
+/**
+ * 聯絡人的合併紀錄（新到舊）。分店帳號的 movedRecords 只含可見渠道的身分 id：
+ * 其他搬移紀錄（對話、工單等）的 id 可能屬於其他分店，前端只用身分數顯示「帶入 N 個渠道帳號」。
+ */
+export async function listMergeLogs(ctx: TenantCtx, contactId: string, accessibleChannels: AccessibleChannels) {
+  const logs = await ctx.tx.contactMergeLog.findMany({
+    where: { tenantId: ctx.tenantId, OR: [{ survivorId: contactId }, { mergedId: contactId }] },
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  if (!channelId) return logs;
+
+  const identityIds = (log: (typeof logs)[number]) =>
+    ((log.movedRecords as Partial<MovedRecords> | null)?.channelIdentity ?? []).filter((id) => typeof id === 'string');
+  const allIds = [...new Set(logs.flatMap(identityIds))];
+  const visible = allIds.length === 0
+    ? new Set<string>()
+    : new Set(
+        (await ctx.tx.channelIdentity.findMany({
+          where: { id: { in: allIds }, channelId, contact: { tenantId: ctx.tenantId } },
+          select: { id: true },
+        })).map((row) => row.id),
+      );
+  return logs.map((log) => ({ ...log, movedRecords: { channelIdentity: identityIds(log).filter((id) => visible.has(id)) } }));
 }

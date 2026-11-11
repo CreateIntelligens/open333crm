@@ -1,3 +1,4 @@
+import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@open333crm/database';
 import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
 import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
@@ -51,6 +52,7 @@ function parseTarget(input: unknown): SocketRoomTarget | null {
  */
 async function resolveHasViewAll(
   prisma: PrismaClient,
+  redis: Redis,
   context: SocketAuthorizationContext,
 ): Promise<boolean> {
   // roleId 相容 fallback（PR review）：部署切換窗口內，舊 JWT 可能不含 roleId；
@@ -64,7 +66,7 @@ async function resolveHasViewAll(
     roleId = agent?.roleId ?? null;
   }
   const planId = await getTenantPlanId(prisma, context.tenantId);
-  const eff = await getEffectiveTenantPermissions(prisma, roleId, planId);
+  const eff = await getEffectiveTenantPermissions(prisma, redis, roleId, planId);
   return eff.has('channel.view_all');
 }
 
@@ -167,6 +169,7 @@ async function isAuthorized(
 
 export async function authorizeSocketRoom(
   prisma: PrismaClient,
+  redis: Redis,
   context: SocketAuthorizationContext,
   input: unknown,
 ): Promise<SocketRoomAuthorizationResult> {
@@ -174,7 +177,7 @@ export async function authorizeSocketRoom(
   if (!target) return { ok: false, code: 'INVALID_TARGET' };
   // 總店判定：一次解析 channel.view_all 權限，往下傳給各 helper（取代舊角色白名單）。
   // tenant/agent(自己) 房間其實不需要此判斷，但集中在此解析可讓各 case 一致取用。
-  const hasViewAll = await resolveHasViewAll(prisma, context);
+  const hasViewAll = await resolveHasViewAll(prisma, redis, context);
   if (!await isAuthorized(prisma, context, hasViewAll, target)) return { ok: false, code: 'FORBIDDEN' };
 
   return { ok: true, room: `${target.type}:${target.id}` };

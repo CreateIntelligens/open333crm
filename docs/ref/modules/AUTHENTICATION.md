@@ -2,7 +2,7 @@
 
 本文件說明 API 怎麼確認呼叫者是誰：系統發出哪些憑證、每種憑證在哪裡驗證、驗證後在請求上留下哪些欄位，以及停用或撤銷之後多久生效。權限碼怎麼計算、渠道可見範圍怎麼判斷，見[人員與角色](../features/tenant/MEMBERS.md#角色與權限)；平台帳號的登入流程見[平台帳號認證](../features/platform/AUTH.md)。
 
-- **資料來源**：`apps/api/src/plugins/auth.plugin.ts`、`apps/api/src/plugins/socket.plugin.ts`、`apps/api/src/plugins/chatbox.plugin.ts`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/modules/auth/*`、`apps/api/src/modules/mcp/*`、`apps/api/src/modules/portal/portal-auth.service.ts`、`apps/api/src/modules/portal/portal-public.routes.ts`、`apps/api/src/modules/chatbox/chatbox.service.ts`、`apps/api/src/modules/webchat/webchat.socket.ts`、`apps/api/src/modules/identity-binding/email-registration.*`、`apps/api/src/modules/webhook/webhook.service.ts`、`apps/api/src/config/env.ts`
+- **資料來源**：`apps/api/src/plugins/auth.plugin.ts`、`apps/api/src/plugins/socket.plugin.ts`、`apps/api/src/plugins/chatbox.plugin.ts`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/modules/auth/*`、`apps/api/src/modules/mcp/*`、`apps/api/src/modules/portal/portal-auth.service.ts`、`apps/api/src/modules/portal/portal-public.routes.ts`、`apps/api/src/modules/chatbox/chatbox.service.ts`、`apps/api/src/modules/webchat/webchat.socket.ts`、`apps/api/src/modules/identity-binding/email-registration.*`、`apps/api/src/modules/identity-binding/phone-registration.*`、`apps/api/src/modules/webhook/webhook.service.ts`、`apps/api/src/config/env.ts`
 - **核對日期**：2026-09-30
 
 ## 這份文件回答的問題
@@ -43,6 +43,7 @@
 | Chatbox session 與 claim token | 網站訪客 | `POST /chatbox/sessions` 建立 session，`POST /chatbox/sessions/verify` 取得 claim token | session ID 是加密字串；`ChatboxSession` 存 session，claim token 的 HMAC 存在 Redis | `chatboxSessionVerifier`，REST 與 `/visitor` socket 共用 | `CHATBOX_SESSION_TTL_MINUTES`，程式上限 3 天 |
 | 試用驗證 token | 試用申請者 | 送出試用申請後寄到信箱 | 隨機字元。`TrialSignup` 存 SHA-256 | `GET /trial/verify` | 試用政策的 `verifyTokenTtlHours` |
 | Email 登記 token | 客人 | 客人在對話中傳送 email 登記關鍵字，或客服代發登記連結 | 32 bytes 隨機值（base64url）。存在 Redis，綁定租戶、渠道身分與對話 | `/api/v1/public/email-registration/:token`，成功送出 email 時以 `GETDEL` 取出 | 30 分鐘 |
+| 手機登記 token | 客人 | 客人在對話中傳送手機登記關鍵字，或客服代發登記連結 | 同 email 登記 token，Redis key 前綴不同，兩者不通用 | `/api/v1/public/phone-registration/:token`，成功送出手機時以 `GETDEL` 取出 | 30 分鐘 |
 
 各有效期的預設值在 `apps/api/src/config/env.ts`。
 
@@ -56,11 +57,11 @@ Passkey 不是另一種 token。Passkey 驗證成功後，系統發出的是一�
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `authenticate` | 以 `JWT_SECRET` 簽發的任何 JWT | token 的 `agentId` | token 的 `tenantId` | token 的 `role` | token 的 `roleId` | 無 | 租戶後台的絕大多數路由 |
 | `authenticateCliSession` | CLI token | 成員 ID | 成員的租戶 | 成員的 `role` | **不填** | `isCliSession`、`cliSession`（含 scope） | `cli.routes.ts`、`POST /auth/cli/logout` |
-| `authenticateJwtOrCliSession` | `cli_` 開頭走 CLI，其他走 JWT | CLI 分支是成員 ID | CLI 分支是成員的租戶 | CLI 分支是成員的 `role` | **兩個分支都不填** | CLI 分支有 `isCliSession`、`cliSession` | `GET /auth/me`、MCP 端點 |
-| `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | **兩個分支都不填** | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
+| `authenticateJwtOrCliSession` | `cli_` 開頭走 CLI，其他走 JWT | CLI 分支是成員 ID | CLI 分支是成員的租戶 | CLI 分支是成員的 `role` | JWT 分支是 token 的 `roleId`；CLI 分支不填 | CLI 分支有 `isCliSession`、`cliSession` | `GET /auth/me`、MCP 端點 |
+| `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | JWT 分支是 token 的 `roleId`；金鑰分支不填 | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
 | `authenticatePlatformSuperuser` | 平台 JWT | 寫入 `request.platformUser`，不寫 `request.agent` | | | | | `/api/v1/platform/*` |
 
-「JWT 或其他憑證」的裝飾器，JWT 分支填入的 `id`、`tenantId`、`role` 與 `authenticate` 相同，只少了 `roleId`，見 `../system/AUDIT.md` 的 AUTH-06。
+「JWT 或其他憑證」的裝飾器與 `authenticate` 的 JWT 分支都呼叫 `attachAgentFromAccessToken()`，填入相同的欄位。這三份程式原本各寫一份，只有 `authenticate` 帶 `roleId`（AUTH-06，2026-11-06 修正，見 `../system/AUDIT-REVIEWS.md`）。
 
 驗證之後，下列程式讀這些欄位：
 
@@ -108,21 +109,21 @@ Socket.IO 的每個 namespace 各自認證：
 
 | namespace | 使用者 | 認證 | 連線後自動加入的房間 | 其他房間 |
 | --- | --- | --- | --- | --- |
-| 預設（`/`） | 客服 | `socket.plugin.ts` 的 `io.use()` 以 `JWT_SECRET` 驗證 handshake 的 token，把 `agentId`、`tenantId`、`role`、`roleId` 寫入 `socket.data` | `tenant:<tenantId>`、`agent:<agentId>` | 送出 `subscribe` 時由 `authorizeSocketRoom()` 查資料庫授權，並限制頻率 |
+| 預設（`/`） | 客服 | `socket.plugin.ts` 的 `io.use()` 以 `JWT_SECRET` 驗證 handshake 的 token，把 `agentId`、`tenantId`、`role`、`roleId` 寫入 `socket.data` | `tenant:<tenantId>`、`agent:<agentId>`、`tenant:<tenantId>:agent:<agentId>`，以及依可見渠道的 `tenant:<tenantId>:channel:<channelId>`（持有 `channel.view_all` 時改為 `tenant:<tenantId>:channels:all`） | 送出 `subscribe` 時由 `authorizeSocketRoom()` 查資料庫授權，並限制頻率 |
 | `/visitor` | 網站訪客 | `webchat.socket.ts` 以 `chatboxSessionVerifier` 驗證 session ID 與 claim token，並以來源 IP 限制連線頻率 | `visitor:<channelId>:<visitorToken>` | 無 |
 
-客服的 socket 只在 handshake 驗證一次。連線建立之後，系統不會重新驗證，也不會在成員或租戶停用時主動斷線。
+客服的 socket 在 handshake 驗證 token，並拒絕已停用或已不存在的成員。連線建立之後不重新驗證 token：成員被停用或永久刪除時，重新計算房間會斷開他的連線；租戶停用時不會主動斷線。`subscribe` 的授權每次從資料庫讀成員目前的角色，不用 token 裡的 `roleId`。
 
-`tenant:<tenantId>` 房間會收到整個租戶的 `message.new`，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
+`message.new`、`conversation.*` 只送到渠道房間，不送到 `tenant:<tenantId>`（issue #427）。渠道房間在 handshake 驗證時算好；成員的可用渠道、角色或角色權限、渠道與渠道團隊授權、租戶的方案或方案設定改變，以及成員停用與永久刪除時，`fastify.syncSocketChannelRooms()` 重新計算已連線 socket 的房間。`tenant:<tenantId>` 仍收到工單與聯絡人合併的事件，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
 
 ## 停用與撤銷什麼時候生效
 
 | 動作 | 客服 access token | 客服 refresh token | 客服 socket 連線 | CLI token | Partner API 金鑰 |
 | --- | --- | --- | --- | --- | --- |
-| 停用成員 | 有效到過期 | 換發時被擋下 | 不中斷 | 立即失效 | 不受影響 |
-| 永久刪除成員 | 有效到過期 | 換發時被擋下 | 不中斷 | 隨成員刪除 | 不受影響 |
+| 停用成員 | 有效到過期 | 換發時被擋下 | 立即斷線 | 立即失效 | 不受影響 |
+| 永久刪除成員 | 有效到過期 | 換發時被擋下 | 立即斷線 | 隨成員刪除 | 不受影響 |
 | 停用租戶 | 有效到過期 | 換發時被擋下 | 不中斷 | **不受影響** | **不受影響** |
-| 改成員的角色 | 沿用舊角色到過期 | 換發時取得新角色 | 沿用舊角色 | 不看角色 | 不看角色 |
+| 改成員的角色 | 沿用舊角色到過期 | 換發時取得新角色 | 立即依新角色重新計算房間 | 不看角色 | 不看角色 |
 | 登出 | 有效到過期 | cookie 清除，token 本身仍有效 | 前端斷線 | 以 `POST /auth/cli/logout` 撤銷 | 不適用 |
 | 撤銷該憑證 | 無法撤銷 | 無法撤銷 | 無法撤銷 | 立即失效 | 立即失效 |
 
@@ -170,7 +171,7 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 
 1. **租戶後台的路由用 `fastify.authenticate`，再掛 `requirePermission()`。** 只有 `authenticate` 會填 `roleId`，權限檢查才算得出權限集合。
 2. **不要把 `authenticateJwtOrCliSession` 與 `requirePermission()` 放在同一條路由。** CLI 分支會被 `requirePermission()` 直接放行，JWT 分支會因為沒有 `roleId` 而一律 403。同一條路由，CLI 失效開放，網頁失效關閉。CLI 路由改用 `hasCliScope()` 檢查 scope。
-3. **要讓 Partner API 金鑰呼叫新路由，就把權限碼加進 `rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED`。** 沒有列入的權限碼，金鑰一律 403。
+3. **要讓 Partner API 金鑰呼叫新路由，就把權限碼加進 `rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED`。** 沒有列入的權限碼，金鑰一律 403。路由本身也要改用 `authenticateJwtOrPartnerKey`。決定一條路由用哪個認證裝飾器時，依比對到的路由（`request.routeOptions.url`）判斷，不要用 `request.url`：`request.url` 含查詢字串與路徑參數，呼叫端可以控制它的內容。`knowledge.routes.ts` 曾用 `request.url.includes('/partner-ingest')` 判斷，金鑰只要在網址加上這段字串，就能進入其他沒有掛權限碼的知識庫路由（issue #394）。
 4. **公開端點的租戶與身分，要從驗證過的憑證推導。** 不要接受呼叫端在 body 或 query 指定 `tenantId`、`contactId` 或渠道身分。`/auth/line/authorize` 沒有遵守這條規則，見下一節。已刪除的 `/fan/auth` 也是因為違反這條規則而刪除。
 5. **確認新路由有沒有速率限制。** 速率限制外掛由各模組自己註冊，沒有全站設定。`auth`、`trial`、`platform` 以 `global: false` 註冊，只有個別設定 `config.rateLimit` 的路由受限。`chatbox`、`webchat` 對模組內每條路由套用同一個上限。其他模組沒有註冊外掛，在這些模組設定 `config.rateLimit` 不會生效，也不會報錯。見 `../system/AUDIT.md` 的 SEC-03。
 
@@ -181,8 +182,8 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員無法以密碼登入 | SEC-06 |
 | CLI token 只看 scope，不看角色與方案天花板；`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 停用租戶不中斷 socket 連線，也不影響 CLI token 與 Partner API 金鑰 | AUTH-02 |
-| `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支不填 `roleId`，網頁登入的成員即使有權限也呼叫不了 `partner-ingest` | AUTH-06 |
 | 登出、改密碼或重設密碼都不會讓已發出的 refresh token 失效 | AUTH-08 |
+| 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | AUTH-10 |
 | `config/env.ts` 的 `JWT_EXPIRES_IN` 沒有讀取端 | AUTH-07 |
 | 租戶端沒有忘記密碼流程 | AUTH-01 |
 

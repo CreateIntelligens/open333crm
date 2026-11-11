@@ -341,12 +341,13 @@ DELETE /api/v1/storage                     # 刪除（by key）
 GET    /api/v1/storage/signed-url/:key     # Private 檔案取 presigned URL（1小時有效）
 
 POST   /api/v1/files/presign-upload       # 取得前端直傳 URL（避免大檔走 API Server）
-  Body: { "filename": "banner.jpg", "contentType": "image/jpeg", "folder": "templates" }
-  Response: { "uploadUrl": "https://minio/...", "key": "{tenantId}/quarantine/..." }
+  Body: { "filename": "clip.mp4", "mimeType": "video/mp4", "size": 157286400, "purpose": "line-video" }
+  Response: { "uploadUrl": "https://{S3_PUBLIC_URL}/...", "key": "{tenantId}/quarantine/..." }
+  # purpose：generic（預設，25MB）、line-video（200MB、只收 mp4）；size 超過上限回 413
 
 POST   /api/v1/files/complete-upload       # 直傳完成後偵測並 promote
-  Body: { "key": "{tenantId}/quarantine/...", "filename": "banner.jpg", "mimeType": "image/jpeg", "directory": "templates" }
-  Response: { "key": "{tenantId}/templates/...", "url": "https://...", "detectedMime": "image/jpeg" }
+  Body: { "key": "{tenantId}/quarantine/...", "filename": "clip.mp4", "mimeType": "video/mp4", "purpose": "line-video" }
+  Response: { "key": "{tenantId}/media/...", "url": "https://...", "detectedMime": "video/mp4" }
 ```
 
 > **LINE 注意**：Flex Message 內圖片必須為公開 HTTPS URL。

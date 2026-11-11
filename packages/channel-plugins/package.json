@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "license": "GPL-3.0-only",
   "private": true,
+  "type": "module",
   "imports": {
     "#src/*": "./src/*"
   },
@@ -47,8 +48,7 @@
     "@open333crm/database": "workspace:*",
     "@open333crm/core": "workspace:*",
     "@open333crm/shared": "workspace:*",
-    "@line/bot-sdk": "^9.3.0",
-    "bullmq": "^5.0.0"
+    "@line/bot-sdk": "^9.3.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   processPlatformMetaWebhook,
   processWebhookEvent,
@@ -10,6 +10,7 @@ import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { assertJsonPayloadWithinLimits } from '../../plugins/json-payload-guard.plugin.js';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
   // TODO(rls): 本檔皆為公開（無 JWT）入站 webhook 端點，無認證租戶身分，
@@ -17,12 +18,17 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
   // 故一律使用 fastify.prismaAdmin（未套 RLS）。
   // Override content type parser to get raw body for signature verification
   // This is scoped to this plugin only (Fastify encapsulation)
+  // 根層的 JSON 解析器已換成 json-payload-guard（不是 Fastify 預設解析器），直接加會丟
+  // FST_ERR_CTP_ALREADY_PRESENT，所以先移除；並在這裡套用相同的內容上限（change limit-request-array-size）
+  fastify.removeContentTypeParser('application/json');
   fastify.addContentTypeParser(
     'application/json',
     { parseAs: 'buffer' },
-    (_req: any, body: Buffer, done: (err: Error | null, result?: unknown) => void) => {
+    (req: FastifyRequest, body: Buffer, done: (err: Error | null, result?: unknown) => void) => {
       try {
-        const json = JSON.parse(body.toString());
+        const text = body.toString();
+        assertJsonPayloadWithinLimits(fastify, req, text);
+        const json = JSON.parse(text);
         // Store raw body on the parsed result for later access
         (json as any).__rawBody = body;
         done(null, json);

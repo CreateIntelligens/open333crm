@@ -3,7 +3,7 @@
 試用租戶從申請到期滿的完整生命週期，以及平台可以做的介入。
 
 - **資料來源**：`apps/api/src/modules/platform/trial-admin.service.ts`、`apps/api/src/modules/trial/*`
-- **核對日期**：2026-09-23
+- **核對日期**：2026-11-02（申請與驗證一節；其餘 2026-09-23）
 
 ## 誰能做什麼
 
@@ -13,16 +13,24 @@
 | --- | --- | --- |
 | 申請、信箱驗證 | 外部使用者 | 自己這一筆 |
 | 提醒、到期停用、保留期滿軟刪 | `apps/api` 的每小時排程 | 掃全部試用租戶 |
-| 延長試用、轉正式方案、復原軟刪、記錄合約日期 | 平台人員在 `/admin/trial` | 指定的單一租戶 |
+| 延長試用、轉正式方案、復原軟刪 | 平台人員在 `/admin/trial` | 指定的單一租戶 |
+| 記錄合約日期 | 平台人員在 `/admin/tenants` 或 `/admin/tenants/:id` | 指定的單一租戶，不限試用租戶 |
+| 合約到期前提醒（只寄信，不停用） | `apps/api` 的每小時排程 `contract-reminder.scheduler.ts` | 啟用中、合約迄日未過的租戶，寄給所有啟用中的平台帳號 |
 | 重寄驗證信、作廢申請 | 平台人員在 `/admin/trial` | 指定的單一筆申請 |
+
+**合約到期提醒**（change `add-contract-expiry-reminder`，issue #494）：剩餘天數是迄日的日期減台灣今天的日期。檔位存平台設定
+`contract.reminderDaysBefore`（預設 `[30, 7, 1]`），在 `/admin/tenants` 的「合約到期提醒」設定卡修改，按「儲存」才送出。
+寫入時前端與 API 都驗證：1 到 365 的整數組成的非空陣列，去重、由大到小；不合法回 400 `VALIDATION_ERROR`，不改存預設值。排程挑「大於或等於剩餘天數」的最小檔位，未寄過才寄，並把較大的檔位一起記入 `tenants.contractRemindersSent`，
+晚設定的合約不會連收多封。平台人員修改迄日時清空 `contractRemindersSent`。`/admin/tenants` 列表標示「已過期」與
+「30 天內到期」，可依迄日排序。合約到期**不會**停用租戶，是否自動停用尚待產品決定。
 
 ## 生命週期
 
 ```text
-申請        外部填表 → trial_signups（pending_verification）→ 寄驗證信
+申請        外部填 email、站台名稱 → trial_signups（pending_verification）→ 寄驗證信
   ↓
-驗證        點信中連結 → provisionTenant 建租戶
-            trialEndsAt = 現在 + durationDays
+驗證        點信中連結 → 驗證頁確認連結（不開通）→ 本人設定密碼、確認站台名稱
+            → 送出後 provisionTenant 建租戶，trialEndsAt = 現在 + durationDays
   ↓
 提醒        剩餘天數到達設定的檔位 → 寄信給該租戶的所有 ADMIN
             寄過的檔位記在 trialRemindersSent，同一檔位不重寄
@@ -34,18 +42,53 @@
             → purgedAt = 現在。只標記，業務資料不真刪，可復原
 ```
 
-排程是 `apps/api/src/modules/trial/trial.scheduler.ts` 的 `runTrialLifecycle()`，啟動時跑一次，之後每小時一次。逐租戶 try/catch，單一租戶失敗不影響其他租戶。
+## 申請與驗證
 
-它掃兩輪，條件不同：
+申請時不收密碼。管理員密碼只能由打開驗證信連結的人設定，所以知道別人 email 的人無法替對方決定密碼（AUDIT TRIAL-05 已修正）。
 
-| 輪次 | 條件 | 做的事 |
+| 端點 | 做什麼 |
+| --- | --- |
+| `POST /api/v1/trial/signups`（email、siteName） | 防枚舉：一律回 202 同文案，`trial.enabled=false` 時回 403 `TRIAL_CLOSED`。請求帶 `password` 時忽略、不儲存（相容舊頁面）。每個 IP 每 10 分鐘 5 次 |
+| `POST /api/v1/trial/resend`（email） | 重寄驗證信，一律 202。每個 IP 每 10 分鐘 3 次 |
+| `GET /api/v1/trial/verify?token=` | 驗證頁確認連結：回 email、站台名稱、`pending` 或 `provisioned`。只讀，不消耗 token、不開通 |
+| `POST /api/v1/trial/verify`（token、password、siteName） | 設定密碼並開通。密碼至少 8 碼、站台名稱 1–100 字（未送沿用申請的名稱），不合規回 400 且 token 仍可用 |
+
+`requestTrial()` 依 email 的狀態分流：
+
+| 狀態 | 行為 |
+| --- | --- |
+| 全新 | 建立申請、寄驗證信 |
+| 待驗證 | **不改任何申請資料**，交給 `resendTrial()`：距上次寄出不到 60 秒、或已寄滿 5 封時不寄；否則換新 token 寄到原申請的 email，舊連結失效 |
+| `failed`（email 衝突或平台作廢） | 視同重新申請：換站台名稱與 token，寄送次數重算為 1 |
+| 已開通，或 email 已是任一租戶的 Agent | 靜默，不寄信 |
+
+`verifyAndProvision()` 在同一個交易內以條件式更新搶佔申請（仍是 `pending_verification`、且 token 未被重寄換掉），再建立租戶、system roles 與 ADMIN，最後標記 `provisioned` 並寫入最終的站台名稱。任一步失敗整個回滾，token 仍可重試。同一 token 再送一次（雙擊或兩個分頁同時送出）只開通一次，回 `alreadyProvisioned: true`，不改第一次設定的密碼。開通信在交易外寄出。
+
+`trial_signups` 不存密碼。`passwordHash` 欄位由 migration `20261102100000_drop_trial_signup_password_hash` 移除；改版前寄出、仍在效期內的連結照常可用，打開後進入設定密碼頁。
+
+## 排程
+
+排程是 `apps/api/src/modules/trial/trial.scheduler.ts` 的 `runTrialLifecycle()`，由 BullMQ Job Scheduler 每小時觸發一次。API 重啟不會額外執行。註冊時設定 `withoutOverlapping`（鎖的存活時間 30 分鐘），上一期還在跑時，這一期略過。逐租戶 try/catch，單一租戶失敗不影響其他租戶。
+
+它依序執行三步。每一步各讀一次租戶，條件不同：
+
+| 步驟 | 讀取條件 | 做的事 |
 | --- | --- | --- |
-| 第一輪 | `trialEndsAt` 不為 null **且仍啟用** | 到期就停用，否則看要不要寄提醒 |
-| 第二輪 | `trialEndsAt` 不為 null、**已停用**、`purgedAt` 為 null | 距 `trialEndsAt` 超過保留天數就標記軟刪 |
+| 到期 | 仍啟用，`trialEndsAt` 早於這一輪的執行時間 | 停用，寄到期信 |
+| 提醒 | 仍啟用，`trialEndsAt` 不早於這一輪的執行時間 | 剩餘天數到達還沒寄過的檔位時，寄提醒信 |
+| 軟刪 | 已停用，`purgedAt` 為 null，距 `trialEndsAt` 超過保留天數 | 標記軟刪 |
+
+到期排在軟刪之前。早已過保留期、但仍啟用的租戶，同一次執行中先被停用，再被標記。
 
 軟刪的計算基準是 `trialEndsAt`，不是停用當下的時間。平台提前手動停用一個試用租戶，不會讓保留期提早開始。
 
 提醒的檔位判定會補寄：它找的是「小於等於剩餘天數、而且還沒寄過」的最大檔位。系統停機跨越某個檔位時，下一輪仍會補上那一封，不會整個跳過。
+
+每一步都先讀出租戶，再逐一「認領」：用讀取條件加上租戶 id 做條件更新（`claimEach()`）。更新到這一筆租戶時，排程才寄信、寫稽核。讀取之後，租戶可能被平台人員延長、轉正式或停用。這時條件不成立，排程略過這一筆，不會用讀到的舊狀態蓋掉平台人員的操作。
+
+提醒的認領條件和讀取條件不同：`trialEndsAt` 與 `trialRemindersSent` 都要仍是讀到的值。比對 `trialRemindersSent` 是為了兩次排程重疊的情況。兩期重疊平常由 `withoutOverlapping` 的鎖擋住。一期跑超過 30 分鐘時，鎖會過期，下一期可能和這一期讀到同一筆。這個條件讓只有一次排程寄信。
+
+提醒是先寫標記再寄信。寄信失敗只寫 log（`trial-emails.ts` 的 `safeSend()`），本來就不會重寄，所以先寫標記不會讓原本會重寄的提醒漏寄。
 
 排程的停用與軟刪各寫一筆稽核（`tenant.trial.expire`、`tenant.trial.purge`），`platformUserId` 留空代表系統動作。稽核寫入失敗只被吞掉，不會擋下停用或軟刪。
 
@@ -87,15 +130,17 @@
 
 取較晚者是為了讓兩個方向都合理。一律從今天起算，第一種情境會變成 10/27，比原本的到期日還早。一律從原到期日起算，第二種情境會變成 10/22，延長的天數有一大半用在過去。
 
-延長同時把 `isActive` 設成 `true`，因此已到期停用的租戶會恢復；並清空 `trialRemindersSent`，讓新週期重新發提醒。
+延長同時把 `isActive` 設成 `true`，因此已到期停用的租戶會恢復；並清空 `trialRemindersSent`，讓新週期重新發提醒。延長也把 `purgedAt` 清成 `null`，已清除的租戶延長後不再顯示「已清除」。
 
 `convertToPaid(tenantId, planSlug)` 改 `planId`，並寫入 `TRIAL_EXIT_DATA`：把 `trialEndsAt` 與 `purgedAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是試用方案時回 400，試用方案以試用政策的 `trial.planSlug` 判斷（`assertNotTrialPlan()`）。
 
-`restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。保留期滿時沒有任何資料被刪除，見 `../../system/AUDIT.md` 的 TRIAL-03。
+`restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。保留期滿時沒有任何資料被刪除，見 `../../system/AUDIT.md` 的 TRIAL-03。復原是讓平台人員接著延長或轉正式。復原後沒有這樣做，租戶仍符合標記的條件，下一輪排程會再標記，這是預期的行為。
 
-`resendVerification(signupId)` 重寄驗證信，而且**刻意繞過使用者端的重寄節流**，避免平台人員的操作靜默失敗。只有 `pending_verification` 的申請能重寄，其餘回 400。
+`resendVerification(signupId)` 重寄驗證信，而且**刻意繞過使用者端的重寄節流**（使用者寄滿 5 封之後，只能由平台人員重寄），避免平台人員的操作靜默失敗。只有 `pending_verification` 的申請能重寄，其餘回 400。
 
 `markSignupFailed(signupId, reason)` 手動把申請標記為 `failed` 並清掉驗證 token，供排查或作廢使用。已開通的申請不能標記，回 400。
+
+`/admin/trial` 的「申請記錄」以中文顯示狀態：`pending_verification` 等待驗證、`provisioned` 已開通、`failed` 失敗／已作廢（email 衝突與平台作廢都是 `failed`，原因見「備註」欄）。其他狀態顯示原值。
 
 `updateTenantContract(tenantId, dates)` 只是記錄，不觸發任何自動生命週期行為。兩個日期都是選用的：傳 `undefined` 不動該欄、傳 `null` 清除、傳日期設值。更新後兩者都有值時，迄日必須不早於起日，否則回 422 `CONTRACT_DATE_INVALID`。這個檢查會合併資料庫現值比對，因此只傳其中一個日期也擋得住。
 

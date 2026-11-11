@@ -16,7 +16,8 @@ interface ActionListProps {
 
 export function ActionList({ actions, onChange, actionDefinitions }: ActionListProps) {
   const handleAdd = () => {
-    const type = actionDefinitions?.[0]?.type ?? 'send_message';
+    // 預設第一個編輯器可選的動作；隱藏的動作（發送優惠券）不能從這裡新增
+    const type = actionDefinitions?.find((item) => !item.editorHidden)?.type ?? 'send_message';
     onChange([...actions, { type, payload: {} }]);
   };
 
@@ -54,7 +55,7 @@ export function ActionList({ actions, onChange, actionDefinitions }: ActionListP
         variant="outline"
         size="sm"
         onClick={handleAdd}
-        disabled={actionDefinitions?.length === 0}
+        disabled={actionDefinitions?.every((item) => item.editorHidden)}
         className="w-full"
       >
         <Plus className="mr-1 h-4 w-4" />

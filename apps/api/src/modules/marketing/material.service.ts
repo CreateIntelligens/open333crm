@@ -6,10 +6,11 @@
  *   - 變數 UI 已拿掉，但資料層 variables 欄位保留供未來進階模式
  */
 
-import type { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@open333crm/database';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateFbMaterialBody } from './fb-material-validation.js';
+import { resolveSampleImageUrls } from './material-sample-urls.js';
 import { formatLineValidateError } from './line-validate-error.js';
 import {
   renderTemplateBody,
@@ -30,6 +31,9 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { buildLineMessage } from '@open333crm/channel-plugins';
 import { notFound } from '../../shared/messages/resource.js';
 import { validateLineVideoUrl } from '@open333crm/shared';
+import { prepareStoredMaterialBody } from '../ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -47,6 +51,7 @@ export interface CreateMaterialInput {
   variables?: TemplateVariable[];
   targetChannels?: string[];
   previewImageUrl?: string;
+  privacyMode?: 'mask' | 'original';
   createdById?: string;
 }
 
@@ -61,6 +66,7 @@ export interface UpdateMaterialInput {
   variables?: TemplateVariable[];
   targetChannels?: string[];
   previewImageUrl?: string;
+  privacyMode?: 'mask' | 'original';
   isActive?: boolean;
   /** 觸發版本快照的編輯者（updateMaterial 內用；createMaterial 用 createdById）。 */
   editedById?: string | null;
@@ -226,9 +232,8 @@ async function validateLineFlexMessageWithLineApi(
  * 用「與實際發送相同的組裝邏輯」(buildLineMessage) 組出 LINE message，
  * 打 LINE validate/push API；不符時擋下並回詳細說明（哪個 property 不符 + LINE 的訊息）。
  *
- * 只驗真的能組成 LINE message 的版型；圖片/影片等含 URL 的仍會被 LINE 檢查結構，
- * 但本機相對路徑圖（/material-samples/...）LINE 抓不到 → 這類 URL 錯誤在儲存時不強制
- * （素材可先存，發送到有公開域名的環境才需真實可達 URL），只擋「結構/欄位」層級的格式錯誤。
+ * 只驗真的能組成 LINE message 的版型。編輯器的示範圖（/material-samples/...）在呼叫前已由
+ * resolveSampleImageUrls() 換成公開網址；其他不是 https 的網址 LINE 照樣擋下。
  */
 async function validateLineMaterialWithLineApi(
   prisma: TenantDb,
@@ -239,6 +244,13 @@ async function validateLineMaterialWithLineApi(
   // 只驗 LINE 版型；flex_showcase / flex_template 已有專屬 validate（import 時），這裡涵蓋其餘。
   if (!contentType.startsWith('line_')) return;
   if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') return;
+
+  // LINE 的 validate API 收到數字的 text 也會過，數字就這樣存進去；編輯器與其他程式都把 text 當字串
+  if (contentType === 'line_text' && typeof body.text !== 'string') {
+    throw new AppError('訊息內容必須是文字', 'VALIDATION_ERROR', 400, {
+      issues: [{ path: 'body.text', message: '訊息內容必須是文字' }],
+    });
+  }
 
   // LINE carousel 最多 12 個 bubble；buildLineCarousel() 會截掉多的，存檔時先擋，免得發送時默默少頁
   if (contentType === 'line_carousel') {
@@ -323,9 +335,11 @@ export async function listMaterials(
   if (status) where.status = status;
   if (tags && tags.length > 0) where.tags = { hasSome: tags }; // 有任一標籤即命中
   if (q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(q);
     where.OR = [
-      { name: { contains: q, mode: 'insensitive' } },
-      { description: { contains: q, mode: 'insensitive' } },
+      { name: { contains: keyword, mode: 'insensitive' } },
+      { description: { contains: keyword, mode: 'insensitive' } },
     ];
   }
 
@@ -421,6 +435,12 @@ export async function createMaterial(
     await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
   }
 
+  // 示範圖（FB 是所有站內路徑）換成公開網址，LINE 驗證與 LINE／FB 發送才收得到
+  body = resolveSampleImageUrls(contentType, body);
+
+  const preparedBody = await prepareStoredMaterialBody(await readAiPrivacyPolicy(prisma, tenantId), body, input.privacyMode ?? 'mask');
+  body = preparedBody.body as Record<string, unknown>;
+
   // 儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
   // FB 版型沒有官方檢核 API，由本機規則檢查；LINE 版型呼叫 LINE validate
   validateFbMaterialBody(contentType, body);
@@ -439,6 +459,8 @@ export async function createMaterial(
       channelType,
       contentType,
       body: body as Prisma.InputJsonValue,
+      ...(preparedBody.maskedBody ? { maskedBody: preparedBody.maskedBody } : {}),
+      privacyMode: preparedBody.privacyMode,
       variables: variables as unknown as Prisma.InputJsonValue,
       targetChannels: input.targetChannels ?? [],
       previewImageUrl: input.previewImageUrl ?? template?.previewImageUrl ?? null,
@@ -491,9 +513,15 @@ export async function updateMaterial(
     data.status = input.status;
   }
   if (input.body !== undefined) {
-    data.body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
-      ? assertLineFlexMessageBody(input.body)
+    const body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
+      ? (assertLineFlexMessageBody(input.body) as unknown as Record<string, unknown>)
       : input.body;
+    // 與 createMaterial() 相同：示範圖（FB 是所有站內路徑）換成公開網址
+    const resolvedBody = resolveSampleImageUrls(existing.contentType, body);
+    const preparedBody = await prepareStoredMaterialBody(await readAiPrivacyPolicy(prisma, tenantId), resolvedBody, input.privacyMode ?? 'mask');
+    data.body = preparedBody.body;
+    data.maskedBody = preparedBody.maskedBody ?? Prisma.DbNull;
+    data.privacyMode = preparedBody.privacyMode;
   }
   if (input.variables !== undefined) data.variables = input.variables;
   if (existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE && input.body !== undefined) {
@@ -596,6 +624,10 @@ export async function deleteMaterial(prisma: TenantDb, id: string, tenantId: str
 
 export async function duplicateMaterial(prisma: TenantDb, id: string, tenantId: string) {
   const source = await getMaterial(prisma, id, tenantId);
+  const preparedBody = await prepareStoredMaterialBody(
+    await readAiPrivacyPolicy(prisma, tenantId),
+    source.body as Record<string, unknown>,
+  );
   const copy = await prisma.material.create({
     data: {
       tenantId,
@@ -605,13 +637,16 @@ export async function duplicateMaterial(prisma: TenantDb, id: string, tenantId: 
       category: source.category,
       channelType: source.channelType,
       contentType: source.contentType,
-      body: source.body as Prisma.InputJsonValue,
+      body: preparedBody.body,
+      ...(preparedBody.maskedBody ? { maskedBody: preparedBody.maskedBody } : {}),
+      privacyMode: preparedBody.privacyMode,
       variables: source.variables as Prisma.InputJsonValue,
       targetChannels: source.targetChannels,
       previewImageUrl: source.previewImageUrl,
       createdById: source.createdById,
     },
   });
+  await writeMaterialVersion(prisma, copy, source.createdById ?? null);
   return copy;
 }
 
@@ -727,7 +762,7 @@ export async function listMaterialCategories(prisma: TenantDb, tenantId: string)
 /** 寫一筆版本快照：versionNo = 該素材現有最大版號 + 1（首建為 1）。 */
 async function writeMaterialVersion(
   prisma: TenantDb,
-  material: { id: string; tenantId: string; name: string; body: unknown },
+  material: { id: string; tenantId: string; name: string; body: unknown; maskedBody?: unknown; privacyMode?: string | null },
   editedById: string | null,
 ) {
   const last = await prisma.materialVersion.findFirst({
@@ -743,6 +778,8 @@ async function writeMaterialVersion(
       versionNo: nextNo,
       name: material.name,
       body: material.body as Prisma.InputJsonValue,
+      ...(material.maskedBody ? { maskedBody: material.maskedBody as Prisma.InputJsonValue } : {}),
+      privacyMode: material.privacyMode ?? null,
       editedById,
     },
   });
@@ -983,12 +1020,20 @@ export async function restoreMaterialVersion(
     throw new AppError(notFound('version'), 'VERSION_NOT_FOUND', 404);
   }
   // 舊版可能是 FB 檢查上線前存的內容（例如 javascript: 網址），還原等於重新寫入，一樣要檢查
-  validateFbMaterialBody(material.contentType, (version.body ?? {}) as Record<string, unknown>);
+  const restoredBody = (version.body ?? {}) as Record<string, unknown>;
+  validateFbMaterialBody(material.contentType, restoredBody);
+  const preparedBody = await prepareStoredMaterialBody(
+    await readAiPrivacyPolicy(prisma, tenantId),
+    restoredBody,
+    version.privacyMode === 'original' ? 'original' : 'mask',
+  );
   const updated = await prisma.material.update({
     where: { id: materialId },
     data: {
       name: version.name,
-      body: version.body as Prisma.InputJsonValue,
+      body: preparedBody.body,
+      maskedBody: preparedBody.maskedBody ?? Prisma.DbNull,
+      privacyMode: preparedBody.privacyMode,
     },
   });
   // 還原本身記為新版（快照的是還原後＝該舊版的內容）。

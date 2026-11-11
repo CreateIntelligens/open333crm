@@ -23,6 +23,8 @@ const GRAPH_URL = 'https://graph.instagram.com/v21.0';
 
 export class ThreadsPlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.THREADS;
+  /** Messenger／IG 只能對 24 小時內互動過的人發一般訊息 */
+  readonly messagingWindowHours = 24;
 
   // ─── Task 1.5: verifySignature ────────────────────────────────────
   // Instagram uses X-Hub-Signature-256: sha256=<hmac>

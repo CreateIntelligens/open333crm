@@ -11,11 +11,13 @@ import { OfficeHoursSettings } from "@/components/settings/OfficeHoursSettings";
 import { ApiKeyManagement } from "@/components/settings/ApiKeyManagement";
 import { TrackingSettings } from "@/components/settings/TrackingSettings";
 import { IdentityBindingSettings } from "@/components/settings/IdentityBindingSettings";
+import { WebTalkSettings } from "@/components/settings/WebTalkSettings";
 import { CliSessionManagement } from "@/components/settings/CliSessionManagement";
 import { RolePermissionMatrix } from "@/components/settings/RolePermissionMatrix";
 import { PasskeyManagement } from "@/components/settings/PasskeyManagement";
 import { Badge } from "@/components/ui/badge";
 import { SettingsHeader } from "@/components/settings/SettingsHeader";
+import { StoreManagement } from "@/components/settings/stores/StoreManagement";
 import { usePermission } from "@/providers/AuthProvider";
 import api from "@/lib/api";
 
@@ -27,7 +29,9 @@ const SETTINGS_TABS = [
   { key: "sla", label: "SLA 政策" },
   { key: "office-hours", label: "營業時間" },
   { key: "tracking", label: "追蹤設定" },
+  { key: "stores", label: "門市與核銷帳號", perm: "store.view" },
   { key: "identity-binding", label: "跨渠道綁定", perm: "settings.manage" },
+  { key: "webtalk", label: "WebTalk 協作", perm: "settings.manage" },
   { key: "api-keys", label: "API 金鑰" },
   { key: "cli-sessions", label: "CLI 連線" },
   { key: "passkeys", label: "Passkey 登入" },
@@ -43,6 +47,7 @@ export default function SettingsPage() {
   const activeTab = (SETTINGS_TABS.some((tab) => tab.key === section) ? section : "general") as SettingsTab;
   const canViewRoles = usePermission("role.view");
   const canManageSettings = usePermission("settings.manage");
+  const canViewStores = usePermission("store.view");
 
   return (
     // 依 Figma：設定頁不再有上方標題列，內容區內距 32，最上方是麵包屑
@@ -57,7 +62,9 @@ export default function SettingsPage() {
           {activeTab === "sla" && <SlaManagement />}
           {activeTab === "office-hours" && <OfficeHoursSettings />}
           {activeTab === "tracking" && <TrackingSettings />}
+          {activeTab === "stores" && (canViewStores ? <StoreManagement /> : <PermissionDenied />)}
           {activeTab === "identity-binding" && (canManageSettings ? <IdentityBindingSettings /> : <PermissionDenied />)}
+          {activeTab === "webtalk" && (canManageSettings ? <WebTalkSettings /> : <PermissionDenied />)}
           {activeTab === "api-keys" && <ApiKeyManagement />}
           {activeTab === "cli-sessions" && <CliSessionManagement />}
           {activeTab === "passkeys" && <PasskeyManagement />}

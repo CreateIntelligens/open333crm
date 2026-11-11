@@ -364,8 +364,8 @@ test.describe('@inbox 收件匣功能層', () => {
   test('@inbox 11. 「已關閉」分頁能看到剛結案的對話', async ({ page }) => {
     await page.goto(`${BASE_URL}/dashboard/inbox`, { waitUntil: 'networkidle' });
 
-    // Tabs 是自製元件（純 button，非 role=tab）
-    await page.getByRole('button', { name: '已關閉', exact: true }).click();
+    // Tabs 使用 ARIA role=tab
+    await page.getByRole('tab', { name: '已關閉', exact: true }).click();
 
     // 已關閉分頁預設抓最近 30 天；用搜尋縮小到自己種的對話
     const query = seeded.contactName || seeded.marker;

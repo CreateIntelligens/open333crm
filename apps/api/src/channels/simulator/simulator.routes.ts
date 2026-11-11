@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { simulateInboundMessage } from './simulator.service.js';
 import { success } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';

@@ -74,7 +74,7 @@
 
 被拒絕時，角色的權限 MUST 不變。
 
-租戶對系統角色權限的修改 SHALL 在權限註冊表更新之後保留。同步系統角色預設權限的流程 MUST NOT 重新授予租戶已經移除的權限碼，也 MUST NOT 移除租戶已經加上的權限碼。
+租戶對系統角色權限的修改 SHALL 在權限註冊表更新之後保留。同步系統角色預設權限的流程 MUST NOT 重新授予租戶已經移除的權限碼，也 MUST NOT 移除租戶已經加上的權限碼。demo seed 的 Demo Tenant 是例外，見「demo seed 讓 Demo Tenant 與預設權限同步」。
 
 #### Scenario: 可以減少 supervisor 的權限
 - **WHEN** `supervisor` 系統角色有 `marketing.broadcast`，有 `role.manage` 的成員移除 `marketing.broadcast`
@@ -111,6 +111,7 @@
 1. 目標角色屬於其他租戶時，系統 SHALL 回 HTTP 404。
 2. 指派者的角色不是租戶的 `admin` 系統角色時，目標角色的權限集合 MUST 不超出指派者角色的權限集合。兩者都含 `implies` 的閉包。超出時，系統 SHALL 回 HTTP 403（`ROLE_ESCALATION`），`error.details.escalatedPermissions` 是超出的權限碼。
 3. 成員把自己改成另一個角色時，新角色 MUST 含至少一個標記 `selfLock` 的權限碼。不含時，系統 SHALL 回 HTTP 422（`SELF_LOCK`）。
+4. 修改角色時，成員目前的權限也 MUST 不高於指派者，見「對其他成員的操作不能用在權限比自己高的成員」。
 
 被拒絕時，成員的角色 MUST 不變，也 MUST NOT 建立成員。
 
@@ -128,7 +129,7 @@
 
 ### Requirement: 刪除使用中的角色
 
-自訂角色仍有成員使用時，系統 SHALL 拒絕刪除，回 HTTP 409（`ROLE_IN_USE`），`error.details.blockingAgentCount` 是使用這個角色的成員人數。成員都改用其他角色之後，系統 SHALL 允許刪除。
+自訂角色仍有成員使用時，系統 SHALL 拒絕刪除，回 HTTP 409（`ROLE_IN_USE`），`error.details.blockingAgentCount` 是使用這個角色的成員人數。停用的成員也算使用中。`error.details.blockingAgents` SHALL 列出這些成員的 `id`、`name` 與 `isActive`，錯誤訊息 SHALL 列出成員姓名，停用的成員標示「已停用」。成員都改用其他角色之後，系統 SHALL 允許刪除。
 
 #### Scenario: 有成員使用的角色不能刪除
 - **WHEN** 自訂角色有 2 位成員使用，有 `role.manage` 的成員刪除這個角色
@@ -137,6 +138,10 @@
 #### Scenario: 沒有成員使用的角色可以刪除
 - **WHEN** 自訂角色沒有成員使用，有 `role.manage` 的成員刪除這個角色
 - **THEN** 系統回 HTTP 200，角色不再存在
+
+#### Scenario: 停用的成員佔用角色時列出姓名
+- **WHEN** 自訂角色只有一位停用的成員「王小明」使用，有 `role.manage` 的成員刪除這個角色
+- **THEN** 系統回 HTTP 409，`error.details.blockingAgents` 含 `{ name: "王小明", isActive: false }`，錯誤訊息含「王小明（已停用）」
 
 ### Requirement: 角色列表與權限矩陣
 
@@ -152,3 +157,36 @@
 - **WHEN** 有 `role.view` 的成員呼叫 `GET /api/v1/roles/matrix`
 - **THEN** 註冊表的每個權限碼在回應中恰好出現一次，位於它的 `group` 之下，並帶有 `dependsOn`、`implies` 與 `adminLock`
 
+### Requirement: demo seed 讓 Demo Tenant 與預設權限同步
+
+demo seed（`packages/database/prisma/seed.ts`）每次執行時 SHALL 先刪除 Demo Tenant 三個系統角色的權限碼，再寫入 `DEFAULT_ROLE_PERMISSIONS` 中該角色的權限碼。demo seed 與平台開通 SHALL 讀同一份 `DEFAULT_ROLE_PERMISSIONS`，MUST NOT 另外維護一份預設權限。對 Demo Tenant 系統角色的修改不保留。
+
+#### Scenario: demo seed 讓 Demo Tenant 的系統角色與預設權限相同
+- **WHEN** Demo Tenant 的 `admin` 系統角色少了預設權限中的 `audit.view`，`supervisor` 多了預設沒有的 `channel.view_all`；之後 demo seed 執行
+- **THEN** 三個系統角色的權限碼都等於 `DEFAULT_ROLE_PERMISSIONS` 中該角色的權限碼，`admin` 有 `audit.view`，`supervisor` 沒有 `channel.view_all`
+
+### Requirement: 對其他成員的操作不能用在權限比自己高的成員
+
+操作者修改另一位成員的角色（`PATCH /api/v1/agents/:id/role`）、重設他的密碼（`PATCH /api/v1/agents/:id/password`）、停用（`POST /api/v1/agents/:id/deactivate`）或永久刪除（`DELETE /api/v1/agents/:id`）時，操作者的角色不是租戶的 `admin` 系統角色，而且目標成員目前角色的權限集合含操作者角色沒有的權限碼，系統 SHALL 回 HTTP 403（`TARGET_OUTRANKS_ACTOR`），`error.details.exceededPermissions` 是目標多出的權限碼。兩者都含 `implies` 的閉包，不套方案天花板。被拒絕時，目標成員 MUST 不變。
+
+這個檢查在權限碼檢查（`requirePermission`）與最後一位管理員保護之後執行。
+
+#### Scenario: 主管不能降級管理員
+- **WHEN** 租戶有兩位啟用中的 `admin` 系統角色成員，`supervisor` 系統角色的成員把其中一位改成 `{ role: "SUPERVISOR" }`
+- **THEN** 系統回 HTTP 403，`error.code` 是 `TARGET_OUTRANKS_ACTOR`，`error.details.exceededPermissions` 含 `role.manage`，該管理員的角色不變
+
+#### Scenario: 管理員可以降級另一位管理員
+- **WHEN** 租戶有兩位啟用中的 `admin` 系統角色成員，其中一位把另一位改成 `{ role: "SUPERVISOR" }`
+- **THEN** 系統回 HTTP 200，被改的成員的角色是 `supervisor` 系統角色
+
+#### Scenario: 不能重設權限比自己高的成員的密碼
+- **WHEN** 自訂角色有 `agent.password.reset`、沒有 `role.manage`；這個角色的成員重設 `admin` 系統角色成員的密碼
+- **THEN** 系統回 HTTP 403，`error.code` 是 `TARGET_OUTRANKS_ACTOR`，管理員的密碼不變
+
+#### Scenario: 不能停用權限比自己高的成員
+- **WHEN** 租戶有兩位啟用中的 `admin` 系統角色成員，自訂角色有 `agent.deactivate`、沒有 `role.manage`；這個角色的成員停用其中一位管理員
+- **THEN** 系統回 HTTP 403，`error.code` 是 `TARGET_OUTRANKS_ACTOR`，該管理員維持啟用
+
+#### Scenario: 不能刪除權限比自己高的成員
+- **WHEN** 租戶有兩位啟用中的 `admin` 系統角色成員，自訂角色有 `agent.purge`、沒有 `role.manage`；這個角色的成員刪除其中一位管理員
+- **THEN** 系統回 HTTP 403，`error.code` 是 `TARGET_OUTRANKS_ACTOR`，該管理員仍然存在

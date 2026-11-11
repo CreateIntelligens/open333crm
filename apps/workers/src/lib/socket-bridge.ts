@@ -1,9 +1,15 @@
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
+import { channelPushRooms } from '@open333crm/shared';
 
 const SOCKET_EMIT_CHANNEL = 'socket:emit';
 
+/**
+ * `socket:emit` 的訊息（主規格 core-inbox「socket:emit Message Shape」）。
+ * `room` 給一個房間；`rooms` 給多個房間，API 以一次 io.to(rooms) 送出，同一個連線只收到一次。
+ */
 export interface SocketEmitPayload {
-  room: string;
+  room?: string;
+  rooms?: string[];
   event: string;
   data: unknown;
 }
@@ -18,27 +24,26 @@ export async function publishSocketEvent(
   await redis.publish(SOCKET_EMIT_CHANNEL, JSON.stringify(payload));
 }
 
-export { SOCKET_EMIT_CHANNEL };
+/** 渠道相關的推播（訊息內容、對話更新）：只送給看得到該渠道的成員，不送到全租戶房間（issue #427） */
+export type ChannelSocketEvent = 'message.new' | 'conversation.updated' | 'automation.executed';
 
-// ── Domain event bridge：worker → api in-process eventBus ──────────────────
-// worker 是獨立 process，無法直接發到 api 的 in-process eventBus（automation 規則
-// 訂閱的那個）。透過 redis 這條 channel 發，api 端 subscriber 轉成 eventBus 事件。
-const DOMAIN_EVENT_CHANNEL = 'domain:event';
-
-export interface DomainEventPayload {
-  name: string;
-  tenantId: string;
-  payload: Record<string, unknown>;
-}
-
-export async function publishDomainEvent(
+/**
+ * 推播給看得到該渠道的成員：對話房間（有的話）、渠道房間、總店房間。
+ * 房間名稱與 API 共用 @open333crm/shared 的 socket-rooms。
+ */
+export async function publishChannelSocketEvent(
   redis: IORedis,
-  name: string,
-  tenantId: string,
-  payload: Record<string, unknown>,
+  target: { tenantId: string; channelId: string; conversationId?: string | null },
+  event: ChannelSocketEvent,
+  data: unknown,
 ): Promise<void> {
-  const msg: DomainEventPayload = { name, tenantId, payload };
-  await redis.publish(DOMAIN_EVENT_CHANNEL, JSON.stringify(msg));
+  const rooms = channelPushRooms(target.tenantId, target.channelId);
+  const payload: SocketEmitPayload = {
+    rooms: target.conversationId ? [`conversation:${target.conversationId}`, ...rooms] : rooms,
+    event,
+    data,
+  };
+  await redis.publish(SOCKET_EMIT_CHANNEL, JSON.stringify(payload));
 }
 
-export { DOMAIN_EVENT_CHANNEL };
+export { SOCKET_EMIT_CHANNEL };

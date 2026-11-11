@@ -63,8 +63,14 @@ test('llm-system-prompt', async () => {
   // 2. llm.service 必須提供組裝函式，且實際用於呼叫 provider
   // ---------------------------------------------------------------------------
   assert.ok(/export function buildSystemPrompt\(/.test(llmSrc), 'llm.service 必須匯出 buildSystemPrompt');
+  // 組裝在 composeSystemPrompt()，llm.flow 把它的結果交給 provider（change migrate-ai-llm-tenant-ctx）
   assert.ok(
-    /systemPrompt: buildSystemPrompt\(/.test(llmSrc),
+    /export function composeSystemPrompt\([\s\S]*?return buildSystemPrompt\(/.test(llmSrc),
+    'composeSystemPrompt 必須以 buildSystemPrompt 組裝',
+  );
+  const flowSrc = readFileSync(join(aiDir, 'llm.flow.ts'), 'utf8');
+  assert.ok(
+    /systemPrompt: composeSystemPrompt\(/.test(flowSrc),
     'provider.generate 必須傳入已組裝的 systemPrompt',
   );
 

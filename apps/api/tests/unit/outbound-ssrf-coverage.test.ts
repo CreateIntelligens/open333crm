@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { apiSrc } from '#tests/support/paths.js';
+import { isBlockedUrl } from '#src/modules/webhook/downstream-forwarder.js';
 
 const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
@@ -65,10 +66,9 @@ t('會跟隨轉址的抓取必須停用自動 redirect', () => {
   assert.ok(/redirect:\s*'manual'/.test(code), 'og-scraper 未停用自動 redirect');
 });
 
-t('目的地檢查本身涵蓋雲端 metadata 與 loopback', () => {
-  const code = src('modules/webhook/downstream-forwarder.ts');
-  for (const cidr of ['169.254.0.0', '127.0.0.0', '10.0.0.0', '192.168.0.0', '100.64.0.0']) {
-    assert.ok(code.includes(cidr), `isBlockedUrl 未涵蓋 ${cidr}`);
+t('目的地檢查本身涵蓋雲端 metadata 與 loopback', async () => {
+  // 以 IP 位址當網址，lookup 不經 DNS，直接檢查判斷結果（範圍定義在 shared/utils/ip-guard.ts）
+  for (const ip of ['169.254.169.254', '127.0.0.1', '10.0.0.1', '192.168.1.1', '100.64.0.1', '[::1]', '[::ffff:a9fe:a9fe]']) {
+    assert.strictEqual(await isBlockedUrl(`https://${ip}/`), true, `isBlockedUrl 未擋下 ${ip}`);
   }
-  assert.ok(/::1/.test(code), 'isBlockedUrl 未涵蓋 IPv6 loopback');
 });

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Interactive Open333CRM API documentation" />
+    <title>Open333CRM API | Swagger UI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.0/swagger-ui.css" />
+    <style>
+      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; color: #37404c; background: #fff; }
+      header { padding: 22px clamp(20px, 5vw, 64px); border-bottom: 1px solid #e2e8f0; }
+      header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+      header p { max-width: 760px; margin: 8px 0 0; color: #64748b; line-height: 1.5; }
+      header nav { display: flex; gap: 18px; margin-top: 14px; }
+      header a { color: #1769aa; font-weight: 600; text-underline-offset: 3px; }
+      #swagger-ui { max-width: 1440px; margin: 0 auto; padding: 12px clamp(12px, 3vw, 40px) 48px; }
+      #swagger-status, #swagger-error { margin: 24px clamp(12px, 3vw, 40px); }
+      #swagger-error { color: #a11; }
+      .swagger-ui .topbar { display: none; }
+      .swagger-ui .info { margin: 24px 0; }
+      @media (max-width: 640px) {
+        header { padding: 18px 16px; }
+        header nav { flex-wrap: wrap; }
+        #swagger-ui { padding: 8px 8px 32px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Open333CRM API</h1>
+      <p>Standalone Swagger UI. Use Try it out to send requests to this site. Protected operations accept a Bearer token. Generic JSON bodies are editable where the request schema is still undocumented.</p>
+      <nav aria-label="API documentation">
+        <a href="/api-reference">Open Redoc reference</a>
+        <a href="/openapi.json">Open OpenAPI JSON</a>
+      </nav>
+    </header>
+    <p id="swagger-status" role="status">Loading Swagger UI…</p>
+    <p id="swagger-error" role="alert" hidden>Swagger UI could not load. Check the CDN connection and reload this page.</p>
+    <main id="swagger-ui"></main>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.0/swagger-ui-bundle.js" onerror="document.getElementById('swagger-status').hidden = true; document.getElementById('swagger-error').hidden = false"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        displayRequestDuration: true,
+        tryItOutEnabled: true,
+        supportedSubmitMethods: ['get', 'post', 'put', 'patch', 'delete', 'options', 'head'],
+        persistAuthorization: false,
+        validatorUrl: 'none',
+      });
+      document.getElementById('swagger-status').hidden = true;
+    </script>
+  </body>
+</html>

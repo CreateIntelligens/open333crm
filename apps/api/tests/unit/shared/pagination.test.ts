@@ -105,7 +105,6 @@ t('UAT 實測回 500 的五個端點都已接上夾制', () => {
   const targets: Array<[string, string]> = [
     ['modules/marketing/material.routes.ts', 'materials'],
     ['modules/marketing/marketing.routes.ts', 'campaigns/segments/broadcasts'],
-    ['modules/portal/portal.routes.ts', 'portal activities'],
   ];
   for (const [rel, label] of targets) {
     const code = src(rel);
@@ -114,6 +113,13 @@ t('UAT 實測回 500 的五個端點都已接上夾制', () => {
       `${label}（${rel}）未接上 clampPage，page=0 仍會回 500`,
     );
   }
+});
+
+t('粉絲活動後台改用 paginationSchema 擋分頁（不是裸 parseInt）', () => {
+  // #337 第六批起，portal 的每個輸入欄位都以 Zod 解析；page=0 在入口回 400（feature 測試 portal-flow.test.ts 檢查行為）
+  const code = src('modules/portal/portal.routes.ts');
+  assert.ok(code.includes('paginationSchema'), 'portal.routes.ts 的分頁未用 paginationSchema');
+  assert.ok(!code.includes('parseInt(page)'), 'portal.routes.ts 仍殘留未夾制的 parseInt');
 });
 
 t('短連結改用 zod 擋分頁（不是裸 parseInt）', () => {

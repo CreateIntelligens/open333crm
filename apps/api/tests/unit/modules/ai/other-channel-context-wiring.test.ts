@@ -4,8 +4,10 @@
  * 讀取內容本身由 feature 測試 other-channel-context.test.ts 驗證，這裡只驗證接線。
  */
 import assert from 'node:assert/strict';
-import { beforeEach, test, vi } from 'vitest';
+import { beforeAll, beforeEach, test, vi } from 'vitest';
+import { mockAgentDeps } from '#tests/support/llm-deps.js';
 
+const KB_TENANT = 'c7c7c7c7-0000-4000-8000-000000000003';
 const OTHER = '以下是同一位顧客最近在其他渠道的訊息…\n[LINE 2 天前] 顧客：冷氣漏水怎麼處理';
 const loadCalls: unknown[][] = [];
 vi.mock('#src/modules/ai/other-channel-context.js', async (orig) => ({
@@ -17,7 +19,7 @@ vi.mock('#src/modules/ai/other-channel-context.js', async (orig) => ({
 }));
 
 const generateReplyOptions: Array<Record<string, unknown>> = [];
-vi.mock('#src/modules/ai/llm.service.js', async (orig) => ({
+vi.mock('#src/modules/ai/llm.flow.js', async (orig) => ({
   ...(await orig<object>()),
   generateReply: async (_db: unknown, _tenantId: string, _msg: string, _kb: string, options: Record<string, unknown>) => {
     generateReplyOptions.push(options);
@@ -25,10 +27,10 @@ vi.mock('#src/modules/ai/llm.service.js', async (orig) => ({
   },
 }));
 vi.mock('#src/modules/embedding/embedding.service.js', () => ({
-  generateEmbedding: async () => [0.1],
+  readEmbeddingInputs: async () => ({ settings: { baseUrl: 'http://embed.test', model: 'bge-m3', topK: 3, threshold: 0.5 }, policy: { enabled: false } }),
   searchSimilarArticles: async () => [{ id: 'kb1', title: '漏水', content: '先關電源', summary: '', similarity: 0.9 }],
 }));
-vi.mock('#src/modules/settings/embedding-settings.service.js', () => ({ getEmbeddingSettings: async () => ({ topK: 3, threshold: 0.5 }) }));
+vi.mock('#src/modules/embedding/embedding-client.js', () => ({ embedText: async () => [0.1] }));
 vi.mock('#src/modules/settings/chat-settings.service.js', () => ({
   getChatSettings: async () => ({ provider: 'gemini', model: 'm', temperature: 0, maxTokens: 10, clarifyThreshold: 0.5, clarifyMaxAttempts: 2 }),
 }));
@@ -53,6 +55,16 @@ vi.mock('#src/config/env.js', async (orig) => ({
   }),
 }));
 
+let attemptKbAutoReplyFlow: typeof import('#src/modules/ai/kb-autoreply.flow.js').attemptKbAutoReplyFlow;
+let runAgentReplyFlow: typeof import('#src/modules/ai/agent/agent.flow.js').runAgentReplyFlow;
+
+// vi.mock 的 factory 用到上面宣告的變數，所以等檔案執行到這裡才載入。在 beforeAll 載入，
+// 載入時間不算進第一個 test 的時間上限：放在 test 裡時，turbo 同時執行其他套件就會逾時（#299）
+beforeAll(async () => {
+  ({ attemptKbAutoReplyFlow } = await import('#src/modules/ai/kb-autoreply.flow.js'));
+  ({ runAgentReplyFlow } = await import('#src/modules/ai/agent/agent.flow.js'));
+});
+
 beforeEach(() => {
   loadCalls.length = 0;
   generateReplyOptions.length = 0;
@@ -60,7 +72,6 @@ beforeEach(() => {
 });
 
 test('KB 自動回覆：generateReply 收到其他渠道的訊息', async () => {
-  const { attemptKbAutoReply } = await import('#src/modules/ai/kb-autoreply.service.js');
   const prisma = {
     automationRule: { findMany: async () => [] },
     conversation: {
@@ -74,39 +85,44 @@ test('KB 自動回覆：generateReply 收到其他渠道的訊息', async () => 
     message: { findMany: async () => [] },
   } as never;
   // 回覆送出需要的其他資料不在這個測試範圍；送出失敗不影響已發生的 generateReply 呼叫
-  await attemptKbAutoReply(prisma, { to: () => ({ emit: () => {} }) } as never, 'tenant-1', 'c1', '維修進度如何').catch(() => {});
-  assert.deepEqual(loadCalls[0], [prisma, 'tenant-1', 'c1']);
+  const deps = mockAgentDeps(prisma);
+  await attemptKbAutoReplyFlow(
+    { prisma: deps.prisma, llm: deps.llm, io: { to: () => ({ emit: () => {} }) } as never, replyGuard: {} as never, events: {} as never, deliverDb: {} as never },
+    { tenantId: KB_TENANT, conversationId: 'c1', messageText: '維修進度如何', delivery: {} },
+  ).catch(() => {});
+  const [ctx, conversationId] = loadCalls[0] as [{ tenantId: string }, string];
+  assert.deepEqual([ctx.tenantId, conversationId], [KB_TENANT, 'c1']);
   assert.equal(generateReplyOptions.length, 1);
   assert.equal(generateReplyOptions[0].otherChannelContext, OTHER);
 });
 
 test('Agent 模式：系統指示包含其他渠道的訊息；沒有對話時不讀取', async () => {
-  const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
   const prisma = {
     agentRun: { create: async () => ({ id: 'run1', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
+    platformSetting: { findUnique: async () => null },
     tenantSettings: { findFirst: async () => ({ identityBinding: {} }) },
     conversation: { findFirst: async () => ({ id: 'c1' }) },
     message: { findMany: async () => [] },
   } as never;
-  await runAgentReply(prisma, { tenantId: 'tenant-ctx-1', conversationId: 'c1', userMessage: '維修進度如何' });
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000001', conversationId: 'c1', userMessage: '維修進度如何' });
   assert.ok(agentInputs[0].systemPrompt.includes(OTHER), agentInputs[0].systemPrompt);
 
-  await runAgentReply(prisma, { tenantId: 'tenant-ctx-1', userMessage: '沒有對話' });
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000001', userMessage: '沒有對話' });
   assert.equal(loadCalls.length, 1, '沒有 conversationId 時不讀取');
   assert.ok(!agentInputs[1].systemPrompt.includes(OTHER));
 });
 
 test('Agent 模式：有指定可見渠道時交給讀取函式；沒有指定時不限制（回覆對象是客人本人）', async () => {
-  const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
   const prisma = {
     agentRun: { create: async () => ({ id: 'run3', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
+    platformSetting: { findUnique: async () => null },
     tenantSettings: { findFirst: async () => ({ identityBinding: {} }) },
     conversation: { findFirst: async () => ({ id: 'c1' }) },
     message: { findMany: async () => [] },
   } as never;
   const visible = new Set(['ch-branch']);
-  await runAgentReply(prisma, { tenantId: 'tenant-ctx-2', conversationId: 'c1', userMessage: 'x', accessibleChannels: visible });
-  assert.equal(loadCalls[0][4], visible);
-  await runAgentReply(prisma, { tenantId: 'tenant-ctx-2', conversationId: 'c1', userMessage: 'x' });
-  assert.equal(loadCalls[1][4], undefined);
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x', accessibleChannels: visible });
+  assert.equal(loadCalls[0][3], visible);
+  await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'c7c7c7c7-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x' });
+  assert.equal(loadCalls[1][3], undefined);
 });

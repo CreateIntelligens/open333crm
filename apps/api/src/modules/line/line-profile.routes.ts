@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { LINE_CHANNEL_NOT_FOUND, syncLineContactProfile } from './line-profile.service.js';
+import { z } from 'zod/v3';
+import { LINE_CHANNEL_NOT_FOUND } from './line-profile.service.js';
+import { syncLineContactProfileFlow } from './line-profile.flow.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { AppError, success } from '../../shared/utils/response.js';
+import { actorOf } from '../../lib/request-actor.js';
 
 export default async function lineProfileRoutes(fastify: FastifyInstance) {
   fastify.patch<{
@@ -24,12 +26,7 @@ export default async function lineProfileRoutes(fastify: FastifyInstance) {
         throw new AppError(LINE_CHANNEL_NOT_FOUND, 'NOT_FOUND', 404);
       }
 
-      const updated = await syncLineContactProfile(
-        request.tenantPrisma,
-        request.agent.tenantId,
-        channelId,
-        lineUid,
-      );
+      const updated = await syncLineContactProfileFlow(fastify, actorOf(request).tenantId, channelId, lineUid);
 
       return reply.send(success(updated));
     },

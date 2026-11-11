@@ -4,6 +4,8 @@ import { sendCsatSurvey } from './csat.service.js';
 import { closeConversationsForCase } from '../conversation/conversation.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
+import { caseTransitionTimestamps } from '@open333crm/shared';
+import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 const CSAT_DELAY_MINUTES = 5; // POC: 5 minutes after resolution (design doc: 30 min)
@@ -14,7 +16,7 @@ const AUTO_CLOSE_HOURS = 72; // auto-close after 72h without CSAT response
  * 1. Send CSAT surveys for resolved cases after delay
  * 2. Auto-close cases that haven't received CSAT response within timeout
  */
-export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
+export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient, io: SocketIOServer) {
   /**
    * Poll for resolved cases that need CSAT survey sent.
    */
@@ -28,6 +30,8 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
           csatSentAt: null,
           resolvedAt: { lte: cutoff },
           conversations: { some: {} },
+          // 租戶停用（含試用到期）時不寄問卷給客人（issue #410）
+          tenant: { isActive: true },
         },
         include: {
           conversations: {
@@ -79,13 +83,19 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
       for (const c of cases) {
         try {
           const now = new Date();
-          await prisma.case.update({
-            where: { id: c.id },
+          // 以條件更新認領：讀取之後工單被重開、客人已評分，或別次執行已結案時，不再結案、不發事件
+          const { count } = await prisma.case.updateMany({
+            where: { id: c.id, tenantId: c.tenantId, status: 'RESOLVED', csatRespondedAt: null },
+            // RESOLVED → CLOSED：依共用規則（issue #417）寫 closedAt、保留 resolvedAt
             data: {
               status: 'CLOSED',
-              closedAt: now,
+              ...caseTransitionTimestamps('RESOLVED', 'CLOSED', now),
             },
           });
+          if (count === 0) {
+            logger.info(`[CsatScheduler] Skip auto-close for case ${c.id}: no longer RESOLVED or already rated`);
+            continue;
+          }
 
           // Publish case.closed event
           eventBus.publish({
@@ -132,13 +142,6 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
     }
   }
 
-  // Poll every 60 seconds
-  setInterval(pollSendCsat, POLL_INTERVAL_MS);
-  setInterval(pollAutoClose, POLL_INTERVAL_MS);
-
-  // Run once on startup with delay
-  setTimeout(pollSendCsat, 8000);
-  setTimeout(pollAutoClose, 12000);
-
-  logger.info(`[CsatScheduler] Started — send delay: ${CSAT_DELAY_MINUTES}min, auto-close: ${AUTO_CLOSE_HOURS}h`);
+  scheduler.registerSchedule({ id: 'csat-send', every: POLL_INTERVAL_MS, run: pollSendCsat });
+  scheduler.registerSchedule({ id: 'csat-auto-close', every: POLL_INTERVAL_MS, run: pollAutoClose });
 }

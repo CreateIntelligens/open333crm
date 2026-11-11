@@ -14,6 +14,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 process.env.DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/open333crm';
@@ -32,6 +33,7 @@ interface Sent {
 function createDb(sent: Sent, options: { greeting?: string | null } = {}) {
   const { greeting = null } = options;
   return {
+    ...disabledAiPrivacy,
     channel: {
       async findFirst() {
         return { settings: greeting === null ? {} : { firstContactGreeting: greeting } };

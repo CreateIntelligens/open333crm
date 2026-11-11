@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   listMaterials,
   getMaterial,
@@ -24,6 +24,7 @@ import {
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { generateFlexFromPrompt } from '../ai/flex-ai.service.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 
@@ -131,6 +132,7 @@ const createMaterialSchema = z.object({
   channelType: z.enum(CHANNEL_TYPE_VALUES).optional(),
   contentType: z.enum(CONTENT_TYPE_VALUES).optional(),
   body: z.record(z.unknown()).optional(),
+  privacyMode: z.enum(['mask', 'original']).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
   // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
@@ -145,6 +147,7 @@ const updateMaterialSchema = z.object({
   tags: tagsSchema.optional(),
   status: z.enum(MATERIAL_STATUS_VALUES).optional(),
   body: z.record(z.unknown()).optional(),
+  privacyMode: z.enum(['mask', 'original']).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
   // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
@@ -287,7 +290,9 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   // POST /materials/line-flex/ai-generate — 一句話描述 → AI 產合法 Flex body（進填空編輯器微調）
   fastify.post('/materials/line-flex/ai-generate', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = lineFlexAiGenerateSchema.parse(request.body);
-    const result = await generateFlexFromPrompt(request.tenantPrisma, request.agent.tenantId, data.prompt);
+    // LINE 驗證仍用舊的租戶連線，留到搬 marketing（change migrate-ai-llm-tenant-ctx，design D6）
+    const llm = { prisma: fastify.prisma, redis: fastify.redis, events: createOutboxPublisher(fastify.prisma) };
+    const result = await generateFlexFromPrompt(llm, request.tenantPrisma, request.agent.tenantId, data.prompt);
     return reply.send(success(result));
   });
 

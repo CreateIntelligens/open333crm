@@ -93,12 +93,12 @@
 
 前端 SHALL 在成員以密碼登入、以 Passkey 登入，以及恢復登入狀態之後，以 `GET /api/v1/auth/me/permissions` 載入成員的權限集合。載入失敗時，權限集合是空的，側邊選單 SHALL 顯示載入失敗的提示與「重試」按鈕。`usePermission(code)` 依這份集合回答成員是否有某個權限碼。
 
-側邊選單 SHALL 隱藏成員沒有權限的項目。沒有連結的上層項目，在子項目全部隱藏時也隱藏。
+側邊選單 SHALL 隱藏成員沒有權限的項目。沒有連結的上層項目，在子項目全部隱藏時也隱藏。各項目要求的權限碼與後端守門一致：「報表」底下的「總覽」要 `analytics.view`，「我的績效」要 `analytics.view.self`；「知識庫」底下的「AI 設定」（Embedding、Chat & Prompt）要 `settings.manage`。
 
 這些控制只影響顯示。授權以後端的「權限檢查 guard」為準。
 
 #### Scenario: 沒有權限時隱藏選單項目
-- **WHEN** 成員沒有 `analytics.view`
+- **WHEN** 成員沒有 `analytics.view`，也沒有 `analytics.view.self`
 - **THEN** 側邊選單不顯示「報表」
 
 #### Scenario: 有權限時顯示選單項目
@@ -121,3 +121,10 @@
 - **WHEN** 恢復登入狀態成功，但 `GET /api/v1/auth/me/permissions` 失敗
 - **THEN** `usePermission` 對任何權限碼都是 `false`，側邊選單顯示「無法載入你的權限」與「重試」；成員按「重試」且回應含 `analytics.view` 時，提示消失，`usePermission('analytics.view')` 是 `true`
 
+#### Scenario: 只有個人報表權限時顯示我的績效
+- **WHEN** 成員有 `analytics.view.self`，沒有 `analytics.view`
+- **THEN** 側邊選單顯示「報表」與「我的績效」，不顯示「總覽」
+
+#### Scenario: 沒有設定權限時隱藏 AI 設定
+- **WHEN** 成員有 `knowledge.view`，沒有 `settings.manage`
+- **THEN** 側邊選單顯示「知識庫」，不顯示「AI 設定」、「Embedding」與「Chat & Prompt」

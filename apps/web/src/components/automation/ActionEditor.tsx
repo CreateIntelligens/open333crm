@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import useSWR from 'swr';
 import api from '@/lib/api';
-import { agentOptions, selectOptionsForParam } from '@/lib/automation/rule-actions';
+import { agentOptions, emptyOptionLabel, materialOptions, selectOptionsForParam } from '@/lib/automation/rule-actions';
+import { bodyHasCouponUrl, COUPON_URL_IN_AUTOMATION_MESSAGE } from '@/lib/marketing/coupon-url';
 
 const ACTION_TYPES = [
   { value: 'send_message', label: '傳送訊息' },
@@ -99,6 +100,17 @@ function ActionParamsForm({
               <AgentSelectField
                 key={param.key}
                 label={param.label}
+                emptyLabel={param.required ? '請選擇客服' : emptyOptionLabel(param.key)}
+                value={value}
+                onChange={(v) => updateParam(param.key, v)}
+              />
+            );
+          }
+          if (param.type === 'material') {
+            return (
+              <MaterialSelectField
+                key={param.key}
+                label={param.label}
                 value={value}
                 onChange={(v) => updateParam(param.key, v)}
               />
@@ -112,6 +124,8 @@ function ActionParamsForm({
                 </label>
                 <Select
                   options={selectOptionsForParam(param)}
+                  // 必填參數沒有「不指定」；未選時要顯示「請選擇…」，否則畫面顯示第一個選項，實際卻是空值
+                  placeholder={param.required ? `請選擇${param.label}` : undefined}
                   value={value}
                   onChange={(e) => updateParam(param.key, e.target.value)}
                   className="h-8 py-1 text-sm"
@@ -255,10 +269,12 @@ function ActionParamsForm({
  */
 function AgentSelectField({
   label,
+  emptyLabel,
   value,
   onChange,
 }: {
   label: string;
+  emptyLabel: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -275,11 +291,64 @@ function AgentSelectField({
     <div>
       <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
       <Select
-        options={agentOptions((data ?? []) as Array<{ id: string; name?: string; email?: string }>, value, data !== undefined)}
+        options={agentOptions((data ?? []) as Array<{ id: string; name?: string; email?: string }>, value, data !== undefined, emptyLabel)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-8 py-1 text-sm"
       />
+    </div>
+  );
+}
+
+/** 素材庫 API 每頁最多 50 筆；逐頁取完所有啟用中的素材（最多 20 頁，避免異常資料讓請求無限進行） */
+async function fetchAllActiveMaterials(): Promise<Array<{ id: string; name?: string; channelType?: string; body?: unknown }>> {
+  const all: Array<{ id: string; name?: string; channelType?: string; body?: unknown }> = [];
+  for (let page = 1; page <= 20; page++) {
+    const res = await api.get(`/marketing/materials?isActive=true&page=${page}&limit=50`);
+    all.push(...((res.data?.data ?? []) as typeof all));
+    const totalPages = Number(res.data?.meta?.totalPages ?? 1);
+    if (page >= totalPages) break;
+  }
+  return all;
+}
+
+/**
+ * 傳送素材：從素材庫選（原本要手動貼素材 UUID，問題清單 A04）。
+ * 沒有素材檢視權限（marketing.view）或載入失敗時，退回文字輸入並說明原因。
+ */
+function MaterialSelectField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { data, error } = useSWR('automation:active-materials', fetchAllActiveMaterials);
+  if (error) {
+    return (
+      <div>
+        <PayloadField label={label} value={value} onChange={onChange} placeholder="素材 ID" />
+        <p className="mt-1 text-xs text-muted-foreground">無法載入素材清單（可能沒有檢視素材庫的權限），請填入素材 ID。</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
+      <Select
+        options={materialOptions(data ?? [], value, data !== undefined)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 py-1 text-sm"
+      />
+      <p className="mt-1 text-xs text-muted-foreground">素材的渠道和對話不同時不會送出。</p>
+      {bodyHasCouponUrl(data?.find((m) => m.id === value)?.body) && (
+        <p role="alert" className="mt-1 rounded border border-warning/30 bg-warning-subtle px-2 py-1 text-xs text-warning">
+          {COUPON_URL_IN_AUTOMATION_MESSAGE}
+        </p>
+      )}
     </div>
   );
 }
@@ -329,6 +398,34 @@ function JsonFallbackEditor({
   );
 }
 
+/**
+ * 既有規則上的發券動作（add-coupon-system design D25）：發券改在關鍵字回覆與加好友禮頁設定，
+ * 自動化規則編輯器只顯示券名與說明，可以刪除這個動作，不能新增或換券。
+ */
+function HiddenActionReadOnly({ definition, payload }: { definition: AutomationActionDefinition; payload: Record<string, unknown> }) {
+  const couponId = typeof payload.couponId === 'string' ? payload.couponId : '';
+  const { data: coupon, error } = useSWR(
+    couponId ? `/coupons/${couponId}` : null,
+    async (url: string) => (await api.get(url)).data?.data as { name?: string; displayCode?: string } | undefined,
+  );
+  const couponLabel = !couponId
+    ? '未指定優惠券'
+    : coupon?.name
+      ? `${coupon.name}${coupon.displayCode ? `（${coupon.displayCode}）` : ''}`
+      : error
+        ? `找不到的券或沒有檢視權限（${couponId}）`
+        : '載入中…';
+  return (
+    <div className="space-y-1 text-sm">
+      <p className="text-xs font-medium text-muted-foreground">{definition.label}</p>
+      <p className="font-medium">{couponLabel}</p>
+      <p className="text-xs text-muted-foreground">
+        發券請到「渠道 → 關鍵字回覆」（LINE、Facebook、Instagram）或「LINE 加好友禮」設定。這個動作會照常執行，這裡只能刪除。
+      </p>
+    </div>
+  );
+}
+
 export function ActionEditor({
   action,
   actionDefinitions,
@@ -336,11 +433,25 @@ export function ActionEditor({
   onRemove,
 }: ActionEditorProps) {
   // Normalize: backend may use "params" instead of "payload"
-  const payload = action.payload || (action as any).params || {};
+  const payload = action.payload || (action as { params?: Record<string, unknown> }).params || {};
   const definition = actionDefinitions?.find((item) => item.type === action.type);
+  // 隱藏的動作（發送優惠券）不列在動作選單，只能在專用頁設定
   const actionTypeOptions =
-    actionDefinitions?.map((item) => ({ value: item.type, label: item.label })) ??
+    actionDefinitions
+      ?.filter((item) => !item.editorHidden)
+      .map((item) => ({ value: item.type, label: item.label })) ??
     ACTION_TYPES;
+
+  if (definition?.editorHidden) {
+    return (
+      <div className="flex gap-3 rounded-md border border-input bg-muted/30 p-3">
+        <div className="flex-1">
+          <HiddenActionReadOnly definition={definition} payload={payload} />
+        </div>
+        <RemoveActionButton onRemove={onRemove} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-3 rounded-md border border-input bg-muted/30 p-3">
@@ -364,16 +475,24 @@ export function ActionEditor({
           onChange={(p) => onChange({ ...action, payload: p })}
         />
       </div>
-      <div className="pt-5">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onRemove}
-          className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+      <RemoveActionButton onRemove={onRemove} />
+    </div>
+  );
+}
+
+function RemoveActionButton({ onRemove }: { onRemove: () => void }) {
+  return (
+    <div className="pt-5">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onRemove}
+        aria-label="刪除動作"
+        title="刪除動作"
+        className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

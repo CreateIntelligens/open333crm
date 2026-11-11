@@ -10,7 +10,7 @@ import {
   passkeyRegistrationVerifySchema,
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
-import { getLoginAttemptStore, type LoginAttemptStore } from './login-attempts.js';
+import type { LoginAttemptStore } from './login-attempts.js';
 import { ACCESS_TOKEN_TYPE, REFRESH_TOKEN_TYPE, isAgentRefreshToken } from '../../lib/agent-token.js';
 import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
 import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
@@ -34,11 +34,9 @@ import {
   storePasskeyChallenge,
   takePasskeyChallenge,
 } from './passkey.service.js';
-import {
-  createCliSession,
-  parseCliScopes,
-  revokeCliSession,
-} from './cli-session.service.js';
+import { parseCliScopes } from './cli-session.service.js';
+import { issueCliLoginSessionFlow, revokeCurrentCliSessionFlow } from './cli-session.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { notFound } from '../../shared/messages/resource.js';
 
 type TokenPayload = FastifyJWT['payload'];
@@ -141,7 +139,7 @@ export interface AuthRoutesOptions {
 }
 
 export default async function authRoutes(fastify: FastifyInstance, opts: AuthRoutesOptions = {}) {
-  const loginAttempts = () => opts.loginAttempts ?? getLoginAttemptStore();
+  const loginAttempts = () => opts.loginAttempts ?? fastify.redis;
 
   await fastify.register(rateLimit, {
     global: false,
@@ -224,7 +222,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     });
     const challengeId = createPasskeyChallengeId();
 
-    await storePasskeyChallenge({
+    await storePasskeyChallenge(fastify.redis, {
       challengeId,
       challenge: options.challenge,
       purpose: 'registration',
@@ -246,7 +244,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const body = passkeyRegistrationVerifySchema.parse(request.body);
-    const challenge = await takePasskeyChallenge(body.challengeId);
+    const challenge = await takePasskeyChallenge(fastify.redis, body.challengeId);
 
     if (
       challenge.purpose !== 'registration'
@@ -352,7 +350,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     });
     const challengeId = createPasskeyChallengeId();
 
-    await storePasskeyChallenge({
+    await storePasskeyChallenge(fastify.redis, {
       challengeId,
       challenge: options.challenge,
       purpose: 'authentication',
@@ -374,7 +372,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     },
   }, async (request, reply) => {
     const body = passkeyAuthenticationVerifySchema.parse(request.body);
-    const challenge = await takePasskeyChallenge(body.challengeId);
+    const challenge = await takePasskeyChallenge(fastify.redis, body.challengeId);
     if (challenge.purpose !== 'authentication') throw invalidPasskeyError();
 
     const credential = challenge.tenantId
@@ -552,11 +550,12 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
     const body = cliLoginRequestSchema.parse(request.body);
     // 與網頁登入共用同一個帳號的失敗計數，改打 CLI 端點也繞不過鎖定
     const agent = await login(fastify.prismaAdmin, body.email, body.password, loginAttempts());
-    const { token, session } = await createCliSession(fastify.prismaAdmin, {
-      tenantId: agent.tenantId,
-      agentId: agent.id,
-      name: body.name ?? body.profile ?? 'Open333 CLI',
-    });
+    const { token, session } = await issueCliLoginSessionFlow(
+      fastify,
+      agent,
+      body.name ?? body.profile ?? 'Open333 CLI',
+      request.ip,
+    );
 
     return reply.send(
       success({
@@ -588,7 +587,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
   }, async (request, reply) => {
     const session = request.agent.cliSession;
     if (session) {
-      await revokeCliSession(fastify.prismaAdmin, session.id, request.agent.tenantId);
+      await revokeCurrentCliSessionFlow(fastify, actorOf(request), session.id);
     }
     return reply.send(success({ loggedOut: true }));
   });
@@ -660,7 +659,7 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
   }, async (request, reply) => {
     // 前端 gating 用「使用者實際可用權限」= 角色權限 ∩ 方案天花板
     const planId = await getTenantPlanId(fastify.prismaAdmin, request.agent.tenantId);
-    const eff = await getEffectiveTenantPermissions(fastify.prismaAdmin, request.agent.roleId, planId);
+    const eff = await getEffectiveTenantPermissions(fastify.prismaAdmin, fastify.redis, request.agent.roleId, planId);
     return reply.send(success({ permissions: [...eff] }));
   });
 }

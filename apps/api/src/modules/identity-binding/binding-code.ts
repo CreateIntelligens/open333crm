@@ -2,8 +2,7 @@
  * 跨渠道綁定代碼：常數、代碼產生／擷取、Redis 儲存介面（change add-cross-channel-one-id，design D1 / D2 / D9）。
  */
 import { randomBytes } from 'node:crypto';
-import IORedis from 'ioredis';
-import { getConfig } from '../../config/env.js';
+import { getSharedRedis } from '../../lib/redis-client.js';
 
 /** 代碼有效期（design D1） */
 export const BINDING_CODE_TTL_MS = 30 * 60 * 1000;
@@ -24,6 +23,8 @@ export const DEFAULT_BIND_KEYWORDS = ['綁定帳號'];
 export const DEFAULT_UNBIND_KEYWORDS = ['解除綁定'];
 /** email 登記關鍵字預設值（change add-email-identity-merge，design D1） */
 export const DEFAULT_EMAIL_KEYWORDS = ['登記email'];
+/** 手機登記關鍵字預設值（change add-phone-identity-merge，design D5） */
+export const DEFAULT_PHONE_KEYWORDS = ['登記手機'];
 
 const CODE_PREFIX = 'BIND-';
 const CODE_LENGTH = 10;
@@ -51,7 +52,8 @@ export function extractBindingCode(text: string | undefined | null): string | nu
 
 /** 綁定代碼用到的 Redis 指令子集；以介面注入，測試可換成記憶體實作 */
 export interface BindingStore {
-  set(key: string, value: string, mode: 'PX', ttlMs: number, condition: 'NX'): Promise<'OK' | null>;
+  /** NX：鍵不存在才寫；XX：鍵已存在才覆寫（把「處理中」換成結果，中間不留空窗） */
+  set(key: string, value: string, mode: 'PX', ttlMs: number, condition: 'NX' | 'XX'): Promise<'OK' | null>;
   getdel(key: string): Promise<string | null>;
   get(key: string): Promise<string | null>;
   incr(key: string): Promise<number>;
@@ -92,10 +94,10 @@ export async function readCounter(store: BindingStore, key: string): Promise<num
   return Number((await store.get(key)) ?? 0);
 }
 
-let redisClient: IORedis | null = null;
-
-/** 正式環境的 Redis 實作（延遲建立連線） */
+/**
+ * 拿不到 `fastify` 的 webhook 收訊流程（inbound-identity-binding、inbound-coupon-claim）用的 Redis 實作。
+ * 其他入口傳入 `fastify.redis`。webhook 收訊流程改為注入之後移除（#337 階段 4）。
+ */
 export function getBindingStore(): BindingStore {
-  redisClient ??= new IORedis(getConfig().REDIS_URL, { maxRetriesPerRequest: 2 });
-  return redisClient as unknown as BindingStore;
+  return getSharedRedis();
 }

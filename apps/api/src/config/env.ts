@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -24,10 +24,6 @@ const envSchema = z.object({
   WEB_BASE_URL: z.string().default('http://localhost:3000'),
   MCP_ALLOWED_ORIGINS: z.string().default(''),
   LICENSE_KEY: z.string().default('dev-license-key'),
-  CACHE_DRIVER: z.string().default('memory'),
-  CACHE_SEGMENT: z.string().default('open333crm'),
-  CACHE_REDIS_DB: z.coerce.number().int().optional(),
-  CACHE_EXPIRES_IN: z.coerce.number().int().optional(),
   // 平台持有的 Meta App（change fix-meta-webhook-page-routing 第 3 階段）：租戶以 Facebook 登入連結粉專，
   // 事件統一打到 /api/v1/webhooks/meta。四個都設定才啟用；未設定時相關端點回 503
   META_APP_ID: z.string().optional(),
@@ -71,6 +67,13 @@ const envSchema = z.object({
   A2A_AGENT_ID: z.string().trim().min(1).optional(),
   A2A_AGENT_TOKEN: z.string().trim().min(1).optional(),
   A2A_HUB_KEY: z.string().trim().min(1).optional(),
+  // WebTalk 協作工具列（change webtalk-multi-tenant）。WEBTALK_ROOM_SECRET 與 WEBTALK_SDK_URL 任一缺少時，
+  // 所有租戶都不載入 WebTalk（fail-closed）；格式檢查在 webtalk.service 的 resolveWebTalkServerConfig。
+  WEBTALK_ROOM_SECRET: z.string().optional(),
+  WEBTALK_SITE_ID: z.string().trim().min(1).default('open333crm'),
+  WEBTALK_SDK_URL: z.string().optional(),
+  WEBTALK_SDK_INTEGRITY: z.string().optional(),
+  WEBTALK_AI_ENDPOINT: z.string().optional(),
   UPLOAD_CONTENT_DETECTION_ENABLED: z.string().transform((v) => v !== 'false').default('true'),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp', 'resend']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
@@ -86,6 +89,18 @@ const envSchema = z.object({
     .transform((v) => v === 'true' || v === '1'),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // 維運告警的 Slack Incoming Webhook（change queue-monitoring：ops-alert）。沒有設定或是空值時，告警只寫 log
+  OPS_ALERT_SLACK_WEBHOOK_URL: z.string().optional(),
+  // 佇列監控（/api/v1/platform/queues）允許的來源網段，以逗號分隔（change queue-monitoring）。
+  // 沒有設定、空值或任一個網段格式錯誤時，監控畫面回 403，API 照常啟動
+  QUEUE_DASHBOARD_ALLOWED_CIDRS: z.string().optional(),
+  // JSON 請求內容的上限（change limit-request-array-size，issue #382）：在 JSON.parse 之前掃描，超過就回 400，
+  // 不進入 Zod。zod/v3 對每個不合格的陣列元素或 record 值各產生一筆錯誤，數量沒有上限。
+  // 個別路由可用 route config `jsonPayloadLimits` 調高，見 plugins/json-payload-guard.plugin.ts
+  REQUEST_JSON_MAX_ARRAY_LENGTH: z.coerce.number().int().positive().default(10_000),
+  REQUEST_JSON_MAX_OBJECT_KEYS: z.coerce.number().int().positive().default(10_000),
+  REQUEST_JSON_MAX_TOTAL_ENTRIES: z.coerce.number().int().positive().default(100_000),
+  REQUEST_JSON_MAX_DEPTH: z.coerce.number().int().positive().default(64),
 }).superRefine((cfg, ctx) => {
   if (cfg.EMAIL_DELIVERY_MODE === 'smtp' && !cfg.SMTP_HOST) {
     ctx.addIssue({

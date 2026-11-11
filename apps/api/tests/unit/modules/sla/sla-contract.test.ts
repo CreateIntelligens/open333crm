@@ -108,7 +108,7 @@ async function testApiAutomationSubscriberOnlyEnqueuesJobs() {
   assert.equal(source.includes('await triggerAutomation('), false);
   assert.equal(source.includes("new Queue('automation'"), true);
   // 佇列改為延遲建立（automationQueue()），避免 import 時就連 Redis
-  assert.match(source, /automationQueue\(\)\.add\('automation:evaluate'/);
+  assert.match(source, /automationQueue\(\)\s*\.add\('automation:evaluate'/);
 }
 
 async function testWorkerSlaNotificationPathsArePresent() {

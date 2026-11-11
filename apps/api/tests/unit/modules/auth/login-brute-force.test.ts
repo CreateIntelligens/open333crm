@@ -2,10 +2,14 @@
  * 登入失敗鎖定與停用帳號回應順序（change add-login-brute-force-protection，AUDIT SEC-05）。
  */
 import assert from 'node:assert/strict';
-import { beforeAll, test } from 'vitest';
+import { beforeAll, test, vi } from 'vitest';
 import { login } from '#src/modules/auth/auth.service.js';
 import { hashPassword } from '#src/shared/utils/password.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
+
+// 這個檔案的 test 實際以 bcryptjs 雜湊與比對密碼，很吃 CPU。turbo 同時執行其他套件時，
+// 單一 test 可能超過預設的 5 秒（#299）
+vi.setConfig({ testTimeout: 20_000 });
 
 const PASSWORD = 'Correct-Pass-1';
 let hash = '';

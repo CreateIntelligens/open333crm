@@ -133,19 +133,18 @@ test.describe('@marketing 行銷功能層', () => {
     await expect(page.getByRole('heading', { name: '行銷活動' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: '新增活動' })).toBeVisible();
 
-    // 注意：MarketingTabs 的 TabsTrigger 實際渲染為 <button>（tabs.tsx 未加 role="tab"），
-    // 非 ARIA tab role，故用 getByRole('button', { exact: true }) 定位，避免誤中同頁其他
+    // MarketingTabs 使用 ARIA tab role，故用 getByRole('tab', { exact: true }) 定位，避免誤中同頁其他
     // 含「廣播」/「分群」字樣的按鈕（如「建立廣播」「新增分群」）。
-    await page.getByRole('button', { name: '廣播', exact: true }).click();
+    await page.getByRole('tab', { name: '廣播', exact: true }).click();
     await expect(page.getByRole('heading', { name: '廣播歷史' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '建立廣播' })).toBeVisible();
 
-    await page.getByRole('button', { name: '受眾分群', exact: true }).click();
+    await page.getByRole('tab', { name: '受眾分群', exact: true }).click();
     await expect(page.getByRole('heading', { name: '受眾分群' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '新增分群' })).toBeVisible();
 
     // 切回行銷活動確認可逆
-    await page.getByRole('button', { name: '行銷活動', exact: true }).click();
+    await page.getByRole('tab', { name: '行銷活動', exact: true }).click();
     await expect(page.getByRole('heading', { name: '行銷活動' })).toBeVisible({ timeout: 10_000 });
   });
 

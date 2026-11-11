@@ -215,7 +215,7 @@ export function LineFlexShowcaseEditor({ body, onChange }: Props) {
       {/* 進階：新增 / 刪除元件（收摺，多數填空使用者不需要動結構） */}
       <details className="rounded-lg border border-slate-200 bg-slate-50">
         <summary className="cursor-pointer px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
-          ⚙ 進階：新增 / 刪除元件
+          進階：新增 / 刪除元件
         </summary>
         <div className="space-y-2 px-3 pb-3">
           {containers.map((container) => (

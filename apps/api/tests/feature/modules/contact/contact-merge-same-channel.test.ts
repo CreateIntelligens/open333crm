@@ -15,7 +15,7 @@ import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient, withTenant } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import contactRoutes from '#src/modules/contact/contact.routes.js';
-import { identityRoutes } from '#src/modules/canvas/canvas.routes.js';
+import mergeSuggestionRoutes from '#src/modules/contact/merge-suggestion.routes.js';
 import { mergeContacts } from '#src/modules/contact/contact-merge.service.js';
 
 loadEnvConfig();
@@ -78,7 +78,7 @@ async function buildApp(roleId: string) {
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(prisma, T);
   });
   await app.register(contactRoutes, { prefix: '/api/v1/contacts' });
-  await app.register(identityRoutes, { prefix: '/api/v1/identity' });
+  await app.register(mergeSuggestionRoutes, { prefix: '/api/v1/identity' });
   await app.ready();
   return app;
 }
@@ -90,7 +90,8 @@ const errorOf = (res: { json: () => unknown }) => {
 
 const line = await channel('LINE', '同渠道測試 LINE');
 const fb = await channel('FB', '同渠道測試粉專');
-const mergeRole = await role('merge', ['contact.view', 'contact.merge']);
+// channel.view_all：這裡測合併規則，不測渠道可見範圍（看不到的聯絡人合併回 404，見 contact-channel-visibility.test.ts）
+const mergeRole = await role('merge', ['contact.view', 'contact.merge', 'channel.view_all']);
 const reviewRole = await role('review', ['identity.review']);
 const mergeApp = await buildApp(mergeRole.id);
 const reviewApp = await buildApp(reviewRole.id);
@@ -158,7 +159,7 @@ test('Two merges into the same survivor at the same time：只有一個成功，
 
   const results = await Promise.allSettled(
     [a1, a2].map((a) =>
-      db((tx) => mergeContacts(tx, { tenantId: T, survivorId: b.id, mergedId: a.id, source: 'MANUAL' })),
+      db((tx) => mergeContacts({ tx: tx, tenantId: T }, { survivorId: b.id, mergedId: a.id, source: 'MANUAL' })),
     ),
   );
 

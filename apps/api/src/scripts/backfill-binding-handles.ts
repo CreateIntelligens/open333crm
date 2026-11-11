@@ -19,13 +19,21 @@ import { verifyChannel } from '../modules/channel/channel.service.js';
 const apply = process.argv.includes('--apply');
 // 跨租戶掃描：使用共用 client（不自建 PrismaClient），DATABASE_URL 需指向 owner / app_admin（BYPASSRLS）
 
+type BindingChannel = {
+  id: string;
+  tenantId: string;
+  channelType: string;
+  displayName: string;
+  settings: unknown;
+};
+
 function hasHandle(settings: unknown): boolean {
   const s = (settings ?? {}) as Record<string, unknown>;
   return Boolean(s.bindingHandle || s.bindingHandleAuto);
 }
 
 async function main() {
-  const channels = await prisma.channel.findMany({
+  const channels: BindingChannel[] = await prisma.channel.findMany({
     where: { isActive: true, channelType: { in: ['LINE', 'FB', 'THREADS'] } },
     select: { id: true, tenantId: true, channelType: true, displayName: true, settings: true },
     orderBy: [{ tenantId: 'asc' }, { channelType: 'asc' }],

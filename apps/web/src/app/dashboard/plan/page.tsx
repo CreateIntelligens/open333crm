@@ -13,10 +13,18 @@ interface Req {
   topupTokens: number | null;
   note: string | null;
   status: 'pending' | 'approved' | 'rejected';
+  reviewedAt: string | null;
   createdAt: string;
 }
 
 type Mode = 'upgrade' | 'token_topup';
+/** 加購只在核准當月（台灣時間 UTC+8）有效：回傳核准時間所在的台灣月份 YYYY-MM */
+function taipeiMonth(iso: string): string {
+  return new Date(Date.parse(iso) + 8 * 60 * 60 * 1000).toISOString().slice(0, 7);
+}
+
+const TOPUP_MONTHLY_NOTE = '加購的額度只在核准當月（台灣時間）有效，下個月回到方案額度。';
+
 
 // TODO(PM 確認)：方案說明與加購價格目前沒有 API 可讀，先寫死在前端。
 // 說明文字依 seed 的方案額度撰寫；價格沿用 Claude Design 稿，上線前需確認。
@@ -67,7 +75,19 @@ export default function PlanPage() {
       setLoaded(true);
     }
   };
-  useEffect(() => { load(); }, []);
+  // AI 月額度無上限時加購不會生效，後端也會拒絕（TOPUP_UNLIMITED）；查不到時先允許，交給後端判斷（取自 main）
+  const [topupAllowed, setTopupAllowed] = useState(true);
+  useEffect(() => {
+    load();
+    api
+      .get('/plan-change/topup-eligibility')
+      .then((res) => {
+        const allowed = res.data.data.allowed !== false;
+        setTopupAllowed(allowed);
+        if (!allowed) setMode('upgrade');
+      })
+      .catch(() => {});
+  }, []);
 
   const hasPending = reqs.some((r) => r.status === 'pending');
   const canSubmit = (mode === 'upgrade' ? !!targetPlan : topup !== null) && !submitting;
@@ -100,7 +120,7 @@ export default function PlanPage() {
         {/* 標題 */}
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold leading-8 text-foreground">方案</h1>
-          <p className="text-sm text-muted-foreground">申請升級方案或加購 AI token 額度，由平台方審核後生效</p>
+          <p className="text-sm text-muted-foreground">申請升級方案或加購 AI token 額度，由平台方審核後生效。加購僅限核准當月（台灣時間），下個月回到方案額度。</p>
         </div>
 
         {/* 設計稿的「目前方案／本期用量／計費週期」摘要卡需要後端提供租戶方案資料，目前沒有 API，先不顯示 */}
@@ -130,8 +150,9 @@ export default function PlanPage() {
                   role="tab"
                   aria-selected={mode === m}
                   onClick={() => setMode(m)}
+                  disabled={m === 'token_topup' && !topupAllowed}
                   className={cn(
-                    'h-[46px] min-w-0 flex-1 whitespace-nowrap border-b-2 px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                    'h-[46px] min-w-0 flex-1 whitespace-nowrap border-b-2 px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
                     mode === m ? 'border-primary font-semibold text-primary' : 'border-transparent font-medium text-muted-foreground hover:text-foreground',
                   )}
                 >
@@ -139,8 +160,10 @@ export default function PlanPage() {
                 </button>
               ))}
             </div>
-
             <div className="flex flex-col gap-[18px] p-5">
+              {!topupAllowed && (
+                <p className="text-xs text-muted-foreground">目前方案的 AI 額度已無上限，不需要加購</p>
+              )}
               {mode === 'upgrade' ? (
                 <div className="flex max-w-[320px] flex-col gap-1.5">
                   <label htmlFor="target-plan" className="text-[13px] font-medium leading-[18px]">目標方案</label>
@@ -181,6 +204,7 @@ export default function PlanPage() {
                       );
                     })}
                   </div>
+                  <p className="text-xs leading-[17px] text-muted-foreground">{TOPUP_MONTHLY_NOTE}</p>
                 </div>
               )}
 
@@ -240,7 +264,10 @@ export default function PlanPage() {
                   <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
                     <span className="text-sm font-medium">{title}</span>
                     <span className="truncate text-xs tabular-nums text-muted-foreground">
-                      {formatTime(r.createdAt)}{r.note ? `　${r.note}` : ''}
+                      {formatTime(r.createdAt)}
+                      {/* 加購只在核准當月有效（取自 main） */}
+                      {r.type === 'token_topup' && r.status === 'approved' && r.reviewedAt && `　限 ${taipeiMonth(r.reviewedAt)} 使用`}
+                      {r.note ? `　${r.note}` : ''}
                     </span>
                   </div>
                   <span className={cn('inline-flex flex-none items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-xs font-medium', STATUS[r.status].cls)}>

@@ -9,12 +9,11 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { z } from "zod/v3";
+import { logger } from "@open333crm/core";
 import { detectSource, parseSourceOverride } from "./source-detector.js";
-import {
-  getLinkForRedirect,
-  getChannelLiffId,
-  trackClick,
-} from "./shortlink.service.js";
+import { getLinkForRedirect, getChannelLiffId } from "./shortlink.service.js";
+import { trackClickFlow } from "./shortlink.flow.js";
 import { getStrategy, renderExpiredPage } from "./strategies/index.js";
 
 const TRACK_PATH = "/s/track";
@@ -27,28 +26,40 @@ function uaSimulatorEnabled(): boolean {
   );
 }
 
-interface TrackBody {
-  slug?: string;
-  cid?: string;
-  lineUid?: string;
-}
+// 公開端點，任何人都能送任意 body（#387）。外部瀏覽器頁送 cid: null，LIFF 頁省略 cid，所以允許 null。
+// slug 上限與後台自訂代碼相同；LINE uid 是 33 字元，cid 是 UUID，上限 64 已足夠。
+const trackBodySchema = z.object({
+  slug: z.string().max(64).optional(),
+  cid: z.string().max(64).nullish().transform((v) => v ?? undefined),
+  lineUid: z.string().max(64).nullish().transform((v) => v ?? undefined),
+});
 
-function parseTrackBody(body: unknown): TrackBody {
+/** sendBeacon 送 text/plain，fetch 送 JSON；不是 JSON 的字串當成空 body */
+function parseTrackBody(body: unknown) {
+  let raw: unknown = body;
   if (typeof body === "string") {
     try {
-      return JSON.parse(body) as TrackBody;
+      raw = JSON.parse(body);
     } catch {
-      return {};
+      raw = {};
     }
   }
-  if (body && typeof body === "object") return body as TrackBody;
-  return {};
+  return trackBodySchema.safeParse(raw && typeof raw === "object" ? raw : {});
 }
 
 export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
   // ─── POST /s/track ── the only place a click is recorded ──────────────────
   app.post("/track", async (request, reply) => {
-    const { slug, cid, lineUid } = parseTrackBody(request.body);
+    const parsed = parseTrackBody(request.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send({
+          success: false,
+          error: { code: "BAD_REQUEST", message: "invalid track body" },
+        });
+    }
+    const { slug, cid, lineUid } = parsed.data;
     if (!slug) {
       return reply
         .status(400)
@@ -58,22 +69,11 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
         });
     }
 
-    const targetUrl = await trackClick(
-      // 公開端點無登入身分、無 tenant context，RLS 會 fail-closed 擋掉查詢，
-      // 故走 prismaAdmin（BYPASSRLS）。租戶邊界由 slug 全域唯一保證。
-      app.prismaAdmin,
-      slug,
-      {
-        contactId: cid,
-        lineUid,
-        ip: request.ip,
-        userAgent: request.headers["user-agent"],
-        referer: request.headers.referer,
-      },
-      app.io,
-    );
+    // 公開端點無登入身分、無 tenant context，RLS 會 fail-closed 擋掉查詢，
+    // 故以 prismaAdmin（BYPASSRLS）用 slug 找短連結。租戶邊界由 slug 全域唯一保證。
+    const resolved = await getLinkForRedirect(app.prismaAdmin, slug);
 
-    if (!targetUrl) {
+    if (!resolved) {
       return reply
         .status(410)
         .send({
@@ -82,7 +82,17 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
         });
     }
 
-    return reply.send({ success: true, data: { targetUrl } });
+    // 點擊在背景寫入（交易綁定短連結的租戶），不等待：轉址不因記錄點擊而變慢。
+    // 最多一次：寫入失敗只記 log，這次點擊不計入（與搬遷前相同）
+    void trackClickFlow(app, resolved.link, {
+      contactId: cid,
+      lineUid,
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+      referer: request.headers.referer,
+    }).catch((err) => logger.error("[ShortLink] Click tracking error:", err));
+
+    return reply.send({ success: true, data: { targetUrl: resolved.targetUrl } });
   });
 
   // ─── GET /s/:slug ── UA strategy dispatch, no tracking ────────────────────

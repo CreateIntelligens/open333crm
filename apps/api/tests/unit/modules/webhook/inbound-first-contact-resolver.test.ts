@@ -26,6 +26,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-inbound-first-contact-s
 
 import { eventBus, type AppEvent } from '#src/events/event-bus.js';
 import { resolveInboundContact } from '#src/modules/webhook/inbound-contact-resolver.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 type AnyRecord = Record<string, any>;
 
@@ -60,6 +61,10 @@ function createDb(options: {
         if (createThrowsP2002) throw new P2002Error('unique constraint');
         identityRow = { ...data, id: 'identity-1', contact: { displayName: data.profileName } };
         return identityRow;
+      },
+      // recordStitchedIdentity：沒有同 uid 的其他身分，不涉及合併紀錄
+      async findMany() {
+        return [];
       },
     },
     identityMap: {
@@ -194,6 +199,7 @@ async function run() {
 
     let identityRow: AnyRecord | null = null;
     const db: AnyRecord = {
+      ...disabledAiPrivacy,
       channelIdentity: {
         async findUnique() {
           return identityRow;
@@ -275,3 +281,45 @@ async function run() {
 }
 
 test('inbound-first-contact-resolver', run);
+
+test('stitched 身分寫入合併紀錄失敗時，建立身分在同一個交易內一起回滾', async () => {
+  const calls: string[] = [];
+  let rolledBack = false;
+  const tx: AnyRecord = {
+    ...disabledAiPrivacy,
+    channelIdentity: {
+      async create({ data }: AnyRecord) {
+        calls.push('tx.create');
+        return { ...data, id: 'identity-new', contact: { displayName: '跨渠道既有聯絡人' } };
+      },
+      // 有同 uid 的身分 → 會去查合併紀錄
+      async findMany() {
+        return [{ id: 'identity-sibling' }];
+      },
+    },
+    contactMergeLog: {
+      async findMany() {
+        throw new Error('合併紀錄查詢失敗');
+      },
+    },
+  };
+  const db = createDb({ existingIdentity: null, identityMapHit: 'contact-from-other-channel' });
+  db.channelIdentity.create = async () => {
+    calls.push('db.create');
+    return {};
+  };
+  db.$transaction = async (cb: (t: AnyRecord) => Promise<unknown>) => {
+    try {
+      return await cb(tx);
+    } catch (err) {
+      rolledBack = true;
+      throw err;
+    }
+  };
+  const ctx = createCtx(db);
+
+  await assert.rejects(resolveInboundContact(ctx as never), /合併紀錄查詢失敗/);
+  assert.deepEqual(calls, ['tx.create'], '身分在交易內建立，不走交易外的連線');
+  assert.equal(rolledBack, true, '記錄失敗時整個交易回滾，身分不留下');
+  assert.notEqual(ctx.isFirstContact, true);
+});

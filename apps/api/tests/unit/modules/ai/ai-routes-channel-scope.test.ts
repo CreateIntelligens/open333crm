@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
-import { beforeEach, test, vi } from 'vitest';
+import { beforeAll, beforeEach, test, vi } from 'vitest';
 import { AppError } from '#src/shared/utils/response.js';
 
 // AUDIT RBAC-04（AI 部分）：以 conversationId 讀對話的 AI 路由要先檢查渠道可見範圍。
@@ -33,16 +33,23 @@ vi.mock('#src/services/channel-visibility.js', () => ({
   resolveChannelVisibility: async () => BRANCH_CHANNELS,
 }));
 
-vi.mock('#src/modules/ai/ai.service.js', () => ({
-  suggestReply: async (_p: unknown, tenantId: string, id: string) => { serviceCalls.push(`suggest:${tenantId}:${id}`); return { suggestion: 'hi' }; },
-  summarizeConversation: async (_p: unknown, tenantId: string, id: string) => { serviceCalls.push(`summarize:${tenantId}:${id}`); return { summary: 's' }; },
+vi.mock('#src/modules/ai/ai.flow.js', () => ({
+  suggestReplyFlow: async (_deps: unknown, tenantId: string, id: string) => { serviceCalls.push(`suggest:${tenantId}:${id}`); return { suggestion: 'hi' }; },
+  summarizeConversationFlow: async (_deps: unknown, tenantId: string, id: string) => { serviceCalls.push(`summarize:${tenantId}:${id}`); return { summary: 's' }; },
 }));
 
-vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
-  runAgentReply: async (_p: unknown, input: { conversationId?: string; accessibleChannels?: unknown }) => {
+vi.mock('#src/modules/ai/agent/agent.flow.js', () => ({
+  runAgentReplyFlow: async (_deps: unknown, input: { conversationId?: string; accessibleChannels?: unknown }) => {
     agentInputs.push(input);
     serviceCalls.push(`agent:${input.conversationId ?? 'none'}`);
     return { handled: true, text: 'ok' };
+  },
+  readAgentRunFlow: async (_deps: unknown, tenantId: string, id: string) => {
+    const run = runs.get(id);
+    // 模擬 Prisma：只有 id 與 tenantId 都符合才回傳
+    if (!run || run.tenantId !== tenantId) return null;
+    const { tenantId: _t, ...selected } = run;
+    return selected;
   },
 }));
 
@@ -52,18 +59,18 @@ vi.mock('#src/config/env.js', () => ({
   getConfig: () => ({ AGENTIC_LLM_ENABLED: true, AGENT_WIKI_AUTO_PUBLISH: false }),
 }));
 
+let aiRoutes: typeof import('#src/modules/ai/ai.routes.js').default;
+
+// vi.mock 的 factory 用到上面宣告的變數，所以等檔案執行到這裡才載入。在 beforeAll 載入，
+// 載入時間不算進第一個 test 的時間上限：放在 test 裡時，turbo 同時執行其他套件就會逾時（#299）
+beforeAll(async () => {
+  ({ default: aiRoutes } = await import('#src/modules/ai/ai.routes.js'));
+});
+
 async function buildApp() {
-  const { default: aiRoutes } = await import('#src/modules/ai/ai.routes.js');
   const app = Fastify();
   app.decorate('authenticate', async (request: any) => {
     request.agent = { id: 'agent-1', tenantId: 'tenant-1' };
-    request.tenantPrisma = { agentRun: { findFirst: async ({ where }: any) => {
-      const run = runs.get(where.id);
-      // 模擬 Prisma：只有 id 與 tenantId 都符合才回傳
-      if (!run || run.tenantId !== where.tenantId) return null;
-      const { tenantId: _t, ...selected } = run;
-      return selected;
-    } } };
   });
   app.decorateRequest('tenantPrisma', null);
   app.setErrorHandler((err: any, _req, reply) => {

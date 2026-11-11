@@ -1,22 +1,52 @@
 /**
- * Automation event-bus worker.
+ * 自動化訂閱者：處理 event-automation 佇列的事件（change outbox-event-delivery，design 決策 8）。
  *
- * Subscribes to application events and enqueues automation rule evaluation.
- * Actual rule evaluation and action execution are handled by apps/workers.
+ * - 每個事件送出一個 automation:evaluate job，job id 是事件 id，事件重送時不會評估兩次。
+ *   規則評估與動作在 apps/workers 執行；關鍵字規則由 workers 處理 message.received 時比對。
+ * - message.received 另外依序做自動轉接、agent 或 KB 回覆、情緒分析。agent 沒有回覆、KB 又因錯誤失敗時轉接真人（#445）。
+ *   沒有遮罩副本的進站訊息（payload.privacyUnmasked）不交給模型：不跑 agent 與 KB、改轉真人，情緒分析只用關鍵字（#466）。
+ *   呼叫 LLM、去識別化服務的階段在交易之外，用 prismaAdmin；認領、寫入結果與發出衍生事件
+ *   放在一個 inTenant() 交易內，所以同一則訊息處理兩次時，每個副作用最多發生一次。
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { Redis } from 'ioredis';
 import type { Server } from 'socket.io';
-import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { Queue } from 'bullmq';
-import { eventBus } from '../../events/event-bus.js';
-import type { AppEvent } from '../../events/event-bus.js';
-import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
-import { analyzeSentiment } from '../ai/sentiment.service.js';
-import { autoClassifyNewCase } from '../ai/classify.service.js';
-import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
+import { claimSideEffect, hasSideEffectClaim, logger } from '@open333crm/core';
+import { getBotConfig, shouldRunAgentReply, type BotConfig } from '@open333crm/automation';
+import { getConfig } from '../../config/env.js';
+import { hasMatchingKeywordRule } from './keyword-yield.js';
+import { createEventRouter, type EventHandler, type SubscribedEvent } from '../../events/subscriber-workers.js';
+import { createOutboxPublisher, publishEvent, type EventPublisher } from '../../events/outbox-publisher.js';
+import { inTenant } from '../../lib/tenant-ctx.js';
+import { handOffConversation } from './handoff.flow.js';
+
+/**
+ * 認領與寫入結果的交易：tenantPrisma 是 inTenant() 的基礎連線（受 RLS 約束），events 寫 outbox。
+ * llm 是呼叫 LLM 的依賴，基礎連線同樣用 tenantPrisma，不用 prismaAdmin（change migrate-ai-llm-tenant-ctx，design D6）
+ */
+interface TenantDeps {
+  tenantPrisma: PrismaClient;
+  events: EventPublisher;
+  llm: LlmDeps;
+}
+import type { KbAutoReplyResult } from '../ai/kb-autoreply.service.js';
+import { attemptKbAutoReplyFlow } from '../ai/kb-autoreply.flow.js';
+import {
+  deidentificationFailureReason,
+  fixedSystemMessageContent,
+  prepareStoredMessageContent,
+  type PreparedStoredMessageContent,
+} from '../ai/deidentification.service.js';
+import { analyzeSentimentFlow, autoClassifyNewCaseFlow } from '../ai/ai.flow.js';
+import type { LlmDeps } from '../ai/llm.flow.js';
+import { isAgentEnabled } from '../ai/agent/agent.service.js';
+import { runAgentReplyFlow } from '../ai/agent/agent.flow.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { logger } from '@open333crm/core';
+import { ClaimTransactionError, createBotReplyGuard } from './bot-reply-guard.js';
+import { handOffAfterAiFailure, UNMASKED_INBOUND_HANDOFF } from './ai-failure-handoff.flow.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -25,46 +55,30 @@ function automationQueue(): Queue {
   if (!_automationQueue) {
     _automationQueue = new Queue('automation', {
       connection: { url: process.env.REDIS_URL! },
-      defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50 },
+      // job id 是事件 id：完成的 job 保留 24 小時，這段時間內事件重送不會再評估一次。
+      // workers 執行規則動作之前都以 automation_action 認領，所以可以重試
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5_000 },
+        removeOnComplete: { age: 86_400 },
+        removeOnFail: { age: 604_800 },
+      },
     });
   }
   return _automationQueue;
 }
 
-export type HandoffPromptStyle = 'text' | 'button' | 'both' | 'none';
-
-export interface BotConfig {
-  botMode: 'keyword' | 'llm' | 'keyword_then_llm' | 'off';
-  maxBotReplies: number;
-  handoffKeywords: string[];
-  handoffMessage: string;
-  offlineGreeting?: string;
-  handoffPromptEnabled: boolean;
-  handoffPromptStyle: HandoffPromptStyle;
-  handoffButtonLabel: string;
-}
-
-export const DEFAULT_HANDOFF_PROMPT_TEXT =
-  '需要真人客服協助嗎？請輸入「真人」或「客服」即可轉接。';
-
-export const DEFAULT_BOT_CONFIG: BotConfig = {
-  botMode: 'keyword_then_llm',
-  maxBotReplies: 5,
-  handoffKeywords: ['真人', '人工', '客服', '轉接'],
-  handoffMessage: '稍等，正在為您轉接客服人員',
-  handoffPromptEnabled: true,
-  handoffPromptStyle: 'button',
-  handoffButtonLabel: '💬 轉接客服',
-};
-
-export function shouldRunAgentReply(botMode: BotConfig['botMode']): boolean {
-  return botMode === 'llm' || botMode === 'keyword_then_llm';
-}
-
-function getBotConfig(settings: unknown): BotConfig {
-  const channelSettings = (settings || {}) as Record<string, unknown>;
-  const rawBotConfig = (channelSettings.botConfig || {}) as Partial<BotConfig>;
-  return { ...DEFAULT_BOT_CONFIG, ...rawBotConfig };
+/**
+ * 送出規則評估。eventId 供 workers 認領規則動作（automation_action）。
+ * 送不出時丟錯：訂閱者的 job 失敗，由 BullMQ 重試（event-delivery「每個訂閱者各自處理」）
+ */
+async function enqueueEvaluate(
+  event: SubscribedEvent,
+  trigger: string,
+  context: Record<string, unknown>,
+  jobId: string = event.id,
+) {
+  await automationQueue().add('automation:evaluate', { tenantId: event.tenantId, eventId: event.id, trigger, context }, { jobId });
 }
 
 async function getConversationBotConfig(
@@ -79,258 +93,184 @@ async function getConversationBotConfig(
   return conversation ? getBotConfig(conversation.channel?.settings) : null;
 }
 
+/**
+ * 自動轉接人工（bot-handoff-config「自動轉接每次只發生一次」）。
+ *
+ * 判斷、摘要與遮罩都在交易之外。交易內以條件更新把對話從 BOT_HANDLED 改成 AGENT_HANDLED，
+ * 成功才寫系統訊息、認領 bot_reply、發出 conversation.handoff；commit 之後才送出轉接訊息。
+ * commit 之前的失敗往外丟，由佇列重試；commit 之後送出轉接訊息的失敗只記 log。
+ */
 async function checkAutoHandoff(
   prisma: PrismaClient,
+  tenantDeps: TenantDeps,
   io: Server,
   tenantId: string,
   conversationId: string,
-  messageContent?: string,
-  contentType?: string,
+  messageContent: string | undefined,
+  contentType: string | undefined,
+  inboundMessageId: string | undefined,
 ) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
+    include: { channel: { select: { settings: true } } },
+  });
+
+  if (!conversation) return;
+
+  // Read bot config from channel settings
+  const botConfig = getBotConfig(conversation.channel?.settings);
+
+  let shouldHandoff = false;
+  let reason = '';
+
+  // Check 1: Bot replies count exceeded threshold
+  if (conversation.botRepliesCount >= botConfig.maxBotReplies) {
+    shouldHandoff = true;
+    reason = `Bot 回覆次數已達上限 (${conversation.botRepliesCount}/${botConfig.maxBotReplies})`;
+  }
+
+  // Check 2: Keyword match for human agent request
+  if (!shouldHandoff && messageContent && botConfig.handoffKeywords.length > 0) {
+    const lowerContent = messageContent.toLowerCase();
+    for (const keyword of botConfig.handoffKeywords) {
+      if (lowerContent.includes(keyword.toLowerCase())) {
+        shouldHandoff = true;
+        reason = `客戶要求轉接真人 (關鍵字: ${keyword})`;
+        break;
+      }
+    }
+  }
+
+  // Check 3: Image/file message from customer (may need human handling)
+  if (!shouldHandoff && contentType && ['image', 'file', 'video'].includes(contentType)) {
+    shouldHandoff = true;
+    reason = `客戶發送了${contentType === 'image' ? '圖片' : contentType === 'file' ? '檔案' : '影片'}，需要人工處理`;
+  }
+
+  if (!shouldHandoff) return;
+
+  // 外部呼叫在交易之前：摘要（LLM）與系統訊息的遮罩（去識別化服務）
+  let summary = '';
   try {
-    const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-      include: { channel: { select: { settings: true } } },
-    });
+    const { summarizeConversationFlow } = await import('../ai/ai.flow.js');
+    const summaryResult = await summarizeConversationFlow(tenantDeps.llm, tenantId, conversationId);
+    summary = summaryResult.summary;
+  } catch (err) {
+    logger.error('[AutoHandoff] Failed to generate summary:', err);
+  }
+  const now = new Date();
+  const systemText = summary
+    ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
+    : `自動轉接人工客服：${reason}`;
+  let storedContent: PreparedStoredMessageContent;
+  try {
+    storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: systemText }, 'system');
+  } catch (err) {
+    // 去識別化服務無法使用（issue #466）：摘要是模型輸出，不可未遮罩存入，捨棄摘要；
+    // 轉接原因只有程式的固定文字與租戶設定的轉接關鍵字，改用固定文字的系統訊息，對話照常轉給真人
+    if (!deidentificationFailureReason(err)) throw err;
+    logger.warn(`[AutoHandoff] conv=${conversationId} 去識別化服務無法使用，轉接訊息不附摘要`);
+    summary = '';
+    storedContent = fixedSystemMessageContent({ text: `自動轉接人工客服：${reason}` }, true);
+  }
 
-    if (!conversation) return;
-
-    // Read bot config from channel settings
-    const botConfig = getBotConfig(conversation.channel?.settings);
-
-    let shouldHandoff = false;
-    let reason = '';
-
-    // Check 1: Bot replies count exceeded threshold
-    if (conversation.botRepliesCount >= botConfig.maxBotReplies) {
-      shouldHandoff = true;
-      reason = `Bot 回覆次數已達上限 (${conversation.botRepliesCount}/${botConfig.maxBotReplies})`;
-    }
-
-    // Check 2: Keyword match for human agent request
-    if (!shouldHandoff && messageContent && botConfig.handoffKeywords.length > 0) {
-      const lowerContent = messageContent.toLowerCase();
-      for (const keyword of botConfig.handoffKeywords) {
-        if (lowerContent.includes(keyword.toLowerCase())) {
-          shouldHandoff = true;
-          reason = `客戶要求轉接真人 (關鍵字: ${keyword})`;
-          break;
-        }
-      }
-    }
-
-    // Check 3: Image/file message from customer (may need human handling)
-    if (!shouldHandoff && contentType && ['image', 'file', 'video'].includes(contentType)) {
-      shouldHandoff = true;
-      reason = `客戶發送了${contentType === 'image' ? '圖片' : contentType === 'file' ? '檔案' : '影片'}，需要人工處理`;
-    }
-
-    if (shouldHandoff) {
-      // Generate conversation summary before handoff
-      let summary = '';
-      try {
-        const { summarizeConversation } = await import('../ai/ai.service.js');
-        const summaryResult = await summarizeConversation(prisma, tenantId, conversationId);
-        summary = summaryResult.summary;
-      } catch (err) {
-        logger.error('[AutoHandoff] Failed to generate summary:', err);
-      }
-
-      // Auto-handoff: change status to AGENT_HANDLED
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: {
-          status: 'AGENT_HANDLED',
-          handoffReason: reason,
-        },
-      });
-
-      // Send system message with summary
-      const now = new Date();
-      const systemText = summary
-        ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
-        : `自動轉接人工客服：${reason}`;
-
-      const systemMessage = await prisma.message.create({
-        data: {
-          conversationId,
-          direction: 'OUTBOUND',
-          senderType: 'SYSTEM',
-          contentType: 'system',
-          content: { text: systemText },
-          metadata: { type: 'auto_handoff', reason, summary: summary || undefined },
-          isRead: true,
-          createdAt: now,
-        },
-      });
-
-      const updatedConversation = await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { lastMessageAt: now },
-      });
-
-      // Deliver configurable handoff message to channel
-      await deliverToChannel(prisma, conversationId, botConfig.handoffMessage);
-
-      // Publish conversation.handoff event
-      eventBus.publish({
-        name: 'conversation.handoff',
-        tenantId,
-        timestamp: now,
-        payload: {
-          conversationId,
-          reason,
-          summary,
-          previousStatus: 'BOT_HANDLED',
-        },
-      });
-
-      // Emit WebSocket events
-      const wsPayload: ConversationUpdatedPayload = {
-        id: updatedConversation.id,
-        status: updatedConversation.status,
-        assignedToId: updatedConversation.assignedToId,
-        unreadCount: updatedConversation.unreadCount,
-        lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
-        updatedAt: updatedConversation.updatedAt.toISOString(),
-        handoffReason: reason,
-      };
-      io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-      io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
-
-      io.to(`conversation:${conversationId}`).emit('message.new', {
+  // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領。
+  // 轉接本身（狀態、原因、系統訊息、conversation.handoff、渠道推播）與 KB 追問用完共用 handOffConversation()
+  const replyGuard = createBotReplyGuard(tenantDeps.tenantPrisma, prisma, tenantId, inboundMessageId);
+  const handedOff = await replyGuard.persist((_tx, scope) =>
+    handOffConversation(
+      scope,
+      { io, events: tenantDeps.events },
+      {
         conversationId,
-        message: {
-          id: systemMessage.id,
-          conversationId,
-          direction: 'OUTBOUND',
-          senderType: 'SYSTEM',
-          contentType: 'system',
-          content: systemMessage.content,
-          createdAt: now.toISOString(),
-          sender: null,
-        },
-      });
+        channelId: conversation.channelId,
+        reason,
+        summary,
+        now,
+        systemContent: storedContent.content,
+        systemMetadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
+      },
+    ),
+  );
+  if (!handedOff) return;
 
-      logger.info(`[AutoHandoff] Conversation ${conversationId} auto-escalated: ${reason}`);
-    }
-  } catch (err) {
-    logger.error('[AutoHandoff] Error:', err);
-  }
-}
-
-/**
- * Pure check：訊息文字有沒有命中任何 active keyword.matched rule。
- * 給 kb-autoreply 前置判斷用（命中就讓 keyword 規則處理，不走 KB）。
- */
-export async function hasMatchingKeywordRule(
-  prisma: PrismaClient,
-  tenantId: string,
-  messageText: string,
-): Promise<boolean> {
-  if (!messageText) return false;
-  const rules = await prisma.automationRule.findMany({
-    where: { tenantId, isActive: true },
-  });
-  const keywordRules = rules.filter((rule) => {
-    const trigger = rule.trigger as Record<string, unknown>;
-    return trigger?.type === 'keyword.matched';
-  });
-  if (keywordRules.length === 0) return false;
-
-  const lowerText = messageText.toLowerCase();
-  for (const rule of keywordRules) {
-    const trigger = rule.trigger as Record<string, unknown>;
-    const keywords = (trigger.keywords as string[]) || [];
-    const matchMode = (trigger.match_mode as string) || 'any';
-    if (keywords.length === 0) continue;
-
-    const matched =
-      matchMode === 'all'
-        ? keywords.every((kw) => lowerText.includes(kw.toLowerCase()))
-        : keywords.some((kw) => lowerText.includes(kw.toLowerCase()));
-    if (matched) return true;
-  }
-  return false;
-}
-
-/**
- * Check if a message matches keyword.matched rules and publish events.
- */
-async function checkKeywordTriggers(
-  prisma: PrismaClient,
-  tenantId: string,
-  messageText: string,
-  payload: Record<string, unknown>,
-) {
+  // 以下在轉接 commit 之後：失敗只記 log，不重試（轉接訊息最多送出一次）
   try {
-    // Find all active rules with trigger.type === 'keyword.matched'
-    const allRules = await prisma.automationRule.findMany({
-      where: { tenantId, isActive: true },
-    });
-
-    const keywordRules = allRules.filter((rule) => {
-      const trigger = rule.trigger as Record<string, unknown>;
-      return trigger?.type === 'keyword.matched';
-    });
-
-    if (keywordRules.length === 0) return;
-
-    const lowerText = messageText.toLowerCase();
-
-    for (const rule of keywordRules) {
-      const trigger = rule.trigger as Record<string, unknown>;
-      const keywords = (trigger.keywords as string[]) || [];
-      const matchMode = (trigger.match_mode as string) || 'any';
-
-      if (keywords.length === 0) continue;
-
-      let matched = false;
-      const matchedKeywords: string[] = [];
-
-      if (matchMode === 'all') {
-        // All keywords must be present
-        matched = keywords.every((kw) => {
-          const found = lowerText.includes(kw.toLowerCase());
-          if (found) matchedKeywords.push(kw);
-          return found;
-        });
-      } else {
-        // Any keyword must be present (default)
-        for (const kw of keywords) {
-          if (lowerText.includes(kw.toLowerCase())) {
-            matchedKeywords.push(kw);
-            matched = true;
-          }
-        }
-      }
-
-      if (matched) {
-        logger.info(`[AutomationWorker] keyword.matched: rule="${rule.name}", keywords=[${matchedKeywords.join(', ')}]`);
-
-        eventBus.publish({
-          name: 'keyword.matched',
-          tenantId,
-          timestamp: new Date(),
-          payload: {
-            ...payload,
-            matchedKeywords,
-            matchMode,
-            ruleId: rule.id,
-          },
-        });
-      }
-    }
+    await deliverToChannel(prisma, conversationId, botConfig.handoffMessage);
+    logger.info(`[AutoHandoff] Conversation ${conversationId} auto-escalated: ${reason}`);
   } catch (err) {
-    logger.error('[AutomationWorker] Error checking keyword triggers:', err);
+    logger.error('[AutoHandoff] 轉接之後送出轉接訊息失敗:', err);
   }
 }
 
-export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
+/**
+ * 情緒分析（automation-engine「情緒分析每則訊息最多一次」）。呼叫 LLM 之前先查有沒有 sentiment 認領；
+ * LLM 之後在一個交易內認領、寫入結果，負面且信心值至少 0.6 時發出 sentiment.negative。
+ * LLM 失敗時改用關鍵字判斷的結果（analyzeSentimentFlow() 內的降級）；查認領紀錄與交易的失敗往外丟，由佇列重試。
+ */
+async function analyzeSentimentOnce(
+  prisma: PrismaClient,
+  tenantDeps: TenantDeps,
+  tenantId: string,
+  messageId: string,
+  text: string,
+  refs: { conversationId?: string; contactId?: string },
+  /** false：沒有遮罩副本的進站訊息，只用關鍵字判斷（issue #466） */
+  modelAllowed = true,
+) {
+  const key = { tenantId, kind: 'sentiment' as const, sourceId: messageId };
+  if (await hasSideEffectClaim(prisma, key)) return;
+
+  // LLM 失敗時，analyzeSentimentFlow() 自己改用關鍵字判斷，不丟錯（降級）
+  const sentimentResult = await analyzeSentimentFlow(tenantDeps.llm, tenantId, text, { modelAllowed });
+  const written = await inTenant(tenantDeps.tenantPrisma, tenantId, async (scope) => {
+    // 兩次處理同時通過上面的檢查時，只有一次寫入結果
+    if (!(await claimSideEffect(scope.tx, key))) return false;
+    const existingMessage = await scope.tx.message.findUnique({
+      where: { id: messageId },
+      select: { metadata: true },
+    });
+    const existingMetadata = (existingMessage?.metadata as Record<string, unknown>) ?? {};
+    await scope.tx.message.update({
+      where: { id: messageId },
+      data: {
+        metadata: JSON.parse(JSON.stringify({ ...existingMetadata, sentiment: sentimentResult })),
+      },
+    });
+    if (sentimentResult.sentiment === 'negative' && sentimentResult.confidence >= 0.6) {
+      await publishEvent(scope, tenantDeps.events, 'sentiment.negative', {
+        conversationId: refs.conversationId,
+        messageId,
+        contactId: refs.contactId,
+        sentiment: sentimentResult,
+      });
+    }
+    return true;
+  }).catch((err: unknown) => {
+    throw new ClaimTransactionError(err);
+  });
+  if (written) {
+    logger.info(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);
+  }
+}
+
+/**
+ * prisma：交易外的查詢與 LLM 階段用的 admin 連線，查詢都自帶 tenantId。
+ * tenantPrisma：inTenant() 的基礎連線（受 RLS 約束），認領與寫入結果用它。
+ */
+export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPrisma: PrismaClient, redis: Redis): EventHandler {
+  const events = createEventRouter();
+  const outbox = createOutboxPublisher(tenantPrisma);
+  const tenantDeps: TenantDeps = { tenantPrisma, events: outbox, llm: { prisma: tenantPrisma, redis, events: outbox } };
+
   // ── message.received ────────────────────────────────────────────────────
-  eventBus.subscribe('message.received', async (event: AppEvent) => {
-    try {
-      const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt } = event.payload as {
+  events.on('message.received', async (event: SubscribedEvent) => {
+    // 每個步驟都執行，失敗的步驟最後一起丟錯，由佇列重試；重試時已完成的步驟都已認領，會略過。
+    // 只有「認領之前」的失敗會丟到這裡：LLM 失敗改用 KB、KB 找不到答案這類降級照舊只記 log；
+    // agent 與 KB 都因錯誤沒有回覆時轉接真人（handOffAfterAiFailure），轉接失敗也丟到這裡由佇列重試
+    const failures: unknown[] = [];
+    {
+      const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt, isFirstFollow, privacyUnmasked } = event.payload as {
         contactId?: string;
         conversationId?: string;
         messageId?: string;
@@ -340,147 +280,177 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         channelType?: string;
         replyToken?: string;
         receivedAt?: string;
+        isFirstFollow?: boolean;
+        /** 去識別化服務無法使用時保存、沒有遮罩副本的進站訊息：不交給模型（issue #466） */
+        privacyUnmasked?: boolean;
       };
 
+      // 加入好友（LINE follow）是系統事件，不是顧客打的字：不帶文字，workers 不拿它比對關鍵字規則（design D28）
+      const isFollow = contentType === 'follow';
+
       // Extract message text from either direct messageContent or content.text
-      const text = messageContent ?? content?.text ?? undefined;
+      const text = isFollow ? undefined : (messageContent ?? content?.text ?? undefined);
 
       // Check auto-handoff for BOT_HANDLED conversations
+      let handoffFailed = false;
       if (conversationId) {
-        await checkAutoHandoff(prisma, io, event.tenantId, conversationId, text, contentType);
+        try {
+          await checkAutoHandoff(prisma, tenantDeps, io, event.tenantId, conversationId, text, contentType, messageId);
+        } catch (err) {
+          logger.error('[AutomationWorker] Auto-handoff failed, will retry:', err);
+          failures.push(err);
+          handoffFailed = true;
+        }
       }
 
-      const botConfig = conversationId
-        ? await getConversationBotConfig(prisma, event.tenantId, conversationId)
-        : null;
+      // 轉接失敗時這次不做 AI 回覆：AI 回覆會先認領 bot_reply，重試時轉接就認領不到
+      if (!handoffFailed) {
+        try {
+          const botConfig = conversationId
+            ? await getConversationBotConfig(prisma, event.tenantId, conversationId)
+            : null;
 
-      // Attempt KB auto-reply for BOT_HANDLED conversations
-      // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
-      // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
-      const isTextMessage = !contentType || contentType === 'text';
-      let agentHandled = false;
-      if (conversationId && text && isTextMessage && botConfig) {
-        // 關鍵字命中時讓步給 keyword 規則，不要再讓 AI 回一次。
-        // kb-autoreply 早就有這個判斷（見 attemptKbAutoReply 的 1.5），
-        // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
-        // 會先收到一段 AI 回覆、再收到關鍵字素材，一次兩則。
-        // 2026-09-23 使用者指出「關鍵字有命中則 AI 不應再回話」。
-        const keywordWillHandle = await hasMatchingKeywordRule(prisma, event.tenantId, text);
-        if (keywordWillHandle) {
-          logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：關鍵字規則將處理`);
-        }
-        if (!keywordWillHandle && isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
-          try {
-            const agentResult = await runAgentReply(prisma, {
-              tenantId: event.tenantId,
+          // Attempt KB auto-reply for BOT_HANDLED conversations
+          // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
+          // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
+          const isTextMessage = !contentType || contentType === 'text';
+          const replyGuard = createBotReplyGuard(tenantDeps.tenantPrisma, prisma, event.tenantId, messageId);
+          if (conversationId && text && isTextMessage && botConfig && (await replyGuard.alreadyReplied())) {
+            // 事件重送：這則訊息已經有機器人回覆，不再呼叫 LLM
+            logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：這則訊息已有機器人回覆`);
+          } else if (conversationId && text && isTextMessage && botConfig) {
+            let agentHandled = false;
+            /** agent 丟出的錯誤：KB 也失敗時用來寫轉接原因 */
+            let agentError: unknown;
+            // 關鍵字命中時讓步給 keyword 規則，不要再讓 AI 回一次。
+            // kb-autoreply 原本也有這個判斷（現在與 agent 共用這裡的 keywordWillHandle），
+            // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
+            // 會先收到一段 AI 回覆、再收到關鍵字素材，一次兩則。
+            // 2026-09-23 使用者指出「關鍵字有命中則 AI 不應再回話」。
+            const keywordWillHandle = await hasMatchingKeywordRule(prisma, event.tenantId, text, channelType ?? '', {
               conversationId,
-              messageId,
-              userMessage: text,
-              replyToken,
-              receivedAt,
-              deliver: true,
-              io,
+              contactId,
             });
-            agentHandled = agentResult.handled;
-          } catch (err) {
-            logger.error('[AutomationWorker] Agent reply error, falling back to KB:', err);
+            if (keywordWillHandle) {
+              logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：關鍵字規則將處理`);
+            }
+            if (privacyUnmasked === true) {
+              // 沒有遮罩副本的訊息不交給 agent 與知識庫：原本會跑 AI 時改轉真人，收件匣看得到原因（issue #466）。
+              // 關鍵字讓步、botMode 不跑 AI、agent 與知識庫都停用時本來就不回覆，不轉接
+              const aiWouldRun = shouldRunAgentReply(botConfig.botMode) && (isAgentEnabled() || getConfig().KB_AUTO_REPLY_ENABLED);
+              if (!keywordWillHandle && aiWouldRun) {
+                await handOffAfterAiFailure(
+                  { prisma, tenantPrisma: tenantDeps.tenantPrisma, io, events: tenantDeps.events },
+                  { tenantId: event.tenantId, conversationId, inboundMessageId: messageId, cause: UNMASKED_INBOUND_HANDOFF },
+                );
+              }
+            } else {
+              if (!keywordWillHandle && isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
+                try {
+                  // Agent 的讀寫用 app_tenant 連線；送到渠道的 deliverToChannel() 屬於還沒搬的 conversation，
+                  // 仍用 prismaAdmin（change migrate-ai-agent-tenant-ctx，design D4）
+                  const agentResult = await runAgentReplyFlow(
+                    { prisma: tenantDeps.tenantPrisma, llm: tenantDeps.llm, io, replyGuard, deliverDb: prisma },
+                    {
+                      tenantId: event.tenantId,
+                      conversationId,
+                      messageId,
+                      userMessage: text,
+                      replyToken,
+                      receivedAt,
+                      deliver: true,
+                    },
+                  );
+                  agentHandled = agentResult.handled;
+                } catch (err) {
+                  if (err instanceof ClaimTransactionError) throw err;
+                  agentError = err;
+                  logger.error('[AutomationWorker] Agent reply error, falling back to KB:', err);
+                }
+              }
+              // 命中關鍵字規則時，知識庫也讓步：讓步只在這裡判斷，不在知識庫的交易內判斷
+              // （change migrate-ai-kb-autoreply-tenant-ctx，design D7）
+              if (!agentHandled && !keywordWillHandle) {
+                let kbResult: KbAutoReplyResult;
+                try {
+                  // 知識庫的讀寫用 app_tenant 連線；送到渠道的 deliverToChannel() 仍用 prismaAdmin
+                  // （change migrate-ai-kb-autoreply-tenant-ctx，design D6）
+                  kbResult = await attemptKbAutoReplyFlow(
+                    { prisma: tenantDeps.tenantPrisma, llm: tenantDeps.llm, io, replyGuard, events: tenantDeps.events, deliverDb: prisma },
+                    { tenantId: event.tenantId, conversationId, messageText: text, delivery: { replyToken, receivedAt } },
+                  );
+                } catch (err) {
+                  if (err instanceof ClaimTransactionError) throw err;
+                  logger.error('[AutomationWorker] KB auto-reply error:', err);
+                  kbResult = { status: 'failed', error: err };
+                }
+                // agent 沒有回覆、KB 又因錯誤失敗：客人收不到任何回覆，轉接真人讓客服接手（#445）。
+                // 不重試 AI 回覆（可能送出兩則）；正常的不回覆（關鍵字讓步、botMode、KB 停用、已回覆）不轉接
+                if (kbResult?.status === 'failed') {
+                  await handOffAfterAiFailure(
+                    { prisma, tenantPrisma: tenantDeps.tenantPrisma, io, events: tenantDeps.events },
+                    { tenantId: event.tenantId, conversationId, inboundMessageId: messageId, kbError: kbResult.error, agentError },
+                  );
+                }
+              }
+            }
           }
-        }
-        if (!agentHandled) {
-          try {
-            await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt });
-          } catch (err) {
-            logger.error('[AutomationWorker] KB auto-reply error:', err);
-          }
+        } catch (err) {
+          logger.error('[AutomationWorker] AI reply failed, will retry:', err);
+          failures.push(err);
         }
       }
 
       // Sentiment analysis on inbound messages
       if (text && messageId) {
         try {
-          const sentimentResult = await analyzeSentiment(prisma, event.tenantId, text);
-          // Update message metadata with sentiment result
-          const existingMessage = await prisma.message.findUnique({
-            where: { id: messageId },
-            select: { metadata: true },
-          });
-          const existingMetadata = (existingMessage?.metadata as Record<string, unknown>) ?? {};
-          await prisma.message.update({
-            where: { id: messageId },
-            data: {
-              metadata: JSON.parse(JSON.stringify({ ...existingMetadata, sentiment: sentimentResult })),
-            },
-          });
-          logger.info(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);
-
-          // If negative sentiment with high confidence, publish event
-          if (sentimentResult.sentiment === 'negative' && sentimentResult.confidence >= 0.6) {
-            eventBus.publish({
-              name: 'sentiment.negative',
-              tenantId: event.tenantId,
-              timestamp: new Date(),
-              payload: {
-                conversationId,
-                messageId,
-                contactId,
-                sentiment: sentimentResult,
-              },
-            });
-          }
+          await analyzeSentimentOnce(prisma, tenantDeps, event.tenantId, messageId, text, { conversationId, contactId }, privacyUnmasked !== true);
         } catch (err) {
-          logger.error('[AutomationWorker] Sentiment analysis error:', err);
+          // LLM 失敗已在 analyzeSentimentFlow() 內降級；走到這裡的是查認領紀錄或寫入結果的失敗
+          logger.error('[AutomationWorker] Sentiment analysis failed, will retry:', err);
+          failures.push(err);
         }
       }
 
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'message.received',
-        context: { contactId, conversationId, messageContent: text, channelType, replyToken, receivedAt },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue message.received', err));
-
-      // Check keyword triggers after message.received automation
-      if (text) {
-        await checkKeywordTriggers(prisma, event.tenantId, text, {
+      // 關鍵字規則由 workers 評估這個 job 時一併比對（design 決策 9）；入站訊息 id 供 keyword_matched 認領
+      try {
+        await enqueueEvaluate(event, 'message.received', {
           contactId,
           conversationId,
+          messageId,
           messageContent: text,
           channelType,
           replyToken,
           receivedAt,
         });
+      } catch (err) {
+        logger.error('[AutomationWorker] Failed to enqueue message.received, will retry:', err);
+        failures.push(err);
       }
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling message.received:', err);
-    }
-  });
 
-  // ── keyword.matched ─────────────────────────────────────────────────────
-  eventBus.subscribe('keyword.matched', async (event: AppEvent) => {
-    try {
-      const { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken, receivedAt } = event.payload as {
-        contactId?: string;
-        conversationId?: string;
-        messageContent?: string;
-        ruleId?: string;
-        matchedKeywords?: string[];
-        matchMode?: string;
-        channelType?: string;
-        replyToken?: string;
-        receivedAt?: string;
-      };
-
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'keyword.matched',
-        context: { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken, receivedAt },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue keyword.matched', err));
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling keyword.matched:', err);
+      // 加入好友另外以 contact.followed 評估（design D28）：帶回覆權杖與收到時間，動作在期限內用回覆方式送出。
+      // job id 與 message.received 不同（BullMQ 的 job id 不能含「:」）；事件 id 相同，規則動作仍以
+      // <事件 id, 規則 id#序號> 認領，兩個事件的規則不同，不會互相擋到
+      if (isFollow) {
+        try {
+          await enqueueEvaluate(
+            event,
+            'contact.followed',
+            { contactId, conversationId, messageId, channelType, replyToken, receivedAt, isFirstFollow: isFirstFollow === true },
+            `${event.id}-followed`,
+          );
+        } catch (err) {
+          logger.error('[AutomationWorker] Failed to enqueue contact.followed, will retry:', err);
+          failures.push(err);
+        }
+      }
     }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, `message.received 有 ${failures.length} 個步驟失敗`);
   });
 
   // ── case.created ────────────────────────────────────────────────────────
-  eventBus.subscribe('case.created', async (event: AppEvent) => {
+  events.on('case.created', async (event: SubscribedEvent) => {
     try {
       const { contactId, conversationId, caseId } = event.payload as {
         contactId?: string;
@@ -488,136 +458,81 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         caseId?: string;
       };
 
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'case.created',
-        context: { contactId, conversationId, caseId },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue case.created', err));
+      await enqueueEvaluate(event, 'case.created', { contactId, conversationId, caseId });
 
       // Auto-classify issue based on latest inbound message
+      // 重複執行時不改變結果（主規格「新工單的自動分類不覆蓋既有分類」），只多一次 LLM 費用
       if (caseId && conversationId) {
-        await autoClassifyNewCase(prisma, event.tenantId, caseId, conversationId).catch((err) =>
+        await autoClassifyNewCaseFlow(tenantDeps.llm, event.tenantId, caseId, conversationId).catch((err) =>
           logger.error('[AutomationWorker] Auto-classification error:', err),
         );
       }
     } catch (err) {
       logger.error('[AutomationWorker] Error handling case.created:', err);
+      // 重試時，轉接、機器人回覆與情緒分析都已認領，不會重複
+      throw err;
     }
   });
 
   // ── conversation.created ────────────────────────────────────────────────
-  eventBus.subscribe('conversation.created', async (event: AppEvent) => {
-    try {
-      const { contactId, conversationId } = event.payload as {
-        contactId?: string;
-        conversationId?: string;
-      };
-
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'conversation.created',
-        context: { contactId, conversationId },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue conversation.created', err));
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling conversation.created:', err);
-    }
+  events.on('conversation.created', async (event: SubscribedEvent) => {
+    const { contactId, conversationId } = event.payload as {
+      contactId?: string;
+      conversationId?: string;
+    };
+    await enqueueEvaluate(event, 'conversation.created', { contactId, conversationId });
   });
 
   // ── contact.tagged ──────────────────────────────────────────────────────
-  eventBus.subscribe('contact.tagged', async (event: AppEvent) => {
-    try {
-      const { contactId, source } = event.payload as {
-        contactId?: string;
-        source?: string;
-      };
+  events.on('contact.tagged', async (event: SubscribedEvent) => {
+    const { contactId, source } = event.payload as {
+      contactId?: string;
+      source?: string;
+    };
 
-      // 迴圈防護：automation 規則貼標產生的 contact.tagged 不再觸發評估，
-      // 避免「貼標→規則→又貼標」無限迴圈。人工(agent)/點擊(system)貼標才觸發。
-      if (source === 'automation') {
-        return;
-      }
-
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'contact.tagged',
-        context: { contactId },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue contact.tagged', err));
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling contact.tagged:', err);
+    // 迴圈防護：automation 規則貼標產生的 contact.tagged 不再觸發評估，
+    // 避免「貼標→規則→又貼標」無限迴圈。人工(agent)/點擊(system)貼標才觸發。
+    if (source === 'automation') {
+      return;
     }
+
+    await enqueueEvaluate(event, 'contact.tagged', { contactId });
   });
 
   // ── contact.created ─────────────────────────────────────────────────────
-  eventBus.subscribe('contact.created', async (event: AppEvent) => {
-    try {
-      const { contactId } = event.payload as { contactId?: string };
-
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'contact.created',
-        context: { contactId },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue contact.created', err));
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling contact.created:', err);
-    }
+  events.on('contact.created', async (event: SubscribedEvent) => {
+    const { contactId } = event.payload as { contactId?: string };
+    await enqueueEvaluate(event, 'contact.created', { contactId });
   });
 
   // ── case.escalated ──────────────────────────────────────────────────────
-  eventBus.subscribe('case.escalated', async (event: AppEvent) => {
-    try {
-      const { contactId, conversationId, caseId } = event.payload as {
-        contactId?: string;
-        conversationId?: string;
-        caseId?: string;
-      };
-
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'case.escalated',
-        context: { contactId, conversationId, caseId },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue case.escalated', err));
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling case.escalated:', err);
-    }
+  events.on('case.escalated', async (event: SubscribedEvent) => {
+    const { contactId, conversationId, caseId } = event.payload as {
+      contactId?: string;
+      conversationId?: string;
+      caseId?: string;
+    };
+    await enqueueEvaluate(event, 'case.escalated', { contactId, conversationId, caseId });
   });
 
   // ── portal.activity.submitted ──────────────────────────────────────────
-  eventBus.subscribe('portal.activity.submitted', async (event: AppEvent) => {
-    try {
-      const { contactId, activityId } = event.payload as {
-        contactId?: string;
-        activityId?: string;
-      };
-
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'portal.activity.submitted',
-        context: { contactId, activityId },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue portal.activity.submitted', err));
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling portal.activity.submitted:', err);
-    }
+  events.on('portal.activity.submitted', async (event: SubscribedEvent) => {
+    const { contactId, activityId } = event.payload as {
+      contactId?: string;
+      activityId?: string;
+    };
+    await enqueueEvaluate(event, 'portal.activity.submitted', { contactId, activityId });
   });
 
   // ── link.clicked ──────────────────────────────────────────────────────────
-  eventBus.subscribe('link.clicked', async (event: AppEvent) => {
-    try {
-      const { contactId, shortLinkId, slug } = event.payload as {
-        contactId?: string;
-        shortLinkId?: string;
-        slug?: string;
-      };
-
-      await automationQueue().add('automation:evaluate', {
-        tenantId: event.tenantId,
-        trigger: 'link.clicked',
-        context: { contactId, shortLinkId, slug },
-      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue link.clicked', err));
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling link.clicked:', err);
-    }
+  events.on('link.clicked', async (event: SubscribedEvent) => {
+    const { contactId, shortLinkId, slug } = event.payload as {
+      contactId?: string;
+      shortLinkId?: string;
+      slug?: string;
+    };
+    await enqueueEvaluate(event, 'link.clicked', { contactId, shortLinkId, slug });
   });
 
-  logger.info('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
-  logger.info('[AutomationWorker] Auto-handoff enabled with configurable BotConfig per channel');
+  return events.handle;
 }

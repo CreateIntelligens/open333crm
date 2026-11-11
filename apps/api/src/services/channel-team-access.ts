@@ -6,9 +6,8 @@
  * channel/team 同屬一租戶。可見性「解析」在 channel-visibility.ts（getAccessibleChannelIds）；
  * 本檔負責「管理」（grant/revoke/list）與 access-level 檢查。
  */
-import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../lib/tenant-db.js';
-import { withTenant } from '../lib/tenant-db.js';
+import type { TenantCtx } from '../lib/tenant-ctx.js';
 import { AppError } from '../shared/utils/response.js';
 import { notFound } from '../shared/messages/resource.js';
 
@@ -147,46 +146,40 @@ export async function insertAgentChannelAccess(
 }
 
 /** 某 agent 直綁了哪些渠道。 */
-export async function listChannelsForAgent(
-  prisma: TenantDb,
-  tenantId: string,
-  agentId: string,
-): Promise<AgentChannelAccessRow[]> {
-  const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { id: true } });
+export async function listChannelsForAgent(ctx: TenantCtx, agentId: string): Promise<AgentChannelAccessRow[]> {
+  const agent = await ctx.tx.agent.findFirst({ where: { id: agentId, tenantId: ctx.tenantId }, select: { id: true } });
   if (!agent) return [];
-  const rows = await prisma.agentChannelAccess.findMany({ where: { agentId } });
+  const rows = await ctx.tx.agentChannelAccess.findMany({ where: { agentId } });
   return rows as AgentChannelAccessRow[];
 }
 
 /**
  * 整組替換某 agent 的直綁渠道（交易內 deleteMany + createMany）。
  * channelIds 全數須屬本租戶，否則整筆拒絕（RLS 的雙 FK WITH CHECK 亦會擋跨租戶）。
- * 需交易故收 PrismaClient，內部走 withTenant 綁 RLS session（比照 purgeAgent）。
+ * 刪除與建立的原子性由呼叫端開的交易保證。
  */
 export async function setAgentChannels(
-  prisma: PrismaClient,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
   channelIds: string[],
   grantedById?: string,
 ): Promise<{ count: number }> {
-  return withTenant(prisma, tenantId, async (tx) => {
-    const agent = await tx.agent.findFirst({ where: { id: agentId, tenantId }, select: { id: true } });
-    if (!agent) throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
+  const { tx, tenantId } = ctx;
+  const agent = await tx.agent.findFirst({ where: { id: agentId, tenantId }, select: { id: true } });
+  if (!agent) throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
 
-    if (channelIds.length > 0) {
-      const owned = await tx.channel.count({ where: { id: { in: channelIds }, tenantId } });
-      if (owned !== new Set(channelIds).size) {
-        throw new AppError('指定的渠道中有部分不存在或不屬於此租戶', 'BAD_REQUEST', 400);
-      }
+  if (channelIds.length > 0) {
+    const owned = await tx.channel.count({ where: { id: { in: channelIds }, tenantId } });
+    if (owned !== new Set(channelIds).size) {
+      throw new AppError('指定的渠道中有部分不存在或不屬於此租戶', 'BAD_REQUEST', 400);
     }
+  }
 
-    await tx.agentChannelAccess.deleteMany({ where: { agentId } });
-    const count = await insertAgentChannelAccess(
-      tx,
-      Array.from(new Set(channelIds)).map((channelId) => ({ channelId, agentId, accessLevel: 'full' })),
-      grantedById,
-    );
-    return { count };
-  });
+  await tx.agentChannelAccess.deleteMany({ where: { agentId } });
+  const count = await insertAgentChannelAccess(
+    tx,
+    Array.from(new Set(channelIds)).map((channelId) => ({ channelId, agentId, accessLevel: 'full' })),
+    grantedById,
+  );
+  return { count };
 }

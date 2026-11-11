@@ -130,7 +130,7 @@
 
     --warning: 26 90% 58%;
     --warning-foreground: 222 20% 11%;
-    --warning-subtle: 26 50% 24%;
+    --warning-subtle: 26 50% 20%;        /* 取自 main：深色模式警告文字對比達 4.5:1（深色模式不在設計範圍） */
 
     --ai: 276 90% 68%;
     --ai-foreground: 222 20% 11%;
@@ -210,4 +210,41 @@
 }
 .skip-link:focus {
   top: 8px;
+}
+
+/*
+ * 以下三段取自 main 的無障礙改版（鍵盤焦點外框、減少動態效果、強制色彩模式）。
+ * main 同批的「中文最小字級 13.5px」「全域 44px 最小高度」依設計師決定不採用，
+ * 字級與元件高度照 Figma Design System。
+ */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 3px solid CanvasText;
+  }
 }

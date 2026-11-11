@@ -11,6 +11,7 @@ import { CaseDetail } from '@/components/case/CaseDetail';
 import { CaseTimeline } from '@/components/case/CaseTimeline';
 import { EscalationModal } from '@/components/case/EscalationModal';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { canTransition, type CaseStatus } from '@open333crm/shared';
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -57,11 +58,12 @@ export default function CaseDetailPage() {
     );
   }
 
-  const status = caseData.status as string;
-  const canEscalate = ['OPEN', 'IN_PROGRESS', 'PENDING'].includes(status);
-  const canResolve = ['OPEN', 'IN_PROGRESS', 'PENDING', 'ESCALATED'].includes(status);
-  const canClose = status !== 'CLOSED';
-  const canReopen = status === 'CLOSED';
+  // 按鈕只在狀態機允許時出現（S05：原本開啟、待處理、已升級也顯示「標記解決」，按下必定 422）
+  const status = caseData.status as CaseStatus;
+  const canEscalate = canTransition(status, 'ESCALATED');
+  const canResolve = canTransition(status, 'RESOLVED');
+  const canClose = canTransition(status, 'CLOSED');
+  const canReopen = status === 'CLOSED' && canTransition(status, 'OPEN');
 
   const handleResolve = async () => {
     try {
@@ -89,6 +91,7 @@ export default function CaseDetailPage() {
       fetchCase();
     } catch (err) {
       console.error('Failed to reopen case:', err);
+      alert(getApiErrorMessage(err, '重新開啟案件失敗，請稍後重試'));
     }
   };
 
@@ -138,10 +141,16 @@ export default function CaseDetailPage() {
                 slaPolicy: caseData.slaPolicy as string | undefined,
                 slaPolicyData: caseData.slaPolicyData as { firstResponseMinutes: number; resolutionMinutes: number } | null | undefined,
                 events: events,
+                // 滿意度區塊（issue #444）：分數、評語、問卷寄出與評分時間
+                csatScore: caseData.csatScore as number | null | undefined,
+                csatComment: caseData.csatComment as string | null | undefined,
+                csatSentAt: caseData.csatSentAt as string | null | undefined,
+                csatRespondedAt: caseData.csatRespondedAt as string | null | undefined,
                 createdAt: caseData.createdAt as string,
                 updatedAt: caseData.updatedAt as string,
     },
     onRefresh: fetchCase,
+    onRequestEscalate: () => setShowEscalation(true),
   };
 
   // 版面依 Claude Design「工單詳情」：麵包屑、標題區＋右側操作、左欄（SLA、說明、關聯對話、時間軸與備註）＋右欄（屬性、標籤、聯繫人、時間戳記）

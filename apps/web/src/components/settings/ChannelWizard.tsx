@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, channelDisplayName } from '@open333crm/shared';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ChannelWizardProps {
   open: boolean;
@@ -104,7 +105,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       } else if (channelType === CHANNEL_TYPE.THREADS) {
         // IG(Threads) 走 IG Login 路線，憑證同 FB（appSecret 驗簽、pageAccessToken 收發）
         if (!appSecret || !pageAccessToken) {
-          setError('請填寫 App Secret 和 Page Access Token');
+          setError('請填寫 Instagram 應用程式密鑰和存取權杖');
           setCreating(false);
           return;
         }
@@ -131,7 +132,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       // Create channel
       const payload: Record<string, unknown> = {
         channelType,
-        displayName: displayName || `My ${channelType} Channel`,
+        displayName: displayName || `My ${channelDisplayName(channelType)} Channel`,
         credentials,
       };
       if (webhookBaseUrl?.trim()) payload.webhookBaseUrl = webhookBaseUrl.trim();
@@ -153,10 +154,10 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       try {
         await api.post(`/channels/${newId}/verify`);
         setVerify({ status: 'success', message: '渠道驗證成功' });
-      } catch (verifyErr: any) {
+      } catch (verifyErr) {
         setVerify({
           status: 'error',
-          message: verifyErr.response?.data?.error?.message || '驗證失敗，但渠道已建立',
+          message: getApiErrorMessage(verifyErr, '驗證失敗，但渠道已建立'),
         });
       }
 
@@ -196,8 +197,8 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       }
 
       setStep('done');
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || '建立渠道失敗，請檢查輸入資料');
+    } catch (err) {
+      setError(getApiErrorMessage(err, '建立渠道失敗，請檢查輸入資料'));
     } finally {
       setCreating(false);
     }
@@ -215,7 +216,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook Messenger' },
     { value: 'THREADS', label: 'Instagram (私訊)' },
-    { value: 'WEBCHAT', label: 'WebChat (網頁聊天)' },
+    { value: 'WEBCHAT', label: '網站聊天室' },
   ];
 
   const stepLabels: Record<WizardStep, string> = {
@@ -329,17 +330,26 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
 
               {channelType === CHANNEL_TYPE.THREADS && (
                 <>
+                  <p className="text-xs text-muted-foreground">
+                    以下三個欄位都在 Meta 應用程式 → 使用案例 → Instagram API →「含有 Instagram 登入的 API 設定」頁。
+                  </p>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium">App ID</label>
-                    <Input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="Meta App ID" />
+                    <label className="mb-1.5 block text-sm font-medium">Instagram 應用程式編號</label>
+                    <Input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="頁面上方的一串數字" />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium">App Secret</label>
-                    <Input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="用於 webhook 簽章驗證" />
+                    <label className="mb-1.5 block text-sm font-medium">Instagram 應用程式密鑰</label>
+                    <Input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="頁面上方按「顯示」複製" />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      用於驗證訊息來源。不是「應用程式設定 → 基本資料」的 App Secret，填錯會收不到任何訊息
+                    </p>
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium">Page Access Token</label>
-                    <Input type="password" value={pageAccessToken} onChange={(e) => setPageAccessToken(e.target.value)} placeholder="IGQ... 開頭的 Token（IG 專業帳號授權後取得）" />
+                    <label className="mb-1.5 block text-sm font-medium">Instagram 存取權杖</label>
+                    <Input type="password" value={pageAccessToken} onChange={(e) => setPageAccessToken(e.target.value)} placeholder="IG 開頭的長字串" />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      「產生存取權杖」：按「新增帳號」登入 IG 專業帳號，再按該帳號的「產生權杖」
+                    </p>
                   </div>
                 </>
               )}
@@ -347,7 +357,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
               {channelType === CHANNEL_TYPE.WEBCHAT && (
                 <div className="rounded-md bg-primary-subtle p-4">
                   <p className="text-sm text-primary">
-                    WebChat 渠道不需要外部憑證，系統會自動產生。建立後即可取得嵌入碼。
+                    網站聊天室不需要外部憑證，系統會自動產生。建立後即可取得嵌入碼。
                   </p>
                 </div>
               )}

@@ -155,3 +155,14 @@ t('預設只有 admin 有：supervisor 與 agent 的預設權限不含稽核與�
     assert.equal(DEFAULT_ROLE_PERMISSIONS.agent.includes(code), false, `agent 不應有 ${code}`);
   }
 });
+
+t('座席與主管預設可在對話中發補償券：有 coupon.view、coupon.issue，沒有管理與核銷', () => {
+  for (const role of ['agent', 'supervisor'] as const) {
+    for (const code of ['coupon.view', 'coupon.issue']) {
+      assert.ok(DEFAULT_ROLE_PERMISSIONS[role].includes(code), `${role} 應有 ${code}`);
+    }
+    for (const code of ['coupon.manage', 'coupon.redeem']) {
+      assert.equal(DEFAULT_ROLE_PERMISSIONS[role].includes(code), false, `${role} 不應有 ${code}`);
+    }
+  }
+});

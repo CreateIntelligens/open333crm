@@ -20,11 +20,13 @@ import {
   type MaterialCategoryNode,
 } from '@/hooks/useMaterials';
 import { MaterialCategoryManager } from '@/components/materials/MaterialCategoryManager';
+import { cn } from '@/lib/utils';
+import { channelDisplayName } from '@open333crm/shared';
 
 const CHANNEL_FILTERS = [
   { value: '', label: '全部' },
   { value: 'line', label: 'LINE' },
-  { value: 'fb', label: 'FB' },
+  { value: 'fb', label: channelDisplayName('fb') },
 ];
 
 const SORT_OPTIONS: { value: MaterialSort; label: string }[] = [
@@ -100,7 +102,7 @@ export default function MaterialsListPage() {
 
           <div className="flex gap-5">
             {/* ── 左側：分類樹 + 標籤 ── */}
-            <aside className="w-52 shrink-0 space-y-5">
+            <aside className={cn('shrink-0 space-y-5', categories.length > 0 ? 'w-52' : 'w-auto')}>
               <div>
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">分類</span>
@@ -112,12 +114,21 @@ export default function MaterialsListPage() {
                     <FolderCog className="h-3 w-3" />管理
                   </button>
                 </div>
-                <CategoryTree
-                  categories={categories}
-                  selectedId={categoryId}
-                  onSelect={setCategoryId}
-                  totalCount={meta?.total ?? 0}
-                />
+                {categories.length > 0 ? (
+                  <CategoryTree
+                    categories={categories}
+                    selectedId={categoryId}
+                    onSelect={setCategoryId}
+                    totalCount={meta?.total ?? 0}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
+                    <span>尚無分類</span>
+                    <button type="button" className="text-primary hover:underline" onClick={() => setCatManagerOpen(true)}>
+                      新增
+                    </button>
+                  </div>
+                )}
               </div>
 
               {tags.length > 0 && (
@@ -323,7 +334,7 @@ function MaterialRow({ material, maxUsage, onDuplicate, onDelete, onEdit }: {
   onEdit: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const channelLabel = material.channelType.toUpperCase();
+  const channelLabel = channelDisplayName(material.channelType);
   const channelColor = material.channelType === 'line' ? '#06c755' : material.channelType === 'fb' ? '#1877f2' : '#059669';
   const statusInfo = STATUS_LABEL[material.status] ?? STATUS_LABEL.draft;
   const usagePct = maxUsage > 0 ? Math.max(2, Math.round((material.usageCount / maxUsage) * 100)) : 0;

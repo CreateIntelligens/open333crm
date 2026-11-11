@@ -262,6 +262,20 @@ test('有成員使用的角色不能刪除：回 409 ROLE_IN_USE，blockingAgent
   assert.ok(await owner.role.findUnique({ where: { id: target.id } }));
 });
 
+test('停用的成員佔用角色時列出姓名：回 409，blockingAgents 含停用的成員，訊息標示已停用', async () => {
+  // change fix-admin-settings-safeguards（G18）：停用的成員從列表消失，原本看不出是誰佔著角色
+  const target = await createRole([]);
+  const inactive = await createAgent(target.id);
+  await owner.agent.update({ where: { id: inactive.id }, data: { isActive: false, name: '王停用' } });
+  const res = await adminApp.inject({ method: 'DELETE', url: `/api/v1/roles/${target.id}` });
+  assert.equal(res.statusCode, 409, res.body);
+  const error = res.json().error;
+  assert.equal(error.code, 'ROLE_IN_USE');
+  assert.deepEqual(error.details.blockingAgents, [{ id: inactive.id, name: '王停用', isActive: false }]);
+  assert.match(error.message, /王停用（已停用）/);
+  assert.ok(await owner.role.findUnique({ where: { id: target.id } }));
+});
+
 test('沒有成員使用的角色可以刪除：回 200，角色不再存在', async () => {
   const target = await createRole([]);
   const res = await adminApp.inject({ method: 'DELETE', url: `/api/v1/roles/${target.id}` });

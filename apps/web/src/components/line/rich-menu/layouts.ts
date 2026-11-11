@@ -37,6 +37,35 @@ const LARGE_H = 1686;
 const COMPACT_W = 2500;
 const COMPACT_H = 843;
 
+/** 把 total 切成 parts 等分時第 i 條分隔線的位置（四捨五入成整數像素） */
+function edge(total: number, parts: number, i: number): number {
+  return Math.round((total * i) / parts);
+}
+
+/**
+ * 格線上的一格（可跨欄／跨列）。座標一律是整數：LINE 與後端都只收整數，
+ * 而且相鄰格共用同一條分隔線，所以各格寬高加總剛好等於畫布寬高。
+ */
+function box(
+  width: number,
+  height: number,
+  cols: number,
+  rows: number,
+  col: number,
+  row: number,
+  colSpan = 1,
+  rowSpan = 1,
+): LayoutArea['bounds'] {
+  const x = edge(width, cols, col);
+  const y = edge(height, rows, row);
+  return {
+    x,
+    y,
+    width: edge(width, cols, col + colSpan) - x,
+    height: edge(height, rows, row + rowSpan) - y,
+  };
+}
+
 export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
   // ─── 大選單（6 種）────────────────────────────────
   {
@@ -46,10 +75,10 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '上下左右四格平均',
     size: { width: LARGE_W, height: LARGE_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: LARGE_W / 2, height: LARGE_H / 2 } },
-      { bounds: { x: LARGE_W / 2, y: 0, width: LARGE_W / 2, height: LARGE_H / 2 } },
-      { bounds: { x: 0, y: LARGE_H / 2, width: LARGE_W / 2, height: LARGE_H / 2 } },
-      { bounds: { x: LARGE_W / 2, y: LARGE_H / 2, width: LARGE_W / 2, height: LARGE_H / 2 } },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 0, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 1, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 0, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 1, 1) },
     ],
   },
   {
@@ -59,9 +88,9 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '上方一個寬條，下方左右兩格',
     size: { width: LARGE_W, height: LARGE_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: LARGE_W, height: LARGE_H / 2 } },
-      { bounds: { x: 0, y: LARGE_H / 2, width: LARGE_W / 2, height: LARGE_H / 2 } },
-      { bounds: { x: LARGE_W / 2, y: LARGE_H / 2, width: LARGE_W / 2, height: LARGE_H / 2 } },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 0, 0, 2, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 0, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 1, 1) },
     ],
   },
   {
@@ -71,9 +100,9 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '上方左右兩格，下方一個寬條',
     size: { width: LARGE_W, height: LARGE_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: LARGE_W / 2, height: LARGE_H / 2 } },
-      { bounds: { x: LARGE_W / 2, y: 0, width: LARGE_W / 2, height: LARGE_H / 2 } },
-      { bounds: { x: 0, y: LARGE_H / 2, width: LARGE_W, height: LARGE_H / 2 } },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 0, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 1, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 2, 2, 0, 1, 2, 1) },
     ],
   },
   {
@@ -83,10 +112,10 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '上方一個寬條，下方三格平均',
     size: { width: LARGE_W, height: LARGE_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: LARGE_W, height: LARGE_H / 2 } },
-      { bounds: { x: 0, y: LARGE_H / 2, width: LARGE_W / 3, height: LARGE_H / 2 } },
-      { bounds: { x: LARGE_W / 3, y: LARGE_H / 2, width: LARGE_W / 3, height: LARGE_H / 2 } },
-      { bounds: { x: (LARGE_W * 2) / 3, y: LARGE_H / 2, width: LARGE_W / 3, height: LARGE_H / 2 } },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 0, 0, 3, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 0, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 1, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 2, 1) },
     ],
   },
   {
@@ -96,8 +125,8 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '上下各一個全寬橫條',
     size: { width: LARGE_W, height: LARGE_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: LARGE_W, height: LARGE_H / 2 } },
-      { bounds: { x: 0, y: LARGE_H / 2, width: LARGE_W, height: LARGE_H / 2 } },
+      { bounds: box(LARGE_W, LARGE_H, 1, 2, 0, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 1, 2, 0, 1) },
     ],
   },
   {
@@ -107,12 +136,12 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '兩列三欄共六格',
     size: { width: LARGE_W, height: LARGE_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: LARGE_W / 3, height: LARGE_H / 2 } },
-      { bounds: { x: LARGE_W / 3, y: 0, width: LARGE_W / 3, height: LARGE_H / 2 } },
-      { bounds: { x: (LARGE_W * 2) / 3, y: 0, width: LARGE_W / 3, height: LARGE_H / 2 } },
-      { bounds: { x: 0, y: LARGE_H / 2, width: LARGE_W / 3, height: LARGE_H / 2 } },
-      { bounds: { x: LARGE_W / 3, y: LARGE_H / 2, width: LARGE_W / 3, height: LARGE_H / 2 } },
-      { bounds: { x: (LARGE_W * 2) / 3, y: LARGE_H / 2, width: LARGE_W / 3, height: LARGE_H / 2 } },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 0, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 1, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 2, 0) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 0, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 1, 1) },
+      { bounds: box(LARGE_W, LARGE_H, 3, 2, 2, 1) },
     ],
   },
 
@@ -124,9 +153,9 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '三格平均橫排',
     size: { width: COMPACT_W, height: COMPACT_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: COMPACT_W / 3, height: COMPACT_H } },
-      { bounds: { x: COMPACT_W / 3, y: 0, width: COMPACT_W / 3, height: COMPACT_H } },
-      { bounds: { x: (COMPACT_W * 2) / 3, y: 0, width: COMPACT_W / 3, height: COMPACT_H } },
+      { bounds: box(COMPACT_W, COMPACT_H, 3, 1, 0, 0) },
+      { bounds: box(COMPACT_W, COMPACT_H, 3, 1, 1, 0) },
+      { bounds: box(COMPACT_W, COMPACT_H, 3, 1, 2, 0) },
     ],
   },
   {
@@ -136,9 +165,9 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '左半一格，右半上下兩格',
     size: { width: COMPACT_W, height: COMPACT_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: COMPACT_W / 2, height: COMPACT_H } },
-      { bounds: { x: COMPACT_W / 2, y: 0, width: COMPACT_W / 2, height: COMPACT_H / 2 } },
-      { bounds: { x: COMPACT_W / 2, y: COMPACT_H / 2, width: COMPACT_W / 2, height: COMPACT_H / 2 } },
+      { bounds: box(COMPACT_W, COMPACT_H, 2, 2, 0, 0, 1, 2) },
+      { bounds: box(COMPACT_W, COMPACT_H, 2, 2, 1, 0) },
+      { bounds: box(COMPACT_W, COMPACT_H, 2, 2, 1, 1) },
     ],
   },
   {
@@ -148,9 +177,9 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '左半上下兩格，右半一格',
     size: { width: COMPACT_W, height: COMPACT_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: COMPACT_W / 2, height: COMPACT_H / 2 } },
-      { bounds: { x: 0, y: COMPACT_H / 2, width: COMPACT_W / 2, height: COMPACT_H / 2 } },
-      { bounds: { x: COMPACT_W / 2, y: 0, width: COMPACT_W / 2, height: COMPACT_H } },
+      { bounds: box(COMPACT_W, COMPACT_H, 2, 2, 0, 0) },
+      { bounds: box(COMPACT_W, COMPACT_H, 2, 2, 0, 1) },
+      { bounds: box(COMPACT_W, COMPACT_H, 2, 2, 1, 0, 1, 2) },
     ],
   },
   {
@@ -160,7 +189,7 @@ export const RICH_MENU_LAYOUTS: RichMenuLayout[] = [
     description: '一整片大區塊',
     size: { width: COMPACT_W, height: COMPACT_H },
     defaultAreas: [
-      { bounds: { x: 0, y: 0, width: COMPACT_W, height: COMPACT_H } },
+      { bounds: box(COMPACT_W, COMPACT_H, 1, 1, 0, 0) },
     ],
   },
 ];

@@ -3,6 +3,7 @@
  * provisionTenant 是開通核心（Tenant → system roles → admin agent），
  * 收 transaction client 供 trial 自動開通與平台手動開通共用。
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { seedRolesForTenant } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
@@ -12,6 +13,8 @@ import { sendManualProvisionedEmail } from '../trial/trial-emails.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { clearQuotaAlertFlags } from '../trial/token-quota.service.js';
+import { monthlyTokensRaisedByPlanChange } from './plan-limits.service.js';
 
 export async function listTenants(prisma: PrismaClient) {
   return prisma.tenant.findMany({
@@ -57,22 +60,28 @@ export async function getTenantDetail(prisma: PrismaClient, id: string) {
 /** 平台編輯租戶基本資料：名稱、方案。方案變更需失效權限天花板/租戶方案快取（比照 convertToPaid）。 */
 export async function updateTenant(
   prisma: PrismaClient,
+  redis: Redis,
   id: string,
   input: { name?: string; planSlug?: string },
 ) {
-  const existing = await prisma.tenant.findUnique({ where: { id }, select: { id: true, planId: true } });
+  const existing = await prisma.tenant.findUnique({
+    where: { id },
+    select: { id: true, planId: true, limitOverrides: true, plan: { select: { limits: true } } },
+  });
   if (!existing) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
 
   const data: Prisma.TenantUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
 
   let planChangedTo: string | null = null;
+  let quotaRaised = false;
   if (input.planSlug !== undefined) {
-    const plan = await prisma.plan.findUnique({ where: { slug: input.planSlug }, select: { id: true } });
+    const plan = await prisma.plan.findUnique({ where: { slug: input.planSlug }, select: { id: true, limits: true } });
     if (!plan) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
     if (plan.id !== existing.planId) {
       data.plan = { connect: { id: plan.id } };
       planChangedTo = plan.id;
+      quotaRaised = monthlyTokensRaisedByPlanChange(existing, plan);
     }
   }
 
@@ -83,9 +92,11 @@ export async function updateTenant(
   });
 
   if (planChangedTo) {
-    await invalidatePlanPermissions(prisma, planChangedTo);
+    await invalidatePlanPermissions(redis, planChangedTo);
     invalidateTenantPlan(id);
   }
+  // 新方案的 AI 月額度較高時清掉本月的告警旗標，用量跨越新上限的門檻才會再通知（AUDIT PLAN-13）
+  if (quotaRaised) await clearQuotaAlertFlags(redis, id);
   return updated;
 }
 

@@ -1,17 +1,20 @@
 /**
  * Automation service – CRUD operations and explicit rule testing.
+ * 每個函式在呼叫端（automation.flow.ts）開的租戶交易內執行（AGENTS.md 結構規則 2）。
  *
  * Runtime automation execution is owned by apps/workers.
  */
 
-import type { PrismaClient, Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { Prisma } from '@prisma/client';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { TopLevelCondition } from 'json-rules-engine';
 import { evaluateRules } from './engine/rule-engine.js';
 import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateAutomationRuleContract } from '@open333crm/automation';
+import { couponNotPastFixedEnd } from '@open333crm/core';
 import { notFound } from '../../shared/messages/resource.js';
+import { bodyHasCouponUrl } from '../marketing/template-renderer.js';
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -26,11 +29,11 @@ export interface PaginationParams {
 }
 
 export async function listRules(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   filters: RuleFilters,
   pagination: PaginationParams,
 ) {
+  const { tx, tenantId } = ctx;
   // enabled=false 代表「已刪除」（見 deleteRule），列表一律不顯示。
   // 使用者手動停用的規則 isActive=false 但 enabled 仍為 true，仍會列出。
   const where: Prisma.AutomationRuleWhereInput = { tenantId, enabled: true };
@@ -49,24 +52,21 @@ export async function listRules(
   }
 
   const [rules, total] = await Promise.all([
-    prisma.automationRule.findMany({
+    tx.automationRule.findMany({
       where,
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
       skip: (pagination.page - 1) * pagination.limit,
       take: pagination.limit,
     }),
-    prisma.automationRule.count({ where }),
+    tx.automationRule.count({ where }),
   ]);
 
   return { rules, total };
 }
 
-export async function getRule(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
-  const rule = await prisma.automationRule.findFirst({
+export async function getRule(ctx: TenantCtx, id: string) {
+  const { tx, tenantId } = ctx;
+  const rule = await tx.automationRule.findFirst({
     // enabled=false 代表已刪除：查不到才對，否則刪掉的規則仍可用網址開啟
     where: { id, tenantId, enabled: true },
     include: {
@@ -91,8 +91,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * 非 UUID 或不存在的素材都能存，規則建起來卻永遠發不出訊息（UAT E2E CM-W6-04）。
  */
 async function assertSendMaterialReferences(
-  prisma: TenantDb,
-  tenantId: string,
+  { tx, tenantId }: TenantCtx,
   actions: Array<Record<string, unknown>>,
 ): Promise<void> {
   const ids = actions
@@ -107,20 +106,85 @@ async function assertSendMaterialReferences(
     });
   }
   const unique = [...new Set(ids as string[])];
-  const found = await prisma.material.findMany({
+  const found = await tx.material.findMany({
     where: { tenantId, isActive: true, id: { in: unique } },
-    select: { id: true },
+    select: { id: true, body: true },
   });
   if (found.length !== unique.length) {
     throw new AppError('找不到要傳送的素材，或素材已停用', 'VALIDATION_ERROR', 400, {
       issues: [{ path: 'actions', message: '找不到要傳送的素材，或素材已停用' }],
     });
   }
+  // 自動化規則不會發券：workers 會把沒代入的 {{coupon.url}} 拿掉，顧客拿不到券
+  // （change improve-coupon-url-insert-ux design D2）
+  if (found.some((m) => bodyHasCouponUrl(m.body))) {
+    const message = '素材有顧客專屬券連結（{{coupon.url}}），但自動化規則與關鍵字回覆不會發券，顧客拿不到券連結。'
+      + '請改用沒有顧客專屬券連結的素材；要發券請用「同時發送優惠券」，或在素材放領券連結';
+    throw new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'actions', message }] });
+  }
+}
+
+/**
+ * 「發送優惠券」的 couponId 要是同租戶、進行中的券（add-coupon-system design D25）。
+ * 原本是文字框、存檔不檢查，貼錯或其他租戶的券都能存，規則觸發時才發不出去。
+ * 關鍵字回覆頁、加好友禮頁與 API 都經過這裡。
+ *
+ * 只檢查新增或更換的券（2026-10-22 審查決定）：規則原本就指向的券之後被暫停或結束時，
+ * 商家仍要能改關鍵字或素材；workers 觸發時會留下「券不是進行中」的紀錄。
+ */
+async function assertIssueCouponReferences(
+  { tx, tenantId }: TenantCtx,
+  actions: Array<Record<string, unknown>>,
+  previousActions: unknown = [],
+): Promise<void> {
+  const couponIdsOf = (list: unknown) =>
+    (Array.isArray(list) ? (list as Array<Record<string, unknown>>) : [])
+      .filter((a) => a?.type === 'issue_coupon')
+      .map((a) => (a.params as { couponId?: unknown } | undefined)?.couponId);
+  const unchanged = new Set(couponIdsOf(previousActions).filter((id): id is string => typeof id === 'string'));
+  const ids = couponIdsOf(actions).filter((id) => !(typeof id === 'string' && unchanged.has(id)));
+  if (ids.length === 0) return;
+
+  const message = '找不到可發放的優惠券：發送優惠券要選同一個帳號下、進行中且沒過到期日的券';
+  const invalid = () =>
+    new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'actions', message }] });
+  if (ids.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) throw invalid();
+  const unique = [...new Set(ids as string[])];
+  const found = await tx.coupon.findMany({
+    // 固定效期已過到期日的券狀態仍是進行中，但 workers 不會發（isCouponPastFixedEnd）
+    where: { tenantId, status: 'ACTIVE', id: { in: unique }, ...couponNotPastFixedEnd(new Date()) },
+    select: { id: true },
+  });
+  if (found.length !== unique.length) throw invalid();
+}
+
+/**
+ * 加好友禮每個租戶只能有一條（design D28；使用者決定 2026-10-22：後端也擋）。
+ * 「加入好友」事件且含發券動作的規則就是加好友禮；設定頁只編輯一條，另外建的同類規則也會執行，
+ * 同一位顧客會拿到兩張券。只傳送訊息或素材的「加入好友」規則不受限制；已刪除（enabled=false）的不算。
+ */
+async function assertSingleFollowGift(
+  { tx, tenantId }: TenantCtx,
+  eventType: string,
+  actions: Array<Record<string, unknown>>,
+  excludeRuleId?: string,
+): Promise<void> {
+  const issuesCoupon = (list: unknown) => Array.isArray(list) && list.some((a) => (a as { type?: unknown })?.type === 'issue_coupon');
+  if (eventType !== 'contact.followed' || !issuesCoupon(actions)) return;
+  // 先查再寫：同時送出的請求沒有鎖時都會通過檢查，留下兩條加好友禮。
+  // 同一租戶的加好友禮寫入依序執行；交易級 advisory lock，交易結束自動釋放（同 sla.service.ts）
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`follow-gift:${tenantId}`}, 0))`;
+  const others = await tx.automationRule.findMany({
+    where: { tenantId, enabled: true, eventType: 'contact.followed', ...(excludeRuleId ? { id: { not: excludeRuleId } } : {}) },
+    select: { actions: true },
+  });
+  if (others.some((r) => issuesCoupon(r.actions))) {
+    throw new AppError('已經有加好友禮，請到「LINE 管理 → 加好友禮」修改', 'CONFLICT', 409);
+  }
 }
 
 export async function createRule(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   data: {
     name: string;
     description?: string;
@@ -135,11 +199,13 @@ export async function createRule(
 ) {
   const eventType = String(data.trigger.type ?? '');
   validateRuleContract(eventType, data.conditions, data.actions);
-  await assertSendMaterialReferences(prisma, tenantId, data.actions);
+  await assertSendMaterialReferences(ctx, data.actions);
+  await assertIssueCouponReferences(ctx, data.actions);
+  await assertSingleFollowGift(ctx, eventType, data.actions);
 
-  const rule = await prisma.automationRule.create({
+  const rule = await ctx.tx.automationRule.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       name: data.name,
       description: data.description,
       enabled: true,
@@ -160,9 +226,8 @@ export async function createRule(
 }
 
 export async function updateRule(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   id: string,
-  tenantId: string,
   data: {
     name?: string;
     description?: string;
@@ -174,9 +239,9 @@ export async function updateRule(
     actions?: Array<Record<string, unknown>>;
   },
 ) {
-  const existing = await prisma.automationRule.findFirst({
+  const existing = await ctx.tx.automationRule.findFirst({
     // enabled=false 代表已刪除：不可更新，否則帶 isActive:true 就能把它復活
-    where: { id, tenantId, enabled: true },
+    where: { id, tenantId: ctx.tenantId, enabled: true },
   });
 
   if (!existing) {
@@ -187,7 +252,10 @@ export async function updateRule(
   // 只改啟用狀態、名稱、優先序不可被既有不合規的動作卡住：契約會演進（動作可能被拿掉），
   // 舊規則可能不合新版契約，但管理員至少要能停用它
   const touchesContract = data.trigger !== undefined || data.conditions !== undefined || data.actions !== undefined;
-  if (touchesContract) {
+  // 改為啟用時也要驗證：workers 會整條略過不合契約的規則，開關打開卻不會執行（問題清單 A02，
+  // change fix-automation-rule-gaps）。停用不驗證，管理員永遠可以關掉舊規則
+  const activates = data.isActive === true;
+  if (touchesContract || activates) {
     const existingTrigger = existing.trigger as Record<string, unknown>;
     const nextEventType = String(
       data.trigger?.type ?? existingTrigger?.type ?? existing.eventType ?? '',
@@ -195,7 +263,11 @@ export async function updateRule(
     const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
     const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
     validateRuleContract(nextEventType, nextConditions, nextActions);
-    if (data.actions !== undefined) await assertSendMaterialReferences(prisma, tenantId, nextActions);
+    await assertSingleFollowGift(ctx, nextEventType, nextActions, id);
+    if (data.actions !== undefined) {
+      await assertSendMaterialReferences(ctx, nextActions);
+      await assertIssueCouponReferences(ctx, nextActions, existing.actions);
+    }
   }
 
   const updateData: Prisma.AutomationRuleUpdateInput = {};
@@ -224,7 +296,7 @@ export async function updateRule(
     updateData.actions = data.actions as any;
   }
 
-  const rule = await prisma.automationRule.update({
+  const rule = await ctx.tx.automationRule.update({
     where: { id },
     data: updateData,
   });
@@ -251,13 +323,9 @@ function validateRuleContract(
   }
 }
 
-export async function deleteRule(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
-  const existing = await prisma.automationRule.findFirst({
-    where: { id, tenantId },
+export async function deleteRule(ctx: TenantCtx, id: string) {
+  const existing = await ctx.tx.automationRule.findFirst({
+    where: { id, tenantId: ctx.tenantId },
   });
 
   if (!existing) {
@@ -271,7 +339,7 @@ export async function deleteRule(
   // 這正是先前 UAT 累積 119 筆已刪規則仍顯示在畫面上的原因（CM-170）。
   // enabled 欄位原本幾乎沒被使用（worker 的觸發判斷只看 isActive），
   // 挪用為刪除標記不影響既有行為。
-  const rule = await prisma.automationRule.update({
+  const rule = await ctx.tx.automationRule.update({
     where: { id },
     data: { enabled: false, isActive: false },
   });
@@ -282,14 +350,13 @@ export async function deleteRule(
 // ── Test (dry run) ──────────────────────────────────────────────────────────
 
 export async function testRule(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   ruleId: string,
   testFacts?: Record<string, unknown>,
 ) {
-  const rule = await prisma.automationRule.findFirst({
+  const rule = await ctx.tx.automationRule.findFirst({
     // 已刪除的規則不該還能 dry-run
-    where: { id: ruleId, tenantId, enabled: true },
+    where: { id: ruleId, tenantId: ctx.tenantId, enabled: true },
   });
 
   if (!rule) {
@@ -331,11 +398,11 @@ export async function testRule(
 // ── Logs ────────────────────────────────────────────────────────────────────
 
 export async function listLogs(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   pagination: PaginationParams,
   filters?: { ruleId?: string; success?: boolean },
 ) {
+  const { tx, tenantId } = ctx;
   const where: Prisma.AutomationLogWhereInput = { tenantId };
 
   if (filters?.ruleId) {
@@ -346,7 +413,7 @@ export async function listLogs(
   }
 
   const [logs, total] = await Promise.all([
-    prisma.automationLog.findMany({
+    tx.automationLog.findMany({
       where,
       include: {
         rule: {
@@ -360,7 +427,7 @@ export async function listLogs(
       skip: (pagination.page - 1) * pagination.limit,
       take: pagination.limit,
     }),
-    prisma.automationLog.count({ where }),
+    tx.automationLog.count({ where }),
   ]);
 
   return { logs, total };

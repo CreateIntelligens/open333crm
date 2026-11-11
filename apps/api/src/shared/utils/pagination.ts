@@ -14,7 +14,7 @@
  * 若該端點還有其他查詢參數：
  *   const q = paginationSchema.extend({ status: z.string().optional() }).parse(request.query);
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** 單頁筆數上限：避免一次撈爆記憶體／回應體積。 */
 export const MAX_PAGE_SIZE = 100;

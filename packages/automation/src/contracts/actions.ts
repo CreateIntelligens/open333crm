@@ -23,6 +23,8 @@ const caseCategoryOptions = [
 const caseStatusOptions = [
   { value: 'OPEN', label: '開啟' },
   { value: 'IN_PROGRESS', label: '處理中' },
+  // 2026-11-09 使用者決定加入（issue #469）；與其他狀態一樣受狀態轉換限制
+  { value: 'PENDING', label: '待處理' },
   { value: 'ESCALATED', label: '已升級' },
   { value: 'RESOLVED', label: '已解決' },
   { value: 'CLOSED', label: '已關閉' },
@@ -52,10 +54,33 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     params: [
       {
         key: 'materialId',
-        label: '素材 ID',
-        type: 'string',
+        label: '素材',
+        type: 'material',
         required: true,
         placeholder: '從素材庫選擇要送出的素材',
+      },
+    ],
+  },
+  {
+    type: 'issue_coupon',
+    label: '發送優惠券',
+    requires: ['contact', 'conversation'],
+    mutates: ['conversation', 'message'],
+    // 發券在「關鍵字回覆」與「加好友禮」頁設定，一般自動化規則不提供（design D25）
+    editorHidden: true,
+    params: [
+      {
+        key: 'couponId',
+        label: '優惠券',
+        type: 'coupon',
+        required: true,
+        placeholder: '選擇要發放的進行中優惠券',
+      },
+      {
+        key: 'failureText',
+        label: '發不出時回覆顧客',
+        type: 'textarea',
+        placeholder: '例：您已經領過這張券囉',
       },
     ],
   },
@@ -147,7 +172,11 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     label: '傳送通知',
     requires: ['tenant'],
     mutates: [],
-    params: [{ key: 'message', label: '通知訊息', type: 'string', required: true }],
+    params: [
+      { key: 'message', label: '通知訊息', type: 'string', required: true },
+      // 不指定時依序通知工單負責人、對話負責客服，都沒有時通知主管與管理員（change fix-automation-rule-gaps）
+      { key: 'agentId', label: '通知誰', type: 'agent' },
+    ],
   },
   {
     type: 'notify_supervisor',

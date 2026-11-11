@@ -51,6 +51,11 @@ test('LINE 連結：先加好友、再以 oaMessage 預填代碼，Basic ID 與�
   assert.equal(extractBindingCode(prefill), 'BIND-7K2M9QH4TX');
 });
 
+test('LINE 預填文字是短句：解碼後等於「綁定 {代碼}」，不加說明文字', () => {
+  const link = buildBindingLink({ channelType: 'LINE', displayName: '總店', handle: '@abc1234' }, 'BIND-7K2M9QH4TX');
+  assert.equal(decodeURIComponent(link.sendCodeUrl.split('/?')[1]), '綁定 BIND-7K2M9QH4TX');
+});
+
 test('FB / IG 連結：ref 帶代碼', () => {
   assert.equal(
     buildBindingLink({ channelType: 'FB', displayName: '粉專', handle: '123456789' }, 'BIND-7K2M9QH4TX').sendCodeUrl,
@@ -76,6 +81,8 @@ test('設定：未設定＝關閉並帶預設關鍵字；空陣列退回預設',
     unbindKeywords: ['解除綁定'],
     emailEnabled: false,
     emailKeywords: ['登記email'],
+    phoneEnabled: false,
+    phoneKeywords: ['登記手機'],
   });
   assert.equal(parseIdentityBindingSettings({ enabled: 'true' }).enabled, false, '只接受布林 true');
   assert.deepEqual(parseIdentityBindingSettings({ enabled: true, bindKeywords: [] }).bindKeywords, ['綁定帳號']);
@@ -105,6 +112,15 @@ test('邀請訊息：列出各渠道連結、純文字代碼退路、時效說�
   assert.ok(text.includes('【LINE：@abc1234】'));
   assert.ok(text.includes('【Instagram：@my.shop】'));
   assert.ok(!text.includes('總店') && !text.includes('官方 IG'), '不可出現後台自取的渠道名稱');
+});
+
+test('IG 連結說明請顧客送出代碼', () => {
+  const code = 'BIND-7K2M9QH4TX';
+  const text = buildInviteText([buildBindingLink({ channelType: 'THREADS', displayName: '官方 IG', handle: 'my.shop' }, code)], code);
+  const igSection = text.split('\n\n').find((s) => s.startsWith('【Instagram'));
+  assert.ok(igSection, '要有 IG 段落');
+  assert.ok(igSection.includes(`開啟後請傳送這組代碼：${code}`), igSection);
+  assert.ok(!igSection.includes('任一訊息'), '已有的 IG 對話不會帶 ref，傳任一訊息不會綁定');
 });
 
 test('邀請訊息：FB 沒有 username 時標題只寫類型', () => {

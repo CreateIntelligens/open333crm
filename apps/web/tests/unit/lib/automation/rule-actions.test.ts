@@ -161,3 +161,20 @@ test('紅框說明：已停用的動作說明已停用；移除後沒有動作�
     '此規則含有不適用於這個觸發事件的動作：「傳送訊息」；系統已停用的動作：「LLM 智能回覆（已停用）」，目前整條規則都不會執行。編輯器已移除這些動作，規則目前沒有任何動作：請新增動作後再儲存，或刪除這條規則。',
   );
 });
+
+/* change fix-automation-rule-gaps「編輯器標示未知觸發事件」（問題清單 A02）：
+ * 舊 seed 的 sentiment.negative 不在選單內，下拉原本顯示成第一個選項「收到訊息」 */
+test('舊規則的觸發事件', async () => {
+  const { triggerEventOptions } = await import('#src/lib/automation/rule-actions.js');
+  const options = triggerEventOptions('sentiment.negative');
+  assert.deepEqual(options.at(-1), { value: 'sentiment.negative', label: '未知觸發事件（sentiment.negative）' });
+  assert.equal(
+    triggerEventOptions('message.received').some((o) => o.label.startsWith('未知觸發事件')),
+    false,
+    '契約內的事件不加未知選項',
+  );
+  assert.equal(
+    triggerEventOptions('case.closed').find((o) => o.value === 'case.closed')?.label,
+    '工單關閉（目前不會觸發）',
+  );
+});

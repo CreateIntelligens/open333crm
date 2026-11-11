@@ -1,11 +1,20 @@
 import type { PrismaClient } from '@prisma/client';
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { bumpSlaPriority, CASE_CATEGORIES } from '@open333crm/shared';
-import { logger } from '@open333crm/core';
-import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
+import {
+  bumpSlaPriority,
+  canTransition,
+  CASE_CATEGORIES,
+  caseStatusOutcomeEvent,
+  caseTransitionTimestamps,
+  type CaseStatus,
+} from '@open333crm/shared';
+import { claimSideEffect, dispatchOutboxRows, logger, writeOutbox, type OutboxRow } from '@open333crm/core';
+import { publishSocketEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
-import { deliverToChannelFromWorker, renderTemplateBody } from './channel-delivery.js';
+import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
+import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
+import { couponIssuedViaForTrigger, issueCouponForRule } from './rule-coupon-issue.js';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -15,6 +24,12 @@ export interface WorkerAutomationAction {
 
 export interface WorkerActionContext {
   tenantId: string;
+  /** 觸發事件的 id。有值時每個動作執行前以 automation_action 認領；SLA 排程沒有事件 id，不認領 */
+  eventId?: string | null;
+  /** 動作所屬的規則，認領的子鍵是 <規則 id>#<動作序號> */
+  ruleId?: string | null;
+  /** 規則名稱：發券的來源名稱存發券當下的名稱，規則之後改名仍顯示原名（design D27） */
+  ruleName?: string | null;
   caseId?: string | null;
   conversationId?: string | null;
   contactId?: string | null;
@@ -27,8 +42,11 @@ export interface WorkerActionContext {
   pluginRegistry?: Map<string, ChannelPlugin>;
 }
 
+/** 帶回覆權杖的觸發：收到訊息命中關鍵字、加入好友（design D25）。LINE 在 30 秒內以回覆方式送出 */
+const REPLY_TRIGGERS: ReadonlySet<string> = new Set(['keyword.matched', 'contact.followed']);
+
 function keywordReplyDelivery(context: WorkerActionContext) {
-  return context.trigger === 'keyword.matched' && context.replyToken
+  return context.trigger && REPLY_TRIGGERS.has(context.trigger) && context.replyToken
     ? { strategy: 'reply' as const, replyToken: context.replyToken, receivedAt: context.receivedAt ?? undefined }
     : undefined;
 }
@@ -46,6 +64,54 @@ async function getSupervisorAndAdminIds(
     select: { id: true },
   });
   return agents.map((agent) => agent.id);
+}
+
+// 自動化「通知」動作的站內通知文案（S12：原本是英文「SLA rule matched」）。
+// SLA 與一般自動化規則共用這兩個動作，所以標題不寫 SLA
+const AUTOMATION_NOTIFY_TITLE = '自動化規則通知';
+const AUTOMATION_NOTIFY_DEFAULT_BODY = '自動化規則的條件已成立，請查看相關工單。';
+
+/**
+ * 「傳送通知」的收件人（change fix-automation-rule-gaps）。依序取第一個「同租戶、啟用中」的客服：
+ * 指定的客服 → 工單負責人 → 對話負責客服；都不合格時送所有主管與管理員。
+ * 原本只送工單負責人，沒有工單的觸發選了這個動作永遠不會送（問題清單 A03）。
+ * 每個候選都要驗證：工單或對話可能留著已停用客服的指派，不可送給他們（review #282）。
+ * worker 走 BYPASSRLS 連線：每個查詢都要自帶 tenantId。
+ */
+async function resolveNotifyRecipients(
+  prisma: PrismaClient,
+  params: Record<string, unknown>,
+  context: WorkerActionContext,
+): Promise<string[]> {
+  const { tenantId } = context;
+  const findActiveAgent = async (id: string | null | undefined, source: string): Promise<string | null> => {
+    if (!id) return null;
+    const agent = await prisma.agent.findFirst({
+      where: { id, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!agent) logger.warn(`[automation] notify: ${source} ${id} is inactive or not in tenant, falling back`);
+    return agent?.id ?? null;
+  };
+
+  const chosen = typeof params['agentId'] === 'string' ? params['agentId'].trim() : '';
+  const chosenAgent = await findActiveAgent(chosen, 'chosen agent');
+  if (chosenAgent) return [chosenAgent];
+
+  const caseAssignee = await findActiveAgent(context.assigneeId, 'case assignee');
+  if (caseAssignee) return [caseAssignee];
+
+  if (context.conversationId) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: context.conversationId, tenantId },
+      select: { assignedToId: true },
+    });
+    const conversationAssignee = await findActiveAgent(conversation?.assignedToId, 'conversation assignee');
+    if (conversationAssignee) return [conversationAssignee];
+  }
+  const fallback = await getSupervisorAndAdminIds(prisma, tenantId);
+  if (fallback.length === 0) logger.warn('[automation] notify skipped: no recipient in tenant', { tenantId });
+  return fallback;
 }
 
 const CASE_PRIORITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
@@ -107,7 +173,11 @@ async function createCaseFromAutomation(
   const rawCategory = typeof params['category'] === 'string' ? params['category'].trim() : '';
   const category = (CASE_CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : null;
   if (rawCategory && !category) logger.warn(`[automation] create_case: unknown category "${rawCategory}" ignored`);
-  const slaPolicy = await prisma.slaPolicy.findFirst({ where: { tenantId, priority: priority as any } });
+  // 與手動建單一致：預設政策優先，沒有預設時取最早建立的（G20，AUDIT SLA-03）
+  const slaPolicy = await prisma.slaPolicy.findFirst({
+    where: { tenantId, priority: priority as any },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+  });
   const slaDueAt = slaPolicy ? new Date(Date.now() + slaPolicy.resolutionMinutes * 60_000) : null;
 
   // 建單、關聯對話、寫事件放在同一個交易；關聯用條件式更新（對話仍是讀取時的狀態才寫入）：
@@ -115,8 +185,9 @@ async function createCaseFromAutomation(
   // 後到的會因條件不成立而回滾，不會開出兩張工單，也不會留下沒有對話的孤兒工單
   const RACED = 'create_case_raced';
   let created: { id: string };
+  let outboxRow: OutboxRow;
   try {
-    created = await prisma.$transaction(async (tx) => {
+    ({ created, outboxRow } = await prisma.$transaction(async (tx) => {
       const c = await tx.case.create({
         data: {
           tenantId,
@@ -144,8 +215,23 @@ async function createCaseFromAutomation(
           payload: { title, priority, category, trigger: context.trigger ?? null },
         },
       });
-      return c;
-    });
+      // case.created 與工單一起 commit（event-delivery「workers 的事件與資料一起 commit」）
+      const row = await writeOutbox(tx, {
+        tenantId,
+        kind: 'event',
+        name: 'case.created',
+        payload: {
+          caseId: c.id,
+          contactId: conversation.contactId,
+          channelId: conversation.channelId,
+          title,
+          priority,
+          status: 'OPEN',
+          conversationId: conversation.id,
+        },
+      });
+      return { created: c, outboxRow: row };
+    }));
   } catch (err) {
     if (err instanceof Error && err.message === RACED) {
       logger.info('[automation] create_case skipped: conversation was linked to a case concurrently');
@@ -161,16 +247,138 @@ async function createCaseFromAutomation(
     assigneeId: null,
     title,
   });
-  await publishDomainEvent(redisPublisher, 'case.created', tenantId, {
-    caseId: created.id,
-    contactId: conversation.contactId,
-    channelId: conversation.channelId,
-    title,
-    priority,
-    status: 'OPEN',
-    conversationId: conversation.id,
-  }).catch((err) => logger.warn('[automation] publish case.created bridge failed:', err));
+  await dispatchAfterCommit(prisma, outboxRow);
   return created.id;
+}
+
+const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網站聊天室' };
+const channelLabel = (channelType: string) => CHANNEL_LABELS[channelType] ?? channelType;
+
+/**
+ * commit 之後的快路徑：送進訂閱者佇列。失敗只記 log，資料列留在 outbox，由 API 的 outbox-relay 補送
+ * （API 沒有在執行時也一樣，event-delivery「API 行程沒有在執行」）。
+ */
+async function dispatchAfterCommit(prisma: PrismaClient, row: OutboxRow) {
+  await dispatchOutboxRows(prisma, [row]).catch((err) => logger.warn(`[automation] outbox dispatch failed (${row.name})`, err));
+}
+
+/**
+ * 「更新工單狀態」動作（issue #469，AUDIT AUTO-10；spec case-management
+ * 「Automation Case Status Changes Follow The Transition Rules」）。
+ *
+ * 與 API 的 transitionCase() 用同一組共用規則（@open333crm/shared），不另寫一份狀態機：
+ * - 狀態相同：不改、不寫紀錄（已經是規則要的狀態）。
+ * - canTransition() 不允許（含不存在的狀態值）：不改工單，時間軸寫 automation_status_skipped，
+ *   後台看得到規則為什麼沒有生效。只寫 log 的話，管理員只會看到「規則沒反應」。
+ * - 允許：以讀到的狀態做條件更新（讀取之後被別人改掉時不覆寫），同一個交易寫 status_changed
+ *   與 case.resolved／case.closed（outbox，與手動轉換送出相同的事件內容）。
+ * worker 走 BYPASSRLS 連線：每個查詢都自帶 tenantId。
+ */
+async function updateCaseStatusFromAutomation(
+  prisma: PrismaClient,
+  redisPublisher: IORedis,
+  caseId: string,
+  status: string,
+  context: WorkerActionContext,
+): Promise<void> {
+  const { tenantId } = context;
+  const rule = { ruleId: context.ruleId ?? null, ruleName: context.ruleName ?? null };
+  const result = await prisma.$transaction(async (tx) => {
+    const current = await tx.case.findFirst({
+      where: { id: caseId, tenantId },
+      select: {
+        status: true,
+        priority: true,
+        assigneeId: true,
+        contactId: true,
+        channelId: true,
+        title: true,
+        conversations: { select: { id: true } },
+      },
+    });
+    if (!current) return { kind: 'not_found' as const };
+    const from = current.status as CaseStatus;
+    if (from === status) return { kind: 'unchanged' as const };
+
+    if (!canTransition(from, status as CaseStatus)) {
+      await tx.caseEvent.create({
+        data: {
+          caseId,
+          actorType: 'automation',
+          actorId: null,
+          eventType: 'automation_status_skipped',
+          payload: { from, to: status, reason: 'invalid_transition', ...rule },
+        },
+      });
+      return { kind: 'rejected' as const, from };
+    }
+
+    const { count } = await tx.case.updateMany({
+      where: { id: caseId, tenantId, status: from },
+      data: {
+        status: status as CaseStatus,
+        ...caseTransitionTimestamps(from, status as CaseStatus, new Date()),
+      },
+    });
+    if (count === 0) return { kind: 'raced' as const };
+
+    await tx.caseEvent.create({
+      data: {
+        caseId,
+        actorType: 'automation',
+        actorId: null,
+        eventType: 'status_changed',
+        payload: { from, to: status, source: 'automation', ...rule },
+      },
+    });
+    const outcome = caseStatusOutcomeEvent(status, {
+      caseId,
+      contactId: current.contactId,
+      channelId: current.channelId,
+      assigneeId: current.assigneeId,
+      title: current.title,
+      conversationId: current.conversations[0]?.id ?? null,
+    });
+    const outboxRow = outcome
+      ? await writeOutbox(tx, { tenantId, kind: 'event', name: outcome.name, payload: outcome.payload })
+      : null;
+    return { kind: 'changed' as const, current, outboxRow };
+  });
+
+  if (result.kind === 'not_found') {
+    logger.info(`[automation] update_case_status skipped: case ${caseId} not found`);
+    return;
+  }
+  if (result.kind === 'unchanged') return;
+  if (result.kind === 'rejected') {
+    logger.info(`[automation] update_case_status skipped: case ${caseId} cannot change from ${result.from} to ${status}`);
+    return;
+  }
+  if (result.kind === 'raced') {
+    logger.info(`[automation] update_case_status skipped: case ${caseId} status changed concurrently`);
+    return;
+  }
+
+  await publishSocketEvent(redisPublisher, `tenant:${tenantId}`, 'case.updated', {
+    id: caseId,
+    status,
+    priority: result.current.priority,
+    assigneeId: result.current.assigneeId,
+    source: 'automation',
+  });
+  if (result.outboxRow) await dispatchAfterCommit(prisma, result.outboxRow);
+}
+
+/** 以 automation_action + 事件 id + <規則 id>#<動作序號> 認領 */
+async function claimAction(prisma: PrismaClient, context: WorkerActionContext, actionKey: string): Promise<boolean> {
+  return prisma.$transaction((tx) =>
+    claimSideEffect(tx, { tenantId: context.tenantId, kind: 'automation_action', sourceId: context.eventId!, subKey: actionKey }),
+  );
+}
+
+/** notify 的 job id：<事件 id>__<規則 id>#<序號>__<客服人員 id>。沒有事件 id（SLA 路徑）時不指定 */
+function notifyJobOptions(context: WorkerActionContext, actionKey: string | null, agentId: string) {
+  return actionKey ? { jobId: `${context.eventId}__${actionKey}__${agentId}` } : undefined;
 }
 
 export async function executeWorkerAutomationActions(
@@ -179,7 +387,15 @@ export async function executeWorkerAutomationActions(
   actions: WorkerAutomationAction[],
   context: WorkerActionContext,
 ): Promise<void> {
-  for (const action of actions) {
+  for (const [index, action] of actions.entries()) {
+    // 同一個事件的同一個動作最多執行一次（automation-engine「規則動作每個事件最多執行一次」）。
+    // 認領在 try 之外：認領的交易失敗時丟錯，由佇列重試（side-effect-claims「認領 commit 之前的失敗由佇列重試」）。
+    // 認領之後執行失敗也不還原、只記 log：送出訊息這類動作寧可少做，不重複做
+    const actionKey = context.eventId && context.ruleId ? `${context.ruleId}#${index}` : null;
+    if (actionKey && !(await claimAction(prisma, context, actionKey))) {
+      logger.info(`[automation] Worker action "${action.type}" skipped: already executed for event ${context.eventId} (${actionKey})`);
+      continue;
+    }
     try {
       const params = action.params ?? action.payload ?? {};
 
@@ -234,20 +450,25 @@ export async function executeWorkerAutomationActions(
           logger.info('[automation] Worker action "add_tag" skipped: tag not found in tenant');
           continue;
         }
-        // 冪等貼標（upsert，對齊 tagging.service 語意；worker 跨 process 無法 import api service）
-        await prisma.contactTag.upsert({
-          where: { contactId_tagId: { contactId: context.contactId, tagId: tag.id } },
-          update: {},
-          create: { contactId: context.contactId, tagId: tag.id, addedBy: 'automation' },
+        // 冪等貼標（upsert，對齊 tagging.service 語意；worker 跨 process 無法 import api service）。
+        // contact.tagged 與貼標一起 commit（source='automation'，供下游規則；迴圈防護在 api 的自動化訂閱者）
+        const contactId = context.contactId;
+        const tagged = tag;
+        const outboxRow = await prisma.$transaction(async (tx) => {
+          await tx.contactTag.upsert({
+            where: { contactId_tagId: { contactId, tagId: tagged.id } },
+            update: {},
+            create: { contactId, tagId: tagged.id, addedBy: 'automation' },
+          });
+          return writeOutbox(tx, {
+            tenantId: context.tenantId,
+            kind: 'event',
+            name: 'contact.tagged',
+            payload: { contactId, tagId: tagged.id, tagName: tagged.name, source: 'automation' },
+          });
         });
-        logger.info(`[automation] add_tag: tagged contact ${context.contactId} with ${tag.id}`);
-        // 橋接 contact.tagged 回 api eventBus（source='automation'，供下游規則；迴圈防護在 api 端）
-        await publishDomainEvent(redisPublisher, 'contact.tagged', context.tenantId, {
-          contactId: context.contactId,
-          tagId: tag.id,
-          tagName: tag.name,
-          source: 'automation',
-        }).catch((err) => logger.warn('[automation] publish contact.tagged bridge failed:', err));
+        logger.info(`[automation] add_tag: tagged contact ${contactId} with ${tagged.id}`);
+        await dispatchAfterCommit(prisma, outboxRow);
         continue;
       }
 
@@ -278,15 +499,7 @@ export async function executeWorkerAutomationActions(
       if (action.type === 'update_case_status') {
         const status = params['status'];
         if (typeof status === 'string' && status && context.caseId) {
-          await prisma.case.update({
-            where: { id: context.caseId },
-            data: { status: status as any },
-          });
-          await publishSocketEvent(redisPublisher, `tenant:${context.tenantId}`, 'case.updated', {
-            id: context.caseId,
-            status,
-            source: 'sla_worker',
-          });
+          await updateCaseStatusFromAutomation(prisma, redisPublisher, context.caseId, status, context);
         }
         continue;
       }
@@ -321,15 +534,22 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
-      if (action.type === 'notify' && context.assigneeId) {
-        await enqueueNotification({
-          tenantId: context.tenantId,
-          agentId: context.assigneeId,
-          type: 'sla_rule',
-          title: 'SLA rule matched',
-          body: String(params['message'] ?? 'A SLA rule matched.'),
-          clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
-        });
+      if (action.type === 'notify') {
+        const recipients = await resolveNotifyRecipients(prisma, params, context);
+        for (const agentId of recipients) {
+          await enqueueNotification({
+            tenantId: context.tenantId,
+            agentId,
+            type: 'sla_rule',
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
+            clickUrl: context.caseId
+              ? `/dashboard/cases/${context.caseId}`
+              : context.conversationId
+                ? `/dashboard/inbox?conv=${context.conversationId}`
+                : undefined,
+          }, notifyJobOptions(context, actionKey, agentId));
+        }
         continue;
       }
 
@@ -340,10 +560,10 @@ export async function executeWorkerAutomationActions(
             tenantId: context.tenantId,
             agentId,
             type: 'sla_rule',
-            title: 'SLA rule matched',
-            body: String(params['message'] ?? 'A SLA rule matched.'),
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
             clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
-          });
+          }, notifyJobOptions(context, actionKey, agentId));
         }
         continue;
       }
@@ -382,7 +602,7 @@ export async function executeWorkerAutomationActions(
         }
         const material = await prisma.material.findFirst({
           where: { id: materialId, tenantId: context.tenantId },
-          select: { contentType: true, body: true, channelType: true },
+          select: { name: true, contentType: true, body: true, channelType: true, variables: true },
         });
         if (!material) {
           logger.warn(`[automation] send_material skipped: material ${materialId} not found`);
@@ -392,7 +612,7 @@ export async function executeWorkerAutomationActions(
         // channel 防呆：素材 channelType 與對話 channel 不符就 skip（避免 FB 對話送 line_* 空訊息）
         const conv = await prisma.conversation.findFirst({
           where: { id: context.conversationId, tenantId: context.tenantId },
-          include: { channel: { select: { channelType: true } } },
+          include: { channel: { select: { id: true, channelType: true } } },
         });
         const convChannelType = conv?.channel?.channelType?.toLowerCase();
         const matChannelType = material.channelType?.toLowerCase();
@@ -400,13 +620,29 @@ export async function executeWorkerAutomationActions(
           logger.warn(
             `[automation] send_material skipped: material channel "${matChannelType}" != conversation channel "${convChannelType}"`,
           );
+          // 只寫 log 的話收件匣看不出規則有觸發卻沒送（change fix-keyword-yield-ig-delivery）
+          if (conv) {
+            await recordSkippedDelivery(
+              prisma,
+              redisPublisher,
+              conv,
+              { contentType: 'text', content: { text: `自動化規則的素材「${material.name ?? ''}」` } },
+              `素材是 ${channelLabel(matChannelType)} 素材，這個對話是 ${channelLabel(convChannelType)}，沒有送出`,
+            );
+          }
           continue;
         }
 
-        const variables = (params['variables'] as Record<string, string> | undefined) ?? {};
-        const renderedBody = renderTemplateBody(
-          material.body as Record<string, unknown>,
-          variables,
+        // 變數用對話聯絡人的資料代入（比照廣播），缺值用素材預設值，仍沒有值的留空，
+        // 不把 {{contact.name}} 原樣送給客人
+        const variables = await resolveMaterialVariables(prisma, {
+          tenantId: context.tenantId,
+          contactId: context.contactId ?? conv?.contactId ?? null,
+          materialVariables: material.variables,
+          ruleVariables: params['variables'] as Record<string, string> | undefined,
+        });
+        const renderedBody = stripUnresolvedPlaceholders(
+          renderTemplateBody(material.body as Record<string, unknown>, variables),
         );
         await deliverToChannelFromWorker(
           prisma,
@@ -415,6 +651,32 @@ export async function executeWorkerAutomationActions(
           context.conversationId,
           { contentType: material.contentType, content: renderedBody, delivery: keywordReplyDelivery(context) },
         );
+        continue;
+      }
+
+      /**
+       * 自動發券（design D16、D25～D27）：保留 → 送出 → 確認／作廢，沒發出時在對話留下紀錄。
+       * 流程在 rule-coupon-issue.ts，加好友禮重用同一個函式。
+       */
+      if (action.type === 'issue_coupon') {
+        if (!context.conversationId || !context.pluginRegistry) {
+          // 沒有對話就沒有地方留下紀錄；契約要求 conversation 範圍，正常不會走到這裡
+          logger.warn('[automation] issue_coupon skipped: missing conversationId/pluginRegistry', { tenantId: context.tenantId });
+          continue;
+        }
+        const couponId = typeof params['couponId'] === 'string' ? params['couponId'] : '';
+        const failureText = typeof params['failureText'] === 'string' ? params['failureText'] : null;
+        await issueCouponForRule(prisma, redisPublisher, {
+          tenantId: context.tenantId,
+          conversationId: context.conversationId,
+          contactId: context.contactId,
+          couponId,
+          failureText,
+          rule: { id: context.ruleId ?? null, name: context.ruleName ?? null },
+          issuedVia: couponIssuedViaForTrigger(context.trigger),
+          delivery: keywordReplyDelivery(context),
+          pluginRegistry: context.pluginRegistry,
+        });
         continue;
       }
 

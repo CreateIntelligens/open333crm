@@ -60,11 +60,16 @@ interface CarouselPage {
   action2?: ActionConfig;
 }
 
+/** 聊天列表與通知顯示的預覽文字；沒填或只有空白時用預設文字（LINE 不接受空的 altText） */
+function altTextOr(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
 export function buildLineCarousel(content: Record<string, unknown>): Record<string, unknown> {
   const pageType = (content.pageType as string) ?? 'product';
   const pages = (content.pages as CarouselPage[] | undefined) ?? [];
   const endPage = content.endPage as { imageUrl?: string; label?: string; action?: ActionConfig } | undefined;
-  const altText = (content.altText as string) ?? '多頁訊息';
+  const altText = altTextOr(content.altText, '多頁訊息');
 
   const bubbles = pages.map((page) => carouselPageToBubble(pageType, page));
   if (endPage) bubbles.push(endPageToBubble(endPage));
@@ -243,7 +248,7 @@ export function buildLineImagemap(content: Record<string, unknown>): Record<stri
   const width = (content.width as number) ?? 1040;
   const height = (content.height as number) ?? 1040;
   const areas = (content.areas as ImagemapArea[] | undefined) ?? [];
-  const altText = (content.altText as string) ?? '圖文訊息';
+  const altText = altTextOr(content.altText, '圖文訊息');
 
   return {
     type: 'imagemap',

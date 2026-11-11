@@ -89,7 +89,7 @@ export default function DesignPreviewPage() {
               <Swatch name="Primary" className="bg-primary" hex="#378ADD" />
               <Swatch name="Primary Subtle" className="bg-primary-subtle" hex="#EFF6FF" />
               <Swatch name="Success" className="bg-success" hex="#008236" />
-              <Swatch name="Warning" className="bg-warning" hex="#FF6E00" />
+              <Swatch name="Warning" className="bg-warning" hex="#B24D00" />
               <Swatch name="Destructive" className="bg-destructive" hex="#EE3134" />
               <Swatch name="AI / Bot" className="bg-ai" hex="#9810FA" />
               <Swatch name="Foreground" className="bg-foreground" hex="#37404C" />

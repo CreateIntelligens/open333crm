@@ -7,16 +7,17 @@
  *   3. 產 JSON（保關聯完整性）+ CSV（主表扁平化），打包成 zip
  *   4. 上傳 MinIO（key: export/{tenantId}/{requestId}.zip），更新 status=completed / fileKey / fileSizeBytes / expiresAt
  *   5. 失敗則 status=failed + error
- *   6. 完成（成功/失敗）經 Redis pub/sub 發站內通知給發起者
+ *   6. 完成（成功/失敗）經 Redis pub/sub 發站內通知給發起者；發起者已被永久刪除時不送（沒有收件人）
  *
  * 隔離：所有查詢一律以 tenantId 限定；Message/Case 透過 Conversation/Contact 的 tenantId 間接限定。
  */
 import type { Job } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
-import type IORedis from 'ioredis';
-import { logger, MinioStorageProvider } from '@open333crm/core';
+import type { Redis as IORedis } from 'ioredis';
+import { claimOne, logger, MinioStorageProvider } from '@open333crm/core';
 import { SimpleZip, toCsv } from '../lib/simple-zip.js';
-import { enqueueNotification } from '../lib/notification-queue.js';
+import { enqueueNotification, type NotificationDispatchInput } from '../lib/notification-queue.js';
+import { requesterExists } from '../lib/requester.js';
 
 interface DataExportJobData {
   requestId: string;
@@ -142,11 +143,20 @@ export async function handleDataExportJob(
     return;
   }
 
-  try {
-    await prisma.dataExportRequest.updateMany({
-      where: { id: requestId, tenantId },
+  // processing 的請求代表上一次執行中途結束，重新處理；completed、failed、expired 代表已經結束
+  // （tenant-data-export「worker 不重新處理已結束的匯出請求」）
+  const claimed = await claimOne(() =>
+    prisma.dataExportRequest.updateMany({
+      where: { id: requestId, tenantId, status: { in: ['pending', 'processing'] } },
       data: { status: 'processing' },
-    });
+    }),
+  );
+  if (!claimed) {
+    logger.info(`[data-export] Request ${requestId} already finished, skipping`);
+    return;
+  }
+
+  try {
 
     const data = await collectTenantData(prisma, tenantId);
 
@@ -184,23 +194,31 @@ export async function handleDataExportJob(
     await storage.upload(EXPORT_BUCKET, fileKey, buffer, 'application/zip');
 
     const expiresAt = new Date(Date.now() + RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    await prisma.dataExportRequest.updateMany({
-      where: { id: requestId, tenantId },
-      data: {
-        status: 'completed',
-        fileKey,
-        fileSizeBytes: buffer.length,
-        expiresAt,
-        completedAt: new Date(),
-        error: null,
-      },
-    });
+    // 只把 processing 改成 completed：兩次執行同時進行時，後完成的那次不再通知。
+    // 兩次都上傳到同一個 key，後上傳的覆蓋前一個，內容相同
+    const completed = await claimOne(() =>
+      prisma.dataExportRequest.updateMany({
+        where: { id: requestId, tenantId, status: 'processing' },
+        data: {
+          status: 'completed',
+          fileKey,
+          fileSizeBytes: buffer.length,
+          expiresAt,
+          completedAt: new Date(),
+          error: null,
+        },
+      }),
+    );
+    if (!completed) {
+      logger.info(`[data-export] Request ${requestId} completed by another run, skipping notification`);
+      return;
+    }
 
     logger.info(
       `[data-export] Completed request ${requestId}: ${buffer.length} bytes, key=${fileKey}`,
     );
 
-    await enqueueNotification({
+    await notifyRequester(prisma, requestId, {
       tenantId,
       agentId: requestedBy,
       type: 'data_export_ready',
@@ -212,21 +230,43 @@ export async function handleDataExportJob(
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`[data-export] Failed request ${requestId}: ${message}`, { err });
 
-    await prisma.dataExportRequest
-      .updateMany({
-        where: { id: requestId, tenantId },
+    const markedFailed = await claimOne(() =>
+      prisma.dataExportRequest.updateMany({
+        where: { id: requestId, tenantId, status: 'processing' },
         data: { status: 'failed', error: message.slice(0, 1000) },
-      })
-      .catch((e) => logger.error('[data-export] Failed to mark request failed', { e }));
+      }),
+    ).catch((e) => {
+      logger.error('[data-export] Failed to mark request failed', { e });
+      return true;
+    });
+    // 另一個執行已經完成這個請求：不覆蓋，也不通知失敗
+    if (!markedFailed) return;
 
-    await enqueueNotification({
+    await notifyRequester(prisma, requestId, {
       tenantId,
       agentId: requestedBy,
       type: 'data_export_failed',
       title: '資料匯出失敗',
       body: '很抱歉，您的資料匯出未能完成，請稍後重試或聯絡管理員。',
       clickUrl: `/dashboard/settings/data-export/${requestId}`,
-    }).catch((e) => logger.error('[data-export] Failed to enqueue failure notification', { e }));
+    });
+  }
+}
+
+/**
+ * 通知發起者。請求的狀態已經 commit（claim 已成立），重試時 worker 直接結束、不會補送，
+ * 所以通知最多送一次：發起者已被永久刪除時不送，查詢或送進佇列失敗只寫 log，不讓工作失敗或重試
+ * （AGENTS.md 結構規則 2）。
+ */
+async function notifyRequester(prisma: PrismaClient, requestId: string, input: NotificationDispatchInput): Promise<void> {
+  try {
+    if (!(await requesterExists(prisma, input.tenantId, input.agentId))) {
+      logger.info(`[data-export] Requester ${input.agentId} of request ${requestId} no longer exists, skipping ${input.type} notification`);
+      return;
+    }
+    await enqueueNotification(input);
+  } catch (err) {
+    logger.error(`[data-export] Failed to enqueue ${input.type} notification for ${requestId}`, { err });
   }
 }
 

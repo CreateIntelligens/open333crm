@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CompactImageField } from '../CompactImageField';
 import { LayoutPickerDialog } from './LayoutPickerDialog';
+import { PreviewTextField } from './PreviewTextField';
 import { ActionConfigEditor, type ActionConfig } from './ActionConfigEditor';
 import { getLayoutById, type ImagemapArea } from './imagemap-layouts';
 
@@ -94,6 +95,8 @@ export function LineImagemapEditor({ body, onChange }: Props) {
         </div>
         <Button variant="outline" onClick={() => setPickerOpen(true)}>{layout ? '變更版型' : '選擇版型'}</Button>
       </div>
+
+      <PreviewTextField value={body.altText} fallback="圖文訊息" onChange={(altText) => onChange({ ...body, altText })} />
 
       {/* 底圖上傳 */}
       {layout && (

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * `/chatbox` 頁面以 sessionId 的生命週期運作，不用訪客 token
- * （openspec/specs/webchat-widget「Chatbox mode uses session id instead of visitor token」）。
+ * （openspec/specs/webchat-widget「Chatbox mode uses session id instead of visitor token」），
+ * 訪客只能傳文字（「Visitor sends an image」）。
  */
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
@@ -43,5 +44,23 @@ test('Chatbox mode uses session id instead of visitor token：claim 網址的 se
   assert.equal(requests.some((request) => request.body.includes('visitorToken')), false);
   assert.equal(sessionStorage.getItem('open333crm_visitor'), null);
   assert.equal(localStorage.getItem('open333crm_visitor'), null);
+  unmount();
+});
+
+test('Visitor sends an image：訊息輸入區沒有附加檔案按鈕與選檔欄位', async () => {
+  globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+    data: {
+      claimToken: 'claim-1',
+      session: { expiresAt: new Date(Date.now() + 60_000).toISOString() },
+      config: { channelId: 'channel-1', displayName: 'Support', greeting: null, theme: {} },
+    },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+  window.history.replaceState(null, '', '/chatbox?sessionId=cb2.session-no-attach');
+
+  const { container, unmount } = render(<ChatboxPage />);
+  await waitFor(() => assert.ok(container.querySelector('textarea') !== null));
+
+  assert.ok(container.querySelector('button[aria-label="Attach file"]') === null);
+  assert.ok(container.querySelector('input[type="file"]') === null);
   unmount();
 });

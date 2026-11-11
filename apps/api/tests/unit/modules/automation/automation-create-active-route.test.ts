@@ -8,13 +8,15 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, test } from 'vitest';
 import automationRoutes from '#src/modules/automation/automation.routes.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
+import { MOCK_TENANT_ID } from '#tests/support/mock-tenant-ctx.js';
 
 let app: FastifyInstance;
 const created: Array<Record<string, unknown>> = [];
 
 beforeAll(async () => {
   app = Fastify();
-  const prisma = {
+  const tx = {
+    $executeRaw: async () => 0,
     automationRule: {
       create: async (args: { data: Record<string, unknown> }) => {
         created.push(args.data);
@@ -22,14 +24,14 @@ beforeAll(async () => {
       },
     },
   };
+  // flow 以 inTenant() 開交易：假資料庫的 $transaction 直接以 tx 執行
+  app.decorate('prisma', { $transaction: (fn: (t: typeof tx) => unknown) => fn(tx) } as never);
   // 已登入的請求：CLI session 身分讓 requirePermission 放行，只測 schema 與路由的傳遞
   app.decorate('authenticate', async (request: never) => {
-    const req = request as { agent?: unknown; tenantPrisma?: unknown };
-    req.agent = { id: 'a1', tenantId: 'tenant-1', isCliSession: true };
-    req.tenantPrisma = prisma;
+    const req = request as { agent?: unknown };
+    req.agent = { id: 'a1', tenantId: MOCK_TENANT_ID, isCliSession: true };
   });
   app.decorateRequest('agent', null);
-  app.decorateRequest('tenantPrisma', null);
   await app.register(errorHandlerPlugin);
   await app.register(automationRoutes, { prefix: '/api/v1/automation' });
   await app.ready();

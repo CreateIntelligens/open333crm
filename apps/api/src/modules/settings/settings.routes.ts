@@ -1,41 +1,20 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { AppError, success } from "../../shared/utils/response.js";
-import { getOfficeHours, updateOfficeHours } from "./office-hours.service.js";
 import {
-  getEmbeddingSettings,
-  updateEmbeddingSettings,
-  checkOllamaHealth,
-  listOllamaModels,
-  getEmbeddingStats,
-  EMBEDDING_VECTOR_DIM,
-} from "./embedding-settings.service.js";
+  checkEmbeddingHealthFlow,
+  getEmbeddingSettingsPageFlow,
+  updateEmbeddingSettingsFlow,
+} from "./embedding-settings.flow.js";
+import { actorOf } from "../../lib/request-actor.js";
 import {
-  getChatSettings,
-  updateChatSettings,
-  listChatModels,
-  checkChatHealth,
-  getProviderList,
-} from "./chat-settings.service.js";
-import {
-  createPartnerApiKey,
-  listPartnerApiKeys,
-  revokePartnerApiKey,
-} from "../auth/partner-api-key.service.js";
-import {
-  createCliSession,
-  revokeCliSession,
-  parseCliScopes,
-  DEFAULT_CLI_SCOPES,
-} from "../auth/cli-session.service.js";
-import { MCP_READ_SCOPE } from "../mcp/mcp.constants.js";
-import {
-  CRM_REPLY_SYSTEM_PROMPT,
-  SUMMARIZE_SYSTEM_PROMPT,
-  CLARIFY_SYSTEM_PROMPT,
-  MODEL_GUIDE_SYSTEM_PROMPT,
-} from "../ai/llm.service.js";
-import { getTenantGeminiKeyStatus, setTenantGeminiKey, resolveGeminiKey } from "../ai/ai-key.service.js";
+  checkChatHealthFlow,
+  getChatSettingsPageFlow,
+  getGeminiKeyStatusFlow,
+  setGeminiKeyFlow,
+  updateChatSettingsFlow,
+} from "./chat-settings.flow.js";
+import { listChatModels } from "../ai/llm-client.js";
 import { requirePermission } from "../../guards/rbac.guard.js";
 import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
@@ -51,33 +30,10 @@ import {
   getIdentityBindingSettings,
   invalidateIdentityBindingSettings,
 } from "../identity-binding/identity-binding.service.js";
-
-const dayScheduleSchema = z
-  .object({
-    start: z.string().regex(/^\d{2}:\d{2}$/),
-    end: z.string().regex(/^\d{2}:\d{2}$/),
-  })
-  .nullable();
-
-const officeHoursSchema = z.object({
-  timezone: z.string().default("Asia/Taipei"),
-  officeHours: z.object({
-    enabled: z.boolean(),
-    schedule: z.object({
-      mon: dayScheduleSchema.optional(),
-      tue: dayScheduleSchema.optional(),
-      wed: dayScheduleSchema.optional(),
-      thu: dayScheduleSchema.optional(),
-      fri: dayScheduleSchema.optional(),
-      sat: dayScheduleSchema.optional(),
-      sun: dayScheduleSchema.optional(),
-    }),
-    holidays: z.array(z.string()).default([]),
-    outsideHoursMessage: z
-      .string()
-      .default("您好！目前為非營業時間，我們將在營業時間內盡速回覆您。"),
-  }),
-});
+import officeHoursRoutes from "./office-hours.routes.js";
+import trackingSettingsRoutes from "./tracking-settings.routes.js";
+import partnerApiKeyRoutes from "./partner-api-key.routes.js";
+import cliSessionRoutes from "./cli-session.routes.js";
 
 const bindingKeywordsSchema = z
   .array(z.string().trim().min(1, "關鍵字不可為空白").max(20, "關鍵字不可超過 20 字"))
@@ -92,6 +48,9 @@ export const identityBindingSettingsSchema = z
     // email 登記（change add-email-identity-merge）：沒送時沿用已儲存的值（見 applyIdentityBindingUpdate）
     emailEnabled: z.boolean().optional(),
     emailKeywords: bindingKeywordsSchema.optional(),
+    // 手機登記（change add-phone-identity-merge）：同 email，沒送時沿用已儲存的值
+    phoneEnabled: z.boolean().optional(),
+    phoneKeywords: bindingKeywordsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     for (const [path, list] of [["bindKeywords", data.bindKeywords], ["unbindKeywords", data.unbindKeywords]] as const) {
@@ -111,93 +70,22 @@ export const identityBindingSettingsSchema = z
         message: "綁定與解除關鍵字不可相同",
       });
     }
-    // email 登記關鍵字的衝突在路由對合併後的設定檢查（findIdentityBindingKeywordIssue）
+    // email、手機登記關鍵字的衝突在路由對合併後的設定檢查（findIdentityBindingKeywordIssue）
   });
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.addHook("preHandler", fastify.authenticate);
   fastify.addHook("preHandler", requirePermission("settings.manage"));
 
+  // 各資源的路由在自己的檔案（AGENTS.md 結構規則 3）。子 plugin 繼承上面的 hook，同樣要求登入與 settings.manage
+  await fastify.register(officeHoursRoutes);
+  await fastify.register(trackingSettingsRoutes);
+  await fastify.register(partnerApiKeyRoutes);
+  await fastify.register(cliSessionRoutes);
+
   // GET /api/v1/settings/a2a — safe bridge status only; credentials never leave deployment secrets.
   fastify.get("/a2a", async (_request, reply) => {
     return reply.send(success(buildA2AStatus(getConfig())));
-  });
-
-  // GET /api/v1/settings/office-hours
-  fastify.get("/office-hours", async (request, reply) => {
-    const result = await getOfficeHours(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success(result));
-  });
-
-  // PUT /api/v1/settings/office-hours
-  fastify.put("/office-hours", async (request, reply) => {
-    const data = officeHoursSchema.parse(request.body);
-    const result = await updateOfficeHours(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      data.timezone,
-      data.officeHours as any,
-    );
-    // 稽核：變更系統設定（只記變更的設定區塊，不放敏感值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "office-hours" },
-      ip: request.ip,
-    });
-    return reply.send(success(result));
-  });
-
-  // ─── Tracking Settings ──────────────────────────────────────────────────
-  // GET /api/v1/settings/tracking
-  fastify.get("/tracking", async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    let settings = await request.tenantPrisma.tenantSettings.findUnique({
-      where: { tenantId },
-      select: { gaId: true, metaPixelId: true },
-    });
-    if (!settings) {
-      settings = await request.tenantPrisma.tenantSettings.create({
-        data: { tenantId },
-        select: { gaId: true, metaPixelId: true },
-      });
-    }
-    return reply.send(success(settings));
-  });
-
-  // PUT /api/v1/settings/tracking
-  fastify.put("/tracking", async (request, reply) => {
-    const data = trackingSettingsSchema.parse(request.body);
-    const tenantId = request.agent.tenantId;
-    const settings = await request.tenantPrisma.tenantSettings.upsert({
-      where: { tenantId },
-      create: {
-        tenantId,
-        gaId: data.gaId ?? null,
-        metaPixelId: data.metaPixelId ?? null,
-      },
-      update: {
-        gaId: data.gaId ?? null,
-        metaPixelId: data.metaPixelId ?? null,
-      },
-      select: { gaId: true, metaPixelId: true },
-    });
-    // 稽核：變更追蹤設定（只記有無設定 GA/Pixel，不放 ID 值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: {
-        section: "tracking",
-        gaIdSet: Boolean(data.gaId),
-        metaPixelIdSet: Boolean(data.metaPixelId),
-      },
-      ip: request.ip,
-    });
-    return reply.send(success(settings));
   });
 
   // ─── Identity Binding（跨渠道 One ID）──────────────────────────────────────
@@ -215,8 +103,9 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     if (issue) throw new AppError(issue.message, "VALIDATION_ERROR", 400, { issues: [issue] });
     await request.tenantPrisma.tenantSettings.upsert({
       where: { tenantId },
-      create: { tenantId, identityBinding: value },
-      update: { identityBinding: value },
+      // 展開成物件字面值：介面型別沒有索引簽章，不能直接當成 JSON 欄位的值
+      create: { tenantId, identityBinding: { ...value } },
+      update: { identityBinding: { ...value } },
     });
     invalidateIdentityBindingSettings(tenantId);
     await writeTenantAudit(request.tenantPrisma, {
@@ -224,7 +113,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       actorId: request.agent.id,
       action: "settings.update",
       targetType: "settings",
-      payload: { section: "identity-binding", enabled: value.enabled, emailEnabled: value.emailEnabled },
+      payload: { section: "identity-binding", enabled: value.enabled, emailEnabled: value.emailEnabled, phoneEnabled: value.phoneEnabled },
       ip: request.ip,
     });
     return reply.send(success(parseIdentityBindingSettings(value)));
@@ -233,108 +122,35 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // ─── Embedding Settings ──────────────────────────────────────────────────
   // GET /api/v1/settings/embedding — settings + Ollama health + models + stats
   fastify.get("/embedding", async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    const settings = await getEmbeddingSettings(request.tenantPrisma, tenantId);
-    const [health, models, stats] = await Promise.all([
-      checkOllamaHealth(settings.baseUrl, settings.model),
-      listOllamaModels(settings.baseUrl),
-      getEmbeddingStats(request.tenantPrisma, tenantId),
-    ]);
-    return reply.send(
-      success({
-        settings,
-        health,
-        models,
-        stats,
-        vectorDim: EMBEDDING_VECTOR_DIM,
-      }),
-    );
+    return reply.send(success(await getEmbeddingSettingsPageFlow(fastify, actorOf(request).tenantId)));
   });
 
   // PUT /api/v1/settings/embedding — update settings (returns modelChanged hint)
   fastify.put("/embedding", async (request, reply) => {
     const patch = embeddingSettingsSchema.parse(request.body);
-    const result = await updateEmbeddingSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      patch,
-    );
-    // 稽核：變更 Embedding 設定（只記變更的欄位名，不放 baseUrl 等值）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "embedding", keys: Object.keys(patch) },
-      ip: request.ip,
-    });
-    return reply.send(success(result));
+    return reply.send(success(await updateEmbeddingSettingsFlow(fastify, actorOf(request), patch)));
   });
 
   // POST /api/v1/settings/embedding/health — re-check health on demand
   fastify.post("/embedding/health", async (request, reply) => {
-    const settings = await getEmbeddingSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-    );
-    const health = await checkOllamaHealth(settings.baseUrl, settings.model);
-    return reply.send(success(health));
+    return reply.send(success(await checkEmbeddingHealthFlow(fastify, actorOf(request).tenantId)));
   });
 
   // ─── Chat Settings ───────────────────────────────────────────────────────
   // GET /api/v1/settings/chat — settings + provider list + models + health + prompt defaults
   fastify.get("/chat", async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    const settings = await getChatSettings(request.tenantPrisma, tenantId);
-    // gemini 健康檢查要走三層 fallback 取租戶 BYOK key（否則 env 未設會誤報 not configured）。
-    const chatApiKey =
-      settings.provider === "gemini"
-        ? (await resolveGeminiKey(request.tenantPrisma, tenantId)).key
-        : undefined;
-    const [models, health] = await Promise.all([
-      listChatModels(settings.provider, settings.baseUrl),
-      checkChatHealth(settings.provider, settings.model, settings.baseUrl, chatApiKey),
-    ]);
-    return reply.send(
-      success({
-        settings,
-        providers: getProviderList(),
-        models,
-        health,
-        defaults: {
-          chatSystemPrompt: CRM_REPLY_SYSTEM_PROMPT,
-          summarizeSystemPrompt: SUMMARIZE_SYSTEM_PROMPT,
-          clarifySystemPrompt: CLARIFY_SYSTEM_PROMPT,
-          modelGuideSystemPrompt: MODEL_GUIDE_SYSTEM_PROMPT,
-        },
-      }),
-    );
+    return reply.send(success(await getChatSettingsPageFlow(fastify, actorOf(request).tenantId)));
   });
 
-  // PUT /api/v1/settings/chat — update settings
+  // PUT /api/v1/settings/chat — update settings；設定與稽核在同一個交易寫入
   fastify.put("/chat", async (request, reply) => {
     const patch = chatSettingsSchema.parse(request.body);
-    const result = await updateChatSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      patch,
-    );
-    // 稽核：變更 Chat/LLM 設定（只記變更的欄位名，不放 prompt/model 明文）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "chat", keys: Object.keys(patch) },
-      ip: request.ip,
-    });
-    return reply.send(success(result));
+    return reply.send(success(await updateChatSettingsFlow(fastify, actorOf(request), patch)));
   });
 
   // GET /api/v1/settings/gemini-key — 查 BYOK key 狀態（遮罩，不回明文）
   fastify.get("/gemini-key", async (request, reply) => {
-    const status = await getTenantGeminiKeyStatus(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success(status));
+    return reply.send(success(await getGeminiKeyStatusFlow(fastify, actorOf(request).tenantId)));
   });
 
   // PUT /api/v1/settings/gemini-key — 設定/清除 BYOK key（body: { apiKey: string | null }）
@@ -342,18 +158,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     const { apiKey } = z
       .object({ apiKey: z.string().min(1).nullable() })
       .parse(request.body);
-    await setTenantGeminiKey(request.tenantPrisma, request.agent.tenantId, apiKey);
-    // 稽核：設定/清除 BYOK 金鑰（絕不記金鑰明文，只記「設定」或「清除」動作）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: "settings.update",
-      targetType: "settings",
-      payload: { section: "gemini-key", operation: apiKey ? "set" : "clear" },
-      ip: request.ip,
-    });
-    const status = await getTenantGeminiKeyStatus(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success(status));
+    return reply.send(success(await setGeminiKeyFlow(fastify, actorOf(request), apiKey)));
   });
 
   // GET /api/v1/settings/chat/models?provider=gemini&baseUrl=...
@@ -365,174 +170,9 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/settings/chat/health — re-check health on demand
   fastify.post("/chat/health", async (request, reply) => {
-    const settings = await getChatSettings(
-      request.tenantPrisma,
-      request.agent.tenantId,
-    );
-    // gemini 健康檢查要走三層 fallback 取租戶 BYOK key（否則 env 未設會誤報 not configured）。
-    const chatApiKey =
-      settings.provider === "gemini"
-        ? (await resolveGeminiKey(request.tenantPrisma, request.agent.tenantId)).key
-        : undefined;
-    const health = await checkChatHealth(
-      settings.provider,
-      settings.model,
-      settings.baseUrl,
-      chatApiKey,
-    );
-    return reply.send(success(health));
+    return reply.send(success(await checkChatHealthFlow(fastify, actorOf(request).tenantId)));
   });
-
-  // ─── Partner API Keys ────────────────────────────────────────────────────
-  // GET /api/v1/settings/api-keys — list (masked)
-  fastify.get("/api-keys", async (request, reply) => {
-    const rows = await listPartnerApiKeys(
-      request.tenantPrisma,
-      request.agent.tenantId,
-    );
-    return reply.send(
-      success(
-        rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          masked: `${r.keyPrefix}…${r.keySuffix}`,
-          isActive: r.isActive,
-          expiresAt: r.expiresAt,
-          lastUsedAt: r.lastUsedAt,
-          createdAt: r.createdAt,
-        })),
-      ),
-    );
-  });
-
-  // POST /api/v1/settings/api-keys — create (returns raw key once)
-  fastify.post("/api-keys", async (request, reply) => {
-    const body = createApiKeySchema.parse(request.body);
-    const expiresAt = body.expiresInDays
-      ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
-      : null;
-
-    const result = await createPartnerApiKey(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      createdById: request.agent.id,
-      name: body.name,
-      expiresAt,
-    });
-
-    return reply.status(201).send(
-      success({
-        // The raw key is only available here. Store it on the client side
-        // immediately — the server will never return it again.
-        key: result.key,
-        id: result.apiKey.id,
-        name: result.apiKey.name,
-        masked: `${result.apiKey.keyPrefix}…${result.apiKey.keySuffix}`,
-        expiresAt: result.apiKey.expiresAt,
-        createdAt: result.apiKey.createdAt,
-      }),
-    );
-  });
-
-  // DELETE /api/v1/settings/api-keys/:id — revoke (soft-delete; isActive=false)
-  fastify.delete<{ Params: { id: string } }>(
-    "/api-keys/:id",
-    async (request, reply) => {
-      await revokePartnerApiKey(
-        request.tenantPrisma,
-        request.agent.tenantId,
-        request.params.id,
-      );
-      return reply.send(success({ revoked: true }));
-    },
-  );
-
-  // ─── CLI Sessions ──────────────────────────────────────────────────────
-  // GET /api/v1/settings/cli-sessions — list CLI sessions for current tenant
-  fastify.get("/cli-sessions", async (request, reply) => {
-    const rows = await request.tenantPrisma.cliSession.findMany({
-      where: {
-        tenantId: request.agent.tenantId,
-        revokedAt: null,
-      },
-      include: {
-        agent: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    return reply.send(
-      success(
-        rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          agent: r.agent,
-          tokenPrefix: r.tokenPrefix,
-          tokenSuffix: r.tokenSuffix,
-          scopes: parseCliScopes(r.scopes),
-          expiresAt: r.expiresAt.toISOString(),
-          lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
-          createdAt: r.createdAt.toISOString(),
-        })),
-      ),
-    );
-  });
-
-  // POST /api/v1/settings/cli-sessions — create a new CLI session
-  fastify.post("/cli-sessions", async (request, reply) => {
-    const body = createCliSessionSchema.parse(request.body);
-    const expiresAt = body.expiresInDays
-      ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
-      : undefined;
-
-    const { token, session } = await createCliSession(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      agentId: request.agent.id,
-      name: body.name,
-      scopes: body.mcpRead
-        ? [...new Set([...(body.scopes ?? DEFAULT_CLI_SCOPES), MCP_READ_SCOPE])]
-        : body.scopes,
-      expiresAt,
-    });
-
-    return reply.status(201).send(
-      success({
-        token,
-        session: {
-          id: session.id,
-          name: session.name,
-          tokenPrefix: session.tokenPrefix,
-          tokenSuffix: session.tokenSuffix,
-          scopes: parseCliScopes(session.scopes),
-          expiresAt: session.expiresAt.toISOString(),
-          createdAt: session.createdAt.toISOString(),
-        },
-      }),
-    );
-  });
-
-  // DELETE /api/v1/settings/cli-sessions/:id — revoke a CLI session
-  fastify.delete<{ Params: { id: string } }>(
-    "/cli-sessions/:id",
-    async (request, reply) => {
-      await revokeCliSession(
-        request.tenantPrisma,
-        request.params.id,
-        request.agent.tenantId,
-      );
-      return reply.send(success({ revoked: true }));
-    },
-  );
 }
-
-const trackingSettingsSchema = z.object({
-  gaId: z.string().nullable().optional(),
-  metaPixelId: z.string().nullable().optional(),
-});
-
-const createApiKeySchema = z.object({
-  name: z.string().min(1).max(100),
-  // null / undefined / 0 → never expires
-  expiresInDays: z.number().int().positive().nullable().optional(),
-});
 
 /** System prompt 長度上限：直接影響每次 LLM 呼叫的 token 成本 */
 export const MAX_SYSTEM_PROMPT_LENGTH = 8000;
@@ -571,11 +211,4 @@ const chatModelsQuery = z.object({
   provider: z.enum(["ollama", "gemini"]),
   // 後端會 fetch 這個位址（健康檢查／向量化）→ 不限 scheme 等於 SSRF 面
   baseUrl: httpUrlSchema.optional(),
-});
-
-const createCliSessionSchema = z.object({
-  name: z.string().min(1).max(100),
-  scopes: z.array(z.string()).optional(),
-  mcpRead: z.boolean().default(false),
-  expiresInDays: z.number().int().positive().nullable().optional(),
 });

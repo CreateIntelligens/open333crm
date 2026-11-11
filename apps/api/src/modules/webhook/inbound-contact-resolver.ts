@@ -1,6 +1,10 @@
 import { resolveUidToContact, logger } from '@open333crm/core';
 import { eventBus } from '../../events/event-bus.js';
+import { recordStitchedIdentity } from '../contact/contact-merge.service.js';
+import { inTransaction } from '../identity-binding/binding-common.js';
+import { scheduleAvatarRefresh } from './inbound-avatar-refresh.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
+import { channelDisplayName } from '@open333crm/shared';
 
 export async function resolveInboundContact(ctx: InboundMessageContext): Promise<void> {
   let channelIdentity = await ctx.prisma.channelIdentity.findUnique({
@@ -28,17 +32,37 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
       });
 
       if (stitchedContact) {
+        // 渠道身分記這個平台上的個人資料，不沿用聯絡人的名稱與頭像（IDENT-05）：
+        // 聯絡人可能是合併後的另一個人，解除合併時這筆身分會搬回原本的人
+        let profileName: string | null = null;
+        let profilePic: string | null = null;
+        if (ctx.plugin) {
+          try {
+            const profile = await ctx.plugin.getProfile(ctx.contactUid, ctx.credentials);
+            profileName = profile.displayName;
+            profilePic = profile.avatarUrl ?? null;
+          } catch {
+            // 讀不到就留空
+          }
+        }
         try {
-          channelIdentity = await ctx.prisma.channelIdentity.create({
-            data: {
-              contactId: stitchedContact.id,
-              channelId: ctx.channel.id,
-              channelType: ctx.channel.channelType as never,
-              uid: ctx.contactUid,
-              profileName: stitchedContact.displayName,
-              profilePic: stitchedContact.avatarUrl ?? null,
-            },
-            include: { contact: true },
+          // 建立身分與記進合併紀錄放在同一個交易：記錄失敗時身分也不留下，下一則訊息會重新走這段，
+          // 不會出現「身分已在、合併紀錄沒有」而解除時搬不回的情況
+          channelIdentity = await inTransaction(ctx.prisma, async (tx) => {
+            const created = await tx.channelIdentity.create({
+              data: {
+                contactId: stitchedContact.id,
+                channelId: ctx.channel.id,
+                channelType: ctx.channel.channelType as never,
+                uid: ctx.contactUid,
+                profileName,
+                profilePic,
+              },
+              include: { contact: true },
+            });
+            // 這個 uid 若是合併帶進來的，把新身分記進那筆合併紀錄，解除時才會一起搬回
+            await recordStitchedIdentity({ tx, tenantId: ctx.tenantId }, stitchedContact.id, created);
+            return created;
           });
           // 此 uid 在本渠道確實是第一次出現（聯絡人雖已存在於其他渠道）。
           ctx.isFirstContact = true;
@@ -61,7 +85,7 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
   }
 
   if (!channelIdentity) {
-    let displayName = `${ctx.channel.channelType} User ${ctx.contactUid.slice(-6)}`;
+    let displayName = `${channelDisplayName(ctx.channel.channelType)} User ${ctx.contactUid.slice(-6)}`;
     let avatarUrl: string | undefined;
 
     if (ctx.plugin) {
@@ -125,6 +149,9 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
 
   ctx.contactId = contactId;
   ctx.channelIdentity = channelIdentity;
+
+  // 頭像存進物件儲存，平台網址失效後才不會只剩縮寫（IDENT-06）。在背景執行，不延後訊息落地
+  if (channelIdentity) scheduleAvatarRefresh(ctx, channelIdentity);
 
   // 首次建立渠道身分時發布 contact.created，供自動化規則觸發。
   // fire-and-forget：事件發布失敗不得影響聯絡人/對話/訊息的落地。

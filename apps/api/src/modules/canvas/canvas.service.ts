@@ -1,26 +1,28 @@
 /**
  * Canvas management service — CRUD + analytics (Tasks 5.1, 5.4)
+ *
+ * 每個函式收 TenantCtx（#337 階段 4，AGENTS.md 結構規則 2）。手動觸發只建立 execution，
+ * 由 flow 在 commit 之後交給流程引擎（canvas-effects.ts）。
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-// FlowRunner is imported from the barrel after `pnpm build` of @open333crm/core
-import { FlowRunner } from '@open333crm/core';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { notFound } from '../../shared/messages/resource.js';
+import { AppError } from '../../shared/utils/response.js';
 
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
 export async function listFlows(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   opts: { page: number; limit: number; status?: string },
 ) {
   const { page, limit, status } = opts;
   const skip = (page - 1) * limit;
+  const where = { tenantId: ctx.tenantId, ...(status ? { status: status as never } : {}) };
 
   const [total, flows] = await Promise.all([
-    prisma.interactionFlow.count({ where: { tenantId, ...(status ? { status: status as never } : {}) } }),
-    prisma.interactionFlow.findMany({
-      where: { tenantId, ...(status ? { status: status as never } : {}) },
+    ctx.tx.interactionFlow.count({ where }),
+    ctx.tx.interactionFlow.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
@@ -31,17 +33,16 @@ export async function listFlows(
   return { flows, total };
 }
 
-export async function getFlow(prisma: TenantDb, id: string, tenantId: string) {
-  const flow = await prisma.interactionFlow.findFirstOrThrow({
-    where: { id, tenantId },
+export async function getFlow(ctx: TenantCtx, id: string) {
+  const flow = await ctx.tx.interactionFlow.findFirstOrThrow({
+    where: { id, tenantId: ctx.tenantId },
     include: { nodes: { orderBy: { sortOrder: 'asc' } } },
   });
   return flow;
 }
 
 export async function createFlow(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   data: {
     name: string;
     description?: string;
@@ -61,9 +62,9 @@ export async function createFlow(
 ) {
   const { nodes, ...flowData } = data;
 
-  return prisma.interactionFlow.create({
+  return ctx.tx.interactionFlow.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       ...flowData,
       triggerConfig: flowData.triggerConfig ?? {},
       nodes: nodes
@@ -85,9 +86,8 @@ export async function createFlow(
 }
 
 export async function updateFlow(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   id: string,
-  tenantId: string,
   data: {
     name?: string;
     description?: string;
@@ -113,20 +113,17 @@ export async function updateFlow(
     ...(data.status !== undefined ? { status: data.status as 'DRAFT' | 'ACTIVE' | 'ARCHIVED' } : {}),
   };
 
-  return prisma.interactionFlow.update({
-    where: { id, tenantId },
+  // 找不到時 Prisma 丟 P2025，交易 rollback，錯誤處理器回 404
+  return ctx.tx.interactionFlow.update({
+    where: { id, tenantId: ctx.tenantId },
     data: updateData,
     include: { nodes: true },
   });
 }
 
-export async function activateFlow(
-  prisma: TenantDb,
-  id: string,
-  tenantId: string,
-) {
-  return prisma.interactionFlow.update({
-    where: { id, tenantId },
+export async function activateFlow(ctx: TenantCtx, id: string) {
+  return ctx.tx.interactionFlow.update({
+    where: { id, tenantId: ctx.tenantId },
     data: { status: 'ACTIVE' },
   });
 }
@@ -146,20 +143,17 @@ export interface NodeAnalytics {
  * Calculate per-node entry, exit, and drop-off rates for a flow.
  */
 export async function getFlowAnalytics(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   flowId: string,
-  tenantId: string,
 ): Promise<{ nodes: NodeAnalytics[]; totalExecutions: number; completionRate: number }> {
-  const flow = await prisma.interactionFlow.findFirstOrThrow({
+  const { tenantId } = ctx;
+  const flow = await ctx.tx.interactionFlow.findFirstOrThrow({
     where: { id: flowId, tenantId },
     include: { nodes: true },
   });
 
   // Aggregate node entry counts from FlowLog
-  // 註：Prisma 的 groupBy 過載型別無法在 TenantDb union 上解析（各成員簽名互不相容 →
-  // 呼叫式被判定 not callable）。此處把 client 以 as PrismaClient 收斂僅供型別檢查用；
-  // 執行期仍是傳入的 tenantPrisma、查詢受 RLS 約束。
-  const entryCounts = await (prisma as PrismaClient).flowLog.groupBy({
+  const entryCounts = await ctx.tx.flowLog.groupBy({
     by: ['nodeId'],
     where: {
       execution: { flowId, tenantId },
@@ -174,15 +168,15 @@ export async function getFlowAnalytics(
   );
 
   // Total executions
-  const totalExecutions = await prisma.flowExecution.count({ where: { flowId, tenantId } });
-  const completed = await prisma.flowExecution.count({
+  const totalExecutions = await ctx.tx.flowExecution.count({ where: { flowId, tenantId } });
+  const completed = await ctx.tx.flowExecution.count({
     where: { flowId, tenantId, status: 'COMPLETED' },
   });
 
   const completionRate = totalExecutions > 0 ? completed / totalExecutions : 0;
 
   // Build per-node analytics
-  const nodeAnalytics: NodeAnalytics[] = (flow.nodes as Array<{ id: string; label: string; nodeType: string; nextNodeId: string | null }>).map((node) => {
+  const nodeAnalytics: NodeAnalytics[] = flow.nodes.map((node) => {
     const entryCount = countMap.get(node.id) ?? 0;
     const nextEntryCount = node.nextNodeId ? (countMap.get(node.nextNodeId) ?? 0) : entryCount;
     const dropOffRate = entryCount > 0 ? Math.max(0, (entryCount - nextEntryCount) / entryCount) : 0;
@@ -202,19 +196,24 @@ export async function getFlowAnalytics(
 
 // ── Execution management ───────────────────────────────────────────────────
 
+/** 流程不存在或屬於另一個租戶時回 404，與 getFlow 一致（spec interaction-canvas） */
 export async function listExecutions(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   flowId: string,
-  tenantId: string,
   opts: { page: number; limit: number; status?: string },
 ) {
+  const { tenantId } = ctx;
+  const flow = await ctx.tx.interactionFlow.findFirst({ where: { id: flowId, tenantId }, select: { id: true } });
+  if (!flow) throw new AppError(notFound('flow'), 'NOT_FOUND', 404);
+
   const { page, limit, status } = opts;
   const skip = (page - 1) * limit;
+  const where = { flowId, tenantId, ...(status ? { status: status as never } : {}) };
 
   const [total, executions] = await Promise.all([
-    prisma.flowExecution.count({ where: { flowId, tenantId, ...(status ? { status: status as never } : {}) } }),
-    prisma.flowExecution.findMany({
-      where: { flowId, tenantId, ...(status ? { status: status as never } : {}) },
+    ctx.tx.flowExecution.count({ where }),
+    ctx.tx.flowExecution.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
@@ -225,27 +224,46 @@ export async function listExecutions(
 }
 
 /**
+ * 手動觸發前的檢查：流程屬於本租戶而且是 ACTIVE，聯絡人屬於本租戶。
+ * 外鍵檢查不套用 RLS，flow_executions.contactId 也沒有外鍵，所以不能只靠寫入時的約束。
+ */
+export async function assertFlowTriggerable(ctx: TenantCtx, flowId: string, contactId: string) {
+  const { tenantId } = ctx;
+  const flow = await ctx.tx.interactionFlow.findFirst({ where: { id: flowId, tenantId }, select: { status: true } });
+  if (!flow) throw new AppError(notFound('flow'), 'NOT_FOUND', 404);
+  if (flow.status !== 'ACTIVE') {
+    throw new AppError('流程尚未啟用，請先啟用再觸發', 'FLOW_NOT_ACTIVE', 409);
+  }
+  const contact = await ctx.tx.contact.findFirst({ where: { id: contactId, tenantId }, select: { id: true } });
+  if (!contact) throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
+}
+
+/** 建立一筆 RUNNING 的 execution。手動觸發與收訊的自動觸發共用（design D6） */
+export async function createFlowExecution(
+  ctx: TenantCtx,
+  input: { flowId: string; contactId: string; vars?: object },
+): Promise<string> {
+  const execution = await ctx.tx.flowExecution.create({
+    data: {
+      flowId: input.flowId,
+      contactId: input.contactId,
+      tenantId: ctx.tenantId,
+      status: 'RUNNING',
+      contextVars: input.vars ?? {},
+    },
+    select: { id: true },
+  });
+  return execution.id;
+}
+
+/**
  * Manually trigger a flow for a specific contact (for testing / manual invocation).
+ * 只寫入 execution；流程引擎由 flow 在 commit 之後開始執行。
  */
 export async function triggerFlow(
-  prisma: TenantDb,
-  flowId: string,
-  contactId: string,
-  tenantId: string,
-  vars: object = {},
+  ctx: TenantCtx,
+  input: { flowId: string; contactId: string; vars?: object },
 ): Promise<string> {
-  const execution = await prisma.flowExecution.create({
-    data: {
-      flowId,
-      contactId,
-      tenantId,
-      status: 'RUNNING',
-      contextVars: vars,
-    },
-  });
-
-  // Run async (non-blocking)
-  FlowRunner.run(execution.id).catch(() => {});
-
-  return execution.id;
+  await assertFlowTriggerable(ctx, input.flowId, input.contactId);
+  return createFlowExecution(ctx, input);
 }

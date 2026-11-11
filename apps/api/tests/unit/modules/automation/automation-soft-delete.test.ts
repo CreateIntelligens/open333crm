@@ -87,11 +87,10 @@ t('單筆查詢也排除已刪除（否則刪掉的規則仍可用網址開啟�
 // ─── worker 的觸發判斷不受影響 ───────────────────────────────────────────
 
 t('worker 仍以 isActive 判斷是否觸發（行為未改變）', () => {
-  const worker = src('modules/automation/automation.worker.ts');
-  assert.ok(
-    worker.includes('isActive: true'),
-    'worker 的觸發判斷應維持看 isActive',
-  );
+  // 規則在 workers 評估；AI 讓步判斷（關鍵字規則）已搬到 packages/automation（change outbox-event-delivery）
+  for (const file of ['apps/workers/src/handlers/automation.handler.ts', 'apps/api/src/modules/automation/keyword-yield.ts']) {
+    assert.ok(repoFile(file).includes('isActive: true'), `${file} 的觸發判斷應維持看 isActive`);
+  }
 });
 
 t('刪除後 isActive 也是 false，所以 worker 不會撿到已刪除的規則', () => {

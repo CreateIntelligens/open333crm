@@ -2,14 +2,45 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { channelIdWhere, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+
+/**
+ * 非總店看得到的行銷活動（channel-scoped-visibility「行銷活動的可見範圍」）：自己建立的、還沒有任何群發的
+ * （總店規劃、讓各分店加入群發的活動），或至少有一則可見渠道群發的。只有其他分店群發的活動不列出。總店回空物件。
+ */
+export function readableCampaignWhere(accessibleChannels: AccessibleChannels, agentId: string) {
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  return channelId
+    ? { OR: [{ createdById: agentId }, { broadcasts: { none: {} } }, { broadcasts: { some: { channelId } } }] }
+    : {};
+}
+
+/**
+ * 可以修改、刪除，或把群發加進去的活動：看得到，而且沒有其他分店渠道的群發（會影響其他分店的群發）。
+ * 條件寫在 where：以 updateMany／deleteMany 帶這個條件，檢查與寫入在同一個語句，中間不會有其他分店的群發掛進來。
+ */
+export function writableCampaignWhere(accessibleChannels: AccessibleChannels, agentId: string) {
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  return channelId
+    ? { ...readableCampaignWhere(accessibleChannels, agentId), broadcasts: { none: { channelId: { notIn: channelId.in } } } }
+    : {};
+}
+
+/** 看得到但不能修改時的錯誤（readable 找得到、writable 找不到） */
+export function campaignHasOtherChannelsError(): AppError {
+  return new AppError('這個行銷活動有其他分店渠道的群發，修改請由總店處理', 'CAMPAIGN_HAS_OTHER_CHANNELS', 403);
+}
 
 export async function listCampaigns(
   prisma: TenantDb,
   tenantId: string,
-  filters: { status?: string; page?: number; limit?: number } = {},
+  filters: { status?: string; page?: number; limit?: number },
+  /** 群發數只計可見渠道；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+  agentId: string,
 ) {
   const { status, page = 1, limit = 50 } = filters;
-  const where: Record<string, unknown> = { tenantId };
+  const where: Record<string, unknown> = { tenantId, ...readableCampaignWhere(accessibleChannels, agentId) };
   if (status) where.status = status;
 
   const [campaigns, total] = await Promise.all([
@@ -19,7 +50,7 @@ export async function listCampaigns(
       skip: (page - 1) * limit,
       take: limit,
       include: {
-        _count: { select: { broadcasts: true } },
+        _count: { select: { broadcasts: { where: channelIdWhere(accessibleChannels) } } },
       },
     }),
     prisma.campaign.count({ where: where as any }),
@@ -28,11 +59,19 @@ export async function listCampaigns(
   return { campaigns, total, page, limit };
 }
 
-export async function getCampaign(prisma: TenantDb, id: string, tenantId: string) {
+export async function getCampaign(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  /** 群發清單與成效只計可見渠道；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+  agentId: string,
+) {
   const campaign = await prisma.campaign.findFirst({
-    where: { id, tenantId },
+    where: { id, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
     include: {
       broadcasts: {
+        where: channelIdWhere(accessibleChannels),
         orderBy: { createdAt: 'desc' },
       },
     },
@@ -129,8 +168,13 @@ export async function updateCampaign(
     startDate?: string | null;
     endDate?: string | null;
   },
+  /** 看不到的活動回 404、有其他分店群發的回 403；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+  agentId: string,
 ) {
-  const existing = await prisma.campaign.findFirst({ where: { id, tenantId } });
+  const existing = await prisma.campaign.findFirst({
+    where: { id, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
+  });
   if (!existing) {
     throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
   }
@@ -170,22 +214,35 @@ export async function updateCampaign(
   if (startDate !== undefined) updateData.startDate = startDate;
   if (endDate !== undefined) updateData.endDate = endDate;
 
-  const campaign = await prisma.campaign.update({
-    where: { id },
+  const updated = await prisma.campaign.updateMany({
+    where: { id, tenantId, ...writableCampaignWhere(accessibleChannels, agentId) },
     data: updateData,
   });
-  return campaign;
+  if (updated.count === 0) throw campaignHasOtherChannelsError();
+  return { ...existing, ...updateData };
 }
 
-export async function deleteCampaign(prisma: TenantDb, id: string, tenantId: string) {
-  const existing = await prisma.campaign.findFirst({ where: { id, tenantId } });
+export async function deleteCampaign(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  /** 看不到的活動回 404、有其他分店群發的回 403；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
+  agentId: string,
+) {
+  const existing = await prisma.campaign.findFirst({
+    where: { id, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
+  });
   if (!existing) {
     throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
   }
   if (existing.status !== 'draft') {
     throw new AppError('僅草稿狀態的行銷活動可以刪除', 'FORBIDDEN', 403);
   }
-  await prisma.campaign.delete({ where: { id } });
+  const deleted = await prisma.campaign.deleteMany({
+    where: { id, tenantId, status: 'draft', ...writableCampaignWhere(accessibleChannels, agentId) },
+  });
+  if (deleted.count === 0) throw campaignHasOtherChannelsError();
   return { deleted: true };
 }
 

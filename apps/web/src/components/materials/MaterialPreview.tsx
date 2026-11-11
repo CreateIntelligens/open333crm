@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { imagemapPreviewSrc } from '@/lib/imagemap-url';
+import { COUPON_URL_LABEL, splitCouponUrl } from '@/lib/marketing/coupon-url';
 import { Image as ImageIcon, Video as VideoIcon, MapPin, Clock, Phone } from 'lucide-react';
 import {
   FlexMessagePreview,
@@ -120,10 +121,34 @@ function PreviewBody({ contentType, body }: { contentType: string; body: Record<
 
 // ─── 共用小元件 ─────────────────────────────────────────────────────────
 
+/**
+ * 把 {{coupon.url}} 畫成看起來像連結的標籤「顧客專屬券連結」（change improve-coupon-url-insert-ux design D4）。
+ * 只改預覽，編輯框與儲存的值仍是原字。標籤自帶背景，在固定白底的泡泡內深淺色模式都可讀。
+ */
+function TextWithCouponUrl({ text }: { text: string }) {
+  return (
+    <>
+      {splitCouponUrl(text).map((part, i) =>
+        part.kind === 'coupon-url' ? (
+          <span
+            key={i}
+            title="附券廣播發送時，會換成每位顧客自己的券連結"
+            className="mx-0.5 inline-flex items-center rounded border border-primary-border bg-primary-subtle px-1.5 text-primary underline underline-offset-2"
+          >
+            {COUPON_URL_LABEL}
+          </span>
+        ) : (
+          <React.Fragment key={i}>{part.value}</React.Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
 function BubbleText({ text }: { text: string }) {
   return (
     <div className="max-w-xs whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-white px-4 py-3 text-sm text-slate-800 shadow-sm">
-      {text || <span className="text-slate-400">（空訊息）</span>}
+      {text ? <TextWithCouponUrl text={text} /> : <span className="text-slate-400">（空訊息）</span>}
     </div>
   );
 }
@@ -159,7 +184,11 @@ function MediaCard({ kind, url, videoSrc }: { kind: 'image' | 'video'; url?: str
   );
 }
 
-function CardBubble({ card }: { card: { title?: string; subtitle?: string; imageUrl?: string; buttons?: any[] } }) {
+/** 卡片與按鈕版型共用的按鈕：LINE 用 label，FB 用 title */
+type PreviewButton = { label?: string; title?: string };
+type PreviewCard = { title?: string; subtitle?: string; imageUrl?: string; buttons?: PreviewButton[] };
+
+function CardBubble({ card }: { card: PreviewCard }) {
   return (
     <div className="mx-auto max-w-xs overflow-hidden rounded-2xl bg-white shadow-sm">
       {card.imageUrl && (
@@ -172,7 +201,7 @@ function CardBubble({ card }: { card: { title?: string; subtitle?: string; image
       </div>
       {card.buttons && card.buttons.length > 0 && (
         <div className="divide-y divide-slate-200 border-t border-slate-200">
-          {card.buttons.map((btn: any, idx: number) => (
+          {card.buttons.map((btn, idx) => (
             <div key={idx} className="px-4 py-2 text-center text-sm font-medium text-blue-600">
               {btn.label}
             </div>
@@ -183,7 +212,7 @@ function CardBubble({ card }: { card: { title?: string; subtitle?: string; image
   );
 }
 
-function CarouselPreview({ cards }: { cards: any[] }) {
+function CarouselPreview({ cards }: { cards: PreviewCard[] }) {
   return (
     <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-2">
       {cards.map((card, idx) => (
@@ -195,12 +224,12 @@ function CarouselPreview({ cards }: { cards: any[] }) {
   );
 }
 
-function ButtonsPreview({ text, buttons }: { text?: string; buttons: any[] }) {
+function ButtonsPreview({ text, buttons }: { text?: string; buttons: PreviewButton[] }) {
   return (
     <div className="mx-auto max-w-xs overflow-hidden rounded-2xl bg-white shadow-sm">
-      <div className="px-4 py-3 text-sm text-slate-800">{text}</div>
+      <div className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-slate-800">{text ? <TextWithCouponUrl text={text} /> : text}</div>
       <div className="divide-y divide-slate-200 border-t border-slate-200">
-        {buttons.map((btn: any, idx: number) => (
+        {buttons.map((btn, idx) => (
           <div key={idx} className="px-4 py-2 text-center text-sm font-medium text-blue-600">
             {btn.label ?? btn.title}
           </div>
@@ -229,7 +258,7 @@ export function FlexPreview({ flex }: { flex: any }) {
 
 // ─── FB Coupon / Receipt / Feedback 簡易預覽 ─────────────────────────
 
-function CouponPreview({ body }: { body: any }) {
+function CouponPreview({ body }: { body: { coupon_pre_message?: string; title?: string; subtitle?: string } }) {
   return (
     <div className="mx-auto max-w-xs space-y-2">
       {body.coupon_pre_message && <BubbleText text={body.coupon_pre_message} />}
@@ -246,7 +275,18 @@ function CouponPreview({ body }: { body: any }) {
   );
 }
 
-function ReceiptPreview({ body }: { body: any }) {
+function ReceiptPreview({
+  body,
+}: {
+  body: {
+    merchant_name?: string;
+    recipient_name?: string;
+    order_number?: string;
+    payment_method?: string;
+    currency?: string;
+    summary?: { total_cost?: number };
+  };
+}) {
   return (
     <div className="mx-auto max-w-xs overflow-hidden rounded-2xl bg-white p-4 shadow-sm">
       <div className="text-xs font-bold text-emerald-600">RECEIPT</div>
@@ -267,7 +307,7 @@ function ReceiptPreview({ body }: { body: any }) {
   );
 }
 
-function FeedbackPreview({ body }: { body: any }) {
+function FeedbackPreview({ body }: { body: { title?: string; subtitle?: string; feedback_screens?: Array<{ options?: string[] }> } }) {
   const opts = body?.feedback_screens?.[0]?.options ?? ['1', '2', '3', '4', '5'];
   return (
     <div className="mx-auto max-w-xs rounded-2xl bg-white p-4 shadow-sm">
@@ -289,7 +329,7 @@ function FeedbackPreview({ body }: { body: any }) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function LineCarouselPreview({ body }: { body: any }) {
   const pageType: 'product' | 'location' | 'person' | 'image_text' = body?.pageType ?? 'product';
-  const pages: any[] = body?.pages ?? [];
+  const pages: unknown[] = body?.pages ?? [];
   const endPage = body?.endPage;
 
   if (pages.length === 0) {
@@ -468,15 +508,18 @@ function EndPageCard({ endPage }: { endPage: any }) {
 
 // ─── 工具 ──────────────────────────────────────────────────────────────
 
-function fbGenericToCards(body: any) {
-  return (body.elements ?? []).map((el: any) => ({
+type FbButton = { title?: string };
+type FbGenericElement = { title?: string; subtitle?: string; image_url?: string; buttons?: FbButton[] };
+
+function fbGenericToCards(body: { elements?: FbGenericElement[] }): PreviewCard[] {
+  return (body.elements ?? []).map((el) => ({
     title: el.title,
     subtitle: el.subtitle,
     imageUrl: el.image_url,
-    buttons: (el.buttons ?? []).map((b: any) => ({ label: b.title })),
+    buttons: fbButtonsToUniversal(el.buttons ?? []),
   }));
 }
 
-function fbButtonsToUniversal(buttons: any[]) {
-  return buttons.map((b: any) => ({ label: b.title }));
+function fbButtonsToUniversal(buttons: FbButton[]): PreviewButton[] {
+  return buttons.map((b) => ({ label: b.title }));
 }

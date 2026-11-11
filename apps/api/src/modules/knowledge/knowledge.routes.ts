@@ -1,35 +1,35 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
+import { normalizeCsvUpload, parseFileToMarkdown, parseSpreadsheetToQaRows } from './file-parser.service.js';
+import { parseCmd, type PartnerAttachmentInput } from './partner-ingest.service.js';
+import { createKnowledgeEffects, type KnowledgeEffects } from './knowledge-effects.js';
 import {
-  listArticles,
-  listSources,
-  getArticle,
-  createArticle,
-  updateArticle,
-  deleteArticle,
-  publishArticle,
-  archiveArticle,
-  listCategories,
-  semanticSearch,
-  batchImportArticles,
-  bulkReembed,
-  checkOllamaHealth,
-  embedArticle,
-} from './knowledge.service.js';
-import { parseFileToMarkdown, parseSpreadsheetToQaRows } from './file-parser.service.js';
-import {
-  ingestPartnerDoc,
-  parseCmd,
-  type PartnerAttachmentInput,
-} from './partner-ingest.service.js';
-import {
-  listFeedback,
-  getFeedbackCounts,
-  resolveFeedback,
-} from './kb-feedback.service.js';
-import { refreshModelKeys, getKnownModelKeys } from '../ai/model-registry.service.js';
+  archiveArticleFlow,
+  bulkEmbedFlow,
+  createArticleFlow,
+  deleteArticleFlow,
+  embedArticleNowFlow,
+  embeddingStatusFlow,
+  getArticleFlow,
+  getFeedbackCountsFlow,
+  importArticlesFlow,
+  ingestPartnerDocFlow,
+  listArticlesFlow,
+  listCategoriesFlow,
+  listFeedbackFlow,
+  listKnownModelsFlow,
+  listSourcesFlow,
+  publishArticleFlow,
+  refreshKnownModelsFlow,
+  resolveFeedbackFlow,
+  semanticSearchFlow,
+  updateArticleFlow,
+  type KnowledgeDeps,
+} from './knowledge.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { AppError, success, paginated } from '../../shared/utils/response.js';
+import { paginationSchema } from '../../shared/utils/pagination.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
@@ -55,6 +55,24 @@ const searchSchema = z.object({
   threshold: z.coerce.number().min(0).max(1).optional(),
 });
 
+/** 文章列表：分頁沿用 paginationSchema，limit 預設維持 50（前端每頁 50 筆） */
+const listQuerySchema = paginationSchema.extend({
+  limit: paginationSchema.shape.limit.removeDefault().default(50),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
+  category: z.string().max(100).optional(),
+  source: z.string().max(200).optional(),
+  tag: z.string().max(100).optional(),
+  q: z.string().max(200).optional(),
+});
+
+const articleParamsSchema = z.object({ id: z.string().uuid('文章 id 格式錯誤') });
+const feedbackParamsSchema = z.object({ id: z.string().uuid('回報 id 格式錯誤') });
+
+const feedbackQuerySchema = z.object({
+  articleId: z.string().uuid('文章 id 格式錯誤').optional(),
+  status: z.enum(['open', 'resolved']).optional(),
+});
+
 const importSchema = z.object({
   articles: z.array(
     z.object({
@@ -68,11 +86,22 @@ const importSchema = z.object({
   ),
 });
 
-export default async function knowledgeRoutes(fastify: FastifyInstance) {
+export interface KnowledgeRouteOptions {
+  /** 測試注入記錄呼叫的向量化與儲存服務；沒給時用實際的實作（design D1） */
+  effects?: KnowledgeEffects;
+}
+
+export default async function knowledgeRoutes(fastify: FastifyInstance, opts: KnowledgeRouteOptions = {}) {
+  const deps: KnowledgeDeps = { prisma: fastify.prisma, effects: opts.effects ?? createKnowledgeEffects(fastify.prisma) };
+  const view = { preHandler: [requirePermission('knowledge.view')] };
+
   // Auth: most routes require agent JWT; partner-ingest additionally accepts
   // long-lived Partner API keys (Authorization: Bearer pk_...).
+  // 依比對到的路由判斷，不看 request.url：request.url 含查詢字串與路徑參數，
+  // 用 includes 判斷會讓 Partner API 金鑰進到其他知識庫路由（issue #394）
+  const partnerIngestRoute = `${fastify.prefix}/partner-ingest`;
   fastify.addHook('preHandler', async (request, reply) => {
-    if (request.url.includes('/partner-ingest')) {
+    if (request.routeOptions.url === partnerIngestRoute) {
       await fastify.authenticateJwtOrPartnerKey(request, reply);
     } else {
       await fastify.authenticate(request, reply);
@@ -80,42 +109,30 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/knowledge — 文章列表
-  fastify.get('/', async (request, reply) => {
-    const query = request.query as Record<string, string>;
-    const page = parseInt(query.page || '1', 10);
-    const limit = parseInt(query.limit || '50', 10);
-
-    const result = await listArticles(request.tenantPrisma, request.agent.tenantId, {
-      status: query.status || undefined,
-      category: query.category || undefined,
-      source: query.source || undefined,
-      tag: query.tag || undefined,
-      q: query.q || undefined,
-      page,
-      limit,
-    });
-
+  fastify.get('/', view, async (request, reply) => {
+    const filters = listQuerySchema.parse(request.query);
+    const result = await listArticlesFlow(deps, actorOf(request).tenantId, filters);
     return reply.send(paginated(result.articles, result.total, result.page, result.limit));
   });
 
   // GET /api/v1/knowledge/sources — 來源列表（externalSource 去重）
-  fastify.get('/sources', async (request, reply) => {
-    const sources = await listSources(request.tenantPrisma, request.agent.tenantId);
+  fastify.get('/sources', view, async (request, reply) => {
+    const sources = await listSourcesFlow(deps, actorOf(request).tenantId);
     return reply.send(success(sources));
   });
 
   // GET /api/v1/knowledge/categories — 分類列表
-  fastify.get('/categories', async (request, reply) => {
-    const categories = await listCategories(request.tenantPrisma, request.agent.tenantId);
+  fastify.get('/categories', view, async (request, reply) => {
+    const categories = await listCategoriesFlow(deps, actorOf(request).tenantId);
     return reply.send(success(categories));
   });
 
   // ── New routes (registered BEFORE /:id to avoid param collision) ──────────
 
   // POST /api/v1/knowledge/search — 語義搜尋
-  fastify.post('/search', async (request, reply) => {
+  fastify.post('/search', view, async (request, reply) => {
     const body = searchSchema.parse(request.body);
-    const results = await semanticSearch(request.tenantPrisma, request.agent.tenantId, body.query, {
+    const results = await semanticSearchFlow(deps, actorOf(request).tenantId, body.query, {
       topK: body.topK,
       threshold: body.threshold,
     });
@@ -123,27 +140,29 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/knowledge/import — 批量匯入
-  fastify.post('/import', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+  // 前端把 JSON 檔外層的文章陣列整份送出、不限筆數，一篇約 7 個欄位，全域的總數上限 100,000 在約 14,000 篇時就會擋下，
+  // 所以調高 JSON 內容上限（change limit-request-array-size design D3）
+  fastify.post('/import', {
+    preHandler: [requirePermission('knowledge.manage')],
+    config: { jsonPayloadLimits: { maxArrayLength: 50_000, maxTotalEntries: 500_000 } },
+  }, async (request, reply) => {
     const body = importSchema.parse(request.body);
-    const result = await batchImportArticles(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      request.agent.id,
-      body.articles,
-    );
+    const result = await importArticlesFlow(deps, actorOf(request), body.articles);
     return reply.send(success(result));
   });
 
   // POST /api/v1/knowledge/upload — 多格式檔案上傳
   fastify.post('/upload', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const parts = request.files();
-    const results: { title: string; success: boolean; error?: string }[] = [];
+    const results: { title: string; success: boolean; error?: string; code?: string }[] = [];
     let uploaded = 0;
     let failed = 0;
 
     for await (const part of parts) {
-      const buffer = await part.toBuffer();
+      const raw = await part.toBuffer();
       try {
+        // CSV 先轉成 UTF-8 再偵測內容類型：偵測認不出 Big5，會在解碼前就拒絕（issue #421 後續）
+        const buffer = normalizeCsvUpload(raw, part.filename);
         const detected = await assertUploadContent(
           { buffer, filename: part.filename, clientMime: part.mimetype },
           UPLOAD_POLICIES.knowledge,
@@ -157,10 +176,9 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         if (isSheet) {
           const qaRows = parseSpreadsheetToQaRows(buffer);
           if (qaRows && qaRows.length > 0) {
-            const result = await batchImportArticles(
-              request.tenantPrisma,
-              request.agent.tenantId,
-              request.agent.id,
+            const result = await importArticlesFlow(
+              deps,
+              actorOf(request),
               qaRows.map((r) => ({ title: r.title, content: r.content, status: 'PUBLISHED' })),
             );
             uploaded += result.imported;
@@ -176,18 +194,17 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         }
 
         const parsed = await parseFileToMarkdown(buffer, detectedMime, part.filename);
-        await createArticle(request.tenantPrisma, request.agent.tenantId, request.agent.id, {
-          title: parsed.title,
-          content: parsed.content,
-        });
+        await createArticleFlow(deps, actorOf(request), { title: parsed.title, content: parsed.content });
         uploaded++;
         results.push({ title: parsed.title, success: true });
       } catch (err) {
         failed++;
+        // 每個檔案各自回報失敗；CSV 編碼無法辨識（CSV_ENCODING_UNREADABLE）時這個檔案一筆都不寫入
         results.push({
           title: part.filename,
           success: false,
           error: (err as Error).message,
+          ...(err instanceof AppError ? { code: err.code } : {}),
         });
       }
     }
@@ -280,10 +297,9 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         // Tolerate Stanley's typo: accept both Source and Soruce
         const source = fields.Source ?? fields.Soruce ?? '';
 
-        const result = await ingestPartnerDoc(
-          request.tenantPrisma,
-          request.agent.tenantId,
-          request.agent.id,
+        const result = await ingestPartnerDocFlow(
+          deps,
+          actorOf(request),
           {
             cmd,
             docId,
@@ -325,14 +341,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // to avoid Caddy gateway timeouts on cold-start Ollama (model loading +
   // per-article inference can easily exceed 60s for any non-trivial KB).
   fastify.post('/bulk-embed', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    const total = await request.tenantPrisma.kmArticle.count({
-      where: { tenantId, status: 'PUBLISHED' },
-    });
-
-    bulkReembed(request.tenantPrisma, tenantId).catch((err) => {
-      fastify.log.error({ err }, '[Knowledge] Background bulk re-embed failed');
-    });
+    const total = await bulkEmbedFlow(deps, actorOf(request).tenantId);
 
     return reply.send(
       success({
@@ -344,16 +353,16 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/knowledge/embedding-status — 嵌入服務健康檢查
-  fastify.get('/embedding-status', async (request, reply) => {
-    const status = await checkOllamaHealth(request.tenantPrisma, request.agent.tenantId);
+  fastify.get('/embedding-status', view, async (request, reply) => {
+    const status = await embeddingStatusFlow(deps, actorOf(request).tenantId);
     return reply.send(success(status));
   });
 
   // ── 型號白名單（型號守門用）────────────────────────────────────────────────
 
   // GET /api/v1/knowledge/models — 目前知識庫已知型號清單（快取，供診斷）
-  fastify.get('/models', async (request, reply) => {
-    const keys = await getKnownModelKeys(request.tenantPrisma, request.agent.tenantId, Date.now());
+  fastify.get('/models', view, async (request, reply) => {
+    const keys = await listKnownModelsFlow(deps, actorOf(request).tenantId);
     const models = [...keys].sort();
     return reply.send(success({ total: models.length, models }));
   });
@@ -364,7 +373,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     '/models/refresh',
     { preHandler: [requirePermission('knowledge.admin')] },
     async (request, reply) => {
-      const keys = await refreshModelKeys(request.tenantPrisma, request.agent.tenantId, Date.now());
+      const keys = await refreshKnownModelsFlow(deps, actorOf(request).tenantId);
       return reply.send(
         success({ refreshed: true, total: keys.size, message: `已重新整理型號清單，共 ${keys.size} 個型號。` }),
       );
@@ -374,27 +383,25 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // ── KB 回報（AI 回答品質回饋）────────────────────────────────────────────
 
   // GET /api/v1/knowledge/feedback/counts — 各文章 open 回報數 map
-  fastify.get('/feedback/counts', async (request, reply) => {
-    const counts = await getFeedbackCounts(request.tenantPrisma, request.agent.tenantId);
+  fastify.get('/feedback/counts', view, async (request, reply) => {
+    const counts = await getFeedbackCountsFlow(deps, actorOf(request).tenantId);
     return reply.send(success(counts));
   });
 
   // GET /api/v1/knowledge/feedback?articleId=&status=open — 回報明細
-  fastify.get('/feedback', async (request, reply) => {
-    const q = request.query as { articleId?: string; status?: string };
-    const list = await listFeedback(request.tenantPrisma, request.agent.tenantId, {
-      articleId: q.articleId,
-      status: q.status,
-    });
+  fastify.get('/feedback', view, async (request, reply) => {
+    const filter = feedbackQuerySchema.parse(request.query);
+    const list = await listFeedbackFlow(deps, actorOf(request).tenantId, filter);
     return reply.send(success(list));
   });
 
   // PATCH /api/v1/knowledge/feedback/:id/resolve — 標記已處理
-  fastify.patch<{ Params: { id: string } }>(
+  fastify.patch(
     '/feedback/:id/resolve',
     { preHandler: [requirePermission('knowledge.admin')] },
     async (request, reply) => {
-      await resolveFeedback(request.tenantPrisma, request.params.id, request.agent.tenantId);
+      const { id } = feedbackParamsSchema.parse(request.params);
+      await resolveFeedbackFlow(deps, actorOf(request).tenantId, id);
       return reply.send(success({ resolved: true }));
     },
   );
@@ -404,70 +411,50 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // POST /api/v1/knowledge — 新建文章
   fastify.post('/', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const data = createArticleSchema.parse(request.body);
-    const article = await createArticle(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      request.agent.id,
-      data,
-    );
+    const article = await createArticleFlow(deps, actorOf(request), data);
     return reply.status(201).send(success(article));
   });
 
   // GET /api/v1/knowledge/:id — 文章詳情
-  fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const article = await getArticle(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+  fastify.get('/:id', view, async (request, reply) => {
+    const { id } = articleParamsSchema.parse(request.params);
+    const article = await getArticleFlow(deps, actorOf(request).tenantId, id);
     return reply.send(success(article));
   });
 
   // PATCH /api/v1/knowledge/:id — 更新文章
-  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+  fastify.patch('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+    const { id } = articleParamsSchema.parse(request.params);
     const data = updateArticleSchema.parse(request.body);
-    const article = await updateArticle(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-      data,
-    );
+    const article = await updateArticleFlow(deps, actorOf(request).tenantId, id, data);
     return reply.send(success(article));
   });
 
   // DELETE /api/v1/knowledge/:id — 刪除文章
-  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
-    const result = await deleteArticle(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+  fastify.delete('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+    const { id } = articleParamsSchema.parse(request.params);
+    const result = await deleteArticleFlow(deps, actorOf(request).tenantId, id);
     return reply.send(success(result));
   });
 
   // POST /api/v1/knowledge/:id/publish — 發布文章
-  fastify.post<{ Params: { id: string } }>('/:id/publish', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
-    const article = await publishArticle(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+  fastify.post('/:id/publish', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+    const { id } = articleParamsSchema.parse(request.params);
+    const article = await publishArticleFlow(deps, actorOf(request).tenantId, id);
     return reply.send(success(article));
   });
 
   // POST /api/v1/knowledge/:id/archive — 封存文章
-  fastify.post<{ Params: { id: string } }>('/:id/archive', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
-    const article = await archiveArticle(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
+  fastify.post('/:id/archive', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+    const { id } = articleParamsSchema.parse(request.params);
+    const article = await archiveArticleFlow(deps, actorOf(request).tenantId, id);
     return reply.send(success(article));
   });
 
   // POST /api/v1/knowledge/:id/embed — 強制重新向量化單篇文章
-  fastify.post<{ Params: { id: string } }>('/:id/embed', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
-    await embedArticle(request.tenantPrisma, request.params.id);
+  fastify.post('/:id/embed', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
+    const { id } = articleParamsSchema.parse(request.params);
+    await embedArticleNowFlow(deps, actorOf(request).tenantId, id);
     return reply.send(success({ embedded: true }));
   });
 }

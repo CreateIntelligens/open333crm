@@ -1,4 +1,7 @@
 import type { InboundMessageContext, InboundMessageResult } from './inbound-message.types.js';
+import { prepareInboundMessageContent } from '../ai/deidentification.service.js';
+import { alertInboundUnmasked } from '../ai/deidentification-alert.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export async function findDuplicateInboundMessage(
   ctx: InboundMessageContext,
@@ -49,6 +52,8 @@ export async function createInboundMessage(ctx: InboundMessageContext): Promise<
   const sequence = await ctx.prisma.message.count({
     where: { conversationId: ctx.conversation.id },
   }) + 1;
+  // 去識別化服務無法使用時不丟錯：存原文並標記未遮罩，AI 不讀這則訊息、改轉真人（issue #466）
+  const stored = await prepareInboundMessageContent(await readAiPrivacyPolicy(ctx.prisma, ctx.tenantId), ctx.content);
 
   try {
     ctx.message = await ctx.prisma.message.create({
@@ -58,8 +63,8 @@ export async function createInboundMessage(ctx: InboundMessageContext): Promise<
         senderType: 'CONTACT',
         senderId: null,
         contentType: ctx.contentType,
-        content: ctx.content as any,
-        metadata: (ctx.options.messageMetadata ?? {}) as any,
+        content: stored.content as any,
+        metadata: { ...(ctx.options.messageMetadata ?? {}), ...stored.metadata } as any,
         channelMsgId: ctx.channelMsgId ?? null,
         clientMessageId: ctx.options.clientMessageId ?? null,
         sequence,
@@ -67,6 +72,10 @@ export async function createInboundMessage(ctx: InboundMessageContext): Promise<
         createdAt: ctx.now,
       },
     });
+    // 訊息存入之後、不在交易內發告警；sendOpsAlert() 合併 10 分鐘內的告警
+    if (stored.unmaskedReason) {
+      await alertInboundUnmasked({ tenantId: ctx.tenantId, channelType: ctx.channel.channelType, reason: stored.unmaskedReason });
+    }
     return true;
   } catch (err) {
     // P2002：併發下另一請求已先建立同一 (conversationId, channelMsgId) → 視為重複

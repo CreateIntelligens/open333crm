@@ -31,10 +31,10 @@ const FIRST_AGENT_REPLY = `
 `;
 
 async function main() {
-  const [{ total, pending }] = await prisma.$queryRawUnsafe<Array<{ total: bigint; pending: bigint }>>(
+  const [{ total, pending }] = (await prisma.$queryRawUnsafe(
     `SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "firstResponseAt" IS NULL) AS pending FROM cases`,
-  );
-  const candidates = await prisma.$queryRawUnsafe<Array<{ case_id: string; first_reply: Date }>>(FIRST_AGENT_REPLY);
+  )) as Array<{ total: bigint; pending: bigint }>;
+  const candidates = (await prisma.$queryRawUnsafe(FIRST_AGENT_REPLY)) as Array<{ case_id: string; first_reply: Date }>;
   console.log(`工單共 ${total} 張，沒有首次回應時間 ${pending} 張，其中找得到客服回覆、可補值 ${candidates.length} 張`);
   if (Number(total) === 0) {
     // 以 app_tenant 等受 RLS 限制的帳號連線時，查詢會回 0 筆而不報錯

@@ -88,3 +88,18 @@ test('沒送 email 關鍵字時，與已儲存的 email 關鍵字衝突也回 40
   const stored = await withTenant(prisma, T, (tx) => tx.tenantSettings.findFirst({ where: { tenantId: T } }));
   assert.deepEqual((stored?.identityBinding as { bindKeywords: string[] }).bindKeywords, ['綁定帳號'], '不更改資料');
 });
+
+// change add-phone-identity-merge，spec phone-identity-merge「設定頁沒送手機欄位」
+test('設定頁沒送手機欄位', async () => {
+  await setStored({ enabled: true, bindKeywords: ['綁定帳號'], unbindKeywords: ['解除綁定'], phoneEnabled: true, phoneKeywords: ['登記電話'] });
+  const res = await put({ ...legacyBody(['綁定帳號']), emailEnabled: false });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().data.phoneEnabled, true, '手機登記維持啟用');
+  assert.deepEqual(res.json().data.phoneKeywords, ['登記電話'], '關鍵字不變');
+});
+
+test('手機關鍵字與 email 關鍵字相同回 400', async () => {
+  const res = await put({ ...legacyBody(['綁定帳號']), emailKeywords: ['登記'], phoneEnabled: true, phoneKeywords: ['登記'] });
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error.details.issues[0].path, 'phoneKeywords');
+});

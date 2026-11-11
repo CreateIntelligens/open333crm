@@ -21,7 +21,7 @@
 
 ### Requirement: Content-based upload validation
 
-系統 MUST 以檔案 bytes 偵測實際內容類型，不得只信任 multipart 的 client MIME 或原始副檔名。系統 MUST 對每個上傳入口套用該入口允許的 canonical content type 清單；不支援、無法辨識或信心不足的檔案 MUST 被拒絕，且不得進入正式 storage 或 parser。
+系統 MUST 以檔案 bytes 偵測實際內容類型，不得只信任 multipart 的 client MIME 或原始副檔名。系統 MUST 對每個上傳入口套用該入口允許的 canonical content type 清單；不支援、無法辨識或信心不足的檔案 MUST 被拒絕，且不得進入正式 storage 或 parser。拒絕時錯誤碼 MUST 是 `INVALID_FILE_TYPE`（HTTP 400），`message` MUST 是依原因區分的中文說明（空檔案、無法辨識內容、類型不允許、內容與副檔名不符、內容與上傳時標示的類型不符），偵測器的英文原因 MUST 放在 `details.reason`，不得出現在 `message`。偵測器本身無法使用時，錯誤碼 MUST 是 `FILE_TYPE_DETECTION_UNAVAILABLE`（HTTP 503），`message` MUST 是中文。
 
 #### Scenario: Valid image with forged client MIME
 
@@ -38,9 +38,39 @@
 - **WHEN** 上傳內容是未知 binary、偽裝的 executable，或不屬於該入口允許清單
 - **THEN** 系統回傳明確的檔案類型錯誤，不呼叫 parser、不建立正式 storage object，且不把檔案內容寫入 log
 
+#### Scenario: Empty file is rejected with a Chinese message
+
+- **WHEN** 上傳 0 bytes 的檔案
+- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「檔案是空的，請重新選擇檔案」，`details.reason` 為 `empty file`
+
+#### Scenario: Unrecognized content lists the allowed formats
+
+- **WHEN** 收件匣圖片入口（允許 JPEG、PNG）收到偵測器認不出、或信心低於門檻的檔案
+- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「無法辨識檔案內容，請確認檔案沒有損壞，且是允許的格式（JPG、PNG）」，`details.reason` 保留英文原因
+
+#### Scenario: Disallowed type names the detected format
+
+- **WHEN** imagemap 入口（允許 JPEG、PNG、WebP）收到內容是 PDF 的 `manual.pdf`
+- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「這裡不接受 PDF 檔案，請改用 JPG、PNG、WEBP」，`details.detectedMime` 為 `application/pdf`
+
+#### Scenario: Content that does not match the extension
+
+- **WHEN** 上傳內容是 PNG、檔名是 `document.pdf`，不論 client MIME 宣告為 `image/png` 或 `application/pdf`
+- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「檔案內容（PNG）與副檔名不符，請確認檔案格式或改正副檔名」，`details.reason` 保留英文原因；副檔名不符優先於宣告的類型不符
+
+#### Scenario: Content that does not match the declared MIME type
+
+- **WHEN** 上傳內容是 PNG、檔名是 `logo.png`，但 client MIME 宣告為 `application/pdf`
+- **THEN** 回 400 `INVALID_FILE_TYPE`，`message` 為「檔案內容（PNG）與上傳時標示的檔案類型不符，請重新選擇檔案」，不提副檔名，`details.reason` 保留英文原因
+
+#### Scenario: Detector unavailable returns a Chinese message
+
+- **WHEN** 偵測器執行時丟出例外
+- **THEN** 回 503 `FILE_TYPE_DETECTION_UNAVAILABLE`，`message` 為「暫時無法檢查檔案內容，請稍後再試」，不包含檔案內容
+
 ### Requirement: Multipart routes validate before side effects
 
-所有 multipart 檔案入口 MUST 在 storage upload、image transformation、文件 parser 或資料庫寫入前完成內容偵測。既有檔案大小限制、租戶授權與路由允許格式 MUST 維持；偵測失敗 MUST 不留下可被業務流程使用的部分結果。
+所有 multipart 檔案入口 MUST 在 storage upload、image transformation、文件 parser 或資料庫寫入前完成內容偵測。既有檔案大小限制、租戶授權與路由允許格式 MUST 維持；偵測失敗 MUST 不留下可被業務流程使用的部分結果。入口自己的類型與大小檢查失敗時，MUST 回標準格式 `{ success: false, error: { code, message } }`，`message` MUST 是中文並說出允許的格式或大小上限。
 
 #### Scenario: Conversation media is validated before storage
 
@@ -52,9 +82,19 @@
 - **WHEN** 知識庫上傳的檔案宣告為 XLSX 但內容不是允許的 spreadsheet
 - **THEN** 該檔案被標記失敗或回傳拒絕結果，且 `parseSpreadsheetToQaRows`/文件 parser 不會處理該 bytes
 
+#### Scenario: Conversation media type and size errors are shown in Chinese
+
+- **WHEN** 收件匣傳圖片送出 `text/plain` 檔案，或送出超過 20 MB 的圖片
+- **THEN** 回 400 `BAD_REQUEST`，`message` 分別為「不支援這種檔案，請改用 PNG、JPG」與「檔案超過上限 20 MB，請壓縮後再上傳」
+
+#### Scenario: Chatbox background errors use the standard format
+
+- **WHEN** 網站聊天室背景圖上傳沒有附檔案，或檔案類型不是 PNG、JPEG、WebP
+- **THEN** 回 400 `BAD_REQUEST` 標準格式，`message` 分別為「請選擇要上傳的檔案」與「不支援這種檔案，請改用 PNG、JPG、WEBP」
+
 ### Requirement: Presigned upload quarantine lifecycle
 
-presigned upload MUST 先寫入 tenant-scoped quarantine object。系統 MUST 提供完成/掃描操作，在讀取該 object 並通過內容偵測與入口允許清單後，才 promote 成正式檔案並回傳可供業務使用的 key/URL；未完成、失敗或過期的 quarantine object MUST 不可被正式檔案 API 當作已驗證檔案使用。
+presigned upload MUST 先寫入 tenant-scoped quarantine object。上傳網址 MUST 以對外的 storage 網址（`S3_PUBLIC_URL`）簽名，讓瀏覽器可以直接上傳。系統 MUST 提供完成/掃描操作，在通過內容偵測與入口允許清單後，才 promote 成正式檔案並回傳可供業務使用的 key/URL；未完成、失敗或過期的 quarantine object MUST 不可被正式檔案 API 當作已驗證檔案使用。完成/掃描 MUST 只讀取偵測所需的檔案開頭與結尾，並以 storage 端複製 promote，不得把整個檔案讀進 API 記憶體。
 
 #### Scenario: Presigned upload is promoted after scan
 
@@ -65,6 +105,16 @@ presigned upload MUST 先寫入 tenant-scoped quarantine object。系統 MUST �
 
 - **WHEN** complete/scan 偵測到 bytes 與宣告 MIME/副檔名不一致或類型不在允許清單
 - **THEN** 系統拒絕 promote、刪除 quarantine object 或標記為不可用，且不回傳可使用的正式 URL
+
+#### Scenario: Upload URL is signed for the public storage host
+
+- **WHEN** `S3_ENDPOINT` 是內部位址、`S3_PUBLIC_URL` 是對外網址時申請直傳
+- **THEN** 回傳的上傳網址以 `S3_PUBLIC_URL` 的主機為開頭
+
+#### Scenario: Large file is scanned from samples
+
+- **WHEN** complete/scan 一個 150 MB 的 mp4
+- **THEN** 系統只讀取檔案開頭與結尾的片段做偵測，以 storage 端複製建立正式 object，不讀取整個檔案
 
 ### Requirement: Detection diagnostics and security boundaries
 
@@ -79,3 +129,27 @@ presigned upload MUST 先寫入 tenant-scoped quarantine object。系統 MUST �
 
 - **WHEN** 檔案內容通過型別偵測
 - **THEN** 系統只允許進入允許的 storage/parser 流程，不回報「已通過病毒掃描」或「檔案安全」
+
+### Requirement: Presigned upload limits by purpose
+
+申請直傳時 MUST 提供檔案大小與用途。每個用途 MUST 有大小上限與允許的內容類型：`generic` 25 MB、沿用一般上傳的允許清單；`line-video` 200 MB（LINE 影片訊息的上限）、只允許 `video/mp4`。系統 MUST 把檔案大小簽進上傳網址，使大小不同的上傳被 storage 拒收；complete/scan MUST 依同一用途再檢查實際大小與內容類型。
+
+#### Scenario: Oversized presign request
+
+- **WHEN** 以 `line-video` 申請 201 MB 的直傳，或以 `generic` 申請 26 MB 的直傳
+- **THEN** 系統回 413，不簽發上傳網址
+
+#### Scenario: Declared size is part of the signature
+
+- **WHEN** 以 `line-video` 申請 150 MB 的直傳
+- **THEN** 上傳網址的簽名包含 `content-length`，值為 150 MB
+
+#### Scenario: Completed object exceeds the purpose limit
+
+- **WHEN** complete/scan 以 `generic` 完成一個 30 MB 的 quarantine object
+- **THEN** 系統回 413、刪除 quarantine object，不 promote
+
+#### Scenario: LINE video purpose accepts only mp4
+
+- **WHEN** 以 `line-video` complete/scan 一個 PNG
+- **THEN** 系統拒絕 promote 並刪除 quarantine object

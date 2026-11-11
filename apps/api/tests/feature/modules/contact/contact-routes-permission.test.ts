@@ -54,6 +54,7 @@ const ROUTES: Array<{ method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; url: string; 
   { method: 'GET', url: '/api/v1/contacts/identity-binding/status' },
   { method: 'POST', url: `/api/v1/contacts/${SOME_ID}/binding-link`, payload: { conversationId: SOME_ID } },
   { method: 'POST', url: `/api/v1/contacts/${SOME_ID}/email-registration-link`, payload: { conversationId: SOME_ID } },
+  { method: 'POST', url: `/api/v1/contacts/${SOME_ID}/phone-registration-link`, payload: { conversationId: SOME_ID } },
   { method: 'GET', url: `/api/v1/contacts/${SOME_ID}/merge-logs` },
   { method: 'GET', url: `/api/v1/contacts/${SOME_ID}` },
   { method: 'PATCH', url: `/api/v1/contacts/${SOME_ID}`, payload: { displayName: 'x' } },
@@ -117,6 +118,7 @@ test('只有 contact.view：修改、貼標、移除標籤、合併、合併預�
     route('/revert'),
     route('/binding-link'),
     route('/email-registration-link'),
+    route('/phone-registration-link'),
   ]) {
     assert.equal((await call(viewApp, r)).statusCode, 403, `${r.method} ${r.url}`);
   }
@@ -144,6 +146,18 @@ test('代發綁定連結屬回覆層級：有 inbox.reply 通過守門，只有 
 test('代發 email 登記連結屬回覆層級：有 inbox.reply 通過守門，只有 contact.update 被擋', async () => {
   assert.notEqual((await call(replyApp, route('/email-registration-link'))).statusCode, 403);
   assert.equal((await call(updateApp, route('/email-registration-link'))).statusCode, 403);
+});
+
+// spec phone-identity-merge「客服可主動傳送手機登記連結」的「缺少權限」
+test('代發手機登記連結屬回覆層級：有 inbox.reply 通過守門，只有 contact.update 被擋', async () => {
+  assert.notEqual((await call(replyApp, route('/phone-registration-link'))).statusCode, 403);
+  assert.equal((await call(updateApp, route('/phone-registration-link'))).statusCode, 403);
+});
+
+test('收件匣狀態端點回傳手機登記是否啟用', async () => {
+  const res = await call(replyApp, route('/identity-binding/status'));
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(typeof res.json().data.phoneEnabled, 'boolean', res.body);
 });
 
 // ── CM-173 渠道可見性：分店帳號只綁渠道 A，看不到同一位聯絡人在渠道 B 的對話與案件 ──
@@ -294,4 +308,38 @@ afterAll(async () => {
   for (const fn of cleanup) await fn().catch((err) => console.error('清理失敗', err));
   if (roles.length) await prisma.role.deleteMany({ where: { id: { in: roles } } });
   await prisma.$disconnect();
+});
+
+test('CM-173：代發手機登記連結檢查渠道層級（看不到的渠道 404、唯讀渠道 403）', async () => {
+  const toB = await branchApp.inject({
+    method: 'POST',
+    url: `/api/v1/contacts/${contact.id}/phone-registration-link`,
+    payload: { conversationId: convByChannel.get(chB.id) },
+  });
+  assert.equal(toB.statusCode, 404, `看不到的渠道應回 404，實際 ${toB.statusCode} ${toB.body}`);
+  const toA = await branchApp.inject({
+    method: 'POST',
+    url: `/api/v1/contacts/${contact.id}/phone-registration-link`,
+    payload: { conversationId: convByChannel.get(chA.id) },
+  });
+  assert.equal(toA.statusCode, 403, `唯讀渠道應回 403，實際 ${toA.statusCode} ${toA.body}`);
+});
+
+// spec phone-identity-merge「手機登記須由租戶啟用」的「未啟用時客服無法傳送連結」
+test('未啟用手機登記時客服無法傳送連結', async () => {
+  const chOpen = await mkChannel('open-phone');
+  await prisma.agentChannelAccess.create({ data: { agentId: agent.id, channelId: chOpen.id, accessLevel: 'full' } });
+  const conv = await prisma.conversation.create({ data: { tenantId: T, contactId: contact.id, channelId: chOpen.id, channelType: 'WEBCHAT' } });
+  cleanup.unshift(async () => {
+    await prisma.conversation.deleteMany({ where: { id: conv.id, tenantId: T } });
+    await prisma.agentChannelAccess.deleteMany({ where: { channelId: chOpen.id } });
+    await prisma.channel.deleteMany({ where: { id: chOpen.id, tenantId: T } });
+  });
+  const res = await branchApp.inject({
+    method: 'POST',
+    url: `/api/v1/contacts/${contact.id}/phone-registration-link`,
+    payload: { conversationId: conv.id },
+  });
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error?.code ?? res.json().code, 'PHONE_REGISTRATION_DISABLED');
 });

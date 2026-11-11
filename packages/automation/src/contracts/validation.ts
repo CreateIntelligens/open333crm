@@ -6,6 +6,7 @@ import {
 import { AUTOMATION_OPERATOR_MAP } from './operators.js';
 import type {
   AutomationActionDefinition,
+  AutomationActionParamType,
   AutomationContractValidationResult,
   AutomationOperator,
   ComposeAutomationContractOptions,
@@ -151,12 +152,38 @@ function validateActionParams(
   errors: string[],
 ): void {
   for (const param of actionDef.params ?? []) {
-    if (!param.required) continue;
     const value = params[param.key];
     if (value === undefined || value === null || value === '') {
-      errors.push(`${position}「${actionDef.label}」必須填寫「${param.label}」`);
+      if (param.required) errors.push(`${position}「${actionDef.label}」必須填寫「${param.label}」`);
+      continue;
     }
+    // 下拉參數只收選項內的值（issue #469，AUDIT AUTO-12）：編輯器只送選項，API、CLI、MCP 可以送任何值，
+    // 原本要到 workers 執行時才因 Prisma enum 錯誤失敗、只寫 log
+    if (param.type === 'select' && param.values && !param.values.some((option) => option.value === value)) {
+      errors.push(`${position}「${actionDef.label}」的「${param.label}」不能是「${String(value)}」，請從選項中選擇`);
+      continue;
+    }
+    // 參數的值要符合契約的型別（issue #405）：原本 text 是物件時，workers 以 String() 送出「[object Object]」，
+    // tagName、agentId 是數字時寫入或查詢失敗、只寫 log。契約沒有列出的參數（例如 variables）不檢查
+    const typeError = paramTypeError(param.type, value);
+    if (typeError) errors.push(`${position}「${actionDef.label}」的「${param.label}」${typeError}`);
   }
+}
+
+const TEXT_PARAM_TYPES: ReadonlySet<AutomationActionParamType> = new Set([
+  'string',
+  'textarea',
+  'agent',
+  'material',
+  'coupon',
+]);
+
+/** 值不符合參數型別時回傳錯誤的後半句；select 的值由選項檢查 */
+function paramTypeError(type: AutomationActionParamType, value: unknown): string | null {
+  if (TEXT_PARAM_TYPES.has(type)) return typeof value === 'string' ? null : '必須是文字';
+  if (type === 'number') return typeof value === 'number' && Number.isFinite(value) ? null : '必須是數字';
+  if (type === 'boolean') return typeof value === 'boolean' ? null : '必須是 true 或 false';
+  return null;
 }
 
 export function validateAutomationRuleContract(input: {

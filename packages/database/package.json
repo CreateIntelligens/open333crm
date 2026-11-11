@@ -18,12 +18,14 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test": "vitest run --project unit"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@open333crm/shared": "workspace:*",
     "@prisma/client": "^6.0.0"
   },
   "devDependencies": {
@@ -31,7 +33,7 @@
     "@types/node": "^25.5.0",
     "bcryptjs": "^2.4.3",
     "prisma": "^6.0.0",
-    "tsx": "^4.7.0",
+    "tsx": "^4.22.0",
     "typescript": "^5.4.0"
   }
 }

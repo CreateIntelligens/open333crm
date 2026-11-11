@@ -1,16 +1,12 @@
 /**
- * Embedding service — generates embeddings via Ollama BGE-M3
- * and performs vector similarity search using pgvector.
+ * 向量化與相似度搜尋的資料存取（change migrate-embedding-tenant-ctx）。
  *
- * Configuration is now per-tenant (TenantSettings.embeddingBaseUrl/Model).
- * Callers must pass tenantId so we can load the right Ollama target/model.
+ * 這裡的函式都收 TenantCtx，只讀寫資料庫。呼叫向量化服務的是 embedding-client.ts，
+ * 由 flow 在兩個交易之間呼叫（embedding.flow.ts，design D2）。
  */
-
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { logger } from '@open333crm/core';
-import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
-
-// ─── Types ──────────────────────────────────────────────────────────────────
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { getEmbeddingSettings, type EmbeddingSettings } from '../settings/embedding-settings.service.js';
+import { readAiPrivacyPolicy, type AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface ArticleSearchResult {
   id: string;
@@ -22,124 +18,16 @@ export interface ArticleSearchResult {
   similarity: number;
 }
 
-interface SearchOptions {
-  topK?: number;
-  threshold?: number;
+// ─── 向量化的輸入 ───────────────────────────────────────────────────────────
+
+/** 向量化前要讀的設定與遮罩政策。一次處理只讀一次 */
+export async function readEmbeddingInputs(
+  ctx: TenantCtx,
+): Promise<{ settings: EmbeddingSettings; policy: AiPrivacyPolicy }> {
+  const settings = await getEmbeddingSettings(ctx);
+  const policy = await readAiPrivacyPolicy(ctx.tx, ctx.tenantId);
+  return { settings, policy };
 }
-
-// ─── Embedding Generation ───────────────────────────────────────────────────
-
-/**
- * 單次 embed 請求的逾時（毫秒）。
- *
- * 為什麼需要：原本的 fetch 沒有任何 timeout。Ollama 閒置一段時間會把
- * bge-m3 卸載，下一個請求要等模型重載（實測約 30~40 秒），期間每個請求
- * 都卡滿 Caddy 的 60s gateway timeout → 使用者連吃 3~5 次 504，每次等 60 秒。
- *
- * 設 25 秒：比 gateway 的 60s 短很多，讓我們能在「被 Caddy 切斷」之前
- * 自己收手並重試，把控制權留在應用層。
- */
-const EMBED_TIMEOUT_MS = 25_000;
-
-/**
- * 冷啟動重試次數。第一次逾時多半是模型正在載入，
- * 重試時模型通常已經在記憶體裡，會很快回來。
- *
- * 只重試 1 次是被 gateway 預算決定的，不是隨便選的：
- *   最壞總耗時 = 25s × 2 次 + 1s 重試間隔 = 51s
- * Caddy 的 gateway timeout 是 60s，扣掉 DB 查詢與序列化的餘裕（約 5s），
- * 可用預算約 55s。重試 2 次會變成 77s，反而又回到「被 Caddy 切斷」的老問題。
- */
-const EMBED_COLD_START_RETRIES = 1;
-
-/** 單次呼叫 Ollama embed，帶逾時 */
-/**
- * 帶 HTTP status 的 embed 錯誤。
- *
- * 為什麼不靠解析 err.message：重試判斷原本用 /\(50[23]\)/ 比對訊息文字，
- * 只要上游換個格式（"503 Service Unavailable"、"status code 503"）就失效，
- * 冷啟動的 503 會直接把錯誤丟給使用者。改成型別帶 status，判斷不依賴文字。
- */
-class EmbedHttpError extends Error {
-  constructor(readonly status: number, body: string) {
-    super(`Ollama embed failed (${status}): ${body}`);
-    this.name = 'EmbedHttpError';
-  }
-}
-
-async function embedOnce(
-  url: string,
-  model: string,
-  text: string,
-  timeoutMs: number,
-): Promise<number[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, input: text }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new EmbedHttpError(response.status, errBody);
-    }
-
-    const data = (await response.json()) as { embeddings: number[][] };
-    if (!data.embeddings || !data.embeddings[0]) {
-      throw new Error('Ollama returned empty embeddings');
-    }
-    return data.embeddings[0];
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-export async function generateEmbedding(
-  prisma: TenantDb,
-  tenantId: string,
-  text: string,
-): Promise<number[]> {
-  const settings = await getEmbeddingSettings(prisma, tenantId);
-  const url = `${settings.baseUrl}/api/embed`;
-
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= EMBED_COLD_START_RETRIES; attempt++) {
-    try {
-      return await embedOnce(url, settings.model, text, EMBED_TIMEOUT_MS);
-    } catch (err) {
-      lastErr = err;
-      // 冷啟動有兩種表現，都要重試：
-      //   1. AbortError——請求打出去了但模型還在載入，卡到我們的 timeout
-      //   2. HTTP 503——Ollama 明確回「服務尚未就緒」，這種會「立刻」失敗，
-      //      只認 AbortError 的話第一次就直接把錯誤丟給使用者，等於沒處理冷啟動
-      const aborted = err instanceof Error && err.name === 'AbortError';
-      // 502/503 = 上游尚未就緒（Ollama 載入模型中），與逾時同樣值得重試
-      const unavailable = err instanceof EmbedHttpError && (err.status === 502 || err.status === 503);
-      const retryable = aborted || unavailable;
-      if (!retryable || attempt === EMBED_COLD_START_RETRIES) break;
-      logger.warn(
-        `[Embedding] embed ${aborted ? '逾時' : '服務未就緒'}` +
-          `（第 ${attempt + 1} 次），模型可能正在載入，重試中`,
-      );
-      await new Promise((r) => setTimeout(r, 1_000));
-    }
-  }
-
-  if (lastErr instanceof Error && lastErr.name === 'AbortError') {
-    // 轉成可讀訊息：使用者看到的不該是 "AbortError"
-    throw new Error(
-      `向量化服務逾時（${EMBED_TIMEOUT_MS / 1000} 秒 × ${EMBED_COLD_START_RETRIES + 1} 次）。` +
-        'AI 模型可能正在載入，請稍候再試；若持續發生請至「知識庫 → Embedding 設定」檢查服務狀態。',
-    );
-  }
-  throw lastErr;
-}
-
-// ─── Article Text Preparation ───────────────────────────────────────────────
 
 export function prepareArticleText(article: {
   title: string;
@@ -167,30 +55,75 @@ export function prepareArticleText(article: {
   return combined.slice(0, 4000);
 }
 
-// ─── Similarity Search ──────────────────────────────────────────────────────
+// ─── 文章的向量 ─────────────────────────────────────────────────────────────
 
+/** 讀一篇文章向量化用的文字。文章不存在或屬於另一個租戶時回 null */
+export async function readArticleForEmbedding(ctx: TenantCtx, articleId: string): Promise<string | null> {
+  const article = await ctx.tx.kmArticle.findFirst({
+    where: { id: articleId, tenantId: ctx.tenantId },
+    select: {
+      title: true,
+      category: true,
+      tags: true,
+      summary: true,
+      content: true,
+      spec: true,
+      attachments: { select: { filename: true } },
+    },
+  });
+  if (!article) return null;
+  return prepareArticleText(article);
+}
+
+/**
+ * 只在文章的向量化文字仍和 `sourceText` 相同時寫入向量與模型名稱（design D2）。回傳是否寫入。
+ *
+ * 先以 `FOR UPDATE` 鎖住文章再重組文字：比對與寫入之間，其他交易改不了這篇文章。
+ * 只比對文字：向量只取決於文字。`updatedAt` 會被瀏覽次數改變；狀態（發布、封存）由查詢過濾，
+ * 比對它們會把仍然正確的向量丟掉（review-loop 第 1、2 輪）。
+ */
+export async function writeArticleEmbedding(
+  ctx: TenantCtx,
+  articleId: string,
+  input: { vector: number[]; model: string; sourceText: string },
+): Promise<boolean> {
+  const locked = await ctx.tx.$queryRawUnsafe<Array<{ id: string }>>(
+    `SELECT id FROM km_articles WHERE id = $1::uuid AND "tenantId" = $2::uuid FOR UPDATE`,
+    articleId,
+    ctx.tenantId,
+  );
+  if (locked.length === 0) return false;
+
+  if ((await readArticleForEmbedding(ctx, articleId)) !== input.sourceText) return false;
+
+  await ctx.tx.$executeRawUnsafe(
+    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2 WHERE id = $3::uuid AND "tenantId" = $4::uuid`,
+    `[${input.vector.join(',')}]`,
+    input.model,
+    articleId,
+    ctx.tenantId,
+  );
+  return true;
+}
+
+/** 已發布文章的 id，供批次重新向量化逐篇處理 */
+export async function listPublishedArticleIds(ctx: TenantCtx): Promise<string[]> {
+  const rows = await ctx.tx.kmArticle.findMany({
+    where: { tenantId: ctx.tenantId, status: 'PUBLISHED' },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+// ─── 相似度搜尋 ─────────────────────────────────────────────────────────────
+
+/** 依向量找本租戶已發布、相似度達門檻的文章。`topK`、`threshold` 由呼叫端從設定帶入（design D5） */
 export async function searchSimilarArticles(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   queryEmbedding: number[],
-  tenantId: string,
-  options: SearchOptions = {},
+  options: { topK: number; threshold: number },
 ): Promise<ArticleSearchResult[]> {
-  const settings = await getEmbeddingSettings(prisma, tenantId);
-  const { topK = settings.topK, threshold = settings.threshold } = options;
-
-  const vectorStr = `[${queryEmbedding.join(',')}]`;
-
-  const results = await prisma.$queryRawUnsafe<
-    {
-      id: string;
-      title: string;
-      summary: string;
-      content: string;
-      category: string;
-      tags: string[];
-      similarity: number;
-    }[]
-  >(
+  return ctx.tx.$queryRawUnsafe<ArticleSearchResult[]>(
     `SELECT id, title, summary, content, category, tags,
             1 - (embedding <=> $1::vector) AS similarity
      FROM km_articles
@@ -200,134 +133,9 @@ export async function searchSimilarArticles(
        AND 1 - (embedding <=> $1::vector) >= $3
      ORDER BY similarity DESC
      LIMIT $4`,
-    vectorStr,
-    tenantId,
-    threshold,
-    topK,
+    `[${queryEmbedding.join(',')}]`,
+    ctx.tenantId,
+    options.threshold,
+    options.topK,
   );
-
-  return results;
-}
-
-// ─── Embed Single Article ───────────────────────────────────────────────────
-
-export async function embedArticle(
-  prisma: TenantDb,
-  articleId: string,
-): Promise<void> {
-  const article = await prisma.kmArticle.findUnique({
-    where: { id: articleId },
-    select: {
-      tenantId: true,
-      title: true,
-      category: true,
-      tags: true,
-      summary: true,
-      content: true,
-      spec: true,
-      attachments: { select: { filename: true } },
-    },
-  });
-
-  if (!article) {
-    throw new Error(`Article ${articleId} not found`);
-  }
-
-  const text = prepareArticleText(article);
-  const embedding = await generateEmbedding(prisma, article.tenantId, text);
-  const vectorStr = `[${embedding.join(',')}]`;
-  const settings = await getEmbeddingSettings(prisma, article.tenantId);
-
-  await prisma.$executeRawUnsafe(
-    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2 WHERE id = $3::uuid`,
-    vectorStr,
-    settings.model,
-    articleId,
-  );
-}
-
-// ─── Bulk Re-embed ──────────────────────────────────────────────────────────
-
-export async function bulkReembed(
-  prisma: TenantDb,
-  tenantId: string,
-): Promise<{ total: number; succeeded: number; failed: number }> {
-  const articles = await prisma.kmArticle.findMany({
-    where: { tenantId, status: 'PUBLISHED' },
-    select: {
-      id: true,
-      title: true,
-      category: true,
-      tags: true,
-      summary: true,
-      content: true,
-      spec: true,
-      attachments: { select: { filename: true } },
-    },
-  });
-
-  let succeeded = 0;
-  let failed = 0;
-  const settings = await getEmbeddingSettings(prisma, tenantId);
-
-  for (const article of articles) {
-    try {
-      const text = prepareArticleText(article);
-      const embedding = await generateEmbedding(prisma, tenantId, text);
-      const vectorStr = `[${embedding.join(',')}]`;
-
-      await prisma.$executeRawUnsafe(
-        `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2 WHERE id = $3::uuid`,
-        vectorStr,
-        settings.model,
-        article.id,
-      );
-      succeeded++;
-    } catch (err) {
-      logger.error(`[Embedding] Failed to embed article ${article.id}:`, err);
-      failed++;
-    }
-  }
-
-  return { total: articles.length, succeeded, failed };
-}
-
-// ─── Health Check ───────────────────────────────────────────────────────────
-
-export async function checkOllamaHealth(
-  prisma: TenantDb,
-  tenantId: string,
-): Promise<{
-  ok: boolean;
-  model?: string;
-  error?: string;
-}> {
-  const settings = await getEmbeddingSettings(prisma, tenantId);
-
-  try {
-    const response = await fetch(`${settings.baseUrl}/api/tags`);
-    if (!response.ok) {
-      return { ok: false, error: `Ollama returned ${response.status}` };
-    }
-
-    const data = (await response.json()) as {
-      models?: { name: string }[];
-    };
-
-    const models = data.models || [];
-    const found = models.find(
-      (m) => m.name === settings.model || m.name.startsWith(`${settings.model}:`),
-    );
-
-    if (!found) {
-      return {
-        ok: false,
-        error: `Model "${settings.model}" not found. Available: ${models.map((m) => m.name).join(', ') || 'none'}`,
-      };
-    }
-
-    return { ok: true, model: found.name };
-  } catch (err) {
-    return { ok: false, error: `Cannot reach Ollama: ${(err as Error).message}` };
-  }
 }

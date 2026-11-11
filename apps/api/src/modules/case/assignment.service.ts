@@ -6,10 +6,7 @@
  * by an in-memory round-robin index.
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import type { Server as SocketIOServer } from 'socket.io';
-import { eventBus } from '../../events/event-bus.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { logger } from '@open333crm/core';
 
 // In-memory round-robin index per tenant
@@ -21,13 +18,13 @@ const rrIndex = new Map<string, number>();
  * On tie, use round-robin index.
  */
 export async function getNextAgent(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   teamId?: string | null,
   /** 工單的渠道：只派給看得到、而且能回覆這個渠道的成員（渠道可見範圍是 fail-closed） */
   channelId?: string | null,
 ): Promise<{ id: string; name: string } | null> {
   // Build agent filter: must be active AGENT role
+  const { tx, tenantId } = ctx;
   const agentWhere: Record<string, unknown> = {
     tenantId,
     role: 'AGENT',
@@ -51,7 +48,7 @@ export async function getNextAgent(
     ];
   }
 
-  const agents = await prisma.agent.findMany({
+  const agents = await tx.agent.findMany({
     where: agentWhere as any,
     select: {
       id: true,
@@ -88,24 +85,23 @@ export async function getNextAgent(
 
 /**
  * Auto-assign a case to the next available agent.
- * Updates case, creates CaseEvent, publishes events, emits WebSocket.
+ * Updates case and creates CaseEvent. 推播與 case.assigned 事件由 flow 依回傳結果送出（case-effects.ts）。
+ * 沒有可派的成員時回傳 null。
  */
 export async function autoAssignCase(
-  prisma: TenantDb,
-  io: SocketIOServer,
+  ctx: TenantCtx,
   caseId: string,
-  tenantId: string,
   teamId?: string | null,
   channelId?: string | null,
-): Promise<boolean> {
-  const agent = await getNextAgent(prisma, tenantId, teamId, channelId);
+) {
+  const agent = await getNextAgent(ctx, teamId, channelId);
   if (!agent) {
     logger.info(`[AutoAssign] No available agent for case ${caseId}`);
-    return false;
+    return null;
   }
 
   // Update case
-  const updated = await prisma.case.update({
+  const updated = await ctx.tx.case.update({
     where: { id: caseId },
     data: {
       assigneeId: agent.id,
@@ -114,7 +110,7 @@ export async function autoAssignCase(
   });
 
   // Create CaseEvent
-  await prisma.caseEvent.create({
+  await ctx.tx.caseEvent.create({
     data: {
       caseId,
       actorType: 'system',
@@ -127,28 +123,6 @@ export async function autoAssignCase(
     },
   });
 
-  // Emit WebSocket
-  io.to(`tenant:${tenantId}`).emit('case.updated', {
-    id: caseId,
-    status: 'IN_PROGRESS',
-    priority: updated.priority,
-    assigneeId: agent.id,
-    source: 'auto_assign',
-  });
-
-  // Publish case.assigned event for notifications
-  eventBus.publish({
-    name: 'case.assigned',
-    tenantId,
-    timestamp: new Date(),
-    payload: {
-      caseId,
-      assigneeId: agent.id,
-      title: updated.title,
-      source: 'auto_assign',
-    },
-  });
-
   logger.info(`[AutoAssign] Case ${caseId} → agent ${agent.name} (${agent.id})`);
-  return true;
+  return { agent, updated };
 }

@@ -35,6 +35,8 @@ const TENANT_MODELS = new Set([
   'passkeyCredential', 'quickReplyPreset', 'kbArticleFeedback', 'aiUsage', 'trialSignup',
   'planChangeRequest', 'tenantAuditLog', 'dataExportRequest', 'dataErasureRequest',
   'broadcastDeliveryAttempt', 'contactMergeLog',
+  // 優惠券與門市（add-coupon-system）
+  'coupon', 'couponInstance', 'couponCode', 'store', 'storeAccount',
 ]);
 
 // query 方法（會回傳/影響多列、需 tenantId 限定的）
@@ -120,7 +122,7 @@ function varLikelyHasTenantId(src, varName, callStart) {
 const results = { LEAK_SUSPECT: [], NEEDS_REVIEW: [], UNIQUE_BY_KEY: [], skipped: 0 };
 
 // 匹配 prisma.<model>.<method>( / tx.<model>.<method>( / fastify.prisma.<model>.<method>(
-const CALL_RE = /(?:prisma|tx|fastify\.prisma)\.([a-zA-Z]+)\.([a-zA-Z]+)\s*\(/g;
+const CALL_RE = /(?:prisma|tx|db|fastify\.prisma)\.([a-zA-Z]+)\.([a-zA-Z]+)\s*\(/g;
 
 for (const file of walk(SCAN_DIR)) {
   const rel = relative(SCAN_DIR, file);

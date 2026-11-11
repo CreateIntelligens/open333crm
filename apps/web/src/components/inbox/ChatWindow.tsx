@@ -1,15 +1,20 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Loader2, Lightbulb } from 'lucide-react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useMessages } from '@/hooks/useMessages';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { StatusBanner } from './StatusBanner';
+import { ReturnToBotButton } from './ReturnToBotButton';
 import { TemplatePicker } from './TemplatePicker';
 import { TypingIndicator } from './TypingIndicator';
 import { CsatMessage } from './CsatMessage';
+import { CouponIssueDialog } from './coupon/CouponIssueDialog';
+import { CouponMessageCard } from './coupon/CouponMessageCard';
+import { CouponToast, useCouponToast } from '@/components/coupons/CouponToast';
+import { issuedCouponsKey, type CouponMessageContent } from '@/lib/coupon/issue';
 import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
@@ -42,19 +47,42 @@ interface ChatWindowProps {
   } | null;
   onShowAiSuggest?: () => void;
   showAiSuggest?: boolean;
+  /** 有 coupon.issue 權限時顯示「發券」 */
+  canIssueCoupon?: boolean;
 }
 
-export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: ChatWindowProps) {
-  const { messages, isLoading, sendMessage } = useMessages(
-    conversation?.id || null
-  );
+export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIssueCoupon }: ChatWindowProps) {
+  const {
+    messages,
+    isLoading,
+    error: messagesError,
+    sendMessage,
+    mutate: mutateMessages,
+    hasMore,
+    loadOlder,
+    loadingOlder,
+    olderError,
+  } = useMessages(conversation?.id || null);
+  const [couponDialogOpen, setCouponDialogOpen] = useState(false);
+  const { toast, showOk } = useCouponToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // 按「載入更早的訊息」當下的捲動狀態；更早的訊息畫上去後用來還原位置（design D5）
+  const pendingRestoreRef = useRef<{ height: number; top: number } | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [templateText, setTemplateText] = useState<string | null>(null);
   const [templateQuickReplies, setTemplateQuickReplies] = useState<Array<{ label: string; text?: string }> | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const [closeReason, setCloseReason] = useState('');
   const [closing, setClosing] = useState(false);
+  // 指派、改狀態、重新開啟失敗的原因（S09：原本沒有 try/catch，下拉看起來沒反應）
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActionError(null);
+    setCouponDialogOpen(false);
+  }, [conversation?.id]);
 
   // Agent list
   const { data: agentsData } = useSWR('/agents', (url: string) =>
@@ -74,23 +102,36 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
     { value: 'CLOSED', label: '已關閉' },
   ];
 
-  const handleAssign = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const patchConversation = async (data: Record<string, unknown>, fallback: string) => {
     if (!conversation) return;
-    const value = e.target.value || null;
-    await api.patch(`/conversations/${conversation.id}`, { assignedToId: value });
-    globalMutate(`/conversations/${conversation.id}`);
+    setActionError(null);
+    try {
+      await api.patch(`/conversations/${conversation.id}`, data);
+    } catch (err) {
+      console.error('Update conversation failed:', err);
+      setActionError(getApiErrorMessage(err, fallback));
+    } finally {
+      // 失敗時也重新載入，讓下拉回到實際的值
+      globalMutate(`/conversations/${conversation.id}`);
+    }
+  };
+
+  const handleAssign = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    await patchConversation({ assignedToId: e.target.value || null }, '指派失敗，請稍後重試');
   };
 
   const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!conversation) return;
-    await api.patch(`/conversations/${conversation.id}`, { status: e.target.value });
-    globalMutate(`/conversations/${conversation.id}`);
+    // 選「已關閉」走和「結案」按鈕相同的流程：直接改狀態不會記錄結案原因、時間與結案人
+    if (e.target.value === 'CLOSED') {
+      setCloseError(null);
+      setCloseDialogOpen(true);
+      return;
+    }
+    await patchConversation({ status: e.target.value }, '變更狀態失敗，請稍後重試');
   };
 
   const handleReopen = async () => {
-    if (!conversation) return;
-    await api.patch(`/conversations/${conversation.id}`, { status: 'ACTIVE' });
-    globalMutate(`/conversations/${conversation.id}`);
+    await patchConversation({ status: 'ACTIVE' }, '重新開啟失敗，請稍後重試');
   };
 
   const handleTakeover = async () => {
@@ -107,6 +148,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const handleCloseConfirm = async () => {
     if (!conversation) return;
     setClosing(true);
+    setCloseError(null);
     try {
       const body: { reason?: string } = {};
       const trimmed = closeReason.trim();
@@ -117,13 +159,13 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       globalMutate(`/conversations/${conversation.id}`);
     } catch (err) {
       console.error('Close conversation failed:', err);
-      alert('結案失敗，請稍後再試');
+      setCloseError(getApiErrorMessage(err, '結案失敗，請稍後再試'));
     } finally {
       setClosing(false);
     }
   };
 
-  const handleSend = useCallback(async (content: string, contentType?: string, contentData?: Record<string, unknown>) => {
+  const handleSend = useCallback(async (content: string, contentType?: string, contentData?: Record<string, unknown>, privacyMode?: 'mask' | 'original') => {
     if (contentType === 'image' || contentType === 'file') {
       await sendMessage(JSON.stringify({ url: contentData?.url, fileName: contentData?.fileName }), contentType);
     } else {
@@ -131,7 +173,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       const extra = contentData?.quickReplies
         ? { quickReplies: contentData.quickReplies }
         : undefined;
-      await sendMessage(content, 'text', extra);
+      await sendMessage(content, 'text', extra, privacyMode);
     }
   }, [sendMessage]);
 
@@ -143,10 +185,37 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
     setTemplateQuickReplies(extra?.quickReplies ?? null);
   };
 
-  // Auto-scroll on new messages
+  // 依時間排序；同一毫秒再依 id，與後端的游標排序一致
+  const sortedMessages = useMemo(
+    () =>
+      [...messages].sort((a, b) => {
+        const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return diff !== 0 ? diff : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      }),
+    [messages],
+  );
+  const newestMessageId = sortedMessages.at(-1)?.id;
+
+  // 只有最新一則改變（第一次載入、socket 推來、自己送出）才捲到底；載入更早的訊息不捲
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (newestMessageId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [newestMessageId]);
+
+  // 更早的訊息接在前面後，scrollTop 加上增加的高度，畫面停在原本那則訊息
+  useLayoutEffect(() => {
+    const pending = pendingRestoreRef.current;
+    const el = scrollRef.current;
+    if (!pending || !el || el.scrollHeight === pending.height) return;
+    el.scrollTop = el.scrollHeight - pending.height + pending.top;
+    pendingRestoreRef.current = null;
+  }, [sortedMessages]);
+
+  const handleLoadOlder = useCallback(async () => {
+    const el = scrollRef.current;
+    pendingRestoreRef.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
+    // 失敗或沒有新增訊息時不還原；成功時由上面的 useLayoutEffect 在畫面更新後還原並清掉
+    if (!(await loadOlder())) pendingRestoreRef.current = null;
+  }, [loadOlder]);
 
   // Apply selected template into MessageInput (text + optional quick replies)
   useEffect(() => {
@@ -190,11 +259,6 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
     AGENT_HANDLED: '客服處理中',
     CLOSED: '已關閉',
   };
-
-  const sortedMessages = [...messages].sort(
-    (a: { createdAt: string }, b: { createdAt: string }) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  );
 
   return (
     <div className="relative flex h-full flex-col">
@@ -259,13 +323,31 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               AI 建議
             </Button>
           )}
+          <ReturnToBotButton
+            conversationId={conversation.id}
+            status={conversation.status}
+            onDone={(id) => globalMutate(`/conversations/${id}`)}
+          />
           {!isClosed && (
-            <Button size="sm" onClick={() => setCloseDialogOpen(true)} title="結案此對話">
+            <Button
+              size="sm"
+              onClick={() => {
+                setCloseError(null);
+                setCloseDialogOpen(true);
+              }}
+              title="結案此對話"
+            >
               結束對話
             </Button>
           )}
         </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="border-b bg-destructive-subtle px-4 py-2 text-xs text-destructive">
+          {actionError}
+        </div>
+      )}
 
       {/* Status Banner */}
       <StatusBanner
@@ -275,12 +357,20 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       />
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-muted">
+      <div ref={scrollRef} data-testid="chat-messages" className="flex-1 overflow-y-auto bg-muted">
+        {messagesError && (
+          <div role="alert" className="flex items-center justify-between gap-2 border-b bg-destructive-subtle px-4 py-2 text-xs text-destructive">
+            <span>訊息載入失敗：{getApiErrorMessage(messagesError, '請稍後重試')}</span>
+            <Button variant="outline" size="sm" className="h-7" onClick={() => void mutateMessages()}>
+              重試
+            </Button>
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : sortedMessages.length === 0 ? (
+        ) : sortedMessages.length === 0 && messagesError ? null : sortedMessages.length === 0 ? (
           <EmptyState
             title="尚無訊息"
             description="傳送訊息開始對話"
@@ -288,13 +378,43 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
           />
         ) : (
           <div className="py-4">
+            {olderError ? (
+              <div role="alert" className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-md bg-destructive-subtle px-3 py-2 text-xs text-destructive">
+                <span>更早的訊息載入失敗：{olderError}</span>
+                <Button variant="outline" size="sm" className="h-7" disabled={loadingOlder} onClick={() => void handleLoadOlder()}>
+                  重試
+                </Button>
+              </div>
+            ) : hasMore ? (
+              <div className="mb-3 flex justify-center">
+                <Button variant="outline" size="sm" disabled={loadingOlder} onClick={() => void handleLoadOlder()}>
+                  {loadingOlder && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  載入更早的訊息
+                </Button>
+              </div>
+            ) : null}
             {sortedMessages.map((msg: { id: string; direction: string; contentType: string; content: string | { text?: string }; senderType?: string; senderName?: string; createdAt: string; metadata?: Record<string, unknown> }) => {
               // Render CSAT survey card for csat messages
+              // 對話發券的訊息：後台畫成券卡
+              const couponContent = typeof msg.content === 'object' && msg.content
+                ? (msg.content as { coupon?: CouponMessageContent }).coupon
+                : undefined;
+              if (couponContent) {
+                // 自動化規則發的券：metadata.ruleName 是發券當下的規則名稱
+                const ruleName = typeof msg.metadata?.ruleName === 'string' ? msg.metadata.ruleName : null;
+                return <CouponMessageCard key={msg.id} coupon={couponContent} createdAt={msg.createdAt} ruleName={ruleName} />;
+              }
               if (msg.contentType === 'csat') {
                 const score = typeof msg.metadata?.csatScore === 'number' ? msg.metadata.csatScore : undefined;
                 const msgContent = typeof msg.content === 'object' ? msg.content : {};
                 const csatCaseId = (msg.metadata?.caseId as string) || (msgContent as Record<string, unknown>).caseId as string | undefined;
-                return <CsatMessage key={msg.id} score={score} readonly={isClosed || !!score} caseId={csatCaseId} />;
+                // 問卷沒有送到客人（issue #416）：卡片下方顯示原因
+                const csatDeliveryError = msg.metadata?.deliveryFailed === true
+                  ? (typeof msg.metadata.deliveryError === 'string' ? msg.metadata.deliveryError : '')
+                  : undefined;
+                // 評分者（issue #444）：客人回覆或客服代評
+                const csatRatedBy = msg.metadata?.csatRatedBy === 'agent' ? 'agent' : msg.metadata?.csatRatedBy === 'customer' ? 'customer' : undefined;
+                return <CsatMessage key={msg.id} score={score} ratedBy={csatRatedBy} readonly={isClosed || !!score} caseId={csatCaseId} deliveryError={csatDeliveryError} />;
               }
               return (
                 <MessageBubble
@@ -322,7 +442,23 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
         isBotHandled={isBotHandled}
         onTakeover={handleTakeover}
         onOpenTemplates={() => setTemplatePickerOpen(true)}
+        onOpenCoupon={canIssueCoupon ? () => setCouponDialogOpen(true) : undefined}
+        couponDisabledReason={isClosed ? '對話已結束，無法發券' : isBotHandled ? '請先接手對話再發券' : undefined}
       />
+
+      {canIssueCoupon && (
+        <CouponIssueDialog
+          open={couponDialogOpen}
+          conversationId={conversation.id}
+          onClose={() => setCouponDialogOpen(false)}
+          onIssued={({ faceText }) => {
+            showOk(`已發送 ${faceText} 補償券`);
+            globalMutate(issuedCouponsKey(conversation.id));
+            void mutateMessages();
+          }}
+        />
+      )}
+      <CouponToast toast={toast} />
 
       {/* Template Picker */}
       <TemplatePicker
@@ -359,6 +495,11 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
                 disabled={closing}
               />
             </div>
+            {closeError && (
+              <p role="alert" className="text-sm text-destructive">
+                沒有結案：{closeError}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button

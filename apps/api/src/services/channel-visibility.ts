@@ -17,11 +17,14 @@
  *     原本「沒有綁定＝全員可見」的 legacy 分支已移除（change channel-visibility-fail-closed），
  *     既有渠道由 migration 20261005120000 回填給所有啟用中的成員，新渠道與新成員在建立時指定。
  */
+import type { Redis } from 'ioredis';
 import type { FastifyRequest } from 'fastify';
+import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../lib/tenant-db.js';
 import { getEffectiveTenantPermissions } from './permission.service.js';
 import { getTenantPlanId } from './tenant-plan.cache.js';
 import { AppError } from '../shared/utils/response.js';
+import { notFound } from '../shared/messages/resource.js';
 
 /** 總店（channel.view_all）不受渠道限制的哨兵值。 */
 export const ALL_CHANNELS = Symbol('ALL_CHANNELS');
@@ -144,6 +147,15 @@ export function channelIdWhereFilter(
 }
 
 /**
+ * Prisma where 片段：`{ channelId: { in: 可見渠道 } }`；總店回空物件，展開後不加條件。
+ * 渠道身分、群發、工單等以 channelId 過濾的地方共用，空集合的 fail-closed 行為只定義在這裡。
+ */
+export function channelIdWhere(accessible: AccessibleChannels): { channelId?: { in: string[] } } {
+  const channelId = channelIdWhereFilter(accessible);
+  return channelId ? { channelId } : {};
+}
+
+/**
  * request 層便利函式：判斷當前 agent 是否持有 `channel.view_all`（總店），
  * 再解析其可見渠道集合。查詢層一行呼叫即可。
  * 權限判斷比照 requirePermission guard：角色權限 ∩ 方案天花板。
@@ -169,13 +181,48 @@ async function resolveRoleId(request: FastifyRequest): Promise<string | null> {
 async function effectivePermissionsFromRequest(request: FastifyRequest): Promise<Set<string>> {
   const roleId = await resolveRoleId(request);
   const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent.tenantId);
-  return getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
+  return getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);
 }
 
 export async function resolveChannelVisibility(
   request: FastifyRequest,
 ): Promise<AccessibleChannels> {
   return getAccessibleChannelIds(request.tenantPrisma, await visibilityCtxFromRequest(request));
+}
+
+/**
+ * 指定成員的可見渠道，不經過 request（排程器等背景工作沒有當下操作的人）。
+ * 權限比照 request 版本：角色權限 ∩ 方案天花板。成員不存在時回空集合（fail-closed）。
+ * `admin` 是 BYPASSRLS 的連線：角色與方案的查詢與 guard 相同；渠道查詢自帶 tenantId。
+ */
+export async function resolveAgentChannelVisibility(
+  admin: PrismaClient,
+  redis: Redis,
+  tenantId: string,
+  agentId: string,
+): Promise<AccessibleChannels> {
+  const agent = await admin.agent.findFirst({ where: { id: agentId, tenantId }, select: { roleId: true } });
+  if (!agent) return new Set();
+  const planId = await getTenantPlanId(admin, tenantId);
+  const eff = await getEffectiveTenantPermissions(admin, redis, agent.roleId, planId);
+  return getAccessibleChannelIds(admin, { tenantId, agentId, hasViewAll: eff.has('channel.view_all') });
+}
+
+/** 依成員 ID 解析可見渠道的函式；背景發送（群發、附券廣播）以此依建立者判斷 */
+export type AgentVisibilityResolver = (tenantId: string, agentId: string) => Promise<AccessibleChannels>;
+
+export function agentVisibilityResolver(admin: PrismaClient, redis: Redis): AgentVisibilityResolver {
+  return (tenantId, agentId) => resolveAgentChannelVisibility(admin, redis, tenantId, agentId);
+}
+
+/** 帶著 BYPASSRLS 連線的物件（Fastify 實例）：route 與 MCP 不直接碰 prismaAdmin（check-prisma-admin-usage） */
+export interface AdminClientHolder {
+  prismaAdmin: PrismaClient;
+  redis: Redis;
+}
+
+export function agentVisibilityResolverOf(app: AdminClientHolder): AgentVisibilityResolver {
+  return agentVisibilityResolver(app.prismaAdmin, app.redis);
 }
 
 /** 指派範圍：全部渠道（ALL_CHANNELS），或「渠道 → 指派者自己的層級」 */
@@ -279,7 +326,7 @@ export async function assertConversationChannelVisible(
     where: { id: conversationId, tenantId: ctx.tenantId },
     select: { channelId: true, teamId: true, assignedToId: true },
   });
-  await assertEntityChannelVisible(request, conv?.channelId, requiredLevel, 'Conversation not found', ctx);
+  await assertEntityChannelVisible(request, conv?.channelId, requiredLevel, notFound('conversation'), ctx);
   if (!conv) return;
   // team-scoped 對話嚴格限 team 成員：對話綁了 team 且 agent 非被指派人、非該 team 成員
   // （且非總店，前已 return）→ 403，即使渠道可見亦不回退。與 socket canAccessConversation 一致。
@@ -292,6 +339,20 @@ export async function assertConversationChannelVisible(
       throw new AppError('沒有權限：您不屬於此對話所屬的團隊', 'FORBIDDEN', 403);
     }
   }
+}
+
+/**
+ * 操作守門：assert 當前 agent 對指定渠道有「達到 requiredLevel」的存取（例如建立工單時指定的渠道）。
+ * 看不到的渠道（含不存在）→ 404；看得到但層級不足 → 403。總店（channel.view_all）直接放行。
+ */
+export async function assertChannelVisible(
+  request: FastifyRequest,
+  channelId: string,
+  requiredLevel: ChannelAccessLevel = 'reply_only',
+): Promise<void> {
+  const ctx = await visibilityCtxFromRequest(request);
+  if (ctx.hasViewAll) return;
+  await assertEntityChannelVisible(request, channelId, requiredLevel, notFound('channel'), ctx);
 }
 
 /**
@@ -311,5 +372,5 @@ export async function assertCaseChannelVisible(
     where: { id: caseId, tenantId: ctx.tenantId },
     select: { channelId: true },
   });
-  await assertEntityChannelVisible(request, row?.channelId, requiredLevel, 'Case not found', ctx);
+  await assertEntityChannelVisible(request, row?.channelId, requiredLevel, notFound('case'), ctx);
 }

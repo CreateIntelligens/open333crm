@@ -14,7 +14,7 @@ vi.mock('#src/modules/platform/platform-audit.service.js', () => ({
 }));
 vi.mock('#src/modules/platform/plan.service.js', () => ({
   listPlans: async () => [],
-  updatePlan: async (_prisma: unknown, id: string) => ({ id }),
+  updatePlan: async (_prisma: unknown, _redis: unknown, id: string) => ({ id }),
 }));
 vi.mock('#src/modules/platform/platform-setting.service.js', () => ({
   getPlatformSetting: async () => null,
@@ -23,7 +23,7 @@ vi.mock('#src/modules/platform/platform-setting.service.js', () => ({
 vi.mock('#src/modules/platform/platform-tenant.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/platform-tenant.service.js')>()),
   provisionTenantViaApi: async () => ({ tenantId: TENANT_ID }),
-  updateTenant: async (_prisma: unknown, id: string) => ({ id }),
+  updateTenant: async (_prisma: unknown, _redis: unknown, id: string) => ({ id }),
   setTenantActive: async (_prisma: unknown, id: string) => ({ id }),
   updateTenantAgentEmail: async (_prisma: unknown, _tenantId: string, agentId: string) => ({ id: agentId }),
   resendWelcomeEmail: async () => ({ ok: true }),
@@ -33,14 +33,14 @@ const row = vi.hoisted(() => (id: string) => ({ id, type: 'upgrade', trialExited
 vi.mock('#src/modules/platform/trial-admin.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/trial-admin.service.js')>()),
   extendTrial: async (_prisma: unknown, id: string) => row(id),
-  convertToPaid: async (_prisma: unknown, id: string) => row(id),
+  convertToPaid: async (_prisma: unknown, _redis: unknown, id: string) => row(id),
   updateTenantContract: async (_prisma: unknown, id: string) => row(id),
   restorePurgedTenant: async (_prisma: unknown, id: string) => row(id),
   markSignupFailed: async (_prisma: unknown, id: string) => row(id),
 }));
 vi.mock('#src/modules/platform/plan-change.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/modules/platform/plan-change.service.js')>()),
-  approveRequest: async (_prisma: unknown, id: string) => row(id),
+  approveRequest: async (_prisma: unknown, _redis: unknown, id: string) => row(id),
   rejectRequest: async (_prisma: unknown, id: string) => row(id),
 }));
 vi.mock('#src/modules/platform/platform-user.service.js', async (importOriginal) => ({
@@ -127,6 +127,17 @@ test('變更方案留稽核：寫入 tenant.update，payload 的 planSlug 是新
   assert.equal(audits[0]!.action, 'tenant.update');
   assert.equal(audits[0]!.targetId, TENANT_ID);
   assert.equal((audits[0]!.payload as { planSlug: string }).planSlug, 'standard');
+});
+
+test('復原寫入平台稽核', async () => {
+  const res = await request('PATCH', `/tenants/${TENANT_ID}/restore`);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0]!.action, 'tenant.trial.restore');
+  assert.equal(audits[0]!.targetType, 'tenant');
+  assert.equal(audits[0]!.targetId, TENANT_ID);
+  assert.equal(audits[0]!.platformUserId, PLATFORM_USER_ID);
 });
 
 test('列出的寫入操作都寫入稽核：每條平台寫入路由成功後，寫入一筆對應 action 的稽核', async () => {

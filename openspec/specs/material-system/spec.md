@@ -367,3 +367,345 @@ The system SHALL document that LINE native video messages do not include CTA but
 
 - **WHEN** a maintainer reads the line_video send-conversion code
 - **THEN** a comment explains the end-card is a best-effort wrapper, not native LINE video CTA
+
+### Requirement: FB Material Required Fields And Lengths
+When an `fb_*` material is created, or updated with a new body, the system SHALL reject with 400 naming the field a body that leaves a required field empty after trimming or exceeds a length limit: `fb_text` text (1–2000), `fb_button` text (1–640), card and coupon `title` (1–80), `subtitle` (≤80), button `title` (1–20), `fb_receipt` `recipient_name` and `order_number`.
+
+#### Scenario: Empty required field
+- **WHEN** a user saves an `fb_coupon` material whose `title` is empty
+- **THEN** the system SHALL respond 400 naming `body.title` and SHALL NOT save the material
+
+#### Scenario: Valid default content
+- **WHEN** a user saves any `fb_*` material with the editor's default content
+- **THEN** the material SHALL be saved
+
+### Requirement: FB Material Card And Button Counts
+An `fb_generic` material SHALL have 1 to 10 cards, each with at most 3 buttons; an `fb_button` material SHALL have 1 to 3 buttons; an `fb_media` material SHALL have at most 1 button. Otherwise the system SHALL respond 400 naming the field instead of letting the FB plugin silently drop the extra items when sending.
+
+#### Scenario: Too many buttons
+- **WHEN** a user saves an `fb_button` material with 4 buttons
+- **THEN** the system SHALL respond 400 naming `body.buttons`
+
+#### Scenario: No cards
+- **WHEN** a user saves an `fb_generic` material with no cards
+- **THEN** the system SHALL respond 400 naming `body.elements`
+
+### Requirement: FB Material Button Types
+Every button of an `fb_*` material SHALL have `type` `web_url` or `postback`; a `postback` button SHALL have a non-empty `payload`. Otherwise the system SHALL respond 400 naming the button field.
+
+#### Scenario: Unsupported button type
+- **WHEN** a user saves an `fb_button` material whose first button has `type = "phone_number"`
+- **THEN** the system SHALL respond 400 naming `body.buttons.0.type`
+
+### Requirement: FB Material URLs Use Safe Schemes
+Every URL field of an `fb_*` material that is sent to FB (image and video `url`, card `image_url`, `web_url` button `url`, coupon `image_url`) SHALL be an `http://` or `https://` URL or a site path starting with a single `/`. Other values SHALL be rejected with 400 naming the field. `fb_image` and `fb_video` SHALL require a URL; `fb_media` SHALL require a URL or an `attachment_id`.
+
+#### Scenario: javascript scheme
+- **WHEN** a user saves an `fb_image` material with `url = "javascript:alert(1)"`
+- **THEN** the system SHALL respond 400 naming `body.url`
+
+#### Scenario: http URL without a host
+- **WHEN** a user saves an `fb_image` material with `url = "http:///a.jpg"`
+- **THEN** the system SHALL respond 400 naming `body.url` with a message saying a host must follow `http(s)://`
+
+#### Scenario: Sample image path
+- **WHEN** a user saves an `fb_generic` card whose `image_url` is `/material-samples/product.jpeg`
+- **THEN** the material SHALL be saved
+
+### Requirement: FB Material Numbers And Enumerations
+When present, these `fb_*` fields SHALL use only these values, otherwise the system SHALL respond 400 naming the field: `fb_media` `media_type` is `image` or `video`; `fb_receipt` `currency` is three uppercase letters; `fb_feedback` `question_type` is `csat`, `nps` or `ces`, and `expires_in_days` is an integer from 1 to 7. `fb_receipt` `summary.total_cost` SHALL always be a number not less than 0.
+
+#### Scenario: Negative total
+- **WHEN** a user saves an `fb_receipt` material with `summary.total_cost = -1`
+- **THEN** the system SHALL respond 400 naming `body.summary.total_cost`
+
+#### Scenario: Feedback expiry out of range
+- **WHEN** a user saves an `fb_feedback` material with `expires_in_days = 9999`
+- **THEN** the system SHALL respond 400 naming `body.expires_in_days`
+
+#### Scenario: Free-text media type
+- **WHEN** a user saves an `fb_media` material with `media_type = "abc"`
+- **THEN** the system SHALL respond 400 naming `body.media_type`
+
+#### Scenario: Missing field shown with an editor default
+- **WHEN** a user saves an `fb_receipt` material without `currency`, which the editor shows as `TWD`
+- **THEN** the material SHALL be saved
+
+### Requirement: Restoring An FB Material Version Is Validated
+When a user restores an `fb_*` material to an earlier version, the system SHALL apply the FB content rules to that version's body and SHALL respond 400 without changing the material when the body does not comply.
+
+#### Scenario: Restore a version saved before validation
+- **WHEN** a user restores an `fb_coupon` material to a version whose `image_url` is `javascript:alert(1)`
+- **THEN** the system SHALL respond 400 naming `body.image_url` and the material SHALL not change
+
+### Requirement: LINE Form Material Errors Use Editor Field Names
+When LINE rejects a `line_text`, `line_image`, `line_video`, `line_carousel` or `line_imagemap` material on save, the system SHALL respond 400 with a message that names the field by its editor label and states common LINE errors in Chinese, keeping the original text for fields or errors it cannot map. `line_flex_*` materials SHALL keep the LINE property path and original text. The raw LINE response SHALL stay in `details.line`.
+
+#### Scenario: Empty text
+- **WHEN** LINE rejects a `line_text` material with `messages[0].text: May not be empty`
+- **THEN** the message SHALL be `素材格式不符合 LINE 規範：訊息內容不可空白`
+
+#### Scenario: Carousel button link
+- **WHEN** LINE rejects a `line_carousel` material with `/contents/0/footer/contents/0/action/uri: invalid uri scheme`
+- **THEN** the message SHALL name `第 1 頁第 1 個按鈕的連結` and SHALL NOT contain `/contents/`
+
+#### Scenario: Flex material keeps the property path
+- **WHEN** LINE rejects a `line_flex_template` material with `/contents/0/hero/url: invalid uri scheme`
+- **THEN** the message SHALL contain `/contents/0/hero/url`
+
+### Requirement: LINE Carousel Page Limit Is Enforced On Save
+A `line_carousel` material SHALL have at most 12 bubbles, counting its pages and its end page. Otherwise the system SHALL respond 400 naming `body.pages` instead of sending only the first 12.
+
+#### Scenario: Thirteen bubbles
+- **WHEN** a user saves a `line_carousel` material with 12 pages and an end page
+- **THEN** the system SHALL respond 400 naming `body.pages` and SHALL NOT save the material
+
+#### Scenario: Editor maximum
+- **WHEN** a user saves a `line_carousel` material with 10 pages and an end page
+- **THEN** the page count SHALL NOT block the save
+
+### Requirement: LINE Image Thumbnail Defaults To The Image
+A `line_image` material whose `previewUrl` is missing or blank SHALL use `mediaUrl` as the LINE `previewImageUrl`. The editor's default content SHALL NOT set `previewUrl`, so that replacing only the image also replaces the thumbnail.
+
+#### Scenario: Blank thumbnail
+- **WHEN** a `line_image` material with `mediaUrl = "https://example.com/a.jpg"` and `previewUrl = ""` is built into a LINE message
+- **THEN** `previewImageUrl` SHALL be `https://example.com/a.jpg`
+
+#### Scenario: Replace only the image
+- **WHEN** a user creates a `line_image` material from the editor's default content and replaces only the image
+- **THEN** the saved body SHALL NOT keep the sample thumbnail
+
+### Requirement: FB Material Editors Edit Every Sent Field
+The FB material editors SHALL let users edit every button the FB plugin sends: each button of `fb_button` and of each `fb_generic` card SHALL have a type choice of web URL or postback, with at most 3 buttons. `fb_media` `media_type` SHALL be chosen from image or video. `fb_video` SHALL accept an uploaded video. Text previews SHALL keep line breaks, and the `fb_video` preview SHALL load the video, not an image.
+
+#### Scenario: Postback button
+- **WHEN** a user changes the first `fb_button` button type to postback
+- **THEN** the body SHALL store that button as `{ type: "postback", payload }` without `url`
+
+#### Scenario: Card buttons
+- **WHEN** a user edits the title of a button on an `fb_generic` card
+- **THEN** the body SHALL store the new title on that card's button
+
+#### Scenario: Media type choice
+- **WHEN** a user opens the `fb_media` editor
+- **THEN** the media type SHALL offer only image and video
+
+### Requirement: Video Upload Limits Follow Each Channel
+
+素材編輯器上傳影片時 MUST 套用該渠道的檔案上限：LINE 影片 200 MB，FB 影片 25 MB。LINE 影片 MUST 走直傳（`line-video` 用途），不經過 API 的 multipart 上傳，並顯示上傳進度。超過上限的檔案 MUST 在選檔當下拒絕，訊息寫出檔案大小與上限。
+
+#### Scenario: LINE video over 25 MB
+
+- **WHEN** 使用者在 LINE 影片編輯器選擇 150 MB 的 mp4
+- **THEN** 編輯器以 `line-video` 用途申請直傳並上傳，完成後把正式網址填入影片欄位
+
+#### Scenario: LINE video over 200 MB
+
+- **WHEN** 使用者在 LINE 影片編輯器選擇 201 MB 的 mp4
+- **THEN** 編輯器顯示超過上限 200 MB，不申請直傳
+
+#### Scenario: FB video over 25 MB
+
+- **WHEN** 使用者在 FB 影片編輯器選擇 30 MB 的 mp4
+- **THEN** 編輯器顯示超過上限 25 MB，不上傳
+
+### Requirement: LINE Text Message Body Is Text
+When a `line_text` material is created, or updated with a new body, the system SHALL reject with 400 naming `body.text` a body whose `text` is not a string. The check SHALL run before the LINE validate API is called, and SHALL apply when the tenant has no active LINE channel.
+
+#### Scenario: Numeric text
+- **WHEN** a user saves a `line_text` material through the API with `text = 12345` (a number)
+- **THEN** the system SHALL respond 400 naming `body.text`, SHALL NOT call the LINE validate API and SHALL NOT save the material
+
+#### Scenario: String text
+- **WHEN** a user saves a `line_text` material with `text = "12345"` (a string)
+- **THEN** the system SHALL pass the body to the LINE validate API as before
+
+### Requirement: FB Coupon Code Has No Whitespace
+When an `fb_coupon` material is created, or updated with a new body, the system SHALL reject with 400 naming `body.coupon_code` a `coupon_code` that is neither `null` nor a string, or a string that contains whitespace. An empty string, `null` or missing `coupon_code` SHALL be accepted.
+
+#### Scenario: Coupon code with a space
+- **WHEN** a user saves an `fb_coupon` material through the API with `coupon_code = "AB C"`
+- **THEN** the system SHALL respond 400 naming `body.coupon_code` and SHALL NOT save the material
+
+#### Scenario: Coupon code without whitespace
+- **WHEN** a user saves an `fb_coupon` material with `coupon_code = "E2E90"`
+- **THEN** the material SHALL be saved
+
+#### Scenario: Empty coupon code
+- **WHEN** a user saves an `fb_coupon` material without a `coupon_code`
+- **THEN** the material SHALL be saved
+
+#### Scenario: Null coupon code
+- **WHEN** a user saves an `fb_coupon` material with `coupon_code = null`
+- **THEN** the material SHALL be saved
+
+#### Scenario: Non-string coupon code
+- **WHEN** a user saves an `fb_coupon` material with `coupon_code = 90` (a number)
+- **THEN** the system SHALL respond 400 naming `body.coupon_code` and SHALL NOT save the material
+
+### Requirement: 圖文訊息的示範底圖符合 LINE imagemap 規格
+
+新建 `line_imagemap` 素材時，編輯器預設帶入的底圖 SHALL 是 `{API 來源}/line-imagemap/demo`。API SHALL 公開提供 `GET /line-imagemap/demo/:width`，對 LINE 規定的五種寬度（240、300、460、700、1040）回傳 JPEG，比例與預設版型相同（1040:700）；其他寬度回 HTTP 400。預覽 SHALL 以 `/1040` 顯示示範底圖。
+
+#### Scenario: 示範底圖提供 LINE 規定的五種寬度
+- **WHEN** 不帶登入呼叫 `GET /line-imagemap/demo/460`，或帶副檔名的 `GET /line-imagemap/demo/1040.jpg`
+- **THEN** 回 HTTP 200、`image/jpeg`，圖片寬度是請求的寬度，高度是寬度乘以 700/1040 四捨五入
+
+#### Scenario: 其他寬度不提供
+- **WHEN** 呼叫 `GET /line-imagemap/demo/500`
+- **THEN** 回 HTTP 400
+
+#### Scenario: 新建圖文訊息預設帶入公開的示範底圖
+- **WHEN** API 來源是 `https://uat.example.com`，使用者新建 `line_imagemap` 素材
+- **THEN** 預設 body 的 `baseImageUrl` 是 `https://uat.example.com/line-imagemap/demo`，`width` 是 1040、`height` 是 700
+
+#### Scenario: 預覽示範底圖
+- **WHEN** 預覽的 `baseImageUrl` 是 `https://uat.example.com/line-imagemap/demo`
+- **THEN** 預覽圖網址是 `https://uat.example.com/line-imagemap/demo/1040`
+
+### Requirement: LINE 素材儲存時把示範圖換成公開網址
+
+建立 LINE 素材、或更新 LINE 素材的 body 時，系統 SHALL 在送 LINE 驗證與存檔之前，把 body 中網址欄位（欄位名稱以 `url` 結尾）裡以 `/material-samples/` 開頭的值換成 `{WEB_BASE_URL}/material-samples/...`；文字欄位不換。`line_imagemap` 的 `baseImageUrl` 若是舊的示範底圖 `promo-banner.jpeg`，系統 SHALL 換成 `{API 公開網址}/line-imagemap/demo`。其他網址 SHALL 不變。FB 素材不做這個轉換。
+
+#### Scenario: 圖片、影片與卡片訊息的示範圖換成公開網址
+- **WHEN** `WEB_BASE_URL` 是 `https://uat.example.com`，使用者儲存 `line_image`（`mediaUrl` 是 `/material-samples/cafe.jpeg`）、`line_video`（`previewImageUrl` 是 `/material-samples/promo-banner.jpeg`）或 `line_carousel`（某頁 `imageUrl` 是 `/material-samples/product.jpeg`）
+- **THEN** 送給 LINE 驗證與存進資料庫的網址都是 `https://uat.example.com/material-samples/...`
+
+#### Scenario: 圖文訊息的舊示範底圖換成示範底圖端點
+- **WHEN** API 公開網址是 `https://uat.example.com`，使用者儲存 `baseImageUrl` 是 `/material-samples/promo-banner.jpeg` 的 `line_imagemap`
+- **THEN** 存進資料庫的 `baseImageUrl` 是 `https://uat.example.com/line-imagemap/demo`
+
+#### Scenario: 不是示範圖的網址不變
+- **WHEN** LINE 素材的網址是使用者自己的 `https://` 網址，或不是 `/material-samples/` 開頭的站內路徑
+- **THEN** 系統原樣送 LINE 驗證並存檔
+
+#### Scenario: 更新素材時一樣轉換
+- **WHEN** 使用者更新 LINE 素材的 body，body 仍有 `/material-samples/` 開頭的網址
+- **THEN** 存進資料庫的是 `{WEB_BASE_URL}/material-samples/...`
+
+#### Scenario: FB 素材不轉換
+- **WHEN** 使用者儲存 `fb_generic`，卡片的 `image_url` 是 `/material-samples/product.jpeg`
+- **THEN** 存進資料庫的仍是 `/material-samples/product.jpeg`
+
+#### Scenario: 卡片訊息切換頁面類型時，完整網址的示範圖也換掉
+- **WHEN** 卡片訊息某頁的圖片是 `https://uat.example.com/material-samples/product.jpeg`，使用者把這頁從商品切換成地點
+- **THEN** 這頁的圖片換成地點的示範圖
+
+### Requirement: 卡片訊息與圖文訊息的預覽文字
+
+卡片訊息（`line_carousel`）和圖文訊息（`line_imagemap`）的編輯器 MUST 提供「預覽文字」欄位，存在 body 的 `altText`，最多 400 字。送到 LINE 的訊息 MUST 用 trim 後的 `altText`；沒填或只有空白時，卡片訊息 MUST 用「多頁訊息」，圖文訊息 MUST 用「圖文訊息」。卡片訊息切換頁面類型時 MUST 保留 `altText` 和 `endPage`。
+
+#### Scenario: 送出卡片訊息時用填的預覽文字
+
+- **WHEN** 卡片訊息的 body 是 `{ pageType: "product", pages: [...], altText: "  秋季新品上市  " }`
+- **THEN** 送到 LINE 的 flex 訊息 `altText` 是 `"秋季新品上市"`
+
+#### Scenario: 送出圖文訊息時用填的預覽文字
+
+- **WHEN** 圖文訊息的 body 有 `altText: "點圖看優惠"`
+- **THEN** 送到 LINE 的 imagemap 訊息 `altText` 是 `"點圖看優惠"`
+
+#### Scenario: 沒填預覽文字時用預設文字
+
+- **WHEN** 卡片訊息的 body 沒有 `altText`，或 `altText` 是 `"   "`
+- **THEN** 送到 LINE 的 `altText` 是 `"多頁訊息"`
+- **AND** 圖文訊息在同樣情況下送出 `"圖文訊息"`
+
+#### Scenario: 在編輯器填預覽文字
+
+- **WHEN** 使用者在卡片訊息或圖文訊息編輯器的「預覽文字」欄位輸入「秋季新品上市」
+- **THEN** 編輯器回傳的 body 有 `altText: "秋季新品上市"`，其他欄位不變
+- **AND** 欄位最多能輸入 400 字
+
+#### Scenario: 切換卡片訊息的頁面類型時保留預覽文字
+
+- **WHEN** 卡片訊息的 body 有 `altText` 和 `endPage`，使用者把頁面類型從「商品服務」切換成「地點」
+- **THEN** 編輯器回傳的 body 仍有原本的 `altText` 和 `endPage`
+
+### Requirement: 文字素材可插入券連結佔位字
+
+LINE 純文字（`line_text`）與 FB 純文字（`fb_text`）素材的訊息內容欄位 SHALL 有「插入顧客專屬券連結」按鈕。按下時 SHALL 把 `{{coupon.url}}` 插在輸入框的游標位置，有選取文字時取代選取範圍；輸入框從未取得焦點時 SHALL 加在內容結尾。插入後焦點 SHALL 留在輸入框，游標 SHALL 在插入文字之後。按鈕只插入通用佔位字，不綁定特定優惠券。
+
+#### Scenario: 插在游標位置
+- **WHEN** LINE 純文字素材內容為「快來領券」，使用者把游標放在第 2 個字之後，按「插入顧客專屬券連結」
+- **THEN** 內容變為「快來{{coupon.url}}領券」，焦點在輸入框，游標位置為 `2 + "{{coupon.url}}".length`
+
+#### Scenario: 取代選取文字
+- **WHEN** FB 純文字素材內容為「請點這裡領券」，使用者選取「這裡」後按「插入顧客專屬券連結」
+- **THEN** 內容變為「請點{{coupon.url}}領券」
+
+#### Scenario: 沒有游標時加在結尾
+- **WHEN** 使用者從未點過輸入框，內容為「快來領券」，按「插入顧客專屬券連結」
+- **THEN** 內容變為「快來領券{{coupon.url}}」，焦點在輸入框，游標在內容結尾
+
+#### Scenario: 其他版型沒有插入按鈕
+- **WHEN** 使用者編輯 FB 按鈕選單（`fb_button`）素材
+- **THEN** 畫面上沒有「插入顧客專屬券連結」與「插入領券連結」按鈕
+
+### Requirement: 插入券連結按鈕附說明
+
+「插入顧客專屬券連結」按鈕旁 SHALL 預設只顯示一行說明「只能用在附券廣播。」與「怎麼用？」按鈕。「怎麼用？」SHALL 可用滑鼠或鍵盤展開與收合，並以 `aria-expanded` 標示狀態。展開內容 SHALL 說明：附券廣播會發券給每位收件人並換成他自己的券連結，要發哪張券在建立廣播時選；用在關鍵字回覆或沒附券的廣播時不會發券；想要人人都能點的領券網址請用「插入領券連結」。說明與按鈕不含 emoji 或勾勾符號。
+
+#### Scenario: 顯示說明文字
+- **WHEN** 使用者打開 LINE 純文字或 FB 純文字素材的編輯器
+- **THEN** 畫面顯示「只能用在附券廣播。」，「怎麼用？」按鈕的 `aria-expanded` 為 `false`，畫面沒有「建立廣播時選」的詳細說明
+
+#### Scenario: 展開與收合詳細說明
+- **WHEN** 使用者按「怎麼用？」
+- **THEN** `aria-expanded` 變為 `true`，畫面顯示含「建立廣播時選」「不會發券」「插入領券連結」的說明
+- **AND** 再按一次時 `aria-expanded` 變為 `false`，詳細說明消失
+
+### Requirement: 插入券連結不得超過字數上限
+
+插入顧客專屬券連結或領券連結後，內容長度若超過該欄位上限（LINE 純文字 5000 字、FB 純文字 2000 字），SHALL 不改動內容，並在欄位下方顯示看得到的提示（`role="alert"`），說明超過上限。內容之後再變動時，提示 SHALL 消失。
+
+#### Scenario: 超過上限時擋下並提示
+- **WHEN** LINE 純文字素材內容已有 4990 字，使用者按「插入顧客專屬券連結」
+- **THEN** 內容維持 4990 字不變，畫面出現含「5000」字樣的提示
+
+#### Scenario: 剛好等於上限時允許插入
+- **WHEN** FB 純文字素材內容有 `2000 - "{{coupon.url}}".length` 字，使用者按「插入顧客專屬券連結」
+- **THEN** 內容變為 2000 字，結尾是 `{{coupon.url}}`，畫面沒有超過上限的提示
+
+#### Scenario: 內容變動後提示消失
+- **WHEN** 超過上限的提示出現後，使用者刪掉一些字
+- **THEN** 提示消失
+
+### Requirement: 素材預覽把顧客專屬券連結顯示成標籤
+
+素材即時預覽中，LINE 純文字、FB 純文字與 FB 按鈕選單的訊息文字含 `{{coupon.url}}` 時，SHALL 把每個佔位字顯示成看起來像連結的標籤「顧客專屬券連結」，不顯示 `{{coupon.url}}` 原字。編輯框內的文字與儲存的值 SHALL 不變。
+
+#### Scenario: 預覽顯示標籤
+- **WHEN** LINE 純文字素材的內容為「點這裡領券：{{coupon.url}}」
+- **THEN** 預覽顯示「點這裡領券：」與標籤「顧客專屬券連結」，預覽中沒有 `{{coupon.url}}` 字樣
+
+#### Scenario: 編輯框保留原字
+- **WHEN** 使用者在 FB 純文字素材編輯器按「插入顧客專屬券連結」
+- **THEN** 編輯框內容含 `{{coupon.url}}`，素材 body 的 `text` 含 `{{coupon.url}}`
+
+### Requirement: 文字素材可插入領券連結
+
+LINE 純文字與 FB 純文字素材的訊息內容欄位 SHALL 在「插入顧客專屬券連結」旁提供「插入領券連結」按鈕。按下時 SHALL 只列出同租戶、與素材同渠道的可用領券連結（LINE 素材只列 LINE 渠道的連結，FB 素材只列 Facebook 粉專的連結；顯示連結名稱、券名、渠道），並說明領券連結人人共用、顧客點開後傳訊息才發券，適合一般廣播與關鍵字回覆。選一條時 SHALL 把該連結的公開網址插在游標位置（規則同插入顧客專屬券連結），清單關閉。這個渠道沒有可用連結時 SHALL 說明並提供前往「優惠券」頁建立的連結。清單載入失敗時 SHALL 顯示看得到的錯誤訊息；回 403 時說明需要「檢視優惠券」或「管理行銷」其中一個權限。
+
+#### Scenario: 選一條領券連結插入
+- **GIVEN** 租戶有領券連結「門市海報」（券「秋季九折」、LINE 渠道），網址為 `https://crm.example.com/coupon/claim/AB12CD34`
+- **WHEN** LINE 純文字素材內容為「快來領券」，游標在第 2 個字之後，使用者按「插入領券連結」並選「門市海報」
+- **THEN** 清單顯示「門市海報」「秋季九折」與渠道名稱，查詢帶 `channelType=LINE`
+- **AND** 內容變為「快來https://crm.example.com/coupon/claim/AB12CD34領券」
+
+#### Scenario: 只列出與素材同渠道的領券連結
+- **GIVEN** 租戶有 LINE 渠道的領券連結「門市海報」與 Facebook 渠道的領券連結「粉專置頂」
+- **WHEN** 使用者在 FB 純文字素材按「插入領券連結」
+- **THEN** 查詢帶 `channelType=FB`，清單只有「粉專置頂」
+
+#### Scenario: 沒有可用的領券連結
+- **WHEN** 租戶沒有 LINE 渠道的可用領券連結，使用者在 LINE 純文字素材按「插入領券連結」
+- **THEN** 畫面說明還沒有可用的 LINE 領券連結，並有前往 `/dashboard/marketing/coupons` 的連結
+
+#### Scenario: 插入領券連結超過字數上限
+- **WHEN** FB 純文字素材內容已有 1990 字，使用者插入一條網址長 47 字的領券連結
+- **THEN** 內容維持 1990 字不變，畫面出現含「2000」字樣的提示
+
+#### Scenario: 清單載入失敗
+- **WHEN** 列出領券連結的請求回 403
+- **THEN** 畫面顯示含「檢視優惠券」與「管理行銷」的權限說明，內容不變

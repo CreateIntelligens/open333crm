@@ -1,0 +1,82 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod/v3";
+import { success } from "../../shared/utils/response.js";
+import { actorOf } from "../../lib/request-actor.js";
+import {
+  createPartnerApiKeyFlow,
+  listPartnerApiKeysFlow,
+  revokePartnerApiKeyFlow,
+} from "../auth/partner-api-key.flow.js";
+
+/** Partner API 金鑰的管理。由 settings.routes.ts 註冊，沿用該檔的登入檢查與 settings.manage */
+export default async function partnerApiKeyRoutes(fastify: FastifyInstance) {
+  // GET /api/v1/settings/api-keys — list (masked)
+  fastify.get("/api-keys", async (request, reply) => {
+    const rows = await listPartnerApiKeysFlow(fastify, actorOf(request).tenantId);
+    return reply.send(
+      success(
+        rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          masked: `${r.keyPrefix}…${r.keySuffix}`,
+          isActive: r.isActive,
+          expiresAt: r.expiresAt,
+          lastUsedAt: r.lastUsedAt,
+          createdAt: r.createdAt,
+        })),
+      ),
+    );
+  });
+
+  // POST /api/v1/settings/api-keys — create (returns raw key once)
+  fastify.post("/api-keys", async (request, reply) => {
+    const body = createApiKeySchema.parse(request.body);
+    const expiresAt = body.expiresInDays
+      ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
+      : null;
+
+    const result = await createPartnerApiKeyFlow(fastify, actorOf(request), { name: body.name, expiresAt });
+
+    return reply.status(201).send(
+      success({
+        // The raw key is only available here. Store it on the client side
+        // immediately — the server will never return it again.
+        key: result.key,
+        id: result.apiKey.id,
+        name: result.apiKey.name,
+        masked: `${result.apiKey.keyPrefix}…${result.apiKey.keySuffix}`,
+        expiresAt: result.apiKey.expiresAt,
+        createdAt: result.apiKey.createdAt,
+      }),
+    );
+  });
+
+  // DELETE /api/v1/settings/api-keys/:id — revoke (soft-delete; isActive=false)
+  fastify.delete(
+    "/api-keys/:id",
+    async (request, reply) => {
+      const { id } = idParams.parse(request.params);
+      await revokePartnerApiKeyFlow(fastify, actorOf(request), id);
+      return reply.send(success({ revoked: true }));
+    },
+  );
+}
+
+const idParams = z.object({ id: z.string().uuid('金鑰識別格式不正確') });
+
+/** 有效天數 1～365（主規格 partner-api-key、open333-cli-auth）。前端的選項最長也是 365 天 */
+const MAX_EXPIRES_IN_DAYS = 365;
+const expiresInDaysMessage = `有效天數須為 1～${MAX_EXPIRES_IN_DAYS} 的整數`;
+const expiresInDaysSchema = z
+  .number()
+  .int(expiresInDaysMessage)
+  .min(1, expiresInDaysMessage)
+  .max(MAX_EXPIRES_IN_DAYS, expiresInDaysMessage)
+  .nullable()
+  .optional();
+
+const createApiKeySchema = z.object({
+  name: z.string().min(1).max(100),
+  // 不送或送 null：永不過期
+  expiresInDays: expiresInDaysSchema,
+});

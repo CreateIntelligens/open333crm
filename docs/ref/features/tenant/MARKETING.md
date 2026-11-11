@@ -36,12 +36,18 @@
 
 存檔時會檢查內容，不符合時回 400 並指出欄位：
 
-- **LINE**：呼叫 LINE 的 `validate/push` API 檢查（沒有啟用中的 LINE 渠道時略過）。LINE 的錯誤由 `line-validate-error.ts` 整理：表單版型（純文字、圖片、影片、卡片、圖文）換成編輯器的欄位名稱與中文說明，對應不到的保留原文；Flex 版型是直接編輯 JSON，保留 LINE 的屬性路徑與原文。LINE 的原始回應放在錯誤的 `details.line`。卡片訊息的頁數加結尾頁超過 12 時，不呼叫 LINE 直接回 400（LINE 上限 12 個 bubble，發送時會截掉多的）。
-- **FB**：FB 沒有檢核 API，由 `fb-material-validation.ts` 依版型檢查必填與長度、卡片與按鈕數量、按鈕類型、網址（只接受有網域的 `http(s)://` 與站內路徑 `/...`，擋下 `javascript:` 等）、金額與幣別、問卷類型與有效天數（1～7）。建立、修改內容與還原版本時都會檢查；只改名稱、分類或標籤時不檢查。
+- **LINE**：呼叫 LINE 的 `validate/push` API 檢查（沒有啟用中的 LINE 渠道時略過）。LINE 的錯誤由 `line-validate-error.ts` 整理：表單版型（純文字、圖片、影片、卡片、圖文）換成編輯器的欄位名稱與中文說明，對應不到的保留原文；Flex 版型是直接編輯 JSON，保留 LINE 的屬性路徑與原文。LINE 的原始回應放在錯誤的 `details.line`。卡片訊息的頁數加結尾頁超過 12 時，不呼叫 LINE 直接回 400（LINE 上限 12 個 bubble，發送時會截掉多的）。純文字的內容不是字串（例如 API 送數字）時也不呼叫 LINE 直接回 400，LINE 的檢核會接受數字。
+- **FB**：FB 沒有檢核 API，由 `fb-material-validation.ts` 依版型檢查必填與長度、卡片與按鈕數量、按鈕類型、網址（只接受有網域的 `http(s)://` 與站內路徑 `/...`，擋下 `javascript:` 等）、金額與幣別、問卷類型與有效天數（1～7）、優惠券折扣碼（有填時不可含空白，與編輯器一致）。建立、修改內容與還原版本時都會檢查；只改名稱、分類或標籤時不檢查。
 
 LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 
-編輯器預設的示範圖是站內路徑 `/material-samples/...`，存檔不會被擋，但發送前要換成公開網址，否則客人看不到圖。
+租戶啟用「個資遮罩」後，建立或編輯素材會在儲存前遮罩正文內的文字，並把遮罩版一起存進素材版本。編輯器預設選「個資遮罩」，此時遮罩版會作為實際發送內容；選「保留原文」只適用於本次儲存，素材仍會另存遮罩版。既有素材要重新儲存正文後才會產生遮罩版。
+
+LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在聊天列表、手機通知與引用訊息。卡片訊息與圖文訊息沒填或空白時，分別用「多頁訊息」與「圖文訊息」；Flex 沒填時用「Flex Message」。
+
+影片可以貼網址或直接上傳，上限依渠道：LINE 200 MB（LINE 影片訊息的上限），FB 25 MB（Messenger 附件的上限）。LINE 影片走直傳（`apps/web/src/lib/direct-upload.ts`），檔案從瀏覽器直接上傳到 MinIO/S3，不經過 API，上傳時顯示進度；FB 影片走一般上傳 `/files/upload`。超過上限的檔案在選檔時就擋下。
+
+編輯器預設的示範圖是站內路徑 `/material-samples/...`。存檔時系統換成公開網址（`material-sample-urls.ts`）：LINE 只換示範圖，換成 `{WEB_BASE_URL}/material-samples/...`；FB 換網址欄位裡所有站內路徑（`/` 開頭、不是 `//`），因為 Facebook 只收完整網址。更早存成站內路徑的 FB 素材，由 FB plugin 在發送時換成 `{WEB_BASE_URL}{路徑}`；API 與 workers 都要設定 `WEB_BASE_URL`，沒有設定時這則訊息不送出，錯誤訊息指出是哪個網址。
 
 素材的其他功能：
 
@@ -53,6 +59,7 @@ LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 | 變數 | 內容裡可以放變數，發送時代入聯絡人資料 |
 | 成效 | `GET /materials/:id/stats`：使用次數與點擊 |
 | 按鈕貼標 | 按鈕的 postback 為 `tag:<標籤 ID>` 時，客人點擊後被貼上該標籤 |
+| 券連結 | LINE、FB 純文字素材的編輯器有「插入顧客專屬券連結」（插入 `{{coupon.url}}`，只有附券廣播會發券並換成每位收件人的票券連結；預覽顯示成「顧客專屬券連結」標籤）與「插入領券連結」（從 `GET /coupons/claim-links?channelType=LINE|FB` 列出租戶內與素材同渠道、啟用、券進行中（固定效期已過到期日的不列）、沒有結束的領券連結，插入公開網址，需 `coupon.view` 或 `marketing.manage`） |
 
 素材也用在自動化的「傳送素材」動作與關鍵字回覆，見[自動化](./AUTOMATION.md)。
 
@@ -76,15 +83,22 @@ LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 
 ### 建立與發送
 
-建立群發時要選一個渠道、一個素材與一種發送對象。帶了 `scheduledAt` 就建立為 `scheduled`，否則為 `draft`。`scheduledAt` 必須是晚於現在的時間，排到過去回 400：排程器取「時間已到」的群發執行，排到過去等於立即發送。表單的排程欄位也只能選一分鐘後以後的時間。這個檢查在 `createBroadcast()`，MCP 建立群發也會套用。
+建立群發時要選一個渠道、一個素材與一種發送對象。帶了 `scheduledAt` 就建立為 `scheduled`，否則為 `draft`。`scheduledAt` 必須是晚於現在的時間，排到過去回 400：排程器取「時間已到」的群發執行，排到過去等於立即發送。表單的排程欄位也只能選一分鐘後以後的時間。這個檢查在 `createBroadcast()`，MCP 建立群發也會套用。沒有附券、而素材含 `{{coupon.url}}` 時也回 400（`MATERIAL_NEEDS_COUPON`）：一般廣播不會代入，顧客會看到原字。只在建立時檢查，已建立的群發發送時不擋。附上的券是固定效期且已過到期日時，建立回 400（`INVALID_COUPON`）；建立後才到期的附券廣播在發送時標為失敗（`failureCode` `COUPON_EXPIRED`），不建立券。固定效期到期後券的狀態仍是進行中，所有發券入口都以 `isCouponPastFixedEnd`（`@open333crm/core`）另外擋下。
+
+**只能用能主動推送的渠道。** 群發、附券廣播與券詳情的批次發券只能用 LINE、Facebook（內部代號 `FB`）或 Instagram（內部代號 `THREADS`）渠道（`@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`）。網站聊天室的外掛 `sendMessage()` 只寫 log 就回成功，訪客房間的推送只有收件匣回覆路徑會做，所以群發與發券送不到訪客。建立（含 MCP 與批次發券）與送出（`/send`）回 400 `CHANNEL_PUSH_NOT_SUPPORTED`；修正前建立的網站聊天室群發被排程或 `coupon-broadcast` job 執行時標為 `failed`，寫入 `failureReason`（附券廣播另寫 `failureCode`），不呼叫渠道、不發券。群發頁與券詳情「發送給…」的渠道選單只列這些渠道（change `reject-webchat-push-415`，issue #415，AUDIT CHAN-02 的群發與發券部分）。
 
 | 動作 | 端點 | 權限 |
 | --- | --- | --- |
-| 建立 | `POST /marketing/broadcasts` | `marketing.manage` |
-| 立即發送 | `POST /marketing/broadcasts/:id/send` | `marketing.broadcast` |
+| 建立 | `POST /marketing/broadcasts` | `marketing.manage`；帶 `scheduledAt` 另要 `marketing.broadcast`，帶 `couponId` 另要 `coupon.issue` |
+| 立即發送 | `POST /marketing/broadcasts/:id/send` | `marketing.broadcast`；附券群發另要 `coupon.issue` |
 | 取消 | `POST /marketing/broadcasts/:id/cancel` | `marketing.broadcast` |
+| 預估人數 | `POST /marketing/broadcasts/audience-preview` | `marketing.view`；帶 `couponId` 另要 `coupon.view` |
 
-排程的群發由 `broadcast.scheduler.ts` 在 API 行程定期檢查，時間到了就執行。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
+缺少額外的權限時回 403，`error.details.requiredPermission` 是缺少的那個權限碼，訊息說明是排程或附券需要的權限（change `require-broadcast-send-permissions`，issue #409 MKT-02、MKT-03）。建立群發的表單在沒有 `marketing.broadcast` 時停用排程欄位、沒有 `coupon.issue` 時停用附券欄位，並說明原因。
+
+預估人數用和發送相同的受眾解析與訊息視窗，回傳 `{ matched, reachable, messagingWindowHours }`，不建立群發。建立群發的表單選好渠道與受眾後顯示這兩個數字。排程群發在執行時重新計算，人數可能和建立時不同。
+
+排程的群發由 `broadcast.scheduler.ts` 在 API 行程定期檢查，時間到了就執行。送出前以「排定送出的成員」當下的有效權限（角色權限 ∩ 方案天花板）重新檢查：`broadcasts.scheduledById` 記錄這個人，建立排程時是建立者，附券群發「立即發送」與券詳情批次發券是按下的人；舊資料為 null 時看建立者。一般群發要 `marketing.broadcast`，群發頁的附券群發要 `marketing.broadcast` 與 `coupon.issue`，批次發券只要 `coupon.issue`。成員已不存在、已停用，或少了需要的權限時不送出，群發標為 `failed`，`failureCode` 為 `SCHEDULED_SENDER_NOT_FOUND`、`SCHEDULED_SENDER_INACTIVE` 或 `SCHEDULED_SENDER_FORBIDDEN`，`failureReason` 寫明成員與缺少的權限，列表看得到；有權限的成員可以按「重新發送」。檢查在 `broadcast-send-authority.ts`。權限檢查之前先檢查租戶：租戶停用（含試用到期）時不送出，群發標為 `failed`，`failureCode` 為 `TENANT_DISABLED`，不保留 `scheduled`，避免重新啟用後突然送出過期內容；附券群發的 `coupon-broadcast` 佇列 job 也檢查（`broadcast-tenant-active.ts`，issue #410）。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
 
 ### 發送時做什麼
 
@@ -94,6 +108,7 @@ LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 2. 取出素材內容。素材內的外部連結換成帶素材 ID 的短連結，讓點擊能歸因到素材；轉換失敗就用原內容。
 3. 解析發送對象，見下表。
 4. 對象是零人時，把群發標為 `failed` 並回傳錯誤，不會顯示為完成。
+   渠道有訊息視窗時，略過視窗外的人，見下方「訊息視窗」。
 5. 送出，並逐一寫入收件紀錄（`BroadcastRecipient`）。
 6. 更新成功與失敗數。全部失敗時狀態為 `failed`；至少一人成功時為 `completed`，包含部分失敗。
 
@@ -108,11 +123,15 @@ LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 
 **兩種送法。** LINE 渠道而且素材沒有變數時，用 LINE 的 multicast 一次送給一批人，每批上限在 `executeBroadcast()` 的 `MULTICAST_CHUNK`。一批失敗只影響那一批。其他情況（Facebook，或素材含變數需要逐人代入）逐人送出。
 
-**在請求內同步執行。** 立即發送的 API 會等整筆群發送完才回應。狀態為 `sending` 或 `failed` 的群發可以再送一次，而再送一次會對全部對象重新發送，不會跳過已經送達的人。見 `../../system/AUDIT.md` 的 MKT-01。
+**訊息視窗。** 渠道 plugin 宣告 `messagingWindowHours` 時，群發只送給發送當下往前這段時間內，在這個渠道傳過訊息給我們的人（顧客傳入的訊息，含按鈕回應）。FB 與 IG（`THREADS`）是 24 小時，因為 Meta 只允許對 24 小時內互動過的人發一般訊息，送給其他人會被擋下，大量被擋可能讓粉專被限制發訊。略過的人不送出、不寫收件紀錄，人數記在 `skippedCount`，列表顯示「略過 N」；`totalCount` 仍是符合條件的人數。全部被略過時群發標為 `failed`（`BROADCAST_OUTSIDE_MESSAGING_WINDOW`）。FB 與 IG 群發的受眾只有「24 小時內傳過訊息的人」一個選項，表單不提供分群與標籤（API 仍接受）。建立群發的表單在有視窗的渠道顯示發送注意事項，FB 群發按「立即發送」時確認視窗也會提醒。要發給視窗外的人只能用 Meta 付費的 Marketing Messages（按送達則數計費），本系統沒有支援。只按表情回應、或點 m.me 連結但沒有傳訊息的人沒有存成訊息，會被略過。LINE 沒有訊息視窗。
+
+**在請求內同步執行。** 立即發送的 API 會等整筆群發送完才回應。附券廣播（含券詳情頁的批次發券）例外：API 回 202，同一個交易在 outbox 寫一個 `coupon-broadcast` job，commit 後 API 行程馬上執行 `runCouponBroadcast()`；每分鐘的排程是後備，job 沒有執行時，時間到的附券廣播照樣發送。job 與排程以條件更新搶占，只有一個發送。廣播列表與券詳情的發放紀錄在有發送中、或排程時間已到的廣播時每 5 秒重新載入，完成或失敗後停止。
+
+**同一筆群發只執行一次。** `executeBroadcast()` 以條件更新把狀態從 `draft`、`scheduled` 或 `failed` 改成 `sending`，只有搶到的請求會發送。狀態已經是 `sending` 時，再送出回 409 `BROADCAST_ALREADY_SENDING`。因此連按兩次，或請求與排程器同時執行，都只會送一次。狀態是 `failed` 的群發可以重試，行銷頁的失敗群發有「重新發送」按鈕。逐人送出的群發重試時會對全部對象重新發送，送出途中失敗的群發會讓已送達的人再收到一次，見 `../../system/AUDIT.md` 的 MKT-01。
 
 ## 成效與歸因
 
-群發本身記錄總數、成功數與失敗數。回覆與開工單的歸因由 `broadcast.tracking.ts` 處理：
+群發本身記錄總數、成功數、失敗數與略過數。回覆與開工單的歸因由 `broadcast.tracking.ts` 處理：
 
 - **回覆**：客人傳訊息進來時，進站管線呼叫 `trackBroadcastReply()`，把該聯絡人最近一筆、還沒標記回覆的收件紀錄標成已回覆。
 - **開工單**：建立工單時呼叫 `trackBroadcastCase()`，把工單歸因到該聯絡人最近一筆收件紀錄。
@@ -131,18 +150,22 @@ LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 | --- | --- |
 | 讀取活動、群發、分群、素材 | `marketing.view` |
 | 建立、修改、刪除活動、分群、素材與分類；建立群發 | `marketing.manage` |
-| 送出與取消群發 | `marketing.broadcast` |
+| 送出與取消群發；建立帶排程時間的群發 | `marketing.broadcast` |
+| 建立或立即發送附券群發（另外要） | `coupon.issue` |
+| 預估附券群發的人數（另外要） | `coupon.view` |
 
 `GET /marketing/templates` 在同一個 plugin 內，因此收件匣插入範本也需要 `marketing.view`。沒有這個權限的客服在收件匣載入不到範本。
 
-群發選擇渠道時不套用渠道可見範圍，有 `marketing.broadcast` 的成員可以用租戶內任何渠道發送。這是刻意的設計：主規格 `channel-scoped-visibility` 的「存取層級」規定群發不受渠道存取層級限制（issue #217）。
+群發的渠道必須在成員的可見範圍內：群發列表只列可見渠道的群發；以 ID 讀取、查看收件人、送出或取消不可見渠道的群發回 404；建立群發與預估受眾時指定不可見的渠道也回 404。分群的人數（預覽、列表、單筆、建立與修改的回應）只算成員看得到的聯絡人；以渠道類型為條件時只比對可見渠道的身分。送出分群群發（立即、排程、附券廣播）時，分群條件依群發**建立者**的可見範圍判斷：總店建立的以所有渠道判斷，分店建立的只以建立者看得到的渠道判斷，不依按下送出的人（change `segment-broadcast-creator-visibility`）；預估人數與券詳情頁的批次發放依操作的人。行銷活動：非總店成員看得到自己建立的活動、還沒有任何群發的活動（例如總店規劃、讓各分店加入群發的活動），以及至少有一則可見渠道群發的活動，其他活動不列出，以 ID 讀取、修改、刪除回 404；群發數、群發清單與成效只計可見渠道的群發。修改、刪除活動，或建立群發時指定活動，活動還有其他分店渠道的群發時回 403 `CAMPAIGN_HAS_OTHER_CHANNELS`，由總店處理。修改與刪除把這個條件寫在 `updateMany`／`deleteMany` 的 where，檢查與寫入在同一個語句；建立群發時的檢查與新增仍是兩個查詢。MCP 的群發工具用同一個判斷。群發不檢查渠道存取層級：唯讀渠道的成員只要有 `marketing.broadcast` 就能送出（issue #217）。主規格 `channel-scoped-visibility` 的「群發只能使用可見渠道」。
+
+資料庫裡分群的 `contactCount` 仍是儲存當下的全租戶人數；非總店成員讀取時依可見範圍重新計算（每個分群一次 count 查詢，逐筆執行）。舊資料 `rules` 為空的分群算 0 人。
 
 ## 目前的限制
 
 | 限制 | 說明 |
 | --- | --- |
-| **群發可以重複執行，重送不排除已送達者** | 詳見 `../../system/AUDIT.md` 的 MKT-01 |
-| 群發在 API 請求內同步執行 | 逐人送出的大量群發可能讓請求逾時，狀態停在 `sending` |
+| **群發失敗後重試，逐人送出的群發會重送給已送達的人** | 詳見 `../../system/AUDIT.md` 的 MKT-01 |
+| 群發在 API 請求內同步執行 | 逐人送出的大量群發可能讓請求逾時。行程在送出途中結束時，狀態停在 `sending`，這筆群發只能取消，不能重送 |
 | 分群的人數不會自動更新 | `contactCount` 只在建立與修改時計算 |
 | `isBlocked` 不影響發送 | 詳見 `../../system/AUDIT.md` 的 DB-04 |
 

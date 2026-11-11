@@ -188,11 +188,64 @@ test('⑫ 合併紀錄 WITH CHECK：綁 A 時不可寫入 B 租戶的合併紀�
   );
 });
 
+// ─── 公開領券連結（2026-10-22 add-coupon-system A15 新增 coupon_claim_links）──────────
+//
+// 代碼全系統唯一、公開網址不帶租戶；公開頁只能透過 SECURITY DEFINER 函式查到租戶 id，
+// 連結本身（券、渠道、開啟數）須與券表同級隔離。
+
+const CLAIM_LINK_MARK = `RLS-CI-CL-${Date.now().toString(36)}`;
+const claimLinkIds: string[] = [];
+let claimLinkCouponId = '';
+let claimLinkChannelId = '';
+
+async function seedClaimLink(code: string) {
+  claimLinkCouponId ||= (await adminDb.coupon.create({
+    data: { tenantId: TENANT_A, name: CLAIM_LINK_MARK, displayCode: `CP-${CLAIM_LINK_MARK.slice(-6)}`, createdById: TENANT_A, purpose: 'MARKETING' },
+  })).id;
+  claimLinkChannelId ||= (await adminDb.channel.create({
+    data: { tenantId: TENANT_A, channelType: 'LINE', displayName: CLAIM_LINK_MARK, credentialsEncrypted: 'x' },
+  })).id;
+  const link = await adminDb.couponClaimLink.create({
+    data: { tenantId: TENANT_A, couponId: claimLinkCouponId, channelId: claimLinkChannelId, name: CLAIM_LINK_MARK, code, createdById: TENANT_A },
+  });
+  claimLinkIds.push(link.id);
+  return link;
+}
+
+test('⑬ 領券連結正向隔離：綁 B 看不到 A 的領券連結，未綁定 fail-closed', async () => {
+  const link = await seedClaimLink(`R${Date.now().toString(36).toUpperCase().slice(-7)}`);
+  const seenByA = await withTenant(tenantDb, TENANT_A, (tx) => tx.couponClaimLink.count({ where: { id: link.id } }));
+  assert.equal(seenByA, 1, '綁 A 應看得到自己的領券連結');
+  const seenByB = await withTenant(tenantDb, TENANT_B, (tx) => tx.couponClaimLink.count({ where: { id: link.id } }));
+  assert.equal(seenByB, 0, '綁 B 不該看到 A 的領券連結');
+  assert.equal(await tenantDb.couponClaimLink.count({ where: { id: link.id } }), 0, '未綁租戶時應 fail-closed');
+
+  // 公開頁以代碼查租戶：未綁租戶的 app_tenant 只拿得到租戶 id
+  const rows = await tenantDb.$queryRaw<Array<{ tenantId: string | null }>>`SELECT coupon_claim_link_tenant(${link.code}) AS "tenantId"`;
+  assert.equal(rows[0]?.tenantId, TENANT_A);
+});
+
+test('⑭ 領券連結 WITH CHECK：綁 A 時不可寫入 B 租戶的領券連結', async () => {
+  await assert.rejects(
+    () =>
+      withTenant(tenantDb, TENANT_A, (tx) =>
+        tx.couponClaimLink.create({
+          data: { tenantId: TENANT_B, couponId: claimLinkCouponId, channelId: claimLinkChannelId, name: CLAIM_LINK_MARK, code: `W${Date.now().toString(36).toUpperCase().slice(-7)}`, createdById: TENANT_A },
+        }),
+      ),
+    /row-level security|violates/i,
+    '綁 A 時寫入 B 租戶的領券連結應被 WITH CHECK 擋',
+  );
+});
+
 afterAll(async () => {
   // 清理可能殘留的越權測試列（用 admin）
   await adminDb.contactMergeLog
     .deleteMany({ where: { movedRecords: { equals: MERGE_LOG_MARK } } })
     .catch(() => {});
+  await adminDb.couponClaimLink.deleteMany({ where: { id: { in: claimLinkIds } } }).catch(() => {});
+  if (claimLinkCouponId) await adminDb.coupon.deleteMany({ where: { id: claimLinkCouponId } }).catch(() => {});
+  if (claimLinkChannelId) await adminDb.channel.deleteMany({ where: { id: claimLinkChannelId } }).catch(() => {});
   await adminDb.contact
     .deleteMany({ where: { displayName: 'RLS-CI-越權' } })
     .catch(() => {});

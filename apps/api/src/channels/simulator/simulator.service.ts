@@ -1,10 +1,14 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { ConversationUpdatedPayload } from '@open333crm/shared';
+import { channelDisplayName, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { prepareInboundMessageContent } from '../../modules/ai/deidentification.service.js';
+import { alertInboundUnmasked } from '../../modules/ai/deidentification-alert.js';
+import { readAiPrivacyPolicy } from '../../modules/platform/ai-privacy.service.js';
 
 export interface SimulatorMessageInput {
   channelType: string;
@@ -53,7 +57,7 @@ export async function simulateInboundMessage(
     contactId = channelIdentity.contactId;
   } else {
     // Create a new contact and channel identity
-    const displayName = contactName ?? `${channelType} User ${contactUid.slice(-6)}`;
+    const displayName = contactName ?? `${channelDisplayName(channelType)} User ${contactUid.slice(-6)}`;
 
     const newContact = await prisma.contact.create({
       data: {
@@ -115,6 +119,8 @@ export async function simulateInboundMessage(
   }
 
   const now = new Date();
+  // 與渠道進站相同：去識別化服務無法使用時存原文並標記未遮罩，不丟錯（issue #466）
+  const storedContent = await prepareInboundMessageContent(await readAiPrivacyPolicy(prisma as never, tenantId), content);
 
   // 4. Create Message (INBOUND, CONTACT)
   const message = await prisma.message.create({
@@ -124,11 +130,16 @@ export async function simulateInboundMessage(
       senderType: 'CONTACT',
       senderId: null,
       contentType,
-      content: content as any,
+      content: storedContent.content as any,
+      metadata: storedContent.metadata as any,
       isRead: false,
       createdAt: now,
     },
   });
+
+  if (storedContent.unmaskedReason) {
+    await alertInboundUnmasked({ tenantId, channelType, reason: storedContent.unmaskedReason });
+  }
 
   // 5. Update conversation lastMessageAt and increment unreadCount
   await prisma.conversation.update({
@@ -157,11 +168,8 @@ export async function simulateInboundMessage(
     },
   };
 
-  // Emit to the specific conversation room
-  io.to(`conversation:${conversation.id}`).emit('message.new', wsPayload);
-
-  // Emit to tenant-level inbox
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
+  // 對話房間與渠道房間：只有看得到這個渠道的成員收到（issue #427）
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'message.new', wsPayload);
 
   // Also emit a conversation.updated event for the unread count change
   const updatedConv = await prisma.conversation.findUnique({
@@ -178,8 +186,7 @@ export async function simulateInboundMessage(
       updatedAt: updatedConv.updatedAt.toISOString(),
     };
 
-    io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
-    io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
+    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'conversation.updated', convPayload);
   }
 
   // 8. Publish to EventBus for automation (KB auto-reply, etc.)
@@ -195,6 +202,7 @@ export async function simulateInboundMessage(
       channelType,
       content,
       messageContent: (content.text as string) ?? '',
+      ...(storedContent.unmaskedReason ? { privacyUnmasked: true } : {}),
     },
   });
 

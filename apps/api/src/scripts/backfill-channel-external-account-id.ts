@@ -32,6 +32,11 @@ type Row = {
   tenantActive: boolean;
 };
 
+type ChannelQueryRow = Omit<Row, 'tenantActive'> & {
+  credentialsEncrypted: string;
+  tenant: { isActive: boolean } | null;
+};
+
 async function lookupAccountId(channelType: string, token: string): Promise<string> {
   const url =
     channelType === 'FB'
@@ -52,7 +57,7 @@ const label = (c: Row) =>
 const live = (c: Row) => c.isActive && c.tenantActive;
 
 async function main() {
-  const rows = await prisma.channel.findMany({
+  const rows: ChannelQueryRow[] = await prisma.channel.findMany({
     where: { channelType: { in: ['FB', 'THREADS'] } },
     select: {
       id: true,

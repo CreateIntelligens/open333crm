@@ -469,18 +469,18 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
 
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
 
-    // 後端長度邊界
+    // 後端長度邊界（分群至少要一條有值的條件，change fix-broadcast-audience-fail-closed）
     const nb = boundarySamples(200);
     const ok = await createAndTrack(
       'marketing/segments',
-      { name: strOfLength(200), rules: { conditions: [], logic: 'AND' } },
+      { name: strOfLength(200), rules: { conditions: [{ field: 'channelType', operator: 'eq', value: 'LINE' }], logic: 'AND' } },
       'segments',
     );
     expect(ok.status, '分群 name 剛好 200 字應被接受').toBe(201);
 
     await apiFieldCheck(api, {
       path: 'marketing/segments',
-      payload: { name: nb.over, rules: { conditions: [], logic: 'AND' } },
+      payload: { name: nb.over, rules: { conditions: [{ field: 'channelType', operator: 'eq', value: 'LINE' }], logic: 'AND' } },
       expect: 'reject',
       context: '分群 name 201 字',
     });
@@ -490,7 +490,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
       payload: {
         name: nameOf('描述超長'),
         description: boundarySamples(500).over,
-        rules: { conditions: [], logic: 'AND' },
+        rules: { conditions: [{ field: 'channelType', operator: 'eq', value: 'LINE' }], logic: 'AND' },
       },
       expect: 'reject',
       context: '分群 description 501 字',

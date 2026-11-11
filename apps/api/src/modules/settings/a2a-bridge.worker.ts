@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { logger } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import type { PrismaClient } from '@open333crm/database';
+import type { Redis } from 'ioredis';
 import { setA2ABridgeLiveState } from './a2a-status.service.js';
 
-interface InboxItem {
+export interface InboxItem {
   sequence: number;
   taskId: string;
   contextId?: string;
@@ -17,6 +18,77 @@ interface InboxItem {
 interface InboxResponse {
   items: InboxItem[];
   nextSequence: number;
+}
+
+export interface A2ATaskDeps {
+  /** app_tenant 的基礎連線，Agent 的每一步以 inTenant() 開交易 */
+  prisma: PrismaClient;
+  /** 找執行任務的租戶（平台層資料表 tenants） */
+  prismaAdmin: Pick<PrismaClient, 'tenant'>;
+  redis: Redis;
+  hub: { url: string; agentId: string; agentToken: string };
+  canPublishWiki: boolean;
+  signal?: AbortSignal;
+  /** 測試換成假的 fetch */
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * 處理一個 A2A 任務：以 CRM Agent 執行，把結果回給發送方。
+ * Agent 不包在交易內：每一步各自開短交易，LLM 與工具在交易外呼叫
+ * （change migrate-ai-agent-tenant-ctx，design D4）。任務以最早建立的啟用租戶執行，見 AUDIT A2A-01。
+ */
+export async function handleA2ATask(deps: A2ATaskDeps, item: InboxItem): Promise<void> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const tenant = await deps.prismaAdmin.tenant.findFirst({
+    where: { isActive: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!tenant) {
+    logger.warn('[A2A] No active tenant found to execute A2A task');
+    return;
+  }
+
+  logger.info('[A2A] Processing task via CRM Agent', {
+    taskId: item.taskId,
+    requester: item.requesterAgentId,
+  });
+
+  // Dynamically import the Agent flow to prevent top-level module load side-effects
+  const { runAgentReplyFlow } = await import('../ai/agent/agent.flow.js');
+  const { createOutboxPublisher } = await import('../../events/outbox-publisher.js');
+  const llm = { prisma: deps.prisma, redis: deps.redis, events: createOutboxPublisher(deps.prisma) };
+
+  const agentResult = await runAgentReplyFlow({ prisma: deps.prisma, llm }, {
+    tenantId: tenant.id,
+    userMessage: item.message,
+    canPublishWiki: deps.canPublishWiki,
+  });
+
+  // Send correlated reply back to requester if not [[A2A_NO_REPLY]]
+  if (agentResult.text && agentResult.text.trim() !== '[[A2A_NO_REPLY]]') {
+    const replyPayload = {
+      taskId: `reply-${item.taskId}-${Date.now()}`,
+      contextId: item.contextId || item.taskId,
+      message: agentResult.text,
+    };
+
+    await fetchImpl(`${deps.hub.url}/hub/v1/agents/${item.requesterAgentId}/tasks`, {
+      method: 'POST',
+      headers: {
+        'X-Agent-ID': deps.hub.agentId,
+        'Authorization': `Bearer ${deps.hub.agentToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(replyPayload),
+      signal: deps.signal,
+    });
+
+    logger.info('[A2A] Sent reply task to requester', {
+      target: item.requesterAgentId,
+      contextId: replyPayload.contextId,
+    });
+  }
 }
 
 let isRunning = false;
@@ -102,58 +174,19 @@ export async function startA2ABridgeWorker(fastify: FastifyInstance): Promise<vo
               continue;
             }
 
-            // 3. Process task through Open333 Agent LLM
+            // 3. 以 CRM Agent 處理任務，4. 把結果回給發送方
             try {
-              const tenant = await fastify.prismaAdmin.tenant.findFirst({
-                where: { isActive: true },
-                orderBy: { createdAt: 'asc' },
-              });
-
-              if (!tenant) {
-                logger.warn('[A2A] No active tenant found to execute A2A task');
-                continue;
-              }
-
-              logger.info('[A2A] Processing task via CRM Agent', {
-                taskId: item.taskId,
-                requester: item.requesterAgentId,
-              });
-
-              // Dynamically import runAgentReply to prevent top-level module load side-effects
-              const { runAgentReply } = await import('../ai/agent/agent.service.js');
-
-              const agentResult = await withTenant(fastify.prisma, tenant.id, async (tx) => {
-                return runAgentReply(tx, {
-                  tenantId: tenant.id,
-                  userMessage: item.message,
+              await handleA2ATask(
+                {
+                  prisma: fastify.prisma,
+                  prismaAdmin: fastify.prismaAdmin,
+                  redis: fastify.redis,
+                  hub: { url: hubUrl, agentId, agentToken },
                   canPublishWiki: config.AGENT_WIKI_AUTO_PUBLISH,
-                });
-              });
-
-              // 4. Send correlated reply back to requester if not [[A2A_NO_REPLY]]
-              if (agentResult.text && agentResult.text.trim() !== '[[A2A_NO_REPLY]]') {
-                const replyPayload = {
-                  taskId: `reply-${item.taskId}-${Date.now()}`,
-                  contextId: item.contextId || item.taskId,
-                  message: agentResult.text,
-                };
-
-                await fetch(`${hubUrl}/hub/v1/agents/${item.requesterAgentId}/tasks`, {
-                  method: 'POST',
-                  headers: {
-                    'X-Agent-ID': agentId,
-                    'Authorization': `Bearer ${agentToken}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(replyPayload),
                   signal: abortController?.signal,
-                });
-
-                logger.info('[A2A] Sent reply task to requester', {
-                  target: item.requesterAgentId,
-                  contextId: replyPayload.contextId,
-                });
-              }
+                },
+                item,
+              );
             } catch (execErr) {
               logger.error('[A2A] Failed to execute CRM Agent for A2A task', { taskId: item.taskId, err: execErr });
             }

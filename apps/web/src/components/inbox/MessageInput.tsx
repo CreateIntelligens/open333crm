@@ -5,8 +5,9 @@ import { Ticket, Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks } fro
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, validateOutboundMessage } from '@open333crm/shared';
 import { useQuickReplyPresets } from '@/hooks/useQuickReplyPresets';
+import { getApiErrorMessage, getFieldErrors } from '@/lib/api-error';
 
 interface QuickReplyItem {
   label: string;
@@ -18,7 +19,7 @@ const MAX_QUICK_REPLIES = 13;
 const QUICK_REPLY_LABEL_MAX = 20;
 
 interface MessageInputProps {
-  onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>) => Promise<void>;
+  onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>, privacyMode?: 'mask' | 'original') => Promise<void>;
   conversationId: string;
   channelType: ChannelType | string;
   disabled?: boolean;
@@ -26,6 +27,10 @@ interface MessageInputProps {
   isBotHandled?: boolean;
   onTakeover?: () => void;
   onOpenTemplates?: () => void;
+  /** 開啟發券 Dialog；沒有傳入（沒有發券權限）時不顯示「發券」按鈕 */
+  onOpenCoupon?: () => void;
+  /** 發券按鈕停用的原因（例如對話已結束），滑過或聚焦時顯示 */
+  couponDisabledReason?: string;
 }
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
@@ -39,14 +44,20 @@ export function MessageInput({
   isBotHandled,
   onTakeover,
   onOpenTemplates,
+  onOpenCoupon,
+  couponDisabledReason,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  // 送出失敗的原因（S09：原本只寫 console，按鈕轉一下就恢復，客服不知道沒送出）
+  const [sendError, setSendError] = useState<string | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReplyItem[]>([]);
   const [quickReplyEditorOpen, setQuickReplyEditorOpen] = useState(false);
   const [draftLabel, setDraftLabel] = useState('');
   const [draftText, setDraftText] = useState('');
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
+  const [privacyEnabled, setPrivacyEnabled] = useState<boolean | null>(null);
+  const [privacyMode, setPrivacyMode] = useState<'mask' | 'original'>('mask');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +66,22 @@ export function MessageInput({
 
   // 只在 LINE channel 載入 presets（避免其他 channel 多餘請求）
   const { presets } = useQuickReplyPresets();
+
+  React.useEffect(() => {
+    let active = true;
+    void Promise.resolve()
+      .then(() => api.get('/ai/privacy/status'))
+      .then((res) => {
+        if (!active) return;
+        const enabled = res.data.data?.enabled === true;
+        setPrivacyEnabled(enabled);
+        setPrivacyMode('mask');
+      })
+      .catch(() => {
+        if (active) setPrivacyEnabled(false);
+      });
+    return () => { active = false; };
+  }, [conversationId]);
 
   const handleApplyPreset = (preset: { items: QuickReplyItem[] }) => {
     setQuickReplies(preset.items.slice(0, MAX_QUICK_REPLIES));
@@ -66,10 +93,18 @@ export function MessageInput({
     const trimmed = message.trim();
     if (!trimmed || isDisabled) return;
 
+    // 送出前先用與後端相同的規則檢查（例如超過 5000 字），直接說原因，不必等後端回泛用的 400（#293）
+    const invalid = validateOutboundMessage('text', { text: trimmed });
+    if (invalid) {
+      setSendError(invalid);
+      return;
+    }
+
     setSending(true);
+    setSendError(null);
     try {
       const contentData = quickReplies.length > 0 ? { quickReplies } : undefined;
-      await onSend(trimmed, 'text', contentData);
+      await onSend(trimmed, 'text', contentData, privacyEnabled ? privacyMode : undefined);
       setMessage('');
       setQuickReplies([]);
       if (textareaRef.current) {
@@ -77,6 +112,8 @@ export function MessageInput({
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+      // 驗證錯誤的整體訊息是泛用的「輸入內容有誤」，訊息內容欄位的原因比較具體（#293）
+      setSendError(getFieldErrors(err).content ?? getApiErrorMessage(err, '訊息送出失敗，請稍後重試'));
     } finally {
       setSending(false);
     }
@@ -132,7 +169,7 @@ export function MessageInput({
 
     setSending(true);
     try {
-      if ([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT].includes(channelType as any)) {
+      if (([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT] as string[]).includes(channelType)) {
         const formData = new FormData();
         formData.append('file', file);
 
@@ -140,11 +177,11 @@ export function MessageInput({
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       } else {
-        alert('目前僅支援 LINE / FB / Webchat 聊天室傳送圖片');
+        alert('目前僅支援 LINE、Facebook 與網站聊天室傳送圖片');
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to send image:', err);
-      alert(`傳送失敗：${err?.response?.data?.message ?? err?.message ?? '未知錯誤'}`);
+      setSendError(getApiErrorMessage(err, '圖片傳送失敗，請稍後重試'));
     } finally {
       setSending(false);
       if (fileInputRef.current) {
@@ -166,11 +203,26 @@ export function MessageInput({
     }, 100);
   };
 
+  // AI 建議回覆按「採用」：收件匣頁送出 ai-adopt 事件，把建議文字帶進輸入框（S07：原本沒有元件接收）
+  React.useEffect(() => {
+    const handleAdopt = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: unknown }>).detail?.text;
+      if (typeof text === 'string' && text) {
+        setMessage(text);
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 100);
+      }
+    };
+    window.addEventListener('ai-adopt', handleAdopt);
+    return () => window.removeEventListener('ai-adopt', handleAdopt);
+  }, []);
+
   // Expose setMessageFromTemplate via a ref callback attached to a data attribute
   React.useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      (textarea as any).__setMessage = setMessageFromTemplate;
+      (textarea as unknown as { __setMessage?: typeof setMessageFromTemplate }).__setMessage = setMessageFromTemplate;
     }
   });
 
@@ -376,17 +428,48 @@ export function MessageInput({
                 </Button>
               )}
 
-              {/* 發送優惠券：Claude Design 有此按鈕，後端尚無優惠券 API，先保留位置（不可點） */}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="h-7 w-7"
-                disabled
-                title="發送優惠券（功能尚未開放）"
-                aria-label="發送優惠券（功能尚未開放）"
-              >
-                <Ticket className="!size-4" />
-              </Button>
+              {/* 發券（取自 main）。停用時用 aria-disabled 保留焦點，滑過或聚焦能看到原因 */}
+              {onOpenCoupon && (
+                <span className="group relative shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="h-7 gap-1 px-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                    aria-disabled={couponDisabledReason ? true : undefined}
+                    aria-describedby={couponDisabledReason ? 'coupon-issue-disabled-reason' : undefined}
+                    onClick={() => {
+                      if (!couponDisabledReason) onOpenCoupon();
+                    }}
+                  >
+                    <Ticket className="!size-4" />
+                    發券
+                  </Button>
+                  {couponDisabledReason && (
+                    <span
+                      id="coupon-issue-disabled-reason"
+                      role="tooltip"
+                      className="pointer-events-none invisible absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs text-background group-focus-within:visible group-hover:visible"
+                    >
+                      {couponDisabledReason}
+                    </span>
+                  )}
+                </span>
+              )}
+
+              {/* 個資遮罩（取自 main）：平台開啟時才顯示，預設遮罩 */}
+              {privacyEnabled && (
+                <Button
+                  type="button"
+                  variant={privacyMode === 'mask' ? 'secondary' : 'subtle'}
+                  size="xs"
+                  className="h-7 px-2"
+                  disabled={isDisabled}
+                  onClick={() => setPrivacyMode((mode) => mode === 'mask' ? 'original' : 'mask')}
+                  title={privacyMode === 'mask' ? '目前會遮罩個資；點擊可保留原文' : '目前保留原文；點擊可遮罩個資'}
+                >
+                  {privacyMode === 'mask' ? '個資遮罩' : '保留原文'}
+                </Button>
+              )}
 
               <div className="flex-1" />
               <span className="text-[11px] leading-[15px] text-muted-foreground tabular-nums">{message.length}</span>
@@ -394,11 +477,17 @@ export function MessageInput({
           </div>
 
           {/* Send button */}
-          <Button onClick={handleSend} disabled={!message.trim() || isDisabled} size="lg" className="shrink-0">
+          {/* aria-label 沿用 main 的「送出訊息」（測試與輔助科技以此辨識）；畫面文字依設計稿 */}
+          <Button onClick={handleSend} disabled={!message.trim() || isDisabled} size="lg" className="shrink-0" aria-label="送出訊息">
             <Send />
             傳送
           </Button>
         </div>
+        {sendError && (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            沒有送出：{sendError}
+          </p>
+        )}
       </div>
     </div>
   );

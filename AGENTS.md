@@ -80,6 +80,40 @@ Each requirement in a spec has `#### Scenario:` blocks. Write each scenario as *
 
 `openspec/config.yaml` gives these rules to the OpenSpec skills.
 
+Before you write the proposal, find the existing features that the change touches. One change
+often breaks a feature in a different module, and nobody notices until a user reports it.
+
+- `docs/ref/features/feature-map.json` lists each feature area: its files, pages, tables, events,
+  specs and the other areas that depend on it.
+- `node scripts/feature-impact.mjs --files <files you plan to change>` lists the affected areas.
+  On a branch with commits, run it without arguments. It compares with `origin/main`.
+- Each area has a Claude Code skill `.claude/skills/feature-<id>/`. The skill describes the
+  frontend flows, the rules that must not break and a regression list.
+  The `feature-impact-reviewer` subagent runs these steps and writes a report.
+
+#### Plan the platform layer in the same change
+
+The platform layer is the control plane at `/admin` (`docs/ref/features/platform/README.md`).
+It decides what each plan can use, counts AI usage, and lets the platform team see and control
+tenants. A tenant feature that needs the platform layer is not finished when the tenant side
+works. Plan and build its platform part in the same change.
+
+Before you write the proposal, check each item in this table. In `proposal.md`, write a section
+`## Platform layer` that lists each item that applies and what the change does for it. If no item
+applies, write one sentence that says why.
+
+| If the change | Then also |
+| ------------- | --------- |
+| adds a permission code | Give it a `feature` in `packages/shared/src/rbac/permissions.ts`. Guard its routes with `requirePermission()`. A route without the guard ignores the plan ceiling (AUDIT PLAN-04). |
+| adds a feature area that a plan can switch on or off | Add it to `packages/core/src/rbac/features.ts`. Decide which plans include it. Add it to existing plans with a one-time migration that only changes that field and can run again. The seed only creates missing plans (#441), so a seed change does not reach existing plans. |
+| adds a resource that a plan should limit (a count or a quota) | Add the limit key to `plan-limits.service.ts`, an input to `LIMIT_KEYS` in `apps/web/src/app/admin/plans/page.tsx`, and a check where the resource is created. Do not add a limit that nothing checks: `maxTags` shows on the plan page and limits nothing (AUDIT PLAN-04). |
+| calls an AI model | Record the call with `recordLlmUsage()` in `apps/api/src/modules/ai/llm.flow.ts`, with an `AiFeature` value from `apps/api/src/modules/ai/llm.service.ts`. Check the monthly quota (`token-quota.service.ts`) and the tenant AI privacy policy (`ai-privacy.service.ts`). A new model needs a price in `model_pricings`, or its cost is recorded as 0 (AUDIT USAGE-02). |
+| adds a channel type | Make sure the plan page can allow or block it (`allowedChannelTypes`). |
+| adds a tenant setting or state that the platform team must see or control | Add it to the platform API and pages. An example is the AI privacy switch on the tenant page. |
+| writes a new platform audit action | Add its label to the platform audit label table (`PLATFORM_AUDIT_ACTION_LABELS` in `apps/web/src/app/admin/lib/audit-log.ts`). The tenant detail page and the platform user detail page both read it. Otherwise they show the raw code. |
+| adds a BullMQ queue | Add it to `apps/api/src/modules/queue-monitoring/monitored-queues.ts`, so that the queue monitor shows its failed jobs. |
+| sends a request from a tenant to the platform team, or the other way | Notify the other side. A request that nobody sees waits forever (#495, AUDIT PLAN-17). |
+
 ### Step 2 — Write the failing test first (TDD)
 
 1. Write a test for the scenario or for the bug.
@@ -102,6 +136,17 @@ For a bug fix, the first test reproduces the bug.
 (structure rule 2). Thus a unit test can give the service a mock object. The mock implements
 only the model methods that the service calls. `apps/api/tests/unit/modules/case/case.service.test.ts`
 shows this pattern.
+
+**Unit tests in `apps/api` do not connect to Redis.** `apps/api/tests/setup/unit.setup.ts`
+replaces `ioredis` for all unit tests. Each Redis command fails at once, as when Redis is down.
+The mock also replaces the `redis` client of `@open333crm/core`. A test can replace this mock
+with its own `vi.mock('ioredis')`. Give the mock class an `on()` method that returns `this`.
+`@open333crm/core` calls `redis.on()` when it loads.
+
+The mock reaches `@open333crm/core` only because the repo installs one version of `ioredis`.
+`apps/api`, `apps/workers` and `packages/core` pin the version that `bullmq` pins. When you
+update `bullmq`, change all three. `pnpm why ioredis -r` must show one version.
+`apps/api/tests/unit/no-redis-connection.test.ts` fails when a second version appears.
 
 Use `node:assert/strict` for assertions, as most existing tests do. Some older tests import
 `node:assert`. Its `assert.equal` compares with `==`. Do not copy those tests.
@@ -137,6 +182,14 @@ it. These tests fail after a rename or a move, even when the behavior stays the 
 type of test only for a guarantee that a behavior test cannot reach. An example is "this route
 calls the service inside `withTenant`".
 
+**A mock does only what the real code can do.** Before you make a mock throw an error, read the
+real function. If the real function catches the error and returns a fallback, a mock that throws
+tests a path that does not exist. To test a failure, make the lowest boundary fail (for example,
+the LLM call or the HTTP request), and keep the real code between that boundary and the code
+under test. Example: `analyzeSentimentFlow()` catches an LLM error and returns a keyword result, so
+`apps/api/tests/unit/modules/automation/sentiment-llm-fallback.test.ts` mocks the LLM, not
+`analyzeSentimentFlow()`.
+
 **When a test passes as soon as you write it.** A test for behavior that the code already has
 cannot fail first. Verify the test with a mutation:
 
@@ -169,7 +222,8 @@ A module is in `apps/api/src/modules/<name>/`. It uses these file suffixes:
 
 | Suffix | Role |
 | ------ | ---- |
-| `<name>.routes.ts` | HTTP boundary: Zod validation, guards, call a service, wrap the response |
+| `<name>.routes.ts` | HTTP boundary: Zod validation, guards, call a flow, wrap the response |
+| `<name>.flow.ts` | Use case: opens the tenant transaction, calls services, writes the audit row, sends Socket events, events and jobs (structure rule 2) |
 | `<name>.service.ts` | Business logic and data access |
 | `<name>.worker.ts`, `<name>.scheduler.ts` | Background work. The Socket Event Routing section tells which process runs them |
 
@@ -182,8 +236,9 @@ a different reason.
 
 #### 1. A route handler does not query the database
 
-A route handler validates input, checks permissions, calls a service, and returns. Put the
-query in `<name>.service.ts`.
+A route handler validates input, checks permissions, calls a flow, and returns. Put the query in
+`<name>.service.ts`. Routes of modules that #337 has not moved yet still call services with the old
+clients.
 
 - **Why**: a test can reach a query in a route only through the HTTP layer, with the plugins
   and guards of the route registered. A unit test can call a query in a service directly, with
@@ -191,21 +246,171 @@ query in `<name>.service.ts`.
 - **Check**: `grep -nE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update|delete|upsert|count|aggregate|groupBy)' apps/api/src/modules/*/*.routes.ts`
 - **Existing exceptions**: `docs/ref/system/AUDIT.md`, ARCH-01.
 
-#### 2. A service receives its Prisma executor and never imports one
+#### 2. A service that reads or writes tenant data receives a `TenantCtx` and never opens a transaction
 
-Each exported service function takes the executor as its first parameter:
+The entry point opens one transaction that is bound to the tenant. The entry point is a flow
+(`<name>.flow.ts`) or a background job. It calls `inTenant(prisma, tenantId, (scope) => ...)` from
+`apps/api/src/lib/tenant-ctx.ts`.
+
+The layers have these jobs:
+
+| Layer | Does | Receives |
+| ----- | ---- | -------- |
+| route | parses input, checks permissions, builds the actor with `actorOf(request)`, turns the result into an HTTP response | `request`, `reply` |
+| flow | work outside the transaction (bcrypt, external calls), `inTenant()`, calls services, writes the audit row, sends Socket events, events and jobs, clears caches | `TenantScope`, injected dependencies |
+| service | the business rules and the queries of one aggregate | `TenantCtx` |
+
+Each route that reads or writes tenant data calls a flow. This is also true for a query: when a
+query needs a cache later, the cache goes in the flow, because a service cannot use Redis and a
+cache hit must not open a transaction. A route that reads no tenant data (for example a static
+permission matrix) answers directly. `actorOf(request)` returns 401 when the request has no tenant.
+
+A flow that only calls one service function can use `flowOf(fn)` from `lib/tenant-ctx.ts`, for
+example `export const listStoresFlow = flowOf(listStores)`. When the operation gets a side effect
+or work outside the transaction, write a normal flow function instead. A route does not call
+`inTenant()` itself.
+
+Each exported service function that reads or writes tenant data takes the `TenantCtx` as its first
+parameter. A `TenantCtx` has only `tx` and `tenantId`. A service returns the facts that the flow
+needs, and the flow decides the side effects:
 
 ```ts
-export async function listCases(prisma: TenantDb, tenantId: string, ...) { }
+// case.service.ts
+export async function resolveCase(ctx: TenantCtx, caseId: string) {
+  const updated = await ctx.tx.case.updateMany({ where: { id: caseId, tenantId: ctx.tenantId }, ... });
+  return updated;
+}
+
+// case.flow.ts
+export function resolveCaseFlow(deps: { prisma: PrismaClient; io: Server; events: EventPublisher }, actor: RequestActor, caseId: string) {
+  return inTenant(deps.prisma, actor.tenantId, async (scope) => {
+    const updated = await resolveCase(scope, caseId);
+    await recordTenantAudit(scope, { actorId: actor.agentId, action: 'case.resolve', ... });
+    notifyTenant(scope, deps.io, 'case.updated', payload);              // sent to tenant:<tenantId> after commit
+    await publishEvent(scope, deps.events, 'case.resolved', payload);  // written to the outbox, sent after commit
+    return updated;
+  });
+}
 ```
 
-- **Why**: a service that gets a client by itself can use a connection that the caller did not
-  select. RLS then shows data of other tenants, or returns no rows and no error. A unit test also
-  cannot run that service without a database. The "Prisma in shared packages" convention below
+A `TenantScope` is a `TenantCtx` with one method more: `afterCommit(label, fn)`. Only `inTenant()`
+knows when the transaction commits, so this method is the only one on the object. Each other side
+effect is a separate function that takes the scope. The caller gives the dependencies (`io`, an
+`EventPublisher`) as parameters, so the parameters show what the code depends on. Do not add a
+method to `TenantCtx` or `TenantScope` for a new side effect. Write a function that takes the scope.
+
+A service obeys these rules:
+
+- Use `ctx.tx` for each query. Do not import a client, and do not open a transaction
+  (`withTenant`, `inTenant`, `$transaction`).
+- Do not call an external service (LINE, an LLM, S3) inside the transaction. The transaction has a
+  timeout of 5 seconds, and it holds a database connection. The flow splits the work into three
+  steps: transaction, external call, transaction. Before you split it, write in the spec whether the
+  external call happens at most once or at least once. If the flow goes through a queue, write
+  this for each step of the flow: where the step can fail, where the data stays after the
+  failure, which code does the step again, and the guarantee. Change `outbox-event-delivery`,
+  `design.md` section 14, shows such a table.
+
+**Redis connections.** In the API process, an entry point gets the Redis connection for
+commands (cache, counters, short-lived codes) from `fastify.redis` and gives it to the flow as a
+parameter. Do not import a Redis client in a module. To create a connection in another place,
+call `createRedisClient(url, purpose)` from `@open333crm/core`:
+
+- `'command'`: for commands. When Redis refuses the connection or does not reply, a command
+  fails in 1 second or less.
+- `'queue'`: for BullMQ and for a subscriber. A command waits until Redis replies, as BullMQ
+  requires.
+
+Do not create a connection with `new IORedis` (#443). `fastify.redis` does not connect when the
+application starts. It connects at the first command, and it closes when Fastify closes.
+
+A flow and a background job obey these rules:
+
+- Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant),
+  `notifyChannel(scope, io, { channelId, conversationId }, name, data)` (to the agents who can see the
+  channel) or `notifyAgent(scope, io, agentId, name, data)` (to one agent), from
+  `apps/api/src/events/socket-push.ts`. An event that carries messages or conversation data of a
+  channel (`message.new`, `conversation.*`) uses `notifyChannel`. Do not send such data to the tenant
+  room: an agent without access to the channel would receive it (issue #427).
+  Send events with `await publishEvent(scope, publisher, name, payload)`. Send BullMQ jobs with
+  `await enqueueJob(scope, publisher, queueName, name, data)`. `publisher` is an `EventPublisher`,
+  for example `createOutboxPublisher(prisma)`. Both are in
+  `apps/api/src/events/outbox-publisher.ts`. Do not call `io.emit`, `eventBus.publish` or
+  `queue.add()` directly. The caller does not give a room name: `socket-push.ts` selects the room
+  for each Socket event.
+- Socket events go out after the commit and are dropped after a rollback. A Socket event is
+  sent at most once. `publishEvent` and `enqueueJob` write a row to the outbox inside the
+  transaction. The row commits with the data, and the system sends it after the commit, at least
+  once. Thus the receiver can get an event or a job two times. Before a side effect that must not
+  repeat (for example, a message to a customer), claim it with `claimSideEffect()` from
+  `@open333crm/core`, or with a conditional update. `docs/ref/modules/EVENTS.md` explains the
+  outbox and the claims.
+- To clear a cache after a write, call `scope.afterCommit(label, fn)`. Do not clear it inside the
+  transaction: another request can read the old data before the commit and write it back to the
+  cache. `inTenant()` runs `fn` after the commit and waits for `fn` to finish. Thus the flow
+  returns, and the response goes out, after `fn` finishes. `fn` runs at most once. If `fn` fails,
+  the system writes a log and the result stays successful. After a rollback, `fn` does not run.
+- Write a tenant audit row with `recordTenantAudit(scope, input)` from
+  `apps/api/src/modules/tenant-audit/tenant-audit.service.ts`. The audit row needs the actor and the
+  IP of the request, so the flow writes it, not the service. The row commits with the data. If
+  the write fails, the function throws and the transaction rolls back. Do not call
+  `writeTenantAudit()` inside a transaction: it catches the database error, and after that error
+  PostgreSQL rejects each query of the transaction. The commit then becomes a rollback, but the
+  request can still return success. `writeTenantAudit()` stays only for callers that are not moved
+  yet.
+- When several entry points send the same Socket event, write the content of the event once in a
+  module function, for example `apps/api/src/modules/coupon/coupon-effects.ts`. Each entry point
+  calls that function.
+- In a job handler (a BullMQ processor or an event subscriber), do not catch an error only to
+  write a log. The job then completes, and the work is lost: the queue does not try again.
+  Let these errors go out of the handler, so that the queue tries the job again:
+  - an error before the claim commits, or in the claim transaction;
+  - an error when the handler adds the next job to a queue.
+
+  Catch an error and write a log only after the claim commits (the side effect is at most once),
+  or when the code uses a fallback on purpose (for example, a knowledge-base reply when the LLM
+  fails). `docs/ref/modules/EVENTS.md` lists the cases.
+- Do not catch a unique-constraint error (`P2002`) and then continue inside the transaction. After
+  the first error, PostgreSQL rejects each subsequent query in the transaction. To write a row or
+  use the row that exists, use `createOrFindExisting()` from `@open333crm/core`
+  (`packages/core/src/db/db-invariants.ts`). To claim one row with a conditional update, use
+  `claimOne()` from the same file.
+
+This rule does not cover two kinds of functions. They do not take a `TenantCtx`:
+
+- A service for platform-layer tables (see the list in the Multi-Tenancy section), for example
+  `platform-audit.service.ts`. These tables belong to no tenant, so the service uses `prismaAdmin`.
+- A function that does not read the database, for example `sendOpsAlert()` in
+  `apps/api/src/modules/ops-alert/ops-alert.service.ts`. It writes Redis and a queue only, so do
+  not call it inside a tenant transaction (see the rule about external calls below).
+
+`scripts/check-tenant-ctx.mjs` does not know about these two kinds. It counts only the old forms,
+so these functions do not change its result.
+
+- **Why**: the service then knows its guarantees from its parameter type. Its queries have RLS,
+  and its writes succeed or fail together. The service cannot start a side effect, so the timing of
+  each side effect is visible in the flow. With the old parameter type `TenantDb`, the caller
+  decides these guarantees: `prismaAdmin` has no RLS, and `request.tenantPrisma` runs each query
+  in a separate transaction. A unit test also cannot run a service without a database if the
+  service gets a client by itself. `tests/support/mock-tenant-ctx.ts` gives a `TenantCtx` for
+  service tests and a `TenantScope` for flow tests. The "Prisma in shared packages" convention below
   is this rule for `packages/*`.
-- **Check**: `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
-- **Existing exceptions**: the Canvas engine and unused services in `packages/core`.
-  `docs/ref/system/AUDIT.md`, RLS-01.
+- **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
+  - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
+  - a reference from a service file to a Redis client (`redis`, `createRedisClient` or the
+    whole module from `@open333crm/core`, `ioredis`, or `lib/redis-client`) or to an LLM module
+    (`ai/llm-client.js`, `ai/llm.flow.js`, a file in
+    `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
+    module-level clients inside the transaction, so a flow receives them as dependencies instead.
+
+  The script parses the TypeScript syntax for the last kind: a re-export, a dynamic
+  `import()`, `require()`, a renamed import and a namespace call count. A type-only import and a
+  comment do not count. Also
+  `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
+- **Existing exceptions**: most services still take `TenantDb`. Issue #337 moves them module by
+  module. `scripts/check-tenant-ctx.baseline.json` records how many remain. When you change one of
+  these services for a different reason, you do not have to move it. The Canvas engine and unused
+  services in `packages/core` also import a client: `docs/ref/system/AUDIT.md`, RLS-01 and RLS-08.
 
 #### 3. One route file covers one resource
 
@@ -231,7 +436,7 @@ Import the `.service.ts` of the other module, or a helper file of that module. D
   can change them and not know about an import in a different module. A service is the
   interface of a module to other modules.
 - **Check**: `grep -rnE "from '\.\./[a-z-]+/[a-zA-Z.-]+\.(routes|worker|scheduler)\.js'" apps/api/src/modules`
-- **Existing exceptions**: `docs/ref/system/AUDIT.md`, ARCH-02.
+- **Existing exceptions**: none. The check above has no output.
 
 #### 5. Channel differences go through the plugin registry
 
@@ -241,7 +446,7 @@ To add a channel, register a plugin. Do not add a branch.
 Register the plugin in both processes:
 
 - `registerChannelPlugin()` in `apps/api/src/index.ts`.
-- The `pluginRegistry` map in `apps/workers/src/index.ts`.
+- `createWorkerPluginRegistry()` in `apps/workers/src/lib/plugin-registry.ts`.
 
 The workers map does not read the shared registry. Thus a plugin that only the API registers
 cannot send messages from automation rules.
@@ -254,6 +459,41 @@ cannot send messages from automation rules.
   Do not copy them. `docs/ref/modules/CHANNEL-PLUGINS.md` tells where they are and how to add a
   channel.
 
+#### When to consider a new structure
+
+A structure is a new layer, a new file type, a shared object, a registry or a shared function.
+The signals below tell you when to stop and evaluate a structure. A signal does not decide
+the result. The evaluation decides it.
+
+| Signal | What it can show | Structure to evaluate |
+| ------ | ---------------- | --------------------- |
+| The same rule or query is in two or more modules | The rule has no owner. A fix reaches one copy only | One shared function. Examples: `createOrFindExisting()` and `claimOne()` in `packages/core/src/db/db-invariants.ts` |
+| Two or more review comments on one pull request are about the same part of the code | The guarantee of that code is not defined | First write the guarantee in the spec, for example "at most once" or "at least once". Then evaluate the code again |
+| One change needs edits in many locations, and a missed location shows no error | The behavior has no single point of control | A registry or a shared function. Example: the channel plugin registry (structure rule 5) |
+
+To evaluate a structure, answer these questions in the proposal or the pull request:
+
+1. Which file paths have the problem now? A problem that can occur only in the future is not
+   a reason.
+2. How many callers use the structure now? With only one caller, the structure can be more
+   design than the problem needs. An open change or an issue can name the second caller.
+3. What is the smallest form that solves the problem? Compare a rule in this file, a function
+   and a check script with a new object or a new layer.
+4. How difficult is it to remove the structure? If the structure changes many files, try it in
+   one or two modules first. Review the result. Then apply the structure to the other modules.
+   Example: #337 stage 2 tried `TenantCtx` in `role` and `agent`. The review of that stage
+   added the flow layer.
+
+Earlier evaluations rejected these structures. Evaluate one again when its reason is no longer
+true:
+
+| Structure | Reason |
+| --------- | ------ |
+| A generic repository layer | A generic repository loses the result type of each Prisma query. The other jobs of a repository have a different owner in this repo. Tenant isolation is the job of the two enforcement layers in the Multi-Tenancy section. The transaction boundary is the job of `TenantCtx` |
+| Event listeners that a service registers | A person who reads the service cannot see its side effects |
+| A method on `TenantCtx` or `TenantScope` for each side effect | See structure rule 2 |
+| One transaction for each aggregate, with events between aggregates | Many operations must write several tables together, for example a contact merge. With one transaction for each aggregate, a failure can leave only part of the operation written |
+
 #### Appendix: which SOLID principle each rule is
 
 These names are labels for the rules above. They do not give an order to apply the rules. No
@@ -262,12 +502,14 @@ rule needs its principle name to be correct.
 | Rule | Principle |
 | ---- | --------- |
 | 1, 3 | Single responsibility |
-| 2 | Dependency inversion |
+| 2 | Dependency inversion, Liskov substitution |
 | 4 | Dependency inversion, interface segregation |
 | 5 | Open-closed |
 
-Liskov substitution has no rule here. The nearest equivalent in this codebase is the contract that
-each channel plugin implements. Rule 5 covers that contract.
+Rule 2 is Liskov substitution because a `TenantCtx` gives the same guarantees from each entry point.
+The old type `TenantDb` broke this principle: its three members have the same methods but different
+guarantees. The contract that each channel plugin implements is also Liskov substitution. Rule 5
+covers that contract.
 
 ### Step 4 — Check the definition of done
 
@@ -275,10 +517,22 @@ No CI workflow runs these checks (see CI gates below). Run them yourself before 
 request:
 
 - [ ] `pnpm test` passes.
+- [ ] `node scripts/feature-impact.mjs` lists the areas that your change affects. You walked
+      through the regression list in the skill of each directly affected area. If you changed a
+      path, table, event or dependency of an area, update `docs/ref/features/feature-map.json`,
+      and `node scripts/feature-impact.mjs --check` passes.
+- [ ] `pnpm build` passes, if you changed a file in `packages/*`, a dependency, or a file that
+      `apps/web` imports. Tests and `tsc` do not find a module that the browser bundle cannot
+      load. Only the Next.js build finds it.
+- [ ] Each item of "Plan the platform layer in the same change" (Step 1) that applies is done in
+      this change, and `proposal.md` has its `## Platform layer` section. Do not leave the
+      platform part for a later change.
 - [ ] `pnpm test:feature` passes, if you changed the database, Redis, RLS or a feature test.
 - [ ] `node scripts/check-tenant-scoping.mjs --strict` and
       `node scripts/check-prisma-admin-usage.mjs --strict` show no violation that your change
       added. `docs/ref/system/AUDIT.md` records the violations that already exist on `main`.
+- [ ] `node scripts/check-tenant-ctx.mjs --strict` passes. If your change removes old forms, run
+      `node scripts/check-tenant-ctx.mjs --update-baseline` and commit the baseline file.
 - [ ] `CHANGELOG.md` has an entry for each `feat`, `fix` or architecture change (see Conventions).
 - [ ] All OpenSpec tasks of the change have a check mark. Archive the change when all tasks are done.
 - [ ] Each delta spec uses `MODIFIED` for a requirement that already exists in `openspec/specs/`.
@@ -320,9 +574,18 @@ request:
       characters. Many main specs have such requirements, and until they are split, `--strict`
       always fails on them. In a change, the script does not ignore this warning. Split a new
       requirement that is too long.
-- [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, update
-      that item, add an entry to `docs/ref/system/AUDIT-REVIEWS.md`, and update each feature or
-      module document under `docs/ref/` that describes the changed behavior.
+- [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, add an
+      entry to `docs/ref/system/AUDIT-REVIEWS.md` that names the fix (change or commit). Then do
+      one of these:
+      - The item is fixed completely: remove its row and its section from `AUDIT.md`. Do not keep
+        it with the status "已修正". In the entry, write "已修正，從 `AUDIT.md` 移除". Remove or
+        update each link to the item in other files (`grep -rn "<ID>"`), for example
+        `docs/ref/features/feature-map.json` and the limit tables in `docs/ref/`.
+      - The item is fixed in part: keep it, set the status to "部分修正", and write in the item
+        which part is fixed and which part is not.
+
+      Also update each feature or module document under `docs/ref/` that describes the changed
+      behavior.
 
 ## Multi-Tenancy: Two Enforcement Layers (Critical)
 
@@ -334,15 +597,19 @@ request:
 platform-layer tables. These tables are `tenants`, `plans`, `platform_users`, `platform_audit_logs`,
 `platform_settings`, `model_pricings` and `trial_signups`. The `tenant_isolation` policy reads the
 session variable `app.current_tenant`. A new tenant table needs its own migration that enables
-RLS. The skill named below gives the steps.
+RLS and grants `SELECT, INSERT, UPDATE, DELETE` on the table to `app_tenant`. New tables get no
+privileges for `app_tenant` by default (#412). `app_tenant` can only read `tenants`, `plans`,
+`platform_settings` and `model_pricings`, and cannot use the other platform-layer tables. Write
+platform-layer tables through `prismaAdmin`. The skill named below gives the steps.
 
 ### Which Prisma client to use
 
 | Client | Connection | When |
 | ------ | ---------- | ---- |
-| `fastify.prisma` | `app_tenant`, RLS enforced | default for tenant-scoped work |
-| `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | inside authenticated request handlers. Throws an error when the request is not authenticated |
-| `withTenant(prisma, tenantId, fn)` | runs `fn` in a transaction with `app.current_tenant` set | background jobs and each path that needs an explicit tenant |
+| `inTenant(prisma, tenantId, (scope) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | flows and new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
+| `fastify.prisma` | `app_tenant`, RLS enforced | the base client for `inTenant()` and `withTenant()`. Without one of them, RLS returns no rows |
+| `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | old form, being moved (#337). Each query runs in a separate transaction. Throws an error when the request is not authenticated |
+| `withTenant(prisma, tenantId, fn)` | runs `fn` in a transaction with `app.current_tenant` set | old form, being moved (#337). `inTenant()` uses it internally |
 | `fastify.prismaAdmin` | `app_admin`, **BYPASSRLS** | whitelist only: platform console, auth, schedulers, OAuth callbacks, public webhooks |
 
 `withTenant` sets the session variable with `SET LOCAL` inside the transaction. Thus the variable
@@ -357,20 +624,21 @@ to add a table, and the troubleshooting guide. Do not write them again here.
 
 ### CI gates
 
-Two scripts check tenant isolation. With `--strict`, each script exits with code 1 when it finds
+Three scripts check tenant isolation. With `--strict`, each script exits with code 1 when it finds
 a violation:
 
 | Script | Rejects |
 | ------ | ------- |
 | `scripts/check-tenant-scoping.mjs` | a query on a tenant table with no `tenantId` reachable in scope |
 | `scripts/check-prisma-admin-usage.mjs` | `prismaAdmin` used from a file outside the whitelist |
+| `scripts/check-tenant-ctx.mjs` | more old forms in a file than `scripts/check-tenant-ctx.baseline.json` records (rule 2) |
 
 Run them without `--strict` to get a report instead of a failure.
 
 > **No CI workflow runs these checks now.** `.github/workflows/ci.yml` ran both scripts with
 > `--strict`. It also ran the RLS integration test `apps/api/tests/feature/rls-isolation.test.ts`.
 > Commit `4b384b7` deleted `ci.yml`. Commit `323deeb` restored only `deploy.yml`, which runs none
-> of these checks. Until `ci.yml` is restored, run both scripts with `--strict` before you open a
+> of these checks. Until `ci.yml` is restored, run the scripts with `--strict` before you open a
 > pull request.
 
 ## Architecture: Socket Event Routing (Critical)
@@ -380,20 +648,25 @@ There are two paths. Select the correct path.
 **Path A — Direct emit** (API process, inline):
 
 ```ts
-fastify.io.to(room).emit(event, data);
+notifyTenant(scope, io, name, data); // in a flow, inside inTenant(): sent to tenant:<tenantId> after the commit
 ```
+
+Old code calls `fastify.io.to(room).emit(event, data)` directly. Inside a transaction, that call
+sends the event before the commit. Do not copy it (structure rule 2).
 
 Use path A when all of these conditions are true:
 
 - The event is the direct result of the current HTTP request.
 - The data is already in the database.
-- You know the room.
+- The Socket event goes to all agents of the tenant (`notifyTenant`), to the agents who can see a
+  channel (`notifyChannel`), or to one agent (`notifyAgent`).
 - You need no more queries.
 
-**Path B — Async queue** (eventBus → BullMQ → workers → Redis pub/sub):
+**Path B — Async queue** (outbox → subscriber queue → BullMQ → workers → Redis pub/sub):
 
 ```ts
-eventBus.publish({ name: "case.assigned", tenantId, timestamp: new Date(), payload }); // API process
+await publishEvent(scope, publisher, "case.assigned", payload); // written to the outbox in the transaction
+// → after the commit: job on the event-notification queue (API process)
 // → notificationQueue.add(job)  // BullMQ
 // → apps/workers consume → publishSocketEvent(redis, room, event, data)
 ```
@@ -414,12 +687,94 @@ await redisPublisher.publish(
 );
 ```
 
-`eventBus` (`apps/api/src/events/event-bus.ts`) is an in-process EventEmitter only. It has no
-Redis connection.
+A worker sends an event with the messages or conversation data of a channel with
+`publishChannelSocketEvent()` from `apps/workers/src/lib/socket-bridge.ts`. It sends the message to the
+channel rooms (`rooms` in the `socket:emit` message), not to the tenant room.
+
+Workers send a business event with `writeOutbox()` from `@open333crm/core`, in the transaction
+that writes the data. Give the `tenantId`: the workers connection has no RLS. After the commit,
+call `dispatchOutboxRows()`.
+
+When you create a BullMQ `Worker`, set `concurrency`. The default is 1: the worker processes one
+job at a time, and a slow job (for example, an LLM call) makes the jobs of all tenants wait.
+`apps/api/src/events/subscriber-workers.ts` sets the value for each subscriber queue.
+
+`eventBus.publish()` (`apps/api/src/events/event-bus.ts`) is the old form. It sends the event
+directly to the subscriber queues and does not write the outbox. Thus the event is lost if the
+process stops before it sends the event. New code uses `publishEvent`.
+
+## Architecture: Scheduled Jobs in the API Process
+
+Do not use `setInterval` or `setTimeout` for a periodic job.
+
+Put a periodic job in the API process only if the job needs the API process, for example
+`fastify.io`. Put all other periodic jobs in `apps/workers`.
+
+To add a periodic job to the API process:
+
+1. Register the job with `registerSchedule()` from `apps/api/src/lib/job-scheduler.ts`:
+
+   ```ts
+   export function setupXxxScheduler(scheduler: JobScheduler, prisma: PrismaClient) {
+     scheduler.registerSchedule({ id: 'xxx', every: 60_000, run: () => runXxx(prisma) });
+   }
+   ```
+
+2. Call `setupXxxScheduler(jobScheduler, ...)` in `apps/api/src/index.ts`. Call it before
+   `jobScheduler.start()`.
+
+### Frequency
+
+- Give `every` (milliseconds) or `pattern` (cron). Do not give both.
+- A cron uses the time zone of the API process. The containers do not set `TZ`, so the time
+  zone is UTC.
+- An API restart does not run the job. The job runs at its next scheduled time.
+
+### One job for each period
+
+BullMQ Job Scheduler stores the schedule in Redis. Each period creates **one job only**. This is
+also true when more than one API process runs. Do not add a lock for this.
+
+### A job can run more than one time
+
+If the process stops while the job runs, BullMQ runs the job again. For example, Docker can
+stop the API during a deploy. A test with the default BullMQ settings showed the second run
+after approximately 60 seconds. The default settings are `lockDuration` 30 seconds and
+`stalledInterval` 30 seconds.
+
+Write `run` so that a second run does not do a side effect again. Before `run` sends a message
+or changes the state of a row, `run` must claim the row with a conditional update.
+
+### Two periods can overlap
+
+BullMQ creates the next job when a worker takes the current job. Thus the next period can
+start before the current period ends.
+
+If a job can run longer than its period, set `withoutOverlapping: { expiresInMs }`:
+
+- Set `expiresInMs` to the longest time that the job can run. Do not set it to the period.
+- The job releases the lock when the job ends.
+- If the process stops, the job does not release the lock. The lock then expires after
+  `expiresInMs`.
+- If the job runs longer than `expiresInMs`, the lock also expires. The next period can then
+  start while the job runs.
+
+The lock prevents overlap only while the lock is valid. The lock does not prevent a second run
+of the same job. Thus `run` needs conditional updates also when you set the lock.
+
+### Schedule ids
+
+The schedule id is also the job name and the lock key. `start()` removes each schedule in Redis
+that no code registers. Thus a renamed or removed id does not stay in Redis.
 
 ## Prisma Rules
 
 - Schema: `packages/database/prisma/schema.prisma`
+- A migration name starts with a timestamp, and Prisma applies migrations in name order. After you
+  rebase on `main`, compare your migration with the migrations on `main`
+  (`ls packages/database/prisma/migrations | tail`). If `main` has a migration with the same or a
+  later timestamp, rename your migration directory to a later timestamp. Do this before the
+  merge, while no environment has applied your migration.
 - In application code, get the client from Fastify (`fastify.prisma`, `request.tenantPrisma`,
   `fastify.prismaAdmin`). See the table above. Do **not** construct your own `PrismaClient`. A
   client that you construct goes around the RLS wiring.
@@ -443,6 +798,23 @@ Redis connection.
 
 ## Conventions
 
+- **Do not reinvent existing code (MANDATORY)**: before you write a helper, a schema, a guard, a
+  flow or a component, search the repo for code that already does the job, and use it. Extend the
+  existing code if it does almost the job. Do not write a second version next to it.
+  - **Why**: two versions of one rule diverge. A later fix reaches one version only, and the other
+    version keeps the bug. Reviews in this repo have found new SSRF checks written next to
+    `isBlockedUrl()`, and new handoff code written next to `handOffConversation()`.
+  - **How to search**: `grep -rn` for the function name, the error code and the Chinese message
+    text; read the skill of the feature area (`.claude/skills/feature-<id>/`); run
+    `node scripts/feature-impact.mjs --files <file>` to find the area that owns the code.
+  - **Common helpers**: `isBlockedUrl()` (SSRF check, `apps/api/src/modules/webhook/downstream-forwarder.ts`),
+    `handOffConversation()` (hand a conversation to an agent, `apps/api/src/modules/automation/handoff.flow.ts`),
+    `claimSideEffect()` (`packages/core/src/outbox/claims.ts`), `createOrFindExisting()` and
+    `claimOne()` (`packages/core/src/db/db-invariants.ts`), `paginationSchema`
+    (`apps/api/src/shared/utils/pagination.ts`), `int4Schema`
+    (`apps/api/src/shared/utils/numeric-bounds.ts`), `AppError` (`apps/api/src/shared/utils/response.ts`).
+  - If the existing code cannot be reused (for example, it breaks a structure rule), write in the
+    pull request why, and move the callers to the new code in the same change.
 - **CHANGELOG Maintenance (MANDATORY)**: when you implement a feature (`feat`), a bug fix (`fix`)
   or an architecture change, you **MUST update `CHANGELOG.md`**. A pull request that changes only
   docs, OpenSpec files or tests does not need an entry. Write the entry under the latest release
@@ -451,7 +823,36 @@ Redis connection.
 - **CHANGELOG Date Format (CRITICAL / MANDATORY)**: each new or updated release section **MUST**
   use the date-only heading format `## [YYYY-MM-DD]`. **Never create or restore `## [Unreleased]`**.
   Do not change existing version headings, unless the user explicitly asks for a history rewrite.
-- **Validation**: use Zod in API route handlers.
+- **Validation**: the API parses each input field with a Zod schema. Do not rely on the
+  validation of the frontend. A client can send any request. Other clients (the CLI, MCP,
+  webhooks, scripts) do not use the frontend.
+  - Parse `request.params`, `request.query` and `request.body` with a Zod schema before you use
+    them. Do not cast them with `as`. A cast only tells the compiler the type. It does not check
+    the value at runtime.
+  - Give each field its type and its limits: the format (for example `.uuid()`), the length, the
+    range and the allowed values (`z.enum`).
+  - A field that the database stores in an `Int` column must fit in int4. Use `int4Schema` from
+    `apps/api/src/shared/utils/numeric-bounds.ts`.
+  - For `page` and `limit`, use `paginationSchema` from `apps/api/src/shared/utils/pagination.ts`.
+  - A JSON field (for example `settings` or `config`) gets a schema for each key that the code
+    reads. Do not accept it as `z.record(z.unknown())`. Put the schema in a module file. Then the
+    route and the service use the same schema.
+  - When the code reads a JSON column from the database, parse the value with the same schema.
+    Do not cast it with `as`. A row that the code wrote before the schema existed can hold any
+    value. If the value is invalid, use a default that cannot cause harm. For example,
+    `readActivitySettings()` in `apps/api/src/modules/portal/portal-settings.ts` does not allow
+    a second submission and gives 0 points.
+  - Use `z.record(z.unknown())` only for a value that the code stores or forwards and never
+    reads. An example is `clientExtensionResults` from WebAuthn. Write a comment that tells why.
+  - Frontend validation (for example `<input min={0}>`) only helps the user. The API rejects
+    the same invalid values with HTTP 400.
+
+  `apps/api/src/modules/portal/` shows the pattern. `portal.routes.ts` and
+  `portal-public.routes.ts` parse each input. `portal-settings.ts` defines the activity settings
+  for the routes and the service.
+
+  Many existing routes still cast their input with `as`. Issue #405 lists the
+  `z.record(z.unknown())` fields. Fix them when you change the route for a different reason.
 - **Errors**: `throw new AppError(message, code, statusCode, details?)`
   (`apps/api/src/shared/utils/response.ts`). **The message comes first.** `code` has the default
   `INTERNAL_ERROR`, and `statusCode` has the default 500. Thus, give both values. Do not return
@@ -460,7 +861,7 @@ Redis connection.
 - **Soft-delete**: set `isActive: false`. Do not use a hard DELETE (agents, channels and similar).
 - **Commits**: use Conventional Commits (`feat:`, `fix:`, `chore:` and similar).
 - **Authorization**: guard a route with `requirePermission('<code>')` from
-  `apps/api/src/guards/rbac.guard.ts`. `packages/core/src/rbac/permissions.ts` registers the
+  `apps/api/src/guards/rbac.guard.ts`. `packages/shared/src/rbac/permissions.ts` registers the
   codes. `docs/ref/modules/PERMISSIONS.md` explains how the system calculates effective
   permissions.
 
@@ -477,6 +878,13 @@ Redis connection.
   `node scripts/check-workspace-esm.mjs --strict` does not require the field. It fails only on
   the dangerous combination: a CJS package that imports a symbol that an ESM package forwards
   in this way.
+- **Packages that `apps/web` bundles**: `apps/web` imports `@open333crm/automation` and
+  `@open333crm/shared`. Thus these packages run in the browser. Do not import
+  `@open333crm/core`, `@open333crm/channel-plugins` or `@open333crm/database` from them. The
+  `core` index loads BullMQ, and BullMQ needs Node modules (`child_process`, `net`). The web build
+  then fails, but tests and `tsc` pass. Put a function that reads the database in an
+  `apps/api` module, for example `apps/api/src/modules/automation/keyword-yield.ts`.
+  `packages/automation/tests/unit/browser-safe.test.ts` checks the `automation` package.
 - **Prisma in shared packages**: do not use the module-level `prisma` singleton from
   `@open333crm/database` inside `packages/*`. It is not bound to a tenant (RLS, see
   CM-171/CM-172). It is also the symbol that the interop problem above loses. Shared functions
@@ -554,7 +962,9 @@ These paths contain tool-specific instructions and skills. Project-wide rules be
 | `.codex/skills/` | Codex: OpenSpec skills and the `open333crm-cli` skill |
 | `openspec/config.yaml` | OpenSpec context and per-artifact rules |
 | `.claude/agents/` | Claude Code subagent definitions |
+| `.claude/skills/` | Claude Code skills: one `feature-<id>` skill for each feature area, and symlinks to `.agents/skills/` |
+| `docs/ref/features/health/` | Health check of each feature area: gaps between spec, code and UI, test results, and manual test results |
 
-The repository has no `CLAUDE.md`. Thus, by default, Claude Code reads neither `AGENTS.md` nor
-`.agents/skills/`. To use them, create a `CLAUDE.md` that imports `@AGENTS.md`. Then symlink each
-skill directory into `.claude/skills/`.
+`CLAUDE.md` imports this file (`@AGENTS.md`), so that Claude Code reads it. Each directory in
+`.agents/skills/` has a symlink in `.claude/skills/`. When you add a skill to `.agents/skills/`,
+add its symlink too.

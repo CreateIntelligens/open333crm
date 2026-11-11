@@ -3,26 +3,32 @@
 通知是租戶後台右上角的鈴鐺與「通知」頁。系統在客人傳訊息、工單被指派或升級、SLA 快到期、CSAT 低分、AI 額度快用完時，通知相關的成員。通知只在後台內顯示；除了 AI 額度告警，都不寄信。
 
 - **資料來源**：`apps/api/src/modules/notification/*`、`apps/workers/src/handlers/notification.handler.ts`、`apps/workers/src/handlers/sla.handler.ts`、`apps/api/src/modules/csat/csat.service.ts`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-10-21
 
 ## 負責的模組
 
 | 模組 | 負責什麼 |
 | --- | --- |
-| `notification`（API 行程） | `notification.worker.ts` 訂閱 eventBus，決定收件人，把工作送進 `notification` queue。`notification.routes.ts` 提供通知清單、未讀數與標記已讀 |
+| `notification`（API 行程） | `notification.worker.ts` 處理 `event-notification` 佇列的事件，決定收件人，把工作送進 `notification` queue。`notification.routes.ts` 提供通知清單、未讀數與標記已讀 |
 | `apps/workers` 的 `notification.handler.ts` | 從 queue 取出工作，寫入 `Notification`，透過 Redis 推送 `notification.new` 到收件人的 socket 房間 |
 
-`notification.worker.ts` 的名稱裡有 worker，但它不是 BullMQ consumer，而是把工作送進 queue 的 producer，見 `../../system/AUDIT.md` 的 APP-04。
+`notification.worker.ts` 的名稱裡有 worker，但它回傳的是訂閱者的處理函式，由 API 行程的訂閱者 Worker 呼叫，再把工作送進 queue，見 `../../system/AUDIT.md` 的 APP-04。
 
 ## 一則通知怎麼送到
 
-1. 業務模組在 API 行程的 eventBus 發布事件，例如 `case.assigned`。
-2. `setupNotificationWorker()` 的訂閱者決定收件人，每位收件人送一個工作進 `notification` queue。
-3. workers 行程的 `handleNotificationJob()` 寫入一筆 `Notification`。
-4. workers 發布到 Redis 的 `socket:emit`，API 行程轉送 `notification.new` 到 `agent:<成員 ID>` 房間。
+1. 業務模組發布事件，例如 `case.assigned`。事件送進通知訂閱者的佇列 `event-notification`，見[事件與背景工作](../../modules/EVENTS.md)。
+2. `setupNotificationWorker()` 的處理函式決定收件人，每位收件人送一個工作進 `notification` queue。工作的 id 是 `<事件 id>__<成員 ID>`，所以同一個事件處理兩次時，同一位成員只收到一則通知。這個去重只在 job 的保留期間有效：完成的 job 保留 24 小時，失敗的保留 7 天。
+3. workers 行程的 `handleNotificationJob()` 寫入一筆 `Notification`。寫入失敗時，工作失敗並由 BullMQ 重試，共 3 次，指數退避，基準 5 秒。
+4. workers 發布到 Redis 的 `socket:emit`，API 行程轉送 `notification.new` 到 `agent:<成員 ID>` 房間。推播失敗時只記 log，工作照常完成：通知已經寫入，成員重新整理後就看得到。
 5. 前端收到後更新鈴鐺的未讀數。
 
 每位收件人各有一筆通知紀錄。同一個事件通知五個人，就寫五筆。
+
+站內通知是至少一次：workers 在寫入通知之後、工作標為完成之前停止時，BullMQ 重新執行這個工作，成員會收到兩則相同的通知。系統接受這個重複。
+
+AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理員送一個工作進 `usage-alert-email` queue，工作的 id 是 `<事件 id>__<成員 ID>`，由 API 行程的 `usage-alert-email.worker.ts` 寄出。所以事件重送時不會重寄；寄送失敗時，BullMQ 重試，共 3 次。
+
+**收件成員已被永久刪除或已停用時不寫入。** 每個寫入通知的地方（workers 的通知工作、API 的 `createAndDispatch()`、序號明細背景匯出的通知）都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入：一條條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`），只有收件成員同租戶、還在、仍啟用時才寫入。查完才被永久刪除的競爭也不會撞外鍵；在交易內也不會讓交易中止。成員不存在或 `isActive` 為 `false` 時，這則通知被略過：不寫入、不推送，寫一行 info log，工作正常完成，不重試。成員重新啟用後，停用期間略過的通知不會補送（issue #484）。
 
 下列來源不經過上面的流程：
 
@@ -33,7 +39,8 @@
 
 | 事件 | 通知類型 | 收件人 | 來源 |
 | --- | --- | --- | --- |
-| 客人傳訊息 | `new_message` | 對話已指派時通知負責人；未指派時通知所有 `ADMIN` 與 `SUPERVISOR` | `message.received` |
+| 客人傳訊息 | `new_message` | 對話已指派、且負責人仍啟用並看得到該渠道時只通知負責人；未指派，或負責人已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道） | `message.received` |
+| 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派、且負責人仍啟用並看得到該渠道時只通知負責人；未指派，或負責人已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
 | 工單被指派 | `case_assigned` | 被指派的成員 | `case.assigned` |
 | 工單升級 | `case_escalated` | 依升級對話框的勾選：所有 `ADMIN` 與 `SUPERVISOR`、升級前的負責人，見[工單](./CASES.md#升級) | `case.escalated` |
 | CSAT 兩分以下 | `csat_low_score` | 所有 `SUPERVISOR`，不含 `ADMIN` | `recordCsatScore()` |
@@ -45,9 +52,10 @@
 
 要知道的事：
 
-- **未指派對話的每一則訊息都通知全部主管。** 機器人負責的對話也一樣。客人連傳十則，每位 `ADMIN` 與 `SUPERVISOR` 各收到十筆通知。
+- **未指派對話的每一則訊息都通知全部主管。** 機器人負責的對話也一樣。客人連傳十則，每位看得到該渠道的 `ADMIN` 與 `SUPERVISOR` 各收到十筆通知。
 - **指派對話不會通知。** 通知模組訂閱了 `conversation.assigned`，但 API 行程沒有任何地方發布這個事件，見 `../../system/AUDIT.md` 的 CONV-02。
 - **建立工單時直接指定負責人不會通知。** 只有 `POST /cases/:id/assign` 發布 `case.assigned`，見[工單](./CASES.md#指派)。
+- **負責人已停用時，工單指派與 SLA 預警沒有人收到。** 這兩種通知的收件人是負責人本人，收件人計算不會改發主管；寫入前的檢查略過停用的負責人。對話的新訊息與轉接通知不受影響，負責人停用時改通知主管（#440）。見 `../../system/AUDIT.md` 的 CONV-06。
 - **SLA 的兩個訂閱者不會觸發。** 通知模組也訂閱了 `sla.warning` 與 `sla.breached`，但這兩個事件在 API 行程沒有發布端，SLA 通知實際由 workers 直接送出，見 `../../system/AUDIT.md` 的 APP-05。
 
 ## 讀取與保留

@@ -5,7 +5,7 @@
 本目錄依功能區拆成多份文件，每份說明該區由哪些模組負責、每個模組做什麼、有哪些規則與已知問題。本檔只放跨功能區的內容：模組怎麼分組、側欄對照、一則訊息怎麼流過各模組，以及事件怎麼在模組之間傳遞。
 
 - **資料來源**：`apps/api/src/index.ts`、`apps/api/src/modules/*`、`apps/api/src/plugins/socket.plugin.ts`、`apps/workers/src/*`、`apps/web/src/app/dashboard/*`、`apps/web/src/components/layout/Sidebar.tsx`、`packages/database/prisma/schema.prisma`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-10-21
 
 ## 先讀這一段
 
@@ -83,16 +83,16 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 6 | `runInboundPostbackInterceptors()` | 處理按鈕回傳。點擊貼標處理完會繼續往下；CSAT 評分、知識庫回饋與轉真人處理完，管線就在這一步結束 | `tag`、`csat`、`knowledge`、`conversation` |
 | 7 | `trackInboundBroadcastReply()` | 把這次回覆記到該聯絡人最近一筆群發的收件紀錄 | `marketing` |
 | 8 | `emitInboundSocketEvents()` | 推送 `message.new` 與 `conversation.updated`，收件匣即時更新 | `socket` |
-| 9 | `publishMessageReceived()` | 在 eventBus 發布 `message.received` | 見下表 |
+| 9 | `publishMessageReceived()` | 以 `eventBus.publish()` 發出 `message.received`，送進各訂閱者的佇列 | 見下表 |
 | 10 | `triggerWebhookFlow()` | 觸發 Canvas 流程 | `canvas` |
 | 11 | `sendOutsideHoursAutoReply()` | 營業時間外送出自動回覆。同一個聯絡人在去重間隔內只回一次 | `settings`（營業時間） |
 
-`publishMessageReceived()` 發布的 `message.received`，訂閱者都在 API 行程：
+`publishMessageReceived()` 發出的 `message.received`，訂閱者都在 API 行程，各自從自己的佇列取得事件：
 
 | 訂閱者 | 做什麼 |
 | --- | --- |
 | `automation.worker.ts` 的 `setupAutomationWorker()` | 機器人回覆、情緒分析與規則評估，細節見[收件匣與對話](./INBOX.md#機器人什麼時候回覆)與[自動化](./AUTOMATION.md) |
-| `notification.worker.ts` 的 `setupNotificationWorker()` | 發出「收到新訊息」通知。對話已指派時只通知負責人；未指派時通知所有 `ADMIN` 與 `SUPERVISOR` |
+| `notification.worker.ts` 的 `setupNotificationWorker()` | 發出「收到新訊息」通知。對話已指派時只通知負責人；未指派時通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道） |
 | `webhook-dispatcher.ts` 的 `setupWebhookDispatcher()` | 轉發給租戶訂閱了這個事件的外部 URL |
 
 
@@ -102,15 +102,14 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 | 機制 | 範圍 | 用途 | 例子 |
 | --- | --- | --- | --- |
-| eventBus | API 行程內 | 業務事件。`events/event-bus.ts` 的 `EventEmitter`，不經過 Redis | `message.received`、`case.created`、`contact.tagged` |
+| 業務事件 | API 或 workers 的交易 → 訂閱者佇列 → API 行程 | 交易內的 `publishEvent()` 與 workers 寫入 outbox，至少送出一次；舊寫法 `eventBus.publish()` 直接送進佇列，最多一次 | `message.received`、`case.created`、`contact.tagged` |
 | `crm:events` | Redis 廣播 | Canvas 流程引擎的事件，與 eventBus 不相通 | `canvas.send_message` |
 | BullMQ queue | API 行程 → workers | 需要查資料或會拖慢回應的工作 | `automation`、`notification`、`rich-menu-bind`、`data-export`、`data-erasure` |
 | Redis `socket:emit` | workers → API 行程 → 前端 | workers 沒有 socket 連線，由 API 行程代為推送 | 自動化執行結果、通知 |
-| Redis `domain:event` | workers → API 行程的 eventBus | workers 產生、API 端要接著處理的業務事件 | workers 貼標後的 `contact.tagged` |
 
 每個事件由誰發布、誰訂閱，哪些事件只有一邊，失敗時會不會重試，以及為什麼目前只能跑一個 API 行程，見[事件與背景工作](../../modules/EVENTS.md)。
 
-**socket 的租戶房間收得到全部。** 每條 socket 連線建立時自動加入 `tenant:<租戶 ID>` 房間，而新訊息事件會帶著內容發到這個房間。渠道可見範圍因此在即時事件上不生效，見 `../../system/AUDIT.md` 的 RBAC-04。
+**socket 依渠道分房。** 訊息與對話的即時事件只送到渠道房間，成員連線時依可見渠道加入（issue #427），見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。租戶房間 `tenant:<租戶 ID>` 仍收到工單與聯絡人合併的事件，這部分不套用渠道可見範圍，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 側欄顯示與 API 權限
 
@@ -119,12 +118,13 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 - 側欄以 `NAV_TREE` 每一項的 `perm` 決定是否顯示。
 - API 以路由上的 `requirePermission()` 決定是否放行。
 
-兩邊不一致時會出現兩種情況：
+兩邊不一致時，成員會看到點進去才回 403 的頁面：
 
 | 情況 | 例子 |
 | --- | --- |
 | 側欄顯示，API 回 403 | 「設定」底下的「渠道管理」「人員管理」「SLA 政策」「營業時間」等分頁在側欄沒有 `perm`，所有成員都看得到；對應的 API 需要 `channel.view`、`agent.view`、`sla.manage` 或 `settings.manage` |
-| 側欄隱藏，API 放行 | 「我的績效」掛在「報表」底下，側欄要求 `analytics.view`；`GET /analytics/my` 只要有 `analytics.view.self` 就放行，但只有這個權限碼的客服在側欄找不到入口。 |
+
+「報表」的「總覽」要 `analytics.view`、「我的績效」要 `analytics.view.self`，「知識庫」的「AI 設定」要 `settings.manage`，與 API 一致。
 
 收件匣、工單、聯絡人、標籤與短連結的路由都以權限碼檢查，對話與工單另外檢查渠道可見範圍。知識庫的讀取路由仍然只驗登入，見 `../../system/AUDIT.md` 的 RBAC-01。各功能區的權限細節見各文件的「權限」一節。
 
@@ -136,7 +136,6 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | --- | --- | --- | --- |
 | 部分自動化觸發事件不會生效 | 規則可以儲存、看起來正常，實際什麼都不做 | [自動化](./AUTOMATION.md) | AUTO-05 |
 | 渠道可見範圍有多處沒有套用 | 分店客服看得到其他分店的訊息 | [收件匣與對話](./INBOX.md#誰看得到哪些對話) | RBAC-04 |
-| 客服回覆送不出去時沒有標示 | 客服以為客人收到了 | [收件匣與對話](./INBOX.md#客服回覆怎麼送出) | CONV-03 |
-| 群發可以重複執行 | 客人重複收到同一則群發 | [行銷](./MARKETING.md#群發) | MKT-01 |
+| 群發失敗後重試會重送 | 客人重複收到同一則群發 | [行銷](./MARKETING.md#群發) | MKT-01 |
 
 模組屬於哪個後台、掛哪個路由前綴，見[模組總覽](../../modules/OVERVIEW.md)。平台後台見[平台後台](../platform/README.md)。

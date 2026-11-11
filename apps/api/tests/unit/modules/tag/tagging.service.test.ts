@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { test } from 'vitest';
 import { AppError } from '#src/shared/utils/response.js';
 import {
@@ -9,7 +7,9 @@ import {
   deleteTenantTag,
   removeTagFromTarget,
 } from '#src/modules/tag/tagging.service.js';
-import { apiSrc } from '#tests/support/paths.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
+
+const ctxOf = (tx: unknown) => createMockTenantCtx(tx, 'tenant-1').ctx;
 
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
@@ -61,8 +61,7 @@ async function testCreateTagRejectsDuplicateWithinScope() {
   };
 
   await expectAppError(
-    () => createTenantTag(prisma as never, {
-      tenantId: 'tenant-1',
+    () => createTenantTag(ctxOf(prisma), {
       name: 'VIP',
       color: '#6366f1',
       type: 'MANUAL',
@@ -83,8 +82,7 @@ async function testCreateTagUsesTenantAndScope() {
     },
   };
 
-  const result = await createTenantTag(prisma as never, {
-    tenantId: 'tenant-1',
+  const result = await createTenantTag(ctxOf(prisma), {
     name: 'Escalated',
     color: '#ef4444',
     type: 'MANUAL',
@@ -125,22 +123,19 @@ async function testAddTagsForAllTargets() {
     conversationTag: { upsert: conversationUpsert },
   };
 
-  await addTagToTarget(prisma as never, {
-    tenantId: 'tenant-1',
+  await addTagToTarget(ctxOf(prisma), {
     targetType: 'CONTACT',
     targetId: 'contact-1',
     tagId: 'contact-tag',
     agentId: 'agent-1',
   });
-  await addTagToTarget(prisma as never, {
-    tenantId: 'tenant-1',
+  await addTagToTarget(ctxOf(prisma), {
     targetType: 'CASE',
     targetId: 'case-1',
     tagId: 'case-tag',
     agentId: 'agent-1',
   });
-  await addTagToTarget(prisma as never, {
-    tenantId: 'tenant-1',
+  await addTagToTarget(ctxOf(prisma), {
     targetType: 'CONVERSATION',
     targetId: 'conversation-1',
     tagId: 'conversation-tag',
@@ -162,8 +157,7 @@ async function testRejectScopeMismatch() {
   };
 
   await expectAppError(
-    () => addTagToTarget(prisma as never, {
-      tenantId: 'tenant-1',
+    () => addTagToTarget(ctxOf(prisma), {
       targetType: 'CASE',
       targetId: 'case-1',
       tagId: 'tag-1',
@@ -184,8 +178,7 @@ async function testRejectCrossTenantTag() {
   };
 
   await expectAppError(
-    () => addTagToTarget(prisma as never, {
-      tenantId: 'tenant-1',
+    () => addTagToTarget(ctxOf(prisma), {
       targetType: 'CONVERSATION',
       targetId: 'conversation-1',
       tagId: 'foreign-tag',
@@ -208,8 +201,7 @@ async function testRemoveCaseTagOnlyDeletesAssignment() {
     },
   };
 
-  const result = await removeTagFromTarget(prisma as never, {
-    tenantId: 'tenant-1',
+  const result = await removeTagFromTarget(ctxOf(prisma), {
     targetType: 'CASE',
     targetId: 'case-1',
     tagId: 'tag-1',
@@ -238,25 +230,15 @@ async function testDeleteTagRemovesAllAssignments() {
     $transaction: transaction,
   };
 
-  const result = await deleteTenantTag(prisma as never, 'tenant-1', 'tag-1');
+  const result = await deleteTenantTag(ctxOf(prisma), 'tag-1');
 
   assert.deepEqual(result, { deleted: true });
   assert.deepEqual(contactDeleteMany.calls[0][0], { where: { tagId: 'tag-1' } });
   assert.deepEqual(caseDeleteMany.calls[0][0], { where: { tagId: 'tag-1' } });
   assert.deepEqual(conversationDeleteMany.calls[0][0], { where: { tagId: 'tag-1' } });
   assert.deepEqual(tagDelete.calls[0][0], { where: { id: 'tag-1' } });
-  // 6bca767 起不自開 $transaction：呼叫端以 withTenant 包在綁定租戶的交易內，
-  // 自開會與外層巢狀。原子性由下一個測試確認的呼叫端保證。
+  // service 不自開 $transaction：交易由 flow 開（deleteTagFlow），原子性見 tag.flow.test.ts
   assert.equal(transaction.calls.length, 0);
-}
-
-async function testDeleteTagRouteRunsInsideTenantTransaction() {
-  // service 依序刪除，只有在呼叫端的交易內才是原子的；拿掉 withTenant 會留下刪到一半的資料。
-  const routes = await readFile(join(apiSrc, 'modules/tag/tag.routes.ts'), 'utf8');
-  assert.match(
-    routes,
-    /withTenant\(fastify\.prisma, request\.agent\.tenantId, \(tx\) =>\s*deleteTenantTag\(tx,/,
-  );
 }
 
 test('create tag rejects duplicate within scope', testCreateTagRejectsDuplicateWithinScope);
@@ -266,4 +248,3 @@ test('reject scope mismatch', testRejectScopeMismatch);
 test('reject cross tenant tag', testRejectCrossTenantTag);
 test('remove case tag only deletes assignment', testRemoveCaseTagOnlyDeletesAssignment);
 test('delete tag removes all assignments', testDeleteTagRemovesAllAssignments);
-test('delete tag route runs inside tenant transaction', testDeleteTagRouteRunsInsideTenantTransaction);

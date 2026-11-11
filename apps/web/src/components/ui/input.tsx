@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
  * 高 48（Large）、圓角 12、左右內距 16、白底 #E2E8F0 框、14px 字、placeholder #919191
  * Focus 藍框 #378ADD；停用 #F5F5F5 底；aria-invalid 時紅框（Figma Type=Error）
  */
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
+export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {

@@ -1,17 +1,17 @@
 # 自動化
 
-自動化規則讓租戶設定「某件事發生時，符合條件就自動做某些事」。例如：收到含「退貨」的訊息就貼標並通知主管；工單升級時指派給資深客服。側欄的「自動化」頁與「渠道 → LINE 關鍵字回覆」頁，底層都是同一張 `AutomationRule` 表。
+自動化規則讓租戶設定「某件事發生時，符合條件就自動做某些事」。例如：收到含「退貨」的訊息就貼標並通知主管；工單升級時指派給資深客服。側欄的「自動化」頁與「渠道 → 關鍵字回覆」頁，底層都是同一張 `AutomationRule` 表。
 
 - **資料來源**：`apps/api/src/modules/automation/*`、`apps/workers/src/handlers/automation.handler.ts`、`apps/workers/src/lib/automation-actions.ts`、`apps/workers/src/lib/automation-facts.ts`、`packages/automation/src/*`、`apps/web/src/app/dashboard/automation/*`、`apps/web/src/app/dashboard/line/keyword-replies/page.tsx`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-10-21
 
 ## 負責的模組
 
 | 模組 | 行程 | 負責什麼 |
 | --- | --- | --- |
-| `automation` 的 `automation.routes.ts`、`automation.service.ts` | API | 規則的 CRUD、試跑、執行紀錄查詢 |
-| `automation` 的 `automation.worker.ts` | API | 訂閱 eventBus，把事件送進 `automation` queue；比對關鍵字並發布 `keyword.matched`。這個檔案同時負責機器人回覆，見[收件匣與對話](./INBOX.md#機器人什麼時候回覆) |
-| `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作 |
+| `automation` 的 `automation.routes.ts`、`automation.flow.ts`、`automation.service.ts` | API | 規則的 CRUD、試跑、執行紀錄查詢。每個請求在 flow 開的一個租戶交易內完成 |
+| `automation` 的 `automation.worker.ts` | API | 處理 `event-automation` 佇列的事件，把事件送進 `automation` queue。這個檔案同時負責機器人回覆，見[收件匣與對話](./INBOX.md#機器人什麼時候回覆) |
+| `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作。處理 `message.received` 時，一併比對關鍵字規則 |
 | `packages/automation` | 兩邊共用 | 規則契約（事件、事實、動作的定義）與規則引擎 |
 
 動作只由 workers 的 `lib/automation-actions.ts` 執行。API 端原本的 `automation/engine/action-executor.ts` 自 2026-05-12 的 `9255245` 起沒有呼叫端，已於 2026-10-02 刪除。契約定義的動作，workers 都有實作。`assign_bot`、`kb_auto_reply`、`llm_reply` 從未實作，已於 2026-10-05 從契約拿掉（issue #197）。
@@ -34,19 +34,25 @@
 
 **規則頁的用語。** 列表與編輯頁用一句話描述規則，例如「當收到訊息時，如果開啟案件數等於 0，就建立工單「客戶諮詢」」（`rule-summary.ts`）。列表顯示事件的中文名稱、可依名稱搜尋與依啟用狀態篩選。編輯頁把 `priority` 稱為「執行順序」（數字越大越先檢查），`stopOnMatch` 稱為「這條規則執行後，不再檢查其他規則」，條件建構器全部中文（`condition-builder-labels.ts`），觸發事件下方顯示契約的 `description`。契約中 `dispatched: false` 的事件在選單標示「（目前不會觸發）」。「指派客服」從客服名單選人，不必填 ID。
 
+**條件值的型別。** 編輯器依欄位在契約的型別存比較值（`qb-to-engine.ts`）：數字欄位（例如開啟案件數）存數字，是／否欄位存布林，其他欄位（訊息內容、聯絡人名稱、標籤等）一律存字串，即使填的是「8888」「1」這類純數字。規則引擎（`packages/automation/src/rules/operators.ts`）在欄位值是字串、比較值是數字時，把數字當成文字比對，所以 #418 之前存成數字的舊規則與 API 存入的數字一樣會命中；數字欄位的比對不變（#418，AUTO-06 已修正）。
+
+**不合契約的規則不可啟用。** 把規則改為啟用時，API 以儲存後的觸發、條件與動作做契約驗證，不通過回 400；停用永遠可以。編輯器遇到契約沒有的觸發事件時顯示「未知觸發事件（<代碼>）」。既有資料用 `scripts/disable-invalid-automation-rules.mjs` 停用（預設 dry-run）。
+
 **建立規則時的啟用狀態。** `POST /automation/rules` 依請求的 `isActive` 建立規則；沒送時預設啟用。2026-10-05 之前一律建立成啟用，新增規則頁「啟用」沒勾也會立刻開始執行。
 
 **workers 會整條略過的規則。** workers 執行前以 `allowUnsupportedActions` 驗證契約，失敗就整條略過、只寫 log。規則列表用同樣的驗證，在這類規則旁標示「規則不會執行」，滑過可看錯誤（`findWorkerSkipErrors`）。
 
 ## 規則怎麼被執行
 
-1. 業務模組在 API 行程發布事件，例如 `case.created`。
-2. `automation.worker.ts` 的訂閱者把事件與上下文送進 `automation` queue。
+1. 業務模組發布事件，例如 `case.created`。事件送進自動化訂閱者的佇列 `event-automation`，見[事件與背景工作](../../modules/EVENTS.md)。
+2. `automation.worker.ts` 的訂閱者把事件 id、事件與上下文送進 `automation` queue。job id 是事件 id，所以同一個事件送兩次時只評估一次。這個去重只在完成的 job 保留期間（24 小時）有效。
 3. workers 的 `handleAutomationJob()` 取出同租戶、同事件、`isActive` 為 `true` 的規則，再用 `validateAutomationRuleContract()` 過濾掉不合契約的規則。
 4. `buildAutomationFacts()` 依上下文查出聯絡人、對話、工單等資料，組成事實。
 5. `evaluateRules()` 依 `priority` 由大到小逐條評估。命中的規則若設了 `stopOnMatch`，就停止評估其餘規則。
 6. 對每條命中的規則，`executeWorkerAutomationActions()` 依序執行動作。單一動作失敗只記 log，不影響後續動作。
 7. 推送 `automation.executed` socket 事件給租戶。
+
+**同一個事件的動作最多執行一次。** 事件可能送兩次，`automation` job 也可能重試。每個動作執行前，workers 以「`automation_action` + 事件 id + `<規則 id>#<動作序號>`」寫一筆認領紀錄，已經有紀錄就跳過。認領紀錄保存 30 天，所以 30 天內重送時，客人不會收到第二則訊息，沒有指定優先度的升級也不會再升一級。認領之後動作失敗不重做。SLA 排程觸發的規則沒有事件 id，不認領，由 SLA 自己的紀錄避免重複。規則在事件重送之間改了動作順序時，序號會對不上，可能重複執行一次。
 
 ## 哪些事件能觸發規則
 
@@ -55,7 +61,7 @@
 | 事件 | 會觸發 | 送進 queue 的地方 |
 | --- | --- | --- |
 | `message.received` 收到訊息 | 是 | `automation.worker.ts` |
-| `keyword.matched` 關鍵字命中 | 是 | `automation.worker.ts`，見[關鍵字回覆](#關鍵字回覆) |
+| `keyword.matched` 關鍵字命中 | 是 | 不經 queue：workers 處理 `message.received` 時比對，見[關鍵字回覆](#關鍵字回覆) |
 | `conversation.created` 新對話建立 | 是 | `automation.worker.ts` |
 | `case.created` 工單建立 | 是 | `automation.worker.ts` |
 | `case.escalated` 工單升級 | 是 | `automation.worker.ts` |
@@ -78,12 +84,12 @@
 | 動作 | workers 有實作 | 做什麼 |
 | --- | --- | --- |
 | `send_message` 傳送訊息 | 是 | 送一則文字到觸發的對話 |
-| `send_material` 傳送素材 | 是 | 送一則素材到觸發的對話。素材的渠道類型與對話不符時略過。建立或修改動作時，`materialId` 必須是同租戶、啟用中的素材，否則回 400。「關鍵字回覆」頁編輯時一律送出完整的動作，所以規則指向的素材停用後，要改選素材才能存；只切換啟用開關不受影響 |
+| `send_material` 傳送素材 | 是 | 送一則素材到觸發的對話。素材的渠道類型與對話不符時略過。編輯器從素材庫下拉挑選（顯示名稱與渠道）。建立或修改動作時，`materialId` 必須是同租戶、啟用中的素材，否則回 400。素材含 `{{coupon.url}}`（顧客專屬券連結）時也回 400：自動化規則不會發券，workers 會把沒代入的變數拿掉，顧客拿不到券；關鍵字回覆對話框與規則編輯器選到這種素材時會提醒。「關鍵字回覆」頁編輯時一律送出完整的動作，所以規則指向的素材停用或含券連結時，要改選素材才能存；只切換啟用開關不受影響 |
 | `add_tag` 加標籤 | 是 | 對觸發的聯絡人貼標，見下方說明 |
 | `assign_agent` 指派客服 | 是 | 指派工單給指定的成員 |
 | `update_case_status` 更新工單狀態 | 是 | 改工單狀態 |
 | `escalate_case`、`set_case_priority` | 是 | 改工單優先級 |
-| `notify` 通知負責人 | 是 | 通知工單負責人 |
+| `notify` 傳送通知 | 是 | 選填「通知誰」（`agentId`）。依序通知：指定的客服（同租戶、啟用中）、工單負責人、對話負責客服；都沒有時通知所有 `ADMIN` 與 `SUPERVISOR` |
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
 | `create_case` 建立工單 | 是（#211） | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
 | `remove_tag` 移除標籤 | 是（2026-10-05） | 刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立標籤 |
@@ -94,27 +100,43 @@
 
 **驗證錯誤訊息。** 契約驗證（`packages/automation/src/contracts/validation.ts`）的錯誤訊息一律中文，寫第幾個條件或動作，並用契約的中文名稱，例如「第 1 個動作「傳送訊息」不適用於「工單關閉」觸發」。條件依畫面順序編號，巢狀群組裡的條件連續計數。契約完全沒有的欄位或動作只有原始代碼，訊息會說明「不是系統提供的」，例如「第 2 個動作「auto_assign」不是系統提供的動作，請刪除」；編輯頁列為「未知動作（auto_assign）」。
 
-**`add_tag` 以名稱找標籤。** 規則存的是標籤名稱。workers 依名稱找標籤時不限 scope；找不到就用這個名稱建立一個新的標籤。因此標籤被改名或刪除後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。貼標後，workers 經由 Redis 的 `domain:event` 頻道把 `contact.tagged` 送回 API 行程，讓以貼標為觸發的規則接著執行。事件帶著來源 `automation`，用來避免無限迴圈。
+**下拉參數只收選項內的值**（#469）。「目標狀態」「優先級」「新優先級」「分類」等下拉參數有值時必須是契約的選項之一，否則存規則回 400，例如「第 1 個動作「更新工單狀態」的「目標狀態」不能是「FOO」，請從選項中選擇」；選填的下拉留空照常通過。API、CLI、MCP 都走同一個驗證。既有規則若存了選項外的值，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。負責人、通知對象（`agentId`）仍不檢查（AUTO-12）。「目標狀態」的選項是開啟、處理中、待處理、已升級、已解決、已關閉。
 
-**工單類動作繞過工單模組。** workers 直接更新 `Case` 的欄位，不經過 `case.service.ts`：
+**`add_tag` 以名稱找標籤。** 規則存的是標籤名稱。workers 依名稱找標籤時不限 scope；找不到就用這個名稱建立一個新的標籤。因此標籤被改名或刪除後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。貼標時，workers 在同一個交易把 `contact.tagged` 寫進 outbox，讓以貼標為觸發的規則接著執行。事件帶著來源 `automation`，自動化訂閱者據此略過，避免無限迴圈。
 
-- `update_case_status` 不檢查轉換是否合法，不寫時間軸，也不寫 `resolvedAt`、`closedAt`。由規則轉成 `RESOLVED` 的工單因此不會發送滿意度調查，因為 CSAT 排程以 `resolvedAt` 判斷。
+**工單類動作繞過工單模組。** workers 直接更新 `Case` 的欄位，不經過 `case.service.ts`。`update_case_status` 與工單模組共用 `packages/shared` 的規則，其餘動作沒有：
+
+- `update_case_status` 依工單的狀態轉換規則（`canTransition()`，#469），和客服手動改狀態一樣：例如「開啟」不能直接改成「已解決」。不合法（含不存在的狀態值）時不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫時間軸 `status_changed`（顯示「（自動化規則「<名稱>」）」），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox，內容與手動轉換相同（`caseStatusOutcomeEvent()`）；推播 `case.updated` 的 `source` 是 `automation`。`resolvedAt`、`closedAt` 用 `caseTransitionTimestamps()`（#417），由規則轉成 `RESOLVED` 的工單會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
 - `escalate_case` 只提高優先級，不把狀態改成 `ESCALATED`，也不發布 `case.escalated`。
 - `assign_agent` 只改 `assigneeId`，不發布 `case.assigned`，被指派的人不會收到通知。上下文沒有工單時略過，不會指派對話。
 
 ## 關鍵字回覆
 
-「LINE 關鍵字回覆」頁建立的是 `keyword.matched` 事件加上 `send_material` 動作的規則。關鍵字與比對模式存在 `trigger.keywords` 與 `trigger.match_mode`。
+「關鍵字回覆」頁（側欄「渠道 → 關鍵字回覆」，網址仍是 `/dashboard/line/keyword-replies`）建立的是 `keyword.matched` 事件加上「傳送素材」（`send_material`）、「發送優惠券」（`issue_coupon`）至少一個動作的規則。關鍵字與比對模式存在 `trigger.keywords` 與 `trigger.match_mode`。
 
-每則文字訊息進來時，`automation.worker.ts` 的 `checkKeywordTriggers()` 逐條檢查關鍵字規則：
+每條關鍵字回覆屬於一個渠道：LINE、Facebook 或 Instagram（change add-fb-ig-keyword-coupon，2026-10-27 起；之前只有 LINE）。
+
+- 渠道存成條件「對話渠道等於 X」（`conversation.channelType` 的 `equal`，值為 `LINE`、`FB`、`THREADS`），規則只在這個渠道的對話觸發，並對同一渠道類型的所有帳號生效（例如所有 LINE 官方帳號、所有粉專）。沒有「只對某個帳號」的設定。
+- 建立時選渠道；已有渠道條件的規則不能改渠道。在自動化規則編輯器建立、沒有渠道條件的規則，列表顯示「未限定渠道」，在這頁儲存時加上所選渠道的條件（預設為素材的渠道，沒有素材時為 LINE）。渠道條件不是上述單一寫法的規則（例如等於 `WEBCHAT`），這頁不能儲存，要到自動化規則編輯。
+- 素材選單只列所選渠道的素材。Instagram 沒有素材（素材庫只允許 `line`、`fb`），只能發券。規則原本的素材與渠道不符、已刪除或已停用且沒有改選時，這頁擋下儲存並說明原因，列表的素材欄也標示原因。
+- 列表有「渠道」欄與渠道篩選。切換啟用開關或儲存後，列表立即重新載入規則與規則明細（2026-10-27 之前只重新載入列表，要重新整理頁面才看得到新的啟用狀態）。
+- Facebook 與 Instagram 的入站訊息沒有回覆權杖，規則的回覆與發券訊息以一般傳送送出；顧客剛傳訊息，一定在 Meta 的 24 小時視窗內。顧客開啟票券時以 email 驗證碼驗證身分。
+
+每則文字訊息進來時，workers 評估 `message.received` 的 job，以 `matchKeywordTrigger()`（`packages/automation/src/keyword/keyword-match.ts`）逐條檢查啟用中的關鍵字規則：
 
 - 比對方式是**不分大小寫的子字串比對**。關鍵字「退貨」會命中「我想退貨」，也會命中「不退貨了」。
 - `match_mode` 為 `any`（預設）時，任一個關鍵字出現就命中；為 `all` 時，全部關鍵字都要出現。
-- 命中的每一條規則各發布一次 `keyword.matched`，事件帶著該規則的 ID。workers 收到後只執行這一條規則。因此一則訊息命中兩條規則，客人會收到兩則回覆。
+- 空白或不是字串的關鍵字不命中任何訊息。存檔時已經驗證關鍵字，這條規則只影響驗證之前的舊資料。
+- 命中的每一條規則，以 `keyword.matched` 為觸發事件執行一次，所以 LINE 照舊用 reply 回覆。因此一則訊息命中兩條規則，客人會收到兩則回覆。
+- 命中的每一條規則也發出一個 `keyword.matched` 事件，只給對外 Webhook。workers 以「`keyword_matched` + 入站訊息 id + 規則 id」認領，同一則訊息評估兩次也只發出一個。
 
-訊息會命中關鍵字規則時，機器人的 AI 與知識庫回覆會讓步，避免客人同時收到兩種回覆。
+AI 是否讓步的判斷也呼叫 `matchKeywordTrigger()`，所以兩邊對同一則訊息得出相同的命中結果。
 
-關鍵字回覆頁寫著兩條規則：只在機器人負責的對話觸發，以及同一個聯絡人對同一條規則每小時最多觸發三次。這兩條目前都沒有生效：`checkKeywordTriggers()` 對所有對話都執行，每小時的上限只寫在已刪除的 `action-executor.ts`，目前沒有任何程式實作。見 `../../system/AUDIT.md` 的 AUTO-04。
+訊息會命中關鍵字規則、而且規則能在這個渠道回覆時，機器人的 AI 與知識庫回覆會讓步，避免客人同時收到兩種回覆。能回覆是指規則有「傳送訊息」，或有素材渠道與對話相同的「傳送素材」，而且 workers 送得到這個渠道（`channel-plugins` 的 `AUTOMATION_DELIVERY_CHANNEL_TYPES`：LINE、FB、Instagram）。只加標籤、素材是別的渠道的規則，或網站聊天室的對話，不會讓 AI 讓步。規則的條件不成立、或規則不合契約（workers 會整條略過）時，也不會讓 AI 讓步；條件用與 workers 相同的 `buildAutomationFacts`（`@open333crm/automation`）評估。
+
+「傳送素材」的素材渠道與對話不同時，素材不送出，對話會多一則標示「沒有送出」的紀錄，說明素材與對話的渠道不同。
+
+關鍵字回覆不限對話狀態，也沒有次數上限。workers 對所有對話都比對：客人每傳一則含關鍵字的訊息就觸發一次，客服接手的對話也會自動回覆。關鍵字回覆頁的說明寫的就是這個行為。
 
 ## 試跑與紀錄
 
@@ -128,9 +150,8 @@
 
 | 路由 | 權限 |
 | --- | --- |
-| `GET /automation/rules`、`GET /rules/:id` | `automation.view` |
+| `GET /automation/rules`、`GET /rules/:id`、`POST /rules/:id/test`、`GET /automation/logs` | `automation.view` |
 | `POST`、`PATCH`、`DELETE /automation/rules` | `automation.manage` |
-| `POST /automation/rules/:id/test`、`GET /automation/logs` | 只驗登入 |
 
 關鍵字回覆頁呼叫的是同一組路由，因此管理關鍵字回覆也需要 `automation.manage`。側欄的「渠道」選單另外要求 `richmenu.manage` 才顯示。
 
@@ -139,8 +160,7 @@
 | 限制 | 說明 |
 | --- | --- |
 | **部分觸發事件永遠不會觸發** | 詳見 `../../system/AUDIT.md` 的 AUTO-05 |
-| **關鍵字回覆在 Instagram 私訊與網站聊天室送不出去** | 規則不限渠道，命中時機器人讓步，但 workers 沒有這兩種渠道的外掛，客人收不到任何回覆。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
-| **關鍵字回覆頁承諾的兩項保護沒有生效** | 客服接手後仍會自動回覆，也沒有頻率上限。詳見 `../../system/AUDIT.md` 的 AUTO-04 |
+| **關鍵字回覆在網站聊天室送不出去** | 規則不限渠道，但 workers 沒有網站聊天室的外掛，規則的回覆送不出去（收件匣有失敗紀錄）。機器人不會因此讓步，訪客仍收到 AI 回覆。Instagram 私訊已可回覆。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
 | 執行紀錄與執行次數停止更新 | 詳見 `../../system/AUDIT.md` 的 AUTO-02 |
 | `add_tag` 不限 scope，會重建已刪除的標籤 | 詳見 `../../system/AUDIT.md` 的 AUTO-03 |
 | 「通知主管」看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |

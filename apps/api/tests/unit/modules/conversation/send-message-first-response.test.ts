@@ -1,6 +1,7 @@
 /** 記錄工單首次回應失敗時，客服訊息仍照常送出（AUDIT SLA-01） */
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 const markCalls: unknown[][] = [];
 vi.mock('#src/modules/case/case.service.js', () => ({
@@ -15,6 +16,7 @@ test('markCaseFirstResponse 出錯：sendMessage 不中斷，照常推播訊息'
   const emitted: string[] = [];
   const io = { to: () => ({ emit: (event: string) => emitted.push(event) }) } as never;
   const prisma = {
+    ...disabledAiPrivacy,
     conversation: {
       findFirst: async () => ({ id: 'c1', tenantId: 't1', channelId: 'ch1', caseId: 'case1' }),
       update: async () => ({}),

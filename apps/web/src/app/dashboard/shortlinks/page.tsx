@@ -35,8 +35,12 @@ function LinkList() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('確定刪除此短連結？')) return;
+  const handleDelete = async (id: string, isMaterialLink: boolean) => {
+    // 素材短連結是廣播自動建立的，已經發給客人的訊息裡用的就是它
+    const message = isMaterialLink
+      ? '這是廣播自動建立的素材連結，已經發給客人的訊息裡用的就是這個網址。刪除後，客人點開會看到「連結已失效」，點擊紀錄也會一併刪除。確定刪除？'
+      : '確定刪除此短連結？';
+    if (!confirm(message)) return;
     try {
       await api.delete(`/shortlinks/${id}`);
       mutate();
@@ -74,13 +78,20 @@ function LinkList() {
             const isActive = Boolean(l.isActive) && !isExpired;
             const slug = l.slug as string;
             const targetUrl = l.targetUrl as string;
+            // 廣播自動建立的素材連結：標示來源，刪除前警告（M14，取自 main）
+            const isMaterialLink = Boolean(l.materialId);
             return (
               <div
                 key={l.id as string}
                 role="row"
                 className={`${COLS} min-h-20 border-b border-border bg-background py-5 text-sm font-medium leading-5 text-muted-foreground transition-colors last:border-b-0 hover:bg-shell`}
               >
-                <span role="cell" className="truncate">{(l.title as string) || '-'}</span>
+                <span role="cell" className="min-w-0">
+                  <span className="block truncate">{(l.title as string) || (isMaterialLink ? '' : '-')}</span>
+                  {isMaterialLink && (
+                    <span className="block text-xs font-normal text-muted-foreground">素材連結（廣播自動建立）</span>
+                  )}
+                </span>
                 <span role="cell">
                   <span className="inline-flex items-center rounded-lg border border-border bg-muted px-[9px] py-px font-mono text-[10px] leading-[15px] text-muted-foreground">
                     /s/{slug}
@@ -130,7 +141,7 @@ function LinkList() {
                   <IconAction label="編輯" onClick={() => router.push(`/dashboard/shortlinks/links/${l.id as string}/edit`)}>
                     <OpenInNewIcon className="h-5 w-5" />
                   </IconAction>
-                  <IconAction label="刪除" onClick={() => handleDelete(l.id as string)} className="text-destructive">
+                  <IconAction label="刪除" onClick={() => handleDelete(l.id as string, isMaterialLink)} className="text-destructive">
                     <DeleteIcon className="h-5 w-5" />
                   </IconAction>
                 </span>

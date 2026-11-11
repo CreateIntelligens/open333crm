@@ -59,7 +59,14 @@ SLA warning, breach, and customer-waiting outcomes detected by the standalone wo
 - **THEN** it publishes a `case.updated` socket payload via the Redis `socket:emit` bridge to the tenant room
 
 ### Requirement: Worker SLA Event Distribution
-The standalone SLA worker SHALL be responsible for converting scan outcomes into package-defined SLA-only events. For each detected first-response warning/breach, resolution warning/breach, or customer-waiting breach, the worker SHALL build facts, evaluate matching automation rules, persist required CaseEvents, and dispatch side effects through worker-safe queues or Redis socket bridge messages. The worker SHALL NOT emit raw upstream service events such as `message.received` or perform LLM sentiment analysis.
+The standalone SLA worker SHALL be responsible for converting scan outcomes into package-defined SLA-only events. The worker SHALL NOT emit raw upstream service events such as `message.received` or perform LLM sentiment analysis.
+
+#### Scenario: API does not distribute worker SLA event
+- **WHEN** the worker dispatches an SLA scan outcome
+- **THEN** it does not depend on API `eventBus` subscribers to distribute the event
+
+### Requirement: Worker SLA Event Dispatch
+For each detected first-response warning/breach, resolution warning/breach, or customer-waiting breach, the standalone SLA worker SHALL build facts, evaluate matching automation rules, persist required CaseEvents, and dispatch side effects through worker-safe queues or Redis socket bridge messages.
 
 #### Scenario: Worker dispatches warning event
 - **WHEN** the SLA scan detects a Case in warning state
@@ -72,10 +79,6 @@ The standalone SLA worker SHALL be responsible for converting scan outcomes into
 #### Scenario: Worker dispatches customer waiting event
 - **WHEN** the SLA scan detects a customer-waiting breach
 - **THEN** the worker dispatches `sla.customer_waiting.breached` with facts that can be evaluated by automation rules and notification dispatch
-
-#### Scenario: API does not distribute worker SLA event
-- **WHEN** the worker dispatches an SLA scan outcome
-- **THEN** it does not depend on API `eventBus` subscribers to distribute the event
 
 ---
 
@@ -114,15 +117,22 @@ The automation worker SHALL consume jobs from the `automation` queue. Each job p
 ---
 
 ### Requirement: Notification Job Consumer
-The `apps/workers` notification worker SHALL be the **sole** processor responsible for persisting notification records and delivering socket events for all notification types. The `apps/api` event-bus worker (`notification.worker.ts`) SHALL only enqueue BullMQ jobs onto the `notification` queue and SHALL NOT directly write to the database or emit socket events. Each job payload SHALL include the notification type, recipient identifiers, and relevant entity context. The handler SHALL create a notification record in the database via the standalone `PrismaClient` and publish a `socket:emit` message to Redis pub/sub so the API can forward the event to the appropriate Socket.IO room.
+The `apps/workers` notification worker SHALL be the **sole** processor responsible for persisting notification records and delivering socket events for all notification types. The `apps/api` event-bus worker (`notification.worker.ts`) SHALL only enqueue BullMQ jobs onto the `notification` queue and SHALL NOT directly write to the database or emit socket events.
 
 #### Scenario: Notification enqueued from API event bus
 - **WHEN** a domain event (e.g., `case.assigned`, `message.received`) is received by the API event-bus worker
 - **THEN** a BullMQ job is added to the `notification` queue with the full notification payload, and no direct DB write or socket emit occurs in the API process
 
+#### Scenario: Redis unavailable at enqueue time
+- **WHEN** the API notification subscriber attempts to enqueue a notification job and the Redis connection is unavailable
+- **THEN** the `notificationQueue.add` call throws, the subscriber job for the event fails, and BullMQ retries that subscriber job; the error is not caught only to be logged
+
+### Requirement: Notification Job Handling
+Each `notification` job payload SHALL include the notification type, recipient identifiers, and relevant entity context. The notification job handler SHALL first look up the recipient agent by `tenantId`. When the recipient exists and is active, the handler SHALL create a notification record in the database via the standalone `PrismaClient` and publish a `socket:emit` message to Redis pub/sub so the API can forward the event to the appropriate Socket.IO room. When the recipient no longer exists or is inactive, the handler SHALL skip the notification, write an info log, and complete the job without throwing.
+
 #### Scenario: Notification job consumed by worker
-- **WHEN** the `notificationWorker` in `apps/workers` dequeues a `notification:dispatch` job
-- **THEN** it writes a single `notification` record to the database and emits the `notification.new` socket event via Redis pub/sub exactly once
+- **WHEN** the `notificationWorker` in `apps/workers` dequeues a `notification:dispatch` job for an active recipient and both the DB write and the Redis publish succeed
+- **THEN** it writes one `notification` record to the database, emits the `notification.new` socket event via Redis pub/sub, and the job completes
 
 #### Scenario: Database write succeeds but Redis publish fails
 - **WHEN** the notification DB write succeeds but Redis pub/sub publish throws
@@ -132,11 +142,13 @@ The `apps/workers` notification worker SHALL be the **sole** processor responsib
 - **WHEN** the notification DB write throws
 - **THEN** the job fails and BullMQ retries according to the queue's retry policy; no Redis publish is attempted
 
-#### Scenario: Redis unavailable at enqueue time
-- **WHEN** the API event-bus worker attempts to enqueue a notification job and the Redis connection is unavailable
-- **THEN** the `notificationQueue.add` call throws, the error is caught and logged, and no duplicate processing occurs
+#### Scenario: 收件成員已被永久刪除
+- **WHEN** worker 處理 `notification:dispatch` job，job 的 `agentId` 在該租戶已查不到成員
+- **THEN** 不寫入通知、不推播 `notification.new`，寫一筆 info log，job 正常完成（不丟錯、不重試）
 
----
+#### Scenario: 收件成員已停用
+- **WHEN** worker 處理 `notification:dispatch` job，收件成員的 `isActive` 為 `false`
+- **THEN** 不寫入通知、不推播 `notification.new`，寫一筆 info log，job 正常完成
 
 ### Requirement: Redis Pub/Sub Socket Bridge
 When a standalone worker needs to emit a WebSocket event to connected clients, it SHALL publish a JSON payload to the Redis pub/sub channel `socket:emit`. The payload SHALL conform to `{ room: string; event: string; data: unknown }`. The API process SHALL maintain a Redis subscriber on the `socket:emit` channel and, upon receiving a message, forward it to the matching Socket.IO room using `io.to(room).emit(event, data)`.
@@ -156,8 +168,13 @@ When a standalone worker needs to emit a WebSocket event to connected clients, i
 ---
 
 ### Requirement: Socket Event Routing Decision Rule
-When implementing any feature that needs to emit a socket event to the frontend, the implementor SHALL select the correct emission path based on the following criteria.
+When implementing any feature that needs to emit a socket event to the frontend, the implementor SHALL select Path A or Path B by the criteria below. Path B delivers the event through `eventBus.publish` → BullMQ job → `apps/workers` → Redis pub/sub emit. Implementors SHALL NOT use Path A for notifications whose recipient list is determined dynamically at emit time. Implementors SHALL NOT use Path B when the socket event is an immediate, latency-sensitive consequence of a user action.
 
+#### Scenario: Case assigned notification to agent
+- **WHEN** a case is assigned to an agent
+- **THEN** the notification to the assigned agent SHALL be dispatched via Path B (eventBus → BullMQ → workers) because it involves writing a `Notification` record and potentially querying supervisor IDs, which must not block the assignment HTTP response
+
+### Requirement: Socket Path A: API Process Direct Emit
 **Path A — API process direct emit** (`fastify.io.to(room).emit(event, data)`)
 SHALL be used when ALL of the following are true:
 - The socket event is the primary real-time consequence of the current HTTP request
@@ -165,23 +182,89 @@ SHALL be used when ALL of the following are true:
 - The target room is known without any additional database queries
 - The emit must occur before the HTTP response is returned to the caller
 
-**Path B — Async queue** (`eventBus.publish` → BullMQ job → `apps/workers` → Redis pub/sub emit)
+#### Scenario: New inbound message notification
+- **WHEN** a new inbound message is received via webhook and saved to the database
+- **THEN** the `message.new` socket event SHALL be emitted via Path A (direct `fastify.io.to(room).emit`) because the target conversation room is already known and the emit is the primary real-time update for the request
+
+### Requirement: Socket Path B: Async Queue
+**Path B — Async queue**
 SHALL be used when ANY of the following is true:
 - Determining the set of recipients requires additional database queries (e.g., look up all supervisors or admins in a tenant)
 - The notification is a side-effect that must not block or delay the HTTP response
 - The triggering event originates from a background job (SLA poll, automation rule, broadcast scheduler)
 - Multiple recipients with role-based or assignment-based targeting are involved
 
-Implementors SHALL NOT use Path A for notifications whose recipient list is determined dynamically at emit time. Implementors SHALL NOT use Path B when the socket event is an immediate, latency-sensitive consequence of a user action.
-
-#### Scenario: New inbound message notification
-- **WHEN** a new inbound message is received via webhook and saved to the database
-- **THEN** the `message.new` socket event SHALL be emitted via Path A (direct `fastify.io.to(room).emit`) because the target conversation room is already known and the emit is the primary real-time update for the request
-
-#### Scenario: Case assigned notification to agent
-- **WHEN** a case is assigned to an agent
-- **THEN** the notification to the assigned agent SHALL be dispatched via Path B (eventBus → BullMQ → workers) because it involves writing a `Notification` record and potentially querying supervisor IDs, which must not block the assignment HTTP response
-
 #### Scenario: SLA breach notification
 - **WHEN** the SLA poll detects a breached case
 - **THEN** the `sla.breached` event and the associated `notification.new` events SHALL be dispatched via Path B because the trigger originates from a background job in `apps/workers`, which has no access to the API's Socket.IO instance
+
+### Requirement: SLA Outcome Recorded Once Per Deadline
+The SLA worker SHALL record each SLA outcome of a Case at most once per deadline. It SHALL skip an outcome when a CaseEvent of the same type has a `createdAt` at or after the deadline (`Case.createdAt` plus `firstResponseMinutes`, or `Case.slaDueAt`) for a breach, at or after the deadline minus `warningBeforeMinutes` for a warning, and after the `createdAt` of the last agent reply for a customer-waiting breach. A skipped outcome SHALL enqueue no notification.
+
+#### Scenario: Breached case is scanned again on a later day
+- **WHEN** a Case passed its resolution deadline, the worker already recorded a `sla_breached` CaseEvent after the deadline, and the worker scans the Case again more than 24 hours later
+- **THEN** the worker creates no new `sla_breached` CaseEvent and enqueues no notification for the Case
+
+#### Scenario: Resolution deadline changes after a breach
+- **WHEN** the only `sla_breached` CaseEvent of a Case was created before the current resolution deadline, and the current deadline has passed
+- **THEN** the worker creates one new `sla_breached` CaseEvent and enqueues its notifications
+
+#### Scenario: Customer keeps waiting after an agent reply
+- **WHEN** a `customer_waiting_breached` CaseEvent exists from before the last agent reply, and the customer has since sent three messages without an agent reply
+- **THEN** the worker creates one new `customer_waiting_breached` CaseEvent
+
+### Requirement: 同一個事件不重複建立站內通知
+
+通知訂閱者為一個事件送出 `notification:dispatch` job 時，job 的 id MUST 由事件 id 與收件客服人員的 id 組成。同一個事件處理兩次時，同一位客服人員 MUST 只收到一則站內通知。
+
+#### Scenario: 同一個事件處理兩次
+
+- **WHEN** `case.assigned` 事件 E 的通知訂閱者 job 執行兩次，收件人是客服人員 X
+- **THEN** X MUST 只有一則 E 產生的站內通知
+
+#### Scenario: 同一個事件通知多位客服人員
+
+- **WHEN** 未指派對話的 `message.received` 事件 E 要通知主管 A 與管理員 B
+- **THEN** A 與 B MUST 各收到一則站內通知
+
+### Requirement: Notification Job Retry
+Every producer of the `notification` queue SHALL add jobs with 3 attempts and exponential backoff starting at 5 seconds. Notification delivery is at least once: when the worker process stops after the record is written and before BullMQ marks the job completed, BullMQ runs the job again and the agent receives a second identical notification. The system accepts this duplicate.
+
+#### Scenario: Database write keeps failing
+- **WHEN** the notification DB write throws on all 3 attempts of a `notification:dispatch` job
+- **THEN** the job moves to the failed set after the third attempt
+
+#### Scenario: Both producers set the retry policy
+- **WHEN** the API notification subscriber or a worker handler (for example the SLA poll) adds a `notification:dispatch` job
+- **THEN** the job has 3 attempts and exponential backoff starting at 5 seconds
+
+#### Scenario: Worker stops after the record is written
+- **WHEN** the worker process stops after writing the notification record and before the job is marked completed
+- **THEN** BullMQ runs the job again and the agent has two identical notifications
+
+### Requirement: 站內通知只寫給仍啟用的成員
+API 行程直接寫入站內通知的路徑（`createAndDispatch`：CSAT 低分、權杖失效；序號明細背景匯出的完成與失敗通知）SHALL 在寫入前以 `tenantId` 查收件成員。成員已被永久刪除或已停用時，SHALL NOT 寫入通知或推播 `notification.new`，SHALL 寫 info log，且 SHALL NOT 丟錯。成員重新啟用後，系統 SHALL NOT 補送停用期間略過的通知。
+
+#### Scenario: createAndDispatch 的收件成員已被永久刪除
+- **WHEN** 以已被永久刪除的成員 ID 呼叫 `createAndDispatch`
+- **THEN** 呼叫正常結束、回傳 `null`，資料庫沒有新的通知，`agent:<成員 ID>` 房間沒有推播
+
+#### Scenario: createAndDispatch 的收件成員已停用
+- **WHEN** 以 `isActive` 為 `false` 的成員 ID 呼叫 `createAndDispatch`
+- **THEN** 呼叫正常結束、回傳 `null`，資料庫沒有寫給他的通知，也沒有推播
+
+#### Scenario: createAndDispatch 的收件成員啟用中
+- **WHEN** 以啟用中的成員 ID 呼叫 `createAndDispatch`
+- **THEN** 資料庫寫入一則通知，`agent:<成員 ID>` 房間收到 `notification.new`
+
+#### Scenario: 序號明細匯出者已停用
+- **WHEN** 背景匯出完成時，匯出者已停用
+- **THEN** 不寫入 `coupon_export_ready` 通知、不推播，呼叫正常結束
+
+#### Scenario: 序號明細匯出者已被永久刪除
+- **WHEN** 背景匯出完成時，匯出者已被永久刪除
+- **THEN** 不寫入通知、不推播，呼叫正常結束
+
+#### Scenario: 重新啟用後不補送
+- **WHEN** 成員停用期間有一則通知被略過，之後成員重新啟用
+- **THEN** 那則通知不會出現在他的通知列表

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const WIKI_BASE_URL = 'https://wiki.david888.com';
 const MAX_MARKDOWN = 100_000;

@@ -24,11 +24,11 @@ PostgreSQL 16 是主資料庫。專案啟用 pgvector 與 pgcrypto，並使用 P
 
 | 用途 | 生產者 | 消費者或讀取者 |
 | --- | --- | --- |
-| BullMQ | API | Workers |
+| BullMQ | API、Workers | Workers；業務事件的訂閱者佇列與 API 排程由 API 消費 |
 | `socket:emit` pub/sub | Workers | API 的 Socket plugin |
 | 快取 | API | API |
 
-另有 `domain:event` 頻道供跨程序領域事件使用。Workers 將 BullMQ 與 pub/sub 分成兩條連線，避免混用不同的連線要求。
+Workers 將 BullMQ 與 pub/sub 分成兩條連線，避免混用不同的連線要求。業務事件的佇列與送達保證，見[事件與背景工作](../modules/EVENTS.md)。
 
 ## MinIO
 
@@ -37,7 +37,7 @@ MinIO 提供 S3 相容物件儲存。目前存在兩套儲存抽象：
 | 項目 | `packages/core/src/storage` | `apps/api/src/modules/storage` |
 | --- | --- | --- |
 | SDK | `minio` | S3 SDK |
-| 環境變數 | `MINIO_*` | `S3_*` |
+| 環境變數 | `S3_*`（有 `MINIO_ENDPOINT` 時優先用 `MINIO_*`，見 `resolveMinioConfig()`） | `S3_*` |
 | Bucket 模型 | 呼叫時傳入 bucket | 單一 bucket，以 tenant key 分區 |
 | 主要使用者 | Workers 的匯出與刪除工作 | API 的 Storage 與 LINE Imagemap |
 
@@ -65,6 +65,19 @@ Chat 有 Ollama 與 Gemini 兩個 provider。Embedding 沒有 provider 可選，
 | Telegram | `api.telegram.org` | 否 |
 
 每個租戶各自設定渠道憑證。系統以 `CREDENTIAL_ENCRYPTION_KEY` 進行 AES-256-GCM 加密，再寫入 `channels.credentialsEncrypted`。
+
+## WebTalk 協作工具列
+
+後台的 WebTalk 是外部 SDK，由瀏覽器直接連線，API 不代理：
+
+| 用途 | 外部網域 | 設定 |
+| --- | --- | --- |
+| SDK script | `WEBTALK_SDK_URL`（目前為 `webtalk-nine.vercel.app`） | `.env.api` |
+| 信令（WebRTC 配對） | `0.artico.dev`（SDK 內建，不可設定） | 無 |
+| STUN | `stun.l.google.com`、`stun1.l.google.com` | 無 |
+| AI 摘要（租戶開啟時） | `WEBTALK_AI_ENDPOINT` | `.env.api` |
+
+`WEBTALK_ROOM_SECRET` 或 `WEBTALK_SDK_URL` 沒有設定時，所有租戶都不載入 WebTalk。房間隔離與殘餘風險見[其他設定](../features/tenant/SETTINGS.md#webtalk-協作)。
 
 ## Webhook 方向
 

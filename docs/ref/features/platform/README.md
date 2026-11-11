@@ -21,6 +21,7 @@
 | [試用管理](./TRIALS.md) | 試用 | 試用的生命週期是什麼？誰能延長？清單上的狀態怎麼判定？ |
 | [用量統計](./USAGE.md) | 用量 | 每個端點回傳什麼？成本怎麼算？哪些呼叫不計入？為什麼跟額度的數字對不起來？ |
 | [平台設定與權限註冊表](./SETTINGS.md) | 設定 | 設定存在哪裡？寫錯型別會怎樣？`/registry` 回傳什麼？ |
+| [佇列監控](./QUEUE-MONITORING.md) | 背景工作 | 怎麼查看失敗的工作？誰能開啟監控畫面？重送會不會重複執行副作用？什麼時候發出告警？ |
 
 模組屬於哪個後台、掛在哪個路由前綴、對應哪個 `/admin` 頁面，見[模組總覽](../../modules/OVERVIEW.md)的平台後台一節。
 
@@ -58,7 +59,7 @@
 
 | 快取 | 失效函式 | 位置 | 存活時間 |
 | --- | --- | --- | --- |
-| 權限天花板快取 | `invalidatePlanPermissions(prisma, planId)` | `services/permission.service.ts` | Redis，600 秒 |
+| 權限天花板快取 | `invalidatePlanPermissions(redis, planId)` | `services/permission.service.ts` | Redis，600 秒 |
 | 租戶方案快取 | `invalidateTenantPlan(tenantId)` | `services/tenant-plan.cache.ts` | 行程內，60 秒 |
 | AI 額度計數器 | `clearTokenQuotaCache(tenantId)` | `modules/trial/token-quota.service.ts` | Redis，key 帶年月，月底過期 |
 | 額度告警旗標 | `clearQuotaAlertFlags(tenantId)` | `modules/trial/token-quota.service.ts` | Redis，key 帶年月與門檻，月底過期 |
@@ -106,7 +107,7 @@
 | `plans` | 方案。`slug` 唯一，`isActive` 是 `false` 代表停售軟下架 |
 | `model_pricings` | LLM 單價，含分級費率與生效日期 |
 | `trial_signups` | 試用申請。`emailNormalized` 唯一，用來擋 Gmail 別名重複申請 |
-| `tenants` | 租戶。`planId`、`limitOverrides`、`trialEndsAt`、`purgedAt`、合約起訖日 |
+| `tenants` | 租戶。`planId`、`limitOverrides`、`trialEndsAt`、`purgedAt`、合約起訖日、`contractRemindersSent`（合約到期提醒已寄檔位） |
 
 `plan_change_requests` 有 `tenantId`，屬於租戶表，有 RLS。
 
@@ -115,7 +116,6 @@
 | 限制 | 說明 |
 | --- | --- |
 | **方案的停售沒有生效** | `Plan.isActive` 沒有任何讀取端，設為停售之後仍可被指派給租戶。詳見 `../../system/AUDIT.md` 的 PLAN-01 |
-| **加購 token 是永久提高每月額度** | `token_topup` 核准後改寫 `limitOverrides.monthlyTokens`，兩邊介面都只寫「加購 Token」。詳見 `../../system/AUDIT.md` 的 PLAN-02 |
 | **登入與密碼重設沒有稽核紀錄** | `POST /auth/login`、`/auth/forgot-password`、`/auth/reset-password` 與 `/trial-signups/:id/resend` 沒有呼叫 `writePlatformAudit()`，對應的服務內部也沒有寫。詳見 `../../system/AUDIT.md` 的 SEC-02 |
 | **rate-limit 綁在路由 scope 內** | `@fastify/rate-limit` 在整個 API 只註冊一次，而且註冊在 `platformRoutes()` 函式內部。拆分 `platform.routes.ts` 之前必讀 `../../system/AUDIT.md` 的 SEC-03 |
 | 沒有任何測試 | `apps/api/tests/` 沒有檔案涵蓋這個模組。所有路由與服務都沒有回歸保護，CI 也沒有執行測試，見 `../../system/AUDIT.md` 的 CI-01 |

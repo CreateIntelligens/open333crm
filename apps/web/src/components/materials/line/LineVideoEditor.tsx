@@ -20,7 +20,7 @@ import { CompactImageField } from '../CompactImageField';
 // ActionConfigEditor 目前未使用（結束畫面 UI 已移除），但 ActionConfig 型別
 // 仍為 endCard 所需，故只保留型別匯入。
 import type { ActionConfig } from './ActionConfigEditor';
-import { LINE_VIDEO_PREVIEW_MAX_BYTES } from '@open333crm/shared';
+import { LINE_VIDEO_MAX_BYTES, LINE_VIDEO_PREVIEW_MAX_BYTES } from '@open333crm/shared';
 import { CompactVideoField } from '../CompactVideoField';
 
 export interface LineVideoBody {
@@ -57,6 +57,9 @@ export function LineVideoEditor({ body, onChange }: Props) {
         <CompactVideoField
           value={body.videoUrl ?? ''}
           onChange={(videoUrl) => onChange({ ...body, videoUrl })}
+          // 超過一般上傳的 25MB，走直傳才能用到 LINE 的 200MB
+          uploadPurpose="line-video"
+          maxBytes={LINE_VIDEO_MAX_BYTES}
         />
       </div>
 

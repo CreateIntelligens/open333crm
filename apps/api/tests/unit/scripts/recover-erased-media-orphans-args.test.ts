@@ -1,0 +1,54 @@
+/**
+ * scripts/recover-erased-media-orphans.mjs 的參數解析（issue #474）。MinIO 連線設定由 core 的 resolveMinioConfig 處理，測試在 packages/core。資料庫與物件儲存的行為在
+ * tests/feature/scripts/recover-erased-media-orphans.test.ts。
+ */
+import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { beforeAll, test } from 'vitest';
+import { repoRoot } from '#tests/support/paths.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let parseArgs: (argv: string[]) => any;
+
+beforeAll(async () => {
+  ({ parseArgs } = await import(
+    pathToFileURL(resolve(repoRoot, 'scripts/recover-erased-media-orphans.mjs')).href
+  ));
+});
+
+const TENANT = 'a0000000-0000-0000-0000-000000000001';
+
+test('預設 dry-run、所有租戶、輸出到目前目錄', () => {
+  const opts = parseArgs([]);
+  assert.equal(opts.apply, false);
+  assert.deepEqual(opts.tenants, []);
+  assert.equal(opts.expectObjects, null);
+  assert.equal(opts.outDir, process.cwd());
+});
+
+test('--tenant 可重複，轉成小寫；不是 UUID 時拒絕', () => {
+  assert.deepEqual(parseArgs(['--tenant', TENANT.toUpperCase(), `--tenant=${TENANT}`]).tenants, [TENANT, TENANT]);
+  assert.throws(() => parseArgs(['--tenant', 'demo']), /UUID/);
+});
+
+test('--apply 沒有帶 --expect-objects 時拒絕', () => {
+  assert.throws(() => parseArgs(['--apply']), /--expect-objects/);
+  const opts = parseArgs(['--apply', '--expect-objects', '12', '--out-dir', '/tmp']);
+  assert.equal(opts.apply, true);
+  assert.equal(opts.expectObjects, 12);
+  assert.equal(opts.outDir, '/tmp');
+});
+
+test('--expect-objects 要是整數；不認得的參數拒絕', () => {
+  assert.throws(() => parseArgs(['--expect-objects', '-1']), /整數/);
+  assert.throws(() => parseArgs(['--expect-objects', 'abc']), /整數/);
+  assert.throws(() => parseArgs(['--cutoff', 'x']), /不認得的參數/);
+});
+
+test('--apply 不接受值：--apply=false、--apply=true 都拒絕，避免以為是預覽卻真的刪除', () => {
+  for (const arg of ['--apply=false', '--apply=true']) {
+    assert.throws(() => parseArgs([arg, '--expect-objects', '1']), /--apply 不接受值/);
+  }
+  assert.equal(parseArgs(['--apply', '--expect-objects', '1']).apply, true);
+});

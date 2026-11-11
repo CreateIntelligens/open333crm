@@ -1,0 +1,186 @@
+/**
+ * 通知訂閱者的 job id（change outbox-event-delivery：standalone-worker-runtime「同一個事件不重複建立站內通知」、
+ * usage-quota-alerts「事件重送時不重複寄出告警信」）。
+ *
+ * 佇列換成記錄 add() 的假實作。BullMQ 以 job id 擋住重複的 job（見 tests/feature/lib/outbox-dedupe.test.ts），
+ * 所以這裡斷言同一個事件處理兩次時，job id 相同。
+ */
+process.env.DATABASE_URL ||= 'postgresql://user:pass@localhost:5432/open333crm';
+process.env.REDIS_URL ||= 'redis://localhost:6379';
+process.env.JWT_SECRET ||= 'test-notification-worker-jwt-secret';
+process.env.CREDENTIAL_ENCRYPTION_KEY ||= 'test-credential-encryption-key-32-bytes!!';
+process.env.WEB_BASE_URL = 'https://crm.example';
+
+import assert from 'node:assert/strict';
+import { beforeEach, test, vi } from 'vitest';
+
+const sent = vi.hoisted(() => ({
+  jobs: [] as Array<{ queue: string; name: string; data: Record<string, unknown>; opts?: Record<string, unknown> }>,
+  emails: [] as string[],
+  redisDown: false,
+}));
+vi.mock('bullmq', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('bullmq')>()),
+  Queue: class {
+    constructor(private readonly queueName: string) {}
+    async add(name: string, data: Record<string, unknown>, opts?: Record<string, unknown>) {
+      if (sent.redisDown) throw new Error('redis down');
+      sent.jobs.push({ queue: this.queueName, name, data, opts });
+    }
+  },
+}));
+vi.mock('#src/modules/email/email.service.js', () => ({
+  sendEmail: async (input: { to: string }) => {
+    sent.emails.push(input.to);
+  },
+}));
+
+import { EVENT_NOTIFICATION_QUEUE, subscriberQueuesOf, USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
+import { loadEnvConfig } from '#src/config/env.js';
+import { setupNotificationWorker } from '#src/modules/notification/notification.worker.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
+
+loadEnvConfig();
+
+const TENANT = '11111111-1111-4111-8111-111111111111';
+const EVENT = '22222222-2222-4222-8222-222222222222';
+
+const handle = setupNotificationWorker({
+  agent: {
+    findMany: async ({ where }: { where: { role: unknown } }) =>
+      JSON.stringify(where.role).includes('SUPERVISOR')
+        ? [{ id: 'supervisor-a' }, { id: 'admin-b' }]
+        : [{ id: 'admin-b', email: 'b@example.com' }],
+  },
+  tenant: { findUnique: async () => ({ name: '測試站台' }) },
+  conversation: {
+    findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '客人' } }),
+  },
+} as never, { visibility: async () => ALL_CHANNELS });
+
+beforeEach(() => {
+  sent.jobs = [];
+  sent.emails = [];
+  sent.redisDown = false;
+});
+
+function event(name: string, payload: Record<string, unknown>) {
+  return { id: EVENT, name: name as never, tenantId: TENANT, timestamp: new Date(), payload };
+}
+
+test('同一個事件處理兩次：兩次的 notification:dispatch job id 都是 <事件 id>__<客服人員 id>', async () => {
+  const e = event('case.assigned', { caseId: 'case-1', assigneeId: 'agent-x', title: 'T' });
+  await handle(e);
+  await handle(e);
+  const ids = sent.jobs.filter((j) => j.name === 'notification:dispatch').map((j) => j.opts?.jobId);
+  assert.deepEqual(ids, [`${EVENT}__agent-x`, `${EVENT}__agent-x`]);
+});
+
+test('同一個事件通知多位客服人員：每位客服人員各一個 job id', async () => {
+  await handle(event('message.received', { conversationId: 'conv-1' }));
+  const ids = sent.jobs.filter((j) => j.name === 'notification:dispatch').map((j) => j.opts?.jobId);
+  assert.deepEqual(ids, [`${EVENT}__supervisor-a`, `${EVENT}__admin-b`]);
+});
+
+test('告警事件處理兩次：告警信改走 usage-alert-email 佇列，兩次的 job id 都是 <事件 id>__<管理員 id>，訂閱者不直接寄信', async () => {
+  const e = event('usage.quota.threshold', { level: 'warning', usedTokens: 800, limitTokens: 1000, monthKey: '2026-10' });
+  await handle(e);
+  await handle(e);
+  const emailJobs = sent.jobs.filter((j) => j.queue === USAGE_ALERT_EMAIL_QUEUE);
+  assert.deepEqual(emailJobs.map((j) => j.opts?.jobId), [`${EVENT}__admin-b`, `${EVENT}__admin-b`]);
+  assert.deepEqual(sent.emails, []);
+});
+
+test('Redis unavailable at enqueue time（Subscriber cannot enqueue the next job）：送不出通知或告警信的 job 時處理失敗，由 BullMQ 重試', async () => {
+  sent.redisDown = true;
+  await assert.rejects(handle(event('case.assigned', { caseId: 'case-1', assigneeId: 'agent-x', title: 'T' })), /redis down/);
+  await assert.rejects(handle(event('message.received', { conversationId: 'conv-1', contactId: 'contact-1' })), /redis down/);
+});
+
+test('未指派的對話轉接：conversation.handoff 送進通知訂閱者，通知主管與管理員，內容寫轉接原因', async () => {
+  // outbox 依名稱決定送給哪些訂閱者：沒有列入通知訂閱者時，事件只到 webhook，客服收不到（#419）
+  assert.ok(subscriberQueuesOf('conversation.handoff').includes(EVENT_NOTIFICATION_QUEUE));
+
+  await handle(event('conversation.handoff', { conversationId: 'conv-1', reason: '知識庫找不到可回答的內容，追問次數已達上限（2/2）' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__supervisor-a`, `${EVENT}__admin-b`]);
+  assert.equal(jobs[0].data.type, 'conversation_handoff');
+  assert.equal(jobs[0].data.clickUrl, '/dashboard/inbox?conv=conv-1');
+  assert.match(String(jobs[0].data.body), /客人/);
+  assert.match(String(jobs[0].data.body), /追問次數已達上限/);
+});
+
+test('已指派的對話轉接：只通知負責的客服', async () => {
+  const assignedHandle = setupNotificationWorker({
+    agent: {
+      findMany: async () => [{ id: 'supervisor-a' }, { id: 'admin-b' }],
+      findFirst: async () => ({ id: 'agent-x' }),
+    },
+    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', channelId: 'ch-a', contact: { displayName: '客人' } }) },
+  } as never, { visibility: async () => ALL_CHANNELS });
+  await assignedHandle(event('conversation.handoff', { conversationId: 'conv-1', reason: 'AI 月額度已用完，無法自動回覆' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__agent-x`]);
+});
+
+// 分店主管只看得到渠道 ch-b：未指派對話的通知只發給看得到該渠道的主管與管理員（PR #440 審查，RBAC-04 HC-NOTIFICATIONS-01）
+function branchScopedHandle() {
+  return setupNotificationWorker({
+    agent: { findMany: async () => [{ id: 'hq-admin' }, { id: 'branch-supervisor' }] },
+    conversation: { findFirst: async () => ({ assignedToId: null, contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '他店客人' } }) },
+  } as never, {
+    visibility: async (_tenantId: string, agentId: string) => (agentId === 'hq-admin' ? ALL_CHANNELS : new Set(['ch-b'])),
+  });
+}
+
+test('未指派的對話轉接：看不到該渠道的主管不會收到轉接通知（PR #440 審查）', async () => {
+  await branchScopedHandle()(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('未指派對話的新訊息：看不到該渠道的主管不會收到新訊息通知（PR #440 審查）', async () => {
+  await branchScopedHandle()(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+// 指派給 agent-x 的渠道 ch-a 對話；hq-admin 持有 channel.view_all（change notify-visible-assignee-440）
+function assignedHandle(opts: { assigneeActive: boolean; assigneeChannels: Set<string> | typeof ALL_CHANNELS }) {
+  return setupNotificationWorker({
+    agent: {
+      findMany: async () => [{ id: 'hq-admin' }, { id: 'branch-supervisor' }],
+      findFirst: async ({ where }: { where: { id: string; isActive?: boolean } }) =>
+        where.id === 'agent-x' && (opts.assigneeActive || where.isActive !== true) ? { id: 'agent-x' } : null,
+    },
+    conversation: { findFirst: async () => ({ assignedToId: 'agent-x', contactId: 'contact-1', channelId: 'ch-a', contact: { displayName: '客人' } }) },
+  } as never, {
+    visibility: async (_tenantId: string, agentId: string) =>
+      agentId === 'agent-x' ? opts.assigneeChannels : agentId === 'hq-admin' ? ALL_CHANNELS : new Set(['ch-b']),
+  });
+}
+
+test('負責客服看得到渠道：只有負責客服收到新訊息通知', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-a']) })(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__agent-x`]);
+});
+
+test('負責客服失去渠道權限：負責客服不收新訊息通知，改通知看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-b']) })(event('message.received', { conversationId: 'conv-1' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('負責客服已停用：負責客服不收轉接通知，改通知看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: false, assigneeChannels: ALL_CHANNELS })(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+});
+
+test('負責客服看不到渠道時改通知主管：轉接通知改發給看得到渠道的管理員', async () => {
+  await assignedHandle({ assigneeActive: true, assigneeChannels: new Set(['ch-b']) })(event('conversation.handoff', { conversationId: 'conv-1', reason: '客人要求轉接真人' }));
+  const jobs = sent.jobs.filter((j) => j.name === 'notification:dispatch');
+  assert.deepEqual(jobs.map((j) => j.opts?.jobId), [`${EVENT}__hq-admin`]);
+  assert.equal(jobs[0].data.type, 'conversation_handoff');
+});

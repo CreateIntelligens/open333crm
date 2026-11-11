@@ -11,6 +11,7 @@ import { logger } from '@open333crm/core';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { IdentityBindingSettings } from './binding-links.js';
 import { getIdentityBindingSettingsCached } from './identity-binding.service.js';
+import { isUnmaskedInbound } from '../ai/deidentification.service.js';
 
 /** 寬鬆比對：AI 編的代碼長度、大小寫不一定正確，也可能藏在網址編碼裡；前面接英文字母的（如 REBIND-）不算 */
 const LOOSE_CODE_PATTERN = /(?<![A-Za-z])BIND-[0-9A-Za-z]{4,}/gi;
@@ -40,13 +41,21 @@ export interface HistoryRow {
   metadata: unknown;
 }
 
+function modelText(row: HistoryRow): string {
+  // 去識別化服務無法使用時保存的進站訊息沒有遮罩副本，不給 AI 看（issue #466）
+  if (isUnmaskedInbound(row.metadata)) return '';
+  const masked = (row.metadata as { privacy?: { maskedContent?: { text?: unknown } } } | null)?.privacy?.maskedContent?.text;
+  if (typeof masked === 'string') return masked;
+  const text = typeof row.content === 'object' && row.content !== null ? ((row.content as { text?: unknown }).text ?? '') : '';
+  return typeof text === 'string' ? text : '';
+}
+
 /** 對話紀錄轉成 AI 的歷史訊息：去掉系統發的綁定訊息、遮掉代碼、略過沒有文字的訊息 */
 export function toAiHistory(rows: HistoryRow[]): Array<{ role: 'user' | 'assistant'; content: string }> {
   return rows.flatMap((row) => {
     if ((row.metadata as { source?: unknown } | null)?.source === BINDING_MESSAGE_SOURCE) return [];
-    const text =
-      typeof row.content === 'object' && row.content !== null ? ((row.content as { text?: unknown }).text ?? '') : '';
-    if (typeof text !== 'string' || !text) return [];
+    const text = modelText(row);
+    if (!text) return [];
     return [{ role: row.direction === 'INBOUND' ? ('user' as const) : ('assistant' as const), content: redactBindingCodes(text) }];
   });
 }

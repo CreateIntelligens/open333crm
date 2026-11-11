@@ -10,7 +10,7 @@ const { api, auth } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() }, 
 vi.mock('#src/lib/api.js', () => ({ default: api }));
 vi.mock('#src/providers/AuthProvider.js', () => ({ usePermission: () => auth.canReply }));
 
-import { SendEmailRegistrationLinkButton } from '#src/components/inbox/SendEmailRegistrationLinkButton.js';
+import { SendEmailRegistrationLinkButton } from '#src/components/inbox/RegistrationLinkButtons.js';
 import { resetIdentityBindingStatusCache } from '#src/components/inbox/identity-binding-status.js';
 
 function status(emailEnabled: boolean) {

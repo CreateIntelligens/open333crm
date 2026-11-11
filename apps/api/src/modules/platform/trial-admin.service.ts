@@ -2,6 +2,7 @@
  * 平台側試用用戶管理：列試用租戶、延長、轉正式、申請記錄操作。
  * 平台 superuser 專用（呼叫端已掛 guard）。
  */
+import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { resendTrial } from '../trial/trial.service.js';
@@ -9,6 +10,8 @@ import { getTrialPolicy } from '../trial/trial-policy.service.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { clearQuotaAlertFlags } from '../trial/token-quota.service.js';
+import { monthlyTokensRaisedByPlanChange } from './plan-limits.service.js';
 
 /**
  * 試用租戶轉為付費方案時一併寫入：脫離試用（不再受到期與軟刪排程管轄）、恢復啟用、
@@ -112,11 +115,16 @@ export async function updateTenantContract(
     throw new AppError('合約迄日不可早於起日', 'CONTRACT_DATE_INVALID', 422);
   }
 
+  // 迄日改變（含清除）時清空合約到期提醒的已寄檔位，依新迄日重新提醒；只改起日或送相同迄日不清空，避免重寄
+  const endChanged =
+    input.contractEndDate !== undefined && (input.contractEndDate?.getTime() ?? null) !== (t.contractEndDate?.getTime() ?? null);
+
   return prisma.tenant.update({
     where: { id: tenantId },
     data: {
       ...(input.contractStartDate !== undefined ? { contractStartDate: input.contractStartDate } : {}),
       ...(input.contractEndDate !== undefined ? { contractEndDate: input.contractEndDate } : {}),
+      ...(endChanged ? { contractRemindersSent: [] } : {}),
     },
     select: { id: true, name: true, contractStartDate: true, contractEndDate: true },
   });
@@ -141,18 +149,22 @@ export async function extendTrial(prisma: PrismaClient, tenantId: string, addDay
       trialEndsAt: newEnd,
       isActive: true, // 延長 = 恢復啟用（若已到期停用）
       trialRemindersSent: [], // 重設提醒標記，新週期重新提醒
+      purgedAt: null, // 恢復試用就不再是「已清除」（AUDIT TRIAL-04）
     },
     select: { id: true, name: true, trialEndsAt: true, isActive: true },
   });
 }
 
 /** 轉正式方案：改 planId + 清 trialEndsAt（脫離試用）+ 確保啟用。 */
-export async function convertToPaid(prisma: PrismaClient, tenantId: string, planSlug: string) {
-  const plan = await prisma.plan.findUnique({ where: { slug: planSlug }, select: { id: true, slug: true } });
+export async function convertToPaid(prisma: PrismaClient, redis: Redis, tenantId: string, planSlug: string) {
+  const plan = await prisma.plan.findUnique({ where: { slug: planSlug }, select: { id: true, slug: true, limits: true } });
   if (!plan) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
   await assertNotTrialPlan(prisma, plan.slug);
 
-  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+  const t = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, limitOverrides: true, plan: { select: { limits: true } } },
+  });
   if (!t) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
 
   const updated = await prisma.tenant.update({
@@ -167,8 +179,10 @@ export async function convertToPaid(prisma: PrismaClient, tenantId: string, plan
   // 方案變動 → 失效權限天花板快取 + 租戶 plan 快取（比照 plan-change.service 升級路徑）。
   // 未失效的話 guard 會在 60s 內沿用舊 trial 天花板，把剛付費租戶的新功能誤擋 403。
   // update 非 transaction，直接在成功寫入後失效即可。
-  await invalidatePlanPermissions(prisma, plan.id);
+  await invalidatePlanPermissions(redis, plan.id);
   invalidateTenantPlan(tenantId);
+  // 付費方案的 AI 月額度較高時清掉本月的告警旗標，用量跨越新上限的門檻才會再通知（AUDIT PLAN-13）
+  if (monthlyTokensRaisedByPlanChange(t, plan)) await clearQuotaAlertFlags(redis, tenantId);
 
   return updated;
 }

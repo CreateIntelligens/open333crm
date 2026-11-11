@@ -127,3 +127,65 @@ test('窄螢幕：圖示欄常駐，點有子頁的圖示彈出子選單，選�
     window.matchMedia = original;
   }
 });
+
+// 以下兩個測試來自 main（G09、A06），原本測 main 的樹狀側欄（renderExpanded）；
+// 本分支改為圖示欄＋子選單，改寫成測 Sidebar（圖示）與 SectionNav（子選單），測試目的不變。
+test('只有個人報表權限時顯示我的績效', () => {
+  nav.pathname = '/dashboard/analytics/my';
+  auth.permissions = new Set(['analytics.view.self']);
+  render(<><Sidebar /><SectionNav /></>);
+  assert.equal(visible('報表'), true);
+  assert.equal(visible('我的績效'), true);
+  assert.equal(visible('總覽'), false);
+
+  cleanup();
+  auth.permissions = new Set(['analytics.view', 'analytics.view.self']);
+  render(<><Sidebar /><SectionNav /></>);
+  assert.equal(visible('總覽'), true, '對照組：有 analytics.view 時顯示「總覽」');
+});
+
+test('報表的子頁都沒有權限時隱藏報表圖示', () => {
+  auth.permissions = new Set(['analytics.view.self']);
+  render(<Sidebar />);
+  assert.equal(visible('報表'), true, '對照組：有任一子頁權限時顯示');
+
+  cleanup();
+  auth.permissions = new Set(['automation.view']);
+  render(<Sidebar />);
+  assert.equal(visible('報表'), false);
+});
+
+test('沒有設定權限時隱藏 AI 設定', () => {
+  nav.pathname = '/dashboard/knowledge/articles';
+  auth.permissions = new Set(['knowledge.view']);
+  render(<SectionNav />);
+  assert.equal(visible('文章管理'), true, '對照組：「知識庫」子選單已顯示');
+  assert.ok(screen.queryByText('AI 設定') === null);
+  assert.equal(visible('Embedding'), false);
+  assert.equal(visible('Chat & Prompt'), false);
+
+  cleanup();
+  auth.permissions = new Set(['knowledge.view', 'settings.manage']);
+  render(<SectionNav />);
+  assert.equal(visible('Embedding'), true, '對照組：有 settings.manage 時顯示');
+});
+
+test('main 新增的頁面依權限出現在子選單', () => {
+  nav.pathname = '/dashboard/settings/general';
+  auth.permissions = new Set(['store.view', 'settings.manage']);
+  render(<SectionNav />);
+  assert.equal(visible('門市與核銷帳號'), true);
+  assert.equal(visible('WebTalk 協作'), true);
+
+  cleanup();
+  auth.permissions = new Set();
+  render(<SectionNav />);
+  assert.equal(visible('門市與核銷帳號'), false, '沒有 store.view 時隱藏');
+  assert.equal(visible('WebTalk 協作'), false, '沒有 settings.manage 時隱藏');
+
+  cleanup();
+  nav.pathname = '/dashboard/marketing/campaigns';
+  auth.permissions = new Set(['marketing.view', 'coupon.view']);
+  render(<SectionNav />);
+  assert.equal(visible('優惠券'), true);
+});

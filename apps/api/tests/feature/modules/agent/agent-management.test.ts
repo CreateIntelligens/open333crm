@@ -3,7 +3,6 @@
  *
  * 路由層整合測試：走真實的 requirePermission、agent.service 與 app_tenant 連線（RLS）。
  * 每次執行建立一個專用租戶並種入三個系統角色，結束時整個刪除。
- * 「重新啟用成員」的兩個情境現況違反（AUDIT），修正時再補測試。
  * 測試名稱以「情境名稱：說明」開頭。
  * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
@@ -16,6 +15,7 @@ import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import agentRoutes from '#src/modules/agent/agent.routes.js';
+import tenantAuditRoutes from '#src/modules/tenant-audit/tenant-audit.routes.js';
 import { hashPassword, verifyPassword } from '#src/shared/utils/password.js';
 
 loadEnvConfig();
@@ -84,12 +84,16 @@ async function buildApp(agent: { id: string; roleId: string | null }) {
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(tenantDb, T);
   });
   await app.register(agentRoutes, { prefix: '/api/v1/agents' });
+  await app.register(tenantAuditRoutes, { prefix: '/api/v1/tenant/audit-logs' });
   await app.ready();
   return app;
 }
 
 const managerApp = await buildApp(manager);
 const plainApp = await buildApp(plain);
+/** 只有 audit.view 的成員：查詢稽核用，不影響管理者角色的權限比較 */
+const auditor = await createAgent((await createRole(['audit.view'])).id);
+const auditorApp = await buildApp(auditor);
 
 const createBody = (overrides: object = {}) => ({
   name: '新成員',
@@ -104,7 +108,10 @@ const reload = (id: string) => owner.agent.findUnique({ where: { id } });
 afterAll(async () => {
   await managerApp.close();
   await plainApp.close();
+  await auditorApp.close();
   await owner.tenantAuditLog.deleteMany({ where: { tenantId: T } });
+  await owner.dataExportRequest.deleteMany({ where: { tenantId: T } });
+  await owner.dataErasureRequest.deleteMany({ where: { tenantId: T } });
   await owner.case.deleteMany({ where: { tenantId: T } });
   await owner.contact.deleteMany({ where: { tenantId: T } });
   await owner.channel.deleteMany({ where: { tenantId: T } });
@@ -187,6 +194,96 @@ test('沒有 agent.role.assign 時被拒：回 403，角色不變', async () => 
   // 確認是 agent.role.assign 擋下的，不是越權防護（managerRole 的權限也超出 plain）
   assert.equal(res.json().error.details?.requiredPermission, 'agent.role.assign');
   assert.equal((await reload(target.id))!.roleId, plainRole.id);
+});
+
+// ── 目標成員的權限不可高於操作者、改角色的最後一位管理員保護（AUDIT RBAC-08、RBAC-09、RBAC-03）──
+
+/** 另建一位 admin 系統角色的成員；fn 結束後刪除，讓其他測試的「唯一管理員」前提不變 */
+async function withSecondAdmin(fn: (admin2: { id: string; roleId: string | null }) => Promise<void>) {
+  const admin2 = await createAgent(system.admin!, { role: 'ADMIN' });
+  try {
+    await fn(admin2);
+  } finally {
+    await owner.tenantAuditLog.deleteMany({ where: { tenantId: T, targetId: admin2.id } });
+    await owner.agent.deleteMany({ where: { id: admin2.id } });
+  }
+}
+
+test('主管不能降級管理員：回 403 TARGET_OUTRANKS_ACTOR，管理員的角色不變', async () => {
+  const supervisor = await createAgent(system.supervisor!);
+  const supervisorApp = await buildApp(supervisor);
+  try {
+    await withSecondAdmin(async (admin2) => {
+      const res = await supervisorApp.inject({ method: 'PATCH', url: `/api/v1/agents/${admin2.id}/role`, payload: { role: 'SUPERVISOR' } });
+      assert.equal(res.statusCode, 403, res.body);
+      assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+      assert.ok(res.json().error.details.exceededPermissions.includes('role.manage'));
+      assert.equal((await reload(admin2.id))!.roleId, system.admin);
+    });
+  } finally {
+    await supervisorApp.close();
+  }
+});
+
+test('不能降級最後一位管理員：回 422 LAST_ADMIN_PROTECTED，管理員的角色不變', async () => {
+  const supervisor = await createAgent(system.supervisor!);
+  const supervisorApp = await buildApp(supervisor);
+  const res = await supervisorApp.inject({ method: 'PATCH', url: `/api/v1/agents/${admin.id}/role`, payload: { role: 'AGENT' } });
+  await supervisorApp.close();
+  assert.equal(res.statusCode, 422, res.body);
+  assert.equal(res.json().error.code, 'LAST_ADMIN_PROTECTED');
+  assert.equal((await reload(admin.id))!.roleId, system.admin);
+});
+
+test('管理員可以降級另一位管理員：仍有其他管理員時回 200，角色是 supervisor', async () => {
+  const adminApp = await buildApp(admin);
+  try {
+    await withSecondAdmin(async (admin2) => {
+      const res = await adminApp.inject({ method: 'PATCH', url: `/api/v1/agents/${admin2.id}/role`, payload: { role: 'SUPERVISOR' } });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal((await reload(admin2.id))!.roleId, system.supervisor);
+    });
+  } finally {
+    await adminApp.close();
+  }
+});
+
+test('角色列舉是 ADMIN 但沒有 role.manage 的成員不算管理員：唯一管理員仍不能被停用', async () => {
+  // RBAC-03：最後一位管理員依權限判斷，不看舊的角色列舉
+  const fakeAdmin = await createAgent(plainRole.id, { role: 'ADMIN' });
+  try {
+    const res = await deactivate(managerApp, admin.id);
+    assert.equal(res.statusCode, 422, res.body);
+    assert.equal(res.json().error.code, 'LAST_ADMIN_PROTECTED');
+    assert.equal((await reload(admin.id))!.isActive, true);
+  } finally {
+    await owner.agent.deleteMany({ where: { id: fakeAdmin.id } });
+  }
+});
+
+test('不能重設權限比自己高的成員的密碼：回 403 TARGET_OUTRANKS_ACTOR，密碼不變', async () => {
+  const res = await resetPassword(managerApp, admin.id);
+  assert.equal(res.statusCode, 403, res.body);
+  assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+  assert.ok(await verifyPassword(PASSWORD, (await reload(admin.id))!.passwordHash));
+});
+
+test('不能停用權限比自己高的成員：回 403 TARGET_OUTRANKS_ACTOR，成員維持啟用', async () => {
+  await withSecondAdmin(async (admin2) => {
+    const res = await deactivate(managerApp, admin2.id);
+    assert.equal(res.statusCode, 403, res.body);
+    assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+    assert.equal((await reload(admin2.id))!.isActive, true);
+  });
+});
+
+test('不能刪除權限比自己高的成員：回 403 TARGET_OUTRANKS_ACTOR，成員仍然存在', async () => {
+  await withSecondAdmin(async (admin2) => {
+    const res = await purge(managerApp, admin2.id);
+    assert.equal(res.statusCode, 403, res.body);
+    assert.equal(res.json().error.code, 'TARGET_OUTRANKS_ACTOR');
+    assert.ok(await reload(admin2.id));
+  });
 });
 
 // ── agent-management：重設其他成員的密碼 ──
@@ -291,6 +388,51 @@ test('不能停用最後一位管理員：回 422 LAST_ADMIN_PROTECTED，管理�
   assert.equal((await reload(admin.id))!.isActive, true);
 });
 
+// ── agent-lifecycle：重新啟用成員（change fix-admin-settings-safeguards，AUDIT AUTH-09）──
+
+const listInactive = (app: typeof managerApp) => app.inject({ method: 'GET', url: '/api/v1/agents/inactive' });
+const reactivate = (app: typeof managerApp, id: string) =>
+  app.inject({ method: 'POST', url: `/api/v1/agents/${id}/reactivate` });
+
+test('管理員看得到停用的成員：GET /agents/inactive 含停用的成員，不含啟用中的成員', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await deactivate(managerApp, target.id)).statusCode, 204);
+  const res = await listInactive(managerApp);
+  assert.equal(res.statusCode, 200, res.body);
+  const ids = (res.json().data as Array<{ id: string; isActive: boolean }>).map((a) => a.id);
+  assert.ok(ids.includes(target.id));
+  assert.equal(ids.includes(manager.id), false);
+  assert.equal(ids.includes(foreign.id), false, '不含其他租戶的成員');
+});
+
+test('重新啟用後可以登入：回 204，isActive 是 true，原本的密碼可用，角色不變', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await deactivate(managerApp, target.id)).statusCode, 204);
+  const res = await reactivate(managerApp, target.id);
+  assert.equal(res.statusCode, 204, res.body);
+  const row = (await reload(target.id))!;
+  assert.equal(row.isActive, true);
+  assert.equal(row.roleId, plainRole.id);
+  assert.ok(await verifyPassword(PASSWORD, row.passwordHash));
+});
+
+test('重新啟用需權限：沒有 agent.deactivate 時查詢與重新啟用都回 403，成員維持停用', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await deactivate(managerApp, target.id)).statusCode, 204);
+  const list = await listInactive(plainApp);
+  assert.equal(list.statusCode, 403, list.body);
+  assert.equal(list.json().error.details.requiredPermission, 'agent.deactivate');
+  const res = await reactivate(plainApp, target.id);
+  assert.equal(res.statusCode, 403, res.body);
+  assert.equal(res.json().error.details.requiredPermission, 'agent.deactivate');
+  assert.equal((await reload(target.id))!.isActive, false);
+});
+
+test('重新啟用其他租戶的成員回 404', async () => {
+  const res = await reactivate(managerApp, foreign.id);
+  assert.equal(res.statusCode, 404, res.body);
+});
+
 // ── agent-lifecycle：永久刪除成員 ──
 
 const purge = (app: typeof managerApp, id: string) => app.inject({ method: 'DELETE', url: `/api/v1/agents/${id}` });
@@ -362,4 +504,83 @@ test('不能刪除最後一位管理員：回 422 LAST_ADMIN_PROTECTED，管理�
   assert.equal(res.statusCode, 422, res.body);
   assert.equal(res.json().error.code, 'LAST_ADMIN_PROTECTED');
   assert.ok(await reload(admin.id));
+});
+
+// ── agent-lifecycle「永久刪除成員」與 tenant-audit-log「查詢租戶稽核」：保留操作者快照（issue #414） ──
+
+interface AuditRow {
+  id: string;
+  action: string;
+  targetId: string | null;
+  payload: unknown;
+  actor: { id: string; name: string; email: string } | null;
+  actorSnapshot: { name: string | null; email: string | null } | null;
+}
+
+async function listAudit(query: string): Promise<AuditRow[]> {
+  const res = await auditorApp.inject({ method: 'GET', url: `/api/v1/tenant/audit-logs?${query}&pageSize=100` });
+  assert.equal(res.statusCode, 200, res.body);
+  return res.json().data.rows;
+}
+
+test('刪除保留操作者快照：X 發起匯出與刪除請求後被停用並刪除，稽核與請求留下 X 的名稱與 email；其他成員不受影響', async () => {
+  const x = await createAgent(plainRole.id);
+  const other = await createAgent(plainRole.id);
+  // X 發起資料匯出與資料刪除（與 data-export、data-erasure flow 寫入的資料相同）
+  const exportLog = await owner.tenantAuditLog.create({
+    data: { tenantId: T, actorId: x.id, action: 'data.export.request', targetType: 'data_export', payload: { mark: MARK } },
+  });
+  const otherLog = await owner.tenantAuditLog.create({
+    data: { tenantId: T, actorId: other.id, action: 'data.export.request', targetType: 'data_export', payload: { mark: MARK } },
+  });
+  const exportReq = await owner.dataExportRequest.create({ data: { tenantId: T, requestedBy: x.id } });
+  const erasureReq = await owner.dataErasureRequest.create({
+    data: { tenantId: T, requestedBy: x.id, contactId: '00000000-0000-4000-8000-000000000414' },
+  });
+
+  const deactivated = await deactivate(managerApp, x.id);
+  assert.equal(deactivated.statusCode, 204, deactivated.body);
+  assert.equal((await purge(managerApp, x.id)).statusCode, 204);
+
+  const rows = await listAudit('action=data.export.request');
+  const xRow = rows.find((r) => r.id === exportLog.id);
+  assert.ok(xRow, '查得到 X 的 data.export.request 稽核');
+  assert.equal(xRow.actor, null);
+  assert.deepEqual(xRow.actorSnapshot, { name: x.name, email: x.email });
+
+  const otherRow = rows.find((r) => r.id === otherLog.id);
+  assert.ok(otherRow);
+  assert.equal(otherRow.actor?.id, other.id);
+  assert.equal(otherRow.actorSnapshot, null);
+  const otherDb = await owner.tenantAuditLog.findUnique({ where: { id: otherLog.id } });
+  assert.equal(otherDb?.actorName, null);
+  assert.equal(otherDb?.actorEmail, null);
+
+  const exportAfter = await owner.dataExportRequest.findUnique({ where: { id: exportReq.id } });
+  assert.equal(exportAfter?.requestedBy, null);
+  assert.equal(exportAfter?.requestedByName, x.name);
+  assert.equal(exportAfter?.requestedByEmail, x.email);
+  const erasureAfter = await owner.dataErasureRequest.findUnique({ where: { id: erasureReq.id } });
+  assert.equal(erasureAfter?.requestedBy, null);
+  assert.equal(erasureAfter?.requestedByName, x.name);
+  assert.equal(erasureAfter?.requestedByEmail, x.email);
+});
+
+test('刪除稽核記下被刪成員的名稱：agent.purge 的 payload 是 { name }，不含 email', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await purge(managerApp, target.id)).statusCode, 204);
+  const purgeRow = (await listAudit('action=agent.purge')).find((r) => r.targetId === target.id);
+  assert.ok(purgeRow, '有一筆 agent.purge 稽核');
+  assert.deepEqual(purgeRow.payload, { name: target.name });
+  assert.equal(JSON.stringify(purgeRow.payload).includes(target.email), false);
+});
+
+test('操作者還在時沒有快照：actor 是 { id, name, email }，actorSnapshot 是 null', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await purge(managerApp, target.id)).statusCode, 204);
+  // agent.purge 的操作者是 manager，仍然存在
+  const purgeRow = (await listAudit('action=agent.purge')).find((r) => r.targetId === target.id);
+  assert.ok(purgeRow);
+  assert.deepEqual(purgeRow.actor, { id: manager.id, name: manager.name, email: manager.email });
+  assert.equal(purgeRow.actorSnapshot, null);
 });

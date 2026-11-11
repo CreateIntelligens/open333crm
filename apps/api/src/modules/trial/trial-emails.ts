@@ -79,8 +79,8 @@ const VERIFY_HTML = wrap({
   heading: '歡迎試用 open333 CRM',
   bodyHtml:
     p('您好，感謝申請「<strong>{{siteName}}</strong>」的免費試用站台。') +
-    p('請點擊下方按鈕完成 email 驗證，系統將立即為您開通站台：') +
-    button('{{verifyUrl}}', '完成驗證並開通') +
+    p('請點擊下方按鈕完成 email 驗證，並設定管理員密碼。設定完成後，系統會立即為您開通站台：') +
+    button('{{verifyUrl}}', '驗證並設定密碼') +
     small('此連結 <strong>{{ttlHours}}</strong> 小時內有效。若非您本人申請，請忽略此信。') +
     infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{verifyUrl}}" style="color:' + BRAND + ';">{{verifyUrl}}</a>'),
 });
@@ -91,7 +91,7 @@ const PROVISIONED_HTML = wrap({
   bodyHtml:
     p('「<strong>{{siteName}}</strong>」試用站台已成功開通。') +
     highlight('試用至', '{{expireDate}}') +
-    p('使用您申請時設定的 email 與密碼即可登入：') +
+    p('使用此 email 與您在驗證頁設定的密碼即可登入：') +
     button('{{loginUrl}}', '前往登入'),
 });
 

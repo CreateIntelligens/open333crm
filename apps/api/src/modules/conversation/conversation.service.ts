@@ -8,11 +8,17 @@ import { AppError } from '../../shared/utils/response.js';
 import { getChannelPlugin, LINE_DELIVERY_METADATA_KEYS } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
+import { emitToChannel } from '../../events/socket-push.js';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { notFound } from '../../shared/messages/resource.js';
 import { markCaseFirstResponse } from '../case/case.service.js';
+import { fixedSystemMessageContent, prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
+import { encodeMessageCursor, olderThanCursor, parseMessageCursor } from '../../shared/utils/message-cursor.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -20,6 +26,8 @@ export interface ConversationFilters {
   assigneeId?: string;
   unread?: boolean;
   closedAfter?: string;
+  /** 關鍵字：比對聯絡人名稱或任一則訊息的文字內容（不分大小寫）；路由已去頭尾空白，空字串視為沒有搜尋 */
+  search?: string;
 }
 
 export interface PaginationParams {
@@ -98,6 +106,17 @@ export async function listConversations(
   }
   if (filters.closedAfter) {
     where.updatedAt = { gte: new Date(filters.closedAfter) };
+  }
+  if (filters.search) {
+    // Prisma 無法表達「最後一則訊息」，改比對任一則訊息：是舊前端只比對最後一則的超集合（design D3）
+    // % 與 _ 當成一般文字（escapeLikeKeyword，PR #449 審查）
+    const keyword = escapeLikeKeyword(filters.search);
+    where.OR = [
+      { contact: { displayName: { contains: keyword, mode: 'insensitive' } } },
+      {
+        messages: { some: { content: { path: ['text'], string_contains: keyword, mode: 'insensitive' } } },
+      },
+    ];
   }
 
   const [conversations, total] = await Promise.all([
@@ -179,13 +198,17 @@ export async function getConversation(
   prisma: TenantDb,
   id: string,
   tenantId: string,
+  /** 聯絡人的渠道身份只列出可見渠道（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
+  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const conversation = await prisma.conversation.findFirst({
     where: { id, tenantId },
     include: {
       contact: {
         include: {
           channelIdentities: {
+            ...(visibleChannelId ? { where: { channelId: visibleChannelId } } : {}),
             include: {
               channel: {
                 select: {
@@ -279,25 +302,34 @@ export async function markConversationRead(
     updatedAt: updated.updatedAt.toISOString(),
   };
 
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: updated.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   return updated;
 }
 
-export async function getMessages(
-  prisma: TenantDb,
-  conversationId: string,
-  page: number,
-  limit: number,
-  order: 'asc' | 'desc' = 'asc',
-) {
-  const [messages, total] = await Promise.all([
+export interface GetMessagesOptions {
+  page: number;
+  limit: number;
+  order: 'asc' | 'desc';
+  /** 上一頁回傳的 nextCursor：取比它更早的訊息（只用於 order=desc、page=1，由 route 驗證） */
+  before?: string;
+}
+
+/**
+ * 對話的訊息（change fix-chat-window-load-older-468）。
+ * 帶 `before` 時以游標往前取；不帶時照舊以 page 分頁。兩者都依 createdAt 再 id 排序，
+ * 取 limit + 1 則判斷是否還有下一頁；order=desc 還有更早的訊息時回傳 nextCursor。
+ */
+export async function getMessages(ctx: TenantCtx, conversationId: string, opts: GetMessagesOptions) {
+  const { tx: prisma, tenantId } = ctx;
+  const cursor = parseMessageCursor(opts.before);
+  const scope = { conversationId, conversation: { tenantId } };
+  const [rows, total] = await Promise.all([
     prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: order },
-      skip: (page - 1) * limit,
-      take: limit,
+      where: { ...scope, ...olderThanCursor(cursor) },
+      orderBy: [{ createdAt: opts.order }, { id: opts.order }],
+      skip: cursor ? 0 : (opts.page - 1) * opts.limit,
+      take: opts.limit + 1,
       include: {
         sender: {
           select: {
@@ -308,10 +340,14 @@ export async function getMessages(
         },
       },
     }),
-    prisma.message.count({ where: { conversationId } }),
+    prisma.message.count({ where: scope }),
   ]);
 
-  return { messages, total };
+  const messages = rows.slice(0, opts.limit);
+  const hasMore = rows.length > opts.limit;
+  const last = messages.at(-1);
+  const nextCursor = hasMore && opts.order === 'desc' && last ? encodeMessageCursor(last.createdAt, last.id) : null;
+  return { messages, total, hasMore, nextCursor };
 }
 
 export async function sendMessage(
@@ -320,7 +356,7 @@ export async function sendMessage(
   conversationId: string,
   agentId: string,
   tenantId: string,
-  data: { contentType: string; content: Record<string, unknown> },
+  data: { contentType: string; content: Record<string, unknown>; privacyMode?: 'mask' | 'original' },
 ) {
   // Verify conversation exists and belongs to tenant
   const conversation = await prisma.conversation.findFirst({
@@ -335,6 +371,13 @@ export async function sendMessage(
   const sequence = await prisma.message.count({
     where: { conversationId },
   }) + 1;
+  const stored = data.contentType === 'text'
+    ? await prepareStoredMessageContent(
+        await readAiPrivacyPolicy(prisma, tenantId),
+        data.content,
+        data.privacyMode === 'original' ? 'agent_original' : 'agent_default',
+      )
+    : { content: data.content as Prisma.InputJsonObject, metadata: {} };
 
   const message = await prisma.message.create({
     data: {
@@ -343,7 +386,8 @@ export async function sendMessage(
       senderType: 'AGENT',
       senderId: agentId,
       contentType: data.contentType,
-      content: data.content as any,
+      content: stored.content as any,
+      metadata: stored.metadata as any,
       sequence,
       isRead: true,
       createdAt: now,
@@ -398,11 +442,14 @@ export async function sendMessage(
     },
   };
 
-  io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', wsPayload);
 
   // --- Channel Delivery: route outbound message through channel plugin ---
   let delivery: { success: boolean; requestId?: string; error?: string } | null = null;
+  // 送不出去的原因（S08）：寫進訊息 metadata.deliveryFailed／deliveryError，後台才看得到，
+  // 與自動化送出失敗（workers channel-delivery）同一組欄位，MessageBubble 依此顯示紅框
+  let failureReason: string | null = null;
+  let latestMetadata: unknown = message.metadata;
   try {
     const convWithChannel = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -430,12 +477,15 @@ export async function sendMessage(
 
     if (!channel?.isActive) {
       logger.info('[ChannelDelivery] Skipped: channel inactive or missing', { conversationId });
+      failureReason = '渠道已停用或不存在，訊息沒有送到顧客';
     } else if (!identity) {
       logger.info('[ChannelDelivery] Skipped: no channelIdentity found for contact', { conversationId, channelType: channel.channelType });
+      failureReason = '找不到這位聯絡人在此渠道的帳號，訊息沒有送到顧客';
     } else {
       const plugin = getChannelPlugin(channel.channelType);
       if (!plugin) {
         logger.warn('[ChannelDelivery] Skipped: no plugin for channel type', { channelType: channel.channelType });
+        failureReason = '這個渠道類型目前無法從後台送出訊息';
       } else {
         const credentials = channel.channelType === CHANNEL_TYPE.WEBCHAT
           ? {}
@@ -444,13 +494,13 @@ export async function sendMessage(
           channelType: channel.channelType,
           to: identity.uid,
           contentType: data.contentType,
-          content: data.content,
+          content: stored.content,
         });
         const result = await plugin.sendMessage(
           identity.uid,
           {
             contentType: data.contentType,
-            content: data.content,
+            content: stored.content,
             ...(channel.channelType === CHANNEL_TYPE.LINE
               ? { delivery: { retryKey: message.id } }
               : {}),
@@ -459,6 +509,9 @@ export async function sendMessage(
         );
 
         delivery = { success: result.success, requestId: result.requestId, error: result.error };
+        if (!result.success) {
+          failureReason = (result.error || '渠道沒有接受這則訊息').slice(0, 500);
+        }
 
         const updateData: Prisma.MessageUpdateInput = {};
         if (result.success && result.channelMsgId) {
@@ -466,6 +519,7 @@ export async function sendMessage(
         }
         if (channel.channelType === CHANNEL_TYPE.LINE) {
           updateData.metadata = mergeLineDeliveryMetadata(message.metadata, message.id, result) as Prisma.InputJsonValue;
+          latestMetadata = updateData.metadata;
         }
         if (Object.keys(updateData).length > 0) {
           await prisma.message.update({
@@ -490,6 +544,27 @@ export async function sendMessage(
     // 原始例外（可能含第三方 API 原文、堆疊）只寫 log；回給前端的是可讀說明
     logger.error('[ChannelDelivery] Unexpected error', { error: String(err) });
     delivery = { success: false, error: '訊息未能送出，請稍後重試；若持續失敗請確認渠道設定與額度' };
+    failureReason = delivery.error!;
+  }
+
+  let returnedMessage = message;
+  if (failureReason) {
+    const base = latestMetadata && typeof latestMetadata === 'object' && !Array.isArray(latestMetadata)
+      ? latestMetadata as Record<string, unknown>
+      : {};
+    const metadata = { ...base, deliveryFailed: true, deliveryError: failureReason };
+    try {
+      await prisma.message.update({
+        where: { id: message.id },
+        data: { metadata: metadata as Prisma.InputJsonValue },
+      });
+      returnedMessage = { ...message, metadata: metadata as Prisma.JsonValue };
+      // 再推一次 message.new：聊天視窗重新載入，顯示「沒有送出」的紅框
+      const failedPayload = { ...wsPayload, message: { ...wsPayload.message, metadata } };
+      emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', failedPayload);
+    } catch (err) {
+      logger.error('[ChannelDelivery] 記錄送出失敗標示失敗', { messageId: message.id, error: String(err) });
+    }
   }
 
   // Publish to EventBus
@@ -504,7 +579,91 @@ export async function sendMessage(
     },
   });
 
-  return { message, delivery };
+  return { message: returnedMessage, delivery };
+}
+
+/**
+ * 客服把對話交回 Bot（change add-return-conversation-to-bot）。
+ * bot 回覆次數歸零、清除轉真人原因，否則曾因次數到上限轉真人的對話，下一則訊息又會轉回真人。
+ * 保留指派的客服：bot 處理不了再轉真人時回到同一位。系統訊息只給客服看，不送給顧客。
+ */
+export async function returnConversationToBot(
+  prisma: TenantDb,
+  io: SocketIOServer,
+  conversationId: string,
+  tenantId: string,
+  agentId: string,
+) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId },
+    include: { channel: { select: { settings: true } } },
+  });
+  if (!conversation) {
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
+  }
+  if (conversation.status === 'CLOSED') {
+    throw new AppError('對話已結案，請先重新開啟對話', 'BAD_REQUEST', 400);
+  }
+  if (conversation.status === 'BOT_HANDLED') {
+    throw new AppError('對話已經由機器人處理', 'BAD_REQUEST', 400);
+  }
+  const settings = (conversation.channel?.settings ?? {}) as { botConfig?: { botMode?: string } };
+  if (settings.botConfig?.botMode === 'off') {
+    throw new AppError('這個渠道的機器人已關閉，無法交回 Bot', 'BAD_REQUEST', 400);
+  }
+
+  // 條件更新：檢查之後若有人把對話結案或已交回，不可以覆蓋（否則已結案的對話會被改回 Bot）
+  const { count } = await prisma.conversation.updateMany({
+    where: { id: conversationId, tenantId, status: { in: ['AGENT_HANDLED', 'ACTIVE'] } },
+    data: { status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null },
+  });
+  if (count === 0) {
+    throw new AppError('對話狀態已變更，請重新整理後再試', 'BAD_REQUEST', 400);
+  }
+  const updated = await prisma.conversation.findFirstOrThrow({ where: { id: conversationId, tenantId } });
+
+  const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
+  const now = new Date();
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(prisma, tenantId), { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system_template');
+  const systemMessage = await prisma.message.create({
+    data: {
+      conversationId,
+      direction: 'OUTBOUND',
+      senderType: 'SYSTEM',
+      contentType: 'system',
+      content: storedContent.content,
+      metadata: { type: 'return_to_bot', agentId, ...storedContent.metadata },
+      isRead: true,
+      createdAt: now,
+    },
+  });
+
+  const wsPayload: ConversationUpdatedPayload = {
+    id: updated.id,
+    status: updated.status,
+    assignedToId: updated.assignedToId,
+    unreadCount: updated.unreadCount,
+    lastMessageAt: conversation.lastMessageAt?.toISOString() ?? now.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
+  };
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'conversation.updated', wsPayload);
+
+  const msgPayload = {
+    conversationId,
+    message: {
+      id: systemMessage.id,
+      conversationId,
+      direction: systemMessage.direction,
+      senderType: systemMessage.senderType,
+      contentType: systemMessage.contentType,
+      content: systemMessage.content as Record<string, unknown>,
+      createdAt: systemMessage.createdAt.toISOString(),
+      sender: null,
+    },
+  };
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', msgPayload);
+
+  return updated;
 }
 
 export async function handoffConversation(
@@ -554,14 +713,19 @@ export async function handoffConversation(
 
   // Send handoff system message
   const handoffText = data.handoffMessage || '稍等，正在為您轉接客服人員';
+  // 座席自填的轉接訊息遮罩；預設文案是固定字串，不呼叫去識別化服務（issue #466）
+  const privacy = await readAiPrivacyPolicy(prisma, tenantId);
+  const storedContent = data.handoffMessage
+    ? await prepareStoredMessageContent(privacy, { text: handoffText }, 'system')
+    : fixedSystemMessageContent({ text: handoffText }, privacy.enabled);
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,
       direction: 'OUTBOUND',
       senderType: 'SYSTEM',
       contentType: 'system',
-      content: { text: handoffText },
-      metadata: { type: 'handoff', fromBot: true },
+      content: storedContent.content,
+      metadata: { type: 'handoff', fromBot: true, ...storedContent.metadata },
       isRead: true,
       createdAt: now,
     },
@@ -571,7 +735,7 @@ export async function handoffConversation(
   });
 
   // Deliver handoff notification to channel (LINE/FB)
-  await deliverToChannel(prisma, conversationId, handoffText);
+  await deliverToChannel(prisma, conversationId, storedContent.content.text as string);
 
   // Emit WebSocket events
   const wsPayload: ConversationUpdatedPayload = {
@@ -582,8 +746,7 @@ export async function handoffConversation(
     lastMessageAt: now.toISOString(),
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'conversation.updated', wsPayload);
 
   const msgPayload = {
     conversationId,
@@ -598,8 +761,7 @@ export async function handoffConversation(
       sender: null,
     },
   };
-  io.to(`conversation:${conversationId}`).emit('message.new', msgPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', msgPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversationId }, 'message.new', msgPayload);
 
   // Publish event
   eventBus.publish({
@@ -745,6 +907,7 @@ export async function updateConversation(
   id: string,
   tenantId: string,
   data: { status?: string; assignedToId?: string | null },
+  options: { actorId?: string } = {},
 ) {
   const conversation = await prisma.conversation.findFirst({
     where: { id, tenantId },
@@ -754,9 +917,13 @@ export async function updateConversation(
     throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
+  // CONV-02：改成 CLOSED 和 POST /:id/close 走同一條結案流程（記錄來源、時間、結案人並發布
+  // conversation.closed）。同時改負責人時先改負責人，再結案。已結案的對話照一般更新處理，不重記結案資料。
+  const closing = data.status === 'CLOSED' && conversation.status !== 'CLOSED';
+
   const updateData: Prisma.ConversationUpdateInput = {};
 
-  if (data.status !== undefined) {
+  if (data.status !== undefined && !closing) {
     updateData.status = data.status as any;
   }
   if (data.assignedToId !== undefined) {
@@ -765,6 +932,15 @@ export async function updateConversation(
     } else {
       updateData.assignedTo = { connect: { id: data.assignedToId } };
     }
+  }
+
+  if (closing) {
+    // 負責人與結案在同一次 update 寫入，避免改了負責人卻沒結案的半套狀態
+    return closeConversation(prisma, io, id, tenantId, {
+      source: 'manual',
+      closedById: options.actorId,
+      assignedToId: data.assignedToId,
+    });
   }
 
   const updated = await prisma.conversation.update({
@@ -798,8 +974,7 @@ export async function updateConversation(
     updatedAt: updated.updatedAt.toISOString(),
   };
 
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   return updated;
 }
@@ -823,6 +998,8 @@ export async function closeConversation(
     reason?: string;
     source: 'manual' | 'inactivity' | 'csat' | 'case_resolved';
     closedById?: string;
+    /** 同時變更負責人（PATCH 帶 CLOSED 與 assignedToId 時），和結案寫在同一次 update；null 為取消指派 */
+    assignedToId?: string | null;
   },
 ) {
   const conversation = await prisma.conversation.findFirst({
@@ -838,10 +1015,16 @@ export async function closeConversation(
   const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
   const now = new Date();
 
-  const updated = await prisma.conversation.update({
-    where: { id },
+  // 以條件更新搶「未關閉 → 已關閉」：兩個請求同時關閉時只有一個寫入結案資料與發布事件
+  const include = {
+    contact: { select: { id: true, displayName: true, avatarUrl: true } },
+    assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+  } as const;
+  const { count } = await prisma.conversation.updateMany({
+    where: { id, tenantId, status: { not: 'CLOSED' } },
     data: {
       status: 'CLOSED',
+      ...(options.assignedToId !== undefined ? { assignedToId: options.assignedToId } : {}),
       metadata: {
         ...existingMeta,
         closeReason: options.reason ?? null,
@@ -850,11 +1033,14 @@ export async function closeConversation(
         closedById: options.closedById ?? null,
       } as Prisma.InputJsonValue,
     },
-    include: {
-      contact: { select: { id: true, displayName: true, avatarUrl: true } },
-      assignedTo: { select: { id: true, name: true, avatarUrl: true } },
-    },
   });
+  const updated = await prisma.conversation.findFirst({ where: { id, tenantId }, include });
+  if (!updated) {
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
+  }
+  if (count === 0) {
+    return updated;
+  }
 
   const wsPayload: ConversationUpdatedPayload = {
     id: updated.id,
@@ -864,8 +1050,7 @@ export async function closeConversation(
     lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
     updatedAt: updated.updatedAt.toISOString(),
   };
-  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+  emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: id }, 'conversation.updated', wsPayload);
 
   eventBus.publish({
     name: 'conversation.closed',
@@ -901,6 +1086,7 @@ export async function closeConversationsForCase(
     },
     select: {
       id: true,
+      channelId: true,
       assignedToId: true,
       unreadCount: true,
       lastMessageAt: true,
@@ -932,8 +1118,7 @@ export async function closeConversationsForCase(
       lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
       updatedAt: now.toISOString(),
     };
-    io.to(`conversation:${conversation.id}`).emit('conversation.updated', wsPayload);
-    io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+    emitToChannel(io, tenantId, { channelId: conversation.channelId, conversationId: conversation.id }, 'conversation.updated', wsPayload);
 
     eventBus.publish({
       name: 'conversation.closed',

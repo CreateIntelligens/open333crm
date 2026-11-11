@@ -82,7 +82,11 @@ export type AutomationActionParamType =
   | 'select'
   | 'textarea'
   /** 客服 ID。編輯器顯示客服名單讓人選，不要求填 ID */
-  | 'agent';
+  | 'agent'
+  /** 素材 ID。編輯器顯示素材庫讓人選，不要求填 ID */
+  | 'material'
+  /** 優惠券 ID。只列進行中的券讓人選，不要求填 ID（add-coupon-system design D25） */
+  | 'coupon';
 
 export interface AutomationActionParamDefinition {
   key: string;
@@ -99,6 +103,11 @@ export interface AutomationActionDefinition {
   requires: readonly AutomationScope[];
   mutates: readonly AutomationScope[];
   params?: readonly AutomationActionParamDefinition[];
+  /**
+   * true：自動化規則編輯器不列在動作選單，既有規則上的這個動作以唯讀顯示、可刪除。
+   * 動作仍在契約內，既有規則照常通過驗證並執行（add-coupon-system design D25）。
+   */
+  editorHidden?: boolean;
 }
 
 export interface ComposeAutomationContractOptions {

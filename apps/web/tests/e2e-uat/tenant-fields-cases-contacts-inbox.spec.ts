@@ -786,8 +786,10 @@ test.describe('工單 — 升級 Modal 欄位', () => {
     // 用快選 chip 選原因
     await dialog.locator('button', { hasText: '客戶多次催促' }).first().click();
     await setField(dialog.getByPlaceholder('描述升級原因...'), `${E2E_PREFIX} 升級說明 ${RUN}`);
-    // 勾第三個通知對象（團隊群組），三個皆選
-    await dialog.locator('input[type="checkbox"]').nth(2).check();
+    // 通知對象只有主管與原負責客服（團隊通知沒有實作，已拿掉），兩個皆勾
+    const notifyBoxes = dialog.locator('input[type="checkbox"]');
+    await expect(notifyBoxes, '通知對象只有兩個勾選').toHaveCount(2);
+    for (const box of await notifyBoxes.all()) await box.check();
 
     const result = await submitAndObserve(
       page,

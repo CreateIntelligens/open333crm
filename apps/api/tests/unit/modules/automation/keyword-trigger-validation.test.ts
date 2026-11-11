@@ -17,7 +17,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { apiSrc } from '#tests/support/paths.js';
 
 import { test as t } from 'vitest';

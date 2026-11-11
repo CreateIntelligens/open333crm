@@ -131,6 +131,51 @@ async function linePut(path: string, token: string, body: unknown): Promise<unkn
 import { buildLineCarousel, buildLineImagemap, buildLineVideoWithEndCard } from './builders.js';
 import { getMediaUrl } from '@open333crm/shared';
 
+/**
+ * 組不出 LINE 訊息：不認得的 contentType，或內容缺少 LINE 必填欄位。
+ * 以前不認得的 contentType 落到 default 變成空白文字 `{"type":"text","text":""}`，
+ * LINE 拒收、呼叫端也看不出原因（issue #416）。現在改為丟出這個錯誤，
+ * sendMessage() 接住後回 `{ success: false, error }`，不呼叫 LINE。
+ */
+export class LineMessageBuildError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LineMessageBuildError';
+  }
+}
+
+/** 呼叫端放在 content 的內部欄位，不屬於 LINE message 物件，送出前要拿掉 */
+function stripInternalFields(content: Record<string, unknown>): Record<string, unknown> {
+  const {
+    quickReplies: _quickReplies,
+    strategy: _strategy,
+    replyToken: _replyToken,
+    recipientUids: _recipientUids,
+    audienceGroupId: _audienceGroupId,
+    ...message
+  } = content;
+  return message;
+}
+
+/**
+ * `flex`：content 就是一則 Flex message（例如滿意度問卷），取 altText 與 contents 原樣送出。
+ * 舊模板的寫法 `{ text, flexJson }` 仍接受：altText 取 text、contents 取 flexJson。
+ * LINE 規定 altText 與 contents 必填，缺少就不送，回原因。
+ */
+function buildFlexMessage(content: Record<string, unknown>, base: Record<string, unknown>): Record<string, unknown> {
+  const altText = typeof content.altText === 'string' && content.altText.trim()
+    ? content.altText
+    : typeof content.text === 'string' ? content.text : '';
+  const contents = content.contents ?? content.flexJson;
+  if (!altText.trim()) {
+    throw new LineMessageBuildError('Flex 訊息缺少替代文字（altText），LINE 不接受');
+  }
+  if (!contents || typeof contents !== 'object') {
+    throw new LineMessageBuildError('Flex 訊息缺少內容（contents），LINE 不接受');
+  }
+  return { type: 'flex', altText, contents, ...base };
+}
+
 export function buildLineMessage(contentType: string, content: Record<string, unknown>): unknown {
   const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string; imageUrl?: string }> | undefined;
   const quickReply = quickReplies?.length
@@ -173,19 +218,23 @@ export function buildLineMessage(contentType: string, content: Record<string, un
         contents: content.contents,
         ...base,
       };
-    case 'line_flex_template': {
-      const {
-        quickReplies: _quickReplies,
-        strategy: _strategy,
-        replyToken: _replyToken,
-        recipientUids: _recipientUids,
-        audienceGroupId: _audienceGroupId,
-        ...message
-      } = content;
-      return { ...message, ...base };
-    }
+    case 'line_flex_template':
+      return { ...stripInternalFields(content), ...base };
 
     // ─── 既有 channel-native 訊息類型保留（供 channel plugin 內部直接調用） ───
+    //
+    // 收件匣、AI 回覆、自動化、發券、Canvas 都送 `text`；
+    // 非 LINE 的滿意度問卷送 `quick_reply`（文字＋快速回覆），以前都靠 default 送成文字。
+    case 'text':
+    case 'quick_reply':
+      // 沒有文字時 LINE 會拒收，在本地擋下並帶原因（PR #440 審查）
+      if (typeof content.text !== 'string' || !content.text.trim()) {
+        throw new LineMessageBuildError('文字訊息沒有內容，LINE 不接受');
+      }
+      return { type: 'text', text: content.text, ...base };
+    // 滿意度問卷等系統產生的 Flex message（issue #416：這個分支在 3a19c457 被刪掉）
+    case 'flex':
+      return buildFlexMessage(content, base);
     //
     // ⚠️ image / video 原本沒有分支，會落到最下面的 `default:` 被當成 text 送出，
     // 內容取 `content.text ?? ''` —— 客服在收件匣送一張圖，客戶收到的是一則
@@ -239,12 +288,20 @@ export function buildLineMessage(contentType: string, content: Record<string, un
         longitude: content.longitude ?? 0,
         ...base,
       };
-    case 'sticker':
-      return { type: 'sticker', packageId: content.packageId ?? '1', stickerId: content.stickerId ?? '1', ...base };
+    case 'sticker': {
+      // 以前缺欄位時補成 '1' 送出（送出錯的貼圖）；缺少時不送並帶原因（PR #440 審查）
+      const packageId = String(content.packageId ?? '').trim();
+      const stickerId = String(content.stickerId ?? '').trim();
+      if (!packageId || !stickerId) {
+        throw new LineMessageBuildError('貼圖缺少 packageId 或 stickerId，LINE 不接受');
+      }
+      return { type: 'sticker', packageId, stickerId, ...base };
+    }
 
-    // ─── default：當作純文字 ──────────────────────────────────────
+    // ─── default：不認得的類型不送 ────────────────────────────────
+    // 以前當成文字送出，內容取 content.text ?? ''，多半是空白訊息被 LINE 拒收（issue #416）
     default:
-      return { type: 'text', text: (content.text as string) ?? '', ...base };
+      throw new LineMessageBuildError(`LINE 不支援這種訊息類型「${contentType}」，訊息沒有送出`);
   }
 }
 
@@ -279,6 +336,8 @@ function safeStoredMime(served: string | null): string {
 
 export class LinePlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.LINE;
+  /** LINE 推送一次最多 5 則訊息 */
+  readonly maxMessagesPerSend = 5;
 
   // ─── Task 2.1: verifySignature ───────────────────────────────────
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {
@@ -436,8 +495,22 @@ export class LinePlugin implements ChannelPlugin {
   async sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; requestId?: string; error?: string }> {
     const token = credentials.channelAccessToken as string;
     const { contentType, content } = message;
-    const lineMsg = buildLineMessage(contentType, content);
-    const messages = [lineMsg];
+    // 同一次推送接著送的訊息（附券廣播的素材＋發券文字），LINE 一次最多 5 則
+    let messages: unknown[];
+    try {
+      messages = [
+        buildLineMessage(contentType, content),
+        ...(message.extraMessages ?? []).map((m) => buildLineMessage(m.contentType, m.content)),
+      ];
+    } catch (err) {
+      // 組不出訊息就整批不送：回原因給呼叫端，由呼叫端寫成客服看得到的失敗紀錄
+      if (err instanceof LineMessageBuildError) return { success: false, error: err.message };
+      throw err;
+    }
+    // 超過上限 LINE 會拒收整批：不呼叫 API，回報錯誤讓呼叫端看得到（PR #364 審查）
+    if (messages.length > this.maxMessagesPerSend) {
+      return { success: false, error: `LINE 一次最多送 ${this.maxMessagesPerSend} 則訊息（這次 ${messages.length} 則）` };
+    }
     const strategy = (content.strategy as string) ?? 'push';
     const retryKey = message.delivery?.retryKey;
     // logger.info(`strategy: ${strategy}`);

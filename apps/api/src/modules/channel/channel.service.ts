@@ -2,10 +2,11 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, channelDisplayName } from '@open333crm/shared';
 import { resolveEffectiveLimit } from '../platform/plan-limits.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { insertAgentChannelAccess } from '../../services/channel-team-access.js';
+import { assertBotConfigWritable } from './bot-config-settings.js';
 
 // --- Credential Encryption ---
 
@@ -308,6 +309,9 @@ export async function updateChannel(
     throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
+  // 機器人設定在任何寫入之前檢查；與已存的相同時不檢查（channel-management「機器人設定欄位的型別與範圍」）
+  if (data.settings !== undefined) assertBotConfigWritable(data.settings.botConfig, channel.settings);
+
   const updateData: Record<string, unknown> = {};
 
   if (data.displayName !== undefined) {
@@ -389,7 +393,20 @@ export async function deleteChannel(prisma: TenantDb, id: string, tenantId: stri
     throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
-  await prisma.channel.delete({ where: { id } });
+  try {
+    await prisma.channel.delete({ where: { id } });
+  } catch (err) {
+    // 對話、用量、Rich Menu 指向渠道的外鍵是 RESTRICT（AUDIT CHAN-01）：
+    // 收過對話的渠道刪不掉，改給清楚的說明而非泛用的 500（G15）
+    if ((err as { code?: string }).code === 'P2003') {
+      throw new AppError(
+        '此渠道已有對話或其他資料，無法刪除。若不再使用，請改用「停用」，歷史資料會保留。',
+        'CHANNEL_IN_USE',
+        409,
+      );
+    }
+    throw err;
+  }
 
   // 平台模式（Facebook 登入連結）的粉專：刪除成功後取消它對平台 App 的訂閱，平台不再收到這個粉專的事件。
   // 動態 import 避免與 meta-connect 模組互相引用；盡力而為，失敗只記 log
@@ -479,8 +496,8 @@ async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null>
   }
 }
 
-/** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
-const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured', 'webhookRouting', 'metaConnect', 'tokenHealth'] as const;
+/** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位（liffTest 只由 LIFF 測試結果寫入） */
+const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured', 'webhookRouting', 'metaConnect', 'tokenHealth', 'liffTest'] as const;
 
 /** 只由平台連結流程寫入的憑證欄位：租戶不可自行設定（例如把自備渠道標成平台模式，或替平台渠道補 appSecret） */
 const SYSTEM_MANAGED_CREDENTIAL_KEYS = ['connectMode'] as const;
@@ -660,7 +677,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     return { verified: true, pageInfo: igInfo };
   }
 
-  throw new AppError(`不支援的渠道類型: ${channel.channelType}`, 'UNSUPPORTED_CHANNEL', 400);
+  throw new AppError(`不支援的渠道類型：${channelDisplayName(channel.channelType)}`, 'UNSUPPORTED_CHANNEL', 400);
 }
 
 export async function updateWebhookBaseUrl(

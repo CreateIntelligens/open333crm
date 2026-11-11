@@ -4,29 +4,8 @@
  */
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
-import { test, vi } from 'vitest';
-
-const cache = vi.hoisted(() => new Map<string, string>());
-vi.mock('@open333crm/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@open333crm/core')>();
-  const globToRegExp = (pattern: string) =>
-    new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
-  return {
-    ...actual,
-    redis: {
-      get: async (key: string) => cache.get(key) ?? null,
-      set: async (key: string, value: string) => {
-        cache.set(key, value);
-        return 'OK';
-      },
-      del: async (...keys: string[]) => keys.filter((key) => cache.delete(key)).length,
-      scan: async (_cursor: string, _match: string, pattern: string) => {
-        const re = globToRegExp(pattern);
-        return ['0', [...cache.keys()].filter((key) => re.test(key))];
-      },
-    },
-  };
-});
+import type { Redis } from 'ioredis';
+import { test } from 'vitest';
 
 import { getEffectiveTenantPermissions } from '#src/services/permission.service.js';
 import { getTenantPlanId } from '#src/services/tenant-plan.cache.js';
@@ -34,6 +13,22 @@ import { requirePermission } from '#src/guards/rbac.guard.js';
 import { updatePlan } from '#src/modules/platform/plan.service.js';
 import { updateTenant } from '#src/modules/platform/platform-tenant.service.js';
 import { getEffectiveLimit } from '#src/modules/platform/plan-limits.service.js';
+
+const cache = new Map<string, string>();
+const globToRegExp = (pattern: string) =>
+  new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+const redis = {
+  get: async (key: string) => cache.get(key) ?? null,
+  set: async (key: string, value: string) => {
+    cache.set(key, value);
+    return 'OK';
+  },
+  del: async (...keys: string[]) => keys.filter((key) => cache.delete(key)).length,
+  scan: async (_cursor: string, _match: string, pattern: string) => {
+    const re = globToRegExp(pattern);
+    return ['0', [...cache.keys()].filter((key) => re.test(key))];
+  },
+} as unknown as Redis;
 
 interface PlanRow {
   id: string;
@@ -117,7 +112,7 @@ function createDb() {
 /** 依租戶目前的方案取得成員的有效權限，與 requirePermission 的讀法相同 */
 async function memberPermissions(db: ReturnType<typeof createDb>, tenantId: string, roleId: string) {
   const planId = await getTenantPlanId(db.prisma, tenantId);
-  return getEffectiveTenantPermissions(db.prisma, roleId, planId);
+  return getEffectiveTenantPermissions(db.prisma, redis, roleId, planId);
 }
 
 test('trial 方案未含 marketing：有效權限不含 marketing.view，requirePermission 回 403', async () => {
@@ -132,6 +127,7 @@ test('trial 方案未含 marketing：有效權限不含 marketing.view，require
 
   const app = Fastify();
   app.decorate('prismaAdmin', db.prisma);
+  app.decorate('redis', redis);
   app.decorateRequest('agent', null);
   app.addHook('preHandler', async (request) => {
     (request as unknown as { agent: unknown }).agent = { id: 'agent-1', tenantId: tenant.id, roleId, role: 'ADMIN' };
@@ -161,7 +157,7 @@ test('平台改 plan features 即時生效：移除 knowledge 後，有效權限
 
   assert.equal((await memberPermissions(db, tenant.id, roleId)).has('knowledge.view'), true);
 
-  await updatePlan(db.prisma, trial.id, { features: ['inbox', 'core'] });
+  await updatePlan(db.prisma, redis, trial.id, { features: ['inbox', 'core'] });
 
   const effective = await memberPermissions(db, tenant.id, roleId);
   assert.equal(effective.has('knowledge.view'), false);
@@ -185,7 +181,7 @@ test('更新 limits：方案的 maxAgents 從 3 改為 5，沒有覆寫的租戶
   const tenant = db.addTenant(trial.id);
   assert.equal(await getEffectiveLimit(db.prisma, tenant.id, 'maxAgents'), 3);
 
-  await updatePlan(db.prisma, trial.id, { limits: { maxAgents: 5 } });
+  await updatePlan(db.prisma, redis, trial.id, { limits: { maxAgents: 5 } });
 
   assert.equal(await getEffectiveLimit(db.prisma, tenant.id, 'maxAgents'), 5);
 });
@@ -197,7 +193,7 @@ test('變更方案後立即生效：API 讀過舊方案之後，下一次讀到�
   const tenant = db.addTenant(light.id);
   assert.equal(await getTenantPlanId(db.prisma, tenant.id), light.id);
 
-  await updateTenant(db.prisma, tenant.id, { planSlug: 'standard' });
+  await updateTenant(db.prisma, redis, tenant.id, { planSlug: 'standard' });
 
   assert.equal(await getTenantPlanId(db.prisma, tenant.id), standard.id);
 });
@@ -207,11 +203,11 @@ test('降級不刪除角色的權限設定：有效權限不含 marketing.view�
   db.addPlan('professional', ['inbox', 'marketing', 'core']);
   const light = db.addPlan('light', ['inbox', 'core']);
   const tenant = db.addTenant(light.id);
-  await updateTenant(db.prisma, tenant.id, { planSlug: 'professional' });
+  await updateTenant(db.prisma, redis, tenant.id, { planSlug: 'professional' });
   const roleId = db.addRole(['marketing.view']);
   assert.equal((await memberPermissions(db, tenant.id, roleId)).has('marketing.view'), true);
 
-  await updateTenant(db.prisma, tenant.id, { planSlug: 'light' });
+  await updateTenant(db.prisma, redis, tenant.id, { planSlug: 'light' });
 
   assert.equal((await memberPermissions(db, tenant.id, roleId)).has('marketing.view'), false);
   assert.deepEqual(db.rolePermissions.filter((row) => row.roleId === roleId).map((row) => row.permissionCode), ['marketing.view']);
@@ -224,10 +220,10 @@ test('升回原方案後恢復權限：有效權限再次含 marketing.view，�
   const tenant = db.addTenant(professional.id);
   const roleId = db.addRole(['marketing.view']);
   assert.equal((await memberPermissions(db, tenant.id, roleId)).has('marketing.view'), true);
-  await updateTenant(db.prisma, tenant.id, { planSlug: 'light' });
+  await updateTenant(db.prisma, redis, tenant.id, { planSlug: 'light' });
   assert.equal((await memberPermissions(db, tenant.id, roleId)).has('marketing.view'), false);
 
-  await updateTenant(db.prisma, tenant.id, { planSlug: 'professional' });
+  await updateTenant(db.prisma, redis, tenant.id, { planSlug: 'professional' });
   // 清掉快取：權限要來自角色仍然保留的設定，不是降級前留下的快取
   cache.clear();
 

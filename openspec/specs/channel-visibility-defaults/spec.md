@@ -48,7 +48,7 @@ A migration SHALL bind every channel that has no team binding and no member bind
 - **THEN** no binding is added
 
 ### Requirement: New Channel Is Visible To Chosen Members
-`POST /channels` SHALL accept `visibleAgentIds` and bind the new channel to those members with `full`, in the same transaction that creates the channel. When `visibleAgentIds` is omitted, the channel SHALL be bound to every active member of the tenant. When an ID is not an active member of the tenant, the API SHALL return HTTP 400 and SHALL NOT create the channel. When the creator does not hold `channel.view_all` and is not in `visibleAgentIds`, the creator SHALL be added. A channel connected through Meta SHALL be bound to every active member. When writing the bindings fails, the new channel SHALL be removed. The channel form SHALL send `visibleAgentIds` only when not every member is selected. The channel form SHALL list the tenant's active members with all of them selected by default.
+`POST /channels` SHALL accept `visibleAgentIds` and bind the new channel to those members with `full`, in the same transaction that creates the channel. When `visibleAgentIds` is omitted, the channel SHALL be bound to every active member of the tenant. The channel form SHALL send `visibleAgentIds` only when not every member is selected. The channel form SHALL list the tenant's active members with all of them selected by default.
 
 #### Scenario: Channel created for chosen members
 - **WHEN** an administrator creates a channel with `visibleAgentIds` of one member
@@ -57,6 +57,9 @@ A migration SHALL bind every channel that has no team binding and no member bind
 #### Scenario: Channel created without choosing members
 - **WHEN** an API client creates a channel without `visibleAgentIds`
 - **THEN** the channel is bound to every active member of the tenant
+
+### Requirement: New Channel Binding Rules
+When an ID is not an active member of the tenant, the API SHALL return HTTP 400 and SHALL NOT create the channel. When the creator does not hold `channel.view_all` and is not in `visibleAgentIds`, the creator SHALL be added. A channel connected through Meta SHALL be bound to every active member. When writing the bindings fails, the new channel SHALL be removed.
 
 #### Scenario: Creator without head-office access stays visible
 - **WHEN** a creator without `channel.view_all` creates a channel with `visibleAgentIds` that does not include the creator
@@ -67,7 +70,7 @@ A migration SHALL bind every channel that has no team binding and no member bind
 - **THEN** the API returns HTTP 400 and no channel is created
 
 ### Requirement: New Member Sees Chosen Channels
-`POST /agents` SHALL accept `channelIds` and bind the new member to those channels with `full`, in the same transaction that creates the member. When `channelIds` is omitted, the member SHALL be bound to every channel the creator can see; for a creator with `channel.view_all`, that is every channel of the tenant. A creator with neither `channel.view_all` nor `channel.assign_team` SHALL only choose channels the creator can see, and each binding SHALL NOT exceed the creator's own access level on that channel; otherwise the API SHALL return HTTP 403 and SHALL NOT create the member. The new-member form SHALL send `channelIds` only when not every channel is selected. The new-member form SHALL list the channels the creator can choose, all selected by default.
+`POST /agents` SHALL accept `channelIds` and bind the new member to those channels with `full`, in the same transaction that creates the member. When `channelIds` is omitted, the member SHALL be bound to every channel the creator can see; for a creator with `channel.view_all`, that is every channel of the tenant. The new-member form SHALL send `channelIds` only when not every channel is selected. The new-member form SHALL list the channels the creator can choose, all selected by default.
 
 #### Scenario: Member created with chosen channels
 - **WHEN** an administrator creates a member with `channelIds` of one channel
@@ -76,6 +79,9 @@ A migration SHALL bind every channel that has no team binding and no member bind
 #### Scenario: Member created without choosing channels
 - **WHEN** an administrator with `channel.view_all` creates a member without `channelIds`
 - **THEN** the member is bound to every channel of the tenant
+
+### Requirement: New Member Channel Access Is Capped
+A creator with neither `channel.view_all` nor `channel.assign_team` SHALL only choose channels the creator can see, and each binding SHALL NOT exceed the creator's own access level on that channel; otherwise the API SHALL return HTTP 403 and SHALL NOT create the member.
 
 #### Scenario: New member's level capped at the creator's level
 - **WHEN** a creator without `channel.view_all` and without `channel.assign_team` has `read_only` on a channel and creates a member with that channel
@@ -95,4 +101,3 @@ Round-robin case assignment SHALL only pick a member who is bound to the case's 
 #### Scenario: Nobody can see the channel
 - **WHEN** no member is bound to the case's channel at `reply_only` or `full`
 - **THEN** the case stays unassigned
-

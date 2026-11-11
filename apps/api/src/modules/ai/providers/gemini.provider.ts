@@ -41,6 +41,39 @@ function getApiKey(override?: string): string {
   return key;
 }
 
+// Gemini 2.5 Pro 強制啟用 thinking mode，傳 thinkingBudget:0 會直接
+// 回 400「Budget 0 is invalid. This model only works in thinking mode」。
+// 其餘 2.5 系列（flash/flash-lite）預設也開 thinking，會把 token 花在
+// 內部推理導致可見輸出被截斷，故對「非 pro」明確關閉 thinking。
+// generate 與 generateToolTurn 共用，兩條路徑的 token 行為要一致。
+function buildGenerationConfig(opts: { model: string; temperature: number; maxTokens: number }): Record<string, unknown> {
+  const isProModel = /gemini.*-pro/i.test(opts.model);
+  const generationConfig: Record<string, unknown> = {
+    temperature: opts.temperature,
+    // Pro 開著 thinking 會先吃掉一部分 token 做推理，maxTokens 太小會讓
+    // 可見回覆被截光，故 pro 給一個較高的下限保底。
+    maxOutputTokens: isProModel ? Math.max(opts.maxTokens, 2048) : opts.maxTokens,
+  };
+  if (!isProModel) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
+  return generationConfig;
+}
+
+// MAX_TOKENS = output truncated. Throw with diagnostic info so
+// operators see why the user got a half sentence (raise chatMaxTokens
+// or keep thinking disabled).
+function assertNotTruncated(
+  finishReason: string | undefined,
+  usage: { candidatesTokenCount?: number; thoughtsTokenCount?: number } | undefined,
+  maxTokens: number,
+): void {
+  if (finishReason !== 'MAX_TOKENS') return;
+  throw new Error(
+    `Gemini reply truncated by MAX_TOKENS (output=${usage?.candidatesTokenCount ?? '?'} thoughts=${usage?.thoughtsTokenCount ?? 0} max=${maxTokens}). Increase chatMaxTokens or ensure thinkingConfig.thinkingBudget=0.`,
+  );
+}
+
 export const GeminiChatProvider: ChatProvider = {
   id: 'gemini',
   label: 'Google Gemini',
@@ -62,22 +95,6 @@ export const GeminiChatProvider: ChatProvider = {
         { role: 'user', parts: [{ text: opts.userMessage }] },
       ];
 
-      // Gemini 2.5 Pro 強制啟用 thinking mode，傳 thinkingBudget:0 會直接
-      // 回 400「Budget 0 is invalid. This model only works in thinking mode」。
-      // 其餘 2.5 系列（flash/flash-lite）預設也開 thinking，會把 token 花在
-      // 內部推理導致可見輸出被截斷，故對「非 pro」明確關閉 thinking。
-      const isProModel = /gemini.*-pro/i.test(opts.model);
-
-      const generationConfig: Record<string, unknown> = {
-        temperature: opts.temperature,
-        // Pro 開著 thinking 會先吃掉一部分 token 做推理，maxTokens 太小會讓
-        // 可見回覆被截光，故 pro 給一個較高的下限保底。
-        maxOutputTokens: isProModel ? Math.max(opts.maxTokens, 2048) : opts.maxTokens,
-      };
-      if (!isProModel) {
-        generationConfig.thinkingConfig = { thinkingBudget: 0 };
-      }
-
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -87,7 +104,7 @@ export const GeminiChatProvider: ChatProvider = {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: opts.systemPrompt }] },
           contents,
-          generationConfig,
+          generationConfig: buildGenerationConfig(opts),
         }),
         signal: controller.signal,
       });
@@ -117,15 +134,7 @@ export const GeminiChatProvider: ChatProvider = {
         .join('')
         .trim();
 
-      // MAX_TOKENS = output truncated. Throw with diagnostic info so
-      // operators see why the user got a half sentence (raise chatMaxTokens
-      // or keep thinking disabled).
-      if (candidate?.finishReason === 'MAX_TOKENS') {
-        const usage = data.usageMetadata ?? {};
-        throw new Error(
-          `Gemini reply truncated by MAX_TOKENS (output=${usage.candidatesTokenCount ?? '?'} thoughts=${usage.thoughtsTokenCount ?? 0} max=${opts.maxTokens}). Increase chatMaxTokens or ensure thinkingConfig.thinkingBudget=0.`,
-        );
-      }
+      assertNotTruncated(candidate?.finishReason, data.usageMetadata, opts.maxTokens);
       if (!text) throw new Error('Gemini returned empty response');
 
       const um = data.usageMetadata;
@@ -166,15 +175,17 @@ export const GeminiChatProvider: ChatProvider = {
           systemInstruction: { parts: [{ text: opts.systemPrompt }] },
           contents: toGeminiContents(opts.messages),
           tools: [{ functionDeclarations: opts.tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: toGeminiParameters(tool.parameters as Record<string, unknown>) })) }],
-          generationConfig: { temperature: opts.temperature, maxOutputTokens: opts.maxTokens },
+          generationConfig: buildGenerationConfig(opts),
         }),
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(`Gemini tool call failed (${response.status}): ${await response.text()}`);
       const data = (await response.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string; functionCall?: { name?: string; args?: unknown } }> } }>;
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string; functionCall?: { name?: string; args?: unknown } }> }; finishReason?: string }>;
         usageMetadata?: { promptTokenCount?: number; cachedContentTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
       };
+      // agent 路徑原本沒檢查截斷，半句話被當成完成送給顧客（2026-10-20 創造智能 webchat）
+      assertNotTruncated(data.candidates?.[0]?.finishReason, data.usageMetadata, opts.maxTokens);
       const parts = data.candidates?.[0]?.content?.parts ?? [];
       const toolCalls = parts.flatMap((part, index): ToolCall[] => {
         const call = part.functionCall;

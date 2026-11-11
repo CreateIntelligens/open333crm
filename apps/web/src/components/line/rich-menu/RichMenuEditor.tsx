@@ -20,13 +20,17 @@ import {
   LINE_RICH_MENU_MAX_WIDTH,
   LINE_RICH_MENU_MIN_HEIGHT,
 } from '@open333crm/shared';
+import { RICH_MENU_DEFAULT_CHECK_CONFIRM } from '@/lib/rich-menu-confirm';
 
 export interface RichMenuDraft {
   channelId: string;
   name: string;
   chatBarText: string;
   size: { width: number; height: number };
+  /** 聊天室打開時是否展開選單（LINE 的 selected） */
   selected: boolean;
+  /** 發布時是否設成所有好友的預設選單 */
+  isDefault: boolean;
   areas: RichMenuArea[];
   imageUrl: string;
 }
@@ -75,11 +79,32 @@ export function RichMenuEditor({ draft, onChange }: Props) {
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
+                checked={draft.isDefault}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  // 勾選會影響所有好友，先確認；取消勾選不需要
+                  if (next && !confirm(RICH_MENU_DEFAULT_CHECK_CONFIRM)) return;
+                  onChange({ ...draft, isDefault: next });
+                }}
+              />
+              <span>設為所有好友的預設選單</span>
+            </label>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              勾選後，發布時會換掉這個官方帳號所有好友目前看到的選單。只想給部分好友看，請不要勾，發布後用「綁定受眾」。
+            </p>
+          </div>
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
                 checked={draft.selected}
                 onChange={(e) => onChange({ ...draft, selected: e.target.checked })}
               />
-              <span>預設展開選單（使用者開啟對話時自動展開）</span>
+              <span>聊天室打開時展開選單</span>
             </label>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              不勾時選單收合，好友點聊天室底部的「{draft.chatBarText || '選單'}」才會打開。
+            </p>
           </div>
         </Section>
 
@@ -101,7 +126,7 @@ export function RichMenuEditor({ draft, onChange }: Props) {
               }}
             />
             <div className="text-[11px] text-muted-foreground">
-              ⚠ 需求尺寸 {draft.size.width} × {draft.size.height}（JPEG/PNG，≤ 1 MB，LINE 官方限制）
+              需求尺寸 {draft.size.width} × {draft.size.height}（JPEG/PNG，≤ 1 MB，LINE 官方限制）
             </div>
           </div>
         </Section>

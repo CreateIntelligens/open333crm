@@ -85,7 +85,7 @@ const bind = (channelId: string, agentId: string, accessLevel: 'read_only' | 're
 async function buildApp(agentId: string, roleId: string) {
   const app = Fastify();
   await app.register(errorHandlerPlugin);
-  app.decorate('prisma', owner);
+  app.decorate('prisma', tenantDb);
   app.decorate('prismaAdmin', owner);
   app.decorate('io', io as never);
   app.decorate('authenticate', async (request: FastifyRequest) => {
@@ -315,4 +315,351 @@ test('Direct and team bindings combined：直接綁定與團隊授權取聯集',
   );
   const mine = [direct.id, viaTeam.id, unrelated.id].filter((id) => set.has(id)).sort();
   assert.deepEqual(mine, [direct.id, viaTeam.id].sort());
+});
+
+// ── change extend-channel-visibility-to-contacts-and-marketing ──
+
+const marketerRole = await createRole('marketer', ['marketing.view', 'marketing.manage', 'marketing.broadcast']);
+const marketer = await createAgent('marketer', marketerRole.id);
+await bind(visible.id, marketer.id, 'read_only');
+/**
+ * 建立與送出群發用的可見渠道：群發只能用能主動推送的渠道，WebChat 會被拒（change reject-webchat-push-415）。
+ * 用 LINE 而不是 FB：分群條件「有 FB 帳號」不能被這個渠道的身分本身符合
+ */
+const visiblePush = await createChannel('visible-push', { channelType: 'LINE' });
+await bind(visiblePush.id, marketer.id, 'read_only');
+const marketerApp = await buildApp(marketer.id, marketerRole.id);
+const audienceTag = await owner.tag.create({ data: { tenantId: A, name: `${MARK}-audience` } });
+
+afterAll(async () => {
+  await marketerApp.close();
+  // 群發本身由上方的 afterAll 依渠道刪除（後註冊的 afterAll 先執行，所以這裡先刪群發再刪活動）
+  await owner.broadcast.deleteMany({ where: { tenantId: A, name: { startsWith: MARK } } });
+  await owner.campaign.deleteMany({ where: { tenantId: A, name: { startsWith: MARK } } });
+  await owner.segment.deleteMany({ where: { tenantId: A, name: { startsWith: MARK } } });
+  await owner.contactTag.deleteMany({ where: { tagId: audienceTag.id } });
+  await owner.tag.deleteMany({ where: { id: audienceTag.id, tenantId: A } });
+});
+
+/** 在可見與不可見渠道都有身份的聯絡人 */
+async function crossChannelContact(slug: string) {
+  const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-${slug}` } });
+  for (const ch of [visible, hidden]) {
+    await owner.channelIdentity.create({
+      data: { contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT', uid: `${MARK}-${slug}-${ch.id}`, profileName: `${MARK}-${slug}-暱稱-${ch.id === visible.id ? 'visible' : 'hidden'}` },
+    });
+  }
+  return contact;
+}
+
+test('對話的聯絡人身份：只含可見渠道的身份，不含不可見渠道的 uid 與暱稱', async () => {
+  const contact = await crossChannelContact('conv-identity');
+  const conv = await owner.conversation.create({
+    data: { tenantId: A, contactId: contact.id, channelId: visible.id, channelType: 'WEBCHAT' },
+  });
+  const res = await memberApp.inject({ method: 'GET', url: `/api/v1/conversations/${conv.id}` });
+  assert.equal(res.statusCode, 200, res.body);
+  const ids = (res.json().data.contact.channelIdentities as Array<{ channelId: string }>).map((i) => i.channelId);
+  assert.deepEqual(ids, [visible.id]);
+  assert.ok(!res.body.includes(`${MARK}-conv-identity-${hidden.id}`), '不可出現不可見渠道的 uid');
+  assert.ok(!res.body.includes('暱稱-hidden'), '不可出現不可見渠道的暱稱');
+});
+
+test('工單的聯絡人身份：只含可見渠道的身份', async () => {
+  const contact = await crossChannelContact('case-identity');
+  const caseRecord = await owner.case.create({
+    data: { tenantId: A, contactId: contact.id, channelId: visible.id, title: `${MARK}-case-identity` },
+  });
+  const res = await memberApp.inject({ method: 'GET', url: `/api/v1/cases/${caseRecord.id}` });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().data.contact.channelIdentities.length, 1);
+  assert.ok(!res.body.includes(`${MARK}-case-identity-${hidden.id}`), '不可出現不可見渠道的 uid');
+});
+
+const visibleBroadcast = await owner.broadcast.create({
+  data: { tenantId: A, channelId: visible.id, name: `${MARK}-bc-visible`, createdById: marketer.id },
+});
+const hiddenBroadcast = await owner.broadcast.create({
+  data: { tenantId: A, channelId: hidden.id, name: `${MARK}-bc-hidden`, createdById: other.id },
+});
+
+test('群發列表只含可見渠道：看得到 CH-A 的群發，看不到 CH-B 的群發', async () => {
+  const res = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/broadcasts?limit=100' });
+  assert.equal(res.statusCode, 200, res.body);
+  const ids = (res.json().data as Array<{ id: string }>).map((b) => b.id);
+  assert.ok(ids.includes(visibleBroadcast.id), '應列出可見渠道的群發');
+  assert.ok(!ids.includes(hiddenBroadcast.id), '不可列出不可見渠道的群發');
+});
+
+test('送出不可見渠道的群發被拒：讀取、收件人、送出、取消都回 404，狀態不變，不送出訊息', async () => {
+  sendMessage.mockClear();
+  for (const [method, path] of [
+    ['GET', ''],
+    ['GET', '/recipients'],
+    ['POST', '/send'],
+    ['POST', '/cancel'],
+  ] as const) {
+    const res = await marketerApp.inject({ method, url: `/api/v1/marketing/broadcasts/${hiddenBroadcast.id}${path}` });
+    assert.equal(res.statusCode, 404, `${method} ${path} 應回 404，實際 ${res.statusCode} ${res.body}`);
+    assert.ok(!res.body.includes(`${MARK}-bc-hidden`), `${method} ${path} 不可回傳群發內容`);
+  }
+  const after = await owner.broadcast.findUniqueOrThrow({ where: { id: hiddenBroadcast.id } });
+  assert.equal(after.status, 'draft');
+  assert.equal(sendMessage.mock.calls.length, 0);
+});
+
+test('用不可見渠道建立群發被拒：回 404「找不到渠道」，不建立群發', async () => {
+  const material = await owner.material.create({
+    data: { tenantId: A, name: `${MARK}-create-material`, channelType: 'WEBCHAT', contentType: 'text', body: { text: 'hi' } },
+  });
+  const res = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts',
+    payload: { name: `${MARK}-bc-create-hidden`, channelId: hidden.id, materialId: material.id, targetType: 'all' },
+  });
+  assert.equal(res.statusCode, 404, res.body);
+  assert.match(res.json().error.message, /渠道/);
+  assert.equal(await owner.broadcast.count({ where: { name: `${MARK}-bc-create-hidden` } }), 0);
+});
+
+test('預估不可見渠道的受眾被拒：回 404，不回傳人數', async () => {
+  const res = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts/audience-preview',
+    payload: { channelId: hidden.id, targetType: 'all' },
+  });
+  assert.equal(res.statusCode, 404, res.body);
+  assert.equal(res.json().data, undefined);
+});
+
+test('分眾預覽只算看得到的聯絡人：可見渠道 2 位、只在不可見渠道 3 位 → 2', async () => {
+  for (const [ch, n] of [[visible, 2], [hidden, 3]] as const) {
+    for (let i = 0; i < n; i += 1) {
+      const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-audience-${ch.id}-${i}` } });
+      await owner.channelIdentity.create({
+        data: { contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT', uid: `${MARK}-audience-${ch.id}-${i}` },
+      });
+      await owner.contactTag.create({ data: { contactId: contact.id, tagId: audienceTag.id } });
+    }
+  }
+  const res = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/segments/preview',
+    payload: { conditions: [{ field: 'tag', operator: 'eq', value: audienceTag.id }] },
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().data.count, 2);
+});
+
+test('分眾預覽只算看得到的聯絡人：分眾列表與單筆的 contactCount 也只算看得到的聯絡人', async () => {
+  // 儲存的 contactCount 是全租戶的 5（建立時以 ALL_CHANNELS 計算）
+  const segment = await owner.segment.create({
+    data: {
+      tenantId: A,
+      name: `${MARK}-segment`,
+      rules: { conditions: [{ field: 'tag', operator: 'eq', value: audienceTag.id }], logic: 'AND' },
+      conditions: [{ field: 'tag', operator: 'eq', value: audienceTag.id }],
+      contactCount: 5,
+    },
+  });
+
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/segments?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const row = (list.json().data as Array<{ id: string; contactCount: number }>).find((s) => s.id === segment.id);
+  assert.equal(row?.contactCount, 2);
+  const one = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/segments/${segment.id}` });
+  assert.equal(one.statusCode, 200, one.body);
+  assert.equal(one.json().data.contactCount, 2);
+});
+
+test('行銷活動只含可見渠道的群發：活動列表的群發數是 1，詳情只列 CH-A 的群發', async () => {
+  const campaign = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign`, createdById: marketer.id } });
+  const inCampaign = await Promise.all(
+    [visible, hidden].map((ch) =>
+      owner.broadcast.create({
+        data: { tenantId: A, channelId: ch.id, campaignId: campaign.id, name: `${MARK}-campaign-bc-${ch.id}`, createdById: marketer.id, totalCount: 7 },
+      }),
+    ),
+  );
+
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const row = (list.json().data as Array<{ id: string; _count: { broadcasts: number } }>).find((c) => c.id === campaign.id);
+  assert.equal(row?._count.broadcasts, 1);
+
+  const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${campaign.id}` });
+  assert.equal(detail.statusCode, 200, detail.body);
+  const ids = (detail.json().data.broadcasts as Array<{ id: string }>).map((b) => b.id);
+  assert.deepEqual(ids, [inCampaign[0]!.id]);
+  assert.ok(!detail.body.includes(`${MARK}-campaign-bc-${hidden.id}`), '不可出現不可見渠道的群發');
+});
+
+test('分眾預覽只算看得到的聯絡人：舊資料 rules 為空的分眾不讓列表變成 500，人數是 0', async () => {
+  const legacy = await owner.segment.create({
+    data: { tenantId: A, name: `${MARK}-segment-legacy`, rules: undefined, conditions: [], contactCount: 9 },
+  });
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/segments?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const row = (list.json().data as Array<{ id: string; contactCount: number }>).find((s) => s.id === legacy.id);
+  assert.equal(row?.contactCount, 0);
+});
+
+test('只有其他分店群發的行銷活動：列表不含、以 ID 讀取回 404；沒有群發的活動照常看得到', async () => {
+  const hiddenOnly = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-hidden`, createdById: other.id } });
+  await owner.broadcast.create({
+    data: { tenantId: A, channelId: hidden.id, campaignId: hiddenOnly.id, name: `${MARK}-campaign-hidden-bc`, createdById: other.id },
+  });
+  const empty = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-empty`, createdById: other.id } });
+
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
+  assert.equal(list.statusCode, 200, list.body);
+  const ids = (list.json().data as Array<{ id: string }>).map((c) => c.id);
+  assert.ok(!ids.includes(hiddenOnly.id), '不可列出只有其他分店群發的活動');
+  assert.ok(ids.includes(empty.id), '沒有群發的活動照常列出');
+
+  const detail = await marketerApp.inject({ method: 'GET', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}` });
+  assert.equal(detail.statusCode, 404, detail.body);
+  assert.ok(!detail.body.includes(`${MARK}-campaign-hidden`), '不可回傳活動名稱');
+  const patch = await marketerApp.inject({ method: 'PATCH', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}`, payload: { name: '改名' } });
+  assert.equal(patch.statusCode, 404, patch.body);
+  const del = await marketerApp.inject({ method: 'DELETE', url: `/api/v1/marketing/campaigns/${hiddenOnly.id}` });
+  assert.equal(del.statusCode, 404, del.body);
+  assert.equal((await owner.campaign.findUniqueOrThrow({ where: { id: hiddenOnly.id } })).name, `${MARK}-campaign-hidden`);
+});
+
+test('總店規劃的空活動：分店看得到，並能以自己的渠道建立群發加入', async () => {
+  const planned = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-planned`, createdById: other.id } });
+  const list = await marketerApp.inject({ method: 'GET', url: '/api/v1/marketing/campaigns?limit=50' });
+  assert.ok((list.json().data as Array<{ id: string }>).some((c) => c.id === planned.id), '空活動照常列出');
+
+  const material = await owner.material.create({
+    data: { tenantId: A, name: `${MARK}-planned-material`, channelType: 'line', contentType: 'text', body: { text: 'hi' } },
+  });
+  const created = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts',
+    payload: { name: `${MARK}-bc-into-planned`, channelId: visiblePush.id, materialId: material.id, targetType: 'all', campaignId: planned.id },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+});
+
+test('修改含其他分店群發的活動被拒：修改、刪除、建立群發指定這個活動都回 403', async () => {
+  const mixed = await owner.campaign.create({ data: { tenantId: A, name: `${MARK}-campaign-mixed`, createdById: other.id } });
+  for (const ch of [visible, hidden]) {
+    await owner.broadcast.create({
+      data: { tenantId: A, channelId: ch.id, campaignId: mixed.id, name: `${MARK}-campaign-mixed-bc-${ch.id}`, createdById: other.id },
+    });
+  }
+  const code = (res: { json: () => { error?: { code?: string } } }) => res.json().error?.code;
+  const patch = await marketerApp.inject({ method: 'PATCH', url: `/api/v1/marketing/campaigns/${mixed.id}`, payload: { status: 'cancelled' } });
+  assert.equal(patch.statusCode, 403, patch.body);
+  assert.equal(code(patch), 'CAMPAIGN_HAS_OTHER_CHANNELS');
+  const del = await marketerApp.inject({ method: 'DELETE', url: `/api/v1/marketing/campaigns/${mixed.id}` });
+  assert.equal(del.statusCode, 403, del.body);
+  assert.equal((await owner.campaign.findUniqueOrThrow({ where: { id: mixed.id } })).status, 'draft');
+
+  const material = await owner.material.create({
+    data: { tenantId: A, name: `${MARK}-campaign-material`, channelType: 'line', contentType: 'text', body: { text: 'hi' } },
+  });
+  const created = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts',
+    payload: { name: `${MARK}-bc-into-mixed`, channelId: visiblePush.id, materialId: material.id, targetType: 'all', campaignId: mixed.id },
+  });
+  assert.equal(created.statusCode, 403, created.body);
+  assert.equal(code(created), 'CAMPAIGN_HAS_OTHER_CHANNELS');
+  assert.equal(await owner.broadcast.count({ where: { name: `${MARK}-bc-into-mixed` } }), 0);
+});
+
+test('工單連結的對話：只含可見渠道的對話', async () => {
+  const contact = await crossChannelContact('case-conversations');
+  const caseRecord = await owner.case.create({
+    data: { tenantId: A, contactId: contact.id, channelId: visible.id, title: `${MARK}-case-conversations` },
+  });
+  const convs = [];
+  for (const ch of [visible, hidden]) {
+    convs.push(
+      await owner.conversation.create({
+        data: { tenantId: A, contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT', caseId: caseRecord.id },
+      }),
+    );
+  }
+  const res = await memberApp.inject({ method: 'GET', url: `/api/v1/cases/${caseRecord.id}` });
+  assert.equal(res.statusCode, 200, res.body);
+  const ids = (res.json().data.conversations as Array<{ id: string }>).map((c) => c.id);
+  assert.deepEqual(ids, [convs[0]!.id]);
+});
+
+// ── change segment-broadcast-creator-visibility：分群條件依群發建立者的可見範圍判斷 ──
+
+const hqRole = await createRole('hq-marketer', ['marketing.view', 'marketing.manage', 'marketing.broadcast', 'channel.view_all']);
+const hqMarketer = await createAgent('hq-marketer', hqRole.id);
+const hqApp = await buildApp(hqMarketer.id, hqRole.id);
+afterAll(() => hqApp.close());
+
+/** 聯絡人在可見的 LINE 渠道有身分，在其他分店的 FB 渠道也有身分；分群條件是「有 FB 帳號」 */
+async function crossBranchSegment(slug: string) {
+  const branchFb = await createChannel(`${slug}-fb`, { channelType: 'FB' });
+  await bind(branchFb.id, other.id);
+  const contact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-${slug}` } });
+  await owner.channelIdentity.create({
+    data: { contactId: contact.id, channelId: visiblePush.id, channelType: 'LINE', uid: `${MARK}-${slug}-line` },
+  });
+  await owner.channelIdentity.create({
+    data: { contactId: contact.id, channelId: branchFb.id, channelType: 'FB', uid: `${MARK}-${slug}-fb` },
+  });
+  const rules = { conditions: [{ field: 'channelType', operator: 'eq', value: 'FB' }], logic: 'AND' };
+  const segment = await owner.segment.create({
+    data: { tenantId: A, name: `${MARK}-${slug}-segment`, rules, conditions: rules.conditions, contactCount: 0 },
+  });
+  const material = await owner.material.create({
+    data: { tenantId: A, name: `${MARK}-${slug}-material`, channelType: 'line', contentType: 'text', body: { text: 'hi' } },
+  });
+  return { segment, material };
+}
+
+test('分店建立的分群群發只以可見渠道判斷條件：預估與送出都不算只在其他分店渠道符合條件的人', async () => {
+  const { segment, material } = await crossBranchSegment('branch-seg');
+  const preview = await marketerApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts/audience-preview',
+    payload: { channelId: visiblePush.id, targetType: 'segment', segmentId: segment.id },
+  });
+  assert.equal(preview.statusCode, 200, preview.body);
+  assert.equal(preview.json().data.matched, 0, '預估不算只在其他分店渠道符合條件的人');
+
+  const broadcast = await owner.broadcast.create({
+    data: {
+      tenantId: A, channelId: visiblePush.id, name: `${MARK}-branch-seg-bc`, createdById: marketer.id,
+      materialId: material.id, targetType: 'segment', segmentId: segment.id,
+    },
+  });
+  sendMessage.mockClear();
+  const res = await marketerApp.inject({ method: 'POST', url: `/api/v1/marketing/broadcasts/${broadcast.id}/send` });
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error.code, 'BROADCAST_NO_RECIPIENTS');
+  assert.equal(sendMessage.mock.calls.length, 0);
+});
+
+test('總店建立的分群群發以所有渠道判斷條件：分店成員按下送出也依建立者判斷', async () => {
+  const { segment, material } = await crossBranchSegment('hq-seg');
+  const preview = await hqApp.inject({
+    method: 'POST',
+    url: '/api/v1/marketing/broadcasts/audience-preview',
+    payload: { channelId: visiblePush.id, targetType: 'segment', segmentId: segment.id },
+  });
+  assert.equal(preview.statusCode, 200, preview.body);
+  assert.ok(preview.json().data.matched >= 1, preview.body);
+
+  const broadcast = await owner.broadcast.create({
+    data: {
+      tenantId: A, channelId: visiblePush.id, name: `${MARK}-hq-seg-bc`, createdById: hqMarketer.id,
+      materialId: material.id, targetType: 'segment', segmentId: segment.id,
+    },
+  });
+  sendMessage.mockClear();
+  // 由分店成員按下送出：條件仍依建立者（總店）判斷，與排程器背景送出相同
+  const res = await marketerApp.inject({ method: 'POST', url: `/api/v1/marketing/broadcasts/${broadcast.id}/send` });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.ok(sendMessage.mock.calls.length >= 1);
 });

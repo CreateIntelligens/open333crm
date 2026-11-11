@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import api from '@/lib/api';
+import { usePermission } from '@/providers/AuthProvider';
 import { ConversationList } from '@/components/inbox/ConversationList';
 import { ChatWindow } from '@/components/inbox/ChatWindow';
 import { ContactInfoPanel } from '@/components/inbox/ContactInfoPanel';
@@ -16,6 +17,8 @@ export default function InboxPage() {
   const convId = searchParams.get('conv');
 
   const [showAiSuggest, setShowAiSuggest] = useState(false);
+  const canIssueCoupon = usePermission('coupon.issue');
+  const canViewCoupons = usePermission('coupon.view');
   const [showHandoffModal, setShowHandoffModal] = useState(false);
 
   // Fetch selected conversation details via SWR so globalMutate from ChatWindow triggers re-render
@@ -120,6 +123,7 @@ export default function InboxPage() {
           conversation={chatConversation}
           onShowAiSuggest={() => setShowAiSuggest((v) => !v)}
           showAiSuggest={showAiSuggest}
+          canIssueCoupon={canIssueCoupon}
         />
         {/* AI Suggest Panel */}
         {convId && (
@@ -128,9 +132,8 @@ export default function InboxPage() {
             onClose={() => setShowAiSuggest(false)}
             conversationId={convId}
             onAdopt={(text) => {
-              // We'll use a simple approach: set the text in MessageInput via state
               setShowAiSuggest(false);
-              // Trigger a custom event for the MessageInput to pick up
+              // MessageInput 監聽 ai-adopt，把建議文字帶進回覆輸入框
               window.dispatchEvent(new CustomEvent('ai-adopt', { detail: { text } }));
             }}
           />
@@ -151,6 +154,7 @@ export default function InboxPage() {
         <ContactInfoPanel
           conversation={infoPanelConversation}
           onRefresh={() => mutateConversation()}
+          canViewCoupons={canViewCoupons}
         />
       </div>
     </div>

@@ -1,0 +1,28 @@
+## 1. 渠道訊息視窗
+
+- [x] 1.1 測試：FB 與 THREADS 的 plugin 宣告 24 小時視窗，LINE 沒有（`packages/channel-plugins/tests/unit/messaging-window.test.ts`）
+- [x] 1.2 實作：`ChannelPlugin.messagingWindowHours`，FB 與 THREADS 設 24
+
+## 2. 群發略過視窗外的人
+
+- [x] 2.1 migration：`broadcasts.skippedCount`
+- [x] 2.2 測試：FB 群發略過視窗外的人、全部在視窗外時失敗、LINE 不略過（`apps/api/tests/unit/modules/marketing/broadcast-messaging-window.test.ts`）
+- [x] 2.3 實作：`executeBroadcast` 依 plugin 視窗過濾受眾，寫 `skippedCount`
+
+## 3. 可送達人數
+
+- [x] 3.1 測試：audience-preview 的 FB、LINE 與受眾不完整案例
+- [x] 3.2 實作：`previewBroadcastAudience` 與 `POST /marketing/broadcasts/audience-preview`
+- [x] 3.3 測試：建立群發表單顯示可送達人數、列表顯示略過人數（`apps/web/tests/unit/app/dashboard/marketing/`）
+- [x] 3.4 實作：前端表單與列表
+- [x] 3.5 表單的發送注意事項與 FB 立即發送確認的提醒。先寫實作後補測試，以 mutation 驗證：確認視窗的條件改成永遠不成立、注意事項拿掉「本系統」，兩個測試都失敗
+
+## 4. FB 與 IG 不提供分眾
+
+- [x] 4.1 測試：選 FB 渠道時受眾只有「24 小時內傳過訊息的人」、切換時改回全部；LINE 仍可分眾（`broadcast-tab.test.tsx`）
+- [x] 4.2 實作：`broadcastTargetOptions()`、切換渠道時重設受眾
+
+## 5. 收尾
+
+- [x] 5.1 CHANGELOG、`docs/ref/features/tenant/MARKETING.md`
+- [x] 5.2 `pnpm test`、typecheck、tenant scoping 檢查、`node scripts/validate-openspec.mjs broadcast-messaging-window`

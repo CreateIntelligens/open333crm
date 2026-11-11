@@ -21,8 +21,8 @@ async function testMarkReadContract() {
   assert.equal(serviceSource.includes('export async function markConversationRead'), true);
   assert.equal(serviceSource.includes('where: { id, tenantId }'), true);
   assert.equal(serviceSource.includes('data: { unreadCount: 0 }'), true);
-  assert.equal(serviceSource.includes('io.to(`conversation:${id}`).emit(\'conversation.updated\''), true);
-  assert.equal(serviceSource.includes('io.to(`tenant:${tenantId}`).emit(\'conversation.updated\''), true);
+  // 推到對話與渠道房間，不推到全租戶房間（issue #427；收到與否由 feature 測試 socket-channel-rooms 驗證）
+  assert.equal(serviceSource.includes("emitToChannel(io, tenantId, { channelId: updated.channelId, conversationId: id }, 'conversation.updated'"), true);
   assert.equal(serviceSource.includes('updatedAt: updated.updatedAt.toISOString()'), true);
 
   assert.equal(routesSource.includes('markConversationRead'), true);
@@ -35,7 +35,8 @@ async function testUpdatedAtOrderingAndPayloads() {
   const inboundSideEffectsSource = await readSource('modules/webhook/inbound-side-effects.ts');
   const inboundPresenterSource = await readSource('modules/webhook/inbound-socket-presenter.ts');
   const simulatorSource = await readSource('channels/simulator/simulator.service.ts');
-  const automationWorkerSource = await readSource('modules/automation/automation.worker.ts');
+  // 轉接的 conversation.updated 推播在自動轉接與 KB 追問用完共用的 handoff.flow.ts（#419）
+  const handoffFlowSource = await readSource('modules/automation/handoff.flow.ts');
 
   assert.equal(serviceSource.includes("orderBy: { updatedAt: 'desc' }"), true);
   assert.equal(serviceSource.includes('updatedAt: updated.updatedAt.toISOString()'), true);
@@ -43,7 +44,8 @@ async function testUpdatedAtOrderingAndPayloads() {
   assert.equal(inboundSideEffectsSource.includes('buildConversationUpdatedPayload(updatedConv)'), true);
   assert.equal(inboundPresenterSource.includes('updatedAt: conversation.updatedAt.toISOString()'), true);
   assert.equal(simulatorSource.includes('updatedAt: updatedConv.updatedAt.toISOString()'), true);
-  assert.equal(automationWorkerSource.includes('ConversationUpdatedPayload'), true);
+  assert.equal(handoffFlowSource.includes('ConversationUpdatedPayload'), true);
+  assert.equal(handoffFlowSource.includes('updatedAt: conversation.updatedAt.toISOString()'), true);
 }
 
 async function testFrontendSocketLocalUpdates() {
@@ -52,8 +54,8 @@ async function testFrontendSocketLocalUpdates() {
 
   assert.equal(hookSource.includes("import type { ConversationUpdatedPayload } from '@open333crm/shared'"), true);
   assert.equal(hookSource.includes('interface ConversationUpdatedPayload'), false);
-  assert.equal(hookSource.includes('function sortByUpdatedAtDesc'), true);
-  assert.equal(hookSource.includes('function updateRows'), true);
+  // 多頁合併與重排（#422 改為 mergePages／updatePages）由 web 的行為測試
+  // tests/unit/hooks/use-conversations-pagination.test.tsx 驗證，這裡不再比對函式名稱
   assert.equal(hookSource.includes('{ revalidate: false }'), true);
   assert.equal(hookSource.includes('const handleNewMessage = () =>'), false);
   assert.equal(hookSource.includes('const handleConversationUpdated = () =>'), false);

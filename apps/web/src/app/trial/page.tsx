@@ -5,7 +5,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '@/lib/constants';
 
 export default function TrialSignupPage() {
-  const [form, setForm] = useState({ email: '', siteName: '', password: '' });
+  const [form, setForm] = useState({ email: '', siteName: '' });
   const [state, setState] = useState<'form' | 'sent'>('form');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -41,15 +41,13 @@ export default function TrialSignupPage() {
           <>
             <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>免費試用 open333 CRM</h1>
             <p style={{ color: '#66707f', fontSize: 13, marginBottom: 20 }}>
-              填寫資料 → 收信驗證 → 系統立即為您開通試用站台。
+              填寫資料 → 收信驗證並設定密碼 → 系統立即為您開通試用站台。
             </p>
             <form onSubmit={submit}>
               <label style={label}>Email</label>
               <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inp} />
               <label style={label}>站台名稱</label>
               <input required value={form.siteName} onChange={(e) => setForm({ ...form, siteName: e.target.value })} style={inp} />
-              <label style={label}>設定密碼（至少 8 碼）</label>
-              <input type="password" required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inp} />
               {error && <div style={{ color: '#d1443e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
               <button type="submit" disabled={submitting} style={btn}>
                 {submitting ? '送出中…' : '申請免費試用'}
@@ -58,9 +56,9 @@ export default function TrialSignupPage() {
           </>
         ) : (
           <>
-            <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>請至信箱完成驗證 📬</h1>
+            <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>請至信箱完成驗證</h1>
             <p style={{ color: '#66707f', fontSize: 14 }}>
-              我們已寄出驗證信到 <strong>{form.email}</strong>。點擊信中連結即可完成開通。
+              我們已寄出驗證信到 <strong>{form.email}</strong>。點擊信中連結、設定管理員密碼後即可完成開通。
             </p>
             <p style={{ color: '#97a0ae', fontSize: 13, marginTop: 16 }}>
               沒收到信？{' '}

@@ -1,5 +1,6 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
@@ -10,11 +11,81 @@ import {
   renderTemplateBody,
   extractVariables,
   buildVariableMap,
+  bodyHasCouponUrl,
   type TemplateVariable,
 } from './template-renderer.js';
 import { resolveContext } from './template-context.js';
-import { findOrCreateMaterialShortLink } from '../shortlink/shortlink.service.js';
+import { findOrCreateMaterialShortLink, saveShortLinkOg } from '../shortlink/shortlink.service.js';
+import { snapshotOgInBackground } from '../shortlink/og-snapshot.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
+import { campaignHasOtherChannelsError, readableCampaignWhere, writableCampaignWhere } from './campaign.service.js';
+import { COUPON_ISSUED_VIA, channelDisplayName, supportsProactivePush } from '@open333crm/shared';
+import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
+import { channelIdWhereFilter, type AccessibleChannels, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
+import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
+
+// --- Broadcast channel ---
+
+/** 渠道不能主動推送時的原因：群發、附券廣播與批次發券共用（建立、送出、排程失敗都寫這段文字） */
+export const CHANNEL_PUSH_NOT_SUPPORTED_REASON =
+  '網站聊天室不能主動推送訊息，群發與批次發券送不到顧客。請改選 LINE、Facebook 或 Instagram 渠道';
+
+/**
+ * 群發只能用能主動推送的渠道（change reject-webchat-push-415，issue #415）。網站聊天室的外掛 sendMessage()
+ * 只回成功，訪客房間的推送只有收件匣回覆路徑會做；不擋的話群發與發券會回報成功，顧客卻收不到。
+ */
+export function assertChannelSupportsPush(channelType: string, path = 'channelId'): void {
+  if (supportsProactivePush(channelType)) return;
+  throw new AppError(CHANNEL_PUSH_NOT_SUPPORTED_REASON, 'CHANNEL_PUSH_NOT_SUPPORTED', 400, {
+    issues: [{ path, message: CHANNEL_PUSH_NOT_SUPPORTED_REASON }],
+  });
+}
+
+// --- Broadcast audience ---
+
+type BroadcastTargetConfig = { tagIds?: string[]; contactIds?: string[] };
+
+function audienceError(path: string, message: string): AppError {
+  return new AppError(message, 'INVALID_AUDIENCE', 400, { issues: [{ path, message }] });
+}
+
+/**
+ * 受眾欄位必須能解析成明確的名單。名單為空時一律拒絕，絕不退化成「發給渠道全部聯絡人」。
+ * 建立廣播與發送廣播（含排程器、修正前建立的舊草稿）都經過這裡。
+ */
+export function assertBroadcastAudience(broadcast: {
+  targetType: string;
+  segmentId?: string | null;
+  targetConfig?: unknown;
+}) {
+  const config = (broadcast.targetConfig || {}) as BroadcastTargetConfig;
+  if (broadcast.targetType === 'segment' && !broadcast.segmentId) {
+    throw audienceError('segmentId', '選擇「受眾分群」時必須指定一個分群');
+  }
+  if (broadcast.targetType === 'tags' && !config.tagIds?.length) {
+    throw audienceError('targetConfig.tagIds', '選擇「依標籤篩選」時至少要選一個標籤');
+  }
+  if (broadcast.targetType === 'contacts' && !config.contactIds?.length) {
+    throw audienceError('targetConfig.contactIds', '選擇「手動選擇」時至少要選一位聯絡人');
+  }
+}
+
+function assertSegmentUsable(segment: { rules: unknown } | null) {
+  if (!segment) {
+    throw audienceError('segmentId', '所選分群已不存在。為避免發給全部聯絡人，已停止發送，請重新選擇分群');
+  }
+  if (effectiveSegmentConditions(segment.rules as SegmentRules).length === 0) {
+    throw audienceError('segmentId', '所選分群沒有任何有效條件。為避免發給全部聯絡人，請先替分群設定條件');
+  }
+}
+
+/** 素材的 channelType（line / fb）對應渠道的 ChannelType 列舉（LINE / FB） */
+function materialMatchesChannel(materialChannelType: unknown, channelType: unknown) {
+  return typeof materialChannelType === 'string'
+    && typeof channelType === 'string'
+    && materialChannelType.toLowerCase() === channelType.toLowerCase();
+}
 
 // --- Template CRUD ---
 
@@ -37,11 +108,13 @@ export async function listTemplates(
   if (category) where.category = category;
   if (channelType) where.channelType = channelType;
   if (q) {
+    // % 與 _ 當成一般文字（escapeLikeKeyword，#467）
+    const keyword = escapeLikeKeyword(q);
     where.AND = [
       {
         OR: [
-          { name: { contains: q, mode: 'insensitive' } },
-          { description: { contains: q, mode: 'insensitive' } },
+          { name: { contains: keyword, mode: 'insensitive' } },
+          { description: { contains: keyword, mode: 'insensitive' } },
         ],
       },
     ];
@@ -65,12 +138,16 @@ export async function listTemplates(
 export async function listBroadcasts(
   prisma: TenantDb,
   tenantId: string,
-  filters: { campaignId?: string; status?: string; page?: number; limit?: number } = {},
+  filters: { campaignId?: string; status?: string; page?: number; limit?: number },
+  /** 只列出可見渠道的群發（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
   const { campaignId, status, page = 1, limit = 50 } = filters;
   const where: Record<string, unknown> = { tenantId };
   if (campaignId) where.campaignId = campaignId;
   if (status) where.status = status;
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  if (channelId) where.channelId = channelId;
 
   const [broadcasts, total] = await Promise.all([
     prisma.broadcast.findMany({
@@ -86,6 +163,15 @@ export async function listBroadcasts(
   ]);
 
   return { broadcasts, total, page, limit };
+}
+
+/** 群發的渠道（可見範圍守門用，不算收件人統計）；找不到回 404 */
+export async function getBroadcastChannelId(ctx: TenantCtx, id: string): Promise<string> {
+  const broadcast = await ctx.tx.broadcast.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { channelId: true } });
+  if (!broadcast) {
+    throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
+  }
+  return broadcast.channelId;
 }
 
 export async function getBroadcast(prisma: TenantDb, id: string, tenantId: string) {
@@ -117,6 +203,41 @@ export async function getBroadcast(prisma: TenantDb, id: string, tenantId: strin
   };
 }
 
+/**
+ * 廣播可以附的券：廣播頁只能附進行中的行銷券；券詳情頁的批次發放行銷與客服補償券都可以（design D31）。
+ * 查不到（含其他租戶的券）也回 400：選券是輸入錯誤，不是找不到資源。
+ * 建立與預覽共用，錯誤相同（PR #364 第二輪審查：預覽原本只確認券存在）。
+ */
+async function assertBroadcastCoupon(
+  // 只用到 coupon：收最小的介面，PrismaClient、交易 client 與租戶綁定 client 都符合
+  prisma: Pick<Prisma.TransactionClient, 'coupon'>,
+  tenantId: string,
+  couponId: string,
+  couponIssuedVia: string | null | undefined,
+) {
+  const coupon = await prisma.coupon.findFirst({
+    where: { id: couponId, tenantId },
+    select: {
+      id: true, status: true, purpose: true, totalLimit: true, perContactLimit: true, codeMode: true,
+      validityMode: true, endAt: true,
+    },
+  });
+  const purposeOk = couponIssuedVia === COUPON_ISSUED_VIA.BATCH || coupon?.purpose === 'MARKETING';
+  // 固定效期到期後狀態仍是進行中（沒有排程自動結束），附上去發出的券一拿到就過期
+  const expired = coupon ? isCouponPastFixedEnd(coupon) : false;
+  if (!coupon || coupon.status !== 'ACTIVE' || expired || !purposeOk) {
+    const message = !coupon
+      ? '找不到這張優惠券'
+      : coupon.status !== 'ACTIVE'
+        ? '只能附上進行中的優惠券'
+        : expired
+          ? '這張優惠券已過到期日，不能附上'
+          : '廣播只能附上行銷券，客服補償券請在對話中發送';
+    throw new AppError(message, 'INVALID_COUPON', 400, { issues: [{ path: 'couponId', message }] });
+  }
+  return coupon;
+}
+
 export async function createBroadcast(
   prisma: TenantDb,
   tenantId: string,
@@ -131,11 +252,30 @@ export async function createBroadcast(
     targetType: 'all' | 'segment' | 'tags' | 'contacts';
     targetConfig?: { tagIds?: string[]; contactIds?: string[] };
     scheduledAt?: string;
+    /** 附券廣播（design D29）：每位收件人各得一張券與自己的票券連結 */
+    couponId?: string;
+    /** 發放方式：廣播頁為 broadcast（預設），券詳情頁「發送給…」為 batch（design D31） */
+    couponIssuedVia?: typeof COUPON_ISSUED_VIA.BROADCAST | typeof COUPON_ISSUED_VIA.BATCH;
+    /** 批次發放的訊息文字；沒填用預設發券文字 */
+    couponMessage?: string;
+    /** 批次發放的操作者名稱快照 */
+    couponIssuedByName?: string;
   },
+  /** 指定活動時檢查活動的可見範圍（channel-scoped-visibility）；必填，避免新呼叫端漏傳 */
+  accessibleChannels: AccessibleChannels,
 ) {
-  if (Boolean(data.materialId) === Boolean(data.templateId)) {
+  if (data.couponId) {
+    // 附券廣播：素材可選（沒選只送預設發券文字），不支援舊版型
+    if (data.templateId) {
+      throw new AppError('附券廣播請選擇素材或不選素材，不支援舊版型', 'INVALID_INPUT', 400);
+    }
+  } else if (Boolean(data.materialId) === Boolean(data.templateId)) {
     throw new AppError('素材與版型請擇一提供，不可同時或都不填', 'INVALID_INPUT', 400);
   }
+  const couponIssuedVia = data.couponId ? data.couponIssuedVia ?? COUPON_ISSUED_VIA.BROADCAST : null;
+  if (data.couponId) await assertBroadcastCoupon(prisma, tenantId, data.couponId, couponIssuedVia);
+
+  assertBroadcastAudience(data);
 
   // 排程時間必須晚於現在：排程器每 60 秒取 scheduledAt <= now 的廣播執行，
   // 排到過去等於一分鐘內立即發送給客人。REST 與 MCP 都經過這裡
@@ -152,6 +292,7 @@ export async function createBroadcast(
   }
 
   // 驗證來源（Material 或舊 Template）
+  let materialChannelType: string | null = null;
   if (data.materialId) {
     const material = await prisma.material.findFirst({
       where: { id: data.materialId, tenantId, isActive: true },
@@ -159,10 +300,16 @@ export async function createBroadcast(
     if (!material) {
       throw new AppError(notFound('material'), 'NOT_FOUND', 404);
     }
-  } else {
+    materialChannelType = material.channelType;
+    // 一般廣播不會發券：{{coupon.url}} 會原字送出，顧客拿不到券（design D2；只在建立時檢查，發送不擋）
+    if (!data.couponId && bodyHasCouponUrl(material.body)) {
+      const message = '這個素材有顧客專屬券連結，請在「附上優惠券」選一張券，否則顧客會看到 {{coupon.url}}';
+      throw new AppError(message, 'MATERIAL_NEEDS_COUPON', 400, { issues: [{ path: 'materialId', message }] });
+    }
+  } else if (data.templateId) {
     const template = await prisma.messageTemplate.findFirst({
       where: {
-        id: data.templateId!,
+        id: data.templateId,
         tenantId,
       },
     });
@@ -178,15 +325,28 @@ export async function createBroadcast(
   if (!channel) {
     throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
   }
+  assertChannelSupportsPush(channel.channelType);
 
-  // Validate campaign if provided
+  // 素材與渠道要相符：FB 素材排給 LINE 渠道，發送時才會整批失敗
+  if (data.materialId && !materialMatchesChannel(materialChannelType, channel.channelType)) {
+    const message = '素材的渠道與廣播渠道不符，請選擇此渠道的素材';
+    throw new AppError(message, 'MATERIAL_CHANNEL_MISMATCH', 400, { issues: [{ path: 'materialId', message }] });
+  }
+
+  // Validate campaign if provided：看不到的活動回 404，有其他分店群發的活動回 403（channel-scoped-visibility）
   if (data.campaignId) {
     const campaign = await prisma.campaign.findFirst({
-      where: { id: data.campaignId, tenantId },
+      where: { id: data.campaignId, tenantId, ...readableCampaignWhere(accessibleChannels, agentId) },
+      select: { id: true },
     });
     if (!campaign) {
       throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
     }
+    const writable = await prisma.campaign.findFirst({
+      where: { id: data.campaignId, tenantId, ...writableCampaignWhere(accessibleChannels, agentId) },
+      select: { id: true },
+    });
+    if (!writable) throw campaignHasOtherChannelsError();
   }
 
   // Validate segment if provided
@@ -197,6 +357,7 @@ export async function createBroadcast(
     if (!segment) {
       throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
     }
+    if (data.targetType === 'segment') assertSegmentUsable(segment);
   }
 
   const status = data.scheduledAt ? 'scheduled' : 'draft';
@@ -215,6 +376,12 @@ export async function createBroadcast(
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
       status,
       createdById: agentId,
+      // 排程器到期以排定的人當下的權限重新檢查（change require-broadcast-send-permissions）
+      scheduledById: data.scheduledAt ? agentId : null,
+      couponId: data.couponId ?? null,
+      couponIssuedVia,
+      couponMessage: data.couponId ? data.couponMessage?.trim() || null : null,
+      couponIssuedByName: data.couponId ? data.couponIssuedByName ?? null : null,
     },
   });
 
@@ -247,15 +414,23 @@ export async function cancelBroadcast(prisma: TenantDb, id: string, tenantId: st
  * 涵蓋所有版型（carousel action1/2、imagemap area.action、video endCard、flex button）——
  * 靠遞迴找 type==='uri' 物件，不綁死結構。回傳深拷貝後的新 body（不改原素材）。
  */
-async function convertBodyUrlsToShortLinks(
+export async function convertBodyUrlsToShortLinks(
   prisma: PrismaClient,
   tenantId: string,
   createdById: string,
   materialId: string,
   lineChannelId: string | null,
   body: Record<string, unknown>,
+  /** 收集這次新建的短連結：呼叫端在 commit 之後為它們抓 OG 快照（shortlink/og-snapshot.ts） */
+  created: Array<{ id: string; targetUrl: string }> = [],
 ): Promise<Record<string, unknown>> {
   const clone: unknown = JSON.parse(JSON.stringify(body));
+  const ctx = { tx: prisma, tenantId };
+  const shorten = async (targetUrl: string, tagOnClick: string | undefined) => {
+    const result = await findOrCreateMaterialShortLink(ctx, createdById, { materialId, targetUrl, lineChannelId, tagOnClick });
+    if (result.created) created.push(result.created);
+    return result.url;
+  };
 
   async function walk(node: unknown): Promise<void> {
     if (Array.isArray(node)) {
@@ -267,23 +442,20 @@ async function convertBodyUrlsToShortLinks(
       // LINE Flex 的連結按鈕是 action.uri；本地版型是 {type:'uri', uri}。兩種都攔。
       // action 上若有 tagOnClick（點擊後貼標），一併灌進短連結，並從 body 移除
       // （tagOnClick 是內部欄位，若留在 flex button action 會流進 LINE payload 被擋 unknown field）。
+      // 含變數的連結（例如附券廣播的 {{coupon.url}}）每人不同，發送時才代入，不能共用一條短連結
+      // 含變數的連結不換短連結，但 tagOnClick 一樣要移除（PR #364 審查：原本整段跳過，tagOnClick 會流進 LINE payload）
+      const tagOnClick = typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined;
       if (obj.type === 'uri' && typeof obj.uri === 'string' && obj.uri) {
-        obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-          materialId,
-          targetUrl: obj.uri,
-          lineChannelId,
-          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
-        });
+        if (!hasPlaceholder(obj.uri)) {
+          obj.uri = await shorten(obj.uri, tagOnClick);
+        }
         delete obj.tagOnClick;
       }
       // imagemap 轉出的 linkUri（builders 用 linkUri），也一併處理
       if (typeof obj.linkUri === 'string' && obj.linkUri) {
-        obj.linkUri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-          materialId,
-          targetUrl: obj.linkUri,
-          lineChannelId,
-          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
-        });
+        if (!hasPlaceholder(obj.linkUri)) {
+          obj.linkUri = await shorten(obj.linkUri, tagOnClick);
+        }
         delete obj.tagOnClick;
       }
       for (const key of Object.keys(obj)) await walk(obj[key]);
@@ -294,6 +466,27 @@ async function convertBodyUrlsToShortLinks(
   return clone as Record<string, unknown>;
 }
 
+const hasPlaceholder = (value: string) => /\{\{[a-zA-Z0-9_.]+\}\}/.test(value);
+
+const SENDABLE_STATUSES = ['draft', 'scheduled', 'failed'];
+
+/** 非預期錯誤（不是 AppError）寫給後台看的原因：不外露內部錯誤內容（issue #287） */
+export const UNEXPECTED_FAILURE_REASON = '發送時發生系統錯誤，請稍後重新發送；若持續失敗請聯絡管理員';
+
+/** 失敗原因寫進資料庫的長度上限：渠道錯誤可能很長 */
+export const FAILURE_REASON_MAX_LENGTH = 500;
+
+/** 全部收件人都失敗時的原因：失敗人數加上第一個渠道錯誤，讓行銷人員知道要從哪裡修 */
+export function allRecipientsFailedReason(count: number, firstError: string | null): string {
+  const head = `全部 ${count} 位對象都發送失敗`;
+  const reason = firstError ? `${head}。渠道回應：${firstError}` : `${head}，渠道沒有回傳原因`;
+  return reason.slice(0, FAILURE_REASON_MAX_LENGTH);
+}
+
+export function alreadySendingError() {
+  return new AppError('此廣播正在發送中或已開始發送，請勿重複發送，稍後重新整理查看結果', 'BROADCAST_ALREADY_SENDING', 409);
+}
+
 /**
  * Execute a broadcast: resolve audience, send personalized messages, update stats.
  */
@@ -301,6 +494,8 @@ export async function executeBroadcast(
   prisma: TenantDb,
   io: SocketIOServer,
   broadcastId: string,
+  /** 解析建立者的可見範圍（agentVisibilityResolver()）：分群條件依建立者判斷，見 resolveAudience() */
+  visibilityOf: AgentVisibilityResolver,
 ) {
   const broadcast = await prisma.broadcast.findFirst({
     where: { id: broadcastId },
@@ -308,16 +503,27 @@ export async function executeBroadcast(
   if (!broadcast) {
     throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   }
-  // 同上：狀態清單取 main（支援重試），訊息取中文版
-  if (!['draft', 'scheduled', 'sending', 'failed'].includes(broadcast.status)) {
+  // 附券廣播每人各發一張券，由排程在背景發送（broadcast-coupon.flow.ts，design D29），不走這裡
+  if (broadcast.couponId) {
+    throw new AppError('附券廣播由排程在背景發送，請重新整理後查看結果', 'COUPON_BROADCAST_QUEUED_ONLY', 409);
+  }
+  // 只有草稿、已排程、失敗（重試）可以開始發送；發送中的廣播不可再發，避免重複群發
+  if (broadcast.status === 'sending') {
+    throw alreadySendingError();
+  }
+  if (!SENDABLE_STATUSES.includes(broadcast.status)) {
     throw new AppError('此群發目前的狀態無法發送', 'INVALID_STATUS', 400);
   }
 
-  // Mark as sending
-  await prisma.broadcast.update({
-    where: { id: broadcastId },
-    data: { status: 'sending', sentAt: new Date() },
+  // 以單一條件更新搶占 sending：兩個請求（重複按、或與排程器同時）只有一個搶得到
+  const claimed = await prisma.broadcast.updateMany({
+    where: { id: broadcastId, tenantId: broadcast.tenantId, status: { in: SENDABLE_STATUSES } },
+    // 開始發送時清掉上一次的失敗原因，重送成功後不留舊原因
+    data: { status: 'sending', sentAt: new Date(), failureReason: null },
   });
+  if (claimed.count === 0) {
+    throw alreadySendingError();
+  }
 
   try {
     if (!broadcast.channelId || !broadcast.tenantId || !broadcast.createdById) {
@@ -349,6 +555,7 @@ export async function executeBroadcast(
         try {
           // lineChannelId 傳 null：它只影響短連結的 UA 轉址策略，與素材點擊歸因無關；
           // 且此處未載入 channel 型別，傳 channelId 可能觸發 assertLineChannel 對 FB channel 報錯。
+          const created: Array<{ id: string; targetUrl: string }> = [];
           body = await convertBodyUrlsToShortLinks(
             prisma as PrismaClient,
             broadcast.tenantId,
@@ -356,7 +563,11 @@ export async function executeBroadcast(
             material.id,
             null,
             body,
+            created,
           );
+          // 本函式尚未搬遷（#337 階段 4）：prisma 不是交易，短連結已經寫入，可以直接在背景抓 OG 快照
+          const ctx = { tx: prisma, tenantId: broadcast.tenantId };
+          for (const link of created) snapshotOgInBackground(link, (og) => saveShortLinkOg(ctx, link, og));
         } catch (err) {
           logger.error('[Broadcast] URL→shortlink conversion failed, sending original body:', err);
         }
@@ -383,10 +594,12 @@ export async function executeBroadcast(
     if (!channel) {
       throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
     }
+    // 修正前建立的網站聊天室群發：由外層 catch 標失敗並寫原因，不呼叫渠道
+    assertChannelSupportsPush(channel.channelType);
 
     const plugin = getChannelPlugin(channel.channelType);
     if (!plugin) {
-      throw new AppError(`No plugin for channel type: ${channel.channelType}`, 'UNSUPPORTED_CHANNEL', 400);
+      throw new AppError(`此渠道類型（${channelDisplayName(channel.channelType)}）不支援發送廣播`, 'UNSUPPORTED_CHANNEL', 400);
     }
     // 憑證解密：金鑰不符（如從其他環境 sync 來的 token）會拋原生錯，
     // 包成友善 AppError 避免冒成裸 500「An unexpected error occurred」。
@@ -402,17 +615,23 @@ export async function executeBroadcast(
     }
 
     // Resolve audience
-    const identities = await resolveAudience(prisma, broadcast);
+    // 分群條件依建立者的可見範圍判斷，與建立時的預估一致；排程送出時沒有當下操作的人
+    const audienceChannels = await visibilityOf(broadcast.tenantId, broadcast.createdById);
+    const matched = await resolveAudience(prisma, broadcast, audienceChannels);
+    // FB／IG 只能發給視窗內互動過的人：視窗外的人送了也會被平台擋下，不送出
+    const windowHours = plugin.messagingWindowHours;
+    const identities = await filterByMessagingWindow(prisma, broadcast.tenantId, broadcast.channelId, matched, windowHours);
+    const skippedCount = matched.length - identities.length;
 
     // Update total count
     await prisma.broadcast.update({
       where: { id: broadcastId },
-      data: { totalCount: identities.length },
+      data: { totalCount: matched.length, skippedCount },
     });
 
     // 0 受眾：手動挑選/標籤/分群卻解析不到任何可發送對象時，回明確錯誤而非默默「完成」，
     // 避免使用者以為發成功了其實沒發（如手動挑選未選人、或選的人在此渠道沒有身分）。
-    if (identities.length === 0) {
+    if (matched.length === 0) {
       const reason =
         broadcast.targetType === 'contacts'
           ? '未選擇任何發送對象，或所選對象在此渠道沒有可發送的身分。請先挑選有加入此渠道的對象。'
@@ -424,12 +643,25 @@ export async function executeBroadcast(
       // 拋出後由外層 catch 統一標 failed（0 受眾＝送不出去，算失敗）。
       throw new AppError(reason, 'BROADCAST_NO_RECIPIENTS', 400);
     }
+    if (identities.length === 0) {
+      throw new AppError(
+        `符合條件的 ${skippedCount} 位對象都超過 ${windowHours} 小時沒有傳訊息給我們。此渠道只能發給 ${windowHours} 小時內傳過訊息的人，所以沒有送出。`,
+        'BROADCAST_OUTSIDE_MESSAGING_WINDOW',
+        400,
+      );
+    }
 
     const extractedKeys = extractVariables(body);
     const needsPersonalization = extractedKeys.length > 0;
 
     let successCount = 0;
     let failedCount = 0;
+    // 第一個渠道錯誤：全部失敗時寫進 failureReason
+    let firstError: string | null = null;
+    const noteError = (err: unknown) => {
+      if (firstError || err == null) return;
+      firstError = err instanceof Error ? err.message : String(err);
+    };
     const now = new Date();
 
     // ── LINE multicast 路徑：無需 per-recipient 個人化 ──
@@ -486,6 +718,7 @@ export async function executeBroadcast(
               credentials,
             );
             chunkDelivered = result.success;
+            if (!result.success) noteError(result.error ?? null);
             await prisma.broadcastDeliveryAttempt.updateMany({
               where: { id: attempt.id, tenantId: broadcast.tenantId },
               data: {
@@ -499,6 +732,7 @@ export async function executeBroadcast(
           else failedCount += chunk.length;
         } catch (err) {
           logger.error(`[broadcast:${broadcastId}] multicast chunk send failed (chunk ${i / MULTICAST_CHUNK + 1})`, { err });
+          noteError(err);
           await prisma.broadcastDeliveryAttempt.updateMany({
             where: { id: attempt.id, tenantId: broadcast.tenantId },
             data: { status: 'failed', errorMessage: String(err) },
@@ -548,9 +782,11 @@ export async function executeBroadcast(
             delivered = true;
           } else {
             failedCount++;
+            noteError(result.error ?? null);
           }
-        } catch {
+        } catch (err) {
           failedCount++;
+          noteError(err);
         }
 
         // Create recipient record for tracking replies & cases
@@ -588,23 +824,139 @@ export async function executeBroadcast(
     const finalStatus = failedCount > 0 && failedCount === identities.length ? 'failed' : 'completed';
     await prisma.broadcast.update({
       where: { id: broadcastId },
-      data: { status: finalStatus, successCount, failedCount },
+      data: {
+        status: finalStatus,
+        successCount,
+        failedCount,
+        failureReason: finalStatus === 'failed' ? allRecipientsFailedReason(failedCount, firstError) : null,
+      },
     });
 
-    return { total: identities.length, success: successCount, failed: failedCount };
+    return { total: matched.length, success: successCount, failed: failedCount, skipped: skippedCount };
   } catch (err) {
+    // 排程發送沒有人看得到回應：原因要寫進資料庫，後台才看得到（issue #287）
+    const failureReason = err instanceof AppError ? err.message.slice(0, FAILURE_REASON_MAX_LENGTH) : UNEXPECTED_FAILURE_REASON;
     await prisma.broadcast.update({
       where: { id: broadcastId },
-      data: { status: 'failed' },
+      data: { status: 'failed', failureReason },
     });
     throw err;
   }
 }
 
+/** 一次查詢的聯絡人數上限：避免超過 Postgres 的參數個數上限 */
+const WINDOW_QUERY_CHUNK = 5000;
+
+/**
+ * 有訊息視窗的渠道（FB／IG 24 小時）只留下視窗內在此渠道傳過訊息的人。
+ * 視窗從顧客傳入的訊息（含按鈕回應）起算；沒有視窗的渠道原樣回傳。
+ */
+export async function filterByMessagingWindow<T extends { contactId: string }>(
+  prisma: TenantDb,
+  tenantId: string,
+  channelId: string,
+  identities: T[],
+  windowHours: number | undefined,
+  now = new Date(),
+): Promise<T[]> {
+  if (!windowHours || identities.length === 0) return identities;
+  const since = new Date(now.getTime() - windowHours * 3600_000);
+  const contactIds = [...new Set(identities.map((i) => i.contactId))];
+  const active = new Set<string>();
+  for (let i = 0; i < contactIds.length; i += WINDOW_QUERY_CHUNK) {
+    const rows = await prisma.conversation.findMany({
+      where: {
+        tenantId,
+        channelId,
+        contactId: { in: contactIds.slice(i, i + WINDOW_QUERY_CHUNK) },
+        messages: { some: { direction: 'INBOUND', senderType: 'CONTACT', createdAt: { gte: since } } },
+      },
+      select: { contactId: true },
+    });
+    for (const row of rows) active.add(row.contactId);
+  }
+  return identities.filter((i) => active.has(i.contactId));
+}
+
+/**
+ * 預估群發受眾：用和實際發送相同的受眾解析與訊息視窗，回傳符合條件與可送達人數，不建立群發。
+ */
+export async function previewBroadcastAudience(
+  prisma: TenantDb,
+  tenantId: string,
+  /** 預估的人（之後的建立者）的可見範圍，見 resolveAudience() */
+  accessibleChannels: AccessibleChannels,
+  input: {
+    channelId: string;
+    targetType: string;
+    segmentId?: string | null;
+    targetConfig?: BroadcastTargetConfig;
+    /** 附券廣播：一併回傳券的剩餘名額與已達每人上限的人數（design D29） */
+    couponId?: string;
+    /** 發放方式：券詳情頁的批次發放傳 batch（允許客服補償券），其他為廣播 */
+    couponIssuedVia?: string;
+  },
+) {
+  const channel = await prisma.channel.findFirst({
+    where: { id: input.channelId, tenantId, isActive: true },
+    select: { id: true, channelType: true },
+  });
+  if (!channel) {
+    throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
+  }
+  const matched = await resolveAudience(prisma, {
+    tenantId,
+    channelId: channel.id,
+    targetType: input.targetType,
+    segmentId: input.segmentId ?? null,
+    targetConfig: input.targetConfig ?? {},
+  }, accessibleChannels);
+  const windowHours = getChannelPlugin(channel.channelType)?.messagingWindowHours;
+  const reachable = await filterByMessagingWindow(prisma, tenantId, channel.id, matched, windowHours);
+  let coupon: { remaining: number | null; limitReached: number } | null = null;
+  if (input.couponId) {
+    // 與建立時相同的檢查：進行中、依入口檢查用途
+    const c = await assertBroadcastCoupon(prisma, tenantId, input.couponId, input.couponIssuedVia ?? COUPON_ISSUED_VIA.BROADCAST);
+    // 剩餘名額：發行總量減去已發出（含發送中，與發券時的檢查一致）；序號包另受可用序號限制
+    let remaining: number | null = null;
+    if (c.totalLimit != null) {
+      remaining = Math.max(0, c.totalLimit - (await prisma.couponInstance.count({ where: { tenantId, couponId: c.id } })));
+    }
+    if (c.codeMode === 'IMPORTED_CODES') {
+      const available = await prisma.couponCode.count({ where: { tenantId, couponId: c.id, status: 'AVAILABLE' } });
+      remaining = remaining == null ? available : Math.min(remaining, available);
+    }
+    // 可送達的人中已達每人上限的人數：發送時會被跳過
+    const contactIds = [...new Set(reachable.map((r) => r.contactId))];
+    let limitReached = 0;
+    for (let i = 0; i < contactIds.length; i += WINDOW_QUERY_CHUNK) {
+      const held = await prisma.couponInstance.findMany({
+        where: {
+          tenantId,
+          couponId: c.id,
+          contactId: { in: contactIds.slice(i, i + WINDOW_QUERY_CHUNK) },
+          ...countsTowardContactLimit(new Date()),
+        },
+        select: { contactId: true },
+      });
+      const perContact = new Map<string, number>();
+      for (const h of held) if (h.contactId) perContact.set(h.contactId, (perContact.get(h.contactId) ?? 0) + 1);
+      limitReached += [...perContact.values()].filter((n) => n >= c.perContactLimit).length;
+    }
+    coupon = { remaining, limitReached };
+  }
+  return {
+    matched: matched.length,
+    reachable: reachable.length,
+    messagingWindowHours: windowHours ?? null,
+    ...(coupon ? { coupon } : {}),
+  };
+}
+
 /**
  * Resolve audience for a broadcast based on targetType.
  */
-async function resolveAudience(
+export async function resolveAudience(
   prisma: TenantDb,
   broadcast: {
     tenantId: string;
@@ -613,8 +965,17 @@ async function resolveAudience(
     segmentId: string | null;
     targetConfig: unknown;
   },
+  /**
+   * 群發建立者的可見範圍。分群條件（例如「有 FB 帳號」）只以這些渠道的身分判斷：
+   * 否則分店建立的群發會依其他分店渠道的身分選人，收件人數也就透露客人在其他分店有沒有帳號。
+   * 總店（ALL_CHANNELS）照舊以所有渠道判斷。收件人另以群發渠道的身分限定。
+   */
+  accessibleChannels: AccessibleChannels,
 ) {
-  const config = (broadcast.targetConfig || {}) as { tagIds?: string[]; contactIds?: string[] };
+  const config = (broadcast.targetConfig || {}) as BroadcastTargetConfig;
+
+  // fail-closed：名單為空（含修正前建立的舊草稿）一律拒絕，不可落到下方「全渠道」查詢
+  assertBroadcastAudience(broadcast);
 
   const identityWhere: Record<string, unknown> = {
     channelId: broadcast.channelId,
@@ -624,20 +985,20 @@ async function resolveAudience(
   if (broadcast.targetType === 'segment' && broadcast.segmentId) {
     // Use segment rules to find contacts
     const segment = await prisma.segment.findFirst({
-      where: { id: broadcast.segmentId },
+      where: { id: broadcast.segmentId, tenantId: broadcast.tenantId },
     });
-    if (segment) {
-      const { calculateSegmentContacts } = await import('./segment.service.js');
-      const { contactIds } = await calculateSegmentContacts(
-        prisma,
-        broadcast.tenantId,
-        segment.rules as any,
-      );
-      if (contactIds.length > 0) {
-        identityWhere.contactId = { in: contactIds };
-      } else {
-        return [];
-      }
+    // 分群被刪除或沒有有效條件：停止發送，絕不退化成全渠道
+    assertSegmentUsable(segment);
+    const { contactIds } = await calculateSegmentContacts(
+      prisma,
+      broadcast.tenantId,
+      segment!.rules as unknown as SegmentRules,
+      accessibleChannels,
+    );
+    if (contactIds.length > 0) {
+      identityWhere.contactId = { in: contactIds };
+    } else {
+      return [];
     }
   } else if (broadcast.targetType === 'tags' && config.tagIds?.length) {
     identityWhere.contact = {
@@ -652,9 +1013,12 @@ async function resolveAudience(
   const identities = await prisma.channelIdentity.findMany({
     where: identityWhere,
     select: {
+      id: true,
       uid: true,
       contactId: true,
     },
+    // 固定順序：附券廣播名額不足時依名單順序發到用完（design D29）
+    orderBy: [{ linkedAt: 'asc' }, { id: 'asc' }],
   });
 
   return identities;

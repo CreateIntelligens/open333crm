@@ -77,7 +77,7 @@ sequenceDiagram
     end
 ```
 
-`eventBus` 是 API 程序內的 EventEmitter，不會跨程序。`workers` 無法存取 `fastify.io`，因此必須透過 Redis pub/sub 將事件送回 API。
+業務事件經 outbox 與 BullMQ 的訂閱者佇列傳遞，見[事件與背景工作](../modules/EVENTS.md)。`workers` 無法存取 `fastify.io`，因此必須透過 Redis pub/sub 將事件送回 API。
 
 ## 三種執行環境
 

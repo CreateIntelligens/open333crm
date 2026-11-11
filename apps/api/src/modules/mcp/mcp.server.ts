@@ -1,12 +1,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { PrismaClient } from "@prisma/client";
 import type { Server as SocketIOServer } from "socket.io";
 import type { TenantDb } from "../../lib/tenant-db.js";
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import { getAgentById } from "../auth/auth.service.js";
-import { getContact, listContacts } from "../contact/contact.service.js";
+import { getContactFlow, listContactsFlow } from "../contact/contact.flow.js";
 import {
+  agentVisibilityResolverOf,
   isChannelAccessible,
+  type AdminClientHolder,
   type AccessibleChannels,
   type ChannelAccessLevel,
 } from "../../services/channel-visibility.js";
@@ -14,12 +17,10 @@ import { AppError } from "../../shared/utils/response.js";
 import { notFound } from "../../shared/messages/resource.js";
 import { logger } from "@open333crm/core";
 import { getConversation, listConversations } from "../conversation/conversation.service.js";
-import {
-  getCaseStats,
-  getOverviewStats,
-} from "../analytics/analytics.service.js";
-import { listCases, getCase } from "../case/case.service.js";
+import { getCaseStatsFlow, getOverviewStatsFlow } from "../analytics/analytics.flow.js";
+import { listCasesFlow, getCaseFlow } from "../case/case.flow.js";
 import { createBroadcast, executeBroadcast, getBroadcast } from "../marketing/marketing.service.js";
+import { getBroadcastChannelIdFlow } from "../marketing/marketing.flow.js";
 import { decryptCredentials } from "../channel/channel.service.js";
 import { getChannelPlugin } from "@open333crm/channel-plugins";
 import { sendMessage as sendConversationMessage } from "../conversation/conversation.service.js";
@@ -102,7 +103,10 @@ export function createMcpServer(
   prisma: TenantDb,
   agent: McpAgentContext,
   channelAccess: McpChannelAccess,
-  _io?: SocketIOServer,
+  _io: SocketIOServer | undefined,
+  /** 已搬到 flow 的工具（#337）以這個 client 開租戶交易 */
+  /** 也帶 BYPASSRLS 連線：群發依建立者的可見範圍判斷分群條件（agentVisibilityResolverOf） */
+  flowDeps: { prisma: PrismaClient } & AdminClientHolder,
 ): McpServer {
   const server = new McpServer({
     name: "open333crm",
@@ -147,6 +151,15 @@ export function createMcpServer(
     }
   }
 
+  /** 群發的渠道不可見時丟出與「查無群發」相同的例外（與 REST 一致；群發不檢查渠道層級） */
+  async function visibleBroadcast(id: string) {
+    // 先只查渠道守門，看不到的群發不算收件人統計
+    if (!isChannelAccessible(await accessible(), await getBroadcastChannelIdFlow(flowDeps, agent.tenantId, id))) {
+      throw new AppError(notFound("broadcast"), "NOT_FOUND", 404);
+    }
+    return getBroadcast(prisma, id, agent.tenantId);
+  }
+
   /** 單筆讀取：渠道不可見時丟出與 service「查無資料」相同的例外（與 REST GET /:id 一致，不洩漏他店資料是否存在） */
   async function visibleOrNotFound<T extends { channelId: string }>(record: T, resource: "case" | "conversation") {
     if (!isChannelAccessible(await accessible(), record.channelId)) {
@@ -187,7 +200,7 @@ export function createMcpServer(
     },
     async ({ q, page, limit }) =>
       textResult(
-        await listContacts(prisma, agent.tenantId, { q }, { page, limit }, await accessible()),
+        await listContactsFlow(flowDeps, agent.tenantId, { q }, { page, limit }, await accessible()),
       ),
   );
 
@@ -218,8 +231,8 @@ export function createMcpServer(
       limit,
     }) =>
       textResult(
-        await listCases(
-          prisma,
+        await listCasesFlow(
+          flowDeps,
           agent.tenantId,
           { status, priority, assigneeId, category, slaStatus },
           { page, limit },
@@ -239,7 +252,7 @@ export function createMcpServer(
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => visibleOrNotFound(await getCase(prisma, id, agent.tenantId), "case"),
+    async ({ id }) => visibleOrNotFound(await getCaseFlow(flowDeps, agent.tenantId, id, await accessible()), "case"),
   );
 
   server.registerTool(
@@ -253,7 +266,7 @@ export function createMcpServer(
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => textResult(await getContact(prisma, id, agent.tenantId, await accessible())),
+    async ({ id }) => textResult(await getContactFlow(flowDeps, agent.tenantId, id, await accessible())),
   );
 
   server.registerTool(
@@ -279,7 +292,7 @@ export function createMcpServer(
     async (input) => {
       const { from, to } = dateRange(input);
       return textResult(
-        await getOverviewStats(prisma, agent.tenantId, from, to),
+        await getOverviewStatsFlow(flowDeps, agent.tenantId, await accessible(), from, to),
       );
     },
   );
@@ -306,7 +319,7 @@ export function createMcpServer(
     },
     async (input) => {
       const { from, to } = dateRange(input);
-      return textResult(await getCaseStats(prisma, agent.tenantId, from, to));
+      return textResult(await getCaseStatsFlow(flowDeps, agent.tenantId, await accessible(), from, to));
     },
   );
 
@@ -348,7 +361,7 @@ export function createMcpServer(
     },
     async ({ id }) => {
       if (!hasScope(agent, MCP_LINE_READ_SCOPE)) return scopeError(MCP_LINE_READ_SCOPE);
-      return visibleOrNotFound(await getConversation(prisma, id, agent.tenantId), "conversation");
+      return visibleOrNotFound(await getConversation(prisma, id, agent.tenantId, await accessible()), "conversation");
     },
   );
 
@@ -366,8 +379,8 @@ export function createMcpServer(
     },
     async ({ q, page, limit }) => {
       if (!hasScope(agent, MCP_LINE_READ_SCOPE)) return scopeError(MCP_LINE_READ_SCOPE);
-      return textResult(await listContacts(
-        prisma,
+      return textResult(await listContactsFlow(
+        flowDeps,
         agent.tenantId,
         { q, channelType: "LINE" },
         { page, limit },
@@ -386,7 +399,7 @@ export function createMcpServer(
     },
     async ({ id }) => {
       if (!hasScope(agent, MCP_LINE_READ_SCOPE)) return scopeError(MCP_LINE_READ_SCOPE);
-      return textResult(await getBroadcast(prisma, id, agent.tenantId));
+      return textResult(await visibleBroadcast(id));
     },
   );
 
@@ -532,7 +545,7 @@ export function createMcpServer(
         });
         return denied;
       }
-      const conversation = await getConversation(prisma, conversationId, agent.tenantId);
+      const conversation = await getConversation(prisma, conversationId, agent.tenantId, await accessible());
       if (conversation.channel.channelType !== "LINE") {
         return operationError("LINE_CHANNEL_REQUIRED", "The conversation must belong to a LINE channel");
       }
@@ -614,7 +627,8 @@ export function createMcpServer(
           return operationError("INVALID_CONFIRMATION", "The confirmation token is invalid or expired");
         }
         const broadcastId = claims.broadcastId!;
-        const broadcast = await getBroadcast(prisma, broadcastId, agent.tenantId);
+        // 確認時重新檢查：預覽之後成員可能已失去這個渠道
+        const broadcast = await visibleBroadcast(broadcastId);
         const channel = await prisma.channel.findFirst({
           where: { id: broadcast.channelId, tenantId: agent.tenantId, isActive: true },
           select: { id: true, channelType: true, credentialsEncrypted: true },
@@ -655,7 +669,7 @@ export function createMcpServer(
           broadcastId,
         });
         try {
-          const result = await executeBroadcast(prisma, _io, broadcastId);
+          const result = await executeBroadcast(prisma, _io, broadcastId, agentVisibilityResolverOf(flowDeps));
           await writeLineMcpAudit(prisma, {
             tenantId: agent.tenantId,
             agentId: agent.id,
@@ -683,10 +697,13 @@ export function createMcpServer(
 
       let broadcast;
       if (input.broadcastId) {
-        broadcast = await getBroadcast(prisma, input.broadcastId, agent.tenantId);
+        broadcast = await visibleBroadcast(input.broadcastId);
       } else {
         if (!input.name || !input.materialId && !input.templateId || !input.channelId || !input.targetType) {
           return operationError("PREVIEW_INPUT_REQUIRED", "broadcastId or broadcast creation fields are required for phase 1");
+        }
+        if (!isChannelAccessible(await accessible(), input.channelId)) {
+          throw new AppError(notFound("channel"), "NOT_FOUND", 404);
         }
         broadcast = await createBroadcast(prisma, agent.tenantId, agent.id, {
           name: input.name,
@@ -698,7 +715,7 @@ export function createMcpServer(
           targetType: input.targetType,
           targetConfig: input.targetConfig,
           scheduledAt: input.scheduledAt,
-        });
+        }, await accessible());
       }
       const channel = await prisma.channel.findFirst({
         where: { id: broadcast.channelId, tenantId: agent.tenantId, isActive: true },

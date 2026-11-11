@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const { createAgent } = await import('#src/modules/agent/agent.service.js');
 
@@ -15,6 +16,7 @@ const CREATOR = '22222222-2222-4222-8222-222222222222';
 const CH1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const CH2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const CH_HIDDEN = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const HASH = 'hashed-outside-transaction';
 
 /** 租戶有三個渠道；指派者是 admin system role（越權檢查直接放行） */
 function mockPrisma() {
@@ -59,9 +61,10 @@ const input = (extra: Record<string, unknown> = {}) => ({
 
 test('Member created with chosen channels：只綁指定的渠道', async () => {
   const { prisma, state } = mockPrisma();
-  await createAgent(prisma as never, TENANT, input({ channelIds: [CH1] }), 'role-1', {
+  await createAgent(createMockTenantCtx(prisma, TENANT).ctx, input({ channelIds: [CH1] }), 'role-1', {
     grantable: ALL_CHANNELS,
     grantedById: CREATOR,
+    passwordHash: HASH,
   });
   assert.deepEqual(
     state.bindings.map((b) => [b.agentId, b.channelId, b.accessLevel, b.grantedById]),
@@ -71,15 +74,16 @@ test('Member created with chosen channels：只綁指定的渠道', async () => 
 
 test('Member created without choosing channels：總店建立時綁租戶所有渠道', async () => {
   const { prisma, state } = mockPrisma();
-  await createAgent(prisma as never, TENANT, input(), 'role-1', { grantable: ALL_CHANNELS, grantedById: CREATOR });
+  await createAgent(createMockTenantCtx(prisma, TENANT).ctx, input(), 'role-1', { grantable: ALL_CHANNELS, grantedById: CREATOR, passwordHash: HASH });
   assert.deepEqual(state.bindings.map((b) => b.channelId).sort(), [CH1, CH2, CH_HIDDEN].sort());
 });
 
 test('沒指定渠道、建立者只看得到部分渠道：綁建立者看得到的渠道', async () => {
   const { prisma, state } = mockPrisma();
-  await createAgent(prisma as never, TENANT, input(), 'role-1', {
+  await createAgent(createMockTenantCtx(prisma, TENANT).ctx, input(), 'role-1', {
     grantable: new Map([[CH1, 'full'], [CH2, 'full']]),
     grantedById: CREATOR,
+    passwordHash: HASH,
   });
   assert.deepEqual(state.bindings.map((b) => b.channelId).sort(), [CH1, CH2].sort());
 });
@@ -87,9 +91,10 @@ test('沒指定渠道、建立者只看得到部分渠道：綁建立者看得�
 test('Creator cannot grant a channel they cannot see：403，不建立成員', async () => {
   const { prisma, state } = mockPrisma();
   await assert.rejects(
-    createAgent(prisma as never, TENANT, input({ channelIds: [CH1, CH_HIDDEN] }), 'role-1', {
+    createAgent(createMockTenantCtx(prisma, TENANT).ctx, input({ channelIds: [CH1, CH_HIDDEN] }), 'role-1', {
       grantable: new Map([[CH1, 'full'], [CH2, 'full']]),
       grantedById: CREATOR,
+    passwordHash: HASH,
     }),
     (err: { statusCode?: number }) => err.statusCode === 403,
   );
@@ -100,9 +105,10 @@ test('Creator cannot grant a channel they cannot see：403，不建立成員', a
 test('指定不屬於本租戶的渠道：400，不建立成員', async () => {
   const { prisma, state } = mockPrisma();
   await assert.rejects(
-    createAgent(prisma as never, TENANT, input({ channelIds: ['dddddddd-dddd-4ddd-8ddd-dddddddddddd'] }), 'role-1', {
+    createAgent(createMockTenantCtx(prisma, TENANT).ctx, input({ channelIds: ['dddddddd-dddd-4ddd-8ddd-dddddddddddd'] }), 'role-1', {
       grantable: ALL_CHANNELS,
       grantedById: CREATOR,
+    passwordHash: HASH,
     }),
     (err: { statusCode?: number }) => err.statusCode === 400,
   );
@@ -112,9 +118,10 @@ test('指定不屬於本租戶的渠道：400，不建立成員', async () => {
 /* code review：建立者對某渠道只有 read_only 時，新成員原本一律拿到 full，等於藉由建立成員越權 */
 test("New member's level capped at the creator's level：新成員的層級不高於建立者", async () => {
   const { prisma, state } = mockPrisma();
-  await createAgent(prisma as never, TENANT, input({ channelIds: [CH1, CH2] }), 'role-1', {
+  await createAgent(createMockTenantCtx(prisma, TENANT).ctx, input({ channelIds: [CH1, CH2] }), 'role-1', {
     grantable: new Map([[CH1, 'read_only'], [CH2, 'reply_only']]),
     grantedById: CREATOR,
+    passwordHash: HASH,
   });
   assert.deepEqual(
     state.bindings.map((b) => [b.channelId, b.accessLevel]).sort(),
@@ -144,7 +151,7 @@ beforeAll(async () => {
   const { default: agentRoutes } = await import('#src/modules/agent/agent.routes.js');
   const { default: errorHandlerPlugin } = await import('#src/plugins/error-handler.plugin.js');
   app = Fastify();
-  const tx = { $executeRaw: async () => 1 };
+  const tx = { $executeRaw: async () => 1, tenantAuditLog: { create: async () => ({}) } };
   app.decorate('prisma', {
     $transaction: async (fn: (t: unknown) => Promise<unknown>) => {
       transactions += 1;
@@ -178,8 +185,8 @@ test('POST /agents：channelIds 通過 schema，建立成員在交易內並帶�
   const res = await app.inject({ method: 'POST', url: '/api/v1/agents', payload: input({ channelIds: [CH2] }) });
   assert.equal(res.statusCode, 201, res.body);
   assert.equal(transactions, 1, '建立成員與寫入綁定要在同一個交易');
-  const [, tenantId, body, , grant] = createAgentSpy.mock.calls[0]!;
-  assert.equal(tenantId, TENANT);
+  const [ctx, body, , grant] = createAgentSpy.mock.calls[0]!;
+  assert.equal((ctx as { tenantId: string }).tenantId, TENANT);
   assert.deepEqual((body as { channelIds?: string[] }).channelIds, [CH2]);
   const g = grant as { grantable: unknown; grantedById: string; passwordHash?: string };
   assert.equal(g.grantable, ALL_CHANNELS);

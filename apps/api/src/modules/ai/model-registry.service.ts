@@ -11,8 +11,7 @@
  * 的快取獨立過期；手動刷新只清當前 process。以 TTL 為主、手動刷新為輔即可。
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { logger } from '@open333crm/core';
 import { detectModels } from './model-matcher.js';
 
@@ -38,15 +37,14 @@ const cache = new Map<string, CacheEntry>();
  * @param now 目前時間戳（epoch ms）。由呼叫端傳入以利測試（沙箱禁用 Date.now）。
  */
 export async function getKnownModelKeys(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   now: number,
 ): Promise<ReadonlySet<string>> {
-  const cached = cache.get(tenantId);
+  const cached = cache.get(ctx.tenantId);
   if (cached && cached.expiresAt > now) {
     return cached.keys;
   }
-  return refreshModelKeys(prisma, tenantId, now);
+  return refreshModelKeys(ctx, now);
 }
 
 /**
@@ -54,11 +52,11 @@ export async function getKnownModelKeys(
  * 供 getKnownModelKeys 內部用，也供「手動刷新」API 直接呼叫。
  */
 export async function refreshModelKeys(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   now: number,
 ): Promise<ReadonlySet<string>> {
-  const rows = await prisma.kmArticle.findMany({
+  const { tenantId } = ctx;
+  const rows = await ctx.tx.kmArticle.findMany({
     where: { tenantId, status: 'PUBLISHED' },
     select: { title: true },
   });

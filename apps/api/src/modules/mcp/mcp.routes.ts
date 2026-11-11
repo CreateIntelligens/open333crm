@@ -181,7 +181,7 @@ export default async function mcpRoutes(fastify: FastifyInstance, opts: McpRoute
       ...request.agent,
       scopes: request.agent.cliSession?.scopes ?? [],
       cliSessionId: request.agent.cliSession?.id ?? "",
-    }, buildChannelAccess(request), fastify.io);
+    }, buildChannelAccess(request), fastify.io, fastify);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

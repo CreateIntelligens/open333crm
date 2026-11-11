@@ -14,6 +14,7 @@ export const AUTOMATION_EVENT_NAMES = {
   CONTACT_CREATED: 'contact.created',
   CONTACT_UPDATED: 'contact.updated',
   CONTACT_TAGGED: 'contact.tagged',
+  CONTACT_FOLLOWED: 'contact.followed',
   LINK_CLICKED: 'link.clicked',
   SLA_FIRST_RESPONSE_WARNING: 'sla.first_response.warning',
   SLA_FIRST_RESPONSE_BREACHED: 'sla.first_response.breached',
@@ -128,6 +129,16 @@ export const AUTOMATION_EVENT_DEFINITIONS: readonly AutomationEventDefinition[] 
     description: '聯絡人被貼上標籤時。',
     category: 'contact',
     provides: contactScopes,
+  },
+  {
+    // add-coupon-system design D28：API 處理 LINE 的 follow 事件（message.received、contentType 'follow'）時
+    // 另外以這個事件排入評估，帶回覆權杖與收到時間，動作在期限內用回覆方式送出。
+    // 發券不在一般規則編輯器提供（issue_coupon 為 editorHidden），在「LINE 管理 → 加好友禮」設定
+    name: AUTOMATION_EVENT_NAMES.CONTACT_FOLLOWED,
+    label: '加入好友',
+    description: '客人加入你的 LINE 官方帳號為好友時（包含封鎖後再加入）。只要第一次加入時才做，請加上條件「第一次加入」等於「是」。',
+    category: 'contact',
+    provides: conversationScopes,
   },
   {
     name: AUTOMATION_EVENT_NAMES.LINK_CLICKED,

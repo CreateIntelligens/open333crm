@@ -1,11 +1,7 @@
 /**
- * Sentiment Analysis Service — uses tenant-configured LLM to analyze message sentiment.
+ * Sentiment Analysis Service — 解析 LLM 的情緒分析結果與關鍵字降級。
+ * 呼叫 LLM 在 ai.flow.ts（change migrate-ai-llm-tenant-ctx，design D7）。
  */
-
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { generateReply } from './llm.service.js';
-import { logger } from '@open333crm/core';
 
 export interface SentimentResult {
   sentiment: 'positive' | 'neutral' | 'negative';
@@ -13,7 +9,7 @@ export interface SentimentResult {
   confidence: number;  // 0 to 1
 }
 
-const SENTIMENT_SYSTEM_PROMPT =
+export const SENTIMENT_SYSTEM_PROMPT =
   '你是一位情感分析助手。分析以下客戶訊息的情感傾向。' +
   '請以 JSON 格式回覆，格式為：{"sentiment":"positive"|"neutral"|"negative","score":-1到1的數字,"confidence":0到1的數字}。' +
   'score: 正面為正數，負面為負數，中性接近0。' +
@@ -22,7 +18,7 @@ const SENTIMENT_SYSTEM_PROMPT =
 /**
  * Keyword-based fallback when LLM response is invalid.
  */
-function keywordFallback(text: string): SentimentResult {
+export function sentimentByKeywords(text: string): SentimentResult {
   const negativeKeywords = ['差', '爛', '糟', '慢', '壞', '騙', '怒', '氣', '投訴', '退', '不滿', '失望', '垃圾', '太差', '噁心', '無恥', '可惡', '離譜'];
   const positiveKeywords = ['好', '讚', '棒', '感謝', '謝謝', '滿意', '開心', '喜歡', '優秀', '推薦', '很好', '不錯', '優質', '快速'];
 
@@ -46,37 +42,24 @@ function keywordFallback(text: string): SentimentResult {
   return { sentiment: 'neutral', score: 0, confidence: 0.4 };
 }
 
-export async function analyzeSentiment(
-  prisma: TenantDb,
-  tenantId: string,
-  text: string,
-): Promise<SentimentResult> {
+/** 解析 LLM 的回覆；不是合法的 JSON 時改用關鍵字判斷 */
+export function parseSentimentReply(raw: string, text: string): SentimentResult {
+  const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+  if (!jsonMatch) return sentimentByKeywords(text);
+  let parsed: { sentiment?: unknown; score?: unknown; confidence?: unknown };
   try {
-    const raw = await generateReply(prisma, tenantId, text, '', {
-      overrideSystemPrompt: SENTIMENT_SYSTEM_PROMPT,
-      meta: { feature: 'sentiment' },
-    });
-
-    // Try to parse JSON from LLM response
-    const jsonMatch = raw.match(/\{[\s\S]*?\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      const sentiment = ['positive', 'neutral', 'negative'].includes(parsed.sentiment)
-        ? parsed.sentiment
-        : 'neutral';
-      const score = typeof parsed.score === 'number'
-        ? Math.max(-1, Math.min(1, parsed.score))
-        : 0;
-      const confidence = typeof parsed.confidence === 'number'
-        ? Math.max(0, Math.min(1, parsed.confidence))
-        : 0.5;
-      return { sentiment, score, confidence };
-    }
-
-    // LLM didn't return valid JSON, use keyword fallback
-    return keywordFallback(text);
-  } catch (err) {
-    logger.error('[Sentiment] LLM analysis failed, using keyword fallback:', err);
-    return keywordFallback(text);
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    return sentimentByKeywords(text);
   }
+  const sentiment = (['positive', 'neutral', 'negative'] as const).includes(parsed.sentiment as SentimentResult['sentiment'])
+    ? (parsed.sentiment as SentimentResult['sentiment'])
+    : 'neutral';
+  const score = typeof parsed.score === 'number'
+    ? Math.max(-1, Math.min(1, parsed.score))
+    : 0;
+  const confidence = typeof parsed.confidence === 'number'
+    ? Math.max(0, Math.min(1, parsed.confidence))
+    : 0.5;
+  return { sentiment, score, confidence };
 }

@@ -1,8 +1,9 @@
 /**
- * 平台帳號（PlatformUser）相關信件：開通完成、忘記密碼重設。
+ * 寄給平台帳號（PlatformUser）的信件：開通完成、忘記密碼重設、租戶送出方案異動申請的通知、租戶合約到期提醒。
  * 樣式與 trial-emails.ts 一致（純 HTML inline-style + table 佈局，不走 MJML——
  * mjml 為可選依賴、未安裝時 fallback 會把按鈕 href 吃掉，純 HTML 無此風險）。
- * 寄信一律 fire-and-forget，失敗只 log（呼叫端負責）。
+ * 開通信與重設信 fire-and-forget，失敗只 log（呼叫端負責）；
+ * 方案異動通知信把錯誤丟給呼叫端，由呼叫端寫進平台稽核（change add-plan-change-platform-notify）。
  */
 import { renderTemplateBody } from '../marketing/template-renderer.js';
 import { sendEmail } from '../email/email.service.js';
@@ -78,6 +79,43 @@ const PLATFORM_PASSWORD_RESET_HTML = wrap({
     infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{resetUrl}}" style="color:' + BRAND + ';">{{resetUrl}}</a>'),
 });
 
+const detailRow = (label: string, value: string) =>
+  `<tr><td style="padding:8px 12px 8px 0;font-size:13px;color:${MUTED};white-space:nowrap;vertical-align:top;">${label}</td>` +
+  `<td style="padding:8px 0;font-size:14px;color:${INK};font-weight:600;word-break:break-all;white-space:pre-wrap;">${value}</td></tr>`;
+
+const PLAN_CHANGE_REQUESTED_HTML = wrap({
+  heading: '有新的方案異動申請',
+  bodyHtml:
+    p('租戶「<strong>{{tenantName}}</strong>」送出了方案異動申請，請到平台後台審核。') +
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;border-top:1px solid #eef1f5;width:100%;">` +
+    detailRow('租戶', '{{tenantName}}') +
+    detailRow('類型', '{{typeLabel}}') +
+    detailRow('內容', '{{content}}') +
+    detailRow('備註', '{{note}}') +
+    `</table>` +
+    button('{{reviewUrl}}', '前往審核') +
+    small('租戶同時只能有一筆待審申請，審核之前租戶無法再送出新的申請。') +
+    infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{reviewUrl}}" style="color:' + BRAND + ';">{{reviewUrl}}</a>'),
+});
+
+// 到期日高亮列（樣式同 trial-emails 的 highlight）
+const highlight = (label: string, value: string) =>
+  `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;"><tr>
+    <td style="font-size:13px;color:${MUTED};padding-right:10px;">${label}</td>
+    <td style="font-size:15px;font-weight:700;color:${INK};">${value}</td>
+  </tr></table>`;
+
+const CONTRACT_EXPIRY_REMINDER_HTML = wrap({
+  heading: '租戶合約即將到期',
+  accent: '#b7791f',
+  bodyHtml:
+    p('租戶 <strong>{{tenantName}}</strong> 的合約將在 <strong>{{daysLeft}}</strong> 天後到期。') +
+    highlight('合約迄日', '{{endDate}}') +
+    button('{{tenantUrl}}', '前往平台後台查看租戶') +
+    small('合約到期後系統不會自動停用租戶。請確認是否續約；如需停用，請由平台後台手動操作。') +
+    infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{tenantUrl}}" style="color:' + BRAND + ';">{{tenantUrl}}</a>'),
+});
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -110,6 +148,41 @@ export async function sendPlatformUserProvisionedEmail(
   await safeSend(to, '【open333】平台帳號已開通', html, { loginUrl: vars.loginUrl });
 }
 
+export interface PlanChangeRequestedEmailVars {
+  tenantName: string;
+  type: 'upgrade' | 'token_topup';
+  /** 升級申請的目標方案名稱 */
+  targetPlanName: string | null;
+  topupTokens: number | null;
+  note: string | null;
+  reviewUrl: string;
+}
+
+/**
+ * 租戶送出方案異動申請的通知信，寄給一個平台帳號。
+ * 寄送失敗時丟出錯誤：呼叫端要記下哪些收件人失敗（不走 safeSend）。
+ */
+export async function sendPlanChangeRequestedEmail(to: string, vars: PlanChangeRequestedEmailVars): Promise<void> {
+  const typeLabel = vars.type === 'upgrade' ? '升級方案' : '加購 Token';
+  const content =
+    vars.type === 'upgrade'
+      ? `升級至「${vars.targetPlanName ?? '未指定'}」`
+      : `加購 ${(vars.topupTokens ?? 0).toLocaleString('en-US')} token`;
+  const html = render(PLAN_CHANGE_REQUESTED_HTML, {
+    tenantName: vars.tenantName,
+    typeLabel,
+    content,
+    note: vars.note?.trim() ? vars.note : '未填寫',
+    reviewUrl: vars.reviewUrl,
+  });
+  await sendEmail({
+    to,
+    subject: `【open333】${vars.tenantName} 送出${typeLabel}申請`,
+    html,
+    metadata: { reviewUrl: vars.reviewUrl },
+  });
+}
+
 /** 平台帳號忘記密碼重設信：帶明文 token 的重設連結，有效期提示。 */
 export async function sendPlatformPasswordResetEmail(
   to: string,
@@ -120,4 +193,18 @@ export async function sendPlatformPasswordResetEmail(
     ttlMinutes: String(vars.ttlMinutes),
   });
   await safeSend(to, '【open333】重設您的平台帳號密碼', html, { resetUrl: vars.resetUrl });
+}
+
+/** 租戶合約到期提醒信：寄給啟用中的平台帳號，帶租戶名稱、迄日、剩餘天數與租戶詳細頁連結。 */
+export async function sendContractExpiryReminderEmail(
+  to: string,
+  vars: { tenantName: string; endDate: string; daysLeft: number; tenantUrl: string },
+): Promise<void> {
+  const html = render(CONTRACT_EXPIRY_REMINDER_HTML, {
+    tenantName: vars.tenantName,
+    endDate: vars.endDate,
+    daysLeft: String(vars.daysLeft),
+    tenantUrl: vars.tenantUrl,
+  });
+  await safeSend(to, `【open333】租戶合約即將到期：${vars.tenantName}`, html, { tenantUrl: vars.tenantUrl });
 }

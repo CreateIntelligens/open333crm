@@ -18,8 +18,9 @@ const config: Config = {
         "3xl": ["1.625rem", { lineHeight: "2.125rem" }],
       },
       fontFamily: {
-        // 由 next/font 注入的 CSS 變數；英數走 Inter、中文走 Noto Sans TC
-        sans: ['var(--font-sans)', 'var(--font-zh)', 'system-ui', 'sans-serif'],
+        // 不依賴建置期 Google Font fetch（main 94410ae2）。
+        // 設計：英數走 Inter（Figma），Inter 沒有中文字形，中文自動落到 Noto Sans TC。
+        sans: ['Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',

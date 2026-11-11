@@ -15,7 +15,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
 
 - 專案根目錄：`/Users/danielyang/Documents/opencrm_poc/.claude`
 - UAT 租戶後台：`https://uat.open333crm.create360.ai`（登入 `/login`）
-- UAT 平台後台：同網域 `/admin/login`（帳號 platform@open333crm.dev / Platform1234!）
+- UAT 平台後台：同網域 `/admin/login`（帳密讀 `apps/web/.env.local` 的 `PLATFORM_EMAIL` / `PLATFORM_PASSWORD`；repo 是公開的，帳密不可寫進任何進 git 的檔案）
 - 租戶帳密：讀 `apps/web/.env.local` 的 `MANUAL_EMAIL` / `MANUAL_PASSWORD`（gitignored）
 - 測試 config：`apps/web/playwright.uat.config.ts`（兩個 project：tenant / platform）
 - 執行：`cd apps/web && npx playwright test --config playwright.uat.config.ts`

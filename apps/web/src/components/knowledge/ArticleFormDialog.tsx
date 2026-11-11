@@ -13,11 +13,10 @@ import {
   PageDialogTitle,
   PageDialogFooter,
 } from '@/components/ui/page-dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
-interface ArticleFormDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  article?: {
+/** 編輯對話框需要的文章欄位（`GET /knowledge/:id`） */
+export interface ArticleFormArticle {
     id: string;
     title: string;
     summary: string;
@@ -36,7 +35,12 @@ interface ArticleFormDialogProps {
       mimeType: string;
       sizeBytes: number;
     }[];
-  } | null;
+}
+
+interface ArticleFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  article?: ArticleFormArticle | null;
   onSaved: () => void;
 }
 
@@ -117,9 +121,9 @@ export function ArticleFormDialog({
       }
 
       onSaved();
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err.response?.data?.error?.message || '儲存失敗，請檢查輸入資料'
+        getApiErrorMessage(err, '儲存失敗，請檢查輸入資料')
       );
     } finally {
       setSaving(false);

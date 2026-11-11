@@ -7,6 +7,8 @@
  *     （直接用 MaterialPreview 渲染，所見即所得）
  */
 
+import { IMAGEMAP_DEMO_BASE_URL } from '../../lib/imagemap-url';
+
 // 預設展示用圖片（AI 生成的情境示範圖，放在 public/material-samples/；
 // 使用者新建素材、圖片欄位未填時自動帶入，一進來即有貼合情境的示範，上傳自己的圖後覆蓋）。
 const DEMO = {
@@ -15,7 +17,8 @@ const DEMO = {
   product: '/material-samples/product.jpeg',
   place: '/material-samples/place.jpeg',
   person: '/material-samples/person.jpeg',
-  imagemap: '/material-samples/promo-banner.jpeg',
+  // 圖文訊息的底圖要符合 LINE imagemap 格式（https、baseUrl/{寬度}），改由 API 提供
+  imagemap: IMAGEMAP_DEMO_BASE_URL,
   videoCover: '/material-samples/promo-banner.jpeg',
   coupon: '/material-samples/coupon.jpeg',
 };
@@ -53,7 +56,7 @@ export const DEFAULT_BODY_FOR_TYPE: Record<string, Record<string, unknown>> = {
     ],
   },
 
-  // 預設用橫長 1040×700 左右 2 區，比例貼合示範底圖（promo-banner 橫幅）
+  // 預設用橫長 1040×700 左右 2 區，示範底圖就是 1040:700（左半耳機、右半手機）
   line_imagemap: {
     baseImageUrl: DEMO.imagemap,
     layoutId: 'lo_700_2v',

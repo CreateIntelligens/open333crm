@@ -17,7 +17,23 @@ const PRESETS = [
   { label: '90 天', days: 90 },
 ] as const;
 
-const toInput = (d: Date) => (Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
+/**
+ * 日期框的值（YYYY-MM-DD）以本地時區解析（G10）。
+ * new Date('YYYY-MM-DD') 會當成 UTC 午夜，台灣時間的迄日只算到 08:00。
+ */
+function parseLocalDate(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** 以本地日期顯示；無效日期顯示空白，不可丟出 RangeError 讓整頁崩潰 */
+function formatLocalDate(date: Date): string {
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 
 /**
  * 日期範圍 — 依 Claude Design「報表總覽」：快捷分段按鈕（單選）＋起訖日期。
@@ -40,11 +56,14 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
 
   function handleDate(which: 'from' | 'to', value: string) {
     setActivePreset(null);
-    const d = new Date(value);
-    if (!value || Number.isNaN(d.getTime())) {
+    // 以本地時區解析（G10，取自 main）；清空或不完整時維持原區間、顯示錯誤
+    const d = parseLocalDate(value);
+    if (!d) {
       setError('請輸入完整日期');
       return;
     }
+    // 迄日要含當天整天
+    if (which === 'to') d.setHours(23, 59, 59, 999);
     const nextFrom = which === 'from' ? d : from;
     const nextTo = which === 'to' ? d : to;
     if (nextFrom > nextTo) {
@@ -82,7 +101,7 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
         <input
           id="range-from"
           type="date"
-          value={toInput(from)}
+          value={formatLocalDate(from)}
           onChange={(e) => handleDate('from', e.target.value)}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? 'range-error' : undefined}
@@ -93,7 +112,7 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
         <input
           id="range-to"
           type="date"
-          value={toInput(to)}
+          value={formatLocalDate(to)}
           onChange={(e) => handleDate('to', e.target.value)}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? 'range-error' : undefined}

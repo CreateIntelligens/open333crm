@@ -1,0 +1,218 @@
+/**
+ * 舊寫法的數量不得增加（主規格 tenant-transaction-context，issue #337 的搬遷 ratchet）。
+ *
+ * scripts/check-tenant-ctx.mjs 計算 TenantDb、request.tenantPrisma，以及 service 檔內的
+ * withTenant(、$transaction(、inTenant( 次數，以檔案為單位與基準檔比較。
+ * service 檔直接 import Redis client 或 LLM 入口的次數也一起比較（change migrate-role-agent-tenant-ctx）。
+ * 目前沒有 CI，這個測試讓 `pnpm test` 執行它。
+ */
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { afterEach, beforeEach, test } from 'vitest';
+import { repoRoot } from '#tests/support/paths.js';
+
+const run = promisify(execFile);
+const script = resolve(repoRoot, 'scripts/check-tenant-ctx.mjs');
+
+async function check(args: string[]): Promise<{ code: number; output: string }> {
+  try {
+    const { stdout, stderr } = await run(process.execPath, [script, ...args], { cwd: repoRoot });
+    return { code: 0, output: stdout + stderr };
+  } catch (err) {
+    const e = err as { code?: number; stdout?: string; stderr?: string };
+    return { code: e.code ?? -1, output: `${e.stdout ?? ''}${e.stderr ?? ''}` };
+  }
+}
+
+let dir = '';
+let scanDir = '';
+let baseline = '';
+
+/** 在暫存的掃描目錄寫一個檔案 */
+async function put(rel: string, lines: string[]) {
+  const p = join(scanDir, rel);
+  await mkdir(join(p, '..'), { recursive: true });
+  await writeFile(p, lines.join('\n'));
+}
+
+function args(...extra: string[]) {
+  return ['--scan-dir', scanDir, '--baseline', baseline, ...extra];
+}
+
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'tenant-ctx-ratchet-'));
+  scanDir = join(dir, 'src');
+  baseline = join(dir, 'baseline.json');
+  await put('modules/a/a.service.ts', ['export async function f(prisma: TenantDb) {}']);
+  await put('modules/a/a.routes.ts', ['const x = request.tenantPrisma;', 'const y = request.tenantPrisma;']);
+  const { code, output } = await check(args('--update-baseline'));
+  assert.equal(code, 0, output);
+});
+
+afterEach(async () => {
+  if (dir) await rm(dir, { recursive: true, force: true });
+});
+
+test('新增一處舊寫法：strict 失敗，列出寫法與檔案', { timeout: 30_000 }, async () => {
+  await put('modules/b/b.service.ts', ['export async function g(prisma: TenantDb) {}']);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /TenantDb/);
+  assert.match(output, /modules\/b\/b\.service\.ts/);
+});
+
+test('舊寫法減少：strict 通過，提示更新基準檔', { timeout: 30_000 }, async () => {
+  await put('modules/a/a.routes.ts', ['const x = request.tenantPrisma;']);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+  assert.match(output, /--update-baseline/);
+});
+
+test('不帶 strict 只輸出報告', { timeout: 30_000 }, async () => {
+  await put('modules/b/b.service.ts', ['export async function g(prisma: TenantDb) {}']);
+  const { code, output } = await check(args());
+  assert.equal(code, 0, output);
+  assert.match(output, /modules\/b\/b\.service\.ts/);
+});
+
+test('一個檔案減少、另一個檔案增加，仍然失敗', { timeout: 30_000 }, async () => {
+  await put('modules/a/a.routes.ts', ['const x = request.tenantPrisma;']);
+  await put('modules/c/c.routes.ts', ['const z = req.tenantPrisma;']);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /modules\/c\/c\.routes\.ts/);
+});
+
+test('service 檔內自己開交易：inTenant(、withTenant(、$transaction( 都算增加', { timeout: 30_000 }, async () => {
+  await put('modules/a/a.service.ts', [
+    'export async function f(prisma: TenantDb) {}',
+    'await inTenant(deps, tenantId, fn);',
+    'await withTenant(prisma, tenantId, fn);',
+    'await prisma.$transaction(fn);',
+  ]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /inTenant\(/);
+  assert.match(output, /withTenant\(/);
+  assert.match(output, /\$transaction\(/);
+});
+
+test('service 檔內帶泛型參數或空白的交易呼叫也算增加', { timeout: 30_000 }, async () => {
+  await put('modules/a/a.service.ts', ['export async function f(prisma: TenantDb) {}']);
+  await put('modules/g1/g1.service.ts', ['await inTenant<string>(deps, tenantId, fn);']);
+  await put('modules/g2/g2.service.ts', ['await withTenant <Row[]>(prisma, tenantId, fn);']);
+  await put('modules/g3/g3.service.ts', ['await prisma.$transaction (fn);']);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /modules\/g1\/g1\.service\.ts/);
+  assert.match(output, /modules\/g2\/g2\.service\.ts/);
+  assert.match(output, /modules\/g3\/g3\.service\.ts/);
+});
+
+test('route 檔內的 inTenant( 不算：入口本來就該開交易', { timeout: 30_000 }, async () => {
+  await put('modules/a/a.routes.ts', [
+    'const x = request.tenantPrisma;',
+    'const y = request.tenantPrisma;',
+    'await inTenant(deps, tenantId, fn);',
+  ]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+});
+
+test('service 檔直接 import Redis client：算增加', { timeout: 30_000 }, async () => {
+  await put('modules/r1/r1.service.ts', ["import { logger, redis } from '@open333crm/core';"]);
+  await put('modules/r2/r2.service.ts', ["import IORedis from 'ioredis';"]);
+  await put('modules/r3/r3.service.ts', ["import { Redis } from 'ioredis';"]);
+  // 共用的連線（lib/redis-client.ts）一樣是 Redis client，不可藉此繞過計數
+  await put('modules/r4/r4.service.ts', ["import { getSharedRedis } from '../../lib/redis-client.js';"]);
+  // 沒寫副檔名或寫 .ts 也是同一個檔案
+  await put('modules/r5/r5.service.ts', ["import { getSharedRedis } from '../../lib/redis-client';"]);
+  await put('modules/r6/r6.service.ts', ["import { getSharedRedis } from '../../lib/redis-client.ts';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /Redis client/);
+  for (const f of ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('service 檔 import core 建立連線的函式：算增加', { timeout: 30_000 }, async () => {
+  // 自己建立連線一樣是不經過參數取得 Redis，改名 import 也要算到
+  await put('modules/c1/c1.service.ts', ["import { createRedisClient } from '@open333crm/core';"]);
+  await put('modules/c2/c2.service.ts', ["import { createRedisClient as mk } from '@open333crm/core';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /Redis client/);
+  for (const f of ['c1', 'c2']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('service 檔直接 import LLM 入口：算增加',{ timeout: 30_000 }, async () => {
+  await put('modules/l1/l1.service.ts', ["import { generateReply } from '../ai/llm.flow.js';"]);
+  await put('modules/l2/l2.service.ts', ["import { getChatProvider } from '../ai/providers/index.js';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /LLM/);
+  assert.match(output, /modules\/l1\/l1\.service\.ts/);
+  assert.match(output, /modules\/l2\/l2\.service\.ts/);
+});
+
+test('namespace import 與直接 import provider 檔：也算增加', { timeout: 30_000 }, async () => {
+  await put('modules/n1/n1.service.ts', ["import * as IORedis from 'ioredis';"]);
+  await put('modules/n2/n2.service.ts', ["import * as core from '@open333crm/core';"]);
+  await put('modules/n3/n3.service.ts', ["import * as llm from '../ai/llm.flow.js';"]);
+  await put('modules/n4/n4.service.ts', ["import { openaiProvider } from '../ai/providers/openai.js';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  for (const f of ['n1', 'n2', 'n3', 'n4']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('其他合法寫法也算增加：註解、前置空白、多行、re-export、動態 import()、require', { timeout: 30_000 }, async () => {
+  await put('modules/w1/w1.service.ts', ["import { /* cache */ redis } from '@open333crm/core';"]);
+  await put('modules/w2/w2.service.ts', ["  import IORedis from 'ioredis';"]);
+  await put('modules/w3/w3.service.ts', ['import {', '  logger,', '  redis,', "} from '@open333crm/core';"]);
+  await put('modules/w4/w4.service.ts', ["export { redis } from '@open333crm/core';"]);
+  await put('modules/w5/w5.service.ts', ["const { default: IORedis } = await import('ioredis');"]);
+  await put('modules/w6/w6.service.ts', ["const llm = require('../ai/llm.flow.js');"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  for (const f of ['w1', 'w2', 'w3', 'w4', 'w5', 'w6']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('註解或字串裡的 import 不算', { timeout: 30_000 }, async () => {
+  await put('modules/c1/c1.service.ts', [
+    "// import { redis } from '@open333crm/core';",
+    "/* import IORedis from 'ioredis'; */",
+    "const doc = \"import { generateReply } from '../ai/llm.flow.js'\";",
+  ]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+});
+
+test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout: 30_000 }, async () => {
+  await put('modules/t1/t1.service.ts', [
+    "import type { Redis } from 'ioredis';",
+    "import type { HistoryMessage } from '../ai/llm.flow.js';",
+    "import { type Redis as R } from 'ioredis';",
+    "import type { ChatProvider } from '../ai/providers/types.js';",
+  ]);
+  await put('modules/t2/t2.flow.ts', ["import { redis } from '@open333crm/core';", "import { generateReply } from '../ai/llm.flow.js';"]);
+  await put('modules/t3/t3.routes.ts', ["import IORedis from 'ioredis';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+});
+
+test('repo 本身：舊寫法沒有比基準檔多', { timeout: 30_000 }, async () => {
+  const { code, output } = await check(['--strict']);
+  assert.equal(code, 0, `舊寫法增加。新程式由 flow 以 inTenant() 開交易；確實要減少時執行 --update-baseline：\n${output}`);
+});
+
+test('--scan-dir 或 --baseline 沒有值：exit 2 並說明缺值的參數，不丟出 TypeError', async () => {
+  for (const argv of [['--scan-dir'], ['--baseline'], ['--scan-dir', '--strict']]) {
+    const { code, output } = await check(argv);
+    assert.equal(code, 2, `${argv.join(' ')}：${output}`);
+    assert.match(output, new RegExp(`${argv[0]} 需要一個路徑`));
+    assert.doesNotMatch(output, /TypeError/);
+  }
+});

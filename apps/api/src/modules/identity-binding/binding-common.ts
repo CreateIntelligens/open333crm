@@ -7,9 +7,11 @@ import { logger } from '@open333crm/core';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { resolveMergeChain } from '../contact/contact-merge.service.js';
-import { buildMessageNewPayload, emitToConversationAndTenant } from '../webhook/inbound-socket-presenter.js';
+import { buildMessageNewPayload, emitToConversationChannel } from '../webhook/inbound-socket-presenter.js';
 import type { BindingStore } from './binding-code.js';
 import { BINDING_TEXT } from './binding-links.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export interface BindingDeps {
   store: BindingStore;
@@ -59,7 +61,9 @@ export async function sendBindingMessage(
   text: string,
   kind: string,
 ): Promise<boolean> {
-  const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, text);
+  const storedContent = await prepareStoredMessageContent(await readAiPrivacyPolicy(db, tenantId), { text }, 'system_template');
+  const operationalText = storedContent.content.text as string;
+  const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, operationalText);
   if (!ok) logger.warn('[IdentityBinding] 綁定訊息送出失敗', { conversationId, kind });
 
   const message = await db.message.create({
@@ -68,25 +72,28 @@ export async function sendBindingMessage(
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text },
+      content: storedContent.content,
       metadata: {
         source: 'identity_binding',
         kind,
+        ...storedContent.metadata,
         ...(ok ? {} : { deliveryFailed: true, deliveryError: BINDING_TEXT.deliveryFailed }),
       },
     },
+    // channelId：推播只送給看得到這個渠道的成員（issue #427）
+    include: { conversation: { select: { channelId: true } } },
   });
   await db.conversation.updateMany({ where: { id: conversationId, tenantId }, data: { lastMessageAt: new Date() } });
   if (deps.io) {
-    const payload = buildMessageNewPayload(message, { content: { text }, includeTypePayload: true, includeMetadata: true });
-    emitToConversationAndTenant(deps.io, conversationId, tenantId, 'message.new', payload);
+    const payload = buildMessageNewPayload(message, { content: storedContent.content, includeTypePayload: true, includeMetadata: true });
+    emitToConversationChannel(deps.io, tenantId, { id: conversationId, channelId: message.conversation.channelId }, 'message.new', payload);
   }
   return ok;
 }
 
 /** 沿 mergedIntoId 找到目前仍在使用的聯絡人（發碼方可能在兌換前已被併入別人）；找不到或已封存回 null */
 export async function resolveLiveContactId(db: TenantDb, tenantId: string, contactId: string): Promise<string | null> {
-  const chain = await resolveMergeChain(db, tenantId, contactId);
+  const chain = await resolveMergeChain({ tx: db, tenantId }, contactId);
   const holder = chain[chain.length - 1];
   const c = await db.contact.findFirst({ where: { id: holder, tenantId }, select: { isArchived: true } });
   return c && !c.isArchived ? holder : null;

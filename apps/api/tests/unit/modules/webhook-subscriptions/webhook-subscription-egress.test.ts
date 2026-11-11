@@ -1,5 +1,5 @@
 /**
- * webhook 訂閱的網址檢查與派送（主規格 webhook-subscription-egress）。
+ * webhook 訂閱的網址檢查、派送與測試送出的路由（主規格 webhook-subscription-egress）。
  * isBlockedUrl() 擋哪些網段，見 tests/unit/modules/webhook/webhook-ssrf.test.ts。
  */
 import assert from 'node:assert/strict';
@@ -23,10 +23,13 @@ vi.mock('node:dns/promises', async (importOriginal) => {
 
 const PUBLIC_URL = 'https://93.184.216.34/hook';
 const SUB_ID = 'sub-1';
+const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 
 let app: FastifyInstance;
 const created: Array<Record<string, unknown>> = [];
 const updated: Array<Record<string, unknown>> = [];
+/** 測試送出（POST /:id/test）寫的送出紀錄 */
+const testDeliveries: Array<Record<string, unknown>> = [];
 
 beforeAll(async () => {
   app = Fastify();
@@ -36,18 +39,39 @@ beforeAll(async () => {
         created.push(args.data);
         return { id: SUB_ID, ...args.data };
       },
-      findFirst: async () => ({ id: SUB_ID, tenantId: 'tenant-1', url: PUBLIC_URL }),
+      // 只有 TENANT_ID 的 SUB_ID 存在；其他租戶或其他 id 都查不到
+      findFirst: async ({ where }: { where: { id?: string; tenantId?: string } }) =>
+        where.id === SUB_ID && where.tenantId === TENANT_ID
+          ? { id: SUB_ID, tenantId: TENANT_ID, url: PUBLIC_URL, secret: 'secret' }
+          : null,
       update: async (args: { data: Record<string, unknown> }) => {
         updated.push(args.data);
         return { id: SUB_ID, ...args.data };
       },
     },
   };
-  // 已登入的請求：CLI session 身分讓 requirePermission 放行，只測網址檢查
+  // route 呼叫 flow，flow 以 fastify.prisma 開交易（#337 階段 3）
+  const txPrisma = { $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb({ $executeRaw: async () => 1, ...prisma }) };
+  app.decorate('prisma', txPrisma as never);
+  // POST /:id/test 的 dispatchWebhook 仍收 request.tenantPrisma（隨 #337 階段 4 搬遷），以它寫送出紀錄
+  const tenantPrisma = {
+    ...prisma,
+    webhookDelivery: {
+      create: async (args: { data: Record<string, unknown> }) => {
+        testDeliveries.push({ ...args.data });
+        return { id: 'delivery-test', ...args.data };
+      },
+      update: async (args: { data: Record<string, unknown> }) => {
+        Object.assign(testDeliveries.at(-1)!, args.data);
+        return { id: 'delivery-test', ...args.data };
+      },
+    },
+  };
+  // 已登入的請求：CLI session 身分讓 requirePermission 放行，只測網址檢查。租戶可用 x-test-tenant 指定
   app.decorate('authenticate', async (request: never) => {
-    const req = request as { agent?: unknown; tenantPrisma?: unknown };
-    req.agent = { id: 'a1', tenantId: 'tenant-1', isCliSession: true };
-    req.tenantPrisma = prisma;
+    const req = request as { agent?: unknown; tenantPrisma?: unknown; headers: Record<string, string | undefined> };
+    req.agent = { id: 'a1', tenantId: req.headers['x-test-tenant'] ?? TENANT_ID, isCliSession: true };
+    req.tenantPrisma = tenantPrisma;
   });
   app.decorateRequest('agent', null);
   app.decorateRequest('tenantPrisma', null);
@@ -59,6 +83,7 @@ beforeAll(async () => {
 beforeEach(() => {
   created.length = 0;
   updated.length = 0;
+  testDeliveries.length = 0;
 });
 
 afterAll(async () => {
@@ -177,4 +202,47 @@ test('目的地回應轉址：不送出請求到轉址的網址，派送紀錄 s
   assert.ok(requested.length > 0 && requested.every((u) => u === PUBLIC_URL));
   assert.equal(result.success, false);
   assert.equal(prisma.updates.at(-1)?.success, false);
+});
+
+// ─── 測試送出（路由）───────────────────────────────────────────────────
+
+const OTHER_TENANT_ID = 'b0000000-0000-0000-0000-000000000002';
+
+const sendTest = (headers: Record<string, string> = {}) =>
+  app.inject({ method: 'POST', url: `/api/v1/webhook-subscriptions/${SUB_ID}/test`, headers });
+
+test('測試送出：讀到訂閱後只送一次，回應帶這次送出的結果，送出紀錄一筆', async () => {
+  const bodies: Array<{ id: string; event: string; tenantId: string }> = [];
+  vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+    requested.push(url);
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response('', { status: 500 });
+  });
+
+  const res = await sendTest();
+
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(requested, [PUBLIC_URL]);
+  assert.equal(bodies[0].event, 'webhook.test');
+  assert.equal(bodies[0].tenantId, TENANT_ID);
+  const data = res.json().data;
+  assert.equal(data.success, false);
+  assert.equal(data.statusCode, 500);
+  assert.equal(testDeliveries.length, 1);
+  assert.equal(testDeliveries[0].subscriptionId, SUB_ID);
+  assert.equal(testDeliveries[0].eventId, bodies[0].id);
+  assert.equal(testDeliveries[0].attempts, 1);
+});
+
+test('測試送出：訂閱不屬於呼叫者的租戶時回 404，不送出，不寫送出紀錄', async () => {
+  vi.stubGlobal('fetch', async (url: string) => {
+    requested.push(url);
+    return new Response('', { status: 200 });
+  });
+
+  const res = await sendTest({ 'x-test-tenant': OTHER_TENANT_ID });
+
+  assert.equal(res.statusCode, 404, res.body);
+  assert.deepEqual(requested, []);
+  assert.equal(testDeliveries.length, 0);
 });

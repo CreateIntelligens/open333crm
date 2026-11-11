@@ -1,5 +1,5 @@
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod/v3';
 import {
   listTemplates,
   listBroadcasts,
@@ -7,6 +7,7 @@ import {
   createBroadcast,
   executeBroadcast,
   cancelBroadcast,
+  previewBroadcastAudience,
 } from './marketing.service.js';
 import {
   listSegments,
@@ -23,8 +24,16 @@ import {
   updateCampaign,
   deleteCampaign,
 } from './campaign.service.js';
-import { success, paginated } from '../../shared/utils/response.js';
-import { requirePermission } from '../../guards/rbac.guard.js';
+import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { getBroadcastChannelIdFlow } from './marketing.flow.js';
+import { notFound } from '../../shared/messages/resource.js';
+import { agentVisibilityResolverOf, assertChannelVisible, isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
+import {
+  getCouponBroadcastSummaryFlow,
+  listBroadcastRecipientsFlow,
+  queueCouponBroadcastFlow,
+} from './broadcast-coupon.flow.js';
+import { assertPermission, requirePermission, requirePermissionWhen } from '../../guards/rbac.guard.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 
 // --- Schemas ---
@@ -84,16 +93,70 @@ const createBroadcastSchema = z
       })
       .optional(),
     scheduledAt: z.string().optional(),
+    // 附券廣播（design D29）：只能選進行中的行銷券；素材可選，不支援舊版型
+    couponId: z.string().uuid('優惠券識別格式不正確').optional(),
   })
-  .refine((data) => Boolean(data.materialId) !== Boolean(data.templateId), {
+  .refine((data) => (data.couponId ? !data.templateId : Boolean(data.materialId) !== Boolean(data.templateId)), {
     message: '素材與版型請擇一提供，不可同時或都不填',
     path: ['materialId'],
   });
 
+const broadcastAudiencePreviewSchema = z.object({
+  channelId: z.string().uuid(),
+  // 附券廣播：一併回傳剩餘名額與已達每人上限的人數
+  couponId: z.string().uuid().optional(),
+  segmentId: z.string().uuid().optional(),
+  targetType: z.enum(['all', 'segment', 'tags', 'contacts']),
+  targetConfig: z
+    .object({
+      tagIds: z.array(z.string().uuid()).optional(),
+      contactIds: z.array(z.string().uuid()).optional(),
+    })
+    .optional(),
+});
+
+// ─── 群發的額外權限（change require-broadcast-send-permissions，issue #409 MKT-02、MKT-03）──
+// 403 的 details.requiredPermission 是缺少的權限碼；訊息說明是哪個操作需要權限
+
+/** body 某欄位為非空字串：空的 scheduledAt 視為草稿，與 createBroadcast() 相同 */
+const hasBodyString = (field: string) => (request: FastifyRequest) => {
+  const value = (request.body as Record<string, unknown> | undefined)?.[field];
+  return typeof value === 'string' && value.trim() !== '';
+};
+
+const SCHEDULE_NEEDS_BROADCAST = '排程發送需要「執行群發」權限。請清空排程時間存成草稿，再請有權限的成員發送';
+const COUPON_NEEDS_ISSUE = '附上優惠券需要「發放優惠券」權限，請改為不附券或請管理員開通';
+const COUPON_PREVIEW_NEEDS_VIEW = '查看優惠券的剩餘名額需要「檢視優惠券」權限';
+
+/** 建立帶排程時間的群發：到期由排程器送出，等同發送，需要 marketing.broadcast（MKT-02） */
+const broadcastIfScheduling = requirePermissionWhen('marketing.broadcast', hasBodyString('scheduledAt'), SCHEDULE_NEEDS_BROADCAST);
+/** 建立附券群發：每位收件人各發一張券，需要 coupon.issue（MKT-03） */
+const issueIfAttachingCoupon = requirePermissionWhen('coupon.issue', hasBodyString('couponId'), COUPON_NEEDS_ISSUE);
+/** 預覽附券群發：回應含券的剩餘名額，需要 coupon.view（MKT-03） */
+const viewCouponIfPreviewingCoupon = requirePermissionWhen('coupon.view', hasBodyString('couponId'), COUPON_PREVIEW_NEEDS_VIEW);
+
 export default async function marketingRoutes(fastify: FastifyInstance) {
+
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
   fastify.addHook('preHandler', requirePermission('marketing.view'));
+
+  /**
+   * 以 ID 讀取或操作群發：群發的渠道不可見時回 404，與群發不存在相同（channel-scoped-visibility）。
+   * 只檢查可見，不檢查渠道存取層級：群發由 marketing.broadcast 控管。
+   */
+  async function assertBroadcastVisible(request: FastifyRequest, id: string): Promise<void> {
+    const channelId = await getBroadcastChannelIdFlow(fastify, request.agent.tenantId, id);
+    if (!isChannelAccessible(await resolveChannelVisibility(request), channelId)) {
+      throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
+    }
+  }
+
+  /** 讀取或送出群發：先檢查渠道可見，再讀完整的群發（含收件人統計） */
+  async function visibleBroadcast(request: FastifyRequest, id: string) {
+    await assertBroadcastVisible(request, id);
+    return getBroadcast(request.tenantPrisma, id, request.agent.tenantId);
+  }
 
   // ─── Templates (read-only) ────────────────────────────────────────────────
   //   範本管理 UI 與 QuickBroadcast 已下線（改用 Material 系統 + 統一的 Broadcast）。
@@ -124,7 +187,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const page = clampPage(parseInt(query.page || '1', 10));
     const limit = clampLimit(parseInt(query.limit || '50', 10), 50);
 
-    const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit);
+    const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit, await resolveChannelVisibility(request));
     return reply.send(paginated(result.segments, result.total, result.page, result.limit));
   });
 
@@ -135,6 +198,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       request.agent.id,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.status(201).send(success(segment));
   });
@@ -144,6 +208,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(segment));
   });
@@ -155,6 +220,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success(segment));
   });
@@ -175,6 +241,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.send(success({ count: result.count }));
   });
@@ -191,7 +258,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       status: query.status || undefined,
       page,
       limit,
-    });
+    }, await resolveChannelVisibility(request), request.agent.id);
     return reply.send(paginated(result.campaigns, result.total, result.page, result.limit));
   });
 
@@ -211,6 +278,8 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(campaign));
   });
@@ -222,6 +291,8 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(campaign));
   });
@@ -231,6 +302,8 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
+      request.agent.id,
     );
     return reply.send(success(result));
   });
@@ -248,43 +321,74 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       status: query.status || undefined,
       page,
       limit,
-    });
+    }, await resolveChannelVisibility(request));
     return reply.send(paginated(result.broadcasts, result.total, result.page, result.limit));
   });
 
-  fastify.post('/broadcasts', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
+  fastify.post('/broadcasts', {
+    preHandler: [requirePermission('marketing.manage'), broadcastIfScheduling, issueIfAttachingCoupon],
+  }, async (request, reply) => {
     const data = createBroadcastSchema.parse(request.body);
+    await assertChannelVisible(request, data.channelId, 'read_only');
     const broadcast = await createBroadcast(
       request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
       data,
+      await resolveChannelVisibility(request),
     );
     return reply.status(201).send(success(broadcast));
   });
 
+  // POST /broadcasts/audience-preview — 預估符合條件與可送達人數（FB／IG 只算 24 小時內互動過的人），不建立群發
+  fastify.post('/broadcasts/audience-preview', { preHandler: viewCouponIfPreviewingCoupon }, async (request, reply) => {
+    const data = broadcastAudiencePreviewSchema.parse(request.body);
+    await assertChannelVisible(request, data.channelId, 'read_only');
+    const result = await previewBroadcastAudience(request.tenantPrisma, request.agent.tenantId, await resolveChannelVisibility(request), data);
+    return reply.send(success(result));
+  });
+
   fastify.get<{ Params: { id: string } }>('/broadcasts/:id', async (request, reply) => {
-    const broadcast = await getBroadcast(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
-    return reply.send(success(broadcast));
+    const broadcast = await visibleBroadcast(request, request.params.id);
+    // 附券廣播的結果：發券張數、依原因分列的跳過與失敗人數（design D29）
+    const couponSummary = broadcast.couponId
+      ? await getCouponBroadcastSummaryFlow(fastify, request.agent.tenantId, broadcast.id)
+      : null;
+    return reply.send(success({ ...broadcast, couponSummary }));
+  });
+
+  // GET /broadcasts/:id/recipients — 結果頁列出收件人與跳過、失敗的原因
+  fastify.get<{ Params: { id: string } }>('/broadcasts/:id/recipients', async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid('廣播識別格式不正確') }).parse(request.params);
+    const query = z.object({
+      status: z.enum(['sent', 'failed', 'skipped', 'pending']).optional(),
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().positive().max(100).default(50),
+    }).parse(request.query);
+    await assertBroadcastVisible(request, id);
+    const result = await listBroadcastRecipientsFlow(fastify, request.agent.tenantId, id, query);
+    if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到這則廣播' } });
+    return reply.send(paginated(result.items, result.total, result.page, result.limit));
   });
 
   // POST /broadcasts/:id/send — manually trigger broadcast execution
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/send', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
-    const broadcast = await getBroadcast(
-      request.tenantPrisma,
-      request.params.id,
-      request.agent.tenantId,
-    );
-    const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id);
+    const broadcast = await visibleBroadcast(request, request.params.id);
+    // 附券廣播：排入排程立即執行，不在 HTTP 請求內發送（design D29）；結果在廣播列表查看
+    if (broadcast.couponId) {
+      // 附券群發每位收件人各發一張券：發送的人也要有 coupon.issue（MKT-03）
+      await assertPermission(request, 'coupon.issue', COUPON_NEEDS_ISSUE);
+      // 排程器後備送出時，以按下發送的人當下的權限重新檢查（scheduledById）
+      const queued = await queueCouponBroadcastFlow(fastify, request.agent.tenantId, broadcast.id, undefined, request.agent.id);
+      return reply.status(202).send(success(queued));
+    }
+    const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id, agentVisibilityResolverOf(fastify));
     return reply.send(success(result));
   });
 
   // POST /broadcasts/:id/cancel — cancel a draft/scheduled broadcast
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/cancel', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
+    await assertBroadcastVisible(request, request.params.id);
     const result = await cancelBroadcast(
       request.tenantPrisma,
       request.params.id,

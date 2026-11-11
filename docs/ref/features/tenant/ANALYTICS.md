@@ -2,18 +2,19 @@
 
 報表彙整一段期間內的訊息量、工單處理、客服績效、渠道分布、聯絡人成長與滿意度。管理者看「總覽」，每個客服可以在「我的績效」看自己的數字。
 
-- **資料來源**：`apps/api/src/modules/analytics/*`、`apps/api/src/modules/cli/cli.routes.ts`、`apps/api/src/guards/rbac.guard.ts`
-- **核對日期**：2026-09-30
+- **資料來源**：`apps/api/src/modules/analytics/*`、`apps/api/src/modules/cli/cli.routes.ts`、`apps/api/src/modules/mcp/mcp.server.ts`、`apps/api/src/guards/rbac.guard.ts`
+- **核對日期**：2026-10-30
 
 ## 負責的程式
 
 | 程式 | 負責什麼 |
 | --- | --- |
 | `analytics.routes.ts` | 報表路由與權限 |
+| `analytics.flow.ts` | 每個報表在一個租戶交易內查詢。報表頁、CLI 與 MCP 都呼叫這裡 |
 | `analytics.service.ts` | 每個報表的查詢。全部在查詢當下從原始資料表計算 |
-| `analytics.scheduler.ts`、`analytics.aggregator.ts` | 每天把前一天的彙總寫入 `DailyStat`。沒有任何報表讀這張表，見 `../../system/AUDIT.md` 的 DB-03 |
+| `analytics.scheduler.ts`、`analytics.aggregator.ts` | 每天把前一天的彙總寫入 `DailyStat`，每個租戶一個交易。沒有任何報表讀這張表，見 `../../system/AUDIT.md` 的 DB-03 與 #318 |
 
-CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 scope 授權，見 `../../system/AUDIT.md` 的 RBAC-02。
+CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 呼叫同一組 flow，但走 CLI 的 scope 授權，見 `../../system/AUDIT.md` 的 RBAC-02。
 
 ## 有哪些報表
 
@@ -25,7 +26,7 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 | `GET /analytics/agents` | 每個客服的處理量、平均首次回應與解決時間、CSAT、SLA 達成率。可以用 `agentId` 只看一人 |
 | `GET /analytics/channels` | 各渠道類型的訊息量、對話量與新聯絡人數，以及機器人與真人處理的比例 |
 | `GET /analytics/contacts` | 新聯絡人趨勢、活躍聯絡人數、最常用的標籤 |
-| `GET /analytics/csat` | CSAT 的分數分布 |
+| `GET /analytics/csat` | 期間內送出問卷的工單：回覆率、平均分數、滿意率（4 分以上），以及最多 20 張低分（2 分以下）工單。依送出問卷的時間篩選 |
 | `GET /analytics/my` | 自己本月的績效，以及手上待處理與快到期的工單 |
 | `POST /analytics/export` | 匯出 CSV，可選總覽、工單、客服或渠道 |
 
@@ -33,9 +34,11 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 
 ## 數字怎麼算
 
-**即時計算。** 每次查詢都直接統計 `cases`、`messages`、`conversations`、`contacts` 等資料表，沒有快取，也不讀 `DailyStat`。資料量大時，報表的查詢時間會跟著增加。
+**即時計算。** 每次查詢都直接統計 `cases`、`messages`、`conversations`、`contacts` 等資料表，沒有快取，也不讀 `DailyStat`。資料量大時，報表的查詢時間會跟著增加。工單報表的匯出與 CSAT 報表讀出期間內的所有工單，見 `../../system/AUDIT.md` 的 ANA-02。
 
-**SLA 達成率**是已解決、而且 `resolvedAt` 不晚於 `slaDueAt` 的工單比例。沒有 SLA 期限的工單不計入。
+**已解決**看工單的 `resolvedAt`：總覽的已解決數、SLA 達成率、平均解決時間、案件趨勢的「已解決」、客服績效與我的績效都一樣。工單轉成「已解決」時寫入，從已解決轉成已關閉時保留；直接關閉（沒有經過已解決）的工單沒有 `resolvedAt`，不算已解決；重開時清除，重開的工單不再算已解決（#417，規則見[工單](./CASES.md)的「解決時間與關閉時間」）。2026-11-04 之前的資料沒有補值。案件趨勢的「已解決」依工單的**建立日**分組，是那天建立、目前已解決的工單數，不是那天解決的數量。
+
+**SLA 達成率**是已解決、而且 `resolvedAt` 不晚於 `slaDueAt` 的工單比例。沒有 SLA 期限的工單不計入。案件報表的 SLA 違規表看的是狀態：不是 `RESOLVED`、`CLOSED`，而且已過 `slaDueAt` 的工單，所以直接關閉的逾期工單不列為違規。
 
 **平均首次回應時間**取 `Case.firstResponseAt` 不為空的工單計算。客服在工單關聯的對話第一次送出訊息時寫入這個欄位，AI 與系統自動回覆不算。沒有關聯對話的工單不會有這個值，因此不計入，見 `../../system/AUDIT.md` 的 SLA-05。
 
@@ -43,7 +46,7 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 
 **日期以 UTC 切分。** 依日、週、月分組用的是資料庫的 `date_trunc()`，而時間欄位存的是不帶時區的 UTC 時間。台灣時間凌晨 0 點到 8 點的資料會被算到前一天。見 `../../system/AUDIT.md` 的 ANA-01。
 
-**不套用渠道可見範圍。** 報表統計的是全租戶，不依成員可見的渠道過濾。
+**依渠道可見範圍統計。** 沒有 `channel.view_all` 的成員只看得到可見渠道的資料：訊息與對話依對話的渠道，工單依工單的渠道，聯絡人與標籤依聯絡人的渠道身份（有可見渠道的身份，或沒有任何渠道身份），客服績效只列出被授權任一可見渠道（直綁或所屬團隊）、或在可見渠道有工單的客服，同分店期間內沒有工單的客服以 0 列出；只算可見渠道的工單。報表頁、匯出、CLI 與 MCP 用同一個判斷。兩個例外：優惠券成效不過濾，因為優惠券不屬於任何渠道；「我的績效」只含自己的工單，也不另外過濾。每日彙總（`DailyStat`）寫的是全租戶的數字。主規格 `channel-scoped-visibility` 的「報表只統計可見渠道」。
 
 ## 權限
 
@@ -55,7 +58,9 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 | 其他報表 | `analytics.view` |
 | `POST /analytics/export` | `analytics.export` |
 
-側欄的「報表」要求 `analytics.view` 才顯示，而「我的績效」在它底下。因此只有 `analytics.view.self` 的客服在側欄找不到「我的績效」，只能直接輸入網址。
+側欄的「總覽」要 `analytics.view`，「我的績效」要 `analytics.view.self`；兩個都沒有時不顯示「報表」。「匯出 CSV」按鈕只對有 `analytics.export` 的成員顯示，匯出的 CSV 以 UTF-8 BOM 開頭，Excel 開啟中文不會亂碼。每一欄（含標題列）都經過 `@open333crm/shared` 的 `csvRow()`：含逗號、引號、換行的欄位以雙引號包住，以 `=`、`+`、`-`、`@`、Tab、CR 開頭的文字前面加 `'`，Excel 不會當成公式；數字欄位照原樣輸出（#423）。
+
+報表頁的自訂日期以瀏覽器的本地時區解析，迄日算到當天 23:59:59。
 
 ## 目前的限制
 
@@ -64,7 +69,6 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 | 沒有關聯對話的工單不計入平均首次回應時間 | 詳見 `../../system/AUDIT.md` 的 SLA-05 |
 | 日期以 UTC 切分 | 詳見 `../../system/AUDIT.md` 的 ANA-01 |
 | 每天寫入的彙總沒有被使用 | 詳見 `../../system/AUDIT.md` 的 DB-03 |
-| 只有 `analytics.view.self` 的客服找不到入口 | 側欄的父選單要求 `analytics.view` |
 | CLI 報表不受角色權限限制 | 詳見 `../../system/AUDIT.md` 的 RBAC-02 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { readBoundedText } from './web-client.js';
 
 const GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';

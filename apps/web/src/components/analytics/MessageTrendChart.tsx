@@ -11,10 +11,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { channelDisplayName } from '@open333crm/shared';
 import { CARD, ReportEmpty, ReportError, Skeleton } from './ReportState';
 
 interface MessageTrendChartProps {
-  data: Array<{ date: string; LINE?: number; FB?: number; IG?: number; WEBCHAT?: number; total?: number }>;
+  // Instagram 私訊在 API 的鍵是 THREADS（取自 main；原本的 IG 鍵永遠沒有資料）
+  data: Array<{ date: string; LINE?: number; FB?: number; THREADS?: number; WEBCHAT?: number; total?: number }>;
   isLoading: boolean;
   error?: unknown;
   onRetry?: () => void;
@@ -26,10 +28,10 @@ interface MessageTrendChartProps {
  * 滑過顯示當日各渠道數量與合計。改用直線連接，避免平滑曲線畫出「低於 0」的誤導弧線。
  */
 const SERIES = [
-  { key: 'FB', label: 'Facebook', color: '#2876C4', dash: undefined, shape: 'circle' },
-  { key: 'IG', label: 'Instagram', color: '#D9480F', dash: '7 4', shape: 'square' },
-  { key: 'LINE', label: 'LINE', color: '#0F766E', dash: undefined, shape: 'triangle' },
-  { key: 'WEBCHAT', label: '網站聊天室', color: '#475569', dash: '2 4', shape: 'diamond' },
+  { key: 'FB', label: channelDisplayName('FB'), color: '#2876C4', dash: undefined, shape: 'circle' },
+  { key: 'THREADS', label: channelDisplayName('THREADS'), color: '#D9480F', dash: '7 4', shape: 'square' },
+  { key: 'LINE', label: channelDisplayName('LINE'), color: '#0F766E', dash: undefined, shape: 'triangle' },
+  { key: 'WEBCHAT', label: channelDisplayName('WEBCHAT'), color: '#475569', dash: '2 4', shape: 'diamond' },
 ] as const;
 type SeriesKey = (typeof SERIES)[number]['key'];
 
@@ -46,6 +48,12 @@ export function MessageTrendChart({ data, isLoading, error, onRetry }: MessageTr
   const [hidden, setHidden] = useState<Set<SeriesKey>>(new Set());
   // 只顯示資料裡實際有的渠道（目前沒有串 Instagram 的租戶就不會出現）
   const present = SERIES.filter((s) => data.some((d) => d[s.key] != null));
+  // API 只有當天有該渠道訊息才回傳那個鍵，沒有的日子補 0，線才不會斷（取自 main）
+  const rows = data.map((d) => {
+    const row = { ...d };
+    for (const s of present) row[s.key] = d[s.key] ?? 0;
+    return row;
+  });
   const empty = !isLoading && (data.length === 0 || data.every((d) => present.every((s) => !d[s.key])));
   const toggle = (k: SeriesKey) =>
     setHidden((prev) => {
@@ -94,7 +102,7 @@ export function MessageTrendChart({ data, isLoading, error, onRetry }: MessageTr
         <ReportEmpty className="h-[280px]" />
       ) : (
         <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: -8 }}>
+          <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 0, left: -8 }}>
             <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
             <XAxis
               dataKey="date"

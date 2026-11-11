@@ -32,6 +32,8 @@ const WHITELIST = [
   /guards\/rbac\.guard/,            // 授權查詢（角色/方案天花板）
   /services\/channel-visibility/,   // 渠道可見性授權：跨租戶/角色/方案權限解析後再以 tenantPrisma 查渠道
   /modules\/platform\//,            // 平台層跨租戶
+  // 佇列監控（change queue-monitoring）：只讀平台帳號、寫平台稽核，兩者都是平台層資料表；請求先經網段與監控 cookie 驗證
+  /modules\/queue-monitoring\/queue-monitoring\.routes/,
   /modules\/auth\//,                // 登入 email 全域解析、passkey
   /modules\/trial\//,               // trial 防濫用跨租戶
   /modules\/cli\//,                 // CLI 分析（自身 scope 機制）

@@ -2,13 +2,13 @@
 
 import React, { useState, useCallback } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil } from 'lucide-react';
+import { Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil, X } from 'lucide-react';
 import { useKnowledge, useCategories, useSources } from '@/hooks/useKnowledge';
 import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
-import { ArticleList } from '@/components/knowledge/ArticleList';
+import { ArticleList, type Article } from '@/components/knowledge/ArticleList';
 import { Chip } from '@/components/ui/chip';
 import { AddIcon, KnowledgeArticleIcon } from '@/components/icons/figma-icons';
-import { ArticleFormDialog } from '@/components/knowledge/ArticleFormDialog';
+import { ArticleFormDialog, type ArticleFormArticle } from '@/components/knowledge/ArticleFormDialog';
 import { ImportDialog } from '@/components/knowledge/ImportDialog';
 import { EmbeddingSettings } from '@/components/knowledge/EmbeddingSettings';
 import { ChatPromptSettings } from '@/components/knowledge/ChatPromptSettings';
@@ -21,6 +21,8 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
+import { usePermission } from '@/providers/AuthProvider';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 const statusTabs = [
   { value: 'all', label: '全部' },
@@ -31,6 +33,16 @@ const statusTabs = [
 
 const PAGE_SIZE = 50;
 
+
+/** 語意搜尋結果（`POST /knowledge/search`） */
+interface SemanticSearchResult {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  tags?: string[];
+  similarity: number;
+}
 export default function KnowledgePage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -39,7 +51,7 @@ export default function KnowledgePage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingArticle, setEditingArticle] = useState<any>(null);
+  const [editingArticle, setEditingArticle] = useState<ArticleFormArticle | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -56,14 +68,16 @@ export default function KnowledgePage() {
           : 'articles';
 
   // KB 回報（調教）
+  // 「標為已處理」後端要求 knowledge.admin（預設只有主管、管理員有），沒有權限時不顯示按鈕
+  const canResolveFeedback = usePermission('knowledge.admin');
   const { feedback, isLoading: feedbackLoading, mutate: mutateFeedback } = useKbFeedbackList({ status: 'open' });
 
   const handleResolveFeedback = useCallback(async (id: string) => {
     try {
       await resolveKbFeedback(id);
       mutateFeedback();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '操作失敗');
+    } catch (err) {
+      alert(getApiErrorMessage(err, '操作失敗'));
     }
   }, [mutateFeedback]);
 
@@ -79,7 +93,7 @@ export default function KnowledgePage() {
 
   // Semantic search state
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SemanticSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
@@ -104,13 +118,14 @@ export default function KnowledgePage() {
   const { categories } = useCategories();
   const { sources } = useSources();
 
-  const handleEdit = useCallback(async (article: any) => {
+  const handleEdit = useCallback(async (article: Article) => {
     try {
       const res = await api.get(`/knowledge/${article.id}`);
       setEditingArticle(res.data.data);
       setDialogOpen(true);
     } catch {
-      setEditingArticle(article);
+      // 讀不到完整內容時先用列表的資料開啟（列表沒有內文）
+      setEditingArticle({ ...article, content: '' });
       setDialogOpen(true);
     }
   }, []);
@@ -120,8 +135,8 @@ export default function KnowledgePage() {
       try {
         await api.post(`/knowledge/${id}/publish`);
         mutate();
-      } catch (err: any) {
-        alert(err.response?.data?.error?.message || '發布失敗');
+      } catch (err) {
+        alert(getApiErrorMessage(err, '發布失敗'));
       }
     },
     [mutate],
@@ -132,8 +147,8 @@ export default function KnowledgePage() {
       try {
         await api.post(`/knowledge/${id}/archive`);
         mutate();
-      } catch (err: any) {
-        alert(err.response?.data?.error?.message || '封存失敗');
+      } catch (err) {
+        alert(getApiErrorMessage(err, '封存失敗'));
       }
     },
     [mutate],
@@ -145,8 +160,8 @@ export default function KnowledgePage() {
       try {
         await api.delete(`/knowledge/${id}`);
         mutate();
-      } catch (err: any) {
-        alert(err.response?.data?.error?.message || '刪除失敗');
+      } catch (err) {
+        alert(getApiErrorMessage(err, '刪除失敗'));
       }
     },
     [mutate],
@@ -172,8 +187,8 @@ export default function KnowledgePage() {
     try {
       const res = await api.post('/knowledge/search', { query: searchQuery.trim() });
       setSearchResults(res.data.data || []);
-    } catch (err: any) {
-      setSearchError(err.response?.data?.error?.message || '搜尋失敗');
+    } catch (err) {
+      setSearchError(getApiErrorMessage(err, '搜尋失敗'));
       setSearchResults([]);
     } finally {
       setSearching(false);
@@ -272,7 +287,7 @@ export default function KnowledgePage() {
               </div>
               {tagFilter && (
                 <Chip size="lg" tone="outline" onClick={() => setTagFilter('')} title="點擊清除標籤篩選">
-                  標籤：{tagFilter} ✕
+                  標籤：{tagFilter} <X className="h-3 w-3" aria-hidden />
                 </Chip>
               )}
             </div>
@@ -334,7 +349,7 @@ export default function KnowledgePage() {
                     <span role="columnheader" className="flex-1">標題</span>
                     <span role="columnheader" className="w-[122px]">匹配度</span>
                   </div>
-                  {searchResults.map((r: any) => (
+                  {searchResults.map((r) => (
                     <div key={r.id} role="row" className="flex items-start gap-4 border-b border-border bg-background px-5 py-4 last:border-b-0">
                       <span role="cell" className="flex min-w-0 flex-1 items-start gap-3">
                         <KnowledgeArticleIcon className="h-5 w-5 flex-none" />
@@ -367,6 +382,11 @@ export default function KnowledgePage() {
           {/* ── 回報調教 Tab ──────────────────────────────────── */}
           <TabsContent value="feedback" className="mt-0 flex flex-col pb-7">
             {/* 說明文字移到頁面標題列 */}
+            {!canResolveFeedback && (
+              <p className="mb-3 text-xs text-muted-foreground">
+                「標為已處理」需要「知識庫進階」權限，你可以修正文章，處理完請主管或管理員標為已處理。
+              </p>
+            )}
             <div>
               {feedbackLoading ? (
                 <div className="flex items-center justify-center py-12">
@@ -374,7 +394,7 @@ export default function KnowledgePage() {
                 </div>
               ) : feedback.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">
-                  目前沒有待處理的回報 🎉
+                  目前沒有待處理的回報
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -418,14 +438,16 @@ export default function KnowledgePage() {
                             <Pencil className="mr-1 h-3 w-3" />
                             編輯文章
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleResolveFeedback(f.id)}
-                          >
-                            <Check className="mr-1 h-3 w-3" />
-                            標為已處理
-                          </Button>
+                          {canResolveFeedback && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleResolveFeedback(f.id)}
+                            >
+                              <Check className="mr-1 h-3 w-3" />
+                              標為已處理
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>

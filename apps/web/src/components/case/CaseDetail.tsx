@@ -8,6 +8,7 @@ import {
   User,
   Clock,
   Shield,
+  Star,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -19,17 +20,8 @@ import { CasePriorityBadge } from './CasePriorityBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { TagManager } from '@/components/contact/TagManager';
 import { getApiErrorMessage } from '@/lib/api-error';
-import { CASE_CATEGORY_OPTIONS } from '@open333crm/shared';
-
-// Valid transitions per spec
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  OPEN: ['IN_PROGRESS', 'CLOSED'],
-  IN_PROGRESS: ['PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED'],
-  PENDING: ['IN_PROGRESS', 'ESCALATED', 'CLOSED'],
-  RESOLVED: ['CLOSED', 'IN_PROGRESS'],
-  ESCALATED: ['IN_PROGRESS', 'CLOSED'],
-  CLOSED: ['OPEN'],
-};
+import { csatScoreLabel } from '@/lib/csat-labels';
+import { CASE_CATEGORY_OPTIONS, VALID_CASE_TRANSITIONS, channelDisplayName, type CaseStatus } from '@open333crm/shared';
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: '開啟',
@@ -78,23 +70,20 @@ interface CaseDetailProps {
     slaPolicy?: string;
     slaPolicyData?: { firstResponseMinutes: number; resolutionMinutes: number } | null;
     events?: Array<{ id: string; eventType?: string; actorType?: string; createdAt: string }>;
+    /** 滿意度分數（1～5），客人回覆或客服代評後才有（issue #444） */
+    csatScore?: number | null;
+    csatComment?: string | null;
+    csatSentAt?: string | null;
+    csatRespondedAt?: string | null;
     createdAt: string;
     updatedAt: string;
   };
   onRefresh: () => void;
+  /** 狀態下拉選「已升級」時改開升級對話框，和頂部「升級」按鈕相同（要填原因與通知對象） */
+  onRequestEscalate?: () => void;
 }
 
-const CHANNEL_TYPE_LABELS: Record<string, string> = {
-  LINE: 'LINE',
-  FB: 'Facebook',
-  WEBCHAT: 'WebChat',
-  EMAIL: 'Email',
-  WHATSAPP: 'WhatsApp',
-  THREADS: 'Instagram',
-  API: 'API',
-};
-
-export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetailProps) {
+export function CaseDetail({ caseData, onRefresh, onRequestEscalate, section = 'side' }: CaseDetailProps) {
   const [agents, setAgents] = useState<Array<{ id: string; name: string; team?: { id: string; name: string } | null }>>([]);
   const [saving, setSaving] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -129,7 +118,8 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
     if (!caseData.slaPolicyData?.firstResponseMinutes || !caseData.events) return null;
     const firstAgentEvent = [...caseData.events]
       .reverse()
-      .find((e) => e.actorType === 'agent' && e.eventType !== 'created');
+      // 客服代評滿意度不是回應客人（issue #444）
+      .find((e) => e.actorType === 'agent' && e.eventType !== 'created' && e.eventType !== 'csat_rated');
     if (!firstAgentEvent) return null; // no agent response yet
     const caseCreated = new Date(caseData.createdAt).getTime();
     const firstResponse = new Date(firstAgentEvent.createdAt).getTime();
@@ -155,6 +145,10 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
       setShowCloseConfirm(true);
       return;
     }
+    if (newStatus === 'ESCALATED' && onRequestEscalate) {
+      onRequestEscalate();
+      return;
+    }
     await handlePatch({ status: newStatus });
   };
 
@@ -173,7 +167,7 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
   };
 
   // Build status transition options
-  const allowedStatuses = VALID_TRANSITIONS[caseData.status] || [];
+  const allowedStatuses: string[] = VALID_CASE_TRANSITIONS[caseData.status as CaseStatus] || [];
   const statusOptions = [
     { value: caseData.status, label: `${STATUS_LABELS[caseData.status] || caseData.status}（目前）` },
     ...allowedStatuses.map((s) => ({ value: s, label: STATUS_LABELS[s] || s })),
@@ -237,8 +231,8 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
             {caseData.slaPolicyData?.firstResponseMinutes != null && (
               <p className="text-muted-foreground">
                 首次回應：
-                {slaFirstResponseMet === true && <span className="text-success font-medium ml-1">已達 ✓</span>}
-                {slaFirstResponseMet === false && <span className="text-destructive font-medium ml-1">未達 ✗</span>}
+                {slaFirstResponseMet === true && <span className="text-success font-medium ml-1">已達</span>}
+                {slaFirstResponseMet === false && <span className="text-destructive font-medium ml-1">未達</span>}
                 {slaFirstResponseMet === null && <span className="text-warning ml-1">待回應</span>}
               </p>
             )}
@@ -258,6 +252,42 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
           <h3 className="text-sm font-semibold text-foreground">案件說明</h3>
           <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{caseData.description || '（沒有說明）'}</p>
         </div>
+        {/* 滿意度（issue #444，取自 main）：問卷已寄出或已有分數時顯示；外觀改成本分支的卡片 */}
+        {(caseData.csatScore != null || caseData.csatSentAt) && (
+          <div data-testid="case-csat" className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
+            <h3 className="text-sm font-semibold text-foreground">滿意度</h3>
+            {caseData.csatScore != null ? (
+              <div className="flex flex-col gap-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-0.5" aria-hidden="true">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={
+                          star <= (caseData.csatScore ?? 0)
+                            ? 'h-4 w-4 fill-warning text-warning'
+                            : 'h-4 w-4 text-muted-foreground/30'
+                        }
+                      />
+                    ))}
+                  </div>
+                  <span className="font-medium text-foreground">{caseData.csatScore} 分</span>
+                  <span className="text-muted-foreground">{csatScoreLabel(caseData.csatScore)}</span>
+                </div>
+                {caseData.csatComment && (
+                  <p className="text-muted-foreground">{caseData.csatComment}</p>
+                )}
+                {caseData.csatRespondedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    評分時間：{format(new Date(caseData.csatRespondedAt), 'yyyy/MM/dd HH:mm')}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">問卷已寄出，客人尚未評分</p>
+            )}
+          </div>
+        )}
         {/* Linked Conversation */}
         {caseData.conversationId && (
           <>
@@ -320,7 +350,7 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
             className="max-w-xs"
           />
           {caseData.category && (
-            <p className="mt-1 text-[11px] text-muted-foreground">🤖 AI 自動分類</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">AI 自動分類</p>
           )}
         </div>
 
@@ -402,7 +432,7 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
                 <div className="mt-2 flex flex-wrap gap-1">
                   {caseData.contact.channelIdentities.map((ci) => (
                     <Badge key={ci.id} className="text-xs bg-primary-subtle text-primary hover:bg-primary-subtle">
-                      {CHANNEL_TYPE_LABELS[ci.channelType] || ci.channelType}
+                      {channelDisplayName(ci.channelType)}
                     </Badge>
                   ))}
                 </div>
@@ -431,11 +461,11 @@ export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetail
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <div>
             <span className="font-medium">建立時間：</span>{' '}
-            {format(new Date(caseData.createdAt), 'MMM d, yyyy HH:mm')}
+            {format(new Date(caseData.createdAt), 'yyyy/MM/dd HH:mm')}
           </div>
           <div>
             <span className="font-medium">更新時間：</span>{' '}
-            {format(new Date(caseData.updatedAt), 'MMM d, yyyy HH:mm')}
+            {format(new Date(caseData.updatedAt), 'yyyy/MM/dd HH:mm')}
           </div>
         </div>
       </div>

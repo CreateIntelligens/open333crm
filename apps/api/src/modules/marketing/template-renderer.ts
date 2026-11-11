@@ -72,6 +72,17 @@ export function extractVariables(body: unknown): string[] {
   return Array.from(keys);
 }
 
+/** 附券廣播才會代入的顧客專屬券連結變數（broadcast-coupon.flow.ts） */
+export const COUPON_URL_KEY = 'coupon.url';
+
+/**
+ * 素材是否含 {{coupon.url}}。只有附券廣播會發券並代入；一般廣播會送出原字，
+ * 自動化規則（workers）會把它拿掉，顧客都拿不到券（change improve-coupon-url-insert-ux design D1）。
+ */
+export function bodyHasCouponUrl(body: unknown): boolean {
+  return extractVariables(body).includes(COUPON_URL_KEY);
+}
+
 /**
  * Validate that all required variables have been provided.
  * Returns an array of missing variable keys. Empty = OK.
@@ -123,6 +134,8 @@ export function sampleVariables(keys: string[]): Record<string, string> {
     'attribute.membership': '白金會員',
     'attribute.company': '範例科技有限公司',
     'storage.base_url': 'https://storage.example.com',
+    // 附券廣播發送時代入每位收件人自己的票券連結（design D29）
+    'coupon.url': 'https://crm.example.com/coupon/open/sample-ticket-link',
   };
 
   const result: Record<string, string> = {};

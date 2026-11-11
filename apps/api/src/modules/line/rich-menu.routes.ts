@@ -6,20 +6,21 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
-  listRichMenus,
-  getRichMenu,
-  createRichMenu,
-  updateRichMenu,
-  deleteRichMenu,
-  duplicateRichMenu,
-  publishRichMenu,
-  unpublishRichMenu,
-  bindRichMenuToAudience,
-  unbindRichMenuFromAudience,
-} from './rich-menu.service.js';
+  bindRichMenuAudienceFlow,
+  unbindRichMenuAudienceFlow,
+  publishRichMenuFlow,
+  unpublishRichMenuFlow,
+  createRichMenuFlow,
+  deleteRichMenuFlow,
+  duplicateRichMenuFlow,
+  getRichMenuFlow,
+  listRichMenusFlow,
+  updateRichMenuFlow,
+} from './rich-menu.flow.js';
 import { success } from '../../shared/utils/response.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { lineUriSchema } from '../../shared/utils/url-schemes.js';
 
@@ -66,6 +67,7 @@ const createSchema = z.object({
   chatBarText: z.string().trim().min(1, '選單列文字不可為空白').max(14),
   size: sizeSchema,
   selected: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
   areas: z.array(areaSchema).min(1).max(20),
   imageUrl: z.string().url(),
 });
@@ -75,6 +77,7 @@ const updateSchema = z.object({
   chatBarText: z.string().trim().min(1, '選單列文字不可為空白').max(14).optional(),
   size: sizeSchema.optional(),
   selected: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
   areas: z.array(areaSchema).min(1).max(20).optional(),
   imageUrl: z.string().url().optional(),
 });
@@ -82,6 +85,8 @@ const updateSchema = z.object({
 const listQuerySchema = z.object({
   channelId: z.string().uuid(),
 });
+
+const idParamsSchema = z.object({ id: z.string().uuid() });
 
 // 綁定受眾：segment 或 tag 擇一（皆選填，service 內判斷至少一個）
 const audienceBindSchema = z.object({
@@ -98,75 +103,79 @@ export default async function richMenuRoutes(fastify: FastifyInstance) {
   // GET /api/v1/line/rich-menus?channelId=<uuid>
   fastify.get('/', async (request, reply) => {
     const { channelId } = listQuerySchema.parse(request.query);
-    const list = await listRichMenus(request.tenantPrisma, request.agent.tenantId, channelId);
+    const list = await listRichMenusFlow(fastify, actorOf(request).tenantId, channelId);
     return reply.send(success(list));
   });
 
   // GET /api/v1/line/rich-menus/:id
-  fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const menu = await getRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
+  fastify.get('/:id', async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const menu = await getRichMenuFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(menu));
   });
 
   // POST /api/v1/line/rich-menus
   fastify.post('/', async (request, reply) => {
     const data = createSchema.parse(request.body);
-    const menu = await createRichMenu(request.tenantPrisma, request.agent.tenantId, data);
+    const menu = await createRichMenuFlow(fastify, actorOf(request).tenantId, data);
     return reply.code(201).send(success(menu));
   });
 
   // PATCH /api/v1/line/rich-menus/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.patch('/:id', async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
     const data = updateSchema.parse(request.body);
-    const menu = await updateRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId, data);
+    const menu = await updateRichMenuFlow(fastify, actorOf(request).tenantId, id, data);
     return reply.send(success(menu));
   });
 
   // DELETE /api/v1/line/rich-menus/:id
-  fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const result = await deleteRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
+  fastify.delete('/:id', async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const result = await deleteRichMenuFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(result));
   });
 
   // POST /api/v1/line/rich-menus/:id/duplicate
-  fastify.post<{ Params: { id: string } }>('/:id/duplicate', async (request, reply) => {
-    const menu = await duplicateRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
+  fastify.post('/:id/duplicate', async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const menu = await duplicateRichMenuFlow(fastify, actorOf(request).tenantId, id);
     return reply.code(201).send(success(menu));
   });
 
   // POST /api/v1/line/rich-menus/:id/publish
-  fastify.post<{ Params: { id: string } }>('/:id/publish', async (request, reply) => {
-    const menu = await publishRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
+  fastify.post('/:id/publish', async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const menu = await publishRichMenuFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(menu));
   });
 
   // POST /api/v1/line/rich-menus/:id/unpublish
-  fastify.post<{ Params: { id: string } }>('/:id/unpublish', async (request, reply) => {
-    const menu = await unpublishRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
+  fastify.post('/:id/unpublish', async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const menu = await unpublishRichMenuFlow(fastify, actorOf(request).tenantId, id);
     return reply.send(success(menu));
   });
 
   // POST /api/v1/line/rich-menus/:id/bind-audience — 綁定受眾（segment 或 tag）
   // RBAC 由模組級 addHook requirePermission('richmenu.manage') 保護（見檔頭）。
-  fastify.post<{ Params: { id: string } }>(
+  fastify.post(
     '/:id/bind-audience',
     async (request, reply) => {
+      const { id } = idParamsSchema.parse(request.params);
       const { segmentId, tagId } = audienceBindSchema.parse(request.body ?? {});
-      const result = await bindRichMenuToAudience(
-        request.tenantPrisma, request.params.id, request.agent.tenantId, { segmentId, tagId },
-      );
+      const result = await bindRichMenuAudienceFlow(fastify, actorOf(request).tenantId, id, { segmentId, tagId });
       return reply.send(success(result));
     },
   );
 
   // POST /api/v1/line/rich-menus/:id/unbind-audience
-  fastify.post<{ Params: { id: string } }>(
+  fastify.post(
     '/:id/unbind-audience',
     async (request, reply) => {
+      const { id } = idParamsSchema.parse(request.params);
       const { segmentId, tagId } = audienceBindSchema.parse(request.body ?? {});
-      const result = await unbindRichMenuFromAudience(
-        request.tenantPrisma, request.params.id, request.agent.tenantId, { segmentId, tagId },
-      );
+      const result = await unbindRichMenuAudienceFlow(fastify, actorOf(request).tenantId, id, { segmentId, tagId });
       return reply.send(success(result));
     },
   );

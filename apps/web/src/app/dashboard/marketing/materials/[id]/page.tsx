@@ -10,6 +10,7 @@ import { MaterialGovernancePanel } from '@/components/materials/MaterialGovernan
 import { MaterialVersionHistory } from '@/components/materials/MaterialVersionHistory';
 import { MaterialStatsPanel } from '@/components/materials/MaterialStatsPanel';
 import { useMaterial, updateMaterial } from '@/hooks/useMaterials';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface GovernanceState {
   categoryId: string | null;
@@ -56,22 +57,23 @@ export default function EditMaterialPage() {
     });
   }, [material]);
 
-  const handleSave = async () => {
+  const handleSave = async (privacyMode?: 'mask' | 'original') => {
     if (!draft) return;
     if (!draft.name.trim()) { setToast({ type: 'error', message: '素材名稱必填' }); return; }
     setSaving(true);
     try {
       await updateMaterial(id, {
-        ...(draft as any),
+        ...draft,
         categoryId: gov?.categoryId ?? null,
         tags: gov?.tags ?? [],
         status: gov?.status ?? 'draft',
+        privacyMode,
       });
       await mutate();
       setError(null);
       setToast({ type: 'ok', message: '已儲存變更' });
-    } catch (err: any) {
-      const msg = err?.response?.data?.error?.message ?? '儲存失敗，請稍後再試';
+    } catch (err) {
+      const msg = getApiErrorMessage(err, '儲存失敗，請稍後再試');
       setError(msg);
       setToast({ type: 'error', message: msg });
     } finally {

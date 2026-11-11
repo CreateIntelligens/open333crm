@@ -1,7 +1,9 @@
 ## Purpose
 
 Define automation rule triggers, conditions evaluation, action execution, and SLA contracts for open333CRM.
+
 ## Requirements
+
 ### Requirement: Event Trigger
 The system SHALL trigger automation rules when an event occurs, such as `message.received`.
 
@@ -10,19 +12,11 @@ The system SHALL trigger automation rules when an event occurs, such as `message
 - **THEN** matching automation rules are evaluated
 
 ### Requirement: Rule Conditions
-The system SHALL support evaluating complex boolean conditions on message, contact, conversation, case, SLA, and event facts using `json-rules-engine`. The system SHALL persist automation rule conditions using the `conditions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `conditionsJson` in database operations. Conditions accepted from the frontend SHALL use the `json-rules-engine` top-level condition format and SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested.
+The system SHALL support evaluating complex boolean conditions on message, contact, conversation, case, SLA, and event facts using `json-rules-engine`. Conditions accepted from the frontend SHALL use the `json-rules-engine` top-level condition format and SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested.
 
 #### Scenario: Matching VIP customer
 - **WHEN** a rule requires `contact.membership == "VIP"` and `message.sentiment == "negative"`
 - **THEN** the rule matches only if both conditions are true
-
-#### Scenario: Creating a rule with conditions
-- **WHEN** a new automation rule is created via the API
-- **THEN** the conditions are written to the `conditions` Prisma field only
-
-#### Scenario: Updating a rule's conditions
-- **WHEN** an automation rule is updated with new conditions
-- **THEN** the conditions are written to the `conditions` Prisma field only
 
 #### Scenario: Frontend rule JSON is valid
 - **WHEN** the frontend submits a valid `json-rules-engine` condition tree for an automation rule
@@ -36,16 +30,37 @@ The system SHALL support evaluating complex boolean conditions on message, conta
 - **WHEN** the frontend or API submits a condition fact that is not allowed by the composed contract for the selected event
 - **THEN** the API rejects the rule with a validation error and does not persist the invalid condition
 
+### Requirement: Rule Conditions Storage
+The system SHALL persist automation rule conditions using the `conditions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `conditionsJson` in database operations.
+
+#### Scenario: Creating a rule with conditions
+- **WHEN** a new automation rule is created via the API
+- **THEN** the conditions are written to the `conditions` Prisma field only
+
+#### Scenario: Updating a rule's conditions
+- **WHEN** an automation rule is updated with new conditions
+- **THEN** the conditions are written to the `conditions` Prisma field only
+
 ### Requirement: Actions
-The system SHALL support the automation actions defined in the contract `AUTOMATION_ACTION_DEFINITIONS`, such as `add_tag`, `remove_tag`, `send_message`, `create_case`, `update_case_status`, and `notify_supervisor`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations. Actions accepted from the frontend SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested. `create_case` SHALL require the contact and conversation scopes, so it is offered only for message, postback, keyword and conversation-created events.
-
-`remove_tag` SHALL remove from the contact the tags of the tenant that match `tagId` or the name, whatever their scope, so that a tag attached by `add_tag` can be removed by the same name. When the contact has no such tag, `remove_tag` SHALL do nothing and SHALL NOT create a tag.
-
-The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`, and SHALL keep their Traditional Chinese labels in `RETIRED_AUTOMATION_ACTIONS` so that errors and the editor do not show the raw type. The API SHALL reject a new or modified rule that contains an action the contract does not define, and the workers SHALL skip an existing rule that contains one. A database migration SHALL remove these three actions from existing rules when the code is deployed, and SHALL deactivate a rule whose only actions are these, keeping its actions unchanged. Updating only the active state, name, description or priority of a rule SHALL NOT re-validate its contract.
+The system SHALL support the automation actions defined in the contract `AUTOMATION_ACTION_DEFINITIONS`, such as `add_tag`, `remove_tag`, `send_message`, `create_case`, `update_case_status`, and `notify_supervisor`. Actions accepted from the frontend SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested.
 
 #### Scenario: Auto-tagging
 - **WHEN** a rule with `add_tag("hot_lead")` matches
 - **THEN** the `hot_lead` tag is attached to the contact
+
+#### Scenario: Event-incompatible action is rejected
+- **WHEN** the frontend or API submits an action whose required context is not available for the selected event
+- **THEN** the API rejects the rule with a validation error and does not persist the invalid action
+
+### Requirement: Create Case Action Scope
+`create_case` SHALL require the contact and conversation scopes, so it is offered only for message, postback, keyword and conversation-created events.
+
+#### Scenario: Create case is offered only for events with a conversation
+- **WHEN** an administrator edits a rule triggered by `case.created`, an SLA event or a contact event
+- **THEN** the editor does not offer「建立工單」, and the API rejects a rule that contains it
+
+### Requirement: Action Storage
+The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations.
 
 #### Scenario: Creating a rule with actions
 - **WHEN** a new automation rule is created via the API
@@ -55,29 +70,8 @@ The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`, and 
 - **WHEN** an automation rule is updated with new actions
 - **THEN** the actions are written to the `actions` Prisma field only
 
-#### Scenario: Event-incompatible action is rejected
-- **WHEN** the frontend or API submits an action whose required context is not available for the selected event
-- **THEN** the API rejects the rule with a validation error and does not persist the invalid action
-
-#### Scenario: Create case is offered only for events with a conversation
-- **WHEN** an administrator edits a rule triggered by `case.created`, an SLA event or a contact event
-- **THEN** the editor does not offer「建立工單」, and the API rejects a rule that contains it
-
-#### Scenario: Unsupported action is rejected
-- **WHEN** an administrator creates or modifies a rule whose second action is `llm_reply`
-- **THEN** the API returns HTTP 400 with the error「第 2 個動作「LLM 智能回覆」已停用，請刪除」
-
-#### Scenario: Existing rule still runs its other actions
-- **WHEN** an existing active rule contains `send_message` and `remove_tag`, and its conditions match
-- **THEN** the workers run both actions
-
-#### Scenario: Disabling a rule that contains an unsupported action
-- **WHEN** an administrator changes only the active state or name of a rule that contains `llm_reply`
-- **THEN** the update succeeds
-
-#### Scenario: Rule list marks the rule
-- **WHEN** a rule contains `llm_reply`
-- **THEN** the rule list shows「規則不會執行」next to it, and the editor lists「LLM 智能回覆（已停用）」and says that the whole rule does not run until it is saved
+### Requirement: Remove Tag Action
+`remove_tag` SHALL remove from the contact the tags of the tenant that match `tagId` or the name, whatever their scope, so that a tag attached by `add_tag` can be removed by the same name. When the contact has no such tag, `remove_tag` SHALL do nothing and SHALL NOT create a tag.
 
 #### Scenario: Remove tag by name
 - **WHEN** a rule with `remove_tag("VIP")` matches and the contact has the `CONTACT`-scope tag「VIP」
@@ -91,35 +85,75 @@ The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`, and 
 - **WHEN** `add_tag("VIP")` attached a `CASE`-scope tag「VIP」to the contact, and a rule with `remove_tag("VIP")` matches
 - **THEN** the tag is removed from the contact
 
-#### Scenario: Migration cleans existing rules
-- **WHEN** the migration runs on a rule whose actions are `send_message` and `assign_bot`, and on an active rule whose only action is `llm_reply`
-- **THEN** the first rule keeps only `send_message`, and the second rule becomes inactive with its actions unchanged
+#### Scenario: Existing rule still runs its other actions
+- **WHEN** an existing active rule contains `send_message` and `remove_tag`, and its conditions match
+- **THEN** the workers run both actions
+
+### Requirement: Retired Actions
+The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`, and SHALL keep their Traditional Chinese labels in `RETIRED_AUTOMATION_ACTIONS` so that errors and the editor do not show the raw type. The API SHALL reject a new or modified rule that contains an action the contract does not define, and the workers SHALL skip an existing rule that contains one.
+
+#### Scenario: Unsupported action is rejected
+- **WHEN** an administrator creates or modifies a rule whose second action is `llm_reply`
+- **THEN** the API returns HTTP 400 with the error「第 2 個動作「LLM 智能回覆」已停用，請刪除」
 
 #### Scenario: Retired action in an existing rule
 - **WHEN** an existing active rule contains `send_message` and `llm_reply`, and its conditions match
 - **THEN** the workers skip the whole rule and log the validation error
 
+#### Scenario: Rule list marks the rule
+- **WHEN** a rule contains `llm_reply`
+- **THEN** the rule list shows「規則不會執行」next to it, and the editor lists「LLM 智能回覆（已停用）」and says that the whole rule does not run until it is saved
+
+### Requirement: Retired Actions In Existing Rules
+A database migration SHALL remove `assign_bot`, `kb_auto_reply` and `llm_reply` from existing rules when the code is deployed, and SHALL deactivate a rule whose only actions are among them, keeping its actions unchanged. Updating only the active state, name, description or priority of a rule SHALL NOT re-validate its contract.
+
+#### Scenario: Migration cleans existing rules
+- **WHEN** the migration runs on a rule whose actions are `send_message` and `assign_bot`, and on an active rule whose only action is `llm_reply`
+- **THEN** the first rule keeps only `send_message`, and the second rule becomes inactive with its actions unchanged
+
+#### Scenario: Disabling a rule that contains an unsupported action
+- **WHEN** an administrator changes only the active state or name of a rule that contains `llm_reply`
+- **THEN** the update succeeds
+
 ### Requirement: Worker-Owned Automation Triggering
-The automation engine SHALL use the BullMQ worker path for event-triggered automation rule evaluation. When the API's EventBus automation subscriber fires, it SHALL enqueue a job on the `automation` BullMQ queue with the trigger event name and entity context as the job payload. The API process SHALL NOT call `triggerAutomation()` inline from event subscribers. The standalone worker process consumes this job, builds automation facts using its own `PrismaClient` instance, evaluates rule conditions with `json-rules-engine`, and executes actions only for matched rules.
+The automation engine SHALL evaluate event-triggered rules on the BullMQ worker path. For an event that matches an automation trigger, the automation subscriber job SHALL enqueue a job on the `automation` queue with the event name, the event id and the entity context. The job id SHALL be the event id, so a redelivered event does not enqueue a second evaluation. The API process SHALL NOT call `triggerAutomation()` inline from event subscribers.
 
 #### Scenario: Automation event enqueued by API
-- **WHEN** an internal EventBus event matching an automation trigger fires in the API process
-- **THEN** the API enqueues an `automation:evaluate` job and does not execute automation actions inline
-
-#### Scenario: Automation triggered via BullMQ worker
-- **WHEN** the standalone worker dequeues an automation job
-- **THEN** it builds facts, evaluates matching rules with `json-rules-engine`, and applies actions only for matched rules
+- **WHEN** the automation subscriber job receives an event matching an automation trigger
+- **THEN** it enqueues an `automation:evaluate` job whose id is the event id and does not execute automation actions inline
 
 #### Scenario: Standalone worker is down when job is enqueued
 - **WHEN** the `automation` queue worker process is not running
 - **THEN** the job remains in the BullMQ queue until the worker restarts and processes it
+
+#### Scenario: Same event delivered twice
+- **WHEN** the automation subscriber job processes event E twice
+- **THEN** the `automation` queue holds one `automation:evaluate` job for E
+
+### Requirement: Worker Evaluates Automation Jobs
+The standalone worker process SHALL consume each `automation` job, build automation facts using its own `PrismaClient` instance, evaluate rule conditions with `json-rules-engine`, and execute actions only for matched rules.
+
+#### Scenario: Automation triggered via BullMQ worker
+- **WHEN** the standalone worker dequeues an automation job
+- **THEN** it builds facts, evaluates matching rules with `json-rules-engine`, and applies actions only for matched rules
 
 #### Scenario: Worker rule conditions do not match
 - **WHEN** the standalone worker receives an automation job for a rule whose conditions do not match the built facts
 - **THEN** the worker does not execute that rule's actions
 
 ### Requirement: Package-Defined Rule Contract
-The system SHALL define automation event names, condition facts, allowed operators, fact metadata, action metadata, and rule authoring labels in package-level contracts that can be consumed by web, API, and worker code. The frontend SHALL compose rule JSON from this package-defined contract, the API SHALL validate rule CRUD payloads against it, and workers SHALL build facts and dispatch actions using the same fact and action identifiers. SLA events SHALL be part of the same automation contract surface rather than a separate frontend-only or API-only list.
+The system SHALL define automation event names, condition facts, allowed operators, fact metadata, action metadata, and rule authoring labels in package-level contracts that can be consumed by web, API, and worker code. SLA events SHALL be part of the same automation contract surface rather than a separate frontend-only or API-only list.
+
+#### Scenario: Message event does not expose case-only fields
+- **WHEN** the frontend renders condition fields for a message event that does not explicitly resolve case context
+- **THEN** it does not present case-only fields such as `case.status` or `case.priority`
+
+#### Scenario: Case event does not expose message-only fields
+- **WHEN** the frontend renders condition fields for a case event
+- **THEN** it does not present message-only fields such as `message.text`
+
+### Requirement: Contract Consumers
+The frontend SHALL compose rule JSON from this package-defined contract, the API SHALL validate rule CRUD payloads against it, and workers SHALL build facts and dispatch actions using the same fact and action identifiers.
 
 #### Scenario: Frontend composes event-specific rule
 - **WHEN** the frontend renders automation rule authoring controls for a selected event
@@ -132,14 +166,6 @@ The system SHALL define automation event names, condition facts, allowed operato
 #### Scenario: Worker evaluates contract facts
 - **WHEN** the worker evaluates automation rules
 - **THEN** it builds facts using fact keys defined by the package-level contract and evaluates conditions with `json-rules-engine`
-
-#### Scenario: Message event does not expose case-only fields
-- **WHEN** the frontend renders condition fields for a message event that does not explicitly resolve case context
-- **THEN** it does not present case-only fields such as `case.status` or `case.priority`
-
-#### Scenario: Case event does not expose message-only fields
-- **WHEN** the frontend renders condition fields for a case event
-- **THEN** it does not present message-only fields such as `message.text`
 
 ### Requirement: SLA Event Catalog
 The system SHALL provide an initial SLA event catalog with these worker-originated events: `sla.first_response.warning`, `sla.first_response.breached`, `sla.resolution.warning`, `sla.resolution.breached`, and `sla.customer_waiting.breached`. Each event SHALL define a label, description, allowed fact keys, and supported operators for frontend rule authoring and API validation.
@@ -218,7 +244,7 @@ All contact-tagging write paths — manual tagging, short-link click auto-tag, a
 #### Scenario: Automation add_tag emits event
 
 - **WHEN** an automation `add_tag` action tags a contact
-- **THEN** a `contact.tagged` event with source 'automation' is emitted (bridged from the worker process to the API event bus)
+- **THEN** a `contact.tagged` event with source 'automation' is written to the outbox in the same transaction as the tag
 
 #### Scenario: Manual tagging still emits event
 
@@ -335,23 +361,26 @@ The automation rule list SHALL show every rule of the tenant, however many rules
 - **THEN** the rule list shows a load error instead of the empty state
 
 ### Requirement: Rule Editor Loads Only Contract Actions
-When the rule editor loads an existing rule, it SHALL drop every action that the contract of the rule's event does not offer, including entries that are not valid action objects, and it SHALL list the dropped actions with their labels, as「<label>（已停用）」for an action in `RETIRED_AUTOMATION_ACTIONS`, or as「未知動作（<type>）」when the contract does not know the action. Because the workers skip a rule that contains such an action, the editor SHALL say that the whole rule does not run until it is saved. The editor SHALL read the rule's event from `trigger.type`, then `eventType`. The list of dropped actions SHALL be shown only while the selected event is the stored event.
-
-#### Scenario: Rule contains an action outside the contract
-- **WHEN** an administrator opens a `message.received` rule whose actions are `send_message` and `auto_assign`
-- **THEN** the editor keeps `send_message`, drops `auto_assign`, lists it as「未知動作（auto_assign）」, and says that the whole rule does not run until it is saved
+When the rule editor loads an existing rule, it SHALL drop every action that the contract of the rule's event does not offer, including entries that are not valid action objects. The editor SHALL read the rule's event from `trigger.type`, then `eventType`.
 
 #### Scenario: Rule contains an action that the event does not offer
 - **WHEN** an administrator opens a `case.closed` rule whose actions include `send_message`
 - **THEN** the editor drops `send_message` and shows「傳送訊息」as removed
 
-#### Scenario: Rule contains an unsupported action
-- **WHEN** an administrator opens a `message.received` rule whose actions include `llm_reply`
-- **THEN** the editor drops `llm_reply`, lists it as「LLM 智能回覆（已停用）」, and says that the whole rule does not run until it is saved
-
 #### Scenario: Rule has no trigger type
 - **WHEN** an administrator opens a rule whose `trigger` has no `type` and whose `eventType` is `case.created`
 - **THEN** the editor filters the actions against the `case.created` contract
+
+### Requirement: Rule Editor Lists Dropped Actions
+The rule editor SHALL list the dropped actions with their labels, as「<label>（已停用）」for an action in `RETIRED_AUTOMATION_ACTIONS`, or as「未知動作（<type>）」when the contract does not know the action. Because the workers skip a rule that contains such an action, the editor SHALL say that the whole rule does not run until it is saved. The list of dropped actions SHALL be shown only while the selected event is the stored event.
+
+#### Scenario: Rule contains an action outside the contract
+- **WHEN** an administrator opens a `message.received` rule whose actions are `send_message` and `auto_assign`
+- **THEN** the editor keeps `send_message`, drops `auto_assign`, lists it as「未知動作（auto_assign）」, and says that the whole rule does not run until it is saved
+
+#### Scenario: Rule contains an unsupported action
+- **WHEN** an administrator opens a `message.received` rule whose actions include `llm_reply`
+- **THEN** the editor drops `llm_reply`, lists it as「LLM 智能回覆（已停用）」, and says that the whole rule does not run until it is saved
 
 ### Requirement: Rule List Marks Rules The Workers Skip
 The rule list SHALL mark each rule that fails contract validation, because the workers skip such a rule entirely and record the reason only in a log. The mark SHALL show the validation errors.
@@ -365,7 +394,7 @@ The rule list SHALL mark each rule that fails contract validation, because the w
 - **THEN** the rule list shows「規則不會執行」, with the error「第 2 個動作「LLM 智能回覆」已停用，請刪除」
 
 ### Requirement: Rule Summary Sentence
-The rule list and the rule editor SHALL describe each rule in one Traditional Chinese sentence built from the contract labels: 「當<event>時，如果<conditions>，就<actions>」. Conditions in an `all` group SHALL be joined by「，而且」and in an `any` group by「，或」, with nested groups in parentheses. A rule with no conditions SHALL read「當<event>時，就<actions>」. For a `keyword.matched` rule with keywords, the event part SHALL name the keywords:「訊息含有「A」或「B」」for match mode `any` and「訊息同時含有「A」和「B」」for `all`. A condition node that the summary cannot describe, such as `not`, SHALL be shown as「（無法顯示的條件）」and SHALL NOT be dropped. Each action SHALL show its label and, when it has one, its main text parameter in「」. A parameter that holds an ID, such as `materialId` or `agentId`, SHALL NOT be shown.
+The rule list and the rule editor SHALL describe each rule in one Traditional Chinese sentence built from the contract labels: 「當<event>時，如果<conditions>，就<actions>」. Conditions in an `all` group SHALL be joined by「，而且」and in an `any` group by「，或」, with nested groups in parentheses. A rule with no conditions SHALL read「當<event>時，就<actions>」. A condition node that the summary cannot describe, such as `not`, SHALL be shown as「（無法顯示的條件）」and SHALL NOT be dropped.
 
 #### Scenario: Rule with one condition and one action
 - **WHEN** a `message.received` rule has the condition `case.open.count` equal to 0 and the action `create_case` with title「客戶諮詢」
@@ -375,10 +404,6 @@ The rule list and the rule editor SHALL describe each rule in one Traditional Ch
 - **WHEN** a rule's conditions are an `any` group of `message.text` contains「退款」and `message.text` contains「客訴」
 - **THEN** the conditions read「訊息內容包含「退款」，或訊息內容包含「客訴」」
 
-#### Scenario: Keyword rule names its keywords
-- **WHEN** a `keyword.matched` rule has keywords「營業時間」and「幾點開」with match mode `any`, no conditions, and the action `send_message`
-- **THEN** the summary starts with「當訊息含有「營業時間」或「幾點開」時」
-
 #### Scenario: Unknown condition node
 - **WHEN** a rule's conditions are `{ all: [{ not: { … } }] }`
 - **THEN** the conditions read「（無法顯示的條件）」
@@ -386,6 +411,20 @@ The rule list and the rule editor SHALL describe each rule in one Traditional Ch
 #### Scenario: Select value shown by label
 - **WHEN** a condition compares `case.priority` equal to `HIGH`
 - **THEN** the condition reads「案件優先級等於高」
+
+### Requirement: Rule Summary Of Keywords
+For a `keyword.matched` rule with keywords, the event part of the rule summary SHALL name the keywords:「訊息含有「A」或「B」」for match mode `any` and「訊息同時含有「A」和「B」」for `all`.
+
+#### Scenario: Keyword rule names its keywords
+- **WHEN** a `keyword.matched` rule has keywords「營業時間」and「幾點開」with match mode `any`, no conditions, and the action `send_message`
+- **THEN** the summary starts with「當訊息含有「營業時間」或「幾點開」時」
+
+### Requirement: Rule Summary Of Actions
+Each action in the rule summary SHALL show its label and, when it has one, its main text parameter in「」. A parameter that holds an ID, such as `materialId` or `agentId`, SHALL NOT be shown.
+
+#### Scenario: Action with an ID parameter
+- **WHEN** a rule's action is `send_material` with a `materialId`
+- **THEN** the summary shows「傳送素材」without the ID
 
 ### Requirement: Rule List Is Readable
 The rule list SHALL show the event by its contract label, the summary sentence and the active state, and SHALL keep every column visible when a rule name is long. The list SHALL NOT show the execution count while the workers do not update it (AUDIT AUTO-02). The list SHALL let the administrator search rules by name and filter them by active state.
@@ -414,11 +453,18 @@ The rule editor SHALL label `priority` as「執行順序」and explain that a la
 - **THEN** the menu shows「工單關閉（目前不會觸發）」and the editor warns that rules with this event never run
 
 ### Requirement: Rule Test Uses A Form
-The rule editor SHALL let the administrator test a saved rule by filling one input for each fact that the rule's conditions use, labeled with the fact's contract label and typed by the fact's type. Each value SHALL be sent in the fact's contract type: a boolean fact as a boolean, a `string_array` fact as an array, and a datetime fact as an ISO 8601 string with a time zone. The result SHALL say in Traditional Chinese whether the rule triggers and, when it does, which actions run. When the conditions match but the rule is inactive, or its event is not dispatched, the result SHALL say that the rule does not run. For a `keyword.matched` rule, the result SHALL say that the message must also contain a keyword. The editor SHALL say that the test runs the saved version of the rule, and SHALL clear the result when the saved rule reloads. When the saved rule has no conditions, the editor SHALL explain, based on the saved rule, whether it runs every time, runs only on a keyword hit, or does not run because it is inactive or its event is not dispatched.
+The rule editor SHALL let the administrator test a saved rule by filling one input for each fact that the rule's conditions use, labeled with the fact's contract label and typed by the fact's type. Each value SHALL be sent in the fact's contract type: a boolean fact as a boolean, a `string_array` fact as an array, and a datetime fact as an ISO 8601 string with a time zone.
 
 #### Scenario: Inputs follow the conditions
 - **WHEN** a rule's conditions use `message.text` and `case.open.count`
 - **THEN** the test form shows「訊息內容」as a text input and「開啟案件數」as a number input
+
+#### Scenario: Boolean fact
+- **WHEN** a rule's condition is `contact.isVip` equal true and the administrator selects「是」
+- **THEN** the test sends `contact.isVip` as the boolean true
+
+### Requirement: Rule Test Result
+The result of a rule test SHALL say in Traditional Chinese whether the rule triggers and, when it does, which actions run. When the conditions match but the rule is inactive, or its event is not dispatched, the result SHALL say that the rule does not run. For a `keyword.matched` rule, the result SHALL say that the message must also contain a keyword. The editor SHALL say that the test runs the saved version of the rule, and SHALL clear the result when the saved rule reloads.
 
 #### Scenario: Rule triggers
 - **WHEN** the administrator enters 0 for「開啟案件數」and the rule's condition is `case.open.count` equal to 0
@@ -432,17 +478,12 @@ The rule editor SHALL let the administrator test a saved rule by filling one inp
 - **WHEN** the entered values satisfy the conditions of an inactive rule
 - **THEN** the result reads「條件符合，但規則目前停用，不會執行」
 
+### Requirement: Rule Test Without Conditions
+When the saved rule has no conditions, the editor SHALL explain, based on the saved rule, whether it runs every time, runs only on a keyword hit, or does not run because it is inactive or its event is not dispatched.
+
 #### Scenario: Inactive rule without conditions
 - **WHEN** the administrator opens an inactive rule that has no conditions
 - **THEN** the test section reads「這條規則沒有條件，但目前停用，不會執行。」
-
-#### Scenario: Boolean fact
-- **WHEN** a rule's condition is `contact.isVip` equal true and the administrator selects「是」
-- **THEN** the test sends `contact.isVip` as the boolean true
-
-#### Scenario: Action with an ID parameter
-- **WHEN** a rule's action is `send_material` with a `materialId`
-- **THEN** the summary shows「傳送素材」without the ID
 
 ### Requirement: New Rule Keeps The Chosen Active State
 Creating a rule SHALL store the active state that the request sends in `isActive`. When the request does not send `isActive`, the rule SHALL be created active, so that existing API clients keep their behavior.
@@ -485,3 +526,500 @@ API 收到 `case.created` 時 SHALL 只在工單尚無分類時，依對話最�
 - **WHEN** 客服手動建單時選了分類，或自動化規則指定了分類
 - **THEN** 不執行自動分類，分類維持原值
 
+### Requirement: Send Material Action References An Existing Material
+When an automation rule is created, or updated with new actions, every `send_material` action SHALL have a `materialId` that refers to an active material of the same tenant. Otherwise the system SHALL respond 400 and SHALL NOT save the rule.
+
+#### Scenario: Material ID is not a UUID
+- **WHEN** a user creates a keyword reply whose `send_material` action has `materialId = "not-a-uuid"`
+- **THEN** the system SHALL respond 400 and SHALL NOT create the rule
+
+#### Scenario: Material does not exist
+- **WHEN** a user creates a rule whose `send_material` action refers to a UUID with no material in the tenant
+- **THEN** the system SHALL respond 400 and SHALL NOT create the rule
+
+#### Scenario: Material of another tenant
+- **WHEN** a user creates a rule whose `send_material` action refers to an active material of another tenant
+- **THEN** the system SHALL respond 400
+
+#### Scenario: Existing active material
+- **WHEN** a user creates a rule whose `send_material` action refers to an active material of the same tenant
+- **THEN** the rule SHALL be created
+
+### Requirement: AI 只在關鍵字規則能在該渠道回覆時讓步
+收到文字訊息時，若同租戶有啟用中的 `keyword.matched` 規則命中這則訊息，而且該規則通過契約驗證、條件成立，並至少有一個能在這則訊息的渠道回覆的動作，系統 SHALL 不送出 agent 或 KB 自動回覆。能回覆的動作是 `send_message`、素材渠道與對話渠道相同的 `send_material`，或指定同租戶進行中優惠券的 `issue_coupon`；而且 workers 要能送到這個渠道（`AUTOMATION_DELIVERY_CHANNEL_TYPES`，目前是 LINE、FB、Instagram）。沒有這樣的規則時，系統 SHALL 照常嘗試 AI 回覆。有條件的規則無法評估時（沒有對話與聯絡人，或讀取條件資料失敗），系統 SHALL 視為條件不成立；沒有條件的規則 SHALL 視為成立，不讀取條件資料。
+
+#### Scenario: 規則的素材是這個渠道的
+- **WHEN** IG 對話收到「你好」，命中的規則動作是 IG 素材的 `send_material`
+- **THEN** 不送出 AI 回覆
+
+#### Scenario: 規則的素材是別的渠道的
+- **WHEN** IG 對話收到「你好」，命中的規則只有 LINE 素材的 `send_material`
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 規則傳送文字
+- **WHEN** IG 對話收到「你好」，命中的規則動作是 `send_message`
+- **THEN** 不送出 AI 回覆
+
+#### Scenario: 規則不回覆顧客
+- **WHEN** 訊息命中的規則只有 `add_tag`
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 沒有命中任何規則
+- **WHEN** 訊息不含任何啟用中規則的關鍵字
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 網站聊天室的規則送不出去
+- **WHEN** 網站聊天室的對話收到「你好」，命中的規則動作是 `send_message`
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 規則條件不成立
+- **WHEN** LINE 對話收到「你好」，命中的規則動作是 `send_message`，條件是「對話渠道等於 Facebook」
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 規則條件成立
+- **WHEN** LINE 對話收到「你好」，命中的規則動作是 `send_message`，條件是「對話渠道等於 LINE」
+- **THEN** 不送出 AI 回覆
+
+#### Scenario: 條件資料讀取失敗
+- **WHEN** LINE 對話收到「你好」，命中的規則動作是 `send_message`，有條件，讀取條件資料失敗
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 沒有對話與聯絡人時的條件規則
+- **WHEN** 收到「你好」，沒有對話與聯絡人，命中的規則動作是 `send_message`，條件是「對話渠道不等於 Facebook」
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 沒有條件的規則
+- **WHEN** LINE 對話收到「你好」，命中的規則動作是 `send_message`，沒有條件
+- **THEN** 不送出 AI 回覆，也不讀取條件資料
+
+#### Scenario: 規則不合契約
+- **WHEN** LINE 對話收到「你好」，命中的規則有 `send_message` 和契約沒有的動作 `auto_assign`
+- **THEN** 系統照常嘗試 AI 回覆，因為 workers 會略過整條規則
+
+#### Scenario: 規則發送進行中的優惠券
+
+- **WHEN** LINE 對話收到「領券」，命中的規則只有 `issue_coupon`，指定的券是進行中
+- **THEN** 不送出 AI 回覆
+
+#### Scenario: 規則的優惠券不是進行中
+
+- **WHEN** LINE 對話收到「領券」，命中的規則只有 `issue_coupon`，指定的券已暫停
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 網站聊天室的發券規則
+
+- **WHEN** 網站聊天室的對話收到「領券」，命中的規則只有 `issue_coupon`
+- **THEN** 系統照常嘗試 AI 回覆
+
+### Requirement: 素材渠道不符時留下看得到的紀錄
+執行 `send_material` 時，素材的渠道與對話的渠道不同，系統 SHALL 不送出素材，並在該對話寫入一則系統訊息，標示沒有送出，原因說明素材的渠道與對話不同。
+
+#### Scenario: LINE 素材遇到 IG 對話
+- **WHEN** 規則在 IG 對話執行 LINE 素材的 `send_material`
+- **THEN** 不呼叫渠道外掛送出，對話多一則 `metadata.deliveryFailed` 為 true 的系統訊息，`deliveryError` 說明素材是 LINE 素材、這個對話是 Instagram
+
+### Requirement: 非文字訊息不做 AI 自動回覆
+收到 `message.received` 時，系統 SHALL 只對文字訊息執行 AI 自動回覆（Agent 與 KB 自動回覆）。`contentType` 不是 `text` 的訊息 SHALL NOT 觸發 AI 自動回覆，即使訊息帶有文字，例如 Instagram 的愛心是 `content.text` 為「❤️」的貼圖。事件沒有 `contentType` 時視為文字訊息。
+
+機器人處理中的對話收到圖片、檔案或影片時，系統 SHALL 把對話轉給真人。
+
+#### Scenario: 客人傳帶文字的貼圖
+- **WHEN** 機器人處理中的對話收到 `contentType` 為 `sticker`、`content.text` 為「❤️」的訊息
+- **THEN** 系統不執行 AI 自動回覆
+
+#### Scenario: 客人傳圖片
+- **WHEN** 機器人處理中的對話收到 `contentType` 為 `image` 的訊息
+- **THEN** 系統把對話轉給真人，不執行 AI 自動回覆
+
+#### Scenario: 客人傳文字
+- **WHEN** 機器人處理中的對話收到 `contentType` 為 `text` 的訊息
+- **THEN** 系統執行 AI 自動回覆
+
+### Requirement: 傳送通知的收件人
+`notify` 動作 SHALL 有選填參數 `agentId`（編輯器標示「通知誰」，從客服名單挑選）。workers 執行時 SHALL 依序選第一個啟用中、同租戶的客服：`agentId` 指定的客服；觸發工單的負責人；觸發對話的負責客服。三者都沒有或都不合格時，SHALL 通知同租戶所有啟用中的主管與管理員，不可只寫 log 而不送。
+
+#### Scenario: 指定客服
+- **WHEN** 「聯絡人建立」規則的 `notify` 指定客服 A
+- **THEN** 客服 A 收到通知
+
+#### Scenario: 沒有指定，工單有負責人
+- **WHEN** 「工單建立」規則的 `notify` 沒有指定客服，工單負責人是客服 B
+- **THEN** 客服 B 收到通知
+
+#### Scenario: 沒有指定，對話有負責客服
+- **WHEN** 「收到訊息」規則的 `notify` 沒有指定客服，沒有工單，對話負責客服是客服 C
+- **THEN** 客服 C 收到通知
+
+#### Scenario: 沒有任何負責人
+- **WHEN** 「短連結點擊」規則的 `notify` 沒有指定客服，也沒有工單與對話
+- **THEN** 同租戶所有啟用中的主管與管理員收到通知
+
+#### Scenario: 指定的客服已停用或屬於別的租戶
+- **WHEN** `notify` 指定的客服已停用，或不屬於規則的租戶，而工單負責人是客服 B
+- **THEN** 不通知指定的客服，改通知客服 B
+
+#### Scenario: 工單負責人已停用或屬於別的租戶
+- **WHEN** `notify` 沒有指定客服，工單負責人已停用或不屬於規則的租戶，對話負責客服是客服 C
+- **THEN** 不通知工單負責人，改通知客服 C
+
+#### Scenario: 對話負責客服已停用或屬於別的租戶
+- **WHEN** `notify` 沒有指定客服，沒有工單，對話負責客服已停用或不屬於規則的租戶
+- **THEN** 同租戶所有啟用中的主管與管理員收到通知
+
+### Requirement: 傳送素材從素材庫挑選
+規則編輯器的「傳送素材」SHALL 以下拉選單列出同租戶所有啟用中的素材，選項顯示素材名稱與渠道，存入選取素材的 ID。規則已存的素材不在清單時，SHALL 保留原值並標示「已停用或找不到的素材」。無法載入素材清單時（例如沒有素材檢視權限），SHALL 退回文字輸入並說明原因。
+
+#### Scenario: 從清單選素材
+- **WHEN** 管理員在「傳送素材」的下拉選單選「歡迎訊息（LINE）」
+- **THEN** 動作的 `materialId` 是該素材的 ID
+
+#### Scenario: 已存的素材被停用
+- **WHEN** 規則的 `materialId` 指向已停用的素材
+- **THEN** 下拉選單顯示「已停用或找不到的素材」並保留原值
+
+#### Scenario: 沒有素材檢視權限
+- **WHEN** 素材清單 API 回 403
+- **THEN** 欄位改為文字輸入，並說明無法載入素材清單
+
+### Requirement: 不合契約的規則不可啟用
+把規則改為啟用時，即使這次沒有改觸發、條件或動作，API SHALL 以規則儲存後的觸發、條件與動作做契約驗證，不通過時回 400 並列出原因，不改變啟用狀態。停用規則 SHALL 不做契約驗證。
+
+#### Scenario: 開啟含未知動作的規則
+- **WHEN** 管理員在列表打開停用中、含動作 `auto_assign` 的規則
+- **THEN** API 回 400，訊息含「第 2 個動作「auto_assign」不是系統提供的動作」，規則維持停用
+
+#### Scenario: 停用不合契約的規則
+- **WHEN** 管理員關閉啟用中、觸發事件是 `sentiment.negative` 的規則
+- **THEN** 規則改為停用
+
+#### Scenario: 開啟合法的規則
+- **WHEN** 管理員打開停用中、通過契約驗證的規則
+- **THEN** 規則改為啟用
+
+### Requirement: 編輯器標示未知觸發事件
+規則編輯器載入觸發事件不在契約內的規則時，觸發事件下拉 SHALL 顯示「未知觸發事件（<代碼>）」，不可顯示成其他事件，並 SHALL 提示這條規則不會執行、請改選觸發事件。
+
+#### Scenario: 舊規則的觸發事件
+- **WHEN** 管理員打開觸發事件是 `sentiment.negative` 的規則
+- **THEN** 下拉顯示「未知觸發事件（sentiment.negative）」，並提示請改選
+
+### Requirement: 每則入站訊息最多一則機器人回覆
+
+agent 回覆、KB 自動回覆與自動轉接的轉接訊息，都是對同一則入站訊息的機器人回覆。系統 MUST 在送出之前以「`bot_reply` + 入站訊息 id」認領，認領失敗時 MUST NOT 送出。認領 MUST 與寫入回覆訊息在同一個交易。
+
+#### Scenario: 同一則訊息處理兩次
+
+- **WHEN** `message.received` 事件被處理兩次，第一次已送出 agent 回覆
+- **THEN** 客人 MUST 只收到一則回覆，對話 MUST 只有一則機器人回覆訊息
+
+#### Scenario: agent 失敗改由 KB 回覆
+
+- **WHEN** agent 產生回覆時丟出錯誤，系統改用 KB 自動回覆
+- **THEN** KB 的認領 MUST 成功，客人 MUST 收到 KB 的回覆
+
+#### Scenario: 已認領就不呼叫 LLM
+
+- **WHEN** 處理 `message.received` 時，這則入站訊息已經有 `bot_reply` 認領紀錄
+- **THEN** 系統 MUST NOT 呼叫 agent 或 KB 的 LLM
+
+### Requirement: 規則動作每個事件最多執行一次
+
+workers 執行 `automation:evaluate` job 的每個規則動作之前，MUST 以「`automation_action` + 事件 id + `<規則 id>#<動作序號>`」認領，認領失敗時 MUST NOT 執行該動作。SLA 規則的動作不在此限，由「SLA Outcome Recorded Once Per Deadline」保證。
+
+#### Scenario: 同一個事件評估兩次
+
+- **WHEN** 事件 E 的 `automation:evaluate` job 執行兩次，規則 R 的動作是 `send_message`
+- **THEN** 客人 MUST 只收到一則訊息
+
+#### Scenario: 升級工單不重複升級
+
+- **WHEN** 事件 E 的 `automation:evaluate` job 執行兩次，規則 R 的動作是沒有指定優先度的 `escalate_case`，工單原本是 `LOW`
+- **THEN** 工單的優先度 MUST 是 `MEDIUM`
+
+#### Scenario: 不同事件各自執行
+
+- **WHEN** 事件 E1 與 E2 都觸發規則 R 的 `send_message`
+- **THEN** 客人 MUST 收到兩則訊息
+
+### Requirement: 關鍵字規則在處理收到的訊息時比對
+
+workers 處理 `message.received` 的規則評估時，MUST 一併比對啟用中的 `keyword.matched` 規則，並以 `keyword.matched` 作為這些規則的觸發事件執行。系統 MUST NOT 另外發出內部的 `keyword.matched` 事件來觸發規則評估。
+
+#### Scenario: 訊息命中關鍵字規則
+
+- **WHEN** 收到文字「營業時間」，啟用中的 `keyword.matched` 規則 R 的關鍵字是「營業時間」，動作是 `send_message`
+- **THEN** workers MUST 執行 R 的 `send_message`，LINE 渠道在回覆期限內 MUST 用 reply 送出
+
+#### Scenario: 訊息沒有命中
+
+- **WHEN** 收到文字「你好」，沒有規則的關鍵字出現在這則訊息
+- **THEN** workers MUST NOT 執行任何 `keyword.matched` 規則
+
+### Requirement: 關鍵字的比對結果一致
+
+決定 AI 是否讓步與 workers 執行關鍵字規則時，MUST 用同一套比對規則，對同一則訊息得出相同的命中結果。空白或非字串的關鍵字 MUST NOT 命中任何訊息。
+
+#### Scenario: 舊資料含空白關鍵字
+
+- **WHEN** 規則 R 的關鍵字是 `['']`（加上存檔驗證之前的資料），收到文字「你好」
+- **THEN** workers MUST NOT 執行 R，系統 MUST 照常嘗試 AI 回覆
+
+### Requirement: keyword.matched 每則訊息每條規則最多發出一次
+
+關鍵字規則命中時，系統 MUST 發出 `keyword.matched` 事件，供對外 webhook 使用。發出之前 MUST 以「`keyword_matched` + 入站訊息 id + 規則 id」認領，認領失敗時 MUST NOT 發出。
+
+#### Scenario: 同一則訊息評估兩次
+
+- **WHEN** 訊息 M 命中規則 R，M 的規則評估執行兩次
+- **THEN** 系統 MUST 只發出一個 R 的 `keyword.matched`
+
+#### Scenario: Keyword event write fails
+
+- **WHEN** 訊息 M 命中規則 R，認領或寫入 `keyword.matched` 的交易失敗
+- **THEN** M 的規則評估 job MUST 失敗，由佇列重試
+
+### Requirement: 情緒分析每則訊息最多一次
+
+系統 MUST 以「`sentiment` + 入站訊息 id」認領，認領成功才寫入情緒結果；結果是負面且信心值至少 0.6 時，在同一個交易發出 `sentiment.negative`。呼叫 LLM 之前，這則訊息已經有認領紀錄時，系統 MUST NOT 呼叫 LLM。LLM 失敗時，系統 MUST 改用關鍵字判斷的結果，照常寫入並認領；查認領紀錄或交易失敗時，處理 MUST 失敗並由佇列重試。
+
+#### Scenario: 同一則訊息處理兩次
+
+- **WHEN** 訊息 M 的情緒是負面、信心值 0.8，`message.received` 被處理兩次
+- **THEN** 系統 MUST 只發出一個 `sentiment.negative`，第二次 MUST NOT 呼叫 LLM
+
+#### Scenario: 兩次處理同時進行
+
+- **WHEN** 訊息 M 的兩次處理同時通過 LLM 前的檢查，都呼叫了 LLM
+- **THEN** 只有一次 MUST 寫入結果並發出 `sentiment.negative`
+
+#### Scenario: Claim check fails
+
+- **WHEN** 呼叫 LLM 之前，查訊息 M 的 `sentiment` 認領紀錄失敗
+- **THEN** 處理 MUST 失敗並由佇列重試，系統 MUST NOT 呼叫 LLM
+
+#### Scenario: Sentiment LLM fails
+
+- **WHEN** 分析訊息「服務太差」的情緒時，LLM 回傳錯誤
+- **THEN** 系統 MUST 寫入關鍵字判斷的結果（負面、信心值 0.5）並認領，處理照常完成；信心值低於 0.6，MUST NOT 發出 `sentiment.negative`
+
+### Requirement: 加入好友事件
+
+LINE 顧客加入官方帳號為好友（`follow` 事件）時，系統 SHALL 發出自動化事件「加入好友」（`contact.followed`），範圍為租戶、聯絡人與對話，並帶該事件的回覆權杖與收到時間。規則編輯器 SHALL 在事件清單列出「加入好友」，可選「傳送訊息」「傳送素材」等需要對話的動作（發券在加好友禮頁設定）。
+
+#### Scenario: 加好友觸發規則
+
+- **GIVEN** 啟用中的規則事件為「加入好友」，動作為傳送訊息「歡迎加入」
+- **WHEN** 顧客加入官方帳號為好友
+- **THEN** 顧客以回覆方式收到「歡迎加入」
+
+#### Scenario: 取消好友不觸發
+
+- **WHEN** 顧客封鎖官方帳號（`unfollow` 事件）
+- **THEN** 「加入好友」規則不觸發
+
+#### Scenario: 加好友不觸發收到訊息的關鍵字規則
+
+- **WHEN** 顧客加入官方帳號為好友
+- **THEN** 關鍵字規則不因這個事件觸發
+
+### Requirement: 記錄加入好友的次數
+
+系統 SHALL 在每個 LINE 渠道身分記錄第一次與最後一次加入好友的時間及加入次數，並提供條件「第一次加入」（`follow.isFirst`）。本功能上線前已存在的 LINE 渠道身分 SHALL 視為已加入過（design D28）。
+
+#### Scenario: 第一次加入
+
+- **WHEN** 從未出現過的 LINE 顧客加入官方帳號為好友
+- **THEN** 「第一次加入」為是，加入次數為 1
+
+#### Scenario: 封鎖後再加入
+
+- **GIVEN** 顧客上個月加入過官方帳號
+- **WHEN** 顧客封鎖後再次加入
+- **THEN** 「第一次加入」為否，加入次數為 2，最後一次加入時間更新
+
+#### Scenario: 上線前就是好友的顧客
+
+- **GIVEN** 顧客的 LINE 渠道身分在本功能上線前就存在
+- **WHEN** 顧客封鎖後再次加入
+- **THEN** 「第一次加入」為否
+
+### Requirement: workers 的回覆動作在期限內以回覆方式送出
+
+workers 執行由入站訊息或加入好友觸發的回覆動作（傳送訊息、傳送素材、發送優惠券）時，SHALL 取得事件的收到時間；LINE 在收到事件 30 秒內且有回覆權杖時以回覆方式送出，超過期限或回覆失敗時改用主動推送。
+
+#### Scenario: 關鍵字規則在期限內回覆
+
+- **GIVEN** 顧客在 LINE 傳送關鍵字，workers 在 3 秒後執行傳送素材
+- **WHEN** 規則送出素材
+- **THEN** 以回覆方式送出，不計入主動推送額度
+
+#### Scenario: 回覆失敗改用主動推送
+
+- **GIVEN** 回覆權杖已被同一則訊息的其他回覆用掉
+- **WHEN** 規則送出訊息
+- **THEN** 系統改以主動推送送出，顧客仍收到訊息
+
+### Requirement: 關鍵字回覆頁保留規則上的其他動作與條件
+
+「關鍵字回覆」頁儲存時 SHALL 只更換規則中的「傳送素材」「發送優惠券」動作與關鍵字設定，並確保有條件「對話渠道等於規則的渠道」；規則上的其他動作（例如加標籤）與其他條件 SHALL 保留原樣（add-coupon-system design D25）。規則傳送的素材不是規則渠道的啟用中素材（其他渠道、已刪除或已停用）且沒有改選時，這一頁 SHALL 擋下儲存並顯示原因，列表也 SHALL 標示原因；不可加上渠道條件讓規則靜默失效。
+
+#### Scenario: 編輯含其他動作的關鍵字回覆
+
+- **GIVEN** 關鍵字規則的動作為傳送 LINE 素材與加標籤「詢價」，另有條件「聯絡人標籤包含 VIP」
+- **WHEN** 管理員在關鍵字回覆頁改了關鍵字並儲存
+- **THEN** 規則仍有加標籤「詢價」動作與「聯絡人標籤包含 VIP」條件，並多了條件「對話渠道等於 LINE」
+
+#### Scenario: 傳送 Facebook 素材的規則不能在這頁存檔
+
+- **GIVEN** 在一般自動化規則建立的關鍵字規則，條件為「對話渠道等於 LINE」，傳送的是 Facebook 素材
+- **WHEN** 管理員在關鍵字回覆頁只改了關鍵字就儲存
+- **THEN** 系統不儲存，顯示「這條規則傳送的是 Facebook 素材，與所選渠道 LINE 不符，請改選素材或到自動化規則編輯」，規則沒有被修改
+- **AND** 列表的回覆素材欄標示「Facebook 素材，與規則渠道不符」並連到自動化規則編輯
+
+#### Scenario: 素材已刪除或已停用的規則要改選素材才能存檔
+
+- **GIVEN** 關鍵字規則傳送的素材已刪除或已停用
+- **WHEN** 管理員沒有改選素材就儲存
+- **THEN** 系統不儲存並說明原因；改選規則渠道的素材或拿掉素材只發券後可以儲存
+
+#### Scenario: 編輯含發券動作的關鍵字回覆
+
+- **GIVEN** 關鍵字規則的動作為傳送素材與發送優惠券
+- **WHEN** 管理員在關鍵字回覆頁改了關鍵字並儲存
+- **THEN** 規則仍有發送優惠券動作，`couponId` 不變
+
+#### Scenario: 編輯 Facebook 的關鍵字回覆
+
+- **GIVEN** 關鍵字規則有條件「對話渠道等於 FB」，傳送 Facebook 素材
+- **WHEN** 管理員在關鍵字回覆頁改了關鍵字並儲存
+- **THEN** 規則的條件仍只有一個「對話渠道等於 FB」，沒有被加上 LINE 條件
+
+### Requirement: 關鍵字回覆依所選渠道觸發
+
+建立關鍵字回覆時 SHALL 選渠道（LINE、Facebook、Instagram），預設為列表目前篩選的渠道，「全部」時為 LINE。已有渠道條件的規則，編輯時 SHALL 顯示渠道且不能更改。沒有渠道條件的規則，編輯時預設為素材的渠道，沒有素材時為 LINE，可以改選，並說明儲存後只在所選渠道觸發。規則的渠道條件不是單一的 LINE、FB 或 THREADS 時，這頁 SHALL 擋下儲存並引導到自動化規則編輯。素材選單 SHALL 只列所選渠道的素材。
+
+#### Scenario: 建立時選 Facebook
+
+- **WHEN** 管理員建立關鍵字回覆，選渠道 Facebook
+- **THEN** 素材選單只列 Facebook 素材；儲存後規則有條件「對話渠道等於 FB」
+
+#### Scenario: 已有渠道的規則不能改渠道
+
+- **GIVEN** 關鍵字規則有條件「對話渠道等於 LINE」
+- **WHEN** 管理員開啟編輯
+- **THEN** 表單顯示渠道 LINE，沒有可以更改渠道的選單
+
+#### Scenario: 沒有渠道條件的舊規則
+
+- **GIVEN** 在一般自動化規則建立的關鍵字規則沒有渠道條件，傳送 LINE 素材
+- **WHEN** 管理員在關鍵字回覆頁開啟編輯
+- **THEN** 渠道預設為 LINE，表單說明「這條規則原本沒有限定渠道，儲存後只在所選渠道的對話觸發」
+- **WHEN** 管理員儲存
+- **THEN** 規則多了條件「對話渠道等於 LINE」，素材與其他動作不變
+
+#### Scenario: 沒有渠道條件、傳送 Facebook 素材的舊規則
+
+- **GIVEN** 關鍵字規則沒有渠道條件，傳送 Facebook 素材
+- **WHEN** 管理員在關鍵字回覆頁只改了關鍵字就儲存
+- **THEN** 規則儲存成功，多了條件「對話渠道等於 FB」
+
+#### Scenario: 渠道條件這頁無法辨識
+
+- **GIVEN** 關鍵字規則有條件「對話渠道等於 WEBCHAT」
+- **WHEN** 管理員在關鍵字回覆頁儲存
+- **THEN** 系統不儲存，顯示「這條規則的渠道條件這頁不能編輯，請到自動化規則編輯」，規則沒有被修改
+
+### Requirement: 對話渠道條件列出 Instagram
+
+自動化規則編輯器的條件「對話渠道」SHALL 列出 LINE、Facebook、Instagram 與 WebChat；Instagram 的值為 `THREADS`，畫面顯示「Instagram」。
+
+#### Scenario: 條件選單有 Instagram
+
+- **WHEN** 管理員在自動化規則編輯器新增條件「對話渠道」
+- **THEN** 值的選項有「Instagram」，選它存成 `THREADS`
+
+### Requirement: 傳送素材動作不可使用含顧客專屬券連結的素材
+
+自動化規則（含關鍵字回覆與加好友禮）建立時、或更新時送了 `actions`，`send_material` 動作的素材含 `{{coupon.url}}` 時，系統 SHALL 回 400（`VALIDATION_ERROR`），訊息說明規則不會發券、顧客拿不到券連結，且 SHALL NOT 儲存規則。只改名稱、優先序或啟用狀態時 SHALL NOT 檢查。關鍵字回覆對話框選到這種素材時 SHALL 顯示看得到的提醒（`role="alert"`）並擋下存檔；自動化規則編輯器選到時 SHALL 顯示提醒。
+
+#### Scenario: 建立關鍵字回覆時選了含券連結的素材
+- **WHEN** 使用者建立關鍵字回覆，`send_material` 動作的素材文字為「領券：{{coupon.url}}」
+- **THEN** 系統回 400，訊息含「顧客專屬券連結」，不建立規則
+
+#### Scenario: 更新動作時同樣檢查
+- **WHEN** 使用者更新規則的 `actions`，改用含 `{{coupon.url}}` 的素材
+- **THEN** 系統回 400，不更新規則
+
+#### Scenario: 只改啟用狀態不檢查
+- **GIVEN** 既有規則的素材含 `{{coupon.url}}`
+- **WHEN** 使用者只把規則停用或改名
+- **THEN** 系統更新成功
+
+#### Scenario: 關鍵字回覆對話框提醒並擋下存檔
+- **WHEN** 使用者在關鍵字回覆對話框選了含 `{{coupon.url}}` 的素材
+- **THEN** 畫面顯示含「顧客專屬券連結」的提醒
+- **AND** 按儲存時不送出請求，顯示同樣原因
+
+### Requirement: 試跑規則與讀取執行紀錄要求檢視權限
+
+`POST /automation/rules/:id/test` 與 `GET /automation/logs` SHALL 以 `requirePermission('automation.view')` 檢查成員的有效權限集合。成員缺少 `automation.view` 時，系統 MUST 回 HTTP 403，`error.details.requiredPermission` 為 `automation.view`，並且 MUST NOT 評估規則或回傳執行紀錄。
+
+#### Scenario: 沒有檢視權限時試跑規則
+- **WHEN** 有效權限集合只含 `inbox.view` 的成員呼叫 `POST /automation/rules/:id/test`
+- **THEN** 系統回 HTTP 403，`error.details.requiredPermission` 為 `automation.view`
+
+#### Scenario: 沒有檢視權限時讀取執行紀錄
+- **WHEN** 有效權限集合只含 `inbox.view` 的成員呼叫 `GET /automation/logs`
+- **THEN** 系統回 HTTP 403，`error.details.requiredPermission` 為 `automation.view`
+
+#### Scenario: 只有檢視權限時試跑規則與讀取執行紀錄
+- **WHEN** 有效權限集合只含 `automation.view` 的成員呼叫 `POST /automation/rules/:id/test` 與 `GET /automation/logs`
+- **THEN** 系統回 HTTP 200，回傳試跑結果與執行紀錄
+
+### Requirement: 條件值依欄位型別儲存
+
+規則編輯器儲存條件時，SHALL 依欄位在自動化契約的型別轉換比較值：`number` 欄位的數字字串 SHALL 存成數字，`boolean` 欄位的「true」「false」SHALL 存成布林值，其他欄位（`string`、`string_array`、`datetime`，以及契約沒有定義的欄位）SHALL 保留字串，即使字串全是數字。載入既有規則時，比較值 SHALL 以字串顯示，再次儲存時依同一規則轉換。
+
+#### Scenario: 文字欄位的純數字保留字串
+- **WHEN** 管理員建立條件「訊息內容 包含 8888」並儲存
+- **THEN** 送出的條件是 `{ "fact": "message.text", "operator": "contains", "value": "8888" }`，`value` 是字串
+
+#### Scenario: 數字欄位轉成數字
+- **WHEN** 管理員建立條件「開啟案件數 等於 3」並儲存
+- **THEN** 送出的條件 `value` 是數字 3
+
+#### Scenario: 是／否欄位轉成布林
+- **WHEN** 管理員建立條件「聯絡人是 VIP 等於 是」並儲存
+- **THEN** 送出的條件 `value` 是布林值 true
+
+#### Scenario: 重存舊規則修正型別
+- **WHEN** 既有規則的條件是 `message.text` contains 數字 8888，管理員開啟編輯器後直接儲存
+- **THEN** 送出的條件 `value` 是字串「8888」
+
+### Requirement: 文字欄位比對數字比較值
+
+規則引擎評估條件時，欄位值是字串（或字串清單的元素）而比較值是有限的數字時，`equal`、`notEqual`、`in`、`notIn`、`contains`、`notContains`、`containsAny`、`containsAll`、`startsWith`、`textContains`、`matchesRegex` SHALL 把比較值轉成字串後比對。欄位值是數字時，比對方式 SHALL 不變。workers 實際觸發與「試試看」（`POST /api/v1/automation/rules/:id/test`）SHALL 用同一套運算子，對同一組資料得出相同結果。
+
+#### Scenario: 訊息內容包含數字比較值
+- **WHEN** 已啟用的 `message.received` 規則條件是 `message.text` contains 數字 8888，客人傳來「我的單號 8888」
+- **THEN** 規則觸發
+
+#### Scenario: 試試看與實際觸發一致
+- **WHEN** 管理員對條件是 `message.text` contains 數字 8888 的規則試跑，填入訊息內容「單號 8888」
+- **THEN** 試跑結果 `matched` 為 true
+
+#### Scenario: 文字欄位等於數字比較值
+- **WHEN** 規則條件是 `contact.name` equal 數字 1，聯絡人名稱是「1」
+- **THEN** 條件成立；聯絡人名稱是「12」時不成立
+
+#### Scenario: 標籤包含數字比較值
+- **WHEN** 規則條件是 `contact.tags` contains 數字 8888，聯絡人的標籤是「8888」「VIP」
+- **THEN** 條件成立
+
+#### Scenario: 不包含數字比較值
+- **WHEN** 規則條件是 `message.text` notContains 數字 8888，訊息是「單號 8888」
+- **THEN** 條件不成立
+
+#### Scenario: 數字欄位比對不變
+- **WHEN** 規則條件是 `case.open.count` equal 數字 0，開啟案件數是 0
+- **THEN** 條件成立；開啟案件數是 1 時不成立

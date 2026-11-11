@@ -9,7 +9,7 @@ export const automationFields: Field[] = [
     values: [
       { name: 'LINE', label: 'LINE' },
       { name: 'FB', label: 'Facebook' },
-      { name: 'WEBCHAT', label: 'WebChat' },
+      { name: 'WEBCHAT', label: '網站聊天室' },
     ],
   },
   { name: 'contact.tags', label: '聯絡人標籤', inputType: 'text' },
@@ -32,7 +32,7 @@ export const automationFields: Field[] = [
     values: [
       { name: 'LINE', label: 'LINE' },
       { name: 'FB', label: 'Facebook' },
-      { name: 'WEBCHAT', label: 'WebChat' },
+      { name: 'WEBCHAT', label: '網站聊天室' },
     ],
   },
   {

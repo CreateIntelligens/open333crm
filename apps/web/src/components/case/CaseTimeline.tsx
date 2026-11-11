@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { csatScoreLabel } from '@/lib/csat-labels';
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: '開啟',
@@ -33,6 +34,11 @@ const PRIORITY_LABELS: Record<string, string> = {
   URGENT: '緊急',
 };
 
+/** 自動化事件的規則名稱；SLA 等沒有規則名稱的路徑只寫「自動化規則」 */
+function automationRuleName(payload?: Record<string, unknown>): string {
+  return typeof payload?.ruleName === 'string' && payload.ruleName ? `自動化規則「${payload.ruleName}」` : '自動化規則';
+}
+
 function formatEventDescription(
   eventType: string,
   payload?: Record<string, unknown>,
@@ -43,7 +49,20 @@ function formatEventDescription(
     case 'status_changed': {
       const from = STATUS_LABELS[payload?.from as string] || payload?.from || '?';
       const to = STATUS_LABELS[payload?.to as string] || payload?.to || '?';
-      return `狀態：${from} → ${to}`;
+      // 客人評分（或客服代評）後系統自動關閉（issue #444）；自動化規則改的標出規則（issue #469）
+      const reason =
+        payload?.reason === 'csat_rated'
+          ? '（評分後自動關閉）'
+          : payload?.source === 'automation'
+            ? `（${automationRuleName(payload)}）`
+            : '';
+      return `狀態：${from} → ${to}${reason}`;
+    }
+    // 自動化規則要改的狀態不符合轉換規則，沒有改（issue #469）
+    case 'automation_status_skipped': {
+      const from = STATUS_LABELS[payload?.from as string] || payload?.from || '?';
+      const to = STATUS_LABELS[payload?.to as string] || payload?.to || '?';
+      return `${automationRuleName(payload)}沒有改狀態：不能從「${from}」直接改成「${to}」`;
     }
     case 'assigned':
       return `指派給 ${payload?.assigneeName || '未知'}`;
@@ -64,6 +83,36 @@ function formatEventDescription(
       return '案件已關閉';
     case 'reopened':
       return '案件已重新開啟';
+    // SLA 掃描（workers）寫入的系統事件（S01：原本直接顯示英文代碼）
+    case 'sla_breached': {
+      const prev = PRIORITY_LABELS[payload?.previousPriority as string];
+      const next = PRIORITY_LABELS[payload?.newPriority as string];
+      return prev && next && prev !== next
+        ? `解決期限已逾期，優先級 ${prev} → ${next}`
+        : '解決期限已逾期';
+    }
+    case 'sla_warning':
+      return '解決期限即將逾期';
+    case 'first_response_breached':
+      return '首次回應已逾期';
+    case 'first_response_warning':
+      return '首次回應即將逾期';
+    case 'customer_waiting_breached':
+      return '客戶等待過久，有多則訊息尚未回覆';
+    case 'auto_assigned':
+      return `自動指派給 ${payload?.assigneeName || '客服'}`;
+    case 'conversation_linked':
+      return '關聯了一個對話';
+    // 滿意度評分（issue #444）：標明客人評分或客服代評
+    case 'csat_rated': {
+      const score = Number(payload?.score);
+      const label = csatScoreLabel(score);
+      const text = `${score} 分${label ? `（${label}）` : ''}`;
+      return payload?.source === 'agent' ? `客服代評滿意度：${text}` : `客人評分：${text}`;
+    }
+    // 滿意度問卷送出失敗（issue #416）：系統不會自動重寄
+    case 'csat_send_failed':
+      return `滿意度問卷沒有送出，客人沒有收到${payload?.reason ? `：${payload.reason}` : ''}`;
     default:
       return eventType;
   }
@@ -75,6 +124,8 @@ interface CaseTimelineProps {
     id: string;
     type: string;
     eventType?: string;
+    /** contact：客人觸發的事件（例如回覆滿意度問卷），作者顯示「客人」 */
+    actorType?: string;
     description?: string;
     content?: string;
     payload?: Record<string, unknown>;
@@ -139,7 +190,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
         type: evtType,
         content: formatEventDescription(evtType, payload),
         isInternal: e.isInternal || false,
-        author: e.actor?.name || e.agentName || e.createdBy || 'System',
+        author: e.actorType === 'contact' ? '客人' : e.actor?.name || e.agentName || e.createdBy || '系統',
         createdAt: e.createdAt,
         isNote: false,
       };
@@ -149,7 +200,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
       type: 'note',
       content: n.content,
       isInternal: n.isInternal,
-      author: n.agentName || 'Agent',
+      author: n.agentName || '客服',
       createdAt: n.createdAt,
       isNote: true,
     })),
@@ -165,7 +216,10 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
     switch (type) {
       case 'escalated':
       case 'closed':
+      case 'csat_send_failed':
         return 'bg-destructive-subtle text-destructive';
+      case 'automation_status_skipped':
+        return 'bg-warning-subtle text-warning';
       case 'resolved':
         return 'bg-success-subtle text-success';
       case 'assigned':
@@ -234,7 +288,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
                   </span>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {format(new Date(item.createdAt), 'MMM d, HH:mm')}
+                  {format(new Date(item.createdAt), 'yyyy/MM/dd HH:mm')}
                 </span>
               </div>
               <p className="mt-0.5 text-sm text-muted-foreground">{item.content}</p>

@@ -26,7 +26,8 @@ const role = await prisma.role.create({
     tenantId: T,
     slug: `ci-liff-${stamp}`,
     name: 'CI LIFF ID',
-    permissions: { create: ['channel.view', 'channel.update'].map((permissionCode) => ({ permissionCode })) },
+    // channel.view_all：測的是 LIFF ID 驗證，不是渠道可見範圍（#408 起單筆渠道路由檢查可見範圍）
+    permissions: { create: ['channel.view', 'channel.update', 'channel.view_all'].map((permissionCode) => ({ permissionCode })) },
   },
 });
 const channel = await withTenant(prisma, T, (tx) =>
@@ -93,4 +94,31 @@ test('空字串視為清除 LIFF ID', async () => {
   const res = await saveLiffId('');
   assert.equal(res.statusCode, 200, res.body);
   assert.equal(await storedLiffId(), '');
+});
+
+// ── LINE Login Channel ID（add-coupon-system design D20；spec coupon-redemption「Login Channel ID 格式不對」）──
+
+const saveLiffConfig = (liffConfig: Record<string, unknown>) =>
+  app.inject({ method: 'PATCH', url: `/api/v1/channels/${channel.id}`, payload: { settings: { liffConfig } } });
+const storedLiffConfig = async () => {
+  const row = await withTenant(prisma, T, (tx) =>
+    tx.channel.findFirst({ where: { tenantId: T, id: channel.id }, select: { settings: true } }),
+  );
+  return (row?.settings as { liffConfig?: Record<string, unknown> } | null)?.liffConfig ?? null;
+};
+
+test('Login Channel ID：10 位數字去空白後存入', async () => {
+  const res = await saveLiffConfig({ liffId: '1234567890-AbcdEfgh', loginChannelId: ' 1660000001 ' });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(await storedLiffConfig(), { liffId: '1234567890-AbcdEfgh', loginChannelId: '1660000001' });
+});
+
+test('Login Channel ID 格式不對', async () => {
+  await saveLiffConfig({ liffId: '1234567890-AbcdEfgh', loginChannelId: '1660000001' });
+  for (const bad of ['166000000', '16600000012', 'abcdefghij', '1660000001-AbcdEfgh']) {
+    const res = await saveLiffConfig({ liffId: '1234567890-AbcdEfgh', loginChannelId: bad });
+    assert.equal(res.statusCode, 400, `${bad} 應被擋下`);
+    assert.match(res.body, /10 位數字/);
+  }
+  assert.equal((await storedLiffConfig())?.loginChannelId, '1660000001');
 });

@@ -89,7 +89,7 @@ export function SimulatorPanel() {
                   { value: 'LINE', label: 'LINE' },
                   { value: 'FB', label: 'Facebook' },
                   { value: 'THREADS', label: 'Instagram' },
-                  { value: 'WEBCHAT', label: 'WebChat' },
+                  { value: 'WEBCHAT', label: '網站聊天室' },
                 ]}
               />
             </div>

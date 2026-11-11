@@ -141,3 +141,37 @@ The chatbox client SHALL NOT request or render persisted server-side conversatio
 #### Scenario: New inbound socket message
 - **WHEN** an agent sends a new message after the refreshed chatbox page connects
 - **THEN** the client renders that new socket message in the current page lifetime
+
+### Requirement: Widget shows each message on the side of its sender
+The widget SHALL show the messages that the visitor sends on the right side with the `o333-msg-out` style. This includes text, images, videos, and the placeholder that the widget shows while a file uploads. The widget SHALL show agent replies, bot replies and the greeting on the left side with the `o333-msg-in` style.
+
+#### Scenario: Visitor message is on the visitor's side
+- **WHEN** a visitor submits text
+- **THEN** the widget shows the message with the `o333-msg-out` class and not the `o333-msg-in` class
+
+#### Scenario: Agent and bot messages are on the other side
+- **WHEN** the widget shows the greeting, or receives an `agent:message` event
+- **THEN** the widget shows the message with the `o333-msg-in` class and not the `o333-msg-out` class
+
+#### Scenario: Visitor media placeholder is on the visitor's side
+- **WHEN** a visitor selects an image or a video and the upload has not finished
+- **THEN** the placeholder message has the `o333-msg-out` class
+
+### Requirement: Web addresses in text messages are links
+The embeddable widget and the `/chatbox` page SHALL show each `http://` or `https://` address in a text message from an agent, a bot or the greeting as a link that opens in a new tab with `rel="noopener noreferrer"`. Punctuation directly after the address SHALL NOT be part of the link. Other schemes and text that the visitor sends SHALL stay plain text. The clients SHALL NOT parse message text as HTML.
+
+#### Scenario: Agent reply with an address
+- **WHEN** the widget receives an `agent:message` with the text `請點 https://m.me/shop?ref=BIND-7K2M9QH4TX 完成綁定`
+- **THEN** the message has one link with `href` `https://m.me/shop?ref=BIND-7K2M9QH4TX`, target `_blank`, and the text before and after the link stays plain text
+
+#### Scenario: Chatbox message with an address
+- **WHEN** the `/chatbox` page shows a text message `網址：https://example.com/a。`
+- **THEN** the message has one link with `href` `https://example.com/a`, and `。` is not part of the link
+
+#### Scenario: Other schemes stay text
+- **WHEN** a text message contains `javascript:alert(1)` or `<a href="https://x.test">x</a>`
+- **THEN** the widget and the `/chatbox` page create no link for `javascript:`, and show the HTML tag as text, not as an element
+
+#### Scenario: Visitor's own address stays text
+- **WHEN** a visitor sends the text `https://example.com/a`
+- **THEN** the widget and the `/chatbox` page show the message with no link

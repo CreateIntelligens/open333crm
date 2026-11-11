@@ -59,8 +59,11 @@ services:
   # correctly. Fast after the first time because the volumes persist.
   deps:
     <<: *dev-image
+    # Same steps as apps/api/Dockerfile: install without lifecycle scripts, then build
+    # only the tfjs-node binding and the Prisma client (scripts/dev-build-tfjs-node.sh).
     command: >
-      sh -c "pnpm install --frozen-lockfile &&
+      sh -c "pnpm install --frozen-lockfile --ignore-scripts &&
+             sh scripts/dev-build-tfjs-node.sh &&
              pnpm --filter @open333crm/database exec prisma generate"
     volumes: *dev-mounts
     restart: "no"
@@ -136,6 +139,9 @@ services:
              pnpm --filter @open333crm/api dev"
     env_file:
       - .env.api
+    environment:
+      # .env.api 範例檔的 NODE_ENV 是 production，seed 預設會跳過 Demo 帳號；本機開發要建（issue #394）
+      SEED_DEMO_ACCOUNTS: "true"
     ports:
       - "3001:3001"
     volumes: *dev-mounts

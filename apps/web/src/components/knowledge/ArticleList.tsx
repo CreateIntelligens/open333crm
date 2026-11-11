@@ -7,7 +7,7 @@ import { Chip } from '@/components/ui/chip';
 import { DeleteIcon, EditIcon, KnowledgeArticleIcon } from '@/components/icons/figma-icons';
 import { EmptyState } from '@/components/shared/EmptyState';
 
-interface Article {
+export interface Article {
   id: string;
   title: string;
   summary: string;

@@ -64,6 +64,7 @@ const ROUTES: Route[] = [
   { method: 'POST', url: `/api/v1/conversations/${ID}/messages`, payload: { contentType: 'text', content: { text: 'x' } }, needs: V('inbox.reply') },
   { method: 'POST', url: `/api/v1/conversations/${ID}/close`, payload: {}, needs: V('inbox.manage') },
   { method: 'POST', url: `/api/v1/conversations/${ID}/handoff`, payload: {}, needs: V('inbox.manage') },
+  { method: 'POST', url: `/api/v1/conversations/${ID}/return-to-bot`, payload: {}, needs: V('inbox.manage') },
   { method: 'POST', url: `/api/v1/conversations/${ID}/typing`, payload: {}, needs: V('inbox.reply') },
   { method: 'POST', url: `/api/v1/conversations/${ID}/case`, payload: { title: 'x' }, needs: [...V('inbox.view'), ...V('case.create')] },
   { method: 'POST', url: `/api/v1/conversations/${ID}/send-image`, needs: V('inbox.reply') },
@@ -128,8 +129,8 @@ async function buildApp(roleId: string, role = 'AGENT') {
 const call = (app: Awaited<ReturnType<typeof buildApp>>, r: Route) => app.inject({ method: r.method, url: r.url, payload: r.payload });
 const label = (r: Route) => `${r.method} ${r.url.replace(new RegExp(ID, 'g'), ':id')}`;
 
-test('沒有任何權限的角色：45 條路由全部回 403', async () => {
-  assert.equal(ROUTES.length, 45);
+test('沒有任何權限的角色：46 條路由全部回 403', async () => {
+  assert.equal(ROUTES.length, 46);
   const app = await buildApp((await createRole('none', [])).id);
   const leaks: string[] = [];
   for (const r of ROUTES) {
@@ -223,7 +224,7 @@ test('建立工單時不指派就不需要 case.assign：三條建立工單的�
 });
 
 // 主規格 rbac 的「路由以權限碼授權」（change restore-rbac-permission-specs）
-test('角色列舉不影響路由存取：角色列舉是 ADMIN、角色沒有權限碼，45 條路由全部回 403', async () => {
+test('角色列舉不影響路由存取：角色列舉是 ADMIN、角色沒有權限碼，46 條路由全部回 403', async () => {
   const app = await buildApp((await createRole('admin-enum-none', [])).id, 'ADMIN');
   const leaks: string[] = [];
   for (const r of ROUTES) {

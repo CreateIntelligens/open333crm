@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Loader2,
-  Plus,
   CheckCircle,
   XCircle,
   Check,
@@ -31,6 +30,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { SettingsLoadError } from '@/components/knowledge/SettingsLoadError';
+import { usePermission } from '@/providers/AuthProvider';
 import { ChannelAccountRouting } from './ChannelAccountRouting';
 import { META_CONNECT_ERROR_TEXT, MetaConnectButton, MetaConnectDialog, useMetaConnectConfigured } from './MetaConnect';
 
@@ -50,8 +51,24 @@ interface Channel {
   createdAt: string;
 }
 
+/**
+ * 渠道列表讀取失敗時的說明（issue #411，RBAC-11）。
+ * 403 不可顯示成「沒有渠道」：租戶可能有啟用中的渠道，只是角色或方案擋下了檢視權限。
+ */
+export function describeChannelListError(err: unknown): { forbidden: boolean; message: string } {
+  const status = (err as { response?: { status?: number } } | null)?.response?.status;
+  if (status === 403) {
+    return {
+      forbidden: true,
+      message: '你沒有權限檢視渠道。需要「檢視渠道」權限，且目前的方案要包含渠道功能，請洽管理員。',
+    };
+  }
+  return { forbidden: false, message: getApiErrorMessage(err, '無法讀取渠道列表，請稍後重試') };
+}
+
 export function ChannelManagement() {
-  const { channels, isLoading, mutate } = useChannels();
+  const { channels, isLoading, error: channelsError, mutate } = useChannels();
+  const canCreateChannels = usePermission('channel.create');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const metaConnectConfigured = useMetaConnectConfigured();
   // Facebook 授權導回時帶 ?metaConnect=（選擇粉專）或 ?metaConnectError=（失敗原因）
@@ -85,6 +102,11 @@ export function ChannelManagement() {
   const [savingTheme, setSavingTheme] = useState(false);
 
   const { load: loadWidget, unload: unloadWidget } = useWebchat();
+  // Webhook 公開網址會改寫全租戶每個渠道（含分店看不到的），後端只允許總店（issue #408）
+  const canViewAllChannels = usePermission('channel.view_all');
+  const canUpdateChannels = usePermission('channel.update');
+  const canSetWebhookBaseUrl = canViewAllChannels && canUpdateChannels;
+  const hasWebchatChannel = (channels as Channel[]).some((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT);
 
   // Webhook base URL state
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
@@ -100,7 +122,14 @@ export function ChannelManagement() {
   }, []);
 
   const handleSaveBaseUrl = async () => {
-    const cleanUrl = webhookBaseUrlInput.replace(/\/+$/, '');
+    const cleanUrl = webhookBaseUrlInput.trim().replace(/\/+$/, '');
+    // 會改寫全租戶所有渠道的 webhook 網址，填錯所有渠道都收不到訊息（G08）
+    const count = (channels as Channel[]).length;
+    if (!confirm(
+      `確定要套用「${cleanUrl}」嗎？\n\n` +
+      `這會改寫全部 ${count} 個渠道的 Webhook 網址。網址填錯時，照新網址設定的渠道會收不到任何訊息。\n` +
+      `套用後，請到 LINE／Meta 後台確認各渠道的 Webhook 網址。`,
+    )) return;
     setUpdatingBaseUrl(true);
     setBaseUrlSaved(false);
 
@@ -139,13 +168,13 @@ export function ChannelManagement() {
         [channelId]: { success: true },
       }));
       mutate();
-    } catch (err: any) {
+    } catch (err) {
       setVerifyResult((prev) => ({
         ...prev,
         [channelId]: {
           success: false,
           message:
-            err.response?.data?.error?.message || '連線失敗',
+            getApiErrorMessage(err, '連線失敗'),
         },
       }));
     } finally {
@@ -153,13 +182,24 @@ export function ChannelManagement() {
     }
   };
 
+  // 收過對話的渠道刪不掉（外鍵），改用停用；停用保留歷史資料、可隨時重新啟用（G15）
+  const handleToggleActive = async (ch: Channel) => {
+    const next = !ch.isActive;
+    if (!next && !confirm(`確定要停用「${ch.displayName}」嗎？停用後此渠道不再收發訊息，歷史對話會保留，之後可以重新啟用。`)) return;
+    try {
+      await api.patch(`/channels/${ch.id}`, { isActive: next });
+      mutate();
+    } catch (err) {
+      alert(getApiErrorMessage(err, next ? '啟用渠道失敗，請稍後重試' : '停用渠道失敗，請稍後重試'));
+    }
+  };
+
   const handleDelete = async (channelId: string) => {
-    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。')) return;
+    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。收過對話的渠道無法刪除，請改用「停用」。')) return;
     try {
       await api.delete(`/channels/${channelId}`);
       mutate();
     } catch (err) {
-      console.error('Failed to delete channel:', err);
       alert(getApiErrorMessage(err, '刪除渠道失敗，請稍後重試'));
     }
   };
@@ -249,7 +289,8 @@ export function ChannelManagement() {
   // Load FB token status for FB channels
   useEffect(() => {
     if (!channels || channels.length === 0) return;
-    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === CHANNEL_TYPE.FB);
+    // 停用的渠道不查（G03）：權杖狀態對停用的渠道沒有意義
+    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === CHANNEL_TYPE.FB && ch.isActive);
     for (const ch of fbChannels) {
       api.get(`/channels/${ch.id}/status`).then((res) => {
         const tokenStatus = res.data?.data?.tokenStatus;
@@ -268,13 +309,16 @@ export function ChannelManagement() {
   // 版面依 Figma「12.1.1 渠道管理」：上方 Webhook／WebChat 設定、下方渠道列表，兩區間距 48
   return (
     <div className="flex flex-col gap-12">
-      {/* Webhook 公開網址＋WebChat 網頁版連結 */}
+      {/* Webhook 公開網址＋WebChat 網頁版連結。
+          公開網址會改寫全租戶每個渠道，只有總店（channel.view_all＋channel.update）看得到（issue #408，取自 main） */}
+      {(canSetWebhookBaseUrl || hasWebchatChannel) && (
       <section className="flex flex-col gap-5">
+        {canSetWebhookBaseUrl && (
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-0.5">
             <h2 className="text-base font-semibold leading-5 text-foreground">Webhook 公開網址</h2>
             <p className="text-xs leading-5 text-muted-foreground">
-              填入 ngrok 或其他隧道工具產生的公開網址，系統會自動更新所有渠道的 Webhook URL
+              填入本系統對外的正式網域（https 開頭），系統會依此改寫所有渠道的 Webhook 網址。一般不需要修改，填錯會讓所有渠道收不到訊息。
             </p>
           </div>
           <div className="flex items-center gap-6">
@@ -282,7 +326,7 @@ export function ChannelManagement() {
               aria-label="Webhook 公開網址"
               value={webhookBaseUrlInput}
               onChange={(e) => setWebhookBaseUrlInput(e.target.value)}
-              placeholder="例：https://xxxx.ngrok-free.app"
+              placeholder="例：https://crm.example.com"
               className="h-[42px] min-w-0 flex-1 rounded-lg border border-border bg-muted px-[13px] text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
             />
             <button
@@ -296,6 +340,7 @@ export function ChannelManagement() {
           </div>
           {webhookBaseUrl && <p className="text-xs text-success">目前使用：{webhookBaseUrl}</p>}
         </div>
+        )}
 
         {webchatChannels.length > 0 && (
           <div className="flex flex-col gap-2">
@@ -320,19 +365,25 @@ export function ChannelManagement() {
           </div>
         )}
       </section>
+      )}
 
       {/* 渠道列表 */}
       <section className="flex flex-col gap-7">
         {/* 依 Claude Design：標題＋說明在左，設定精靈／新增渠道在右（改用共用標題區與按鈕，尺寸跟著全站規範） */}
         <SettingsHeader title="渠道管理" description="管理您的訊息渠道連線">
-          {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
-          <Button variant="outline" size="lg" className="w-[140px]" onClick={() => setShowWizard(true)}>
-            設定精靈
-          </Button>
-          <Button size="lg" className="w-[140px]" onClick={() => setShowAddDialog(true)}>
-            <AddIcon />
-            新增渠道
-          </Button>
+          {/* 沒有 channel.create 時不顯示新增入口（取自 main；權限仍由後端把關） */}
+          {canCreateChannels && (
+            <>
+              {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
+              <Button variant="outline" size="lg" className="w-[140px]" onClick={() => setShowWizard(true)}>
+                設定精靈
+              </Button>
+              <Button size="lg" className="w-[140px]" onClick={() => setShowAddDialog(true)}>
+                <AddIcon />
+                新增渠道
+              </Button>
+            </>
+          )}
         </SettingsHeader>
 
         {metaConnectError && (
@@ -349,21 +400,27 @@ export function ChannelManagement() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
+        ) : channelsError ? (
+          // 列表讀取失敗（403 顯示無權限、其他錯誤可重新載入），不顯示「沒有渠道」（issue #411，取自 main）
+          <SettingsLoadError
+            {...describeChannelListError(channelsError)}
+            onRetry={() => mutate()}
+          />
         ) : channels.length === 0 ? (
           <EmptyState
             icon={<Settings className="h-12 w-12" />}
             title="沒有渠道"
-            description="新增您的第一個渠道以開始接收訊息"
-            action={<Button onClick={() => setShowAddDialog(true)}><Plus className="mr-1 h-4 w-4" /> 新增渠道</Button>}
+            description={canCreateChannels ? '新增您的第一個渠道以開始接收訊息' : '目前沒有你看得到的渠道'}
+            action={canCreateChannels ? <Button onClick={() => setShowAddDialog(true)}><AddIcon /> 新增渠道</Button> : undefined}
           />
         ) : (
           <div className="overflow-hidden rounded-lg border border-border">
             <div className="flex items-center gap-5 border-b border-border bg-muted px-5 py-2 text-sm font-medium leading-7 text-muted-foreground">
               <span className="w-[81px] flex-none">頻道</span>
               <span className="min-w-0 flex-1">頻道名稱 / Webhook URL</span>
-              <span className="ml-4 flex w-[360px] flex-none gap-5">
+              <span className="ml-4 flex w-[440px] flex-none gap-5">
                 <span className="w-[49px]">狀態</span>
-                <span className="pl-[93px]">動作</span>
+                <span>動作</span>
               </span>
             </div>
             {(channels as Channel[]).map((ch) => (
@@ -421,10 +478,18 @@ export function ChannelManagement() {
                   </div>
                 </div>
 
-                <div className="flex w-[360px] flex-none items-center gap-5">
+                <div className="flex w-[440px] flex-none items-center gap-5">
                   <span className={`inline-flex h-7 items-center rounded-full px-3 text-xs font-medium leading-4 ${ch.isActive ? 'bg-primary text-white' : 'bg-shell text-tertiary-foreground'}`}>
                     {ch.isActive ? '啟用' : '停用'}
                   </span>
+                  {/* 停用／啟用（取自 main；停用前會確認） */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleActive(ch)}
+                    className="inline-flex w-[60px] flex-none items-center justify-center rounded-md border border-border bg-background py-2 text-sm font-medium leading-5 text-tertiary-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {ch.isActive ? '停用' : '啟用'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleVerify(ch.id)}
@@ -492,7 +557,7 @@ export function ChannelManagement() {
       <Dialog open={embedCodeDialog.open} onOpenChange={(v) => setEmbedCodeDialog({ ...embedCodeDialog, open: v })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>WebChat 嵌入碼</DialogTitle>
+            <DialogTitle>網站聊天室嵌入碼</DialogTitle>
           </DialogHeader>
           <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
             {embedCodeDialog.code}
@@ -517,7 +582,7 @@ export function ChannelManagement() {
       <Dialog open={chatboxLinkDialog.open} onOpenChange={(v) => setChatboxLinkDialog({ ...chatboxLinkDialog, open: v })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>WebChat 網頁版連結</DialogTitle>
+            <DialogTitle>網站聊天室網頁版連結</DialogTitle>
           </DialogHeader>
           <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
             {chatboxLinkDialog.url}

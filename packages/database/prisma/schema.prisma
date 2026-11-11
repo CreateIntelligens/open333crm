@@ -202,9 +202,11 @@ model Tenant {
   trialRemindersSent Json      @default("[]")
   // 試用停用後超過 dataRetentionDays 天，scheduler 軟刪標記（不真刪 DB；復原時清 null）
   purgedAt           DateTime?
-  // 合約起訖日（純記錄，供平台方管理；nullable，MUST NOT 觸發任何自動生命週期行為，與 trialEndsAt 區隔）
+  // 合約起訖日（nullable）。到期前提醒平台帳號，但 MUST NOT 自動停用或清除租戶，與 trialEndsAt 區隔
   contractStartDate  DateTime?
   contractEndDate    DateTime?
+  // 目前迄日已寄出的合約到期提醒檔位（如 [30, 7]），冪等閘避免重寄；修改迄日時清空
+  contractRemindersSent Json @default("[]")
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -259,7 +261,16 @@ model Tenant {
   kmArticles              KmArticle[]
   messageTemplates        MessageTemplate[]
   automationLogs          AutomationLog[]
+  coupons         Coupon[]
+  couponInstances CouponInstance[]
+  couponCodes     CouponCode[]
+  couponClaimLinks CouponClaimLink[]
+  outboxRows              Outbox[]
+  sideEffectClaims        SideEffectClaim[]
 
+
+  stores         Store[]
+  storeAccounts  StoreAccount[]
   @@map("tenants")
 }
 
@@ -407,6 +418,7 @@ model Channel {
   richMenus         RichMenu[]
   chatboxSessions   ChatboxSession[]
   shortLinks        ShortLink[]         @relation("ShortLinkLineChannel")
+  couponClaimLinks  CouponClaimLink[]
 
   @@unique([channelType, externalAccountId])
   @@index([tenantId])
@@ -490,6 +502,10 @@ model Contact {
   isBlocked    Boolean  @default(false)
   isArchived   Boolean  @default(false)
   mergedIntoId String?  @db.Uuid
+  /// 歸戶驗證：顧客本人透過 One ID 登記連結成功送出手機或 email 的時間與方式（'phone'／'email'）。
+  /// 客服在後台填寫的手機、email 不會寫入，優惠券票券夾以此判斷是否已歸戶（add-coupon-system D12）
+  identityVerifiedAt  DateTime?
+  identityVerifiedVia String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -498,6 +514,7 @@ model Contact {
   channelIdentities ChannelIdentity[]
   attributes        ContactAttribute[]
   tags              ContactTag[]
+  couponInstances   CouponInstance[]
   relationsFrom     ContactRelation[]  @relation("FromContact")
   relationsTo       ContactRelation[]  @relation("ToContact")
   conversations     Conversation[]
@@ -522,6 +539,12 @@ model ChannelIdentity {
   profileName String?
   profilePic  String?
   linkedAt    DateTime    @default(now())
+  /// 第一次加入好友的時間（design D28）。沒有值時，下一次 follow 算第一次加入；上線前的 LINE 身分回填為 linkedAt
+  firstFollowedAt DateTime?
+  /// 最後一次加入好友的時間
+  lastFollowedAt  DateTime?
+  /// 系統記錄到的加入好友次數（上線前的加入不計）
+  followCount     Int       @default(0)
 
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -1059,6 +1082,8 @@ model Material {
   channelType     String
   contentType     String
   body            Json
+  maskedBody      Json?
+  privacyMode     String?
   variables       Json      @default("[]")
   targetChannels  String[]  @default([])
   previewImageUrl String?
@@ -1107,6 +1132,8 @@ model MaterialVersion {
   versionNo  Int
   name       String
   body       Json
+  maskedBody Json?
+  privacyMode String?
   editedById String?  @db.Uuid
   createdAt  DateTime @default(now())
 
@@ -1190,7 +1217,7 @@ model TenantSettings {
   chatProvider           String   @default("ollama")
   chatModel              String   @default("qwen2.5:3b")
   chatBaseUrl            String   @default("http://localhost:11434")
-  chatTemperature        Float    @default(0.3)
+  chatTemperature        Float    @default(0.2)
   chatMaxTokens          Int      @default(500)
   chatSystemPrompt       String   @default("")
   summarizeSystemPrompt  String   @default("")
@@ -1205,6 +1232,13 @@ model TenantSettings {
   metaPixelId            String?
   // 跨渠道綁定（One ID）：{ enabled, bindKeywords, unbindKeywords }，預設關閉
   identityBinding        Json     @default("{}")
+  // WebTalk 協作工具列（change webtalk-multi-tenant）：租戶開關、AI 摘要開關（個資外送，預設關）、房間版本（重新產生房間代號時 +1）
+  webtalkEnabled         Boolean  @default(true)
+  webtalkAiEnabled       Boolean  @default(false)
+  webtalkRoomVersion     Int      @default(0)
+  /// 會員綁定的設定驅動介面（端點／認證／欄位對應），見 MemberBindingConfig。
+  /// 用 JSON 是因為各客戶的 API 格式差異大，開成欄位會無止盡增加。
+  memberBinding          Json     @default("{}")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -1278,10 +1312,29 @@ model Broadcast {
   totalCount     Int       @default(0)
   successCount   Int       @default(0)
   failedCount    Int       @default(0)
+  // 有訊息視窗的渠道（FB／IG 24 小時）略過、沒有送出的人數
+  skippedCount   Int       @default(0)
+  // 發送失敗的原因（中文，給後台顯示）：排程發送失敗時原本只寫 log，後台看不到（issue #287）
+  failureReason  String?
+  // 發送失敗的代碼（例如 LINE_QUOTA_INSUFFICIENT），前端依此顯示對應說明
+  failureCode    String?
+  // 附券廣播（add-coupon-system design D29、D31）：每位收件人各得一張券與自己的票券連結
+  couponId           String?  @db.Uuid
+  // 發放方式：broadcast（廣播頁）或 batch（券詳情頁「發送給…」）
+  couponIssuedVia    String?
+  // 批次發放的訊息文字（沒填用預設發券文字）
+  couponMessage      String?
+  // 批次發放的操作者名稱快照（發放者）
+  couponIssuedByName String?
+  // 已確認發出的券數（帶連結的訊息送達）
+  couponIssuedCount  Int      @default(0)
   totalSent      Int       @default(0)
   totalDelivered Int       @default(0)
   totalReplied   Int       @default(0)
   createdById    String    @db.Uuid
+  // 排定送出的成員（change require-broadcast-send-permissions）：建立排程時是建立者，附券廣播「立即發送」
+  // 與批次發券是按下的人。排程器到期送出前以此人當下的有效權限重新檢查；null（舊資料）時退回 createdById
+  scheduledById  String?   @db.Uuid
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -1294,6 +1347,7 @@ model Broadcast {
 
   @@index([tenantId, status])
   @@index([status, scheduledAt])
+  @@index([tenantId, couponId])
   @@map("broadcasts")
 }
 
@@ -1307,6 +1361,10 @@ model BroadcastRecipient {
   caseId         String?   @db.Uuid
   caseCreatedAt  DateTime?
   sentAt         DateTime  @default(now())
+  // 附券廣播：這位收件人的券（作廢後清空）
+  couponInstanceId String?  @db.Uuid
+  // 跳過（deliveryStatus=skipped）或失敗（failed）的原因代碼，例如 PER_CONTACT_LIMIT_REACHED
+  skipReason       String?
 
   broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
 
@@ -1352,8 +1410,10 @@ model RichMenu {
   chatBarText    String
   // 版型尺寸 { width, height }，必為 10 種官方版型其中之一
   size           Json
-  // 預設展開選單
-  selected       Boolean   @default(false)
+  // 聊天室打開時是否展開選單（LINE 建立選單 API 的 selected）
+  selected       Boolean   @default(true)
+  // 是否為所有好友的預設選單；發布時設成 LINE 的 default rich menu
+  isDefault      Boolean   @default(false)
   // 區域陣列 [{ bounds: { x, y, width, height }, action: { type, ... } }]
   areas          Json
   // 背景圖（MinIO 公開 URL）
@@ -1442,10 +1502,13 @@ model WebhookDelivery {
   attempts       Int      @default(0)
   success        Boolean  @default(false)
   errorMessage   String?
+  // 事件 id（outbox id）；同一個事件送給同一個訂閱只有一筆紀錄，重試更新同一筆。舊資料是 null
+  eventId        String?  @db.Uuid
   createdAt      DateTime @default(now())
 
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
+  @@unique([subscriptionId, eventId])
   @@index([subscriptionId, createdAt(sort: Desc)])
   @@map("webhook_deliveries")
 }
@@ -2064,7 +2127,9 @@ model PlatformAuditLog {
 model TenantAuditLog {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId   String   @db.Uuid
-  actorId    String?  @db.Uuid // 操作者 agent（系統/排程觸發時可為 null）
+  actorId    String?  @db.Uuid // 操作者 agent（系統/排程觸發時可為 null；成員被永久刪除後也是 null）
+  actorName  String? // 操作者被永久刪除時保存的名稱快照（issue #414）
+  actorEmail String? // 操作者被永久刪除時保存的 email 快照（issue #414）
   action     String // e.g. settings.update | contact.delete | marketing.list.export
   targetType String? // contact | agent | role | channel | setting | ...
   targetId   String?
@@ -2085,7 +2150,9 @@ model TenantAuditLog {
 model DataExportRequest {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String    @db.Uuid
-  requestedBy   String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedBy      String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedByName  String? // 發起者被永久刪除時保存的名稱快照（issue #414）
+  requestedByEmail String? // 發起者被永久刪除時保存的 email 快照（issue #414）
   status        String    @default("pending") // pending | processing | completed | failed | expired
   scope         Json? // 匯出範圍（哪些資料類型）；null=全部
   fileKey       String? // MinIO 物件 key
@@ -2108,7 +2175,9 @@ model DataExportRequest {
 model DataErasureRequest {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String    @db.Uuid
-  requestedBy String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedBy      String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
+  requestedByName  String? // 發起者被永久刪除時保存的名稱快照（issue #414）
+  requestedByEmail String? // 發起者被永久刪除時保存的 email 快照（issue #414）
   contactId   String    @db.Uuid // 目標聯絡人（刪除後此欄仍留存於稽核用途）
   mode        String    @default("anonymize") // anonymize | hard_delete
   status      String    @default("pending") // pending | processing | completed | failed
@@ -2141,9 +2210,9 @@ model TrialSignup {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                String // 原始 lowercase，開通時用它建 Agent（既有 login 大小寫敏感）
   emailNormalized      String    @unique // 去 gmail +tag/dots 的正規化值，唯一鍵擋別名重複
-  siteName             String
-  passwordHash         String // 申請時即 bcrypt，開通時搬給 Agent
-  // pending_verification | provisioned | failed
+  siteName             String // 申請時填的名稱；驗證頁可修改，開通時以驗證頁送出的為準
+  // 不存密碼：管理員密碼在點驗證連結後設定（TRIAL-05）
+  // pending_verification | provisioning | provisioned | failed
   status               String    @default("pending_verification")
   verifyTokenHash      String?   @unique // sha256(32-byte random)；明文只出現在信裡
   verifyTokenExpiresAt DateTime?
@@ -2183,4 +2252,351 @@ model PlanChangeRequest {
   @@index([tenantId, status])
   @@index([status, createdAt])
   @@map("plan_change_requests")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 優惠券系統（OpenSpec change: add-coupon-system）
+// ─────────────────────────────────────────────────────────────────
+
+/// 券型。決定券面呈現與核銷時的金額計算。
+enum CouponType {
+  DISCOUNT_AMOUNT // 折抵定額
+  DISCOUNT_PERCENT // 折抵百分比
+  GIFT // 贈品
+  EXCHANGE // 兌換
+}
+
+/// 用途分類。marketing 走行銷發放，service 供客服補償挑選。
+enum CouponPurpose {
+  MARKETING
+  SERVICE
+}
+
+/// 效期模式。fixed 為絕對區間；after_claim／after_open 於各該時點起算。
+enum CouponValidityMode {
+  FIXED
+  AFTER_CLAIM
+  AFTER_OPEN
+}
+
+/// 券碼來源。shared_code 全券共用一組；unique_code 系統產生；imported_codes 走序號包庫存。
+enum CouponCodeMode {
+  SHARED_CODE
+  UNIQUE_CODE
+  IMPORTED_CODES
+}
+
+/// 核銷方式，由商家於券層級選擇（design D-核銷）。
+enum CouponRedeemMode {
+  STAFF_CODE // 店員輸入驗證碼
+  STAFF_SCAN // 店員掃碼
+  SELF // 顧客自助（需滑動確認）
+}
+
+enum CouponStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+/// 單張券的生命週期狀態。issued → claimed → opened → redeemed，另有終態 expired／revoked。
+enum CouponInstanceStatus {
+  ISSUED // 已發放，尚未歸戶（帶 claimToken，見 design D10）
+  CLAIMED // 已領取並歸戶至 contactId
+  OPENED // 已開啟（after_open 效期模式由此起算）
+  REDEEMED // 已核銷
+  EXPIRED
+  REVOKED
+}
+
+/// 序號包中單一券碼的狀態。
+enum CouponCodeStatus {
+  AVAILABLE
+  ASSIGNED
+}
+
+/// 券主檔（設定）。實際發出去的每一張券見 CouponInstance。
+model Coupon {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String        @db.Uuid
+  name        String
+  description String?
+  /// 使用條款，支援有限 HTML；⚠️ 寫入前須經伺服器端 sanitizer 消毒（design D9）
+  terms       String?
+  imageUrl    String?
+  /// 後台顯示與搜尋用的券號（CP-XXXXXX），建立時產生、之後不變
+  displayCode String
+  /// 券型、用途、效期模式、序號模式、核銷方式：草稿可留空，發布時必填
+  couponType  CouponType?
+  purpose     CouponPurpose?
+
+  /// 折抵金額（DISCOUNT_AMOUNT）或折掉的百分比（DISCOUNT_PERCENT，15 代表打 85 折）
+  discountAmount  Int?
+  discountPercent Int?
+  /// 最低消費門檻（DISCOUNT_AMOUNT）；0 或 null 表示不限
+  minSpend        Int?
+  /// 折抵上限（DISCOUNT_PERCENT）；null 表示不設上限
+  percentCap      Int?
+  /// 贈品名稱與每張可兌換數量（GIFT）
+  giftName        String?
+  giftQty         Int?
+  /// 兌換品項與價值上限（EXCHANGE）
+  exchangeItem     String?
+  exchangeValueCap Int?
+
+  validityMode     CouponValidityMode?
+  startAt          DateTime?
+  endAt            DateTime?
+  afterClaimDays   Int?
+  afterOpenMinutes Int?
+
+  codeMode   CouponCodeMode?
+  sharedCode String?
+  /// UNIQUE_CODE 模式的券碼前綴
+  codePrefix String?
+
+  redeemMode CouponRedeemMode?
+  /// 店員核銷驗證碼（STAFF_CODE 模式）
+  staffCode  String?
+
+  /// 發行總量上限；null 為不限
+  totalLimit      Int?
+  /// 每位顧客可持有上限
+  perContactLimit Int     @default(1)
+  /// 領取後自動貼上的標籤
+  claimTagId      String? @db.Uuid
+  /// 自動貼上的標籤幾天後移除；null 表示不移除
+  claimTagTtlDays Int?
+  /// 未到生效日時不給顧客看序號（預設開啟）
+  maskCodeBeforeStart Boolean @default(true)
+
+  status      CouponStatus @default(DRAFT)
+  createdById String       @db.Uuid
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+  instances CouponInstance[]
+  codes     CouponCode[]
+  claimLinks CouponClaimLink[]
+
+  @@unique([tenantId, displayCode])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, purpose, status])
+  @@map("coupons")
+}
+
+/// 每一張實際發出的券。核銷防重複的狀態機集中在此（design D3）。
+model CouponInstance {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String @db.Uuid
+  couponId String @db.Uuid
+
+  /// 持有者。ISSUED 階段記發放對象（可能是 FB／IG 聯絡人），領取後改為完成身分驗證的聯絡人
+  contactId String? @db.Uuid
+  /// 此張券的券碼
+  code      String
+
+  status CouponInstanceStatus @default(ISSUED)
+
+  /// 一次性領取憑證（design D10）。FB／IG 與公開領券用；LINE 直接發 CLAIMED 者為 null
+  claimToken          String?   @unique
+  claimTokenExpiresAt DateTime?
+
+  /// 效期落地值。依 validityMode 於發放或領取時計算寫入
+  expiresAt DateTime?
+
+  issuedAt   DateTime  @default(now())
+  claimedAt  DateTime?
+  openedAt   DateTime?
+  redeemedAt DateTime?
+  /// 已歸戶的顧客第一次從票券連結開啟這張券的時間（對話發券的「已領取」，design D14）。
+  /// 對話發券直接歸戶，claimedAt 在發券當下就有值，不能用來判斷顧客是否看過
+  viewedAt   DateTime?
+  /// 對話發券送出訊息前寫入、送出後清除（design D16）。有值代表發送中：顧客端看不到，
+  /// 但計入每人上限與發行總量；超過 5 分鐘仍有值由排程作廢
+  deliveryPendingAt DateTime?
+  /// 票券連結第一次被開啟的時間與累計次數（點擊歸因，design D21）；未驗證身分的開啟也算
+  linkOpenedAt  DateTime?
+  linkOpenCount Int       @default(0)
+
+  /// 發放來源，供成效歸因；領取歸戶後不變更
+  issuedVia   String?
+  issuedRefId String?
+  /// 發放當下的來源名稱與發券座席名稱快照：來源或座席之後刪除、改名，明細仍顯示原名
+  issuedSourceName String?
+  issuedByName     String?
+
+  /// 核銷者（店員模式為座席 id；自助模式為 null）
+  redeemedBy    String?           @db.Uuid
+  /// 在核銷台核銷時的門市與門市帳號；名稱存快照，門市之後改名或刪除仍顯示原名（design D13）
+  redeemedStoreId      String?    @db.Uuid
+  redeemedStoreName    String?
+  redeemedStoreAccount String?
+  /// 核銷當下的方式，與 Coupon.redeemMode 分開存，避免事後改設定影響既有紀錄
+  redeemMode    CouponRedeemMode?
+  redeemChannel String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  coupon  Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, contactId, status])
+  @@index([couponId, status])
+  @@index([tenantId, status, expiresAt])
+  // 優惠券成效報表依發出／核銷期間統計
+  @@index([tenantId, issuedAt])
+  @@index([tenantId, redeemedAt])
+  @@map("coupon_instances")
+}
+
+/// 序號包庫存，僅 IMPORTED_CODES 模式使用。
+model CouponCode {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String @db.Uuid
+  couponId String @db.Uuid
+  code     String
+
+  status CouponCodeStatus @default(AVAILABLE)
+  /// 配發後對應的 CouponInstance
+  instanceId String?       @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([couponId, status])
+  @@map("coupon_codes")
+}
+
+enum CouponClaimLinkStatus {
+  ACTIVE
+  DISABLED
+}
+
+/// 公開領券連結（design D30）：海報、官網上的「傳訊領券」網址與 QR Code。
+/// 顧客開啟 `/coupon/claim/{code}` 後到指定渠道傳送含代碼的訊息，入站處理辨認代碼後發券。
+model CouponClaimLink {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String @db.Uuid
+  couponId  String @db.Uuid
+  /// 領券訊息要送到的官方帳號或粉專；代碼只在這個渠道生效
+  channelId String @db.Uuid
+  /// 投放位置的名稱（例如「門市海報」），也是發出的券的來源名稱
+  name      String
+  /// 8 碼代碼（字集同券碼）。公開網址不帶租戶，所以全系統唯一
+  code      String @unique
+  status    CouponClaimLinkStatus @default(ACTIVE)
+  startAt   DateTime?
+  endAt     DateTime?
+  /// 公開領券頁的開啟次數與成功發出的張數
+  openCount  Int @default(0)
+  claimCount Int @default(0)
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, couponId])
+  @@map("coupon_claim_links")
+}
+
+/// 門市（design D13）。停業的門市不能核銷。
+model Store {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  accounts StoreAccount[]
+
+  @@index([tenantId])
+  @@map("stores")
+}
+
+/// 門市共用帳號：同一門市的店員共用，登入核銷台（design D13）。
+model StoreAccount {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @db.Uuid
+  storeId          String    @db.Uuid
+  /// 登入用的帳號名稱，所有租戶間不可重複（登入時以它找出租戶）
+  username         String    @unique
+  passwordHash     String
+  canRedeem        Boolean   @default(true)
+  isActive         Boolean   @default(true)
+  /// 刪除時保留紀錄，讓已登入的裝置得知「帳號已刪除」
+  deletedAt        DateTime?
+  /// 重設密碼時加一；簽進門市憑證，不符即 PASSWORD_CHANGED
+  passwordVersion  Int       @default(0)
+  /// 強制登出時加一；簽進門市憑證，不符即 SESSION_REVOKED
+  sessionVersion   Int       @default(0)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  store  Store  @relation(fields: [storeId], references: [id])
+
+  @@index([tenantId])
+  @@index([storeId])
+  @@map("store_accounts")
+}
+
+// ─────────────────────────────────────────────
+// 事件送達（change outbox-event-delivery，issue #337 階段 1b）
+// ─────────────────────────────────────────────
+
+/// 交易內登記的業務事件與佇列 job。與業務資料一起 commit，commit 之後由快路徑送進佇列，
+/// 沒送出的由 outbox-relay 排程補送。id 就是事件 id，也是 BullMQ 的 job id。
+model Outbox {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  kind         String // 'event' | 'job'
+  name         String // 事件名稱或 job 名稱
+  queueName    String? // kind = 'job' 時的目標佇列
+  payload      Json
+  jobOptions   Json? // kind = 'job' 時的 BullMQ 選項，不含 jobId
+  createdAt    DateTime  @default(now())
+  dispatchedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([dispatchedAt, createdAt])
+  @@map("outbox")
+}
+
+/// 副作用的認領紀錄：不能重複的副作用執行前先寫一筆，撞到唯一鍵代表已經做過。
+/// kind 與 sourceId、subKey 的組成見 change outbox-event-delivery design 決策 2。sourceId 不設外鍵。
+model SideEffectClaim {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  kind      String
+  sourceId  String   @db.Uuid
+  subKey    String   @default("")
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, sourceId, subKey])
+  @@index([createdAt])
+  @@map("side_effect_claims")
 }

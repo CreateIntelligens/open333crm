@@ -66,8 +66,9 @@ test('合法的通知對象通過驗證（工單不存在時回 404，不是 400
   assert.notEqual(res.statusCode, 400);
 });
 
-test('升級對話框的「通知團隊」送出 team 不可被擋（2026-10-12 UAT 回歸）', async () => {
-  // EscalationModal 有第三個勾選「通知團隊」，送出 team；只允許兩個值時客服勾了它升級就會 400
+test('Escalation dialog selects notify team：舊版對話框送出 team 不可被擋（2026-10-12 UAT 回歸）', async () => {
+  // 對話框已拿掉「通知團隊」（change remove-escalation-notify-team），但部署前載入的舊頁面仍會送 team；
+  // 只允許兩個值時，客服在舊頁面勾了它升級就會 400
   const res = await escalate(['supervisor', 'original_assignee', 'team']);
   assert.notEqual(res.statusCode, 400, res.body);
 });

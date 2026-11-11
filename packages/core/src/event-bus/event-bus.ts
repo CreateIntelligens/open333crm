@@ -1,4 +1,5 @@
-import { redis } from '../redis/client.js';
+import { redis, REDIS_URL } from '../redis/client.js';
+import { createRedisClient } from '../redis/create-client.js';
 import { logger } from '../logger/index.js';
 
 export interface BaseEvent {
@@ -22,8 +23,9 @@ export class EventBus {
   }
 
   static subscribe(callback: (event: BaseEvent) => void) {
-    const sub = redis.duplicate();
-    sub.subscribe(this.CHANNEL);
+    // 訂閱連線不能複製一般用途的 redis：會繼承 commandTimeout，Redis 啟動時無法使用的話 SUBSCRIBE 會失敗、訂閱消失
+    const sub = createRedisClient(REDIS_URL, 'queue');
+    sub.subscribe(this.CHANNEL).catch((err: unknown) => logger.error('Failed to subscribe event bus:', err));
     sub.on('message', (channel: string, message: string) => {
       if (channel === this.CHANNEL) {
         try {

@@ -12,6 +12,7 @@ import { processInboundMessage } from '#src/modules/webhook/webhook.service.js';
 import { apiSrc } from '#tests/support/paths.js';
 
 import { test } from 'vitest';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {
@@ -93,26 +94,31 @@ async function captureEvents(run: () => Promise<unknown>) {
 async function testMissingContactUidShortCircuits() {
   const { io, events } = createIoMock();
   const prisma = {
+    ...disabledAiPrivacy,
     channelIdentity: { findUnique: mockFn(() => assert.fail('channelIdentity should not be queried')) },
   };
 
-  const result = await processInboundMessage(
-    prisma as never,
-    io as never,
-    {},
-    { id: 'channel-1', channelType: 'WEBCHAT' },
-    'tenant-1',
-    {
-      contactUid: '',
-      timestamp: new Date(),
-      contentType: 'text',
-      content: { text: 'ignored' },
-    },
-  );
+  let result: unknown = 'not called';
+  const published = await captureEvents(async () => {
+    result = await processInboundMessage(
+      prisma as never,
+      io as never,
+      {},
+      { id: 'channel-1', channelType: 'WEBCHAT' },
+      'tenant-1',
+      {
+        contactUid: '',
+        timestamp: new Date(),
+        contentType: 'text',
+        content: { text: 'ignored' },
+      },
+    );
+  });
 
   assert.equal(result, undefined);
   assert.equal(prisma.channelIdentity.findUnique.calls.length, 0);
   assert.equal(events.length, 0);
+  assert.equal(published.length, 0, '不發布 EventBus 事件');
 }
 
 async function testDuplicateClientMessageReturnsExistingMessage() {
@@ -122,6 +128,9 @@ async function testDuplicateClientMessageReturnsExistingMessage() {
   const messageCreate = mockFn(() => assert.fail('duplicate path must not create message'));
   const conversationUpdate = mockFn(() => assert.fail('duplicate path must not update conversation'));
   const prisma = {
+    ...disabledAiPrivacy,
+    // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
+    tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
       findUnique: mockFn(() => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } })),
     },
@@ -170,6 +179,9 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
   const conversation = createConversation();
   const inboundMessage = createInboundMessage({ content: { text: 'csat:5:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
   const prisma = {
+    ...disabledAiPrivacy,
+    // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
+    tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
       findUnique: mockFn(() => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } })),
     },
@@ -189,6 +201,10 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
     // 跨渠道綁定攔截會先讀租戶設定；沒有設定＝未啟用，行為與改版前相同
     tenantSettings: {
       findFirst: mockFn(() => null),
+    },
+    // 工單 id 的 8 碼片段會被當成領券代碼候選查一次；查不到就照一般訊息處理（design D30）
+    couponClaimLink: {
+      findMany: mockFn(() => []),
     },
   };
 
@@ -217,7 +233,7 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
   assert.equal(events.some((event) => event.name === 'message.received'), false);
 }
 
-// 規格 Scenario: CSAT response for a case of another tenant（change fix-csat-intercept-and-trial-upgrade）
+// 主規格 inbound-message-processing「CSAT 回覆的攔截」的 Scenario「其他租戶的工單」
 // 進站用 prismaAdmin，RLS 擋不住；查工單必須帶收訊租戶與傳訊聯絡人，查不到時仍攔截。
 async function testCsatLookupScopedToTenantAndSender() {
   const { io } = createIoMock();
@@ -225,6 +241,9 @@ async function testCsatLookupScopedToTenantAndSender() {
   const caseId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const inboundMessage = createInboundMessage({ content: { text: `csat:1:${caseId}` } });
   const prisma = {
+    ...disabledAiPrivacy,
+    // processInboundMessage 的共用入口先查租戶是否啟用（issue #410）
+    tenant: { findUnique: async () => ({ isActive: true }) },
     channelIdentity: {
       findUnique: mockFn(() => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } })),
     },
@@ -243,6 +262,10 @@ async function testCsatLookupScopedToTenantAndSender() {
       update: mockFn(() => {
         throw new Error('不得寫入別人的工單');
       }),
+    },
+    // 工單 id 的 8 碼片段會被當成領券代碼候選查一次；查不到就照一般訊息處理（design D30）
+    couponClaimLink: {
+      findMany: mockFn(() => []),
     },
     tenantSettings: {
       findFirst: mockFn(() => null),
@@ -278,7 +301,6 @@ async function testCsatLookupScopedToTenantAndSender() {
 
 async function testFacadeAndCallerContractsFromSource() {
   const webhookSource = await readSource('modules/webhook/webhook.service.ts');
-  const webchatSource = await readSource('modules/webchat/webchat.service.ts');
   const chatboxSource = await readSource('modules/chatbox/chatbox.service.ts');
 
   assert.equal(webhookSource.includes('export async function processInboundMessage'), true);
@@ -291,7 +313,6 @@ async function testFacadeAndCallerContractsFromSource() {
 
   // FB／IG 依 entry.id 分派後，每組以分派到的渠道、憑證與租戶進入入站管線（change fix-meta-webhook-page-routing）
   assert.equal(webhookSource.includes('await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed)'), true);
-  assert.equal(webchatSource.includes('await processInboundMessage(prisma, io, {}, channel, channel.tenantId, parsed)'), true);
   assert.equal(chatboxSource.includes('const result = await processInboundMessage('), true);
   assert.equal(chatboxSource.includes('conversationId: session.conversationId'), true);
   assert.equal(chatboxSource.includes('clientMessageId: input.clientMessageId'), true);
@@ -322,9 +343,9 @@ async function testRefactorStructureFromSource() {
   assert.equal(combined.indexOf('handleKbFeedback') < combined.indexOf('handleHandoffRequest'), true);
 }
 
-test('missing contact uid short circuits', testMissingContactUidShortCircuits);
+test('進站事件沒有聯絡人 UID', testMissingContactUidShortCircuits);
 test('duplicate client message returns existing message', testDuplicateClientMessageReturnsExistingMessage);
-test('csat intercept does not publish message received', testCsatInterceptDoesNotPublishMessageReceived);
-test('csat lookup is scoped to receiving tenant and sending contact', testCsatLookupScopedToTenantAndSender);
+test('不存在的工單：仍攔截，不發布 message.received', testCsatInterceptDoesNotPublishMessageReceived);
+test('其他租戶的工單：查詢工單時帶收訊租戶與傳訊聯絡人', testCsatLookupScopedToTenantAndSender);
 test('facade and caller contracts from source', testFacadeAndCallerContractsFromSource);
 test('refactor structure from source', testRefactorStructureFromSource);

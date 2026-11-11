@@ -1,8 +1,8 @@
 # 權限計算
 
-本文件說明租戶後台怎麼決定一個成員能做什麼：權限碼從哪裡來、有效權限怎麼算、快取什麼時候失效、渠道可見範圍怎麼判斷，以及新增權限碼時要做哪些事。呼叫者的身分怎麼確認，見[認證與憑證](./AUTHENTICATION.md)；角色與權限頁的操作規則（防越權、管理員鎖定、防自鎖），見[人員與角色](../features/tenant/MEMBERS.md#角色與權限)。
+本文件說明租戶後台怎麼決定一個成員能做什麼：權限碼從哪裡來、有效權限怎麼算、快取什麼時候失效、渠道可見範圍怎麼判斷，以及新增權限碼時要做哪些事。呼叫者的身分怎麼確認，見[認證與憑證](./AUTHENTICATION.md)；角色與權限頁的操作規則（防越權、管理員鎖定、防自鎖），以及對其他成員操作時「對方權限不可比自己高」、最後一位管理員保護，見[人員與角色](../features/tenant/MEMBERS.md#角色與權限)。
 
-- **資料來源**：`packages/core/src/rbac/*`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/services/permission.service.ts`、`apps/api/src/services/tenant-plan.cache.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/socket/socket-room-authorization.ts`、`apps/api/src/modules/role/role.service.ts`、`apps/api/src/index.ts`、`scripts/reconcile-system-role-permissions.mjs`、`packages/database/prisma/seed-data/rbac-roles.ts`、`apps/web/src/providers/AuthProvider.tsx`、`apps/web/src/components/layout/Sidebar.tsx`
+- **資料來源**：`packages/core/src/rbac/*`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/services/permission.service.ts`、`apps/api/src/services/tenant-plan.cache.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/socket/socket-room-authorization.ts`、`apps/api/src/modules/role/role.service.ts`、`apps/api/src/modules/role/role.flow.ts`、`apps/api/src/index.ts`、`scripts/reconcile-system-role-permissions.mjs`、`packages/database/prisma/seed-data/rbac-roles.ts`、`apps/web/src/providers/AuthProvider.tsx`、`apps/web/src/components/layout/Sidebar.tsx`
 - **核對日期**：2026-09-30
 
 ## 這份文件回答的問題
@@ -34,7 +34,7 @@
 
 ## 權限碼的註冊表
 
-所有權限碼宣告在 `packages/core/src/rbac/permissions.ts` 的 `PERMISSIONS`，這是唯一的來源。每個權限碼有下列欄位：
+所有權限碼宣告在 `packages/shared/src/rbac/permissions.ts` 的 `PERMISSIONS`，這是唯一的來源。`@open333crm/core` 轉出同一份；放在 `shared` 是為了讓 `database` 的 demo seed 也能 import（`database` 不能 import `core`，會循環依賴）。每個權限碼有下列欄位：
 
 | 欄位 | 作用 |
 | --- | --- |
@@ -87,7 +87,7 @@ flowchart LR
 計算由 `permission.service.ts` 的 `getEffectiveTenantPermissions()` 執行，步驟如下：
 
 1. `roleId` 為空時，直接回傳空集合。
-2. `getEffectivePermissions()` 讀角色的 `RolePermission`，以 `resolveImplied()` 展開 `implies`。
+2. `getEffectivePermissions()` 讀角色的 `RolePermission`，以 `resolveImplied()` 展開 `implies`。查資料庫的部分是 `loadRolePermissions()`。
 3. `tenant-plan.cache.ts` 的 `getTenantPlanId()` 取得租戶的方案。租戶沒有方案（`planId` 為 `null`）時不套天花板，直接回傳角色展開後的權限碼。
 4. 取方案的 `features`，加上恆開的 `core`，由 `permsForFeatures()` 換算成權限碼的集合，再扣掉 `permissionOverrides.deny`。這個集合稱為方案天花板。
 5. 角色展開後的權限碼與方案天花板取交集。
@@ -100,11 +100,13 @@ flowchart LR
 
 | 快取的內容 | 存放位置 | 有效期 | 誰清除 |
 | --- | --- | --- | --- |
-| 角色權限（已展開 `implies`） | Redis `perms:role:<roleId>` | 10 分鐘 | `invalidateRolePermissions()`：儲存或刪除角色時 |
+| 角色權限（已展開 `implies`） | Redis `perms:role:<roleId>` | 10 分鐘 | `invalidateRolePermissions()`：儲存或刪除角色時，commit 之後、回應之前（`role.flow.ts`） |
 | 有效權限 | Redis `perms:tenant:<roleId>:<planId>` | 10 分鐘 | `invalidateRolePermissions()`；`invalidatePlanPermissions()`：修改方案、核准方案異動、試用轉正式、平台修改租戶方案時 |
 | 租戶的方案 | API 行程記憶體 | 60 秒 | `invalidateTenantPlan()`：只清除處理這個請求的行程，其他 API 行程最多延遲 60 秒 |
 | 成員的 `roleId` | access token | token 的有效期 | 換發 token 時重讀，見[認證與憑證](./AUTHENTICATION.md#客服的登入與換發) |
 | 前端的權限集合 | 瀏覽器記憶體 | 到重新載入頁面為止 | 登入或重新載入頁面時重新取得 |
+
+讀寫 Redis 快取的函式以參數接收 Redis，由入口傳入 `fastify.redis`。角色與成員的越權檢查（`role.service.ts`、`agent.service.ts`）在租戶交易內執行，改呼叫 `loadRolePermissions()`，只查資料庫、不讀快取：交易內不使用 Redis（AGENTS.md 結構規則 2）。所以越權檢查一律用資料庫的最新值。
 
 因此各種變更的生效時間不同：
 
@@ -165,11 +167,15 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 對話綁了團隊時，`assertConversationChannelVisible()` 另外要求成員是負責人或該團隊的成員。`Conversation.teamId` 沒有寫入端，這段檢查目前不會觸發；團隊本身也沒有建立的途徑。兩者都見 `../system/AUDIT.md` 的 TEAM-01。
 
-聯絡人清單與合併、AI 輔助與租戶房間的即時事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。聯絡人的對話、工單與時間軸有套用。
+聯絡人清單與合併、AI 輔助與租戶房間的工單與聯絡人合併事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。聯絡人的對話、工單與時間軸有套用。
+
+資料匯出不依可見範圍篩選，匯出的是全租戶資料。所以匯出路由除了 `data.export`，還要求 `channel.view_all`，只缺後者時回 403、`requiredPermission` 是 `channel.view_all`。`channel.view_all` 本身有 `dependsOn`，不能當 `data.export` 的前置權限，角色與權限頁不會連動勾選。見[稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md#資料匯出)。
 
 ## Socket 房間
 
-客服的 socket 連線建立時自動加入 `tenant:<tenantId>` 與 `agent:<agentId>`，這兩個房間不經過授權。其他房間要送出 `subscribe`，由 `authorizeSocketRoom()` 判斷：
+客服的 socket 連線建立時自動加入 `tenant:<tenantId>`、`agent:<agentId>` 與 `tenant:<tenantId>:agent:<agentId>`，這些房間不經過授權。連線時也依可見渠道加入渠道房間：每個看得到的渠道一個 `tenant:<tenantId>:channel:<channelId>`；持有 `channel.view_all` 時只加入 `tenant:<tenantId>:channels:all`。`message.new`、`conversation.*` 只送到渠道房間與已授權訂閱的對話房間 `conversation:<對話 ID>`，不送到 `tenant:<tenantId>`（issue #427）。可用渠道、角色、角色權限、渠道與渠道團隊授權、方案（平台改方案、核准升級、試用轉正式、方案功能或權限設定）改變時，系統重新計算已連線 socket 的渠道房間，並重新授權已訂閱的房間（包括對話房間）。成員停用或刪除時系統斷開他的連線，停用的成員也不能再連線。
+
+其他房間要送出 `subscribe`，由 `authorizeSocketRoom()` 判斷：
 
 | 房間 | 可以訂閱的條件 |
 | --- | --- |
@@ -193,12 +199,14 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 開通之後，租戶的管理員可以修改系統角色的權限碼。
 
-**新增權限碼時，既有租戶的角色不會自動取得。** 連 `admin` 也不會，因為 `admin` 的「全部權限」是開通當下的全部。要讓既有租戶取得新的碼，必須手動執行 `scripts/reconcile-system-role-permissions.mjs`。這個腳本對每個租戶重新執行 `seedRolesForTenant()`，而 `seedRolesForTenant()` 先刪除系統角色的所有權限碼，再依預設值重建。租戶管理員對系統角色做過的修改會被覆蓋，見 `../system/AUDIT.md` 的 RBAC-05。
+`permissions.ts` 與 `default-roles.ts` 都在 `packages/shared/src/rbac/`。demo 資料的 Demo Tenant 由 `packages/database/prisma/seed.ts` 的 `seedDemoRoles()` 建立，也寫入同一份 `DEFAULT_ROLE_PERMISSIONS`。API 容器每次啟動都會執行 seed（`apps/api/docker-entrypoint.sh`），所以 Demo Tenant 的系統角色在每次部署後重設成預設值，對它做過的修改不會保留。
+
+**新增權限碼時，既有租戶的角色不會自動取得。** 連 `admin` 也不會，因為 `admin` 的「全部權限」是開通當下的全部。要讓既有租戶取得新的碼，必須手動執行 `scripts/reconcile-system-role-permissions.mjs`。這個腳本對每個租戶重新執行 `seedRolesForTenant()`，而 `seedRolesForTenant()` 先刪除系統角色的所有權限碼，再依預設值重建。租戶管理員對系統角色做過的修改會被覆蓋，見 `../system/AUDIT.md` 的 RBAC-05。只要補上新增的權限碼時，改用 `scripts/grant-new-role-permissions.mjs <權限碼...>`：它只把指定的碼補到預設有這些碼的系統角色，不刪除、不重建，租戶的修改會保留。兩支腳本執行後都要清除 Redis 的權限快取。
 
 新增一個權限碼的步驟：
 
 1. 在 `permissions.ts` 加入權限碼，指定 `feature`，需要時加上 `dependsOn` 或 `implies`。
-2. 在 `default-roles.ts` 決定哪些系統角色預設擁有它。`packages/database/prisma/seed-data/rbac-roles.ts` 另有一份給 demo 資料用的預設值，兩份要一起改，見 `../system/AUDIT.md` 的 RBAC-06。
+2. 在 `default-roles.ts` 決定哪些系統角色預設擁有它。平台開通與 demo seed 用的是同一份。
 3. 在路由掛 `requirePermission()`。要讓 Partner API 金鑰使用，加進 `PARTNER_KEY_ALLOWED`。
 4. 需要在側欄控制顯示時，在 `Sidebar.tsx` 的 `NAV_TREE` 設定 `perm`。
 5. 部署後執行 reconcile 腳本，並清除 Redis 的 `perms:*` 快取。
@@ -224,14 +232,12 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | RBAC-01 |
 | CLI token 只看 scope，`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 業務規則看舊的 `role`，不看細粒度角色 | RBAC-03 |
-| 渠道可見範圍沒有套用在租戶房間、聯絡人清單與合併、AI 輔助 | RBAC-04 |
+| 渠道可見範圍沒有套用在租戶房間的工單與聯絡人合併事件、聯絡人清單與合併、AI 輔助 | RBAC-04 |
 | reconcile 腳本會覆蓋租戶對系統角色的修改，也不清除快取 | RBAC-05 |
-| 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all` | RBAC-06 |
 | 角色與權限頁不套方案天花板 | PLAN-08 |
 | 功能天花板只在掛了 `requirePermission()` 的路由生效；行銷、知識庫、粉絲活動仍有路由沒掛 | PLAN-04 |
 | AI 不在功能天花板內 | PLAN-12 |
 | 團隊沒有建立的途徑；`Conversation.teamId` 沒有寫入端 | TEAM-01 |
-| 「JWT 或其他憑證」裝飾器的 JWT 分支沒有 `roleId`，有效權限為空 | AUTH-06 |
 
 ## 自己驗證的方法
 
@@ -240,9 +246,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 grep -rn "requirePermission\|requireAnyPermission" apps/api/src/modules
 
 # 註冊表的權限碼有沒有被任何路由使用
-grep -o "code: '[a-z_.]*'" packages/core/src/rbac/permissions.ts | cut -d"'" -f2 \
+grep -o "code: '[a-z_.]*'" packages/shared/src/rbac/permissions.ts | cut -d"'" -f2 \
   | while read c; do grep -rq "'$c'" apps/api/src/modules apps/api/src/services || echo "未使用：$c"; done
 
-# 兩份預設角色是否都給了某個權限碼（以 channel.view_all 為例）
-grep -n "channel.view_all" packages/core/src/rbac/default-roles.ts packages/database/prisma/seed-data/rbac-roles.ts
 ```

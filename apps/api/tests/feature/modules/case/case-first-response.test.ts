@@ -12,6 +12,7 @@ import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { sendMessage } from '#src/modules/conversation/conversation.service.js';
 import { linkConversationToCase } from '#src/modules/case/case.service.js';
+import { runInTenant } from '#tests/support/tenant-run.js';
 
 loadEnvConfig();
 const prisma = new PrismaClient();
@@ -86,7 +87,7 @@ test('把已有客服回覆的對話掛到工單：補上工單建立後最早�
       { conversationId: conv.id, direction: 'OUTBOUND', senderType: 'AGENT', contentType: 'text', content: { text: '客服 2' }, createdAt: at(20) },
     ],
   });
-  await linkConversationToCase(db, io, c.id, conv.id, T, agent.id);
+  await runInTenant(prisma, T, (scope) => linkConversationToCase(scope, c.id, conv.id, agent.id));
   assert.equal((await firstResponseOf(c.id))?.getTime(), at(10).getTime());
 });
 

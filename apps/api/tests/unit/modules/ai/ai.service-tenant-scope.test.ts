@@ -1,13 +1,8 @@
 import assert from 'node:assert/strict';
-import { beforeEach, test, vi } from 'vitest';
+import { beforeEach, test } from 'vitest';
+import { readConversationTranscript, readSuggestReplyQuery } from '#src/modules/ai/ai.service.js';
 
 // 第一層租戶隔離：AI 輔助以 conversationId 讀對話時，查詢條件要帶 tenantId，不能只靠 RLS。
-
-vi.mock('#src/modules/embedding/embedding.service.js', () => ({
-  generateEmbedding: async () => [0.1],
-  searchSimilarArticles: async () => [],
-}));
-vi.mock('#src/modules/ai/llm.service.js', () => ({ generateReply: async () => 'summary' }));
 
 const TENANT = 'tenant-1';
 const CONV = '11111111-1111-4111-8111-111111111111';
@@ -36,17 +31,18 @@ function prismaMock() {
 
 beforeEach(() => { where.message.length = 0; where.conversation.length = 0; });
 
+// 讀資料的查詢在 ai.service；flow 在交易內呼叫（change migrate-ai-llm-tenant-ctx，design D7）
+
 test('summarizeConversation：其他租戶的對話視為不存在', async () => {
-  const { summarizeConversation } = await import('#src/modules/ai/ai.service.js');
-  const res = await summarizeConversation(prismaMock(), TENANT, CONV);
-  assert.equal(res.summary, '找不到對話記錄。');
+  const res = await readConversationTranscript({ tx: prismaMock(), tenantId: TENANT }, CONV);
+  assert.equal(res, null);
+  assert.ok(where.conversation.length > 0);
   assert.ok(where.conversation.every((w: any) => w.tenantId === TENANT));
 });
 
 test('suggestReply：訊息與對話查詢都帶 tenantId', async () => {
-  const { suggestReply } = await import('#src/modules/ai/ai.service.js');
-  const res = await suggestReply(prismaMock(), TENANT, CONV);
-  assert.deepEqual(res, { suggestions: [] });
+  const res = await readSuggestReplyQuery({ tx: prismaMock(), tenantId: TENANT }, CONV);
+  assert.equal(res, null);
   assert.ok(where.message.length > 0);
   assert.ok(where.message.every((w: any) => (w.conversation?.tenantId ?? w.tenantId) === TENANT));
 });

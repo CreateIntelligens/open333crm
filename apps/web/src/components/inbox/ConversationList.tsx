@@ -33,7 +33,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
   // Build API filters
   const apiFilters = useMemo(() => {
-    const f: Record<string, string | undefined> = {};
+    const f: { status?: string; channelType?: string; assigneeId?: string; closedAfter?: string; unread?: boolean; search?: string } = {};
 
     if (mainTab === 'closed') {
       f.status = 'CLOSED';
@@ -60,12 +60,32 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
       f.assigneeId = 'unassigned';
     }
 
-    return f;
-  }, [mainTab, filterValues, closedRange, agent?.id]);
+    // 「未讀」「我的」交給後端篩選，不只過濾已載入的資料（#422）；
+    // 「我的」覆蓋進階篩選的負責人（design D4）
+    if (mainTab === 'active' && subTab === 'unread') {
+      f.unread = true;
+    }
+    if (mainTab === 'active' && subTab === 'mine' && agent?.id) {
+      f.assigneeId = agent.id;
+    }
 
-  const { conversations, isLoading, markConversationRead } = useConversations(apiFilters, {
-    selectedId,
-  });
+    const keyword = search.trim();
+    if (keyword) f.search = keyword;
+
+    return f;
+  }, [mainTab, subTab, search, filterValues, closedRange, agent?.id]);
+
+  const {
+    conversations,
+    total,
+    hasMore,
+    isLoading,
+    isLoadingMore,
+    error,
+    loadMore,
+    mutate,
+    markConversationRead,
+  } = useConversations(apiFilters, { selectedId });
 
   const handleSelectConversation = (conversation: ConversationRow) => {
     if ((conversation.unreadCount ?? 0) > 0) {
@@ -74,42 +94,6 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
     onSelect(conversation.id);
   };
-
-  // 快速篩選的數量（Claude Design：全部 6、未讀 3、我的 3），依目前載入的進行中對話計算
-  const quickCounts = {
-    all: conversations.length,
-    unread: conversations.filter((c: { unreadCount?: number }) => (c.unreadCount || 0) > 0).length,
-    mine: conversations.filter((c: { assignedToId?: string | null }) => c.assignedToId === agent?.id).length,
-  };
-
-  // Client-side filter for sub-tabs and search
-  let filtered = conversations;
-  if (mainTab === 'active') {
-    if (subTab === 'unread') {
-      filtered = filtered.filter(
-        (c: { unreadCount?: number }) => (c.unreadCount || 0) > 0
-      );
-    }
-    if (subTab === 'mine') {
-      filtered = filtered.filter(
-        (c: { assignedToId?: string | null }) => c.assignedToId === agent?.id
-      );
-    }
-  }
-  if (search) {
-    const lowerSearch = search.toLowerCase();
-    filtered = filtered.filter(
-      (c: ConversationRow) => {
-        const contactName = c.contact?.name || c.contact?.displayName || '';
-        const rawContent = c.lastMessage?.content;
-        const msgText = typeof rawContent === 'object' && rawContent !== null
-          ? (rawContent as { text?: string }).text || ''
-          : String(rawContent || '');
-        return contactName.toLowerCase().includes(lowerSearch) ||
-          msgText.toLowerCase().includes(lowerSearch);
-      }
-    );
-  }
 
   return (
     <div className="flex h-full flex-col">
@@ -138,7 +122,8 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
         <SearchInput placeholder="搜尋對話、聯繫人" onSearch={setSearch} />
 
-        {/* 快速篩選：Claude Design 為膠囊按鈕附數量 */}
+        {/* 快速篩選：Claude Design 為膠囊按鈕附數量。
+            篩選改由後端處理（#422，取自 main），只知道目前篩選的總數，所以只在選中的膠囊顯示數量 */}
         {mainTab === 'active' && (
           <div role="group" aria-label="快速篩選" className="flex flex-wrap items-center gap-2">
             {([
@@ -154,7 +139,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
                 onClick={() => setSubTab(value)}
               >
                 {label}
-                <span className={subTab === value ? 'ml-1 text-white/80' : 'ml-1 text-muted-foreground'}>{quickCounts[value]}</span>
+                {subTab === value && total != null && <span className="ml-1 text-white/80">{total}</span>}
               </Chip>
             ))}
           </div>
@@ -179,7 +164,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
       <FilterChips
         filters={filterValues}
         onChange={setFilterValues}
-        resultCount={filtered.length}
+        resultCount={total ?? conversations.length}
       />
 
       {/* Conversation List */}
@@ -188,15 +173,29 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : error && conversations.length === 0 ? (
+          <div role="alert" className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+            <p className="text-sm font-medium text-destructive">對話列表載入失敗</p>
+            <p className="text-xs text-muted-foreground">請檢查網路連線後再試一次</p>
+            <Button variant="outline" size="sm" onClick={() => void mutate()}>
+              重試
+            </Button>
+          </div>
+        ) : conversations.length === 0 ? (
           <EmptyState
             icon={<MessageSquare className="h-10 w-10" />}
             title="沒有對話"
-            description={mainTab === 'closed' ? '此時間範圍內沒有已關閉的對話' : '新對話將會顯示在這裡'}
+            description={
+              search.trim()
+                ? '沒有符合搜尋的對話'
+                : mainTab === 'closed'
+                  ? '此時間範圍內沒有已關閉的對話'
+                  : '新對話將會顯示在這裡'
+            }
           />
         ) : (
           <div>
-            {filtered.map((conversation: ConversationRow) => (
+            {conversations.map((conversation: ConversationRow) => (
               <ConversationListItem
                 key={conversation.id}
                 conversation={conversation}
@@ -205,6 +204,22 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
                 showCsat={mainTab === 'closed'}
               />
             ))}
+            {error && (
+              <div role="alert" className="flex items-center justify-center gap-2 px-2 py-2 text-xs text-destructive">
+                <span>對話列表載入失敗</span>
+                <Button variant="outline" size="sm" onClick={() => (hasMore ? loadMore() : void mutate())}>
+                  重試
+                </Button>
+              </div>
+            )}
+            {hasMore && !error && (
+              <div className="flex justify-center py-2">
+                <Button variant="ghost" size="sm" onClick={loadMore} disabled={isLoadingMore}>
+                  {isLoadingMore && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+                  載入更多對話
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -13,9 +13,11 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  type PieLabelRenderProps,
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import { channelDisplayName } from '@open333crm/shared';
 
 interface ChannelData {
   messagesByChannel: Array<{ name: string; value: number }>;
@@ -38,6 +40,11 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 const BOT_HUMAN_COLORS = ['#8B5CF6', '#F97316'];
 
+/** API 回的 name 是渠道系統代號（THREADS 等）；圖上顯示名稱，顏色仍依代號 */
+function withDisplayNames(rows: Array<{ name: string; value: number }>) {
+  return rows.map((r) => ({ name: channelDisplayName(r.name), value: r.value, color: CHANNEL_COLORS[r.name] || '#94a3b8' }));
+}
+
 export function ChannelDistributionChart({ data, isLoading }: ChannelDistributionChartProps) {
   if (isLoading) {
     return (
@@ -55,6 +62,9 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
     );
   }
 
+  const messagesByChannel = withDisplayNames(data.messagesByChannel);
+  const conversationsByChannel = withDisplayNames(data.conversationsByChannel);
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       {/* Messages by channel */}
@@ -63,23 +73,23 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
           <CardTitle className="text-base font-semibold">渠道訊息分布</CardTitle>
         </CardHeader>
         <CardContent>
-          {data.messagesByChannel.length === 0 ? (
+          {messagesByChannel.length === 0 ? (
             <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">尚無資料</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
                 <Pie
-                  data={data.messagesByChannel}
+                  data={messagesByChannel}
                   cx="50%"
                   cy="50%"
                   outerRadius={80}
                   dataKey="value"
                   nameKey="name"
-                  label={(props: any) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
+                  label={(props: PieLabelRenderProps) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
-                  {data.messagesByChannel.map((entry) => (
-                    <Cell key={entry.name} fill={CHANNEL_COLORS[entry.name] || '#94a3b8'} />
+                  {messagesByChannel.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -107,7 +117,7 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
                   outerRadius={80}
                   dataKey="value"
                   nameKey="name"
-                  label={(props: any) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
+                  label={(props: PieLabelRenderProps) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
                   {data.botVsHuman.map((_, i) => (
@@ -127,18 +137,18 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
           <CardTitle className="text-base font-semibold">各渠道對話數</CardTitle>
         </CardHeader>
         <CardContent>
-          {data.conversationsByChannel.length === 0 ? (
+          {conversationsByChannel.length === 0 ? (
             <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">尚無資料</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={data.conversationsByChannel}>
+              <BarChart data={conversationsByChannel}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip />
                 <Bar dataKey="value" name="對話數">
-                  {data.conversationsByChannel.map((entry) => (
-                    <Cell key={entry.name} fill={CHANNEL_COLORS[entry.name] || '#94a3b8'} />
+                  {conversationsByChannel.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
                   ))}
                 </Bar>
               </BarChart>

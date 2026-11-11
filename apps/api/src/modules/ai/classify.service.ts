@@ -1,11 +1,10 @@
 /**
- * Issue Classification Service — uses Ollama LLM to categorize customer issues.
+ * Issue Classification Service — 解析 LLM 的分類結果、關鍵字降級，以及新工單自動分類的讀寫。
+ * 呼叫 LLM 在 ai.flow.ts（change migrate-ai-llm-tenant-ctx，design D7）。
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { generateReply } from './llm.service.js';
-import { logger } from '@open333crm/core';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { isUnmaskedInbound } from './deidentification.service.js';
 
 export interface ClassifyResult {
   category: string;
@@ -25,7 +24,7 @@ const CATEGORIES = [
   '其他',
 ] as const;
 
-const CLASSIFY_SYSTEM_PROMPT =
+export const CLASSIFY_SYSTEM_PROMPT =
   '你是一位客服問題分類助手。根據客戶訊息內容，將其分類到以下類別之一：' +
   CATEGORIES.join('、') + '。' +
   '請以 JSON 格式回覆：{"category":"類別名稱","subcategory":"子分類(可選)","confidence":0到1的數字}。' +
@@ -34,7 +33,7 @@ const CLASSIFY_SYSTEM_PROMPT =
 /**
  * Keyword-based fallback when LLM response is invalid.
  */
-function keywordFallback(text: string): ClassifyResult {
+export function classifyByKeywords(text: string): ClassifyResult {
   const lower = text.toLowerCase();
 
   const categoryKeywords: Record<string, string[]> = {
@@ -59,64 +58,50 @@ function keywordFallback(text: string): ClassifyResult {
   return { category: '其他', confidence: 0.3 };
 }
 
-export async function classifyIssue(
-  prisma: TenantDb,
-  tenantId: string,
-  text: string,
-): Promise<ClassifyResult> {
+/** 解析 LLM 的回覆；不是合法的 JSON 時改用關鍵字判斷 */
+export function parseClassifyReply(raw: string, text: string): ClassifyResult {
+  const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+  if (!jsonMatch) return classifyByKeywords(text);
+  let parsed: { category?: unknown; subcategory?: unknown; confidence?: unknown };
   try {
-    const raw = await generateReply(prisma, tenantId, text, '', {
-      overrideSystemPrompt: CLASSIFY_SYSTEM_PROMPT,
-      meta: { feature: 'classify' },
-    });
-
-    const jsonMatch = raw.match(/\{[\s\S]*?\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      const category = CATEGORIES.includes(parsed.category)
-        ? parsed.category
-        : '其他';
-      const confidence = typeof parsed.confidence === 'number'
-        ? Math.max(0, Math.min(1, parsed.confidence))
-        : 0.5;
-      return {
-        category,
-        subcategory: typeof parsed.subcategory === 'string' ? parsed.subcategory : undefined,
-        confidence,
-      };
-    }
-
-    return keywordFallback(text);
-  } catch (err) {
-    logger.error('[Classify] LLM classification failed, using keyword fallback:', err);
-    return keywordFallback(text);
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    return classifyByKeywords(text);
   }
+  const category = CATEGORIES.includes(parsed.category as (typeof CATEGORIES)[number])
+    ? (parsed.category as string)
+    : '其他';
+  const confidence = typeof parsed.confidence === 'number'
+    ? Math.max(0, Math.min(1, parsed.confidence))
+    : 0.5;
+  return {
+    category,
+    subcategory: typeof parsed.subcategory === 'string' ? parsed.subcategory : undefined,
+    confidence,
+  };
 }
 
 /**
- * 新工單的自動分類：依對話最新的顧客訊息分類。
- * 工單已有分類（客服手動選的、或自動化規則指定的）就不分類、不覆蓋；寫入時也再以「仍無分類」為條件。
+ * 新工單的自動分類要分類的文字：對話最新的顧客訊息。
+ * 工單已有分類（客服手動選的、或自動化規則指定的）就回 null，不分類、不覆蓋。
  * 原本收到 case.created 一定分類並覆寫，手動選的分類會被 AI 結果蓋掉。
  */
-export async function autoClassifyNewCase(
-  prisma: PrismaClient | TenantDb,
-  tenantId: string,
-  caseId: string,
-  conversationId: string,
-  classify: (db: PrismaClient | TenantDb, tenantId: string, text: string) => Promise<ClassifyResult> = classifyIssue,
-): Promise<string | null> {
-  const current = await prisma.case.findFirst({ where: { id: caseId, tenantId }, select: { category: true } });
+export async function readCaseToClassify(ctx: TenantCtx, caseId: string, conversationId: string): Promise<string | null> {
+  const current = await ctx.tx.case.findFirst({ where: { id: caseId, tenantId: ctx.tenantId }, select: { category: true } });
   // null 才是「沒有分類」；空字串（舊路由可存入）也視為已處理，否則會白白呼叫 AI 卻寫不回去
   if (!current || current.category !== null) return null;
-  const latest = await prisma.message.findFirst({
-    where: { conversationId, conversation: { tenantId }, direction: 'INBOUND' },
+  const latest = await ctx.tx.message.findFirst({
+    where: { conversationId, conversation: { tenantId: ctx.tenantId }, direction: 'INBOUND' },
     orderBy: { createdAt: 'desc' },
-    select: { content: true },
+    select: { content: true, metadata: true },
   });
+  // 去識別化服務無法使用時保存的進站訊息沒有遮罩副本，不交給模型分類（issue #466）
+  if (isUnmaskedInbound(latest?.metadata)) return null;
   const text = (latest?.content as Record<string, unknown> | null)?.text;
-  if (typeof text !== 'string' || !text) return null;
-  const result = await classify(prisma, tenantId, text);
-  await prisma.case.updateMany({ where: { id: caseId, tenantId, category: null }, data: { category: result.category } });
-  logger.info(`[Classify] Case ${caseId} auto-classified: ${result.category} (confidence=${result.confidence})`);
-  return result.category;
+  return typeof text === 'string' && text ? text : null;
+}
+
+/** 寫入時再以「仍無分類」為條件：分類期間客服選了分類就不覆蓋 */
+export async function setCaseCategoryIfUnset(ctx: TenantCtx, caseId: string, category: string): Promise<void> {
+  await ctx.tx.case.updateMany({ where: { id: caseId, tenantId: ctx.tenantId, category: null }, data: { category } });
 }

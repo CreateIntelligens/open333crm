@@ -8,35 +8,69 @@
  *   < threshold (or no KB)— **clarify**: ask one question to gather more info,
  *                           bounded by clarifyMaxAttempts (then handoff)
  *
+ * 追問用完或追問的 LLM 呼叫失敗時，回覆「已為您轉接客服人員」並在同一個交易真的轉接
+ * （handOffConversation，與自動轉接共用；issue #419）。
+ * 因錯誤沒有回覆時回傳 failed（KbAutoReplyResult），由 automation.worker 轉接真人（issue #445）。
+ *
+ * 這個檔案放回覆內容的判斷與收 TenantCtx 的查詢；交易、embedding、LLM 與送出在
+ * kb-autoreply.flow.ts（change migrate-ai-kb-autoreply-tenant-ctx）。
+ *
  * The LLM now receives the recent conversation history (last 10 messages) so
  * follow-up turns make sense and clarification questions don't repeat earlier
  * answers.
  */
 
-import type { PrismaClient, Prisma } from '@prisma/client';
-import type { Server } from 'socket.io';
-import { getConfig } from '../../config/env.js';
-import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
-import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
-import { getChatSettings } from '../settings/chat-settings.service.js';
-import { generateReply, CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
+import type { Prisma } from '@prisma/client';
+import { readEmbeddingInputs, searchSimilarArticles, type ArticleSearchResult } from '../embedding/embedding.service.js';
+import type { EmbeddingSettings } from '../settings/embedding-settings.service.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { getChatSettings, type ChatSettings } from '../settings/chat-settings.service.js';
 import type { HistoryMessage } from './llm.service.js';
-import { detectModels, isKnownModel, findRelatedModels } from './model-matcher.js';
+import { detectModels, isKnownModel, findRelatedModels, hasKnownPrefix } from './model-matcher.js';
 import { getKnownModelKeys } from './model-registry.service.js';
-import { deliverToChannel } from '../conversation/conversation.service.js';
 import { loadOtherChannelContext } from './other-channel-context.js';
-import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../identity-binding/ai-guard.js';
+import { AI_HISTORY_FETCH_FACTOR, toAiHistory } from '../identity-binding/ai-guard.js';
 import {
-  hasMatchingKeywordRule,
-  DEFAULT_BOT_CONFIG,
   DEFAULT_HANDOFF_PROMPT_TEXT,
+  getBotConfig,
   type BotConfig,
-} from '../automation/automation.worker.js';
+} from '@open333crm/automation';
 import { logger } from '@open333crm/core';
+import { AppError } from '../../shared/utils/response.js';
+import type { AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
-const CLARIFY_HANDOFF_FALLBACK =
+export const CLARIFY_HANDOFF_FALLBACK =
   '不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。';
 const HISTORY_LIMIT = 10;
+
+/** 追問用完、或追問的 LLM 呼叫失敗時寫進 handoffReason 的原因（客服看得到為什麼轉接） */
+export function clarifyExhaustedReason(attempts: number, max: number): string {
+  return `知識庫找不到可回答的內容，追問次數已達上限（${attempts}/${max}）`;
+}
+export function clarifyLlmFailedReason(err: unknown): string {
+  return aiErrorCause(err) === AI_ERROR_CAUSES.PLAN_LIMIT_EXCEEDED
+    ? 'AI 月額度已用完，無法自動回覆'
+    : 'AI 回覆失敗，無法自動追問';
+}
+
+/** 錯誤種類 → 客服看得懂的原因。錯誤訊息不寫進原因：可能含供應商回應或內部網址 */
+const AI_ERROR_CAUSES: Record<string, string> = {
+  AI_DEIDENTIFICATION_UNAVAILABLE: '去識別化服務無法使用',
+  AI_PRIVACY_POLICY_UNAVAILABLE: '個資保護設定無法讀取',
+  PLAN_LIMIT_EXCEEDED: 'AI 月額度已用完',
+};
+function aiErrorCause(err: unknown): string | undefined {
+  return err instanceof AppError ? AI_ERROR_CAUSES[err.code] : undefined;
+}
+
+/**
+ * agent 沒有回覆、知識庫回覆又因錯誤失敗時的轉接原因（issue #445）。
+ * 先看知識庫的錯誤，是一般錯誤時再看 agent 丟出的錯誤
+ */
+export function aiReplyFailedReason(kbError: unknown, agentError?: unknown): string {
+  const cause = aiErrorCause(kbError) ?? aiErrorCause(agentError) ?? 'AI 服務發生錯誤';
+  return `AI 暫時無法回覆（${cause}）`;
+}
 
 /**
  * kbContext 字數預算：避免單篇硬截把答案尾段切掉，同時控制總長不撐爆 LLM context。
@@ -49,7 +83,7 @@ const KB_TOTAL_CONTEXT_LIMIT = 8000;
  * 把 KB 檢索結果組成 grounding context（總預算制）。
  * 逐篇加入，單篇截到 KB_PER_ARTICLE_LIMIT，累計到 KB_TOTAL_CONTEXT_LIMIT 為止。
  */
-function buildKbContext(
+export function buildKbContext(
   results: Array<{ title: string; content: string; summary: string }>,
 ): string {
   const parts: string[] = [];
@@ -73,247 +107,131 @@ function buildKbContext(
  */
 const MODEL_GUARD_EXEMPT_SIMILARITY = 0.85;
 
-type ReplyKind =
+/**
+ * 知識庫自動回覆的結果（issue #445）。呼叫端以 failed 判斷要不要轉接真人：
+ * - replied：已寫入並送出回覆（含型號守門、追問、「已為您轉接」與 LLM 失敗時的文章內容）
+ * - skipped：正常的不回覆，不是失敗，不轉接
+ * - failed：因錯誤沒有回覆（例如 embedding 或去識別化服務失敗）。這個函式丟出的錯誤（ClaimTransactionError 以外）也是失敗
+ */
+export type KbAutoReplySkipReason =
+  | 'kb_disabled'
+  | 'not_bot_handled'
+  | 'bot_mode'
+  /** 寫入時認領不到（別的處理已回覆），或要轉接時對話已不是 BOT_HANDLED */
+  | 'already_handled';
+export type KbAutoReplyResult =
+  | { status: 'replied' }
+  | { status: 'skipped'; reason: KbAutoReplySkipReason }
+  | { status: 'failed'; error: unknown };
+
+export const skipped = (reason: KbAutoReplySkipReason): KbAutoReplyResult => ({ status: 'skipped', reason });
+
+export type ReplyKind =
   | 'kb_high_confidence'
   | 'kb_with_handoff'
   | 'clarify'
   | 'clarify_handoff'
   | 'model_not_found';
 
-export async function attemptKbAutoReply(
-  prisma: PrismaClient,
-  io: Server,
-  tenantId: string,
+
+/** 處理開始時讀到的資料（readKbReplyContext） */
+export interface KbReplyContext {
+  channelId: string;
+  botConfig: BotConfig;
+  chatSettings: ChatSettings;
+  history: HistoryMessage[];
+  otherChannelContext: string;
+  embeddingSettings: EmbeddingSettings;
+  /** 遮罩政策：向量化、遮罩回覆都用這一份（design D4） */
+  policy: AiPrivacyPolicy;
+  /** 處理開始時的追問次數（追問與型號守門共用） */
+  prevAttempts: number;
+}
+
+/**
+ * 交易 A（design D1 步驟 1）：確認對話是 BOT_HANDLED、依 botConfig 判斷要不要回覆，並讀回覆需要的資料。
+ * `KB_AUTO_REPLY_ENABLED` 由 flow 在開交易之前檢查。
+ * 只讀，不呼叫外部服務。回傳略過原因時不再讀之後的資料。
+ *
+ * 關鍵字規則的讓步由 automation worker 在呼叫之前判斷（design D7）。這裡不判斷：hasMatchingKeywordRule()
+ * 讀取條件資料失敗時會 catch 後繼續查詢，PostgreSQL 在查詢失敗後拒絕同一個交易的其他查詢。
+ */
+export async function readKbReplyContext(
+  ctx: TenantCtx,
   conversationId: string,
-  messageText: string,
-  delivery: { replyToken?: string; receivedAt?: string } = {},
-): Promise<boolean> {
-  const config = getConfig();
+): Promise<{ skip: KbAutoReplySkipReason } | KbReplyContext> {
+  const { tenantId } = ctx;
 
-  // 1. Global enable check
-  if (!config.KB_AUTO_REPLY_ENABLED) return false;
-
-  // 1.5 若有 keyword.matched 規則命中此訊息，讓步給 keyword 規則處理。
-  // 避免 KB 走 clarify_handoff 把對話改成 AGENT_HANDLED，後續 keyword rule 觸發後也無法回。
-  if (await hasMatchingKeywordRule(prisma, tenantId, messageText)) {
-    logger.info(`[KbAutoReply] conv=${conversationId} skipped: keyword rule will handle`);
-    return false;
-  }
-
-  // 2. Only proceed for BOT_HANDLED conversations
-  const conversation = await prisma.conversation.findFirst({
+  const conversation = await ctx.tx.conversation.findFirst({
     where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-    include: {
-      channel: { select: { id: true, channelType: true, credentialsEncrypted: true, settings: true, isActive: true } },
-      contact: {
-        select: {
-          channelIdentities: {
-            select: { uid: true, channelId: true },
-          },
-        },
-      },
-    },
+    select: { metadata: true, channel: { select: { id: true, settings: true } } },
   });
-  if (!conversation) return false;
+  if (!conversation) return { skip: 'not_bot_handled' };
 
-  // 3. Channel botMode gating + 解析完整 botConfig（含 handoff prompt 設定）
-  // spread 對 undefined 才 fallback；空字串 / 不合法 enum 會覆蓋預設，需另外清理。
-  const channelSettings = (conversation.channel.settings || {}) as Record<string, unknown>;
-  const rawBotConfig = (channelSettings.botConfig || {}) as Partial<BotConfig>;
-  const merged: BotConfig = { ...DEFAULT_BOT_CONFIG, ...rawBotConfig };
-  const botConfig: BotConfig = {
-    ...merged,
-    handoffPromptStyle: (['text', 'button', 'both', 'none'] as const).includes(
-      merged.handoffPromptStyle,
-    )
-      ? merged.handoffPromptStyle
-      : DEFAULT_BOT_CONFIG.handoffPromptStyle,
-    handoffButtonLabel:
-      typeof merged.handoffButtonLabel === 'string' && merged.handoffButtonLabel.trim().length > 0
-        ? merged.handoffButtonLabel
-        : DEFAULT_BOT_CONFIG.handoffButtonLabel,
-  };
-  if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return false;
+  // 不合法的舊值逐欄改用預設值（bot-handoff-config「讀取機器人設定時不合法的值改用預設值」）
+  const botConfig = getBotConfig(conversation.channel.settings);
+  if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return { skip: 'bot_mode' };
 
-  // 4. Load tenant chat settings (clarify thresholds + system prompts)
-  const chatSettings = await getChatSettings(prisma, tenantId);
-
-  // 5. Fetch conversation history (excluding the just-arrived message we're replying to)
-  const history = await loadKbHistory(prisma, conversationId);
+  const chatSettings = await getChatSettings(ctx);
+  // 對話歷史不含正在回覆的這則進站訊息
+  const history = await loadKbHistory(ctx, conversationId);
   // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
-  const otherChannelContext = await loadOtherChannelContext(prisma, tenantId, conversationId);
+  const otherChannelContext = await loadOtherChannelContext(ctx, conversationId);
+  // 一次處理只讀一次向量化設定與遮罩政策（change migrate-embedding-tenant-ctx，design D5）
+  const { settings: embeddingSettings, policy } = await readEmbeddingInputs(ctx);
 
-  // 6. Generate embedding for inbound message
-  let queryEmbedding: number[];
-  try {
-    queryEmbedding = await generateEmbedding(prisma, tenantId, messageText);
-  } catch (err) {
-    logger.error('[KbAutoReply] Failed to generate embedding:', err);
-    return false;
-  }
+  const convMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
+  return {
+    channelId: conversation.channel.id,
+    botConfig,
+    chatSettings,
+    history,
+    otherChannelContext,
+    embeddingSettings,
+    policy,
+    prevAttempts: Number(convMeta.clarifyAttempts ?? 0),
+  };
+}
 
-  // 7. KB similarity search
-  const embeddingSettings = await getEmbeddingSettings(prisma, tenantId);
-  const results = await searchSimilarArticles(prisma, queryEmbedding, tenantId, {
-    topK: embeddingSettings.topK,
-    threshold: embeddingSettings.threshold,
+export interface KbSearchResult {
+  results: ArticleSearchResult[];
+  topResult: ArticleSearchResult | undefined;
+  topSimilarity: number;
+  /** 型號守門：有值時要引導客人確認型號 */
+  modelGuard: { unknownModel: string; relatedModels: string[] } | null;
+}
+
+/** 交易 B（design D1 步驟 3）：搜尋知識庫，型號守門需要時讀型號白名單 */
+export async function searchKbArticles(
+  ctx: TenantCtx,
+  input: { conversationId: string; messageText: string; embedding: number[]; settings: EmbeddingSettings },
+): Promise<KbSearchResult> {
+  const results = await searchSimilarArticles(ctx, input.embedding, {
+    topK: input.settings.topK,
+    threshold: input.settings.threshold,
   });
   const topResult = results[0];
   const topSimilarity = topResult?.similarity ?? 0;
   logger.info(
-    `[KbAutoReply] conv=${conversationId} kbResults=${results.length} topSim=${topSimilarity.toFixed(3)}`,
+    `[KbAutoReply] conv=${input.conversationId} kbResults=${results.length} topSim=${topSimilarity.toFixed(3)}`,
   );
-
-  // 7.5 型號守門：客戶提到的型號若不在知識庫白名單，且 KB 相似度不夠高，
-  //     代表這可能是「查無此型號（打錯/記錯）」。此時不要拿相近型號的資料硬答，
-  //     改為引導客戶從相近型號清單中確認正確型號。
-  //     高相似度（>= MODEL_GUARD_EXEMPT_SIMILARITY）豁免，避免誤擋剛新增的型號。
-  let replyText: string;
-  let replyKind: ReplyKind;
-  let metadataExtras: Record<string, unknown> = {};
-
-  const modelGuard = await checkModelGuard(
-    prisma,
-    tenantId,
-    messageText,
-    topSimilarity,
-  );
-
-  if (modelGuard) {
-    // 命中守門 → 引導選型號
-    const relatedList = modelGuard.relatedModels;
-    const guideContext =
-      relatedList.length > 0
-        ? `相近型號清單：\n${relatedList.join('\n')}`
-        : '';
-    try {
-      replyText = await generateReply(prisma, tenantId, messageText, guideContext, {
-        overrideSystemPrompt: chatSettings.modelGuideSystemPrompt || MODEL_GUIDE_SYSTEM_PROMPT,
-        history,
-        otherChannelContext,
-        meta: { feature: 'kb-autoreply', conversationId },
-      });
-    } catch (err) {
-      logger.error('[KbAutoReply] Model-guide generation failed, using fallback:', err);
-      replyText =
-        relatedList.length > 0
-          ? `不好意思，「${modelGuard.unknownModel}」這個型號我這邊查不到資料。` +
-            `想再幫您確認一下，您的產品是不是以下其中一款呢？\n${relatedList.join('\n')}\n` +
-            `型號通常印在產品本體底部標籤或外箱貼紙上，可以幫您對照看看。`
-          : `不好意思，「${modelGuard.unknownModel}」這個型號我這邊查不到資料，` +
-            `方便請您確認一下產品本體底部標籤或外箱貼紙上的正確型號嗎？`;
-    }
-    replyKind = 'model_not_found';
-    // 守門不應重置 clarify 計數，但也不該累加；維持原值即可（不寫入 metadataExtras）。
-    metadataExtras = {
-      modelGuard: {
-        unknownModel: modelGuard.unknownModel,
-        relatedModels: relatedList,
-        topSimilarity,
-      },
-    };
-    return await persistAndDeliver({
-      prisma,
-      io,
-      tenantId,
-      conversationId,
-      conversation,
-      botConfig,
-      replyText,
-      replyKind,
-      topResult,
-      results,
-      topSimilarity,
-      metadataExtras,
-      delivery,
-    });
-  }
-
-  // 8. Decide reply path
-  const needsClarify = !topResult || topSimilarity < chatSettings.clarifyThreshold;
-
-  if (needsClarify) {
-    // Track clarify attempts in conversation.metadata to avoid loops
-    const convMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
-    const prevAttempts = Number(convMeta.clarifyAttempts ?? 0);
-    const nextAttempts = prevAttempts + 1;
-
-    if (prevAttempts >= chatSettings.clarifyMaxAttempts) {
-      replyText = CLARIFY_HANDOFF_FALLBACK;
-      replyKind = 'clarify_handoff';
-      metadataExtras = { clarifyAttempts: prevAttempts };
-    } else {
-      try {
-        const overridePrompt =
-          chatSettings.clarifySystemPrompt || CLARIFY_SYSTEM_PROMPT;
-        const llmReply = await generateReply(prisma, tenantId, messageText, '', {
-          overrideSystemPrompt: overridePrompt,
-          history,
-          otherChannelContext,
-          meta: { feature: 'kb-autoreply', conversationId },
-        });
-        replyText = llmReply;
-        replyKind = 'clarify';
-        metadataExtras = { clarifyAttempts: nextAttempts };
-      } catch (err) {
-        logger.error('[KbAutoReply] Clarify generation failed, handing off:', err);
-        replyText = CLARIFY_HANDOFF_FALLBACK;
-        replyKind = 'clarify_handoff';
-        metadataExtras = { clarifyAttempts: prevAttempts };
-      }
-    }
-  } else {
-    // KB has a useful match — use it as grounded context.
-    // 採「總預算制」：單篇上限 PER_ARTICLE_LIMIT，全部合計上限 TOTAL_CONTEXT_LIMIT。
-    // 避免單篇硬截 1500 字把答案尾段（如客服電話、操作步驟）切掉。
-    const kbContext = buildKbContext(results);
-
-    try {
-      const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, {
-        history,
-        otherChannelContext,
-        meta: { feature: 'kb-autoreply', conversationId },
-      });
-      replyText = llmReply;
-      replyKind = topSimilarity >= 0.80 ? 'kb_high_confidence' : 'kb_with_handoff';
-      // Successful KB answer resets clarify attempts
-      metadataExtras = { clarifyAttempts: 0 };
-    } catch (err) {
-      logger.error('[KbAutoReply] LLM generation failed, falling back to article content:', err);
-      replyText = topResult.content || topResult.summary || topResult.title;
-      replyKind = topSimilarity >= 0.80 ? 'kb_high_confidence' : 'kb_with_handoff';
-      metadataExtras = { clarifyAttempts: 0 };
-    }
-  }
-
-  return await persistAndDeliver({
-    prisma,
-    io,
-    tenantId,
-    conversationId,
-    conversation,
-    botConfig,
-    replyText,
-    replyKind,
-    topResult,
-    results,
-    topSimilarity,
-    metadataExtras,
-    delivery,
-  });
+  // 型號守門必須是這個交易的最後一步：checkModelGuard() 讀白名單失敗時 catch 後繼續，
+  // PostgreSQL 在查詢失敗後拒絕同一個交易的其他查詢（25P02，見 design D7）
+  const modelGuard = await checkModelGuard(ctx, input.messageText, topSimilarity);
+  return { results, topResult, topSimilarity, modelGuard };
 }
 
 /**
  * 型號守門檢查：判斷訊息是否提到「知識庫查無的型號」，需要引導使用者選型號。
  *
- * 回傳 null = 不攔截（沒提型號 / 型號已知 / KB 相似度夠高可豁免）。
+ * 回傳 null = 不攔截（沒提型號 / 型號已知 / KB 相似度夠高可豁免 /
+ * 知識庫沒有型號文章（白名單空）/ 型號前綴不在白名單，例如訂單編號）。
  * 回傳物件 = 攔截，附上查無的型號與相近型號清單。
  *
  * 只針對「第一個查無的型號」攔截（通常客戶一次問一台）。
  */
 async function checkModelGuard(
-  prisma: PrismaClient,
-  tenantId: string,
+  ctx: TenantCtx,
   messageText: string,
   topSimilarity: number,
 ): Promise<{ unknownModel: string; relatedModels: string[] } | null> {
@@ -325,7 +243,7 @@ async function checkModelGuard(
 
   let knownKeys: ReadonlySet<string>;
   try {
-    knownKeys = await getKnownModelKeys(prisma, tenantId, Date.now());
+    knownKeys = await getKnownModelKeys(ctx, Date.now());
   } catch (err) {
     // 白名單載入失敗時不要擋人，退回原本流程。
     logger.error('[KbAutoReply] Failed to load model registry, skipping model guard:', err);
@@ -333,6 +251,9 @@ async function checkModelGuard(
   }
 
   for (const model of detected) {
+    // 前綴不在白名單就不是這個租戶的型號（例如訂單編號 AB-12345）；
+    // 知識庫沒有型號文章（白名單空）時每個前綴都不在白名單，等於不啟用守門（issue #420）
+    if (!hasKnownPrefix(model, knownKeys)) continue;
     if (!isKnownModel(model, knownKeys)) {
       const relatedModels = findRelatedModels(model, knownKeys);
       logger.info(
@@ -345,137 +266,50 @@ async function checkModelGuard(
 }
 
 /**
- * 共用的「儲存 BOT 訊息 → 更新對話 → WebSocket 推送 → 送往 channel」流程。
- * KB 正常回答路徑與型號守門路徑共用此函式。
+ * 寫入知識庫的機器人回覆並更新對話（design D3）。在 replyGuard 的交易內呼叫。
+ *
+ * 以條件更新確認對話仍是 BOT_HANDLED：產生回覆期間客服接手時回傳 null，呼叫端 rollback、不送出
+ * （bot-handoff-config「轉接後關鍵字規則照常回覆」）。metadata 在這個交易內讀最新的值再合併。
  */
-async function persistAndDeliver(input: {
-  prisma: PrismaClient;
-  io: Server;
-  tenantId: string;
-  conversationId: string;
-  conversation: { metadata: Prisma.JsonValue };
-  botConfig: BotConfig;
-  replyText: string;
-  replyKind: ReplyKind;
-  topResult: { id: string; title: string } | undefined;
-  results: Array<{ id: string; title: string; similarity: number }>;
-  topSimilarity: number;
-  metadataExtras: Record<string, unknown>;
-  delivery?: { replyToken?: string; receivedAt?: string };
-}): Promise<boolean> {
-  const {
-    prisma,
-    io,
-    tenantId,
-    conversationId,
-    conversation,
-    botConfig,
-    replyText,
-    replyKind,
-    topResult,
-    results,
-    topSimilarity,
-    metadataExtras,
-    delivery,
-  } = input;
-
-  // 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
-  const kbReply = buildKbReplyPayload({ replyText, replyKind, botConfig });
-  // 真正送 channel 的文字（可能多帶 text suffix）— DB 也存這份以利客服 UI 對齊
-  // 綁定代碼只能由綁定流程產生：回覆含代碼（KB 內容或 LLM 生成）就整則換成固定說明
-  const guarded = await guardAiReplyForTenant(prisma, tenantId, kbReply.text, { conversationId, source: 'kb_autoreply' });
-  const finalText = guarded.text;
-
-  // Persist BOT message
-  const now = new Date();
-  const botMessage = await prisma.message.create({
-    data: {
-      conversationId,
-      direction: 'OUTBOUND',
-      senderType: 'BOT',
-      contentType: 'text',
-      content: { text: finalText },
-      metadata: {
-        source: 'kb_auto_reply',
-        replyKind,
-        confidence: topSimilarity,
-        articleId: topResult?.id,
-        articleTitle: topResult?.title,
-        allResults: results.map((r) => ({ id: r.id, title: r.title, similarity: r.similarity })),
-        ...metadataExtras,
-        ...(guarded.blocked ? { bindingCodeBlocked: true } : {}),
-      },
-      createdAt: now,
-    },
+export async function writeKbReply(
+  ctx: TenantCtx,
+  input: {
+    conversationId: string;
+    now: Date;
+    content: Prisma.InputJsonValue;
+    metadata: Prisma.InputJsonValue;
+    /** 合併進 conversation.metadata 的欄位（追問次數、型號守門） */
+    conversationMetadata: Record<string, unknown>;
+  },
+) {
+  const { tenantId } = ctx;
+  const current = await ctx.tx.conversation.findFirst({
+    where: { id: input.conversationId, tenantId, status: 'BOT_HANDLED' },
+    select: { metadata: true },
   });
-
-  // Update conversation (counters + clarifyAttempts / modelGuard)
-  const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
-  await prisma.conversation.update({
-    where: { id: conversationId },
+  if (!current) return null;
+  const existingMeta = (current.metadata ?? {}) as Record<string, unknown>;
+  const updated = await ctx.tx.conversation.updateMany({
+    where: { id: input.conversationId, tenantId, status: 'BOT_HANDLED' },
     data: {
       botRepliesCount: { increment: 1 },
-      lastMessageAt: now,
-      metadata: { ...existingMeta, ...metadataExtras } as Prisma.InputJsonValue,
+      lastMessageAt: input.now,
+      metadata: { ...existingMeta, ...input.conversationMetadata } as Prisma.InputJsonValue,
     },
   });
+  if (updated.count !== 1) return null;
 
-  // Real-time
-  const wsPayload = {
-    conversationId,
-    message: {
-      id: botMessage.id,
-      conversationId,
+  return ctx.tx.message.create({
+    data: {
+      conversationId: input.conversationId,
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text: finalText },
-      metadata: botMessage.metadata,
-      createdAt: now.toISOString(),
-      sender: null,
+      content: input.content,
+      metadata: input.metadata,
+      createdAt: input.now,
     },
-  };
-  io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
-
-  // Deliver to actual channel
-  // 命中 KB 的回答附「👎 沒幫到我」回報按鈕（quick reply postback），供調教 KB。
-  // 加上 handoff_request 按鈕（依 botConfig.handoffPromptStyle）給使用者一鍵轉接。
-  // clarify / clarify_handoff / model_not_found 沒命中 KB 文章，不附「沒幫到我」按鈕。
-  const hitKb = replyKind === 'kb_high_confidence' || replyKind === 'kb_with_handoff';
-  const quickReplies: Array<{ label: string; postbackData: string }> = [];
-  if (hitKb && topResult?.id) {
-    quickReplies.push({
-      label: '👎 沒幫到我',
-      postbackData: `kb_feedback:bad:${topResult.id}:${botMessage.id}`,
-    });
-  }
-  if (kbReply.includeHandoffButton) {
-    quickReplies.push({
-      label: botConfig.handoffButtonLabel,
-      postbackData: 'handoff_request',
-    });
-  }
-
-  if (quickReplies.length > 0) {
-    await deliverToChannel(prisma, conversationId, {
-      contentType: 'text',
-      content: { text: finalText, quickReplies },
-      delivery,
-    });
-  } else {
-    await deliverToChannel(prisma, conversationId, {
-      contentType: 'text',
-      content: { text: finalText },
-      delivery,
-    });
-  }
-
-  logger.info(
-    `[KbAutoReply] conv=${conversationId} kind=${replyKind} sim=${topSimilarity.toFixed(3)} handoffStyle=${botConfig.handoffPromptEnabled ? botConfig.handoffPromptStyle : 'disabled'}`,
-  );
-
-  return true;
+  });
 }
 
 /**
@@ -486,7 +320,7 @@ async function persistAndDeliver(input: {
  * - kb_with_handoff + enabled=true：依 style 決定（text / button / both / none）
  * - enabled=false：完全不附
  */
-function buildKbReplyPayload(input: {
+export function buildKbReplyPayload(input: {
   replyText: string;
   replyKind: ReplyKind;
   botConfig: BotConfig;
@@ -514,12 +348,9 @@ function buildKbReplyPayload(input: {
  * user/assistant turns. The just-arrived inbound message is excluded — we
  * pass it separately via `userMessage`.
  */
-export async function loadKbHistory(
-  prisma: PrismaClient,
-  conversationId: string,
-): Promise<HistoryMessage[]> {
-  const rows = await prisma.message.findMany({
-    where: { conversationId },
+export async function loadKbHistory(ctx: TenantCtx, conversationId: string): Promise<HistoryMessage[]> {
+  const rows = await ctx.tx.message.findMany({
+    where: { conversationId, conversation: { tenantId: ctx.tenantId } },
     orderBy: { createdAt: 'desc' },
     // 多取一些：綁定訊息過濾掉之後，仍要留滿 HISTORY_LIMIT 則一般對話
     take: (HISTORY_LIMIT + 1) * AI_HISTORY_FETCH_FACTOR,

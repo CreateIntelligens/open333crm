@@ -2,6 +2,7 @@ import type { PrismaClient, Conversation, Message } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { ChannelPlugin, ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
+import { getBotConfig as readBotConfig, type BotConfig } from '@open333crm/automation';
 
 export interface ProcessInboundMessageOptions {
   conversationId?: string;
@@ -31,7 +32,7 @@ export interface InboundMessageContext {
   textContent: string;
   postbackData: string;
   channelSettings?: Record<string, unknown>;
-  botConfig?: Record<string, unknown>;
+  botConfig?: BotConfig;
   contactId?: string;
   /**
    * 本次請求是否為「該渠道 uid 首次建立身分」。
@@ -41,6 +42,11 @@ export interface InboundMessageContext {
    * 因此首次進站招呼語在多實例部署下也只會送出一次。
    */
   isFirstContact?: boolean;
+  /**
+   * 加入好友事件（contentType 'follow'）是否為這個渠道身分第一次加入（design D28）。
+   * 由 recordInboundFollow 設定；其他事件沒有值。
+   */
+  isFirstFollow?: boolean;
   channelIdentity?: {
     contactId: string;
     contact?: unknown;
@@ -98,10 +104,11 @@ export async function getChannelSettings(ctx: InboundMessageContext): Promise<Re
   return ctx.channelSettings;
 }
 
-export async function getBotConfig(ctx: InboundMessageContext): Promise<Record<string, unknown>> {
+/** 渠道的機器人設定；不合法的舊值逐欄改用預設值（bot-handoff-config「讀取機器人設定時不合法的值改用預設值」） */
+export async function getBotConfig(ctx: InboundMessageContext): Promise<BotConfig> {
   if (ctx.botConfig) return ctx.botConfig;
 
   const channelSettings = await getChannelSettings(ctx);
-  ctx.botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
+  ctx.botConfig = readBotConfig(channelSettings);
   return ctx.botConfig;
 }

@@ -18,6 +18,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { CompactImageField } from './CompactImageField';
 import { CompactVideoField } from './CompactVideoField';
+import { CouponUrlTextField } from './CouponUrlTextField';
+
+const FB_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 
 interface EditorProps<T = Record<string, unknown>> {
   body: T;
@@ -34,14 +37,13 @@ export function LineTextEditor({ body, onChange }: EditorProps<LineTextBody>) {
   return (
     <div className="space-y-2">
       <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">訊息內容</label>
-      <Textarea
+      <CouponUrlTextField
         value={body.text ?? ''}
-        onChange={(e) => onChange({ ...body, text: e.target.value })}
-        rows={5}
+        onChange={(text) => onChange({ ...body, text })}
         placeholder="輸入要發送的文字訊息"
         maxLength={5000}
+        claimLinkChannelType="LINE"
       />
-      <div className="text-[11px] text-slate-400">{(body.text ?? '').length} / 5000</div>
     </div>
   );
 }
@@ -72,14 +74,13 @@ export function FbTextEditor({ body, onChange }: EditorProps<{ text?: string }>)
   return (
     <div className="space-y-2">
       <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">訊息內容</label>
-      <Textarea
+      <CouponUrlTextField
         value={body.text ?? ''}
-        onChange={(e) => onChange({ ...body, text: e.target.value })}
-        rows={5}
+        onChange={(text) => onChange({ ...body, text })}
         placeholder="輸入要發送的文字訊息"
         maxLength={2000}
+        claimLinkChannelType="FB"
       />
-      <div className="text-[11px] text-slate-400">{(body.text ?? '').length} / 2000</div>
     </div>
   );
 }
@@ -102,6 +103,8 @@ export function FbVideoEditor({ body, onChange }: EditorProps<{ url?: string; me
         value={(body.url ?? body.mediaUrl) ?? ''}
         onChange={(url) => onChange({ ...body, url })}
         placeholder="https://...mp4"
+        // FB Messenger 附件上限 25MB（與一般上傳相同）
+        maxBytes={FB_VIDEO_MAX_BYTES}
         validateUrl={null}
       />
     </div>

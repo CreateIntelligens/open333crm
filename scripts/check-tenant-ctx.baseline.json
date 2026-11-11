@@ -1,0 +1,70 @@
+{
+  "TenantDb": {
+    "lib/tenant-db.ts": 1,
+    "modules/ai/flex-ai.service.ts": 2,
+    "modules/auth/auth.service.ts": 2,
+    "modules/case/case.service.ts": 3,
+    "modules/channel/channel.routes.ts": 3,
+    "modules/channel/channel.service.ts": 12,
+    "modules/channel/fb-token-monitor.service.ts": 2,
+    "modules/channel/line-webhook-setup.service.ts": 2,
+    "modules/channel/webchat-embed.service.ts": 2,
+    "modules/conversation/conversation.service.ts": 10,
+    "modules/csat/csat.service.ts": 3,
+    "modules/identity-binding/ai-guard.ts": 2,
+    "modules/identity-binding/binding-common.ts": 7,
+    "modules/identity-binding/email-registration.service.ts": 5,
+    "modules/identity-binding/identifier-registration.ts": 9,
+    "modules/identity-binding/identity-binding.service.ts": 12,
+    "modules/identity-binding/phone-registration.service.ts": 5,
+    "modules/marketing/broadcast.tracking.ts": 3,
+    "modules/marketing/campaign.service.ts": 6,
+    "modules/marketing/marketing.service.ts": 10,
+    "modules/marketing/material.service.ts": 30,
+    "modules/marketing/segment.service.ts": 7,
+    "modules/marketing/template-context.ts": 2,
+    "modules/mcp/line-mcp-audit.ts": 2,
+    "modules/mcp/mcp.server.ts": 2,
+    "modules/meta-connect/meta-connect.service.ts": 4,
+    "modules/notification/notification.service.ts": 7,
+    "modules/platform/ai-privacy.service.ts": 3,
+    "modules/platform/plan-limits.service.ts": 2,
+    "modules/tenant-audit/tenant-audit.service.ts": 2,
+    "modules/webhook-subscriptions/webhook-dispatcher.ts": 2,
+    "services/channel-team-access.ts": 7,
+    "services/channel-visibility.ts": 4,
+    "services/permission.service.ts": 4
+  },
+  "request.tenantPrisma": {
+    "modules/case/case.routes.ts": 1,
+    "modules/channel/channel.routes.ts": 31,
+    "modules/contact/contact.routes.ts": 7,
+    "modules/conversation/conversation.routes.ts": 10,
+    "modules/identity-binding/binding-common.ts": 2,
+    "modules/marketing/marketing.routes.ts": 18,
+    "modules/marketing/material.routes.ts": 19,
+    "modules/mcp/mcp.routes.ts": 1,
+    "modules/meta-connect/meta-connect.routes.ts": 3,
+    "modules/notification/notification.routes.ts": 4,
+    "modules/settings/settings.routes.ts": 4,
+    "modules/webhook-subscriptions/webhook-subscription.routes.ts": 2,
+    "modules/webhook/webhook.routes.ts": 1,
+    "services/channel-visibility.ts": 6
+  },
+  "service 內的 withTenant(": {},
+  "service 內的 $transaction(": {
+    "modules/chatbox/chatbox.service.ts": 1,
+    "modules/platform/ai-privacy.service.ts": 1,
+    "modules/platform/platform-tenant.service.ts": 1,
+    "modules/platform/platform-user.service.ts": 1,
+    "modules/trial/trial.service.ts": 1
+  },
+  "service 內的 inTenant(": {},
+  "service 直接 import Redis client": {
+    "modules/chatbox/chatbox.service.ts": 1,
+    "modules/conversation/conversation.service.ts": 1
+  },
+  "service 直接 import LLM 入口": {
+    "modules/ai/flex-ai.service.ts": 1
+  }
+}

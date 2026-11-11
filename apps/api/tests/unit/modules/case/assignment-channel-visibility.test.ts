@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { getNextAgent } from '#src/modules/case/assignment.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const CH = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -42,11 +43,11 @@ test('Assignment skips members who cannot see the channel：只派給直綁或�
     { id: 'team', name: '團隊授權', direct: {}, teamLevels: { [CH]: 'reply_only' }, open: 3 },
     { id: 'direct', name: '直綁', direct: { [CH]: 'full' }, teamLevels: {}, open: 2 },
   ]);
-  const picked = await getNextAgent(prisma as never, TENANT, null, CH);
+  const picked = await getNextAgent(createMockTenantCtx(prisma, TENANT).ctx, null, CH);
   assert.equal(picked?.id, 'direct', '工作量最少、而且看得到並能回覆的成員');
 });
 
 test('Nobody can see the channel：不派案', async () => {
   const prisma = mockPrisma([{ id: 'unbound', name: '沒綁定', direct: {}, teamLevels: {}, open: 0 }]);
-  assert.equal(await getNextAgent(prisma as never, TENANT, null, CH), null);
+  assert.equal(await getNextAgent(createMockTenantCtx(prisma, TENANT).ctx, null, CH), null);
 });

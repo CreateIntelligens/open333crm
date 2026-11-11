@@ -16,7 +16,7 @@
  *    - 素材 previewImageUrl：前端當 <img src> 渲染
  *    - Rich Menu uri action：LINE 官方只收 http/https/line/tel
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** 後端會主動連線的位址：只允許 http(s)，不接受任何其他 protocol。 */
 export const HTTP_SCHEME_RE = /^https?:\/\//i;

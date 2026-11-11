@@ -2,18 +2,26 @@
 
 跨租戶與單一租戶的 AI 用量與成本統計。
 
-- **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`
-- **核對日期**：2026-09-23
+- **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`、`llm.flow.ts`
+- **核對日期**：2026-11-10
 
 ## 每個端點回傳什麼
 
-這些端點都查同一張 `ai_usages`，預設區間都是最近 30 天，由 query 的 `from` 與 `to` 覆寫。
+這些端點都查同一張 `ai_usages`，預設區間都是最近 30 天（含今天）：從台灣今天往前 29 天的 00:00 到現在（`taipeiRecentDays(30)`，2026-11-10 以前是最近 30×24 小時），每日趨勢剛好 30 筆。由 query 的 `from` 與 `to` 覆寫。
 
 | 端點 | 回傳 | 限制 |
 | --- | --- | --- |
 | `GET /usage/overview` | 全系統的 token、成本、呼叫數，加上各 provider 的佔比與有用量的租戶數 | 無 |
 | `GET /usage/tenants` | 各租戶排行，依 token 由多到少 | 只取前 50 名 |
-| `GET /usage/tenants/:tenantId` | 單一租戶的每日趨勢與各 feature 分佈 | 每日趨勢用 `$queryRaw` 的 `date_trunc`，Prisma 的 `groupBy` 不能截斷日期 |
+| `GET /usage/tenants/:tenantId` | 單一租戶的每日趨勢與各 feature 分佈 | 每日趨勢用 `$queryRaw` 依台灣日期分組（Prisma 的 `groupBy` 不能截斷日期），再補齊期間內每一天，見下方「每日趨勢的分日」 |
+
+### 每日趨勢的分日
+
+- `trend` 以台灣時間（`Asia/Taipei`）的日期分日，`day` 是台灣日期。台灣 00:00–08:00 的呼叫算在台灣當天（2026-11-10 以前用 UTC 分日，算到前一天）。
+- 期間內從 `from` 的台灣日期到 `to` 的台灣日期每天一筆，依日期排序；沒有用量的日子 `tokens: 0`、`costUsd: "0"`、`calls: 0`。期間超過 400 天時只列有用量的日子（`MAX_TREND_DAYS`，與券統計相同）。
+- 期間的過濾與總覽、排行相同（同一組 `from`、`to` 時間點），只有分日方式不同，所以趨勢加總等於該租戶在排行中的數字。頭尾兩天可能不足一整天。
+- `/admin/usage` 的「近 N 天」送出的區間是台灣今天往前 N−1 天的 00:00 到現在（`apps/web/src/app/admin/lib/usage-range.ts`），三個查詢共用，趨勢剛好 N 格。公式與後端預設期間相同；web 不依賴 core，由 `apps/web/tests/unit/app/admin/usage-range.test.ts` 比對兩者。沒有用量的日子不畫長條，但仍佔一格。
+- AI 月額度也以台灣月份計算（2026-11-10 起，見下方「這裡的數字不等於額度用掉的數字」）。
 
 排行只有前 50 名，所以把排行的數字加起來不會等於總覽的數字。租戶數多於 50 時，差額落在沒進榜的那些租戶身上。介面沒有標示這個上限，見 `../../system/AUDIT.md` 的 USAGE-01。
 
@@ -67,7 +75,7 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 
 - **平台後台沒有任何路由或頁面能編輯它。** 整個 repo 只有 `packages/database/prisma/seed.ts` 會寫入，調價要改 seed 或直接改資料庫。
 - 查價結果在 API 行程內快取 10 分鐘，**查無價目的結果也一起快取**。直接改資料庫之後，最久要等 10 分鐘才會套用到新的呼叫，而且 `clearPricingCache()` 沒有對外的端點可以呼叫。多個 API 行程時，每個行程各自快取。
-- seed 也不是正式環境可用的途徑。`seed.ts` 的 `main()` 會建立 Demo Tenant 與固定密碼的 demo 成員，因此實務上只剩直接改資料庫。
+- seed 在 API 容器每次啟動時都會執行，改 seed 的價目再部署就會寫入，但這是改程式碼，不是平台方能自己做的調價。正式環境的 seed 只寫方案、價目與系統範本這類共用資料，不建 Demo 帳號（`seed-data/demo-accounts.ts`）。
 
 成本在寫入時定版、之後不重算，所以缺價期間的呼叫成本永久是 0。修正方向見 `../../system/AUDIT.md` 的 USAGE-02。
 
@@ -78,8 +86,10 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 | | 平台用量統計 | AI 月額度 |
 | --- | --- | --- |
 | 條件 | `success` | `success` 且 `keySource = 'platform'` |
-| 區間 | 呼叫端指定，預設最近 30 天 | 當月，UTC 月初起算 |
+| 區間 | 呼叫端指定，預設台灣今天往前 29 天的 00:00 起 | 當月，台灣時間 1 日 00:00 起算（2026-11-10 以前是 UTC 月初） |
 | 來源 | 每次都查資料庫 | Redis 計數器，miss 時從資料庫回填 |
+
+AI 月額度的月份一律是台灣月份（`taipeiMonthString()`）：Redis 計數器 key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，告警旗標是 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`，兩者都在台灣下個月 1 日 00:00 過期；告警站內通知與 email 的「本月（YYYY-MM）」也是台灣月份。舊的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}`（沒有 `:tpe`）不再被讀取，換版後計數器從資料庫以台灣月份重建，部署當下跨月的行為見 change `fix-platform-usage-trial-display` 的 design D3。
 
 BYOK 的呼叫出現在用量統計裡，但不計入額度，也不會被額度擋下。額度的判斷見 `apps/api/src/modules/trial/token-quota.service.ts`。計數器少算用量之後，當月不會校正，見 `../../system/AUDIT.md` 的 USAGE-03。
 

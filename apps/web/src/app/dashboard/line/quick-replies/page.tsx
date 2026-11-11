@@ -87,7 +87,7 @@ export default function QuickReplyPresetsPage() {
                 <li>每則 LINE 訊息最多 13 個按鈕（LINE 官方限制）</li>
               </ul>
               <div className="rounded border border-warning/30 bg-warning-subtle px-3 py-1.5 text-xs text-warning">
-                💡 預設組只是「按鈕模板」，實際送出去時你還是需要打一句訊息內容（例如「請問您是否同意？」），按鈕會自動附在訊息底下
+                預設組只是「按鈕模板」，實際送出去時你還是需要打一句訊息內容（例如「請問您是否同意？」），按鈕會自動附在訊息底下
               </div>
             </div>
             <div className="space-y-1.5">

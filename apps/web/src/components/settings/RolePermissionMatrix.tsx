@@ -14,6 +14,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Loader2, Plus, Pencil, Trash2, ChevronDown, Search, Lock, Info } from 'lucide-react';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { usePermission } from '@/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { SettingsHeader } from './SettingsHeader';
@@ -276,8 +277,8 @@ export function RolePermissionMatrix() {
       // 更新左欄權限數
       setRoles((rs) => rs.map((r) => (r.id === selectedId ? { ...r, permissionCount: draft.size } : r)));
       setTimeout(() => setOkMsg(null), 2500);
-    } catch (e: any) {
-      setError(e?.response?.data?.message ?? e?.response?.data?.error?.message ?? '儲存失敗');
+    } catch (e) {
+      setError(getApiErrorMessage(e, '儲存失敗'));
     } finally {
       setSaving(false);
     }
@@ -311,8 +312,9 @@ export function RolePermissionMatrix() {
         setRoles((rs) => rs.map((r) => (r.id === dialogTarget.id ? { ...r, name } : r)));
       }
       setDialogMode(null);
-    } catch (e: any) {
-      setDialogErr(e?.response?.data?.message ?? '操作失敗');
+    } catch (e: unknown) {
+      // 後端錯誤訊息在 error.message（原本讀 data.message，永遠是 undefined）
+      setDialogErr(getApiErrorMessage(e, '操作失敗，請稍後重試'));
     }
   }
 
@@ -323,9 +325,9 @@ export function RolePermissionMatrix() {
       setRoles((rs) => rs.filter((r) => r.id !== delTarget.id));
       if (selectedId === delTarget.id) setSelectedId(roles.find((r) => r.id !== delTarget.id)?.id ?? null);
       setDelTarget(null);
-    } catch (e: any) {
-      // 仍被指派 → 顯示阻擋訊息（保留 dialog）
-      setDialogErr(e?.response?.data?.message ?? '刪除失敗');
+    } catch (e: unknown) {
+      // 仍被指派 → 顯示阻擋訊息與佔用的成員（保留 dialog，G18）
+      setDialogErr(getApiErrorMessage(e, '刪除失敗，請稍後重試'));
     }
   }
 
@@ -571,7 +573,7 @@ export function RolePermissionMatrix() {
                                 {autoBy && (
                                   <span
                                     title={`因「${autoBy}」需要而自動開啟`}
-                                    className="rounded-full bg-warning-subtle px-1.5 text-[10px] font-semibold text-warning-foreground"
+                                    className="rounded-full bg-warning-subtle px-1.5 text-[10px] font-semibold text-warning"
                                   >
                                     自動開啟
                                   </span>
@@ -655,8 +657,9 @@ export function RolePermissionMatrix() {
             確定要刪除角色「{delTarget?.name}」嗎？此動作無法復原。
           </p>
           {dialogErr && (
-            <p className="rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning-foreground">
-              ⚠ {dialogErr}
+            // text-warning-foreground 在亮色主題是白色，疊在淺底上看不到；擋下刪除屬於錯誤，用紅色
+            <p role="alert" className="rounded-md bg-destructive-subtle px-3 py-2 text-sm text-destructive">
+              {dialogErr}
             </p>
           )}
           <DialogFooter>

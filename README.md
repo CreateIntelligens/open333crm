@@ -198,7 +198,7 @@ Agent 可在此綁定多個裝置；綁定前會輸入裝置名稱（例如 `Mac
 ### 前置需求
 
 - Docker & Docker Compose（推薦路徑唯一需求）
-- 或本機安裝 Node.js 24.15 以上、pnpm 9（透過 corepack 管理）。版本下限見根目錄 `package.json` 的 `engines`
+- 或本機安裝 Node.js 26（與 Docker image 相同）、pnpm 9（透過 corepack 管理）。根目錄 `package.json` 的 `engines` 也接受 24.22.1 以上
 
 ### 啟動（推薦：全容器化開發環境，支援 hot reload）
 
@@ -244,7 +244,9 @@ pnpm --filter @open333crm/web dev     # 僅 Web
 
 ### 登入
 
-資料庫 seed 完成後，你可以用預設帳號登入。密碼請查看 `packages/database/prisma/seed.ts`。
+資料庫 seed 完成後，你可以用預設帳號登入。密碼請查看 `packages/database/prisma/seed-data/demo-accounts.ts`。
+
+這些帳號只在本機開發建立。`NODE_ENV=production` 時 seed 不建它們，除非設定 `SEED_DEMO_ACCOUNTS=true`。帳號已經存在時，seed 不會覆寫它的密碼與啟用狀態。
 
 ## 常用指令
 

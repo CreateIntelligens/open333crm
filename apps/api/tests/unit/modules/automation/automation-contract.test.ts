@@ -12,6 +12,7 @@ import { createRule } from '#src/modules/automation/automation.service.js';
 import { repoRoot } from '#tests/support/paths.js';
 
 import { test } from 'vitest';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 async function testComposerOutputByEvent() {
   const message = composeAutomationContract(AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED);
   assert.ok(message);
@@ -121,7 +122,7 @@ async function testApiCreateRuleRejectsInvalidContractBeforeWrite() {
 
   await assert.rejects(
     () =>
-      createRule(prisma as any, 'tenant-1', {
+      createRule(createMockTenantCtx(prisma as any, 'tenant-1').ctx, {
         name: 'invalid case rule',
         trigger: { type: AUTOMATION_EVENT_NAMES.CASE_CREATED },
         conditions: {

@@ -1,6 +1,7 @@
-/** AI 回覆含綁定代碼時，runAgentReply 回傳與送出的都是固定說明（change add-cross-channel-one-id，防 AI 偽造代碼） */
+/** AI 回覆含綁定代碼時，runAgentReplyFlow 回傳與送出的都是固定說明（change add-cross-channel-one-id，防 AI 偽造代碼） */
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
+import { mockAgentDeps } from '#tests/support/llm-deps.js';
 
 vi.mock('#src/modules/ai/agent/runner.js', () => ({
   runAgent: async () => ({
@@ -26,31 +27,33 @@ vi.mock('#src/config/env.js', async (orig) => ({
   getConfig: () => ({ AGENT_WIKI_AUTO_PUBLISH: false, AGENT_MAX_TURNS: 1, AGENT_MAX_TOOL_CALLS: 1, AGENT_TIMEOUT_MS: 1000, AGENT_MAX_TOTAL_TOKENS: 1000 }),
 }));
 
-test('runAgentReply：AI 回覆含代碼 → 換成引導傳送綁定關鍵字的固定說明', async () => {
-  const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
+test('runAgentReplyFlow：AI 回覆含代碼 → 換成引導傳送綁定關鍵字的固定說明', async () => {
+  const { runAgentReplyFlow } = await import('#src/modules/ai/agent/agent.flow.js');
   const prisma = {
     agentRun: { create: async () => ({ id: 'run1', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
+    platformSetting: { findUnique: async () => null },
     tenantSettings: { findFirst: async () => ({ identityBinding: { enabled: true, bindKeywords: ['綁定帳號'] } }) },
   } as never;
-  const out = await runAgentReply(prisma, { tenantId: 'agent-guard-tenant', userMessage: '綁定帳號綁定帳號' });
+  const out = await runAgentReplyFlow(mockAgentDeps(prisma), { tenantId: 'a1a1a1a1-0000-4000-8000-000000000001', userMessage: '綁定帳號綁定帳號' });
   assert.doesNotMatch(out.text, /BIND-/);
   assert.match(out.text, /「綁定帳號」/);
 });
 
-test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說明，訊息標記 bindingCodeBlocked', async () => {
-  const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
+test('runAgentReplyFlow 送出時：寫進資料庫與送到渠道的都是固定說明，訊息標記 bindingCodeBlocked', async () => {
+  const { runAgentReplyFlow } = await import('#src/modules/ai/agent/agent.flow.js');
   const created: Array<{ content: { text: string }; metadata: Record<string, unknown> }> = [];
   const tx = {
     conversation: { updateMany: async () => ({ count: 1 }) },
     message: {
       create: async (args: { data: { content: { text: string }; metadata: Record<string, unknown> } }) => {
         created.push(args.data);
-        return { id: 'm1', metadata: args.data.metadata };
+        return { id: 'm1', metadata: args.data.metadata, conversation: { channelId: 'ch1' } };
       },
     },
   };
   const prisma = {
     ...tx,
+    platformSetting: { findUnique: async () => null },
     $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
     conversation: { ...tx.conversation, findFirst: async () => ({ id: 'c1' }) },
     agentRun: { create: async () => ({ id: 'run2', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
@@ -59,7 +62,13 @@ test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說
   } as never;
   const io = { to: () => ({ emit: () => {} }) } as never;
   delivered.length = 0;
-  await runAgentReply(prisma, { tenantId: 'agent-guard-tenant-2', conversationId: 'c1', userMessage: 'x', deliver: true, io });
+  // 認領換成直接在 tx 上寫入：這裡只測寫入與送出的內容
+  const scope = { tx, tenantId: 'a1a1a1a1-0000-4000-8000-000000000002', afterCommit: () => {} };
+  const replyGuard = { alreadyReplied: async () => false, persist: (write: (t: typeof tx, s: typeof scope) => Promise<unknown>) => write(tx, scope) } as never;
+  await runAgentReplyFlow(
+    { ...mockAgentDeps(prisma), io, replyGuard, deliverDb: prisma },
+    { tenantId: 'a1a1a1a1-0000-4000-8000-000000000002', conversationId: 'c1', userMessage: 'x', deliver: true },
+  );
   const expected = '如需綁定其他帳號，請直接傳送「綁定帳號」，系統會提供專屬的綁定連結與代碼。';
   assert.equal(created.length, 1);
   assert.equal(created[0]!.metadata.bindingCodeBlocked, true);

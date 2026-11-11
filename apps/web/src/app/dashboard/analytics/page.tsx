@@ -14,14 +14,33 @@ import { CaseTrendChart } from '@/components/analytics/CaseTrendChart';
 import { CaseSummary, SlaViolationTable, toPriorityDistribution, PRIORITY_COLORS } from '@/components/analytics/CaseReportParts';
 import { AgentPerformanceTable } from '@/components/analytics/AgentPerformanceTable';
 import { ChannelDistributionChart } from '@/components/analytics/ChannelDistributionChart';
+import { CouponAnalyticsPanel } from '@/components/analytics/CouponAnalyticsPanel';
 import {
   useOverviewStats,
   useMessageTrend,
   useCaseAnalytics,
   useAgentPerformance,
   useChannelAnalytics,
+  useCouponAnalytics,
 } from '@/hooks/useAnalytics';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
+
+/**
+ * 匯出用 responseType: 'blob'，錯誤回應的內容也是 Blob，要先轉回 JSON 才讀得到後端的訊息。
+ */
+async function exportErrorMessage(err: unknown): Promise<string> {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text()) as { error?: { message?: string } };
+      if (parsed?.error?.message) return parsed.error.message;
+    } catch {
+      /* 不是 JSON，退回依狀態碼說明 */
+    }
+  }
+  return getApiErrorMessage(err, '請稍後重試');
+}
 
 export default function AnalyticsPage() {
   const [tab, setTab] = useState('overview');
@@ -43,6 +62,8 @@ export default function AnalyticsPage() {
   const caseData = useCaseAnalytics(from, to);
   const agents = useAgentPerformance(from, to);
   const channels = useChannelAnalytics(from, to);
+  // 切到該分頁才載入
+  const coupons = useCouponAnalytics(from, to, tab === 'coupons');
 
   // CSV export
   async function handleExport() {
@@ -68,9 +89,8 @@ export default function AnalyticsPage() {
       a.download = `${reportType}_report.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      // 原本失敗時什麼都不顯示，使用者不知道沒有匯出成功
-      setExportError('匯出失敗，請稍後再試');
+    } catch (err) {
+      setExportError(`匯出失敗：${await exportErrorMessage(err)}`);
     } finally {
       setExporting(false);
     }
@@ -81,7 +101,8 @@ export default function AnalyticsPage() {
       {/* 版面依 Claude Design「報表總覽」：標題列右側為日期範圍＋匯出，下方底線分頁；概覽為 KPI → 趨勢 → 分類／TOP 5 */}
       <Topbar title="總覽" description="檢視訊息量、案件、客服績效與 SLA 達成狀況">
         <DateRangePicker from={from} to={to} onChange={handleDateChange} />
-        {canExport && (
+        {/* 優惠券成效沒有對應的匯出；券的名單匯出在各張券的詳情頁（取自 main） */}
+        {canExport && tab !== 'coupons' && (
           <Button variant="outline" size="lg" onClick={handleExport} disabled={exporting} loading={exporting}>
             {!exporting && <Download />}
             {exporting ? '匯出中…' : '匯出 CSV'}
@@ -99,6 +120,7 @@ export default function AnalyticsPage() {
             <TabsTrigger value="cases">案件報表</TabsTrigger>
             <TabsTrigger value="agents">客服績效</TabsTrigger>
             <TabsTrigger value="channels">渠道分析</TabsTrigger>
+            <TabsTrigger value="coupons">優惠券成效</TabsTrigger>
           </TabsList>
 
           {/* Tab 1: Overview */}
@@ -180,6 +202,16 @@ export default function AnalyticsPage() {
             <ChannelDistributionChart
               data={channels.data}
               isLoading={channels.isLoading}
+            />
+          </TabsContent>
+
+          {/* Tab 5: Coupons */}
+          <TabsContent value="coupons">
+            <CouponAnalyticsPanel
+              data={coupons.data}
+              isLoading={coupons.isLoading}
+              error={coupons.error}
+              onRetry={() => void coupons.mutate()}
             />
           </TabsContent>
         </Tabs>

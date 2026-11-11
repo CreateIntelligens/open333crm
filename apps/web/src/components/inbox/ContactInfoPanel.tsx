@@ -10,7 +10,8 @@ import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { TagManager } from '@/components/contact/TagManager';
 import { SendBindingLinkButton } from './SendBindingLinkButton';
-import { SendEmailRegistrationLinkButton } from './SendEmailRegistrationLinkButton';
+import { SendEmailRegistrationLinkButton, SendPhoneRegistrationLinkButton } from './RegistrationLinkButtons';
+import { IssuedCouponsSection } from './coupon/IssuedCouponsSection';
 import { OtherChannelConversations } from './OtherChannelConversations';
 
 interface ContactInfoPanelProps {
@@ -66,6 +67,8 @@ interface ContactInfoPanelProps {
     };
   } | null;
   onRefresh?: () => void;
+  /** 有 coupon.view 權限時顯示「已發優惠券」 */
+  canViewCoupons?: boolean;
 }
 
 const CASE_STATUS_LABEL: Record<string, string> = {
@@ -77,7 +80,7 @@ const CASE_STATUS_LABEL: Record<string, string> = {
   ESCALATED: '已升級',
 };
 
-export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelProps) {
+export function ContactInfoPanel({ conversation, onRefresh, canViewCoupons }: ContactInfoPanelProps) {
   const [contact, setContact] = useState<Record<string, unknown> | null>(null);
   const [showCreateCase, setShowCreateCase] = useState(false);
 
@@ -284,6 +287,13 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       </div>
 
 
+      {/* 已發優惠券（取自 main；有 coupon.view 才顯示） */}
+      {canViewCoupons && (
+        <div className="p-4">
+          <IssuedCouponsSection conversationId={conversation.id} contactId={conversation.contact?.id} />
+        </div>
+      )}
+
       {/* Custom Attributes */}
       {attributes && attributes.length > 0 && (
         <>
@@ -328,6 +338,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       <div className="flex flex-col gap-2 p-4">
         <h4 className="text-xs font-semibold leading-[17px] text-muted-foreground">快速操作</h4>
         <SendEmailRegistrationLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
+        <SendPhoneRegistrationLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <SendBindingLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <Button variant="subtle" size="sm" className="w-full justify-start" onClick={() => setShowCreateCase(true)}>
           <Plus />

@@ -1,8 +1,8 @@
-FROM node:24-bookworm-slim AS deps
+FROM node:26.13.0-bookworm-slim AS deps
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 
 # Alpine deps for Prisma
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy manifests for all workspace packages that api depends on
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm install reads the patches listed in package.json pnpm.patchedDependencies
+COPY patches ./patches
 COPY apps/api/package.json apps/api/package.json
 COPY packages/automation/package.json packages/automation/package.json
 COPY packages/channel-plugins/package.json packages/channel-plugins/package.json
@@ -20,7 +22,7 @@ COPY packages/shared/package.json packages/shared/package.json
 COPY packages/types/package.json packages/types/package.json
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
-# Magika uses a TensorFlow native addon. Node 24 ARM64 has no prebuilt tfjs-node
+# Magika uses a TensorFlow native addon. Node 24+ ARM64 has no prebuilt tfjs-node
 # binary, so fetch the matching TensorFlow C library/header at build time and
 # compile just this addon. Runtime uses only the resulting local artifacts.
 RUN TFJS_NODE_DIR="$(realpath /app/apps/api/node_modules/@tensorflow/tfjs-node)" \
@@ -53,11 +55,11 @@ RUN pnpm --filter @open333crm/channel-plugins build
 RUN pnpm --filter @open333crm/api build
 
 # ---- Runner ----
-FROM node:24-bookworm-slim AS runner
+FROM node:26.13.0-bookworm-slim AS runner
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 RUN apt-get update && apt-get install -y --no-install-recommends \
   openssl ca-certificates libstdc++6 \
   && rm -rf /var/lib/apt/lists/*

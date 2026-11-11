@@ -49,9 +49,10 @@ const RAIL: RailItem[] = [
         { id: 'knowledge-search', label: '語義搜尋', href: '/dashboard/knowledge/search' },
         { id: 'knowledge-feedback', label: '回報調教', href: '/dashboard/knowledge/feedback' },
       ] },
+      // AI 設定的 API 都要 settings.manage，沒有權限只會看到假資料（A06，取自 main）
       { label: 'AI 設定', items: [
-        { id: 'knowledge-embedding', label: 'Embedding', href: '/dashboard/knowledge/embedding' },
-        { id: 'knowledge-chat', label: 'Chat & Prompt', href: '/dashboard/knowledge/chat-prompt' },
+        { id: 'knowledge-embedding', label: 'Embedding', href: '/dashboard/knowledge/embedding', perm: 'settings.manage' },
+        { id: 'knowledge-chat', label: 'Chat & Prompt', href: '/dashboard/knowledge/chat-prompt', perm: 'settings.manage' },
       ] },
     ],
   },
@@ -62,6 +63,7 @@ const RAIL: RailItem[] = [
       { id: 'marketing-broadcasts', label: '廣播', href: '/dashboard/marketing/broadcasts' },
       { id: 'marketing-segments', label: '受眾分群', href: '/dashboard/marketing/segments' },
       { id: 'marketing-materials', label: '素材庫', href: '/dashboard/marketing/materials' },
+      { id: 'marketing-coupons', label: '優惠券', href: '/dashboard/marketing/coupons', perm: 'coupon.view' },
     ] }],
   },
   {
@@ -69,6 +71,7 @@ const RAIL: RailItem[] = [
     sections: [{ label: 'LINE', items: [
       { id: 'line-rich-menus', label: 'Rich Menu', href: '/dashboard/line/rich-menus' },
       { id: 'line-keywords', label: '關鍵字回覆', href: '/dashboard/line/keyword-replies' },
+      { id: 'line-follow-gift', label: '加好友禮', href: '/dashboard/line/follow-gift' },
       { id: 'line-quick-replies', label: '快速回覆', href: '/dashboard/line/quick-replies' },
     ] }],
   },
@@ -88,10 +91,12 @@ const RAIL: RailItem[] = [
     ] }],
   },
   {
-    id: 'analytics', label: '報表', href: '/dashboard/analytics', perm: 'analytics.view', icon: ReportIcon,
+    // 權限放在子項目，與後端一致：總覽要 analytics.view，我的績效只要 analytics.view.self（G09，取自 main）。
+    // 兩個子項目都沒有權限時整個「報表」隱藏（見 useVisibleRail）。
+    id: 'analytics', label: '報表', href: '/dashboard/analytics', icon: ReportIcon,
     sections: [{ label: '', items: [
-      { id: 'analytics-overview', label: '總覽', href: '/dashboard/analytics' },
-      { id: 'analytics-my', label: '我的績效', href: '/dashboard/analytics/my' },
+      { id: 'analytics-overview', label: '總覽', href: '/dashboard/analytics', perm: 'analytics.view' },
+      { id: 'analytics-my', label: '我的績效', href: '/dashboard/analytics/my', perm: 'analytics.view.self' },
     ] }],
   },
   // Figma 的圖示欄沒有「方案／帳務」，暫放在報表和設定之間
@@ -107,7 +112,9 @@ const RAIL: RailItem[] = [
       { id: 'settings-sla', label: 'SLA 政策', href: '/dashboard/settings/sla' },
       { id: 'settings-office-hours', label: '營業時間', href: '/dashboard/settings/office-hours' },
       { id: 'settings-tracking', label: '追蹤設定', href: '/dashboard/settings/tracking' },
+      { id: 'settings-stores', label: '門市與核銷帳號', href: '/dashboard/settings/stores', perm: 'store.view' },
       { id: 'settings-identity-binding', label: '跨渠道綁定', href: '/dashboard/settings/identity-binding', perm: 'settings.manage' },
+      { id: 'settings-webtalk', label: 'WebTalk 協作', href: '/dashboard/settings/webtalk', perm: 'settings.manage' },
       { id: 'settings-api-keys', label: 'API 金鑰', href: '/dashboard/settings/api-keys' },
       { id: 'settings-cli', label: 'CLI 連線', href: '/dashboard/settings/cli-sessions' },
       { id: 'settings-passkeys', label: 'Passkey 登入', href: '/dashboard/settings/passkeys' },
@@ -127,6 +134,8 @@ function useVisibleRail() {
     const sections = item.sections
       ?.map((g) => ({ ...g, items: g.items.filter((l) => !l.perm || hasPermission(l.perm)) }))
       .filter((g) => g.items.length > 0);
+    // 有子頁的區塊、但子頁全部沒有權限（例如報表的總覽與我的績效都看不到）→ 整個圖示隱藏
+    if (item.sections && sections?.length === 0) return [];
     return [{ ...item, sections }];
   }), [hasPermission]);
 }

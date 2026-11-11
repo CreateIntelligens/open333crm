@@ -36,11 +36,15 @@
 | 動作 | 端點 | 結果 |
 | --- | --- | --- |
 | 停用 | `POST /agents/:id/deactivate` | `isActive` 設為 `false`。帳號保留，email 仍被佔用 |
-| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值 |
+| 查詢停用的成員 | `GET /agents/inactive` | 列出本租戶停用的成員，要 `agent.deactivate` |
+| 重新啟用 | `POST /agents/:id/reactivate` | `isActive` 改回 `true`，角色維持停用前。要 `agent.deactivate`，並套用方案的客服人數上限 |
+| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值。稽核與資料匯出、刪除請求的操作者欄位也改成空值，刪除前先把名稱與 email 存進快照欄位（issue #414，見[稽核](GOVERNANCE.md#租戶稽核日誌)） |
 
-兩個動作都不能套用在租戶內最後一位啟用中的管理員，避免租戶沒有人能管理。永久刪除不要求先停用。
+兩個動作都不能套用在租戶內最後一位啟用中的管理員（422 `LAST_ADMIN_PROTECTED`），避免租戶沒有人能管理；把最後一位管理員改成不含 `role.manage` 的角色也一樣。「管理員」依權限判斷：角色的有效權限含 `role.manage`（標記 `selfLock` 的權限碼）就算，不看舊的角色列舉 `role`。永久刪除不要求先停用。
 
-**停用目前無法復原。** 主規格 `agent-lifecycle` 規定停用的成員可以重新啟用，但沒有重新啟用的路由，`GET /agents` 也不回傳停用的成員，所以管理員在畫面上看不到他們。見 `../../system/AUDIT.md` 的 AUTH-09。
+**不能對權限比自己高的成員操作。** 改角色、重設密碼、停用、永久刪除另一位成員時，對方目前角色的權限含操作者沒有的權限碼，後端回 403 `TARGET_OUTRANKS_ACTOR`（`error.details.exceededPermissions` 列出多出的權限碼）。操作者是 `admin` 系統角色時不受限。因此主管不能降級、停用或重設管理員的密碼；持 `agent.password.reset` 的自訂角色也不能重設管理員的密碼。改角色時先檢查最後一位管理員，再檢查這一條。
+
+**停用可以復原。** `GET /agents` 只回傳啟用中的成員；有 `agent.deactivate` 的成員在「人員管理」頁的「已停用的人員」看到停用的成員，可以重新啟用或進編輯永久刪除。停用的成員仍佔用自訂角色，刪除角色被擋時，錯誤訊息會列出佔用的成員並標示已停用。
 
 **停用不會立刻踢出登入中的成員。** `authenticate` 只驗 token 簽章，不回查帳號狀態。成員被停用後：
 
@@ -85,7 +89,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 ### 權限碼
 
-權限碼定義在 `packages/core/src/rbac/permissions.ts`，每個屬於一個功能（`features.ts`）。設定角色的權限碼時，`setRolePermissions()` 依序檢查：
+權限碼定義在 `packages/shared/src/rbac/permissions.ts`，每個屬於一個功能（`features.ts`）。設定角色的權限碼時，`setRolePermissions()` 依序檢查：
 
 1. 每個權限碼都存在於註冊表。
 2. 勾選的權限碼，其前置權限（`dependsOn`）也要勾選。
@@ -93,7 +97,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 4. **管理員鎖定**：`admin` 系統角色不能移除標記為 `adminLock` 的權限。
 5. **防自鎖**：不能從自己目前的角色移除標記為 `selfLock` 的權限，例如 `role.manage`。
 
-指派角色也有同樣的防越權檢查，並且不能把自己改成沒有 `selfLock` 權限的角色。
+指派角色也有同樣的防越權檢查，並且不能把自己改成沒有 `selfLock` 權限的角色。改別人的角色時，對方目前的權限也不能比自己高（`TARGET_OUTRANKS_ACTOR`），見[停用與永久刪除](#停用與永久刪除)。
 
 ### 有效權限怎麼算
 
@@ -162,12 +166,11 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | 限制 | 說明 |
 | --- | --- |
 | 登出或改密碼不會讓 refresh token 失效 | 詳見 `../../system/AUDIT.md` 的 AUTH-08 |
+| email 區分大小寫，和建立時的大小寫不同就無法登入 | 詳見 `../../system/AUDIT.md` 的 AUTH-10 |
 | 知道 email 就能讓成員無法以密碼登入 | 詳見 `../../system/AUDIT.md` 的 SEC-06 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
-| **停用的成員無法重新啟用** | 管理員也看不到停用的成員。詳見 `../../system/AUDIT.md` 的 AUTH-09 |
-| 業務規則看舊的角色列舉 | 包含「最後一位管理員」的保護。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
+| 業務規則看舊的角色列舉 | 自動指派、通知收件人、試用到期信。「最後一位管理員」的保護已改依權限判斷。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | **reconcile 腳本覆蓋系統角色的修改** | 詳見 `../../system/AUDIT.md` 的 RBAC-05 |
-| 開發環境的 `supervisor` 看得到所有渠道 | 預設權限有兩份，demo 資料的 `supervisor` 多了 `channel.view_all`；正式租戶沒有，這是定案的行為。詳見 `../../system/AUDIT.md` 的 RBAC-06 |
 | 角色頁顯示的權限不套方案天花板 | 詳見 `../../system/AUDIT.md` 的 PLAN-08 |
 | 停用成員不會中斷登入中的 token 與 socket | access token 有效到過期，socket 直到斷線。各憑證的生效時間見[認證與憑證](../../modules/AUTHENTICATION.md#停用與撤銷什麼時候生效) |
 | 沒有忘記密碼流程 | 詳見 `../../system/AUDIT.md` 的 AUTH-01 |

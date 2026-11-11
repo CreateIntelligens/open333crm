@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import {
   PageDialog,
@@ -14,37 +15,61 @@ import {
   PageDialogFooter,
 } from '@/components/ui/page-dialog';
 import { useMaterials } from '@/hooks/useMaterials';
-import type { KeywordReply, KeywordReplyInput } from '@/hooks/useKeywordReplies';
+import { CouponSelectField } from '@/components/coupons/CouponSelectField';
+import { bodyHasCouponUrl, COUPON_URL_IN_RULE_MESSAGE } from '@/lib/marketing/coupon-url';
+import {
+  CHANNEL_ISSUE_MESSAGE,
+  KEYWORD_REPLY_CHANNELS,
+  keywordReplyChannelLabel,
+  keywordReplySaveBlock,
+  materialIssueOf,
+  materialIssueMessage,
+  type KeywordReply,
+  type KeywordReplyChannel,
+  type KeywordReplyInput,
+} from '@/hooks/useKeywordReplies';
 
 interface Props {
   open: boolean;
   reply: KeywordReply | null; // null = 新建
+  /** 新建時預設的渠道（列表目前篩選的渠道）；沒有時為 LINE */
+  defaultChannel?: KeywordReplyChannel;
   onClose: () => void;
   onSave: (input: KeywordReplyInput) => Promise<void>;
 }
 
-export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) {
+export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, onSave }: Props) {
   const [name, setName] = useState('');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [draftKeyword, setDraftKeyword] = useState('');
   const [matchMode, setMatchMode] = useState<'any' | 'all'>('any');
+  const [channel, setChannel] = useState<KeywordReplyChannel>('LINE');
   const [materialId, setMaterialId] = useState('');
+  const [couponId, setCouponId] = useState('');
+  const [failureText, setFailureText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 列出所有 LINE 素材給選
-  const { materials } = useMaterials({ channelType: 'line', isActive: true, limit: 200 });
+  // 只列所選渠道的素材；Instagram 沒有素材（素材庫只有 LINE、Facebook，design D5）
+  const channelInfo = KEYWORD_REPLY_CHANNELS.find((c) => c.value === channel) ?? KEYWORD_REPLY_CHANNELS[0];
+  const { materials: channelMaterials } = useMaterials({ channelType: channelInfo.materialChannelType ?? 'threads', isActive: true, limit: 200 });
+  const materials = channelInfo.materialChannelType ? channelMaterials : [];
+  // 已有渠道條件的規則不能改渠道（design D4）
+  const channelLocked = !!reply?.channel;
 
   useEffect(() => {
     if (open) {
       setName(reply?.name ?? '');
       setKeywords(reply?.keywords ?? []);
       setMatchMode(reply?.matchMode ?? 'any');
+      setChannel(reply ? reply.defaultChannel : (defaultChannel ?? 'LINE'));
       setMaterialId(reply?.materialId ?? '');
+      setCouponId(reply?.couponId ?? '');
+      setFailureText(reply?.failureText ?? '');
       setDraftKeyword('');
       setError(null);
     }
-  }, [open, reply]);
+  }, [open, reply, defaultChannel]);
 
 
   const handleAddKeyword = () => {
@@ -62,26 +87,46 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
   const handleSave = async () => {
     if (!name.trim()) { setError('請輸入規則名稱'); return; }
     if (keywords.length === 0) { setError('至少要 1 個關鍵字'); return; }
-    if (!materialId) { setError('請選擇要回覆的素材'); return; }
+    // 素材改為選填（add-coupon-system design D25），但素材與優惠券至少要選一個
+    if (!materialId && !couponId) { setError('回覆素材與優惠券至少要選一個'); return; }
+    // 原本的素材不能在所選渠道使用（或已刪除、停用）且沒有改選：存檔會加上渠道條件讓規則不再送出，擋下
+    const blocked = keywordReplySaveBlock(reply, { channel, materialId: materialId || null });
+    if (blocked) { setError(blocked); return; }
+    // 關鍵字回覆不會發券：素材的顧客專屬券連結會被拿掉，顧客拿不到券（後端也會擋）
+    if (bodyHasCouponUrl(materials.find((m) => m.id === materialId)?.body)) { setError(COUPON_URL_IN_RULE_MESSAGE); return; }
     setSaving(true);
     setError(null);
     try {
       await onSave({
         name: name.trim(),
+        channel,
         keywords,
         matchMode,
-        materialId,
+        materialId: materialId || null,
+        couponId: couponId || null,
+        failureText: couponId ? failureText.trim() : '',
       });
       onClose();
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError(((err as any)?.response?.data?.error?.message) ?? '儲存失敗');
+      setError(((err as any)?.response?.data?.error?.message) ?? (err instanceof Error && err.message ? err.message : '儲存失敗'));
     } finally {
       setSaving(false);
     }
   };
 
   const selectedMaterial = materials.find((m) => m.id === materialId);
+  const selectedMaterialHasCouponUrl = bodyHasCouponUrl(selectedMaterial?.body);
+  // 原本的素材在所選渠道能不能用：改選渠道後重新判斷
+  const originalMaterialIssue = reply?.materialId && materialId === reply.materialId
+    ? materialIssueOf(reply.materialLookup, channel) ?? null
+    : null;
+
+  const handleChannelChange = (next: KeywordReplyChannel) => {
+    setChannel(next);
+    // 換渠道時清掉不屬於新渠道的素材選擇；規則原本的素材保留，由上方的說明與存檔防線處理
+    if (materialId && materialId !== reply?.materialId) setMaterialId('');
+  };
 
   const CONTENT_TYPE_LABEL: Record<string, string> = { text: '文字', image: '圖片', flex: 'Flex', carousel: '輪播', imagemap: '圖文', video: '影片' };
 
@@ -91,10 +136,46 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
       <PageDialogContent>
         <PageDialogHeader>
           <PageDialogTitle>{reply ? '編輯關鍵字回覆' : '建立關鍵字回覆'}</PageDialogTitle>
-          <PageDialogDescription>設定觸發的關鍵字，以及要自動回覆的素材</PageDialogDescription>
+          <PageDialogDescription>顧客在所選渠道傳送的訊息出現指定關鍵字時，自動回覆對應素材，也可以同時發送優惠券</PageDialogDescription>
         </PageDialogHeader>
 
         <div className="flex flex-col gap-6">
+
+          {reply?.channelIssue && (
+            <div role="alert" className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-amber-800">
+              <p>{CHANNEL_ISSUE_MESSAGE}</p>
+              <a href={`/dashboard/automation/${reply.id}`} className="mt-1 inline-block font-medium underline underline-offset-2">
+                到自動化規則編輯
+              </a>
+            </div>
+          )}
+
+          {/* 渠道（change add-fb-ig-keyword-coupon design D4，取自 main） */}
+          <div className="flex flex-col gap-1.5">
+            {channelLocked ? (
+              <>
+                <span className="text-sm font-medium text-foreground">渠道：{keywordReplyChannelLabel(channel)}</span>
+                <p className="text-xs text-muted-foreground">渠道建立後不能更改；要換渠道請刪除後重新建立</p>
+              </>
+            ) : (
+              <>
+                <label htmlFor="keyword-reply-channel" className="text-sm font-medium text-foreground">渠道</label>
+                <Select
+                  id="keyword-reply-channel"
+                  value={channel}
+                  onChange={(e) => handleChannelChange(e.target.value as KeywordReplyChannel)}
+                  options={KEYWORD_REPLY_CHANNELS.map((c) => ({ value: c.value, label: c.label }))}
+                />
+                {reply && !reply.channel && !reply.channelIssue && (
+                  <p className="text-xs text-warning">這條規則原本沒有限定渠道，儲存後只在所選渠道的對話觸發</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  規則只在這個渠道的對話觸發，對這個渠道的所有帳號生效（例如所有 LINE 官方帳號或所有粉專）
+                </p>
+              </>
+            )}
+          </div>
+
           {/* 規則名稱 */}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="kr-name" className="text-sm font-medium text-foreground">
@@ -171,28 +252,83 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
             </fieldset>
           )}
 
-          {/* 回覆素材 */}
+          {/* 回覆素材（素材改為選填，與優惠券至少選一個；取自 main） */}
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="kr-material" className="text-sm font-medium text-foreground">
-              回覆素材<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-            </label>
+            <label htmlFor="keyword-reply-material" className="text-sm font-medium text-foreground">回覆素材</label>
+            {originalMaterialIssue && (
+              <div role="alert" className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-amber-800">
+                <p>{materialIssueMessage(originalMaterialIssue)}</p>
+                {originalMaterialIssue.kind === 'other_channel' ? (
+                  <a href={`/dashboard/automation/${reply!.id}`} className="mt-1 inline-block font-medium underline underline-offset-2">
+                    到自動化規則編輯
+                  </a>
+                ) : (
+                  <p className="mt-1">改選一個{channelInfo.label}素材，或拿掉素材只發券，就可以儲存。</p>
+                )}
+              </div>
+            )}
             <Select
-              id="kr-material"
+              id="keyword-reply-material"
               value={materialId}
               onChange={(e) => setMaterialId(e.target.value)}
-              aria-required="true"
+              disabled={!channelInfo.materialChannelType && !materialId}
               aria-describedby="kr-material-hint"
-              placeholder="請選擇素材"
-              options={materials.map((m) => ({ value: m.id, label: `${m.name}（${CONTENT_TYPE_LABEL[m.contentType] ?? m.contentType}）` }))}
+              options={[
+                { value: '', label: '— 請選擇 —' },
+                // 規則原本的素材不在這個渠道的清單時仍保留選項，才看得出原本選的是什麼
+                ...(reply?.materialId && materialId === reply.materialId && !materials.some((m) => m.id === reply.materialId)
+                  ? [{ value: reply.materialId, label: `原本的素材（id: ${reply.materialId.slice(0, 8)}…）` }]
+                  : []),
+                ...materials.map((m) => ({ value: m.id, label: `${m.name}（${CONTENT_TYPE_LABEL[m.contentType] ?? m.contentType}）` })),
+              ]}
             />
-            {selectedMaterial?.variables && selectedMaterial.variables.length > 0 && (
-              <p role="note" className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-amber-800">
-                此素材含 {selectedMaterial.variables.length} 個變數（{selectedMaterial.variables.map((v) => v.key).join('、')}），會以預設值送出
+            {selectedMaterialHasCouponUrl && (
+              <p role="alert" className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-amber-800">
+                {COUPON_URL_IN_RULE_MESSAGE}
               </p>
             )}
-            <p id="kr-material-hint" className="text-xs text-muted-foreground">
-              素材在「行銷 &gt; 素材庫」建立，這裡只列 LINE 渠道的素材
+            {selectedMaterial?.variables && selectedMaterial.variables.length > 0 && (
+              <p role="note" className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-amber-800">
+                此素材含 {selectedMaterial.variables.length} 個變數（{selectedMaterial.variables.map((v) => v.key).join('、')}），送出時代入客人的聯絡人資料；客人沒有這項資料時用素材的預設值，沒有預設值則留空
+              </p>
+            )}
+            {channelInfo.materialChannelType ? (
+              <p id="kr-material-hint" className="text-xs text-muted-foreground">
+                素材在「行銷 &gt; 素材庫」建立，這裡只列{channelInfo.label}渠道的素材。素材與優惠券至少要選一個
+              </p>
+            ) : (
+              <p id="kr-material-hint" className="text-xs text-muted-foreground">{channelInfo.label} 目前沒有素材，只能發券</p>
+            )}
+          </div>
+
+          {/* 優惠券（add-coupon-system design D25，取自 main） */}
+          <div className="flex flex-col gap-3">
+            <CouponSelectField
+              id="keyword-reply-coupon"
+              label="同時發送優惠券"
+              value={couponId}
+              onChange={setCouponId}
+            />
+            <p className="-mt-2 text-xs text-muted-foreground">
+              只列進行中的券。每位顧客依券的每人上限領取，發出的券會出現在收件匣與券的序號明細
             </p>
+            {couponId && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="keyword-reply-failure-text" className="text-sm font-medium text-foreground">
+                  發不出時回覆顧客
+                </label>
+                <Textarea
+                  id="keyword-reply-failure-text"
+                  value={failureText}
+                  onChange={(e) => setFailureText(e.target.value.slice(0, 500))}
+                  rows={2}
+                  placeholder="例：您已經領過這張券囉"
+                />
+                <p className="text-xs text-muted-foreground">
+                  選填。顧客已達領取上限、券已發完或暫停時送出這段文字；空白則不回覆。沒有發出的原因都會記在對話中
+                </p>
+              </div>
+            )}
           </div>
 
           {error && (

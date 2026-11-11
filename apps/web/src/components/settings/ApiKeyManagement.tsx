@@ -14,6 +14,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
+import { LoadErrorNotice } from '@/components/shared/LoadErrorNotice';
+import { getPublicApiHost } from '@/lib/public-api-host';
 
 interface ApiKey {
   id: string;
@@ -48,12 +51,15 @@ export function ApiKeyManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const fetchKeys = useCallback(async () => {
+    setLoadError(null);
     try {
       const res = await api.get<{ data: ApiKey[] }>('/settings/api-keys');
       setKeys(res.data.data);
     } catch (err) {
-      console.error('Failed to fetch API keys:', err);
+      setLoadError(getApiErrorMessage(err, '請稍後重試'));
     } finally {
       setLoading(false);
     }
@@ -93,6 +99,12 @@ export function ApiKeyManagement() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : loadError ? (
+        <LoadErrorNotice
+          title="無法讀取 API 金鑰"
+          message={loadError}
+          onRetry={() => { setLoading(true); fetchKeys(); }}
+        />
       ) : keys.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
           <Key className="mb-3 h-10 w-10 text-muted-foreground" />
@@ -319,7 +331,7 @@ function CreatedApiKeyDialog({
         {keyData && (
           <div className="mt-2 space-y-4">
             <div className="rounded-md border-2 border-warning/40 bg-warning-subtle p-3 text-xs text-warning">
-              ⚠️ <strong>請立刻複製並妥善保存</strong>。關閉視窗後將無法再次查看完整金鑰，列表只會顯示遮罩末 4 碼。
+              <strong>請立刻複製並妥善保存</strong>。關閉視窗後將無法再次查看完整金鑰，列表只會顯示遮罩末 4 碼。
             </div>
 
             <div>
@@ -347,7 +359,7 @@ function CreatedApiKeyDialog({
             <div className="rounded-md bg-muted/30 p-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">使用方式</p>
               <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-[11px]">
-{`curl -X POST https://uat.open333crm.create360.ai/api/v1/knowledge/partner-ingest \\
+{`curl -X POST ${getPublicApiHost()}/api/v1/knowledge/partner-ingest \\
   -H "Authorization: Bearer ${keyData.key}" \\
   -F "DocID=1234" \\
   -F "Ver=1" \\

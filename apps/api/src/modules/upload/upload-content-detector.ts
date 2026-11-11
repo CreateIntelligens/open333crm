@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
+import type { UploadRejection } from '../../shared/messages/upload.js';
 
 export interface UploadDetectionPolicy {
   name: string;
@@ -21,7 +22,10 @@ export interface UploadDetectionResult {
   detectedMime?: string;
   label?: string;
   confidence?: number;
+  /** 英文原因，只給 log 與 AppError details，不顯示給使用者 */
   reason: string;
+  /** 拒絕時的原因分類，用來選擇給使用者的中文訊息（issue #470） */
+  rejection?: UploadRejection;
 }
 
 export interface UploadMagikaClient {
@@ -60,6 +64,11 @@ export const UPLOAD_POLICIES = {
   conversationVideo: {
     name: 'conversation-video',
     allowedMimes: ['video/mp4', 'video/quicktime'],
+  },
+  /** LINE 影片訊息只收 mp4 */
+  lineVideo: {
+    name: 'line-video',
+    allowedMimes: ['video/mp4'],
   },
   imagemap: {
     name: 'line-imagemap',
@@ -193,7 +202,7 @@ export async function detectUploadContent(
   }
 
   if (input.buffer.length === 0) {
-    return { accepted: false, reason: 'empty file' };
+    return { accepted: false, rejection: 'empty', reason: 'empty file' };
   }
 
   const magika = client ?? await getMagikaClient();
@@ -204,26 +213,35 @@ export async function detectUploadContent(
   const label = prediction.prediction.output.label;
   const confidence = prediction.prediction.score;
   const rawMime = fileType?.mime;
-  const detectedMime =
+  const sniffedMime =
     zipOfficeMime(input.buffer) ??
     (rawMime === 'application/zip' ? magikaMime(label) ?? rawMime : rawMime) ??
     magikaMime(label);
+  // Magika 常把列數少、內容是長中文的 CSV 判成 txt；CSV 本來就是純文字，副檔名是 .csv 且政策允許 CSV 時視為 CSV
+  // （issue #421 後續：UAT 上傳一列中文的 CSV 被拒）。只放寬 text/plain → text/csv，其他類型照常比對
+  const detectedMime =
+    sniffedMime === 'text/plain' &&
+    /\.csv$/i.test(input.filename) &&
+    input.policy.allowedMimes.includes('text/csv')
+      ? 'text/csv'
+      : sniffedMime;
   const clientMime = normalizeMime(input.clientMime);
 
   if (prediction.status !== 'ok' || confidence < MAGIKA_MIN_SCORE) {
-    return { accepted: false, detectedMime, label, confidence, reason: 'Magika confidence is too low' };
+    return { accepted: false, rejection: 'unrecognized', detectedMime, label, confidence, reason: 'Magika confidence is too low' };
   }
   if (!detectedMime) {
-    return { accepted: false, label, confidence, reason: 'file content type is unknown' };
+    return { accepted: false, rejection: 'unrecognized', label, confidence, reason: 'file content type is unknown' };
   }
   if (!input.policy.allowedMimes.includes(detectedMime)) {
-    return { accepted: false, detectedMime, label, confidence, reason: `type ${detectedMime} is not allowed for ${input.policy.name}` };
+    return { accepted: false, rejection: 'type_not_allowed', detectedMime, label, confidence, reason: `type ${detectedMime} is not allowed for ${input.policy.name}` };
+  }
+  // 副檔名先檢查：副檔名也不符時要提示改副檔名；只有副檔名相符、宣告的 MIME 不符才算 mime_mismatch（PR #492 review）
+  if (!extensionMatches(detectedMime, input.filename)) {
+    return { accepted: false, rejection: 'extension_mismatch', detectedMime, label, confidence, reason: `filename extension does not match ${detectedMime}` };
   }
   if (!GENERIC_MIMES.has(clientMime) && clientMime !== detectedMime) {
-    return { accepted: false, detectedMime, label, confidence, reason: `client MIME ${clientMime} does not match detected MIME ${detectedMime}` };
-  }
-  if (!extensionMatches(detectedMime, input.filename)) {
-    return { accepted: false, detectedMime, label, confidence, reason: `filename extension does not match ${detectedMime}` };
+    return { accepted: false, rejection: 'mime_mismatch', detectedMime, label, confidence, reason: `client MIME ${clientMime} does not match detected MIME ${detectedMime}` };
   }
 
   return { accepted: true, detectedMime, label, confidence, reason: 'content type validated' };

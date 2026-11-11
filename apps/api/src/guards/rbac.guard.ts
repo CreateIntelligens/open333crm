@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { getEffectiveTenantPermissions } from '../services/permission.service.js';
 import { getTenantPlanId } from '../services/tenant-plan.cache.js';
+import { AppError } from '../shared/utils/response.js';
 
 /**
  * RBAC guards.
@@ -49,24 +50,31 @@ function sendForbidden(
 
 const PERMISSION_DENIED = '權限不足，無法執行此操作。如需使用請聯繫管理員。';
 
-export const requirePermission = (code: string) => {
+/**
+ * 當前 agent 是否有某權限碼：Partner key 只看白名單、CLI session 放行（走自身 scope），
+ * 其餘以有效權限（角色權限 ∩ 方案功能天花板）判斷。
+ */
+async function isPermitted(request: FastifyRequest, code: string): Promise<boolean> {
+  // Partner API key：只對白名單權限碼放行，其餘一律擋（避免無條件繞過）
+  if (request.agent?.isPartnerKey) return PARTNER_KEY_ALLOWED.has(code);
+  // CLI session 走自身 scope 機制（cli.routes），不經 requirePermission 路由；防禦性放行
+  if (request.agent?.isCliSession) return true;
+  const roleId = request.agent?.roleId;
+  // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
+  const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
+  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);
+  return eff.has(code);
+}
+
+/**
+ * @param message 被拒時給使用者看的說明；預設為通用的「權限不足」。
+ *   同一條路由有多個檢查時，用它說清楚是哪個操作需要權限（details.requiredPermission 給維運看）
+ */
+export const requirePermission = (code: string, message: string = PERMISSION_DENIED) => {
   usedPermissionCodes.add(code);
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    // Partner API key：只對白名單權限碼放行，其餘一律擋（避免無條件繞過）
-    if (request.agent?.isPartnerKey) {
-      if (PARTNER_KEY_ALLOWED.has(code)) return;
-      return sendForbidden(reply, PERMISSION_DENIED, { requiredPermission: code });
-    }
-    // CLI session 走自身 scope 機制（cli.routes），不經 requirePermission 路由；防禦性放行
-    if (request.agent?.isCliSession) {
-      return;
-    }
-    const roleId = request.agent?.roleId;
-    // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
-    const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
-    const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
-    if (!eff.has(code)) {
-      return sendForbidden(reply, PERMISSION_DENIED, { requiredPermission: code });
+    if (!(await isPermitted(request, code))) {
+      return sendForbidden(reply, message, { requiredPermission: code });
     }
   };
 };
@@ -76,12 +84,27 @@ export const requirePermission = (code: string) => {
  * 用於同一條路由依 body 內容需要額外權限的情境（例如建立或編輯工單時順便指派，需要 case.assign）。
  * 放在 preHandler 陣列中、排在基本權限 guard 之後；被拒時由 Fastify 中止後續 hook。
  */
-export const requirePermissionWhen = (code: string, when: (request: FastifyRequest) => boolean) => {
-  const guard = requirePermission(code);
+export const requirePermissionWhen = (
+  code: string,
+  when: (request: FastifyRequest) => boolean,
+  message?: string,
+) => {
+  const guard = requirePermission(code, message);
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (when(request)) return guard(request, reply);
   };
 };
+
+/**
+ * 在 handler 內檢查權限：要先讀資料才知道需要哪個權限時用（例如附券廣播的「立即發送」要 coupon.issue）。
+ * 沒有權限時拋 403 AppError，回應格式與 requirePermission 相同（details.requiredPermission）。
+ */
+export async function assertPermission(request: FastifyRequest, code: string, message: string = PERMISSION_DENIED): Promise<void> {
+  usedPermissionCodes.add(code);
+  if (!(await isPermitted(request, code))) {
+    throw new AppError(message, 'FORBIDDEN', 403, { requiredPermission: code });
+  }
+}
 
 /**
  * 權限點 guard（任一命中即放行）：當前 agent 的有效權限集合「不含任何一個」`codes` 時回 403。
@@ -107,7 +130,7 @@ export const requireAnyPermission = (codes: string[]) => {
     const roleId = request.agent?.roleId;
     // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
     const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
-    const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
+    const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);
     if (!codes.some((c) => eff.has(c))) {
       return sendForbidden(reply, PERMISSION_DENIED, { requiredAnyOf: codes });
     }

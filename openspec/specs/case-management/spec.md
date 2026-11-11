@@ -15,7 +15,7 @@ The API SHALL provide an authenticated, tenant-scoped `DELETE /api/v1/cases/:id`
 - **THEN** the system returns not found and does not delete the Case
 
 ### Requirement: Case Status Transition Validation
-The system SHALL validate every public Case status change using the shared Case transition rules.
+The system SHALL validate every public Case status change using the shared Case transition rules. Every path that changes a Case status, including automation actions, SHALL maintain `resolvedAt` with the shared rule: a change to `RESOLVED` sets it; a change from `RESOLVED` to `CLOSED` keeps it; a change to `CLOSED` from any other status leaves it null; a change to any other status clears it. Existing rows SHALL NOT be backfilled.
 
 #### Scenario: Reject closed to in progress transition
 - **WHEN** an authenticated agent attempts to change a Case from `CLOSED` directly to `IN_PROGRESS`
@@ -24,6 +24,26 @@ The system SHALL validate every public Case status change using the shared Case 
 #### Scenario: Allow closed to open reopen transition
 - **WHEN** an authenticated agent reopens a Case from `CLOSED`
 - **THEN** the system changes the Case status to `OPEN` and records a status change event
+
+#### Scenario: Resolved case reopened to in progress
+- **WHEN** an agent changes a Case from `RESOLVED` to `IN_PROGRESS`
+- **THEN** the Case `resolvedAt` is null
+
+#### Scenario: Closed case reopened
+- **WHEN** an agent reopens a Case from `CLOSED` to `OPEN`
+- **THEN** the Case `resolvedAt` is null
+
+#### Scenario: Case closed directly
+- **WHEN** an agent closes a Case from `IN_PROGRESS` without resolving it first
+- **THEN** the Case has `closedAt` and its `resolvedAt` is null
+
+#### Scenario: Resolved case closed
+- **WHEN** an agent closes a Case from `RESOLVED`
+- **THEN** the Case has `closedAt` and keeps the `resolvedAt` that it had
+
+#### Scenario: Automation changes the case status
+- **WHEN** an automation rule with the `update_case_status` action changes a Case from `RESOLVED` to `IN_PROGRESS`, or from `IN_PROGRESS` to `RESOLVED`
+- **THEN** the Case `resolvedAt` follows the same rule as a change by an agent: null after the first change, set after the second
 
 ### Requirement: Case Conversation Linking
 The system SHALL support linking multiple Conversations to one Case while ensuring each Conversation is linked to at most one Case.
@@ -98,11 +118,15 @@ The `/dashboard/cases` page SHALL NOT display the standalone create-case button 
 - **THEN** 通過權限檢查
 
 ### Requirement: Escalation Notify Targets Are Validated
-`POST /api/v1/cases/:id/escalate` SHALL accept `notifyTargets` only as an array of `supervisor`, `original_assignee` and `team`; any other value SHALL be rejected with 400 and the case SHALL not change. `team` is accepted but currently notifies no one.
+`POST /api/v1/cases/:id/escalate` SHALL accept `notifyTargets` only as an array of `supervisor`, `original_assignee` and `team`; any other value SHALL be rejected with 400 and the case SHALL not change. `team` is accepted for compatibility but notifies no one. The escalation dialog SHALL offer only `supervisor` and `original_assignee` as notify targets.
 
 #### Scenario: Invalid notify target
 - **WHEN** an agent escalates a case with `notifyTargets: ["everyone"]`
 - **THEN** the system SHALL respond 400 and the case SHALL not change
+
+#### Scenario: Escalation dialog offers no team option
+- **WHEN** an agent opens the escalation dialog, keeps every notify target checked and submits
+- **THEN** the dialog SHALL show only the supervisor and original assignee options, and the request SHALL send `notifyTargets: ["supervisor", "original_assignee"]`
 
 ### Requirement: Escalation Notifies The Selected Targets
 After escalation the system SHALL notify, for `supervisor`, every active supervisor and admin of the tenant, and for `original_assignee`, the active agent assigned before the escalation. The agent who escalated SHALL NOT be notified, and each agent SHALL receive at most one notification. When `notifyTargets` is omitted, only supervisors and admins SHALL be notified.
@@ -132,5 +156,24 @@ After escalation the system SHALL notify, for `supervisor`, every active supervi
 - **THEN** every other active supervisor and admin SHALL be notified, and S SHALL NOT be notified
 
 #### Scenario: Escalation dialog selects notify team
-- **WHEN** an agent escalates a case from the escalation dialog with `notifyTargets: ["supervisor", "original_assignee", "team"]`
+- **WHEN** an escalation dialog loaded before the team option was removed escalates a case with `notifyTargets: ["supervisor", "original_assignee", "team"]`
 - **THEN** the escalation SHALL succeed
+
+### Requirement: Automation Case Status Changes Follow The Transition Rules
+The `update_case_status` automation action SHALL change a Case status only when the shared Case transition rules allow the change. A valid change SHALL record a `status_changed` Case event and SHALL emit the same `case.resolved` or `case.closed` event as a change by an agent. A rejected change SHALL leave the Case unchanged and SHALL record the reason on the Case timeline.
+
+#### Scenario: Automation cannot resolve an open case
+- **WHEN** an automation rule with `update_case_status` and status `RESOLVED` runs for a Case whose status is `OPEN`
+- **THEN** the Case stays `OPEN` with a null `resolvedAt`, and the Case timeline has an `automation_status_skipped` event whose payload names the rule, `from: OPEN` and `to: RESOLVED`
+
+#### Scenario: Automation records a valid status change
+- **WHEN** an automation rule with `update_case_status` and status `RESOLVED` runs for a Case whose status is `IN_PROGRESS`
+- **THEN** the Case becomes `RESOLVED`, the Case timeline has a `status_changed` event with `actorType: automation` and payload `from: IN_PROGRESS`, `to: RESOLVED`, `source: automation`, a `case.resolved` event is written to the outbox, and the `case.updated` socket event has `source: automation`
+
+#### Scenario: Automation closes a case
+- **WHEN** an automation rule with `update_case_status` and status `CLOSED` runs for a Case whose status is `IN_PROGRESS`
+- **THEN** a `case.closed` event with the same payload fields as a close by an agent is written to the outbox
+
+#### Scenario: Automation sets the current status
+- **WHEN** an automation rule with `update_case_status` sets the status that the Case already has
+- **THEN** the Case is unchanged and no Case event and no outbox event is written

@@ -50,6 +50,9 @@ export default function NewRichMenuPage() {
       name: `新 Rich Menu（${layout.label}）`,
       chatBarText: '菜單',
       size: layout.size,
+      // 預設不設為所有好友的預設選單：一發布就會換掉所有好友目前的選單
+      isDefault: false,
+      // 聊天室打開時展開選單（LINE 的 selected），與 line-oa-laravel 相同預設展開
       selected: true,
       areas: layout.defaultAreas.map((a) => ({
         bounds: a.bounds,

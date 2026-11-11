@@ -11,6 +11,7 @@ import { notFound } from "#src/shared/messages/resource.js";
 import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from "#src/modules/mcp/mcp.constants.js";
 
 import { test } from 'vitest';
+import { disabledAiPrivacy } from "../../../support/ai-privacy.js";
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const TENANT_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -74,6 +75,7 @@ function createPrismaMock() {
     material: null,
   };
   return {
+    ...disabledAiPrivacy,
     agent: {
       findFirst: async () => ({
         id: AGENT_ID,
@@ -139,7 +141,12 @@ async function createApp(options?: {
   const app = Fastify();
   process.env.JWT_SECRET = process.env.JWT_SECRET || "test-mcp-confirmation-secret";
   process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || "test-credential-encryption-key-32-bytes!!";
-  app.decorate("prisma", createPrismaMock());
+  // 已搬到 flow 的工具（case）以 fastify.prisma 開租戶交易；交易內拿到同一份 mock
+  const basePrisma = createPrismaMock();
+  app.decorate("prisma", {
+    ...basePrisma,
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb({ $executeRaw: async () => 1, ...basePrisma }),
+  });
   app.decorate("io", { to: () => ({ emit() {} }) });
   registerChannelPlugin({
     channelType: "LINE",

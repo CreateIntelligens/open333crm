@@ -13,6 +13,10 @@ process.env.CREDENTIAL_ENCRYPTION_KEY ||= 'test-credential-encryption-key-32-byt
 const published = vi.hoisted(() => [] as Array<{ channel: string; message: string }>);
 vi.mock('ioredis', () => ({
   default: class {
+    // @open333crm/core 載入時註冊 error 與 connect 事件
+    on() {
+      return this;
+    }
     async publish(channel: string, message: string) {
       published.push({ channel, message });
       return 1;
@@ -24,6 +28,7 @@ import { registerChannelPlugin, webchatPlugin } from '@open333crm/channel-plugin
 import { loadEnvConfig } from '#src/config/env.js';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { deliverToChannel, sendMessage } from '#src/modules/conversation/conversation.service.js';
+import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
 
 // deliverToChannel 以 getConfig().REDIS_URL 建立 Redis 連線
 loadEnvConfig();
@@ -61,6 +66,7 @@ function webchatConversation() {
 test('Agent replies to visitor：API 在 /visitor 命名空間對聯絡人的 WEBCHAT 身分房間送出 agent:message', async () => {
   const conversation = webchatConversation();
   const prisma = {
+    ...disabledAiPrivacy,
     conversation: {
       findFirst: async () => conversation,
       update: async () => ({}),

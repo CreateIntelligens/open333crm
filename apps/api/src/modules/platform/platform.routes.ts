@@ -1,13 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { ChannelType } from '@prisma/client';
 import { buildPlatformRegistry, PERMISSION_CODES } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { platformLogin } from './platform-auth.service.js';
-import { writePlatformAudit } from './platform-audit.service.js';
-import { listPlans, updatePlan } from './plan.service.js';
+import {
+  writePlatformAudit,
+  listTenantPlatformAuditLogs,
+  TENANT_AUDIT_LOG_DEFAULT_LIMIT,
+  TENANT_AUDIT_LOG_MAX_LIMIT,
+} from './platform-audit.service.js';
+import { listPlans, listTenantIdsOnPlan, updatePlan } from './plan.service.js';
 import {
   listPlatformUsers,
   getPlatformUser,
@@ -32,6 +37,8 @@ import {
   resendWelcomeEmail,
 } from './platform-tenant.service.js';
 import { getPlatformSetting, setPlatformSetting } from './platform-setting.service.js';
+import { CONTRACT_REMINDER_DAYS_KEY, parseContractReminderDays } from './contract-policy.service.js';
+import aiPrivacyRoutes from './ai-privacy.routes.js';
 import {
   getUsageOverview,
   getTenantUsageRanking,
@@ -103,6 +110,14 @@ const forgotPasswordSchema = z.object({ email: platformEmail });
 const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(8) });
 
 export default async function platformRoutes(fastify: FastifyInstance) {
+  /**
+   * 方案異動 commit 之後重新計算租戶已連線 socket 的渠道房間（PR #438 審查，主規格 socket-room-authorization）。
+   * 呼叫前服務已失效權限與租戶方案快取。syncSocketChannelRooms 失敗只記 log，不影響回應；沒有 socket 時不做事
+   */
+  async function resyncTenantsSocketRooms(tenantIds: string[]): Promise<void> {
+    for (const tenantId of tenantIds) await fastify.syncSocketChannelRooms?.(tenantId);
+  }
+
   await fastify.register(rateLimit, {
     global: false,
     max: 30,
@@ -159,6 +174,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     }
   };
   const guard = { preHandler: [fastify.authenticatePlatformSuperuser, blockIfMustChangePassword] };
+  await fastify.register(aiPrivacyRoutes, guard);
   // 只驗證身分，不擋 mustChangePassword（僅供改密碼路由使用）
   const authOnlyGuard = { preHandler: [fastify.authenticatePlatformSuperuser] };
 
@@ -247,7 +263,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   fastify.get('/plans', guard, async () => success(await listPlans(fastify.prismaAdmin)));
   fastify.patch<{ Params: { id: string } }>('/plans/:id', guard, async (request) => {
     const body = updatePlanSchema.parse(request.body);
-    const plan = await updatePlan(fastify.prismaAdmin, request.params.id, body);
+    const plan = await updatePlan(fastify.prismaAdmin, fastify.redis, request.params.id, body);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'plan.update',
@@ -255,6 +271,11 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: plan.id,
       payload: body,
     });
+    // 功能或權限設定改變 → 方案天花板變動：重新計算使用這個方案的租戶已連線 socket 的渠道房間
+    // （例如拿掉 channel.view_all 時離開總店房間，PR #438 審查）
+    if (body.features !== undefined || body.permissionOverrides !== undefined) {
+      await resyncTenantsSocketRooms(await listTenantIdsOnPlan(fastify.prismaAdmin, plan.id));
+    }
     return success(plan);
   });
 
@@ -271,7 +292,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       })
       .refine((b) => b.name !== undefined || b.planSlug !== undefined, { message: '至少提供一個欄位' })
       .parse(request.body);
-    const tenant = await updateTenant(fastify.prismaAdmin, request.params.id, body);
+    const tenant = await updateTenant(fastify.prismaAdmin, fastify.redis, request.params.id, body);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.update',
@@ -279,6 +300,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: tenant.id,
       payload: body,
     });
+    if (body.planSlug !== undefined) await resyncTenantsSocketRooms([tenant.id]);
     return success(tenant);
   });
   fastify.patch<{ Params: { id: string; agentId: string } }>(
@@ -317,6 +339,20 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       return success(result);
     },
   );
+  // 依租戶查平台稽核：對象是該租戶、其成員或其方案申請的紀錄（規格 platform-audit-log）
+  fastify.get<{ Params: { id: string } }>('/tenants/:id/audit-logs', guard, async (request) => {
+    const { limit } = z
+      .object({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(TENANT_AUDIT_LOG_MAX_LIMIT)
+          .default(TENANT_AUDIT_LOG_DEFAULT_LIMIT),
+      })
+      .parse(request.query);
+    return success(await listTenantPlatformAuditLogs(fastify.prismaAdmin, request.params.id, { limit }));
+  });
   fastify.patch<{ Params: { id: string } }>('/tenants/:id/active', guard, async (request) => {
     const { isActive } = z.object({ isActive: z.boolean() }).parse(request.body);
     const tenant = await setTenantActive(fastify.prismaAdmin, request.params.id, isActive);
@@ -375,7 +411,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   // 轉正式方案
   fastify.patch<{ Params: { id: string } }>('/trial-tenants/:id/convert', guard, async (request) => {
     const { planSlug } = z.object({ planSlug: z.string().min(1) }).parse(request.body);
-    const result = await convertToPaid(fastify.prismaAdmin, request.params.id, planSlug);
+    const result = await convertToPaid(fastify.prismaAdmin, fastify.redis, request.params.id, planSlug);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.trial.convert',
@@ -383,6 +419,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: result.id,
       payload: { planSlug },
     });
+    await resyncTenantsSocketRooms([result.id]);
     return success(result);
   });
 
@@ -465,7 +502,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   });
   fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/approve', guard, async (request) => {
     const { note } = z.object({ note: z.string().optional() }).parse(request.body ?? {});
-    const result = await approveRequest(fastify.prismaAdmin, request.params.id, request.platformUser!.id, note);
+    const result = await approveRequest(fastify.prismaAdmin, fastify.redis, request.params.id, request.platformUser!.id, note);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'plan_change.approve',
@@ -473,6 +510,8 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetId: result.id,
       payload: { type: result.type, trialExited: result.trialExited },
     });
+    // 升級換了方案；加購 token 不改權限
+    if (result.type === 'upgrade') await resyncTenantsSocketRooms([result.tenantId]);
     return success(result);
   });
   fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/reject', guard, async (request) => {
@@ -492,7 +531,9 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     return success(await getPlatformSetting(fastify.prismaAdmin, request.params.key));
   });
   fastify.put<{ Params: { key: string } }>('/settings/:key', guard, async (request) => {
-    const { value } = z.object({ value: z.unknown() }).parse(request.body);
+    const { value: raw } = z.object({ value: z.unknown() }).parse(request.body);
+    // 合約到期提醒天數有型別：不合法回 400、不改存預設值；其他鍵仍無型別（AUDIT TRIAL-02）
+    const value = request.params.key === CONTRACT_REMINDER_DAYS_KEY ? parseContractReminderDays(raw) : raw;
     await setPlatformSetting(fastify.prismaAdmin, request.params.key, value);
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,

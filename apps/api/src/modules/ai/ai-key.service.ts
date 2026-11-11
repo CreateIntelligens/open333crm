@@ -5,8 +5,7 @@
  *
  * 三層 fallback 取 key：租戶自填 → 平台代設（暫同 env）→ 全域 env GEMINI_API_KEY。
  */
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { encryptCredentials, decryptCredentials } from '../channel/channel.service.js';
 import { getConfig } from '../../config/env.js';
 
@@ -26,11 +25,10 @@ export function decryptApiKey(enc: string): string {
  * 來源：byok（租戶自填）| platform（env fallback）。
  */
 export async function resolveGeminiKey(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
 ): Promise<{ key: string | undefined; source: 'byok' | 'platform' }> {
-  const settings = await prisma.tenantSettings.findUnique({
-    where: { tenantId },
+  const settings = await ctx.tx.tenantSettings.findUnique({
+    where: { tenantId: ctx.tenantId },
     select: { geminiApiKeyEnc: true },
   });
   if (settings?.geminiApiKeyEnc) {
@@ -47,27 +45,25 @@ export async function resolveGeminiKey(
 
 /** 儲存/清除租戶 BYOK key（傳 null 清除）。 */
 export async function setTenantGeminiKey(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   plainKey: string | null,
 ): Promise<void> {
   // upsert：TenantSettings 為延遲建立，新開通、尚未動過設定的租戶可能還沒有此列，
   // 用 update 會拋 P2025（回 404）導致 BYOK key 存不進去 → 改 upsert。
   const enc = plainKey ? encryptApiKey(plainKey) : null;
-  await prisma.tenantSettings.upsert({
-    where: { tenantId },
-    create: { tenantId, geminiApiKeyEnc: enc },
+  await ctx.tx.tenantSettings.upsert({
+    where: { tenantId: ctx.tenantId },
+    create: { tenantId: ctx.tenantId, geminiApiKeyEnc: enc },
     update: { geminiApiKeyEnc: enc },
   });
 }
 
 /** 回傳遮罩後的 key 狀態（不外洩明文）。 */
 export async function getTenantGeminiKeyStatus(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
 ): Promise<{ configured: boolean; masked: string | null }> {
-  const settings = await prisma.tenantSettings.findUnique({
-    where: { tenantId },
+  const settings = await ctx.tx.tenantSettings.findUnique({
+    where: { tenantId: ctx.tenantId },
     select: { geminiApiKeyEnc: true },
   });
   if (!settings?.geminiApiKeyEnc) return { configured: false, masked: null };

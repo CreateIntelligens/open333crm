@@ -7,8 +7,9 @@
  * 使用者指出「關鍵字有命中則 AI 不會再回話」才是預期行為。
  *
  * 根因是遺漏而非設計：kb-autoreply 早就有讓步判斷
- * （attemptKbAutoReply 的第 1.5 步會 hasMatchingKeywordRule 後早退），
+ * （當時 attemptKbAutoReply 的第 1.5 步會 hasMatchingKeywordRule 後早退），
  * 但 agent（agentic LLM）那條路沒有做同樣的檢查。
+ * change migrate-ai-kb-autoreply-tenant-ctx 起兩條路共用 worker 的 keywordWillHandle。
  *
  * ⚠️ 兩條路都要擋：agent 擋掉之後會走 `if (!agentHandled)` 的 KB 後備，
  * 若 KB 那邊沒擋就只是把「AI 回一則」換成「KB 回一則」，問題沒解。
@@ -81,39 +82,37 @@ t('agent 路徑：關鍵字命中時略過 AI 回覆', () => {
   );
   assert.ok(
     /if \(!keywordWillHandle && isAgentEnabled\(\)/.test(code),
-    '讓步判斷沒有實際套用在 runAgentReply 的條件上',
+    '讓步判斷沒有實際套用在 runAgentReplyFlow 的條件上',
   );
 });
 
-t('KB 路徑：原本就有的讓步判斷不可被移除', () => {
+t('KB 路徑：讓步判斷不可被移除', () => {
   // agent 被擋掉後會走 `if (!agentHandled)` 的 KB 後備；
   // 這裡若沒擋，等於把「AI 回一則」換成「KB 回一則」，問題沒解。
-  const code = src('modules/ai/kb-autoreply.service.ts');
-  assert.ok(
-    /if \(await hasMatchingKeywordRule\(prisma, tenantId, messageText\)\) \{/.test(code),
-    'KB 的關鍵字讓步判斷不見了',
-  );
+  // change migrate-ai-kb-autoreply-tenant-ctx 起 KB 不再自己判斷，與 agent 共用 worker 的 keywordWillHandle（design D7）
+  const code = src('modules/automation/automation.worker.ts');
+  assert.ok(/if \(!agentHandled && !keywordWillHandle\)/.test(code), 'KB 的關鍵字讓步判斷不見了');
 });
 
-t('讓步判斷要在 runAgentReply 之前（擋在呼叫前才有意義）', () => {
+t('讓步判斷要在 runAgentReplyFlow 之前（擋在呼叫前才有意義）', () => {
   const code = src('modules/automation/automation.worker.ts');
   const guardAt = code.indexOf('const keywordWillHandle');
-  const callAt = code.indexOf('await runAgentReply(');
+  const callAt = code.indexOf('await runAgentReplyFlow(');
   assert.ok(guardAt > 0 && callAt > 0, '找不到判斷或呼叫');
   assert.ok(
     guardAt < callAt,
-    '讓步判斷寫在 runAgentReply 之後——AI 已經回過了，擋不住',
+    '讓步判斷寫在 runAgentReplyFlow 之後——AI 已經回過了，擋不住',
   );
 });
 
 t('比對出錯時不應連帶擋掉 AI（寧可多回一則，不要完全沒回應）', () => {
-  // hasMatchingKeywordRule 內部若拋錯會往外傳，外層 try/catch 會接住，
-  // 此時整段 bot 回覆都不會執行——確認外層確實有 try/catch 兜底。
+  // hasMatchingKeywordRule 內部若拋錯會往外傳，AI 回覆步驟的 try/catch 會接住，
+  // 此時這次的 bot 回覆不會執行，情緒分析與規則評估照常執行，最後由佇列重試。
   const code = src('modules/automation/automation.worker.ts');
   const idx = code.indexOf('const keywordWillHandle');
   const after = code.slice(idx);
   assert.ok(
-    /catch \(err\) \{[\s\S]{0,200}Error handling message\.received/.test(after),
-    'message.received 外層缺少 try/catch，比對出錯會讓整條鏈中斷',
+    /catch \(err\) \{[\s\S]{0,200}AI reply failed, will retry/.test(after),
+    'AI 回覆步驟缺少 try/catch，比對出錯會讓整條鏈中斷',
   );
 });

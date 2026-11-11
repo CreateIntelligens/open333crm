@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "license": "GPL-3.0-only",
   "private": true,
+  "type": "module",
   "imports": {
     "#src/*": "./src/*"
   },
@@ -27,7 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "tsx": "^4.11.0",
+    "tsx": "^4.22.0",
     "typescript": "^5.4.0"
   }
 }

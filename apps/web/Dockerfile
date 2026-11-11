@@ -1,10 +1,12 @@
-FROM node:24-bookworm-slim AS deps
+FROM node:26.13.0-bookworm-slim AS deps
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm install reads the patches listed in package.json pnpm.patchedDependencies
+COPY patches ./patches
 COPY .env.web .env.web
 COPY apps/web/package.json apps/web/package.json
 COPY apps/widget/package.json apps/widget/package.json
@@ -31,11 +33,11 @@ RUN pnpm --filter @open333crm/automation build
 RUN set -a && . ./.env.web && set +a && NODE_ENV=production pnpm --filter @open333crm/web build
 
 # ---- Runner ----
-FROM node:24-bookworm-slim AS runner
+FROM node:26.13.0-bookworm-slim AS runner
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json

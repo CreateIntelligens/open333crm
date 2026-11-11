@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { platformApi } from '../lib/platform-api';
 import { fmtTokens, fmtUsd, fmtNum } from '../lib/format';
+import { usageRange } from '../lib/usage-range';
 
 interface Overview {
   totalTokens: number;
@@ -36,15 +37,12 @@ export default function UsagePage() {
   const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [selected, setSelected] = useState<TenantRow | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
-
-  const rangeParams = () => {
-    const to = new Date();
-    const from = new Date(to.getTime() - days * 86400_000);
-    return { from: from.toISOString(), to: to.toISOString() };
-  };
+  // 總覽、排行與鑽取共用同一個區間（台灣日期對齊），三者的加總才一致
+  const [range, setRange] = useState(() => usageRange(30));
 
   useEffect(() => {
-    const params = rangeParams();
+    const params = usageRange(days);
+    setRange(params);
     platformApi.get('/usage/overview', { params }).then((r) => setOv(r.data.data));
     platformApi.get('/usage/tenants', { params }).then((r) => setTenants(r.data.data));
     setSelected(null);
@@ -53,7 +51,7 @@ export default function UsagePage() {
 
   const drill = async (t: TenantRow) => {
     setSelected(t);
-    const r = await platformApi.get(`/usage/tenants/${t.tenantId}`, { params: rangeParams() });
+    const r = await platformApi.get(`/usage/tenants/${t.tenantId}`, { params: range });
     setDetail(r.data.data);
   };
 
@@ -184,27 +182,44 @@ function TrendChart({ data }: { data: { day: string; tokens: number }[] }) {
   if (data.length === 0) return <div style={{ fontSize: 13, color: '#97a0ae', padding: 12 }}>此區間無資料</div>;
   const max = Math.max(...data.map((d) => d.tokens), 1);
   const H = 100;
-  const barW = Math.max(3, Math.min(24, Math.floor(560 / data.length) - 3));
+  const GAP = 3;
+  const BAR_MIN = 5; // 天數很多時每根至少 5px，容器放不下就橫向捲動
+  const BAR_MAX = 32; // 天數很少時不要一根撐成一大塊
   return (
     <div style={{ overflowX: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: H, borderBottom: '1px solid #e3e8ef', paddingBottom: 0 }}>
-        {data.map((d) => (
-          <div
-            key={d.day}
-            title={`${d.day}: ${d.tokens.toLocaleString()} token`}
-            style={{
-              width: barW,
-              height: Math.max(2, Math.round((d.tokens / max) * H)),
-              background: '#0d9488',
-              borderRadius: '3px 3px 0 0',
-              flexShrink: 0,
-            }}
-          />
-        ))}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#97a0ae', marginTop: 4 }}>
-        <span>{data[0]?.day}</span>
-        <span>{data[data.length - 1]?.day}</span>
+      {/* 長條列和日期列放在同一個容器裡，寬度一致、捲動時一起移動 */}
+      <div style={{ minWidth: data.length * (BAR_MIN + GAP) }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            // 長條平均分配寬度；碰到最大寬度時，第一根貼左、最後一根貼右，與下方起訖日期對齊
+            justifyContent: 'space-between',
+            gap: GAP,
+            height: H,
+            borderBottom: '1px solid #e3e8ef',
+          }}
+        >
+          {data.map((d) => (
+            <div
+              key={d.day}
+              title={`${d.day}: ${d.tokens.toLocaleString()} token`}
+              style={{
+                flex: '1 1 0',
+                minWidth: BAR_MIN,
+                maxWidth: BAR_MAX,
+                // 沒有用量的日子不畫長條（仍佔一格），有用量時至少 2px 才看得到
+                height: d.tokens > 0 ? Math.max(2, Math.round((d.tokens / max) * H)) : 0,
+                background: '#0d9488',
+                borderRadius: '3px 3px 0 0',
+              }}
+            />
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#97a0ae', marginTop: 4 }}>
+          <span>{data[0]?.day}</span>
+          <span>{data[data.length - 1]?.day}</span>
+        </div>
       </div>
     </div>
   );

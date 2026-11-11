@@ -409,3 +409,37 @@ describe('沒有 role.manage 時唯讀', () => {
     assert.ok(screen.getByText(/此頁為唯讀/));
   });
 });
+
+describe('刪除使用中的角色', () => {
+  test('停用的成員佔用角色時列出姓名', async () => {
+    // change fix-admin-settings-safeguards（G18）：後端訊息在 error.message，原本讀 data.message 一律顯示「刪除失敗」
+    setup([CUSTOM], { 'r-custom': [] });
+    await loaded();
+    api.delete.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { success: false, error: { code: 'ROLE_IN_USE', message: '此角色仍有 1 位成員使用中：王停用（已停用）。請先改派其他角色' } },
+      },
+    });
+    fireEvent.click(screen.getByTitle('刪除'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '刪除' }));
+    assert.ok(await screen.findByText(/王停用（已停用）/));
+  });
+
+  test('刪除失敗的原因以警示呈現，文字不是淺底白字', async () => {
+    // 原本用 text-warning-foreground（亮色主題為白色）疊在淺橘底上，幾乎看不到
+    setup([CUSTOM], { 'r-custom': [] });
+    await loaded();
+    api.delete.mockRejectedValueOnce({
+      response: { status: 409, data: { success: false, error: { code: 'ROLE_IN_USE', message: '此角色仍有 1 位成員使用中：王停用（已停用）' } } },
+    });
+    fireEvent.click(screen.getByTitle('刪除'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '刪除' }));
+    const alert = await within(screen.getByRole('dialog')).findByRole('alert');
+    assert.match(alert.textContent ?? '', /王停用/);
+    assert.ok(!alert.className.includes('text-warning-foreground'), `class：${alert.className}`);
+    // 擋下刪除屬於錯誤：用紅色警示配色（淺紅底、紅字）
+    assert.ok(alert.className.includes('bg-destructive-subtle'), `class：${alert.className}`);
+    assert.ok(alert.className.includes('text-destructive'), `class：${alert.className}`);
+  });
+});

@@ -115,21 +115,23 @@ export function LinkForm({ editData }: { editData?: ShortLink | null }) {
     setError('');
     setSaving(true);
     try {
+      // 編輯時清空的選填欄位送空字串（後端存成 null）；送 undefined 會被當成「這欄不動」，清不掉（M02，取自 main）
+      const optional = (v: string) => (isEdit ? v : v || undefined);
       const payload: Record<string, unknown> = {
         targetUrl: targetUrl.trim(),
-        title: title || undefined,
-        utmSource: utm.utmSource || undefined,
-        utmMedium: utm.utmMedium || undefined,
-        utmCampaign: utm.utmCampaign || undefined,
-        utmContent: utm.utmContent || undefined,
-        utmTerm: utm.utmTerm || undefined,
-        tagOnClick: tagOnClick || undefined,
+        title: optional(title),
+        utmSource: optional(utm.utmSource),
+        utmMedium: optional(utm.utmMedium),
+        utmCampaign: optional(utm.utmCampaign),
+        utmContent: optional(utm.utmContent),
+        utmTerm: optional(utm.utmTerm),
+        tagOnClick: optional(tagOnClick),
         // 第二參數 = 可清除：編輯時清空要送 null，否則後端當成「這欄不動」
         expiresAt: toIsoForApi(expiresAt, isEdit),
         lineChannelId: lineChannelId || null,
-        ogTitle: ogTitle || undefined,
-        ogDescription: ogDescription || undefined,
-        ogImage: ogImage || undefined,
+        ogTitle: optional(ogTitle),
+        ogDescription: optional(ogDescription),
+        ogImage: optional(ogImage),
       };
       if (!isEdit && slug.trim()) payload.slug = slug.trim();
 
@@ -166,6 +168,13 @@ export function LinkForm({ editData }: { editData?: ShortLink | null }) {
             </p>
           </div>
         </div>
+
+        {/* 廣播自動建立的素材連結：改目標網址或到期時間會影響已發出的訊息（M14，取自 main） */}
+        {Boolean(editData?.materialId) && (
+          <div role="note" className="rounded-lg border border-warning/30 bg-warning-subtle px-4 py-3 text-sm text-warning">
+            這是廣播自動建立的素材連結，已經發給客人的訊息裡用的就是這個網址。修改目標網址或到期時間，客人點開已發出的訊息時也會跟著改變或失效。
+          </div>
+        )}
 
         {/* 基本資訊 */}
         <section className="flex flex-col gap-5">

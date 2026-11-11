@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createCampaign, updateCampaign } from '#src/modules/marketing/campaign.service.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 const T = 'tenant-a';
 
@@ -17,9 +18,10 @@ function fakeDb(existing?: { id: string; status: string; startDate: Date | null;
         return { id: 'new', ...data };
       },
       findFirst: async () => (existing ? { tenantId: T, ...existing } : null),
-      update: async ({ data }: { data: Record<string, unknown> }) => {
+      // updateCampaign 以 updateMany 帶可修改的條件寫入（channel-scoped-visibility）
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
         writes.push(data);
-        return { ...existing, ...data };
+        return { count: 1 };
       },
     },
   };
@@ -51,7 +53,7 @@ test('Update only the end date：以更新後的起訖比對，早於開始日�
     startDate: new Date('2026-06-01T00:00:00Z'),
     endDate: new Date('2026-06-30T00:00:00Z'),
   });
-  await assert.rejects(updateCampaign(db, 'c1', T, { endDate: '2026-05-01' }), isFieldError('endDate'));
+  await assert.rejects(updateCampaign(db, 'c1', T, { endDate: '2026-05-01' }, ALL_CHANNELS), isFieldError('endDate'));
   assert.equal(writes.length, 0);
 });
 
@@ -76,7 +78,7 @@ test('清除結束日（null）不檢查先後', async () => {
     startDate: new Date('2026-06-01T00:00:00Z'),
     endDate: new Date('2026-06-30T00:00:00Z'),
   });
-  await updateCampaign(db, 'c1', T, { endDate: null });
+  await updateCampaign(db, 'c1', T, { endDate: null }, ALL_CHANNELS);
   assert.equal(writes.length, 1);
 });
 
@@ -87,7 +89,7 @@ test('Update status only on a legacy campaign：修正前建立的起訖相反�
     startDate: new Date('2026-12-31T00:00:00Z'),
     endDate: new Date('2026-01-01T00:00:00Z'),
   });
-  await updateCampaign(db, 'c1', T, { status: 'cancelled' });
+  await updateCampaign(db, 'c1', T, { status: 'cancelled' }, ALL_CHANNELS);
   assert.equal(writes.length, 1);
   assert.equal(writes[0]?.status, 'cancelled');
 });

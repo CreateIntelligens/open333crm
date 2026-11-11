@@ -1,6 +1,6 @@
 # 渠道外掛
 
-本文件說明各訊息渠道（LINE、Facebook、Instagram 私訊、網站聊天室）的差異怎麼收在外掛裡：外掛的介面、各渠道的實作、訊息進站與送出時怎麼經過外掛，以及哪些渠道專屬的功能沒有走外掛。渠道怎麼建立、怎麼設定 webhook，見[渠道管理](../features/tenant/CHANNELS.md)；一則訊息進站後經過哪些模組，見[租戶後台](../features/tenant/README.md#一則訊息進來之後)。
+本文件說明各訊息渠道（LINE、Facebook（內部代號 `FB`）、Instagram 私訊（內部代號 `THREADS`）、網站聊天室（內部代號 `WEBCHAT`））的差異怎麼收在外掛裡：外掛的介面、各渠道的實作、訊息進站與送出時怎麼經過外掛，以及哪些渠道專屬的功能沒有走外掛。渠道怎麼建立、怎麼設定 webhook，見[渠道管理](../features/tenant/CHANNELS.md)；一則訊息進站後經過哪些模組，見[租戶後台](../features/tenant/README.md#一則訊息進來之後)。
 
 - **資料來源**：`packages/channel-plugins/src/*`、`apps/api/src/index.ts`、`apps/api/src/modules/webhook/*`、`apps/api/src/modules/conversation/conversation.service.ts`、`apps/api/src/modules/channel/*`、`apps/workers/src/index.ts`、`apps/workers/src/lib/channel-delivery.ts`、`apps/workers/src/lib/credentials.ts`、`apps/web/src/hooks/useKeywordReplies.ts`
 - **核對日期**：2026-09-30
@@ -56,8 +56,8 @@
 
 各渠道要注意的地方：
 
-- **`THREADS` 其實是 Instagram 私訊。** 外掛呼叫的是 `graph.instagram.com`，憑證格式與 Facebook 相同。名稱沿用早期的規劃。
-- **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。
+- **`THREADS` 其實是 Instagram 私訊。** 外掛呼叫的是 `graph.instagram.com`，憑證格式與 Facebook 相同。名稱沿用早期的規劃。代號維持不改，但畫面、匯出檔與給使用者看的錯誤訊息不顯示代號：一律經 `@open333crm/shared` 的 `channelDisplayName()` 顯示 Instagram（`FB` 顯示 Facebook、`WEBCHAT` 顯示網站聊天室）。
+- **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。群發與發券沒有這一步，所以群發、附券廣播與批次發券只接受 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`（LINE、FB、THREADS），網站聊天室回 400 `CHANNEL_PUSH_NOT_SUPPORTED`（issue #415）。`sendMessage()` 沒有改成回失敗：收件匣回覆與 `deliverToChannel()` 呼叫它之後才推訪客房間，回失敗會讓這兩條路徑把已送達的訊息標為失敗或不推送。
 - **`TELEGRAM` 只有 `telegram.ts` 的類別**，沒有匯出實例，也沒有註冊，見 APP-02。
 - **`WHATSAPP` 可以建立渠道**，但沒有外掛也沒有路由，見 APP-02。
 
@@ -74,6 +74,8 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 5. 渠道設定了下游轉發時，把原始內容轉發出去，見[渠道管理](../features/tenant/CHANNELS.md#webhook)。
 6. 呼叫外掛的 `parseWebhook()`，對每一則訊息執行 `processInboundMessage()`。建立新聯絡人時呼叫 `getProfile()`；訊息寫入後，若外掛有 `resolveInboundMedia()`，就在背景下載媒體。
 
+`processInboundMessage()` 是所有渠道（含網站聊天室）共用的入口。它先查租戶是否啟用，停用（含試用到期）時丟棄事件、不建立任何資料（issue #410）。webhook 在步驟 1 已經提早丟棄，這裡另外擋住網站聊天室與其他直接呼叫的路徑。網站聊天室在更前面的入口就擋下：建立工作階段與驗證工作階段（送訊息、bootstrap、訪客 socket）在租戶停用時比照渠道停用回 404。
+
 ## 送出
 
 | 送出路徑 | 行程 | 外掛來源 | 渠道專屬的分支 |
@@ -82,11 +84,11 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 自動化與關鍵字回覆的 `send_message`、`send_material` | workers | workers 自己的 `Map` | LINE 選擇 reply 或 push |
 | Canvas 的 `MESSAGE` 節點 | API（`canvas.worker.ts`） | `getChannelPlugin()` | `email` 改走寄信 |
 | 滿意度調查 | API（`csat.service.ts`） | `getChannelPlugin()` | LINE 送附評分按鈕的 Flex 訊息，其他渠道送文字 |
-| 行銷群發 | API（`marketing.service.ts`） | `getChannelPlugin()` | LINE 在訊息不含個人化變數時改用 multicast，一次送給多人 |
+| 行銷群發、附券廣播、批次發券 | API（`marketing.service.ts`、`broadcast-coupon.flow.ts`） | `getChannelPlugin()` | LINE 在訊息不含個人化變數時改用 multicast，一次送給多人；只接受能主動推送的渠道，網站聊天室回 400 |
 
 **LINE 的 reply 與 push。** LINE 的 reply 不計入訊息額度，但 reply token 只在收到訊息後短時間內有效。`packages/shared/src/safe-reply.ts` 的 `selectSafeLineStrategy()` 決定用哪一種：帶著 reply token、而且收到訊息未滿 `LINE_REPLY_SAFE_WINDOW_MS` 時用 reply，否則用 push。API 與 workers 共用這個函式，但 reply 失敗後改用 push 的處理各寫一份。
 
-**送出失敗時。** workers 的 `deliverToChannelFromWorker()` 找不到渠道身分、外掛或無法解密憑證時，以 `recordDeliveryFailure()` 寫入一則標示失敗的訊息。API 端的客服回覆失敗時，介面沒有標示，見 CONV-03。
+**送出失敗時。** workers 的 `deliverToChannelFromWorker()` 找不到渠道身分、外掛或無法解密憑證時，以 `recordDeliveryFailure()` 寫入一則標示失敗的訊息。API 端的客服回覆送出失敗時，`sendMessage()` 在訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`。這組欄位與 workers 相同，收件匣依此標示沒有送出的訊息。
 
 ## 憑證
 
@@ -109,7 +111,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 驗證憑證 | `channel.service.ts` 的渠道驗證 | LINE、FB、THREADS 各一段，直接呼叫渠道 API |
 | 自動設定 webhook | `line-webhook-setup.service.ts` | LINE。外掛的 `setWebhook()` 沒有被使用 |
 | 檢查 access token 是否過期 | `fb-token-monitor.service.ts` | FB |
-| 圖文選單的建立與發布 | `line/rich-menu.service.ts`，直接呼叫 LINE API | LINE。綁定使用者則走外掛的 `extensions.ui` |
+| 圖文選單的建立與發布 | `line/rich-menu.line-api.ts`，由 `rich-menu.flow.ts` 在交易外直接呼叫 LINE API | LINE。綁定使用者則走外掛的 `extensions.ui` |
 | 重抓個人資料 | `line/line-profile.service.ts` | LINE |
 | MCP 的 LINE 工具 | `mcp.server.ts` | LINE |
 | 素材的格式檢查 | `marketing/material.service.ts`，呼叫 LINE 的訊息驗證 API | LINE。素材以自己的小寫 `channelType`（`line`、`fb`）區分，與 `Channel.channelType` 不同 |
@@ -136,7 +138,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 1. 在 `schema.prisma` 的 `ChannelType` 與 `packages/shared`、`packages/types` 的渠道型別加入新類型。兩個套件各有一份，見 PKG-01。
 2. 在 `packages/channel-plugins/src/` 實作 `ChannelPlugin`，匯出一個實例，並在 `package.json` 的 `exports` 加上子路徑（確認路徑與實際輸出一致，見 PKG-02）。
 3. 在 `apps/api/src/index.ts` 以 `registerChannelPlugin()` 註冊，並更新同檔的啟動 log（見 APP-03）。
-4. 在 `apps/workers/src/index.ts` 的 `pluginRegistry` 加入同一個外掛，否則自動化與關鍵字回覆送不出去。
+4. 在 `apps/workers/src/lib/plugin-registry.ts` 的 `createWorkerPluginRegistry()` 加入同一個外掛，否則自動化與關鍵字回覆送不出去。
 5. 在 `webhook.routes.ts` 加上進站路由；驗簽用的秘密不是 `appSecret` 或 `channelSecret` 時，修改 `processWebhookEvent()` 的選擇。
 6. 在 `channel.routes.ts` 的 `createChannelSchema` 加入新類型，並定義憑證欄位的檢查。
 7. 需要的話，在 `channel.service.ts` 加上驗證憑證的分支，並在前端的渠道管理頁加上表單。
@@ -146,20 +148,20 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 
 | 限制 | 詳見 `../system/AUDIT.md` |
 | --- | --- |
-| workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時送不出去，機器人也不回覆 | CHAN-02 |
+| workers 沒有網站聊天室外掛；關鍵字回覆不限渠道，在網站聊天室命中時送不出去，機器人也不回覆 | CHAN-02 |
 | Telegram 沒有註冊；WhatsApp 可以建立但沒有外掛 | APP-02 |
 | 啟動 log 少列 Threads | APP-03 |
 | `./fb` 子路徑指向不存在的檔案 | PKG-02 |
 | 渠道型別在兩個套件各有一份 | PKG-01 |
 | 外掛套件裡有沒有呼叫端的程式 | PKG-06 |
-| 刪除渠道會因外鍵而失敗 | CHAN-01 |
+| 有對話的渠道刪除回 409，只能停用 | CHAN-01 |
 
 ## 自己驗證的方法
 
 ```bash
 # 兩個行程各註冊了哪些外掛
 grep -n "registerChannelPlugin" apps/api/src/index.ts
-grep -n "pluginRegistry.set" apps/workers/src/index.ts
+grep -nE "(line|fb|threads|webchat)Plugin" apps/workers/src/lib/plugin-registry.ts
 
 # 以 channelType 分支的程式
 grep -rn "channelType *[!=]==\|[!=]== *CHANNEL_TYPE" apps/api/src apps/workers/src --include='*.ts'

@@ -4,12 +4,13 @@ import {
   SOCKET_SUBSCRIPTION_RATE_WINDOW_MS,
   type SocketSubscriptionRateLimitState,
 } from './socket-subscription-rate-limit.js';
+import { agentPushRoom } from '../../events/socket-push.js';
 
 type Ack = (response: unknown) => void;
 
 /** registerRoomHandlers 用到的 Socket.IO socket 方法 */
 export interface RoomSocket {
-  join(room: string): unknown;
+  join(room: string | string[]): unknown;
   leave(room: string): unknown;
   on(event: 'subscribe' | 'unsubscribe', listener: (input: unknown, ack?: Ack) => void): unknown;
 }
@@ -36,11 +37,12 @@ const MESSAGES = {
 
 /**
  * 成員連線後的房間處理（主規格 socket-room-authorization）：
- * 加入自己的租戶與成員房間；subscribe／unsubscribe 先計次，再經伺服器授權，通過才加入或離開房間。
+ * 加入自己的租戶與成員房間，以及連線前依可見渠道算好的渠道房間（socket-channel-rooms.ts）；
+ * subscribe／unsubscribe 先計次，再經伺服器授權，通過才加入或離開房間。
  */
 export function registerRoomHandlers(
   socket: RoomSocket,
-  identity: { agentId: string; tenantId: string },
+  identity: { agentId: string; tenantId: string; channelRooms: string[] },
   authorize: (input: unknown) => Promise<SocketRoomAuthorizationResult>,
   log: RoomLogger,
 ): void {
@@ -49,6 +51,10 @@ export function registerRoomHandlers(
   // Auto-join tenant room and agent-specific room
   socket.join(`tenant:${tenantId}`);
   socket.join(`agent:${agentId}`);
+  // 帶租戶 ID 的成員房間：notifyAgent()（events/socket-push.ts）推到這裡，別的租戶的推播到不了（events/socket-push.ts）
+  socket.join(agentPushRoom(tenantId, agentId));
+  // 渠道房間：渠道相關推播（訊息內容、對話更新）只送到這裡，不送到租戶房間（issue #427）
+  if (identity.channelRooms.length > 0) socket.join(identity.channelRooms);
 
   // subscribe 與 unsubscribe 共用同一個計數
   let subscriptionRateState: SocketSubscriptionRateLimitState = {

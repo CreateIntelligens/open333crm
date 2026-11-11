@@ -81,10 +81,25 @@ const app = Fastify();
 await app.register(errorHandlerPlugin);
 app.decorate('prisma', prisma);
 app.decorate('io', { to: () => ({ emit: () => {} }) } as never);
-await app.register(emailRegistrationRoutes, { prefix: '/api/v1/public/email-registration', store, deliver });
+// 送出 email 會先寄驗證碼（design D15）：記下驗證碼，測試以它完成登記
+const codes: string[] = [];
+await app.register(emailRegistrationRoutes, {
+  prefix: '/api/v1/public/email-registration',
+  store,
+  deliver,
+  sendVerificationEmail: async (_to: string, code: string) => {
+    codes.push(code);
+  },
+});
 await app.ready();
 
 const url = (token: string) => `/api/v1/public/email-registration/${token}`;
+/** 送出 email 並輸入寄出的驗證碼 */
+async function registerEmail(token: string, email: string) {
+  const sent = await app.inject({ method: 'POST', url: url(token), payload: { email } });
+  assert.equal(sent.json().data?.status, 'code_sent', sent.body);
+  return app.inject({ method: 'POST', url: `${url(token)}/verify`, payload: { code: codes.at(-1) } });
+}
 
 afterAll(async () => {
   await app.close();
@@ -128,7 +143,7 @@ test('格式錯誤', async () => {
 
 test('連結使用後失效', async () => {
   const token = await newToken();
-  const ok = await app.inject({ method: 'POST', url: url(token), payload: { email: `${stamp}@example.com` } });
+  const ok = await registerEmail(token, `${stamp}@example.com`);
   assert.equal(ok.statusCode, 200, ok.body);
   assert.equal(ok.json().data.status, 'registered');
   const contact = await withTenant(prisma, T, (tx) => tx.contact.findFirst({ where: { id: fixture.contact.id } }));
@@ -142,7 +157,7 @@ test('通知送出時發生錯誤，登記結果仍回傳成功', async () => {
   const token = await newToken();
   deliverThrows = true;
   try {
-    const res = await app.inject({ method: 'POST', url: url(token), payload: { email: `${stamp}-2@example.com` } });
+    const res = await registerEmail(token, `${stamp}-2@example.com`);
     assert.equal(res.statusCode, 200, res.body);
     assert.equal(res.json().data.status, 'registered');
   } finally {

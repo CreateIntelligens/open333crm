@@ -1,3 +1,4 @@
+import { splitTextLinks } from '@open333crm/shared';
 import type { Message } from './session.js';
 
 interface PanelTheme {
@@ -45,6 +46,7 @@ const STYLES = `
     background: #2563eb; color: #fff;
     align-self: flex-end; border-bottom-right-radius: 4px;
   }
+  .o333-msg a { color: inherit; text-decoration: underline; word-break: break-all; }
   .o333-msg-img img {
     max-width: 100%; max-height: 200px; border-radius: 8px;
     display: block;
@@ -57,12 +59,6 @@ const STYLES = `
     display: flex; gap: 8px; padding: 10px 12px;
     border-top: 1px solid #e2e8f0; align-items: center;
   }
-  #o333-attach {
-    background: none; border: none; cursor: pointer;
-    font-size: 18px; padding: 4px; flex-shrink: 0;
-    color: #64748b; line-height: 1;
-  }
-  #o333-attach:hover { color: #2563eb; }
   #o333-input {
     flex: 1; border: 1px solid #cbd5e1; border-radius: 8px;
     padding: 8px 12px; font-size: 14px; outline: none;
@@ -96,8 +92,6 @@ export function createPanel(title: string): {
   messagesEl: HTMLElement;
   input: HTMLInputElement;
   sendBtn: HTMLButtonElement;
-  attachBtn: HTMLButtonElement;
-  fileInput: HTMLInputElement;
 } {
   const panel = document.createElement('div');
   panel.id = 'o333-panel';
@@ -106,8 +100,6 @@ export function createPanel(title: string): {
     <div id="o333-header">${escapeHtml(title)}</div>
     <div id="o333-messages"></div>
     <div id="o333-input-row">
-      <button id="o333-attach" title="Attach file">📎</button>
-      <input id="o333-file" type="file" accept="image/png,image/jpeg,video/mp4,video/quicktime" style="display:none" />
       <input id="o333-input" type="text" placeholder="Type a message..." autocomplete="off" />
       <button id="o333-send">Send</button>
     </div>
@@ -119,8 +111,6 @@ export function createPanel(title: string): {
     messagesEl: panel.querySelector('#o333-messages') as HTMLElement,
     input: panel.querySelector('#o333-input') as HTMLInputElement,
     sendBtn: panel.querySelector('#o333-send') as HTMLButtonElement,
-    attachBtn: panel.querySelector('#o333-attach') as HTMLButtonElement,
-    fileInput: panel.querySelector('#o333-file') as HTMLInputElement,
   };
 }
 
@@ -133,9 +123,13 @@ export function applyPanelTheme(panel: HTMLElement, theme: PanelTheme): void {
   panel.style.backgroundRepeat = 'no-repeat';
 }
 
-export function appendMessage(container: HTMLElement, msg: Message, isOutbound: boolean): void {
+/**
+ * @param fromVisitor 訪客自己送出的訊息為 true（靠右）；客服、Bot 與問候語為 false（靠左）。
+ *   這是訪客畫面的左右，不是 CRM 的 direction：客服回覆對 CRM 是 OUTBOUND，但在這裡靠左。
+ */
+export function appendMessage(container: HTMLElement, msg: Message, fromVisitor: boolean): void {
   const el = document.createElement('div');
-  el.className = `o333-msg ${isOutbound ? 'o333-msg-out' : 'o333-msg-in'}`;
+  el.className = `o333-msg ${fromVisitor ? 'o333-msg-out' : 'o333-msg-in'}`;
 
   if (msg.contentType === 'image' && msg.content?.url) {
     el.classList.add('o333-msg-img');
@@ -152,13 +146,59 @@ export function appendMessage(container: HTMLElement, msg: Message, isOutbound: 
   } else if (msg.contentType === 'text' || !msg.contentType) {
     const text = msg.content?.text ?? '';
     if (!text) return;
-    el.textContent = text;
+    // 訪客自己送出的文字維持純文字：訪客的輸入不當成連結目標（規格 webchat-widget）
+    if (fromVisitor) el.textContent = text;
+    else appendTextWithLinks(el, text);
   } else {
     el.textContent = '[unsupported]';
   }
 
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * 訪客自己送出的文字：靠右、純文字。訪客的輸入不經過 appendTextWithLinks()，
+ * 不會變成連結目標（規格 webchat-widget「Web addresses in text messages are links」）。
+ */
+export function appendVisitorText(container: HTMLElement, text: string): void {
+  const el = document.createElement('div');
+  el.className = 'o333-msg o333-msg-out';
+  el.textContent = text;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+/** 網址顯示成連結；一律用 DOM 節點組出，不把訊息內容當 HTML 解析 */
+function appendTextWithLinks(el: HTMLElement, text: string): void {
+  for (const part of splitTextLinks(text)) {
+    if (part.type === 'text') {
+      el.appendChild(document.createTextNode(part.value));
+      continue;
+    }
+    // 第二道防線：splitTextLinks() 只產出 http(s) 網址，這裡再以 URL 解析確認協定
+    const href = safeHttpUrl(part.value);
+    if (!href) {
+      el.appendChild(document.createTextNode(part.value));
+      continue;
+    }
+    const a = document.createElement('a');
+    a.href = href;
+    a.textContent = part.value;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    el.appendChild(a);
+  }
+}
+
+/** 只接受 http: 與 https:，回傳正規化後的網址；其他協定或解析失敗回 null */
+function safeHttpUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
 }
 
 function escapeHtml(str: string): string {

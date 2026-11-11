@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface DaySchedule {
   start: string;
@@ -50,15 +51,19 @@ export function OfficeHoursSettings() {
   const [newHoliday, setNewHoliday] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // 讀取失敗時不可顯示預設值讓人儲存：會蓋掉正式設定（G07）
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.get('/settings/office-hours');
       const data = res.data.data;
       setTimezone(data.timezone || 'Asia/Taipei');
       setConfig(data.officeHours || DEFAULT_CONFIG);
     } catch (err) {
-      console.error('Failed to fetch office hours:', err);
+      setLoadError(getApiErrorMessage(err, '請稍後重試'));
     } finally {
       setLoading(false);
     }
@@ -69,13 +74,13 @@ export function OfficeHoursSettings() {
   }, [fetchSettings]);
 
   const handleSave = async () => {
+    if (loadError) return;
     setSaving(true);
     try {
       await api.put('/settings/office-hours', { timezone, officeHours: config });
       alert('營業時間設定已儲存');
     } catch (err) {
-      console.error('Failed to save office hours:', err);
-      alert('儲存失敗');
+      alert(getApiErrorMessage(err, '儲存失敗，請稍後重試'));
     } finally {
       setSaving(false);
     }
@@ -123,6 +128,18 @@ export function OfficeHoursSettings() {
 
   if (loading) {
     return <div className="p-4 text-muted-foreground">載入中...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-2xl space-y-3 rounded-md border border-destructive/30 bg-destructive-subtle p-4">
+        <p className="text-sm text-destructive">無法讀取營業時間設定：{loadError}</p>
+        <p className="text-xs text-muted-foreground">為避免以預設值蓋掉目前的設定，讀取成功前無法儲存。</p>
+        <Button variant="outline" size="sm" onClick={fetchSettings}>
+          重新載入
+        </Button>
+      </div>
+    );
   }
 
   return (

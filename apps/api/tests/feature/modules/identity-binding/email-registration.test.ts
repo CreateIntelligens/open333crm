@@ -21,9 +21,11 @@ import {
   readEmailRegistration,
   sendEmailRegistrationNotices,
   submitEmailRegistration,
+  EMAIL_REGISTRATION,
   type EmailRegistrationDeps,
 } from '#src/modules/identity-binding/email-registration.service.js';
 import { loadOtherChannelContext } from '#src/modules/ai/other-channel-context.js';
+import { reuseOrIssueRegistrationToken } from '#src/modules/identity-binding/identifier-registration.js';
 
 const prisma = new PrismaClient();
 const T = TENANT_A;
@@ -359,7 +361,88 @@ scenario('解除後回覆', async (f) => {
     data: { conversationId: a.conversationId, direction: 'INBOUND', senderType: 'CONTACT', contentType: 'text', content: { text: 'A 在 LINE 的問題' } },
   });
   await submit(f, await linkFor(f, a), 'amy@example.com');
-  assert.ok((await loadOtherChannelContext(f.tx, T, b.conversationId)).includes('A 在 LINE 的問題'), '合併後讀得到');
+  assert.ok((await loadOtherChannelContext({ tx: f.tx, tenantId: T }, b.conversationId)).includes('A 在 LINE 的問題'), '合併後讀得到');
   assert.equal(await sendUnbind(f, a, b.contactId), 'unbound');
-  assert.ok(!(await loadOtherChannelContext(f.tx, T, b.conversationId)).includes('A 在 LINE 的問題'), '解除後讀不到');
+  assert.ok(!(await loadOtherChannelContext({ tx: f.tx, tenantId: T }, b.conversationId)).includes('A 在 LINE 的問題'), '解除後讀不到');
+});
+
+// ── 另一種識別不一致（change add-phone-identity-merge，design D6） ────────────
+
+scenario('兩邊的手機不同', async (f) => {
+  const b = await f.tx.contact.create({ data: { tenantId: T, displayName: 'B', email: 'amy@example.com', phone: '0912-345-678' } });
+  const a = await f.person('A');
+  await f.tx.contact.update({ where: { id: a.contactId }, data: { phone: '0988000111' } });
+  assert.equal((await submit(f, await linkFor(f, a), 'amy@example.com')).status, 'identity_conflict');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: a.contactId } }))?.email, null, '不寫入 email');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: b.id } }))?.isArchived, false);
+  assert.ok(textsTo(f, a.conversationId).some((t) => t.includes('客服確認')));
+});
+
+scenario('兩邊的手機寫法不同但是同一支', async (f) => {
+  const b = await f.person('B', { channel: f.fbCh, email: 'amy@example.com' });
+  await f.tx.contact.update({ where: { id: b.contactId }, data: { phone: '0912-345-678' } });
+  const a = await f.person('A');
+  await f.tx.contact.update({ where: { id: a.contactId }, data: { phone: '+886 912 345 678' } });
+  const result = await submit(f, await linkFor(f, a), 'amy@example.com');
+  assert.equal(result.status === 'merged' && result.survivorId, b.contactId);
+});
+
+// ── 從票券頁登記不自動合併（add-coupon-system，code review 2026-10-21）────────────
+
+async function couponPageToken(f: Fixture, actor: BindingActor): Promise<string> {
+  const r = await reuseOrIssueRegistrationToken(EMAIL_REGISTRATION, f.deps, actor);
+  assert.equal(r.status, 'ok');
+  return (r as { token: string }).token;
+}
+
+scenario('票券頁登記的 email 已屬於其他聯絡人', async (f) => {
+  const b = await f.person('B', { channel: f.fbCh, email: 'amy@example.com', createdAt: new Date(Date.now() - 86_400_000) });
+  const a = await f.person('A');
+  const result = await submit(f, await couponPageToken(f, a), 'amy@example.com');
+  assert.equal(result.status, 'merge_requires_chat');
+  const after = await f.tx.contact.findFirst({ where: { id: a.contactId } });
+  assert.equal(after?.isArchived, false, 'A 沒有被併入 B');
+  assert.equal(after?.email, null);
+  assert.equal(after?.identityVerifiedAt, null);
+  assert.equal((await f.tx.contact.findFirst({ where: { id: b.contactId } }))?.isArchived, false);
+  assert.ok(textsTo(f, a.conversationId).some((t) => /登記email/.test(t)), 'A 的對話收到說明');
+});
+
+// 附券廣播的收件人可能只有渠道身分、沒有對話（A15 15.22、design D29）：票券連結不帶對話
+const withoutConversation = (actor: BindingActor) => ({ ...actor, conversationId: undefined });
+
+scenario('票券連結沒有對話時登記完成不送通知', async (f) => {
+  const a = await f.person('A', { conversation: false });
+  const r = await reuseOrIssueRegistrationToken(EMAIL_REGISTRATION, f.deps, withoutConversation(a));
+  assert.equal(r.status, 'ok');
+  const result = await submit(f, (r as { token: string }).token, 'solo@example.com');
+  assert.equal(result.status, 'registered');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: a.contactId } }))?.email, 'solo@example.com');
+  assert.deepEqual(f.sent, [], '沒有對話可以送，不送通知（登記頁本身會顯示結果）');
+});
+
+scenario('票券連結沒有對話、登記前顧客已開始對話', async (f) => {
+  const a = await f.person('A', { conversation: false });
+  const r = await reuseOrIssueRegistrationToken(EMAIL_REGISTRATION, f.deps, withoutConversation(a));
+  const conv = await f.tx.conversation.create({
+    data: { tenantId: T, contactId: a.contactId, channelId: a.channelId, channelType: 'LINE' },
+  });
+  const result = await submit(f, (r as { token: string }).token, 'later@example.com');
+  assert.equal(result.status, 'registered');
+  assert.equal(textsTo(f, conv.id).length, 1, '通知送到顧客在收券渠道最近的對話');
+});
+
+scenario('票券頁登記的 email 沒有其他人使用', async (f) => {
+  const a = await f.person('A');
+  const result = await submit(f, await couponPageToken(f, a), 'new@example.com');
+  assert.equal(result.status, 'registered');
+  const after = await f.tx.contact.findFirst({ where: { id: a.contactId } });
+  assert.equal(after?.email, 'new@example.com');
+  assert.ok(after?.identityVerifiedAt);
+});
+
+scenario('對話中主動登記仍會自動合併', async (f) => {
+  await f.person('B', { channel: f.fbCh, email: 'amy@example.com', createdAt: new Date(Date.now() - 86_400_000) });
+  const a = await f.person('A');
+  assert.equal((await submit(f, await linkFor(f, a), 'amy@example.com')).status, 'merged');
 });

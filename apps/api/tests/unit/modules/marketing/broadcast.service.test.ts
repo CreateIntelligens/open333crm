@@ -21,6 +21,10 @@ import {
 } from '@open333crm/channel-plugins';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { executeBroadcast } from '#src/modules/marketing/marketing.service.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
+
+/** 建立者是總店：分群條件不受渠道限制（依建立者判斷的行為見 channel-scoped-visibility 的 feature 測試） */
+const allChannels = async () => ALL_CHANNELS;
 
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 
@@ -164,6 +168,14 @@ function setupFixture({
         Object.assign(currentBroadcastState, args.data);
         return currentBroadcastState;
       }),
+      // executeBroadcast 以條件更新搶占 sending（change fix-broadcast-audience-fail-closed）
+      updateMany: mockFn(async (args: { where: { id: string; status?: { in: string[] } }; data: Record<string, unknown> }) => {
+        const allowed = args.where.status?.in;
+        if (allowed && !allowed.includes(currentBroadcastState.status)) return { count: 0 };
+        broadcastUpdates.push({ where: { id: args.where.id }, data: args.data });
+        Object.assign(currentBroadcastState, args.data);
+        return { count: 1 };
+      }),
     },
     material: {
       findFirst: mockFn(async () => material),
@@ -235,7 +247,7 @@ async function testLineMulticastWhenNoVariable() {
   const f = setupFixture({ channelType: 'LINE', identitiesCount: 3, hasVariable: false });
   const io = createIoMock();
 
-  const result = await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  const result = await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
 
   // multicast 路徑：plugin.sendMessage 只應被呼叫 1 次
   assert.equal(f.plugin.sends.length, 1, `expected 1 sendMessage call, got ${f.plugin.sends.length}`);
@@ -264,7 +276,7 @@ async function testLineForLoopWhenHasVariable() {
   const f = setupFixture({ channelType: 'LINE', identitiesCount: 3, hasVariable: true });
   const io = createIoMock();
 
-  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
 
   // 有變數 → for loop push，3 個受眾 = 3 次 sendMessage
   assert.equal(f.plugin.sends.length, 3, `expected 3 sendMessage calls, got ${f.plugin.sends.length}`);
@@ -285,7 +297,7 @@ async function testFbAlwaysForLoop() {
   const f = setupFixture({ channelType: 'FB', identitiesCount: 3, hasVariable: false });
   const io = createIoMock();
 
-  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
 
   assert.equal(f.plugin.sends.length, 3, 'FB should always use for loop');
   for (const send of f.plugin.sends) {
@@ -304,7 +316,7 @@ async function testZeroAudience() {
   // 標 completed 會讓使用者以為發成功了，其實一個人都沒發到。
   let thrown: unknown;
   try {
-    await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+    await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
   } catch (err) {
     thrown = err;
   }
@@ -326,7 +338,7 @@ async function testPluginFailureMarksFailed() {
   const f = setupFixture({ channelType: 'LINE', identitiesCount: 3, pluginBehavior: 'fail' });
   const io = createIoMock();
 
-  const result = await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  const result = await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
 
   // multicast 1 次失敗 → 整批 3 人全標失敗
   assert.equal(result.total, 3);
@@ -342,7 +354,7 @@ async function testMulticastChunking499() {
   const f = setupFixture({ channelType: 'LINE', identitiesCount: 600, hasVariable: false });
   const io = createIoMock();
 
-  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
 
   // 2 批：第 1 批 499 人，第 2 批 101 人
   assert.equal(f.plugin.sends.length, 2, `expected 2 chunks, got ${f.plugin.sends.length}`);
@@ -370,7 +382,7 @@ async function testMulticastPartialFailure() {
   });
   const io = createIoMock();
 
-  const result = await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  const result = await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
 
   assert.equal(result.total, 600);
   assert.equal(result.success, 499, `expected 499 success, got ${result.success}`);
@@ -396,13 +408,13 @@ async function testMulticastRetryReusesAttemptKeyAndRotatesAfter24Hours() {
   });
   const io = createIoMock();
 
-  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
   const firstKey = (f.plugin.sends[0].payload.delivery as { retryKey: string }).retryKey;
   const attempt = f.deliveryAttempts.get(`${f.broadcastId}:0`)!;
   assert.equal(attempt.status, 'failed');
 
   shouldFail = false;
-  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
   const secondKey = (f.plugin.sends[1].payload.delivery as { retryKey: string }).retryKey;
   assert.equal(secondKey, firstKey);
   assert.equal(f.deliveryAttempts.size, 1);
@@ -410,7 +422,7 @@ async function testMulticastRetryReusesAttemptKeyAndRotatesAfter24Hours() {
   attempt.updatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
   attempt.status = 'failed';
   f.currentBroadcastState.status = 'failed';
-  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId, allChannels);
   const thirdKey = (f.plugin.sends[2].payload.delivery as { retryKey: string }).retryKey;
   assert.notEqual(thirdKey, secondKey);
 }
