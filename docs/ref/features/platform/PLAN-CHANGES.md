@@ -11,7 +11,8 @@
 
 | 階段 | 端點 | 規則 |
 | --- | --- | --- |
-| 送出 | `POST /api/v1/plan-change` | 同一個租戶同時只能有一筆 `pending`，否則回 409。`upgrade` 當場檢查目標方案存在，`token_topup` 檢查加購量是正整數 |
+| 送出 | `POST /api/v1/plan-change` | 同一個租戶同時只能有一筆 `pending`，否則回 409。`upgrade` 當場檢查目標方案存在，`token_topup` 檢查加購量是正整數，而且 AI 月額度基礎上限不是無上限（否則回 400 `TOPUP_UNLIMITED`） |
+| 能否加購 | `GET /api/v1/plan-change/topup-eligibility` | 回傳 `allowed`（基礎上限是無上限時為 false）與 `monthlyTokenLimit`。`/dashboard/plan` 在 `allowed` 是 false 時停用「加購 Token」 |
 | 待審 | `GET /platform/plan-change-requests` | 只回傳 `pending`，依申請時間舊到新。附租戶名稱、目前方案、本月已核准的加購量（`monthlyTopupTokens`）與目前本月的 AI 月額度上限（`monthlyTokenLimit`，null 是無上限） |
 | 核准 | `PATCH /platform/plan-change-requests/:id/approve` | 依型別執行動作，見下文 |
 | 駁回 | `PATCH /platform/plan-change-requests/:id/reject` | 只改狀態，不動租戶 |
@@ -48,7 +49,7 @@
 - 當月加購量直接從已核准的申請加總（`plan-limits.service.ts` 的 `sumMonthlyTopupTokens()`），不另外存，也不寫 `limitOverrides`。每一筆加購都是一筆申請，有審核者、時間與備註，可以對帳。
 - 解析只有一份：`plan-limits.service.ts` 的 `getEffectiveLimit()`。LLM 呼叫前的月額度檢查、告警門檻與平台審核頁都呼叫它，`approveRequest()` 也用 `resolveEffectiveLimit()` 判斷基礎上限，不再自己算。
 - 換方案之後，加購加在新方案的額度上（PLAN-05 已修正）。
-- 基礎上限是無上限時，核准會被擋下並回 400 `TOPUP_UNLIMITED`。核准之後才換到無上限方案時，本月仍是無上限。
+- 基礎上限是無上限時，送出與核准都會被擋下並回 400 `TOPUP_UNLIMITED`。送出端在 2026-11-11 才加上檢查，之前送出的這類申請只能駁回；`/admin/plan-changes` 會停用它們的「核准」按鈕。核准之後才換到無上限方案時，本月仍是無上限。
 - 核准是條件更新：同一筆申請同時核准兩次，只有一次成功，另一次回 400。
 
 兩邊畫面都寫明「加購僅限核准當月（台灣時間），下個月回到方案額度」。租戶頁的申請記錄在已核准的加購旁顯示「限 YYYY-MM 使用」；平台審核頁在每筆加購申請下方顯示該租戶「本月已加購」與「本月上限」。

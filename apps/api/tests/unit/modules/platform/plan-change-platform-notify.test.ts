@@ -41,7 +41,7 @@ interface RequestRow {
 /** 只實作送出申請與通知用到的 Prisma 方法 */
 function createDb() {
   const plans = [{ id: uuid(), slug: 'standard', name: '標準版', isTrial: false }];
-  const tenants = new Map<string, { id: string; name: string }>();
+  const tenants = new Map<string, { id: string; name: string; limitOverrides: object; plan: { limits: object } }>();
   const platformUsers: Array<{ id: string; email: string; name: string; isActive: boolean }> = [];
   const requests: RequestRow[] = [];
   const audits: Array<Record<string, unknown>> = [];
@@ -82,7 +82,8 @@ function createDb() {
     requests,
     audits,
     addTenant(name: string) {
-      const tenant = { id: uuid(), name };
+      // 有 AI 月額度：無上限的租戶不能申請加購（change block-topup-request-when-unlimited）
+      const tenant = { id: uuid(), name, limitOverrides: {}, plan: { limits: { monthlyTokens: 1_000_000 } } };
       tenants.set(tenant.id, tenant);
       return tenant;
     },

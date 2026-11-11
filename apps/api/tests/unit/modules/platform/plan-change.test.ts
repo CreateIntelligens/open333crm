@@ -371,6 +371,63 @@ test('加購量不是正整數：0、-1 與 1.5 都回 400，不建立申請', a
   assert.equal(db.requests.length, 0);
 });
 
+test('AI 月額度無上限時不能申請加購：回 400 TOPUP_UNLIMITED，不建立申請', async () => {
+  const db = createDb();
+  const plan = db.addPlan('enterprise', ['core'], { monthlyTokens: null });
+  const tenant = db.addTenant(plan.id);
+  const app = await tenantApp(db, tenant.id, ['settings.manage']);
+
+  const res = await app.inject({ method: 'POST', url: '/api/v1/plan-change', payload: { type: 'token_topup', topupTokens: 200000 } });
+  await app.close();
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.json().error.code, 'TOPUP_UNLIMITED');
+  assert.equal(db.requests.length, 0);
+  // 沒有方案也是無上限
+  const noPlan = db.addTenant(null);
+  await rejectsWith(createPlanChangeRequest(db.prisma, noPlan.id, { type: 'token_topup', topupTokens: 200000 }), 400, 'TOPUP_UNLIMITED');
+  assert.equal(db.requests.length, 0);
+});
+
+test('有月額度時可以申請加購：建立 pending 的加購申請', async () => {
+  const db = createDb();
+  const plan = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
+  const tenant = db.addTenant(plan.id);
+
+  const created = await createPlanChangeRequest(db.prisma, tenant.id, { type: 'token_topup', topupTokens: 200000 });
+  assert.equal(created.status, 'pending');
+  assert.equal(created.type, 'token_topup');
+  assert.equal(db.requests.length, 1);
+});
+
+test('無上限的租戶查詢能否加購：allowed 是 false，monthlyTokenLimit 是 null', async () => {
+  const db = createDb();
+  const plan = db.addPlan('enterprise', ['core'], { monthlyTokens: null });
+  const tenant = db.addTenant(plan.id);
+  const app = await tenantApp(db, tenant.id, ['settings.manage']);
+
+  const res = await app.inject({ method: 'GET', url: '/api/v1/plan-change/topup-eligibility' });
+  await app.close();
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json().data, { allowed: false, monthlyTokenLimit: null });
+});
+
+test('有月額度的租戶查詢能否加購：allowed 是 true，上限含本月已核准的加購', async () => {
+  const db = createDb();
+  const plan = db.addPlan('light', ['core'], { monthlyTokens: 1_000_000 });
+  const tenant = db.addTenant(plan.id);
+  const req = db.addRequest(tenant.id, { type: 'token_topup', topupTokens: 200_000 });
+  await approveRequest(db.prisma, redis, req.id, REVIEWER);
+  const app = await tenantApp(db, tenant.id, ['settings.manage']);
+
+  const res = await app.inject({ method: 'GET', url: '/api/v1/plan-change/topup-eligibility' });
+  await app.close();
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json().data, { allowed: true, monthlyTokenLimit: 1_200_000 });
+});
+
 test('沒有 settings.manage 權限：送出與查詢都回 403', async () => {
   const db = createDb();
   db.addPlan('standard');

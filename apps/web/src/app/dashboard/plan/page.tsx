@@ -44,8 +44,21 @@ export default function PlanPage() {
   const [msg, setMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // AI 月額度無上限時加購不會生效，後端也會拒絕（TOPUP_UNLIMITED）；查不到時先允許，交給後端判斷
+  const [topupAllowed, setTopupAllowed] = useState(true);
+
   const load = async () => setReqs((await api.get('/plan-change')).data.data);
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api
+      .get('/plan-change/topup-eligibility')
+      .then((res) => {
+        const allowed = res.data.data.allowed !== false;
+        setTopupAllowed(allowed);
+        if (!allowed) setMode('upgrade');
+      })
+      .catch(() => {});
+  }, []);
 
   const hasPending = reqs.some((r) => r.status === 'pending');
 
@@ -85,12 +98,16 @@ export default function PlanPage() {
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === m ? 'bg-primary text-primary-foreground' : 'border'}`}
+                  disabled={m === 'token_topup' && !topupAllowed}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${mode === m ? 'bg-primary text-primary-foreground' : 'border'}`}
                 >
                   {m === 'upgrade' ? '升級方案' : '加購 Token'}
                 </button>
               ))}
             </div>
+            {!topupAllowed && (
+              <p className="-mt-2 mb-4 text-xs text-muted-foreground">目前方案的 AI 額度已無上限，不需要加購</p>
+            )}
 
             {mode === 'upgrade' ? (
               <div>

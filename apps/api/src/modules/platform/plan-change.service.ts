@@ -39,6 +39,10 @@ export async function createPlanChangeRequest(
     await assertNotTrialPlan(prisma, input.targetPlanSlug);
   } else {
     if (!input.topupTokens || input.topupTokens <= 0) throw new AppError('加購 token 數需為正整數', 'BAD_REQUEST', 400);
+    // 無上限時加購不會生效，平台也無法核准：從送出就擋下，避免卡住「一次一筆」
+    if (!(await isTopupApplicable(prisma, tenantId))) {
+      throw new AppError('目前方案的 AI 額度已無上限，不需要加購', 'TOPUP_UNLIMITED', 400);
+    }
   }
 
   return prisma.planChangeRequest.create({
@@ -83,6 +87,25 @@ export async function getPlanChangeNotifyContext(
     tenantName: tenant?.name ?? request.tenantId,
     targetPlanName: request.type === 'upgrade' ? plan?.name ?? request.targetPlanSlug : null,
     recipients,
+  };
+}
+
+/** 租戶的 AI 月額度基礎上限不是無上限時，加購才有意義（核准端同樣以此判斷 TOPUP_UNLIMITED） */
+async function isTopupApplicable(prisma: PrismaClient, tenantId: string): Promise<boolean> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { limitOverrides: true, plan: { select: { limits: true } } },
+  });
+  return tenant !== null && resolveEffectiveLimit(tenant, 'monthlyTokens') !== null;
+}
+
+/**
+ * 租戶能不能申請加購，以及本月上限（含本月已核准的加購，null 是無上限），供 /dashboard/plan 判斷。
+ */
+export async function getTopupEligibility(prisma: PrismaClient, tenantId: string) {
+  return {
+    allowed: await isTopupApplicable(prisma, tenantId),
+    monthlyTokenLimit: await getEffectiveLimit(prisma, tenantId, 'monthlyTokens'),
   };
 }
 
@@ -178,12 +201,8 @@ async function approveTopup(
   req: { id: string; tenantId: string },
   review: { status: string; reviewedBy: string; reviewedAt: Date; reviewNote?: string },
 ) {
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: req.tenantId },
-    select: { limitOverrides: true, plan: { select: { limits: true } } },
-  });
   // 基礎上限無上限時加購無意義：擋核准並提示，避免管理員誤以為加購已生效
-  if (!tenant || resolveEffectiveLimit(tenant, 'monthlyTokens') === null) {
+  if (!(await isTopupApplicable(prisma, req.tenantId))) {
     throw new AppError('此租戶方案 AI 額度已為無上限，無需加購', 'TOPUP_UNLIMITED', 400);
   }
   // 條件更新：同一筆申請同時核准兩次，只有一次成功
