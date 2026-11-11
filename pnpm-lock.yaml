@@ -51,10 +51,15 @@ overrides:
   zod: 4.6.7
   '@fastify/static': 10.1.10
 
+packageExtensionsChecksum: d4f5fbff904df6d843e0bcc82bdc620c
+
 patchedDependencies:
   minio@8.0.7:
     hash: n5bzkupnsp2atqzqieqmva4dum
     path: patches/minio@8.0.7.patch
+  query-string@7.1.3:
+    hash: anvo4uoqcc2kryy26i3z77nt7i
+    path: patches/query-string@7.1.3.patch
 
 importers:
 
@@ -11795,7 +11800,8 @@ snapshots:
       ipaddr.js: 2.3.0
       lodash: 4.18.1
       mime-types: 2.1.35
-      query-string: 7.1.3
+      query-string: 7.1.3(patch_hash=anvo4uoqcc2kryy26i3z77nt7i)
+      stream-chain: 4.3.0
       stream-json: 3.7.0
       through2: 4.0.2
       xml2js: 0.6.2
@@ -12318,7 +12324,7 @@ snapshots:
       es-define-property: 1.0.1
       side-channel: 1.1.1
 
-  query-string@7.1.3:
+  query-string@7.1.3(patch_hash=anvo4uoqcc2kryy26i3z77nt7i):
     dependencies:
       decode-uri-component: 0.5.1
       filter-obj: 1.1.0
