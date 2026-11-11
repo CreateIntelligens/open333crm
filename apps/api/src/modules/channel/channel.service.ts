@@ -6,6 +6,7 @@ import { CHANNEL_TYPE, channelDisplayName } from '@open333crm/shared';
 import { resolveEffectiveLimit } from '../platform/plan-limits.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { insertAgentChannelAccess } from '../../services/channel-team-access.js';
+import { assertBotConfigWritable } from './bot-config-settings.js';
 
 // --- Credential Encryption ---
 
@@ -307,6 +308,9 @@ export async function updateChannel(
   if (!channel) {
     throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
+
+  // 機器人設定在任何寫入之前檢查；與已存的相同時不檢查（channel-management「機器人設定欄位的型別與範圍」）
+  if (data.settings !== undefined) assertBotConfigWritable(data.settings.botConfig, channel.settings);
 
   const updateData: Record<string, unknown> = {};
 

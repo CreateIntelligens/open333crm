@@ -4,6 +4,17 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-11：Canvas 等待節點喚醒（APP-09、RLS-01）
+
+issue #334，change `fix-canvas-wait-resume`。以單元測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_334`）驗證，沒有連 UAT。UAT 的 `flow_executions` 是 0 筆，沒有資料要修補。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| #334 第 1 點：流程過不了等待節點（未列入 `AUDIT.md`） | 已修正 | 喚醒時 `FlowRunner.run(id, { resumeFromWait: true })` 略過 `currentNodeId` 指向的等待節點，從 `nextNodeId` 繼續。`flow-runner-wait.test.ts`（unit）三個案例與 `canvas-resume.test.ts`（feature）「喚醒後從等待節點的下一個節點繼續」修正前失敗在斷言上（`喚醒後應該完成，實際 WAITING`）。暫停時寫入的資料形狀不變，修正前停在等待節點的資料喚醒後一樣從下一個節點繼續 |
+| APP-09 的 Canvas 等待節點喚醒 | 已修正，APP-09 維持部分修正（Redis 廣播、行程記憶體、Socket.IO 未處理） | `processResumeQueue()` 在租戶交易內以 `updateMany({ where: { id, tenantId, status: 'WAITING', resumeAt: { lte: now } } })` 認領，沿用 `claimOne()`。`canvas-resume.test.ts`「兩次喚醒同時執行時只恢復一次」讓兩次排程都掃描到之後才一起認領；mutation：認領條件改成只有 `{ id, tenantId }` 時失敗（實際 2 次），「已被認領的 execution 不會再被恢復」也失敗。`status` 與 `resumeAt` 兩個條件互為備援，只拿掉其中一個時 feature 測試仍通過，由 `resume-queue.test.ts`（unit）斷言完整的條件 |
+| RLS-01 | 部分修正（狀態從「未處理」改為「部分修正」） | `processResumeQueue()` 不再匯入 singleton，掃描用 `prismaAdmin`，認領用 `withTenant` 給的 `tx`。`FlowRunner` 與 `canvas.webhook.ts` 仍用 singleton |
+| APP-07 | 狀態不變（已提建議） | 本次不處理 `scheduleWaitNode()` 的 BullMQ 路徑：它不影響喚醒結果，移除時連同 RLS-01 一起處理 |
+
 ## 2026-11-10：加購 AI token 只計入當月（PLAN-02、PLAN-03、PLAN-05、PLAN-13）
 
 issue #222（第 26、27a 項）與 #228 第 4 項，change `make-token-topup-monthly`。以單元測試、本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_topup`）與元件測試驗證，沒有連 UAT。使用者 2026-11-10 決定加購只加當月（台灣時間）。

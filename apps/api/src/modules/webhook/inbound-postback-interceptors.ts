@@ -129,9 +129,8 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
   if (!ctx.conversation) throw new Error('Conversation must be resolved before handoff intercept');
 
   try {
-    const botConfig = await getBotConfig(ctx);
-    const handoffMessage =
-      (botConfig.handoffMessage as string | undefined) || '稍等，正在為您轉接客服人員';
+    // 空白或不合法時 getBotConfig() 已改用預設轉接訊息
+    const { handoffMessage } = await getBotConfig(ctx);
 
     if (ctx.conversation.status === 'AGENT_HANDLED') {
       await deliverToChannel(ctx.prisma, ctx.conversation.id, handoffMessage);

@@ -31,8 +31,8 @@ import { getKnownModelKeys } from './model-registry.service.js';
 import { loadOtherChannelContext } from './other-channel-context.js';
 import { AI_HISTORY_FETCH_FACTOR, toAiHistory } from '../identity-binding/ai-guard.js';
 import {
-  DEFAULT_BOT_CONFIG,
   DEFAULT_HANDOFF_PROMPT_TEXT,
+  getBotConfig,
   type BotConfig,
 } from '@open333crm/automation';
 import { logger } from '@open333crm/core';
@@ -148,23 +148,6 @@ export interface KbReplyContext {
   prevAttempts: number;
 }
 
-/** channel.settings.botConfig 的完整設定。空字串、不合法的 enum 改回預設值（spread 只對 undefined 退回預設） */
-function resolveBotConfig(channelSettings: unknown): BotConfig {
-  const settings = (channelSettings || {}) as Record<string, unknown>;
-  const rawBotConfig = (settings.botConfig || {}) as Partial<BotConfig>;
-  const merged: BotConfig = { ...DEFAULT_BOT_CONFIG, ...rawBotConfig };
-  return {
-    ...merged,
-    handoffPromptStyle: (['text', 'button', 'both', 'none'] as const).includes(merged.handoffPromptStyle)
-      ? merged.handoffPromptStyle
-      : DEFAULT_BOT_CONFIG.handoffPromptStyle,
-    handoffButtonLabel:
-      typeof merged.handoffButtonLabel === 'string' && merged.handoffButtonLabel.trim().length > 0
-        ? merged.handoffButtonLabel
-        : DEFAULT_BOT_CONFIG.handoffButtonLabel,
-  };
-}
-
 /**
  * 交易 A（design D1 步驟 1）：確認對話是 BOT_HANDLED、依 botConfig 判斷要不要回覆，並讀回覆需要的資料。
  * `KB_AUTO_REPLY_ENABLED` 由 flow 在開交易之前檢查。
@@ -185,7 +168,8 @@ export async function readKbReplyContext(
   });
   if (!conversation) return { skip: 'not_bot_handled' };
 
-  const botConfig = resolveBotConfig(conversation.channel.settings);
+  // 不合法的舊值逐欄改用預設值（bot-handoff-config「讀取機器人設定時不合法的值改用預設值」）
+  const botConfig = getBotConfig(conversation.channel.settings);
   if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return { skip: 'bot_mode' };
 
   const chatSettings = await getChatSettings(ctx);

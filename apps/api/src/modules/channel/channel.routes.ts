@@ -44,6 +44,7 @@ import { resolveBindingHandle } from '../identity-binding/binding-links.js';
 import { checkLineIdToken } from '../coupon/line-id-token.js';
 import { getLiffTestResultFlow, startLiffTestFlow, type LiffTestDeps } from './liff-test.flow.js';
 import { liffTestIdSchema } from './liff-test-public.routes.js';
+import { botConfigIssues } from './bot-config-settings.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -111,24 +112,13 @@ function validateLiffIdSettings(settings: Record<string, unknown> | undefined, c
   }
 }
 
-/** Bot 最大回覆次數：與設定畫面的範圍一致（G04，原本後端不驗，可存 9999） */
-export const MAX_BOT_REPLIES_RANGE = { min: 1, max: 50 } as const;
-
+/**
+ * 建立渠道時檢查 settings.botConfig（規則在 @open333crm/automation 的 botConfigSchema）。
+ * 更新渠道在 updateChannel() 檢查，送出的 botConfig 與已存的相同時不檢查（需要讀舊值）。
+ */
 function validateBotConfigSettings(settings: Record<string, unknown> | undefined, ctx: z.RefinementCtx): void {
-  const botConfig = settings?.botConfig as { maxBotReplies?: unknown } | undefined;
-  if (!botConfig || typeof botConfig !== 'object' || botConfig.maxBotReplies === undefined) return;
-  const value = botConfig.maxBotReplies;
-  if (
-    typeof value !== 'number' ||
-    !Number.isInteger(value) ||
-    value < MAX_BOT_REPLIES_RANGE.min ||
-    value > MAX_BOT_REPLIES_RANGE.max
-  ) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['settings', 'botConfig', 'maxBotReplies'],
-      message: `Bot 最大回覆次數須為 ${MAX_BOT_REPLIES_RANGE.min}～${MAX_BOT_REPLIES_RANGE.max} 的整數`,
-    });
+  for (const issue of botConfigIssues(settings?.botConfig)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
   }
 }
 
@@ -214,7 +204,6 @@ export const updateChannelSchema = z
   .superRefine((data, ctx) => {
     validateDownstreamWebhookSettings(data.settings, ctx);
     validateLiffIdSettings(data.settings, ctx);
-    validateBotConfigSettings(data.settings, ctx);
   })
   .transform(normalizeLiffIdSettings);
 

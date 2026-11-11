@@ -319,7 +319,7 @@ export async function bootstrap() {
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);
-  setupCanvasScheduler(jobScheduler);
+  setupCanvasScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   setupTrialScheduler(jobScheduler, app.prismaAdmin);
   // 合約到期前提醒平台帳號（平台層跨租戶；只提醒，不停用）
   setupContractReminderScheduler(jobScheduler, app.prismaAdmin);
