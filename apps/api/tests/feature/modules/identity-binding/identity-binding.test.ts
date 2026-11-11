@@ -229,13 +229,13 @@ scenario('渠道設定局部更新（驗證／導流識別 API）只動指定欄
 scenario('渠道設定整包更新（例如其他設定視窗用舊快照儲存）不會洗掉導流識別', async (f) => {
   // 前端快照是舊的：帶著舊的自動導流識別，以及資料庫裡已被清空的手動導流識別
   await updateChannel(f.tx, f.lineChannelId, T, {
-    settings: { botConfig: { botMode: 'OFF' }, bindingHandleAuto: '@stale-old', bindingHandle: '@cleared-before' },
+    settings: { botConfig: { botMode: 'off' }, bindingHandleAuto: '@stale-old', bindingHandle: '@cleared-before' },
   });
   const ch = await f.tx.channel.findFirst({ where: { id: f.lineChannelId, tenantId: T }, select: { settings: true } });
   const settings = ch?.settings as Record<string, unknown>;
   assert.equal(settings.bindingHandleAuto, '@line1234', '導流識別以資料庫現值為準，不被舊快照蓋掉');
   assert.equal(settings.bindingHandle, undefined, '資料庫已清空的欄位不會被快照寫回來');
-  assert.deepEqual(settings.botConfig, { botMode: 'OFF' }, '送來的設定照常寫入');
+  assert.deepEqual(settings.botConfig, { botMode: 'off' }, '送來的設定照常寫入');
 });
 
 // ── 兌換 ────────────────────────────────────────────────────────────────────
