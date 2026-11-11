@@ -6,7 +6,7 @@ description: >
   （kb-autoreply、追問 clarify、轉真人）、型號守門 model guard 與型號白名單、「沒幫到我」KB 回報調教、
   AI 設定頁（Embedding、Chat & Prompt、系統提示詞、自備 Gemini 金鑰 BYOK）、AI 月額度 monthlyTokens 與用量 AiUsage、
   AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影響。當需求、bug 或新功能碰到 /dashboard/knowledge、
-  knowledge、embedding、ai、llm.service、llm.flow、kb-autoreply、model-matcher、chat-settings、embedding-settings、
+  knowledge、embedding、ai、llm.service、llm.flow、kb-autoreply、kb-autoreply.flow、model-matcher、chat-settings、embedding-settings、
   token-quota 模組，或有人說「AI 亂回／不回」「AI 說轉接了但沒人接」「匯入變亂碼」「搜不到文章」「型號查不到」時使用。
   也在改渠道 botConfig、自動轉接、收件匣 AI 建議回覆、方案 token 額度前使用，確認不破壞 AI 回覆。
 ---
@@ -36,7 +36,7 @@ description: >
 | 6 | 回報調教 | `/dashboard/knowledge/feedback` | `GET /knowledge/feedback?status=open`、`PATCH /knowledge/feedback/:id/resolve` | 標記 `resolved` 後從清單消失，不能復原 | resolve 要 `knowledge.admin` / 有隱藏 |
 | 7 | Embedding 設定 | `/dashboard/knowledge/embedding` | `GET/PUT /settings/embedding`、`POST /settings/embedding/health`、`POST /knowledge/bulk-embed` | 讀取沒有設定列時回預設值、不建立；`PUT` 以 upsert 寫 `TenantSettings`，與租戶稽核同一個交易；bulk-embed 背景跑 | `settings.manage`（整個 settings 模組）/ 側欄隱藏、直開顯示「沒有權限」 |
 | 8 | Chat & Prompt、自備金鑰 | `/dashboard/knowledge/chat-prompt` | `GET/PUT /settings/chat`、`GET /settings/chat/models`、`POST /settings/chat/health`、`GET/PUT /settings/gemini-key`、`POST /knowledge/models/refresh` | 寫 `TenantSettings`、稽核；金鑰加密存 `geminiApiKeyEnc` | `settings.manage`；refresh 要 `knowledge.admin` |
-| 9 | KB 自動回覆（系統） | 客人在 `botMode` 為 `llm`/`keyword_then_llm` 的渠道傳文字 | `automation.worker.ts`：`checkAutoHandoff` → 讓步關鍵字規則 → Agent（`AGENTIC_LLM_ENABLED`）→ `kb-autoreply.service.ts` `attemptKbAutoReply` | 寫 BOT 訊息（與 `bot_reply` 認領同交易）、`botRepliesCount+1`、socket `message.new`、`deliverToChannel`；命中文章附「👎 沒幫到我」postback | 無 |
+| 9 | KB 自動回覆（系統） | 客人在 `botMode` 為 `llm`/`keyword_then_llm` 的渠道傳文字 | `automation.worker.ts`：`checkAutoHandoff` → 讓步關鍵字規則 → Agent（`AGENTIC_LLM_ENABLED`）→ `kb-autoreply.flow.ts` `attemptKbAutoReplyFlow` | 寫 BOT 訊息（與 `bot_reply` 認領同交易，條件更新確認仍是 `BOT_HANDLED`，客服中途接手就不寫不送）、`botRepliesCount+1`、socket `message.new`、`deliverToChannel`；命中文章附「👎 沒幫到我」postback | 無 |
 | 10 | 客人回報（系統） | 客人點「👎 沒幫到我」 | 進站攔截 `inbound-postback-interceptors.ts` `handleKbFeedback` → `recordKbFeedbackFlow` | 寫 `KbArticleFeedback`，回「感謝您的回報」 | 無 |
 | 11 | AI 工具（收件匣、素材） | 收件匣 AI 建議/摘要、素材潤稿 | `/ai/suggest-reply`、`/ai/summarize`、`/ai/rewrite`、`/ai/privacy/status` | 計入月額度、寫 `AiUsage` | 只驗登入（PLAN-12）；建議與摘要檢查渠道可見範圍 |
 
@@ -45,7 +45,7 @@ description: >
 **前端實際送出的值**：文章 `category || '一般'`、`tags` 以逗號切開；JSON 匯入 `{articles: 陣列}`（外層不是陣列時前端擋下「JSON 最外層必須是陣列」）；滑桿 temperature 0–1、maxTokens 50–2000、topK 1–20、threshold 0–1、clarifyThreshold 0–1、clarifyMaxAttempts 0–5；Provider `ollama|gemini`；金鑰 `{apiKey: string|null}`。
 
 ## 不可破壞的規則
-- 回覆分流（`kb-autoreply.service.ts`）：最高相似度 ≥ 0.80 直接答；`clarifyThreshold`～0.80 答＋依 botConfig 附轉接提示；低於 `clarifyThreshold` 或沒文章就追問，次數記在 `conversation.metadata.clarifyAttempts`，成功回答歸零。
+- 回覆分流（`kb-autoreply.flow.ts` 的 `decideReply`，常數與判斷在 `kb-autoreply.service.ts`）：最高相似度 ≥ 0.80 直接答；`clarifyThreshold`～0.80 答＋依 botConfig 附轉接提示；低於 `clarifyThreshold` 或沒文章就追問，次數記在 `conversation.metadata.clarifyAttempts`，成功回答歸零。
 - **`clarify_handoff` 會真的轉接**（#419）：追問用完或追問的 LLM 呼叫失敗時，`persistAndDeliver` 在 bot_reply 認領的同一個交易呼叫 `apps/api/src/modules/automation/handoff.flow.ts` 的 `handOffConversation()`（與 `checkAutoHandoff` 共用）：條件更新 `BOT_HANDLED→AGENT_HANDLED`、`handoffReason`、系統訊息、`conversation.handoff`（通知客服）、`notifyChannel` 推播；追問次數歸零。條件不成立時整筆 rollback，不送「已為您轉接」。`handoff_request` postback 仍是自己的程式（`inbound-postback-interceptors.ts`）。改轉接邏輯時改 `handoff.flow.ts`，不要在各路徑各寫一份。轉接後關鍵字規則照樣回覆（workers 不看對話狀態），KB 與 agent 不回 `AGENT_HANDLED` 的對話。
 - 型號守門（#420）：白名單由 `model-registry.service.ts` 從 `PUBLISHED` 文章**標題**抽出、程序內快取 10 分鐘，偵測用 `model-matcher.ts` 的 `detectModels()`（不分大小寫、結果轉大寫，排除 `WI-FI`、`E-MAIL`、`T-SHIRT` 等常見英文詞）。只攔截前綴在白名單的型號（`hasKnownPrefix()`），白名單空的租戶等於不守門。相似度 ≥ 0.85 豁免。守門回覆計入 `clarifyAttempts`，用完時走 `clarify_handoff` 轉接，不要另寫轉接。`packages/kb-ingest` 有一份複本（語音逐字稿用），停用詞要兩邊同步。
 - 每則入站訊息最多一則機器人回覆：寫入要包在 `BotReplyGuard.persist()` 交易裡，不要繞過。

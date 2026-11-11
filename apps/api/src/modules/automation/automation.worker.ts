@@ -31,7 +31,8 @@ interface TenantDeps {
   events: EventPublisher;
   llm: LlmDeps;
 }
-import { attemptKbAutoReply, type KbAutoReplyResult } from '../ai/kb-autoreply.service.js';
+import type { KbAutoReplyResult } from '../ai/kb-autoreply.service.js';
+import { attemptKbAutoReplyFlow } from '../ai/kb-autoreply.flow.js';
 import {
   deidentificationFailureReason,
   fixedSystemMessageContent,
@@ -322,7 +323,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
             /** agent 丟出的錯誤：KB 也失敗時用來寫轉接原因 */
             let agentError: unknown;
             // 關鍵字命中時讓步給 keyword 規則，不要再讓 AI 回一次。
-            // kb-autoreply 早就有這個判斷（見 attemptKbAutoReply 的 1.5），
+            // kb-autoreply 原本也有這個判斷（現在與 agent 共用這裡的 keywordWillHandle），
             // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
             // 會先收到一段 AI 回覆、再收到關鍵字素材，一次兩則。
             // 2026-09-23 使用者指出「關鍵字有命中則 AI 不應再回話」。
@@ -367,10 +368,17 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
                   logger.error('[AutomationWorker] Agent reply error, falling back to KB:', err);
                 }
               }
-              if (!agentHandled) {
+              // 命中關鍵字規則時，知識庫也讓步：讓步只在這裡判斷，不在知識庫的交易內判斷
+              // （change migrate-ai-kb-autoreply-tenant-ctx，design D7）
+              if (!agentHandled && !keywordWillHandle) {
                 let kbResult: KbAutoReplyResult;
                 try {
-                  kbResult = await attemptKbAutoReply(prisma, tenantDeps.llm, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard, tenantDeps.events);
+                  // 知識庫的讀寫用 app_tenant 連線；送到渠道的 deliverToChannel() 仍用 prismaAdmin
+                  // （change migrate-ai-kb-autoreply-tenant-ctx，design D6）
+                  kbResult = await attemptKbAutoReplyFlow(
+                    { prisma: tenantDeps.tenantPrisma, llm: tenantDeps.llm, io, replyGuard, events: tenantDeps.events, deliverDb: prisma },
+                    { tenantId: event.tenantId, conversationId, messageText: text, delivery: { replyToken, receivedAt } },
+                  );
                 } catch (err) {
                   if (err instanceof ClaimTransactionError) throw err;
                   logger.error('[AutomationWorker] KB auto-reply error:', err);

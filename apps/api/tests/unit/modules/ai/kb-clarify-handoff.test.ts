@@ -80,9 +80,9 @@ beforeEach(() => {
   calls.evaluate.length = 0;
 });
 
-function setup(metadata: Record<string, unknown> = {}) {
+function setup(metadata: Record<string, unknown> = {}, automationRules: Array<Record<string, unknown>> = []) {
   // 機器人回覆次數遠低於 maxBotReplies，所以不是次數上限觸發的轉接
-  const h = createHarness({ botRepliesCount: 2, botConfig: { maxBotReplies: 20 }, metadata });
+  const h = createHarness({ botRepliesCount: 2, botConfig: { maxBotReplies: 20 }, metadata, automationRules });
   const emitted: Array<{ rooms: string[]; name: string; data: Record<string, unknown> }> = [];
   const io = {
     to: (rooms: string | string[]) => ({
@@ -207,4 +207,28 @@ test('轉接後客人傳送關鍵字：照樣交給關鍵字規則評估，KB �
   assert.equal(second[0].messageContent, '營業時間');
   assert.equal(h.state.messages.filter((m) => m.senderType === 'BOT').length, botRepliesAfterHandoff, 'KB 不再回覆');
   assert.equal(calls.llm, 0, '轉接後不再呼叫模型');
+});
+
+// bot-handoff-config「轉接後關鍵字規則照常回覆」：命中能回覆的關鍵字規則時知識庫讓步。
+// 讓步由 worker 判斷，知識庫不在交易內再判斷一次（change migrate-ai-kb-autoreply-tenant-ctx，design D7）
+test('命中關鍵字規則的訊息：知識庫讓步，不呼叫 LLM、不回覆，也不算追問', async () => {
+  const { h, handle } = setup({ clarifyAttempts: 0 }, [
+    {
+      id: 'r1',
+      name: '營業時間',
+      priority: 0,
+      stopOnMatch: false,
+      isActive: true,
+      trigger: { type: 'keyword.matched', keywords: ['營業時間'] },
+      conditions: { all: [] },
+      actions: [{ type: 'send_message', params: { text: '每天 9 點開門' } }],
+    },
+  ]);
+  await handle(messageReceived({ messageContent: '營業時間' }));
+
+  assert.equal(calls.llm, 0);
+  assert.equal(calls.delivered.length, 0);
+  assert.equal(h.state.messages.filter((m) => m.senderType === 'BOT').length, 0);
+  assert.equal(h.state.conversation.status, 'BOT_HANDLED');
+  assert.equal(h.state.conversation.metadata.clarifyAttempts, 0);
 });

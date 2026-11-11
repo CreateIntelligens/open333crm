@@ -65,7 +65,6 @@
     "modules/conversation/conversation.service.ts": 1
   },
   "service 直接 import LLM 入口": {
-    "modules/ai/flex-ai.service.ts": 1,
-    "modules/ai/kb-autoreply.service.ts": 1
+    "modules/ai/flex-ai.service.ts": 1
   }
 }

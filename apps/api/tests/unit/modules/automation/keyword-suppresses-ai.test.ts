@@ -7,8 +7,9 @@
  * 使用者指出「關鍵字有命中則 AI 不會再回話」才是預期行為。
  *
  * 根因是遺漏而非設計：kb-autoreply 早就有讓步判斷
- * （attemptKbAutoReply 的第 1.5 步會 hasMatchingKeywordRule 後早退），
+ * （當時 attemptKbAutoReply 的第 1.5 步會 hasMatchingKeywordRule 後早退），
  * 但 agent（agentic LLM）那條路沒有做同樣的檢查。
+ * change migrate-ai-kb-autoreply-tenant-ctx 起兩條路共用 worker 的 keywordWillHandle。
  *
  * ⚠️ 兩條路都要擋：agent 擋掉之後會走 `if (!agentHandled)` 的 KB 後備，
  * 若 KB 那邊沒擋就只是把「AI 回一則」換成「KB 回一則」，問題沒解。
@@ -85,16 +86,12 @@ t('agent 路徑：關鍵字命中時略過 AI 回覆', () => {
   );
 });
 
-t('KB 路徑：原本就有的讓步判斷不可被移除', () => {
+t('KB 路徑：讓步判斷不可被移除', () => {
   // agent 被擋掉後會走 `if (!agentHandled)` 的 KB 後備；
   // 這裡若沒擋，等於把「AI 回一則」換成「KB 回一則」，問題沒解。
-  const code = src('modules/ai/kb-autoreply.service.ts');
-  assert.ok(
-    // change fix-keyword-yield-ig-delivery 起多傳對話渠道，只在規則能回覆這個渠道時讓步；
-    // change fix-automation-rule-gaps 起再多傳對話與聯絡人，用來評估規則條件
-    /if \(\s*await hasMatchingKeywordRule\(prisma, tenantId, messageText, conversation\.channel\.channelType\b/.test(code),
-    'KB 的關鍵字讓步判斷不見了',
-  );
+  // change migrate-ai-kb-autoreply-tenant-ctx 起 KB 不再自己判斷，與 agent 共用 worker 的 keywordWillHandle（design D7）
+  const code = src('modules/automation/automation.worker.ts');
+  assert.ok(/if \(!agentHandled && !keywordWillHandle\)/.test(code), 'KB 的關鍵字讓步判斷不見了');
 });
 
 t('讓步判斷要在 runAgentReplyFlow 之前（擋在呼叫前才有意義）', () => {

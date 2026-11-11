@@ -33,7 +33,7 @@
 | --- | --- |
 | `knowledge` | 文章的 CRUD、發布與封存、檔案匯入、批次產生向量、語意搜尋、型號白名單、客人回報、夥伴系統匯入 |
 | `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由。`embedding-client.ts` 呼叫 Ollama，不碰資料庫；`embedding.flow.ts` 把向量化拆成「交易 → 交易外呼叫 Ollama → 交易」 |
-| `ai` 的 `kb-autoreply.service.ts` | 機器人依知識庫回覆 |
+| `ai` 的 `kb-autoreply.flow.ts`、`kb-autoreply.service.ts` | 機器人依知識庫回覆 |
 | `ai` 的 `agent/` | AI agent：可以呼叫工具（搜尋網頁、讀網頁、OCR、解析文件、查天氣、發布 Wiki）的多輪回覆 |
 | `ai` 的 `llm.flow.ts`、`llm.service.ts`、`llm-client.ts`、`providers/` | 呼叫 LLM。`llm.flow.ts` 把一次呼叫拆成「交易 1 讀設定、金鑰、遮罩政策與月額度上限 → 交易外檢查月額度並呼叫 LLM → 交易 2 寫用量紀錄」；`llm.service.ts` 是兩個交易內的查詢與提示詞的組裝；`llm-client.ts` 呼叫 provider，不碰資料庫。支援 Ollama 與 Gemini；組織不部署 Ollama，因此只能用 Gemini |
 | `ai` 的 `ai-key.service.ts` | 決定用平台的 Gemini 金鑰還是租戶自備的金鑰 |
@@ -78,10 +78,10 @@
 
 ## 機器人怎麼用知識庫回答
 
-對話由機器人負責、而且渠道的 `botMode` 是 `llm` 或 `keyword_then_llm` 時，`attemptKbAutoReply()` 依序處理客人的文字訊息：
+對話由機器人負責、而且渠道的 `botMode` 是 `llm` 或 `keyword_then_llm` 時，`attemptKbAutoReplyFlow()`（`kb-autoreply.flow.ts`）依序處理客人的文字訊息：
 
 1. **檢查開關**。環境變數 `KB_AUTO_REPLY_ENABLED` 為 `false` 時整個功能關閉。這是整個部署共用的開關。
-2. **讓步給關鍵字**。訊息會命中關鍵字規則、而且規則能在這個渠道回覆時不回覆。
+2. **讓步給關鍵字**。訊息會命中關鍵字規則、而且規則能在這個渠道回覆時不回覆。automation worker 在呼叫 AI agent 與知識庫回覆之前判斷一次，兩者共用這個結果。
 3. **讀取對話紀錄**。取最近的訊息作為上下文，讓追問不會重複已經回答過的內容。
 4. **檢索**。產生訊息的向量，找出相似度達到門檻的前幾篇文章。篇數與門檻是 Embedding 設定的 `topK` 與 `threshold`。
 5. **型號守門**。客人提到的型號不在型號白名單、相似度又低於 0.85 時，不硬答，改列出相近型號請客人確認。型號白名單從已發布文章的**標題**抽出，快取 10 分鐘；`POST /knowledge/models/refresh` 可以立即重建。
@@ -102,7 +102,9 @@
 
 依文章回答的訊息會附上「👎 沒幫到我」快速回覆按鈕；追問與型號守門的回覆沒有這個按鈕。客人按下後，進站攔截器把回饋記到 `KbArticleFeedback`，並回一則感謝訊息。管理員在「知識庫 → 回報調教」查看各文章的回報，並標記為已處理。
 
-**知識庫回覆因錯誤失敗時轉真人。** 產生訊息向量失敗（去識別化服務、embedding 服務故障），或讀設定、檢索、寫入前的遮罩丟出錯誤，而 AI agent 也沒有回覆時，`attemptKbAutoReply()` 回傳 `failed`，系統轉真人，原因寫「AI 暫時無法回覆（…）」（issue #445，見[收件匣的轉真人](./INBOX.md#轉真人)）。`attemptKbAutoReply()` 的結果分三種：`replied`（已回覆，含 LLM 失敗時的備援內容）、`skipped`（正常不回覆：停用、對話不是 `BOT_HANDLED`、關鍵字規則讓步、`botMode`、已有回覆）與 `failed`。
+**知識庫回覆因錯誤失敗時轉真人。** 產生訊息向量失敗（去識別化服務、embedding 服務故障），或讀設定、檢索、寫入前的遮罩丟出錯誤，而 AI agent 也沒有回覆時，`attemptKbAutoReplyFlow()` 回傳 `failed`，系統轉真人，原因寫「AI 暫時無法回覆（…）」（issue #445，見[收件匣的轉真人](./INBOX.md#轉真人)）。結果分三種：`replied`（已回覆，含 LLM 失敗時的備援內容）、`skipped`（正常不回覆：停用、對話不是 `BOT_HANDLED`、`botMode`、已有回覆、產生回覆期間客服接手；命中關鍵字規則時 worker 不呼叫知識庫）與 `failed`。
+
+**交易與外部呼叫。** 知識庫回覆的讀寫都在綁定租戶的短交易內，受 RLS 約束；embedding 服務、LLM 與去識別化服務在交易外呼叫。寫入回覆時，系統在同一個交易內以條件更新確認對話仍是 `BOT_HANDLED`：產生回覆期間客服接手時，不寫入、也不送出這則回覆，結果是 `skipped`（`already_handled`）。追問次數在寫入的交易內讀最新的值再合併（change `migrate-ai-kb-autoreply-tenant-ctx`）。
 
 **AI agent 優先。** 環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，機器人先交給 AI agent 回覆；AI agent 沒有處理時，才走上面的知識庫流程。AI agent 可以呼叫外部工具，執行紀錄存在 `AgentRun`，可以用 `GET /ai/agent/runs/:id` 查看；紀錄關聯的對話所在渠道看不到時回 404。Agent 的資料庫寫入各自在短交易內，LLM 與工具在交易外呼叫：每次工具呼叫之後，系統先寫入工具紀錄，再進行下一次呼叫。執行到一半失敗時，執行紀錄標成 `FAILED`，之前的工具紀錄保留（change `migrate-ai-agent-tenant-ctx`）。
 

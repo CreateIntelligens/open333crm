@@ -7,10 +7,12 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Changed
 
 - **AI 月額度無上限的租戶不能申請加購 token**（change `block-topup-request-when-unlimited`）：`POST /api/v1/plan-change` 送出 `token_topup` 時，租戶的 AI 月額度基礎上限是無上限就回 400 `TOPUP_UNLIMITED`，不建立申請。新增 `GET /api/v1/plan-change/topup-eligibility`，`/dashboard/plan` 依此停用「加購 Token」並說明「目前方案的 AI 額度已無上限，不需要加購」。以前這類申請送得出去，平台卻無法核准，還會卡住租戶的下一筆申請。
+- **知識庫自動回覆改成入口開交易**（#337 階段 4 第六批 6b-2，change `migrate-ai-kb-autoreply-tenant-ctx`）— 讀寫改在綁定租戶的短交易內（`app_tenant` 連線，受 RLS 約束），原本以 `prismaAdmin` 讀取。embedding 服務、LLM 與去識別化服務在交易外呼叫（新檔 `ai/kb-autoreply.flow.ts`）。寫入回覆時的遮罩沿用處理開始時讀到的遮罩政策，不再另外讀一次。送到渠道的 `deliverToChannel()` 屬於還沒搬的 `conversation`，仍用 `prismaAdmin`。關鍵字規則的讓步改由 automation worker 判斷一次，AI agent 與知識庫回覆共用這個結果，知識庫不再自己判斷。
 
 ### Fixed
 
 - **平台升級/加購申請頁按「核准」失敗時沒有任何反應**：`/admin/plan-changes` 的核准與駁回沒有接住 API 錯誤，例如 AI 月額度無上限的租戶核准加購時，後端回 400 `TOPUP_UNLIMITED`，畫面卻沒有提示。改為以紅色訊息顯示後端的錯誤原因；AI 月額度無上限的租戶，加購申請的「核准」按鈕停用，並提示「額度已無上限，加購不會生效，請駁回」。
+- **知識庫產生回覆期間客服接手時，不再送出這則回覆**（change `migrate-ai-kb-autoreply-tenant-ctx`）— 原本只在處理開始時確認對話是 `BOT_HANDLED`。呼叫 embedding 與 LLM 的幾秒內客服接手時，系統仍然寫入並送出知識庫的回覆，違反 `bot-handoff-config`「轉接後關鍵字規則照常回覆」。現在寫入回覆的交易內以條件更新確認狀態，不符合時不寫入、不送出，對話的 `botRepliesCount` 不變。追問次數也改在這個交易內讀最新的值再合併。
 
 ## [2026-11-10]
 

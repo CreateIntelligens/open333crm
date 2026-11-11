@@ -5,8 +5,9 @@
  */
 import assert from 'node:assert/strict';
 import { beforeAll, beforeEach, test, vi } from 'vitest';
-import { mockAgentDeps, mockLlmDeps } from '#tests/support/llm-deps.js';
+import { mockAgentDeps } from '#tests/support/llm-deps.js';
 
+const KB_TENANT = 'c7c7c7c7-0000-4000-8000-000000000003';
 const OTHER = '以下是同一位顧客最近在其他渠道的訊息…\n[LINE 2 天前] 顧客：冷氣漏水怎麼處理';
 const loadCalls: unknown[][] = [];
 vi.mock('#src/modules/ai/other-channel-context.js', async (orig) => ({
@@ -54,13 +55,13 @@ vi.mock('#src/config/env.js', async (orig) => ({
   }),
 }));
 
-let attemptKbAutoReply: typeof import('#src/modules/ai/kb-autoreply.service.js').attemptKbAutoReply;
+let attemptKbAutoReplyFlow: typeof import('#src/modules/ai/kb-autoreply.flow.js').attemptKbAutoReplyFlow;
 let runAgentReplyFlow: typeof import('#src/modules/ai/agent/agent.flow.js').runAgentReplyFlow;
 
 // vi.mock 的 factory 用到上面宣告的變數，所以等檔案執行到這裡才載入。在 beforeAll 載入，
 // 載入時間不算進第一個 test 的時間上限：放在 test 裡時，turbo 同時執行其他套件就會逾時（#299）
 beforeAll(async () => {
-  ({ attemptKbAutoReply } = await import('#src/modules/ai/kb-autoreply.service.js'));
+  ({ attemptKbAutoReplyFlow } = await import('#src/modules/ai/kb-autoreply.flow.js'));
   ({ runAgentReplyFlow } = await import('#src/modules/ai/agent/agent.flow.js'));
 });
 
@@ -84,8 +85,13 @@ test('KB 自動回覆：generateReply 收到其他渠道的訊息', async () => 
     message: { findMany: async () => [] },
   } as never;
   // 回覆送出需要的其他資料不在這個測試範圍；送出失敗不影響已發生的 generateReply 呼叫
-  await attemptKbAutoReply(prisma, mockLlmDeps(prisma), { to: () => ({ emit: () => {} }) } as never, 'tenant-1', 'c1', '維修進度如何').catch(() => {});
-  assert.deepEqual(loadCalls[0], [{ tx: prisma, tenantId: 'tenant-1' }, 'c1']);
+  const deps = mockAgentDeps(prisma);
+  await attemptKbAutoReplyFlow(
+    { prisma: deps.prisma, llm: deps.llm, io: { to: () => ({ emit: () => {} }) } as never, replyGuard: {} as never, events: {} as never, deliverDb: {} as never },
+    { tenantId: KB_TENANT, conversationId: 'c1', messageText: '維修進度如何', delivery: {} },
+  ).catch(() => {});
+  const [ctx, conversationId] = loadCalls[0] as [{ tenantId: string }, string];
+  assert.deepEqual([ctx.tenantId, conversationId], [KB_TENANT, 'c1']);
   assert.equal(generateReplyOptions.length, 1);
   assert.equal(generateReplyOptions[0].otherChannelContext, OTHER);
 });
