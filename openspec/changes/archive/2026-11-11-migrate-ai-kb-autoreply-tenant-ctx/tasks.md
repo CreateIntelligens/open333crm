@@ -43,7 +43,8 @@
   - 與這次改動有關的項目：knowledge 的 3「KB 自動回覆」與 3a「AI 失敗轉接」、inbox 的 6「AI 與知識庫回覆都失敗」、automation 的「同一則訊息回兩次」。由 `kb-model-guard.test.ts`、`kb-clarify-handoff.test.ts`、`ai-failure-handoff.test.ts`、`bot-reply-claim.test.ts`、`keyword-suppresses-ai.test.ts` 涵蓋，通過。其他項目是畫面、權限與渠道的流程，這次沒有改到。
 - [x] 6.6 `CHANGELOG.md` 的 `Fixed` 寫明：知識庫產生回覆期間客服接手時，不再送出這則回覆。`Changed` 寫明：知識庫自動回覆改用 app_tenant 連線。
 - [x] 6.7 `node scripts/validate-openspec.mjs migrate-ai-kb-autoreply-tenant-ctx` 與 `--specs` 通過。
-- [ ] 6.8 部署到 UAT 之後，不重跑規劃檔 6.2 的量測（沒有改 GET 端點），在規劃檔的變更紀錄寫明原因。
+- [x] 6.8 部署到 UAT 之後，不重跑規劃檔 6.2 的量測（沒有改 GET 端點），在規劃檔的變更紀錄寫明原因。
+  - 2026-11-11，main `25977bd2`：PR #508 合併，「Deploy to UAT」成功（03:29 UTC）。沒有改 GET 端點，不重跑 6.2，規劃檔變更紀錄寫明原因。
 
 ## 6.1 突變紀錄
 
