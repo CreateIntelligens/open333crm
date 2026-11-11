@@ -94,6 +94,13 @@ const envSchema = z.object({
   // 佇列監控（/api/v1/platform/queues）允許的來源網段，以逗號分隔（change queue-monitoring）。
   // 沒有設定、空值或任一個網段格式錯誤時，監控畫面回 403，API 照常啟動
   QUEUE_DASHBOARD_ALLOWED_CIDRS: z.string().optional(),
+  // JSON 請求內容的上限（change limit-request-array-size，issue #382）：在 JSON.parse 之前掃描，超過就回 400，
+  // 不進入 Zod。zod/v3 對每個不合格的陣列元素或 record 值各產生一筆錯誤，數量沒有上限。
+  // 個別路由可用 route config `jsonPayloadLimits` 調高，見 plugins/json-payload-guard.plugin.ts
+  REQUEST_JSON_MAX_ARRAY_LENGTH: z.coerce.number().int().positive().default(10_000),
+  REQUEST_JSON_MAX_OBJECT_KEYS: z.coerce.number().int().positive().default(10_000),
+  REQUEST_JSON_MAX_TOTAL_ENTRIES: z.coerce.number().int().positive().default(100_000),
+  REQUEST_JSON_MAX_DEPTH: z.coerce.number().int().positive().default(64),
 }).superRefine((cfg, ctx) => {
   if (cfg.EMAIL_DELIVERY_MODE === 'smtp' && !cfg.SMTP_HOST) {
     ctx.addIssue({

@@ -31,6 +31,7 @@ import cookiePlugin from './plugins/cookie.plugin.js';
 import authPlugin from './plugins/auth.plugin.js';
 import corsPlugin from './plugins/cors.plugin.js';
 import errorHandlerPlugin from './plugins/error-handler.plugin.js';
+import jsonPayloadGuardPlugin from './plugins/json-payload-guard.plugin.js';
 import socketPlugin from './plugins/socket.plugin.js';
 import chatboxPlugin from './plugins/chatbox.plugin.js';
 import authRoutes from './modules/auth/auth.routes.js';
@@ -140,8 +141,10 @@ export async function bootstrap() {
     // API is exposed through the local reverse proxy; use the forwarded client
     // address for per-IP public WebChat limits.
     trustProxy: TRUSTED_PROXIES,
-    // 30MB top-level body limit. Must be ≥ multipart fileSize so the
-    // request isn't rejected before @fastify/multipart can stream-parse it.
+    // JSON／文字請求內容的大小上限（30MB）。知識庫 JSON 匯入、長篇文章內容、優惠券序號清單（最多 2,000,000 字）
+    // 與 MCP 文章工具會送出數 MB 的 JSON。multipart 上傳不受這個值限制：@fastify/multipart 的解析器不是
+    // parseAs 型，Fastify 不套用 bodyLimit，上傳大小由下方 multipart 的 limits.fileSize 決定。
+    // 陣列與物件的數量另由 json-payload-guard 限制（change limit-request-array-size）。
     bodyLimit: 30 * 1024 * 1024,
     logger: {
       level: 'info',
@@ -173,6 +176,16 @@ export async function bootstrap() {
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } });
   await app.register(corsPlugin);
   await app.register(errorHandlerPlugin);
+  // 取代根層的 JSON 解析器：解析前限制陣列長度、物件欄位數、總數與深度，超過就回 400，不進入 Zod（issue #382）。
+  // 必須在所有路由之前註冊
+  await app.register(jsonPayloadGuardPlugin, {
+    limits: {
+      maxArrayLength: config.REQUEST_JSON_MAX_ARRAY_LENGTH,
+      maxObjectKeys: config.REQUEST_JSON_MAX_OBJECT_KEYS,
+      maxTotalEntries: config.REQUEST_JSON_MAX_TOTAL_ENTRIES,
+      maxDepth: config.REQUEST_JSON_MAX_DEPTH,
+    },
+  });
   await app.register(prismaPlugin);
   await app.register(redisPlugin);
   await app.register(cookiePlugin);

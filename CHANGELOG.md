@@ -11,6 +11,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **超大陣列可以讓 API 記憶體耗盡（issue #382 第 1 項，GHSA-mrhx-c7xc-m3w5）**（change `limit-request-array-size`）：API 用 `zod/v3` 驗證，陣列或 `z.record()` 的每個不合格項目各產生一筆錯誤，數量沒有上限，`.max()` 也擋不住；Zod 4.6.6 的修補只對 v4 API 生效。改為全域取代 `application/json` 解析器，在 `JSON.parse` 之前掃描原文：單一陣列超過 10,000 個元素回 400 `PAYLOAD_ARRAY_TOO_LARGE`、單一物件超過 10,000 個欄位回 `PAYLOAD_OBJECT_TOO_LARGE`、陣列元素與物件欄位合計超過 100,000 回 `PAYLOAD_TOO_MANY_ENTRIES`、巢狀超過 64 層回 `PAYLOAD_TOO_DEEP`，訊息為中文，`details` 帶位置與上限，請求不進入路由與 Zod。上限可用 `REQUEST_JSON_MAX_*` 環境變數調整；`POST /api/v1/knowledge/import` 以 route config 調高為陣列 50,000、合計 500,000。進站 webhook（LINE、Meta、FB、IG）的自訂解析器套用相同上限。實測 200,000 個數字送進 `z.array(z.string()).max(10)`：修正前 200,001 筆錯誤、回應 13.7MB、heap 增加約 143MB；修正後 1 筆錯誤、回應 142 bytes、23ms、heap 增加不到 1MB。全域 `bodyLimit` 維持 30MB（原因見 change 的 design D5），並改正它「必須 ≥ multipart fileSize」的錯誤註解。
 - **平台升級/加購申請頁按「核准」失敗時沒有任何反應**：`/admin/plan-changes` 的核准與駁回沒有接住 API 錯誤，例如 AI 月額度無上限的租戶核准加購時，後端回 400 `TOPUP_UNLIMITED`，畫面卻沒有提示。改為以紅色訊息顯示後端的錯誤原因；AI 月額度無上限的租戶，加購申請的「核准」按鈕停用，並提示「額度已無上限，加購不會生效，請駁回」。
 - **知識庫產生回覆期間客服接手時，不再送出這則回覆**（change `migrate-ai-kb-autoreply-tenant-ctx`）— 原本只在處理開始時確認對話是 `BOT_HANDLED`。呼叫 embedding 與 LLM 的幾秒內客服接手時，系統仍然寫入並送出知識庫的回覆，違反 `bot-handoff-config`「轉接後關鍵字規則照常回覆」。現在寫入回覆的交易內以條件更新確認狀態，不符合時不寫入、不送出，對話的 `botRepliesCount` 不變。追問次數也改在這個交易內讀最新的值再合併。
 

@@ -65,7 +65,7 @@
 | 方式 | 端點 | 說明 |
 | --- | --- | --- |
 | 上傳檔案 | `POST /knowledge/upload` | 支援 PDF、Word、Excel、CSV、HTML、Markdown 與純文字。`file-parser.service.ts` 轉成 Markdown；Excel 與 CSV 會嘗試拆成一列一篇問答，拆出的問答**直接發布**，其他檔案存成草稿。每個檔案各自回報成功或失敗 |
-| 批次匯入 | `POST /knowledge/import` | 一次送多篇文章 |
+| 批次匯入 | `POST /knowledge/import` | 一次送多篇文章。JSON 內容上限高於全域：最多 50,000 篇、陣列元素與物件欄位合計 500,000（change `limit-request-array-size`），超過回 400 `PAYLOAD_*` |
 | 夥伴系統推送 | `POST /knowledge/partner-ingest` | 見下方 |
 
 **CSV 的文字編碼。** `decodeCsvText()` 先解碼再交給試算表解析（#421）：開頭有 UTF-8 BOM 時去掉 BOM 以 UTF-8 解；沒有 BOM 時先以嚴格 UTF-8 解（Google 試算表、Numbers、程式匯出），失敗再試 Big5（台灣版 Excel 的「CSV（逗號分隔）」）。兩種都解不出，或解出的文字含替代字元 U+FFFD 時，這個檔案一篇都不寫入，結果標成失敗，`code` 是 `CSV_ENCODING_UNREADABLE`，原因請使用者另存成「CSV UTF-8」；同批其他檔案照常匯入。xlsx 依 zip 檔頭辨識，不經過這段解碼。
