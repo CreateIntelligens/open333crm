@@ -18,6 +18,13 @@ All notable changes to **open333CRM** will be documented in this file.
   - 新型別不允許把 `Buffer` 直接傳給 `Blob`，因此 `apps/api/src/modules/ai/agent/web-client.ts`（OCR 上傳）與 `packages/brain/src/services/MarkitdownService.ts` 改為先轉成 `Uint8Array`。執行行為不變。
   - README 補充：Node 25 起不再內建 corepack，要先 `npm install -g corepack@latest && corepack enable`。
 
+### Fixed
+
+- **fast-xml-parser 升到 5.12.0，處理 Dependabot 警示 #184**（GHSA-474x-hrwr-fgx4，遇到未結束的 stop-node 標籤時 CPU 用量呈平方成長）。它由 `@aws-sdk/client-s3` 帶入，用來解析 S3／MinIO 的回應。
+  - `pnpm.overrides` 原本把它鎖在 5.7.0（#355 為修上一個警示而鎖），Dependabot 改不了 overrides，因此自動更新工作一直失敗。
+  - 一併把 override `fast-xml-builder` 從 1.1.9 改為 1.3.1：fast-xml-parser 5.12.0 要求 `^1.3.1`，舊的 override 會強迫它搭配不相容的版本。
+  - 新增的間接相依 `is-unsafe`、`xml-naming` 與 fast-xml-parser 同一位維護者、同一個 GitHub 組織。
+
 
 ## [2026-11-11]
 
