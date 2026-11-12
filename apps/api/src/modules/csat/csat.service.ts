@@ -362,15 +362,19 @@ export async function recordCsatScore(
   if (caseRecord.csatScore !== null) return false; // already rated
   if (score < 1 || score > 5) return false;
 
+  const ratedBy: CsatRatedBy = scope.agentId ? 'agent' : 'customer';
+  // 客人只能替已解決的工單評分（issue #520）：重開或已結案後點舊問卷不記分、不結案。客服代評不限狀態
+  const statusClaim = ratedBy === 'customer' ? { status: 'RESOLVED' as const } : {};
+  if (ratedBy === 'customer' && caseRecord.status !== 'RESOLVED') return false;
+
   const now = new Date();
   const conversation = caseRecord.conversations[0];
   const conversationId = conversation?.id;
-  const ratedBy: CsatRatedBy = scope.agentId ? 'agent' : 'customer';
 
   // 以條件更新認領（issue #339）：客人連點兩次、兩個請求同時通過上面的檢查時，只有一次寫得進去；
   // 沒寫入就不送感謝訊息、不發低分通知、不發 case.closed、不關對話
   const { count } = await prisma.case.updateMany({
-    where: { id: caseId, tenantId: scope.tenantId, contactId: scope.contactId, csatScore: null },
+    where: { id: caseId, tenantId: scope.tenantId, contactId: scope.contactId, csatScore: null, ...statusClaim },
     data: {
       csatScore: score,
       csatComment: comment ?? null,
@@ -379,7 +383,7 @@ export async function recordCsatScore(
     },
   });
   if (count === 0) {
-    logger.info(`[CsatService] Skip CSAT for case ${caseId}: already rated by another request`);
+    logger.info(`[CsatService] Skip CSAT for case ${caseId}: already rated, or no longer RESOLVED`);
     return false;
   }
 

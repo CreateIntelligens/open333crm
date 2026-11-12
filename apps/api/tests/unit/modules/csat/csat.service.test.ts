@@ -192,7 +192,7 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
       ...disabledAiPrivacy,
       platformSetting: { findUnique: async () => ({ value: { enabled: true } }) },
       case: {
-        findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, csatScore: null, conversations: [{ id: 'conv-1', channelId: 'ch-1' }] }),
+        findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, status: 'RESOLVED', csatScore: null, conversations: [{ id: 'conv-1', channelId: 'ch-1' }] }),
         updateMany: async () => ({ count: 1 }),
         update: async () => ({}),
       },
@@ -255,7 +255,9 @@ async function closeUpdateAfterScore(status: string) {
     caseEvent: { create: async () => ({}) },
     conversation: { update: async () => ({}) },
   } as unknown as TenantDb;
-  assert.equal(await recordCsatScore(db, io, CASE_ID, 5, undefined, { tenantId: TENANT_ID }), true);
+  // 客人只能替已解決的工單評分（issue #520），其他狀態的評分後結案只會來自客服代評
+  const scope = status === 'RESOLVED' ? { tenantId: TENANT_ID } : { tenantId: TENANT_ID, agentId: 'agent-1' };
+  assert.equal(await recordCsatScore(db, io, CASE_ID, 5, undefined, scope), true);
   const close = updates.find((d) => d.status === 'CLOSED');
   assert.ok(close, '評分後結案');
   return close;
@@ -266,7 +268,7 @@ test('評分後結案：從 RESOLVED 結案保留 resolvedAt', async () => {
   assert.equal('resolvedAt' in close, false);
 });
 
-test('評分後結案：沒有經過 RESOLVED 的工單不算已解決', async () => {
+test('評分後結案：沒有經過 RESOLVED 的工單（客服代評）不算已解決', async () => {
   const close = await closeUpdateAfterScore('IN_PROGRESS');
   assert.equal(close.resolvedAt, null);
 });
