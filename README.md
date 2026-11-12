@@ -198,7 +198,8 @@ Agent 可在此綁定多個裝置；綁定前會輸入裝置名稱（例如 `Mac
 ### 前置需求
 
 - Docker & Docker Compose（推薦路徑唯一需求）
-- 或本機安裝 Node.js 26（與 Docker image 相同）、pnpm 9（透過 corepack 管理）。根目錄 `package.json` 的 `engines` 也接受 24.22.3 以上
+- 或本機安裝 Node.js 26.13.1 以上的 26.x（與 Docker image 相同）、pnpm 9。根目錄 `package.json` 的 `engines` 是 `>=26.13.1 <27`，加上 `.npmrc` 的 `engine-strict=true`，Node 版本不符時 `pnpm install` 會被拒絕
+  - Node 25 起不再內建 corepack，要先執行 `npm install -g corepack@latest && corepack enable`，pnpm 才會照 `packageManager` 欄位的版本執行
 
 ### 啟動（推薦：全容器化開發環境，支援 hot reload）
 

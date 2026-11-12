@@ -107,7 +107,7 @@ export class MarkitdownService {
     try {
       const targetUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
       const formData = new FormData();
-      formData.append('file', new Blob([fileBuffer]), filename);
+      formData.append('file', new Blob([new Uint8Array(fileBuffer)]), filename);
 
       const response = await this.fetchImpl(targetUrl, {
         method: 'POST',

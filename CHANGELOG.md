@@ -10,6 +10,14 @@ All notable changes to **open333CRM** will be documented in this file.
   - 根目錄 `package.json` 與 `apps/cli/package.json` 中的 `engines.node` 更新下限至 `>=24.22.3`。
   - 完整防護 Node.js 官方 2026-11-11 安全公告修復之多項 High severity 安全性漏洞。
 
+### Changed
+
+- **開發與建置環境統一為 Node 26**（issue #515）：正式環境已經跑 `node:26.13.1`，但本機原本仍可用 Node 24，兩邊行為可能不一樣。
+  - 根目錄 `package.json` 的 `engines.node` 從 `>=24.22.3 <27` 改為 `>=26.13.1 <27`。`.npmrc` 有 `engine-strict=true`，本機 Node 低於 26.13.1 時 `pnpm install` 會被拒絕。
+  - 各 workspace 套件的 `@types/node` 原本混用 20／22／24／25，統一改為 `^26.6.6`。CLI（`apps/cli`）例外：它以 npm 套件發布、跑在使用者電腦上，engines 維持 `>=24.22.3`，`@types/node` 跟著用 `^24.19.0`，避免用到只有 Node 26 才有的 API。
+  - 新型別不允許把 `Buffer` 直接傳給 `Blob`，因此 `apps/api/src/modules/ai/agent/web-client.ts`（OCR 上傳）與 `packages/brain/src/services/MarkitdownService.ts` 改為先轉成 `Uint8Array`。執行行為不變。
+  - README 補充：Node 25 起不再內建 corepack，要先 `npm install -g corepack@latest && corepack enable`。
+
 
 ## [2026-11-11]
 
