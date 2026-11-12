@@ -601,7 +601,7 @@ export async function ocrThrough2md(
         const buf = imageBuffer!;
         const formData = new FormData();
         const filename = options.filename || (isUrl ? safeUrl.split('/').pop()?.split('?')[0] || 'image.png' : 'image.png');
-        formData.append('file', new Blob([buf]), filename);
+        formData.append('file', new Blob([new Uint8Array(buf)]), filename);
         const requestInit: RequestInit = {
           method: 'POST',
           headers: { Accept: 'application/json', 'X-Preset': 'agent' },
