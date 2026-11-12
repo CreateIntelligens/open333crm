@@ -386,8 +386,8 @@ export function MessageInput({
                 className="h-7 w-7"
                 disabled={isDisabled}
                 onClick={() => fileInputRef.current?.click()}
-                title="附加檔案"
-                aria-label="附加檔案"
+                title="附件"
+                aria-label="附件"
               >
                 <Paperclip className="!size-4" />
               </Button>

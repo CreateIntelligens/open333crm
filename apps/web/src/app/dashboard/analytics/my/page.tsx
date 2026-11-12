@@ -6,7 +6,6 @@ import { AlertTriangle, CheckCircle2, Clock, Hourglass, Inbox, Smile, Timer, Tre
 import { Topbar } from '@/components/layout/Topbar';
 import { useMyPerformance } from '@/hooks/useAnalytics';
 import { CARD, ReportError, Skeleton } from '@/components/analytics/ReportState';
-import { useAuth } from '@/providers/AuthProvider';
 
 /**
  * 我的績效 — 版面依 Claude Design：待處理提醒 → 本月績效（處理量＋目標指標）→ 本月摘要。
@@ -42,7 +41,7 @@ interface TargetCardProps {
 function TargetCard({ label, icon: Icon, value, unit, target, loading }: TargetCardProps) {
   const miss = target && !target.ok;
   return (
-    <div className={`flex flex-col gap-3 rounded-xl border p-4 ${miss ? 'border-red-200 bg-destructive-subtle/40' : 'border-border bg-background'}`}>
+    <div data-metric={label} className={`flex flex-col gap-3 rounded-xl border p-4 ${miss ? 'border-red-200 bg-destructive-subtle/40' : 'border-border bg-background'}`}>
       <div className="flex items-center gap-2">
         <span className={`flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] ${miss ? 'bg-destructive-subtle text-destructive' : 'bg-primary-subtle text-primary'}`} aria-hidden="true">
           <Icon className="h-4 w-4" />
@@ -81,7 +80,6 @@ function TargetCard({ label, icon: Icon, value, unit, target, loading }: TargetC
 
 export default function MyPerformancePage() {
   const { data, isLoading, error, mutate } = useMyPerformance();
-  const { agent } = useAuth();
 
   const pending = data?.pendingCases ?? 0;
   const dueSoon = data?.slaSoonExpiring ?? 0;
@@ -113,7 +111,7 @@ export default function MyPerformancePage() {
       : { text: '目前沒有即將到期的 SLA 案件', tone: 'ok' });
   }
 
-  const subtitle = [data?.name || agent?.name, data?.role ? ROLE_LABEL[data.role] ?? data.role : null, `統計期間 ${monthPeriod()}`]
+  const subtitle = [data?.name, data?.role ? ROLE_LABEL[data.role] ?? data.role : null, `統計期間 ${monthPeriod()}`]
     .filter(Boolean).join(' · ');
 
   return (

@@ -85,7 +85,7 @@ test('收件匣搜尋框：以 search=退貨&page=1 請求，列表只顯示後�
     query(url).get('search') === '退貨' ? reply([row(99)], 1, 1, 1) : reply([row(1)], 1, 1, 1),
   );
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  fireEvent.change(screen.getByPlaceholderText('搜尋對話...'), { target: { value: '退貨' } });
+  fireEvent.change(screen.getByPlaceholderText('搜尋對話、聯繫人'), { target: { value: '退貨' } });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(400);
   });

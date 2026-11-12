@@ -252,42 +252,6 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate, section = '
           <h3 className="text-sm font-semibold text-foreground">案件說明</h3>
           <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{caseData.description || '（沒有說明）'}</p>
         </div>
-        {/* 滿意度（issue #444，取自 main）：問卷已寄出或已有分數時顯示；外觀改成本分支的卡片 */}
-        {(caseData.csatScore != null || caseData.csatSentAt) && (
-          <div data-testid="case-csat" className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
-            <h3 className="text-sm font-semibold text-foreground">滿意度</h3>
-            {caseData.csatScore != null ? (
-              <div className="flex flex-col gap-1 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-0.5" aria-hidden="true">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Star
-                        key={star}
-                        className={
-                          star <= (caseData.csatScore ?? 0)
-                            ? 'h-4 w-4 fill-warning text-warning'
-                            : 'h-4 w-4 text-muted-foreground/30'
-                        }
-                      />
-                    ))}
-                  </div>
-                  <span className="font-medium text-foreground">{caseData.csatScore} 分</span>
-                  <span className="text-muted-foreground">{csatScoreLabel(caseData.csatScore)}</span>
-                </div>
-                {caseData.csatComment && (
-                  <p className="text-muted-foreground">{caseData.csatComment}</p>
-                )}
-                {caseData.csatRespondedAt && (
-                  <p className="text-xs text-muted-foreground">
-                    評分時間：{format(new Date(caseData.csatRespondedAt), 'yyyy/MM/dd HH:mm')}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">問卷已寄出，客人尚未評分</p>
-            )}
-          </div>
-        )}
         {/* Linked Conversation */}
         {caseData.conversationId && (
           <>
@@ -386,6 +350,43 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate, section = '
           />
         </div>
       </div>
+
+      {/* 滿意度（issue #444，取自 main）：問卷已寄出或已有分數時顯示；外觀改成本分支的卡片 */}
+      {(caseData.csatScore != null || caseData.csatSentAt) && (
+        <div data-testid="case-csat" className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
+          <h3 className="text-sm font-semibold text-foreground">滿意度</h3>
+          {caseData.csatScore != null ? (
+            <div className="flex flex-col gap-1 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-0.5" aria-hidden="true">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={
+                        star <= (caseData.csatScore ?? 0)
+                          ? 'h-4 w-4 fill-warning text-warning'
+                          : 'h-4 w-4 text-muted-foreground/30'
+                      }
+                    />
+                  ))}
+                </div>
+                <span className="font-medium text-foreground">{caseData.csatScore} 分</span>
+                <span className="text-muted-foreground">{csatScoreLabel(caseData.csatScore)}</span>
+              </div>
+              {caseData.csatComment && (
+                <p className="text-muted-foreground">{caseData.csatComment}</p>
+              )}
+              {caseData.csatRespondedAt && (
+                <p className="text-xs text-muted-foreground">
+                  評分時間：{format(new Date(caseData.csatRespondedAt), 'yyyy/MM/dd HH:mm')}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">問卷已寄出，客人尚未評分</p>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
         <div>
           <h4 className="text-sm font-semibold text-foreground">案件標籤</h4>

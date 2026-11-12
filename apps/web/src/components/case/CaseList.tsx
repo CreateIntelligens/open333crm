@@ -116,9 +116,9 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
                 ) : <span className="text-muted-foreground">—</span>}
               </span>
               <span role="cell" className="truncate text-muted-foreground">{c.category || '—'}</span>
-              <span role="cell"><CasePriorityBadge priority={c.priority} /></span>
-              <span role="cell"><CaseStatusBadge status={c.status} /></span>
-              <span role="cell" className="flex min-w-0 items-center gap-2">
+              <span role="cell" className="whitespace-nowrap"><CasePriorityBadge priority={c.priority} /></span>
+              <span role="cell" className="whitespace-nowrap"><CaseStatusBadge status={c.status} /></span>
+              <span role="cell" className="flex min-w-0 items-center gap-2 whitespace-nowrap">
                 {c.assignee?.name ? (
                   <>
                     <Avatar alt={c.assignee.name} size="sm" className="h-6 w-6 text-[11px]" />
@@ -126,8 +126,8 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
                   </>
                 ) : <span className="text-muted-foreground">未指派</span>}
               </span>
-              <span role="cell"><SlaCountdown deadline={c.slaDueAt || c.slaDeadline || null} /></span>
-              <span role="cell" className="flex flex-col text-xs leading-4 tabular-nums">
+              <span role="cell" className="whitespace-nowrap"><SlaCountdown deadline={c.slaDueAt || c.slaDeadline || null} /></span>
+              <span role="cell" className="flex flex-col whitespace-nowrap text-xs leading-4 tabular-nums">
                 <span className="text-foreground">{format(created, 'yyyy/MM/dd')}</span>
                 <span className="text-muted-foreground">{format(created, 'HH:mm')}</span>
               </span>

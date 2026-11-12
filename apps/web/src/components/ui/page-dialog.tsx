@@ -41,6 +41,8 @@ function PageDialog({ open, onOpenChange, children, section, parent }: PageDialo
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const poppedRef = useRef(false);
   const pendingBackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 每個表單自己的瀏覽紀錄標記：避免「關掉 A 後立刻開 B」時，A 延後的「上一頁」把 B 關掉
+  const markRef = useRef(`pd-${Math.random().toString(36).slice(2)}`);
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
 
@@ -57,11 +59,12 @@ function PageDialog({ open, onOpenChange, children, section, parent }: PageDialo
     if (pendingBackRef.current) {
       clearTimeout(pendingBackRef.current);
       pendingBackRef.current = null;
-    } else if (!window.history.state?.__pageDialog) {
-      window.history.pushState({ ...window.history.state, __pageDialog: true }, '');
+    } else if (window.history.state?.__pageDialog !== markRef.current) {
+      window.history.pushState({ ...window.history.state, __pageDialog: markRef.current }, '');
     }
     const onPop = () => {
-      if (window.history.state?.__pageDialog) return;
+      // 還停在自己的紀錄上就不處理（例如別的表單延後的上一頁剛好退到這裡）
+      if (window.history.state?.__pageDialog === markRef.current) return;
       poppedRef.current = true;
       onOpenChangeRef.current(false);
     };
@@ -71,7 +74,8 @@ function PageDialog({ open, onOpenChange, children, section, parent }: PageDialo
       if (poppedRef.current) return;
       pendingBackRef.current = setTimeout(() => {
         pendingBackRef.current = null;
-        if (window.history.state?.__pageDialog) window.history.back();
+        // 只退回自己加的那筆紀錄；若已經有新的表單疊上去就不動
+        if (window.history.state?.__pageDialog === markRef.current) window.history.back();
       }, 0);
     };
   }, [open]);
@@ -81,7 +85,8 @@ function PageDialog({ open, onOpenChange, children, section, parent }: PageDialo
   const page = (
     <PageDialogCtx.Provider value={{ section, parent, close: () => onOpenChange(false) }}>
       <div
-        role="region"
+        // 語意上是「非強制回應的對話框」：開啟的子任務，可關閉回到列表，側欄仍可操作（不設 aria-modal）
+        role="dialog"
         aria-label={parent ? `${parent}表單` : '表單'}
         className="app-content absolute inset-0 z-20 overflow-y-auto bg-background lg:rounded-tl-3xl"
       >
@@ -93,7 +98,7 @@ function PageDialog({ open, onOpenChange, children, section, parent }: PageDialo
   if (!root) {
     return (
       <PageDialogCtx.Provider value={{ section, parent, close: () => onOpenChange(false) }}>
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-background">{children}</div>
+        <div role="dialog" aria-label={parent ? `${parent}表單` : '表單'} className="fixed inset-0 z-50 overflow-y-auto bg-background">{children}</div>
       </PageDialogCtx.Provider>
     );
   }

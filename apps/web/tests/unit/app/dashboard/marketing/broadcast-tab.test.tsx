@@ -56,7 +56,8 @@ vi.mock('#src/hooks/useMaterials.js', () => ({
   },
 }));
 vi.mock('#src/components/materials/MaterialPreview.js', () => ({ MaterialPreview: () => null }));
-vi.mock('#src/components/layout/Topbar.js', () => ({ Topbar: () => null }));
+// 「建立廣播」按鈕在頁面標題列右側（Figma 7.1.1）：mock 保留標題列內的操作按鈕
+vi.mock('#src/components/layout/Topbar.js', () => ({ Topbar: ({ children }: { children?: React.ReactNode }) => <>{children}</> }));
 
 import MarketingPage from '#src/app/dashboard/marketing/page.js';
 
