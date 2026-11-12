@@ -126,8 +126,10 @@ export default function CasesPage() {
         <CaseDashboardStats
           active={activeStat}
           onSelect={(key) => {
+            // 只有 SLA 違規、即將到期可點；再點一次已選中的卡片則取消篩選
+            const next = key === 'breached' ? 'breached' : 'warning';
             setStatusFilter('all');
-            setSlaFilter(key === 'breached' ? 'breached' : key === 'warning' ? 'warning' : '');
+            setSlaFilter((current) => (current === next ? '' : next));
             setPage(1);
           }}
         />

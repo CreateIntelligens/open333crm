@@ -38,7 +38,9 @@ export function CaseDashboardStats({ active, onSelect }: CaseDashboardStatsProps
       {CARDS.map(({ key, label, icon: Icon, tone, iconBg }) => {
         const on = active === key;
         const value = values[key];
-        const clickable = Boolean(onSelect) && key !== 'resolvedToday';
+        // 「開啟中」＝開啟＋處理中兩種狀態的合計，工單列表一次只能篩一種狀態，無法對應成篩選，
+        // 所以和「今日解決」一樣只顯示數字、不可點（避免看起來能篩選、實際列表卻沒變）
+        const clickable = Boolean(onSelect) && (key === 'breached' || key === 'warning');
         const body = (
           <>
             <span className="flex items-center gap-2">
@@ -68,7 +70,7 @@ export function CaseDashboardStats({ active, onSelect }: CaseDashboardStatsProps
             {body}
           </button>
         ) : (
-          <div key={key} className={cls}>{body}</div>
+          <div key={key} className={cls} title={key === 'open' ? '包含「開啟」與「處理中」的工單' : undefined}>{body}</div>
         );
       })}
     </div>

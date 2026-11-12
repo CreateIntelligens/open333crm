@@ -100,6 +100,10 @@ export function MessageBubble({ message, contactName }: MessageBubbleProps) {
   // 泡泡顏色依 Claude Design「收件匣 v4」：對方白底灰框（左上小圓角）、我方藍底白字（右上小圓角）。
   // Figma「Chat / Bubble」的我方為淡藍底深字（bg-primary-subtle text-foreground），要改回時換掉最後一行即可
   const getBubbleClasses = () => {
+    // Bot 回覆用淡紫底與紫邊，和客人訊息（白底灰框）區分（不只靠頭像與標籤）
+    if (isBot && !isInbound) {
+      return 'rounded-tl-[4px] border border-ai-border bg-ai-subtle text-foreground';
+    }
     if (isInbound || isBot) {
       return 'rounded-tl-[4px] border border-border bg-background text-foreground';
     }
