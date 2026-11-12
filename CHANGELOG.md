@@ -2,6 +2,15 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-12]
+
+### 🛡️ Security & Runtime Upgrade (Node.js 26.13.1 & 24.22.3 Security Hardening)
+- **容器基底全面升級 Node.js 26 (`node:26.13.1-bookworm-slim`)**:
+  - `Dockerfile.dev`、`apps/web/Dockerfile`、`apps/api/Dockerfile`、`apps/workers/Dockerfile` 與 `.github/workflows/deploy.yml` 基底映像全面升級為 `node:26.13.1-bookworm-slim`。
+  - 根目錄 `package.json` 與 `apps/cli/package.json` 中的 `engines.node` 更新下限至 `>=24.22.3`。
+  - 完整防護 Node.js 官方 2026-11-11 安全公告修復之多項 High severity 安全性漏洞。
+
+
 ## [2026-11-11]
 
 ### Changed
