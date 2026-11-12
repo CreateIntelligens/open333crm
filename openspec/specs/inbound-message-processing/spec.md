@@ -92,7 +92,7 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 - 工單的聯絡人是傳訊的聯絡人。
 - 工單還沒有評分。
 
-條件不成立時，系統 SHALL NOT 修改任何工單，也 SHALL NOT 送出訊息。進站管線以略過 RLS 的連線執行，所以這些條件 SHALL 寫在查詢工單的條件裡。
+條件不成立時，系統 SHALL NOT 修改任何工單，也 SHALL NOT 送出訊息。進站管線以略過 RLS 的連線執行，所以這些條件 SHALL 寫在查詢工單的條件裡；「還沒有評分」SHALL 寫在寫入分數的條件更新裡，同一份評分同時送達兩次時只有一次寫入（csat-survey「評分只處理一次」）。
 
 攔截之後，不論分數是否寫入，系統 SHALL 把這則進站訊息的內容改寫成「我的評分：<分數> 分」（與 LINE 問卷按鈕的 `displayText` 相同），並把原始文字存在這則訊息的 `metadata.postbackData`，讓收件匣與其他讀取端不顯示 `csat:` 代碼。
 
@@ -115,6 +115,10 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 #### Scenario: 評分的訊息在收件匣顯示文字
 - **WHEN** 聯絡人回覆 `csat:2:<工單 ID>`（LINE 問卷按鈕的 postback，或同格式的文字）
 - **THEN** 對話中這則客人訊息的 `content.text` 是「我的評分：2 分」，`metadata.postbackData` 是 `csat:2:<工單 ID>`，系統不發布 `message.received`
+
+#### Scenario: 同一份評分同時送達兩次
+- **WHEN** 聯絡人在 LINE 問卷上連點兩次，兩則 `csat:2:<工單 ID>` 同時進站
+- **THEN** 工單的評分是 2，對話中只有一則感謝訊息
 
 ### Requirement: KB 回饋的攔截
 進站的文字或 postback 符合 `kb_feedback:<good 或 bad>:<文章 ID 或 none>:<Bot 訊息 ID>` 時，系統 SHALL 攔截這則訊息，SHALL NOT 發布 `message.received`。

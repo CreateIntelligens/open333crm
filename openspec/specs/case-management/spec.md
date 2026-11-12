@@ -15,7 +15,7 @@ The API SHALL provide an authenticated, tenant-scoped `DELETE /api/v1/cases/:id`
 - **THEN** the system returns not found and does not delete the Case
 
 ### Requirement: Case Status Transition Validation
-The system SHALL validate every public Case status change using the shared Case transition rules. Every path that changes a Case status, including automation actions, SHALL maintain `resolvedAt` with the shared rule: a change to `RESOLVED` sets it; a change from `RESOLVED` to `CLOSED` keeps it; a change to `CLOSED` from any other status leaves it null; a change to any other status clears it. Existing rows SHALL NOT be backfilled.
+The system SHALL validate every public Case status change using the shared Case transition rules. The rules keep two transitions that leave a finished Case: reopen (`CLOSED` to `OPEN`), used when the customer says that the problem is not solved, and back to in progress (`RESOLVED` to `IN_PROGRESS`), used when an agent resolved the Case by mistake. Every path that changes a Case status, including automation actions, SHALL maintain `resolvedAt` with the shared rule: a change to `RESOLVED` sets it; a change from `RESOLVED` to `CLOSED` keeps it; a change to `CLOSED` from any other status leaves it null; a change to any other status clears it. Existing rows SHALL NOT be backfilled. A change to `RESOLVED` SHALL also apply the CSAT survey fields that csat-survey "工單重新解決時的問卷" defines.
 
 #### Scenario: Reject closed to in progress transition
 - **WHEN** an authenticated agent attempts to change a Case from `CLOSED` directly to `IN_PROGRESS`
