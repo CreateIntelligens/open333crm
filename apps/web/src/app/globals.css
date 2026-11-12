@@ -77,7 +77,7 @@
 
     /* 邊框 / 輸入框 / focus ring */
     --border: 214 32% 91%;               /* #E2E8F0 */
-    --input: 218 15% 60%;                /* #8A95A8 輸入框框線（WCAG 元件 3:1；原 #E2E8F0） */
+    --input: 214 32% 91%;                /* #E2E8F0 輸入框框線（Figma Border/Default，設計師決定） */
     --ring: 210 66% 46%;                 /* #2876C4 focus */
 
     /* 圓角 (Figma 主力 12px = 0.75rem；按鈕 8px 用 md) */
