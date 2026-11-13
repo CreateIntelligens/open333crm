@@ -49,3 +49,13 @@ test('all 模式：每個關鍵字都要出現', () => {
 test('trigger 不是 keyword.matched：不命中', () => {
   assert.equal(matchKeywordTrigger({ type: 'message.received', keywords: ['你好'] }, '你好'), null);
 });
+
+/**
+ * 關鍵字回覆維持現狀：只轉小寫，不做全形半形正規化（change add-comment-keyword-private-reply
+ * design Non-Goals：關鍵字回覆不改成 NFKC，另開 change）。留言比對才用 NFKC。
+ */
+test('關鍵字回覆的全形「＋１」不命中半形「+1」（不做 NFKC）', () => {
+  assert.equal(matchKeywordTrigger(rule(['＋１']).trigger, '我要 +1'), null);
+  assert.equal(matchKeywordTrigger(rule(['+1']).trigger, '我要＋１'), null);
+  assert.deepEqual(matchKeywordTrigger(rule(['+1']).trigger, '我要 +1'), { matchedKeywords: ['+1'], matchMode: 'any' });
+});
