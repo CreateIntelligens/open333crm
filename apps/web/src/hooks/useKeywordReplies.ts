@@ -314,6 +314,8 @@ export interface KeywordReplyInput {
 /**
  * 換掉這一頁管理的動作，其他動作的位置與內容不動。素材在前、發券在後（新規則的順序）；
  * 原本就有的動作留在原位。發券動作保留它其他的參數，只換券與「發不出時回覆顧客」。
+ * 這一頁只顯示、只更換每類的第一個動作；第二個以後的同類動作（例如規則編輯器加的）原樣保留（#362 B1）。
+ * 新加的素材排在第一個發券之前，顧客先收到素材再收到券（#362 B2）。
  */
 function mergeActions(existing: RuleAction[], input: KeywordReplyInput): RuleAction[] {
   const next: Record<string, RuleAction | null> = {
@@ -334,16 +336,23 @@ function mergeActions(existing: RuleAction[], input: KeywordReplyInput): RuleAct
       merged.push(action);
       continue;
     }
-    // 同類動作只留一個（這一頁只顯示第一個）
-    if (placed.has(action.type)) continue;
+    // 這一頁只管第一個同類動作；之後的同類動作不是這一頁設定的，原樣保留
+    if (placed.has(action.type)) {
+      merged.push(action);
+      continue;
+    }
     placed.add(action.type);
     const replacement = next[action.type];
     if (replacement) merged.push(replacement);
   }
-  for (const type of ['send_material', 'issue_coupon']) {
-    const action = next[type];
-    if (action && !placed.has(type)) merged.push(action);
+  const material = next.send_material;
+  if (material && !placed.has('send_material')) {
+    const couponIndex = merged.findIndex((a) => a.type === 'issue_coupon');
+    if (couponIndex === -1) merged.push(material);
+    else merged.splice(couponIndex, 0, material);
   }
+  const coupon = next.issue_coupon;
+  if (coupon && !placed.has('issue_coupon')) merged.push(coupon);
   return merged;
 }
 
