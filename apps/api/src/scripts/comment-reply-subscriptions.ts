@@ -18,12 +18,14 @@
  * --mode disable：拿掉留言欄位，receiving = false
  * --mode resubscribe：依渠道目前的 receiving 重送完整欄位（Meta 取消了 feed 訂閱時）
  *
- * TODO(add-comment-keyword-private-reply 7.7)：meta-connect.service 的 subscribedFieldsFor() 合併後改用它，欄位清單只留一份。
+ * 欄位清單只有一份：FB 用 meta-connect.service 的 subscribedFieldsFor()（4 個私訊欄位＋feed），
+ * IG 用 comment-reply-channel.service 的 IG 欄位常數（與後台「開啟留言接收」相同）。
  */
 import { prisma } from '@open333crm/database';
 import { fbPlugin, threadsPlugin, type ChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../modules/channel/channel.service.js';
-import { getMetaAppConfig, SUBSCRIBED_FIELDS } from '../modules/meta-connect/meta-connect.service.js';
+import { getMetaAppConfig, subscribedFieldsFor } from '../modules/meta-connect/meta-connect.service.js';
+import { IG_BASE_SUBSCRIBED_FIELDS, IG_COMMENT_FIELD } from '../modules/comment-reply/comment-reply-channel.service.js';
 
 // 跨租戶掃描（平台維運腳本）：DATABASE_URL 需指向 owner／app_admin（BYPASSRLS）
 const prismaAdmin = prisma;
@@ -40,13 +42,15 @@ const apply = process.argv.includes('--apply');
 const tenantId = arg('--tenant');
 const channelId = arg('--channel');
 
-/** IG（Instagram Login）在用的私訊欄位 */
-const IG_BASE_FIELDS = ['messages'];
-
-/** 渠道應訂的完整欄位：私訊欄位一律保留，接收留言時加上留言欄位 */
-export function commentReplySubscriptionFields(channelType: string, receiving: boolean): string[] {
-  if (channelType === 'FB') return receiving ? [...SUBSCRIBED_FIELDS, 'feed'] : [...SUBSCRIBED_FIELDS];
-  return receiving ? [...IG_BASE_FIELDS, 'comments'] : [...IG_BASE_FIELDS];
+/**
+ * 渠道應訂的完整欄位：私訊欄位一律保留，接收留言時加上留言欄位。
+ * FB 以「寫入後的渠道設定」交給 subscribedFieldsFor() 算出完整清單（整份取代，少一個私訊欄位就是私訊中斷）。
+ */
+export function commentReplySubscriptionFields(channelType: string, settings: Record<string, any>, receiving: boolean): string[] {
+  if (channelType === 'FB') {
+    return subscribedFieldsFor({ ...settings, commentReply: { ...(settings.commentReply ?? {}), receiving } });
+  }
+  return receiving ? [...IG_BASE_SUBSCRIBED_FIELDS, IG_COMMENT_FIELD] : [...IG_BASE_SUBSCRIBED_FIELDS];
 }
 
 /** 目前的訂閱欄位（查不到回 null）；FB 用 /{page-id}/subscribed_apps，IG 用 /me/subscribed_apps */
@@ -89,7 +93,7 @@ async function main() {
       const token = String(credentials.pageAccessToken ?? '');
       const settings = (ch.settings ?? {}) as Record<string, any>;
       const receiving = mode === 'enable' ? true : mode === 'disable' ? false : settings.commentReply?.receiving === true;
-      const fields = commentReplySubscriptionFields(ch.channelType, receiving);
+      const fields = commentReplySubscriptionFields(ch.channelType, settings, receiving);
       const before = await currentFields(ch.channelType, ch.externalAccountId!, token);
       console.log(`${label}\n  目前：${before ? before.join(',') : '（查不到）'}\n  送出：${fields.join(',')}`);
       if (!apply) continue;
