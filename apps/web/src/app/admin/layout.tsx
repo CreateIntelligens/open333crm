@@ -13,6 +13,7 @@ const NAV = [
   { href: '/admin/usage', label: '用量統計' },
   { href: '/admin/plan-changes', label: '升級申請' },
   { href: '/admin/trial', label: '試用管理' },
+  { href: '/admin/comment-reply', label: '留言自動私訊' },
   { href: '/admin/platform-users', label: '平台帳號' },
 ];
 
