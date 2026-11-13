@@ -74,10 +74,27 @@ export const requirePermission = (code: string, message: string = PERMISSION_DEN
   usedPermissionCodes.add(code);
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (!(await isPermitted(request, code))) {
+      if (await isBlockedByPlanOnly(request, code)) {
+        return sendForbidden(reply, PLAN_FEATURE_DENIED, { requiredPermission: code, reason: 'PLAN_FEATURE_NOT_INCLUDED' });
+      }
       return sendForbidden(reply, message, { requiredPermission: code });
     }
   };
 };
+
+const PLAN_FEATURE_DENIED = '目前的方案未包含這項功能，請洽管理員升級方案。';
+
+/**
+ * 被拒的原因是否只是方案天花板（角色有這個權限、方案沒有對應的 feature）：讓前端與維運分得出「方案未包含」
+ * 與「角色沒權限」（add-comment-keyword-private-reply「方案不含時路由被擋」）。只在拒絕時多算一次角色權限。
+ */
+async function isBlockedByPlanOnly(request: FastifyRequest, code: string): Promise<boolean> {
+  if (request.agent?.isPartnerKey || request.agent?.isCliSession || !request.agent?.roleId) return false;
+  const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent.tenantId);
+  if (!planId) return false;
+  const roleOnly = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, request.agent.roleId, null);
+  return roleOnly.has(code);
+}
 
 /**
  * 條件式權限點 guard：`when(request)` 成立時才要求 `code`，否則放行。
