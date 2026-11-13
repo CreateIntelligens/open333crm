@@ -122,6 +122,7 @@ import { createBroadcastJobRunner, createCouponBroadcastProcessor } from './modu
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
 import { createCommentReplyJobRunner, createCommentReplyProcessor } from './modules/comment-reply/comment-reply.worker.js';
 import { COMMENT_REPLY_QUEUE } from './modules/comment-reply/comment-reply.types.js';
+import { setupCommentReplySchedulers } from './modules/comment-reply/comment-reply.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
@@ -353,6 +354,8 @@ export async function bootstrap() {
   setupContractReminderScheduler(jobScheduler, app.prismaAdmin);
   setupCouponScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   setupOutboxSchedulers(jobScheduler, app.prismaAdmin);
+  // 留言自動私訊：補回遺失的工作、健康告警、保存期限（跨租戶掃描用 prismaAdmin，寫入逐租戶 inTenant）
+  setupCommentReplySchedulers(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma, redis: app.redis, io: app.io });
   jobScheduler.start();
   app.addHook('onClose', () => jobScheduler.close());
   app.addHook('onClose', () => closeOutboxQueues());

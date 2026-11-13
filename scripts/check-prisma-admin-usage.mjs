@@ -48,6 +48,8 @@ const WHITELIST = [
   /\.scheduler\./,                  // scheduler 掃全租戶
   /\.worker\./,                     // worker 以 payload.tenantId 自 scope
   /index\.ts$/,                     // bootstrap 接線 scheduler/worker
+  // 留言接收補訂閱（平台維運腳本，change add-comment-keyword-private-reply）：跨租戶列渠道，寫入以 id＋tenantId 為條件
+  /scripts\/comment-reply-subscriptions\.ts$/,
   /__tests__\//,                    // 測試
 ];
 
