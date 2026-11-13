@@ -2,19 +2,19 @@
 
 - [x] 0.1 確認 `fix-line-follow-unfollow-events` 已歸檔（2026-11-13 於本分支歸檔）（本 change 的 `first-contact-greeting`「首次進站時送出招呼語」MODIFIED 以它的版本為底）；未歸檔前不可歸檔本 change
 - [x] 0.2 確認 `fix-meta-webhook-page-routing` 的狀態（2026-11-13：仍有 14 項長期待辦未歸檔，維持 ADDED）：已歸檔就把 `comment-reply-meta-subscription`「重新連結粉專時保留留言欄位」改寫成 `meta-page-connect` 的 MODIFIED（保留其既有 scenario 名稱）；未歸檔則維持本 change 的 ADDED，並在歸檔前再核對一次
-- [ ] 0.3 新增測試支援檔：`apps/api/tests/support/fake-meta-graph.ts`（依 host＋path＋method 設定回應、記錄每次呼叫、白名單外的 host 讓測試失敗）、`apps/api/tests/support/meta-webhook.ts`（組 FB／IG 留言與私訊 payload、算簽章、呼叫入口）、`apps/api/tests/support/comment-reply-fixtures.ts`（建租戶、方案、渠道、規則、角色與可見範圍，`afterAll` 刪除）；fixture 放 `packages/channel-plugins/tests/fixtures/meta-comments/`，「待實測」的錯誤碼在檔頭註明
+- [x] 0.3 新增測試支援檔：`apps/api/tests/support/fake-meta-graph.ts`（依 host＋path＋method 設定回應、記錄每次呼叫、白名單外的 host 讓測試失敗）、`apps/api/tests/support/meta-webhook.ts`（組 FB／IG 留言與私訊 payload、算簽章、呼叫入口）、`apps/api/tests/support/comment-reply-fixtures.ts`（建租戶、方案、渠道、規則、角色與可見範圍，`afterAll` 刪除）；fixture 放 `packages/channel-plugins/tests/fixtures/meta-comments/`，「待實測」的錯誤碼在檔頭註明（2026-11-13：fixture 寫成 TS 模組以便檔頭註解；`comment-reply-fixtures.ts` 只含租戶、方案、渠道、角色、可見範圍，新資料表的 helper 留 TODO 給第 3 節之後）
 
 ## 1. 渠道外掛
 
-- [ ] 1.1 特性測試（重構前補，寫好就通過）：`packages/channel-plugins/tests/unit/facebook-send-message.test.ts`「Direct message unchanged」——斷言 `recipient: { id }`、`messaging_type` 與 body 其他欄位；以突變驗證（見 12.1）
-- [ ] 1.2 測試 `packages/channel-plugins/tests/unit/facebook-comment-events.test.ts`：「New comment on a post」「Comment by the page itself」「Comment without from」「Other feed changes」「Reply to another comment」；另加 `verb=remove` 回傳 `kind: 'remove'`
-- [ ] 1.3 測試 `packages/channel-plugins/tests/unit/threads-comment-events.test.ts`：「一般貼文留言」「自己帳號的留言」「廣告貼文留言」「直播留言」
-- [ ] 1.4 測試 `packages/channel-plugins/tests/unit/comment-private-reply.test.ts`：「Private reply body」「Token expired」「Network failure」「文字私訊」「非文字內容」；公開回覆 URL（FB `/{id}/comments`、IG `/{id}/replies`）；錯誤碼 10、200、551、100/33、613、500 的正規化
-- [ ] 1.5 測試 `packages/channel-plugins/tests/unit/comment-post-reference.test.ts`：「Numeric post ID」「Unrecognized input」；`{pageId}_{id}`、`/posts/<id>`、`story_fbid=`、`fbid=` 網址
-- [ ] 1.6 測試 `packages/channel-plugins/tests/unit/comment-subscription.test.ts`：FB `subscribeFields` 送出的 `subscribed_fields` 等於傳入的完整清單（排序後 deepEqual）並帶 `appsecret_proof`；IG 打 `graph.instagram.com/.../me/subscribed_apps`；自備 App 用渠道自己的 App Secret
-- [ ] 1.7 測試 `apps/workers/tests/unit/lib/plugin-registry-comments.test.ts`：「Comment extension available in both registries」
-- [ ] 1.8 實作：`packages/channel-plugins/src/index.ts` 型別（`ParsedCommentEvent`、`ChannelCommentExtension`、`CommentReplyCapabilities`、`MetaErrorInfo`）與 `extensions.comments`；FB 抽 `postMessage()`（design D6）後實作 `extensions.comments`；IG 實作；錯誤正規化（design「外掛契約」）
-- [ ] 1.9 `webhook-account-routing.ts` 的分派函式改泛型 `<T extends { accountId?: string }>`；既有 `webhook-account-routing.test.ts` 要過，並以突變驗證（見 12.2）
+- [x] 1.1 特性測試（重構前補，寫好就通過）：`packages/channel-plugins/tests/unit/facebook-send-message.test.ts`「Direct message unchanged」——斷言 `recipient: { id }`、`messaging_type` 與 body 其他欄位；以突變驗證（見 12.1）
+- [x] 1.2 測試 `packages/channel-plugins/tests/unit/facebook-comment-events.test.ts`：「New comment on a post」「Comment by the page itself」「Comment without from」「Other feed changes」「Reply to another comment」；另加 `verb=remove` 回傳 `kind: 'remove'`
+- [x] 1.3 測試 `packages/channel-plugins/tests/unit/threads-comment-events.test.ts`：「一般貼文留言」「自己帳號的留言」「廣告貼文留言」「直播留言」
+- [x] 1.4 測試 `packages/channel-plugins/tests/unit/comment-private-reply.test.ts`：「Private reply body」「Token expired」「Network failure」「文字私訊」「非文字內容」；公開回覆 URL（FB `/{id}/comments`、IG `/{id}/replies`）；錯誤碼 10、200、551、100/33、613、500 的正規化
+- [x] 1.5 測試 `packages/channel-plugins/tests/unit/comment-post-reference.test.ts`：「Numeric post ID」「Unrecognized input」；`{pageId}_{id}`、`/posts/<id>`、`story_fbid=`、`fbid=` 網址
+- [x] 1.6 測試 `packages/channel-plugins/tests/unit/comment-subscription.test.ts`：FB `subscribeFields` 送出的 `subscribed_fields` 等於傳入的完整清單（排序後 deepEqual）並帶 `appsecret_proof`；IG 打 `graph.instagram.com/.../me/subscribed_apps`；自備 App 用渠道自己的 App Secret
+- [x] 1.7 測試 `apps/workers/tests/unit/lib/plugin-registry-comments.test.ts`：「Comment extension available in both registries」
+- [x] 1.8 實作：`packages/channel-plugins/src/index.ts` 型別（`ParsedCommentEvent`、`ChannelCommentExtension`、`CommentReplyCapabilities`、`MetaErrorInfo`）與 `extensions.comments`；FB 抽 `postMessage()`（design D6）後實作 `extensions.comments`；IG 實作；錯誤正規化（design「外掛契約」）
+- [x] 1.9 `webhook-account-routing.ts` 的分派函式改泛型 `<T extends { accountId?: string }>`；既有 `webhook-account-routing.test.ts` 要過，並以突變驗證（見 12.2）
 
 ## 2. 比對與規則的純函式
 
@@ -112,17 +112,17 @@
 
 ## 12. 突變驗證（寫好就通過或需確認測到那一道檢查）
 
-- [ ] 12.1 `postMessage()` 把 `recipient: { id }` 改成 `{ comment_id }` 或拿掉 `messaging_type`：「Direct message unchanged」失敗
-- [ ] 12.2 泛型分派忽略 `accountId`：`webhook-account-routing.test.ts` 與「回呼網址與粉專屬於不同租戶」失敗
+- [x] 12.1 `postMessage()` 把 `recipient: { id }` 改成 `{ comment_id }` 或拿掉 `messaging_type`：「Direct message unchanged」失敗（2026-11-13 實測：main 的 body 本來就沒有 `messaging_type`，改以「多加 `messaging_type`」突變；兩種突變都讓 2 個測試失敗）
+- [ ] 12.2 泛型分派忽略 `accountId`：`webhook-account-routing.test.ts` 與「回呼網址與粉專屬於不同租戶」失敗（前半 2026-11-13 完成：`routeWebhookMessages` 忽略 accountId → 14 個測試 11 個失敗；`routePlatformMessages` 的同類突變現有測試抓不到（都是單一粉專 payload），留給「回呼網址與粉專屬於不同租戶」）
 - [ ] 12.3 讓留言建立的聯絡人第一次回覆也送招呼語：「留言私訊後顧客第一次回覆」「留言建立的聯絡人自己傳私訊」失敗
 - [ ] 12.4 `matchKeywordTrigger()` 也改成 NFKC：2.1 補的案例失敗
-- [ ] 12.5 拿掉外掛「排除自己帳號」：「粉專自己的留言」「Comment by the page itself」「自己帳號的留言」失敗
+- [ ] 12.5 拿掉外掛「排除自己帳號」：「粉專自己的留言」「Comment by the page itself」「自己帳號的留言」失敗（外掛部分 2026-11-13 完成：「Comment by the page itself」「自己帳號的留言」失敗；「粉專自己的留言」待第 4 節）
 - [ ] 12.6 拿掉 `ON CONFLICT DO NOTHING`（改一般 INSERT 吞錯）：「同一個請求重送三次」「兩個入口並行」失敗（斷言 Meta 呼叫次數）
 - [ ] 12.7 認領不檢查 `status='PENDING'`：「同一筆紀錄的工作執行兩次」失敗
 - [ ] 12.8 拿掉 7 天判斷；安全邊際改 0：「7 天前的留言」「排隊到過期」；「安全邊際內」失敗
 - [ ] 12.9 月額度改成先讀再寫（非原子）：「並行不超賣」失敗
 - [ ] 12.10 去重改成收件時佔名額：「第一則失敗後的留言仍會嘗試」失敗
-- [ ] 12.11 補訂閱只送 `['feed']`、少送 `message_echoes`：「FB 開啟留言接收」「已開啟接收的粉專重新連結」失敗
+- [ ] 12.11 補訂閱只送 `['feed']`、少送 `message_echoes`：「FB 開啟留言接收」「已開啟接收的粉專重新連結」失敗（外掛部分 2026-11-13：`subscribeFields` 改送 `feed` → `comment-subscription.test.ts` 2 個測試失敗；路由情境待第 7 節）
 - [ ] 12.12 拿掉 `inbox.view` 判斷：「沒有收件匣權限」失敗
 - [ ] 12.13 拿掉渠道可見範圍過濾：「分店帳號只看到自己渠道的規則」「分店帳號只看到自己渠道的紀錄」失敗
 - [ ] 12.14 拿掉背景的方案 feature 檢查（只留路由 403）：「方案不含留言自動私訊」「排隊期間方案移除功能」失敗
