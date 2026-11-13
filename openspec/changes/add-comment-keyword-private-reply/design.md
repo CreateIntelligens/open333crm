@@ -276,7 +276,7 @@
 ### D22：三層開關；不做灰度名單（A12）
 
 - **決定**：
-  1. **方案 feature** `comment_reply`：路由由權限天花板擋；背景由 `isCommentReplyEnabled(ctx)` 自己查（`planId` 為 null 視為開啟，與權限天花板一致）。
+  1. **方案 feature** `comment_reply`：路由由權限天花板擋；背景由 `isCommentReplyPlanEnabled(db, tenantId)`（`comment-reply-plan.ts`，收件、送出與 Meta 連結共用）自己查（`planId` 為 null 視為開啟，與權限天花板一致）。
   2. **能力開關**：`fbPrivateReply`／`igPrivateReply` 關閉時，該平台渠道的留言收件不建紀錄、已排隊 job 記 `SKIPPED`/`CAPABILITY_DISABLED`、
      規則 API 不可建立該平台規則（403 `CAPABILITY_DISABLED`）；`*PostPicker` 關閉時貼文清單與網址解析回 403 `CAPABILITY_DISABLED`，指定貼文只能手動填 ID；
      `*PublicReply` 關閉時規則不可開公開回覆（400 `CAPABILITY_DISABLED`），已開的規則送出時公開回覆記 `SKIPPED`/`CAPABILITY_DISABLED`。前端依 `readiness` 隱藏或停用。

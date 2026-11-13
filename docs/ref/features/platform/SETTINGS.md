@@ -3,7 +3,7 @@
 平台層的 KV 設定，以及提供給後台介面的功能與渠道類型清單。兩者都由 `platform.routes.ts` 直接提供。
 
 - **資料來源**：`apps/api/src/modules/platform/platform-setting.service.ts`、`platform.routes.ts`、`packages/core/src/rbac/`
-- **核對日期**：2026-09-23
+- **核對日期**：2026-09-23；留言自動私訊的 5 個鍵 2026-11-14
 
 ## KV 設定
 
@@ -11,11 +11,11 @@
 
 要知道的事：
 
-- **沒有鍵的白名單，也沒有值的 schema。** `PUT` 的 Zod 只寫 `z.unknown()`，任何鍵、任何型別都寫得進去。打錯鍵名不會報錯，只是永遠沒有人讀它。唯一的例外是 `contract.reminderDaysBefore`：路由以 `parseContractReminderDays()`（`contract-policy.service.ts`）驗證，必須是 1 到 365 的整數組成的非空陣列，去重、由大到小後存入，不合法回 400 `VALIDATION_ERROR`。
+- **沒有鍵的白名單，也沒有值的 schema。** `PUT` 的 Zod 只寫 `z.unknown()`，任何鍵、任何型別都寫得進去。打錯鍵名不會報錯，只是永遠沒有人讀它。例外是 `contract.reminderDaysBefore`：路由以 `parseContractReminderDays()`（`contract-policy.service.ts`）驗證，必須是 1 到 365 的整數組成的非空陣列，去重、由大到小後存入，不合法回 400 `VALIDATION_ERROR`。留言自動私訊的 5 個 `commentReply.*` 鍵也有型別與範圍檢查，見下一節。
 - **讀取端自己做型別檢查，不符就靜默退回預設值。** `getTrialPolicy()` 逐個欄位檢查型別，例如 `trial.durationDays` 被寫成字串 `"30"` 時，型別檢查不過，改用程式預設的 14，而且不會有任何錯誤訊息。設定看起來存進去了，行為卻沒變。
 - **只檢查型別，不檢查範圍。** `0` 或負數會通過檢查並照用，例如試用天數設成 `0`，新開通的租戶會在下一輪排程就被停用。
 - **沒有刪除端點。** 寫錯的鍵刪不掉，要恢復預設只能手動寫回預設值。
-- **沒有快取。** 每次讀都直接查資料庫，改完立刻生效。這一點與方案相關的快取不同，見[平台後台](./README.md#方案異動的連鎖效果)。
+- **沒有快取。** 每次讀都直接查資料庫，改完立刻生效。這一點與方案相關的快取不同，見[平台後台](./README.md#方案異動的連鎖效果)。例外是 `commentReply.*`：讀取端在每個 API 實例快取 60 秒。
 
 ## 目前有哪些鍵
 
@@ -28,6 +28,8 @@
 `PUT` 會寫一筆 `setting.update` 稽核，但**只記鍵名，不記新舊值**（呼叫時沒有傳 `payload`）。稽核紀錄能回答「誰在什麼時候改過哪個設定」，不能回答「改成什麼」。
 
 錯誤的值造成的具體結果與修正方向，見 `../../system/AUDIT.md` 的 TRIAL-02。
+
+留言自動私訊的 5 個鍵是 `commentReply.capabilities`、`commentReply.testPhase`、`commentReply.emergencyStop`、`commentReply.rateLimits`、`commentReply.logRetentionDays`，維護介面是 `/admin/comment-reply`。路由以 `parseCommentReplySettingValue()`（`apps/api/src/modules/comment-reply/comment-reply-platform-settings.ts`）驗證型別與範圍，不合法回 400、不寫入；值、預設與生效方式見[留言自動私訊的平台控制](./COMMENT-REPLY.md#5-個平台設定鍵)。
 
 ## 權限註冊表
 

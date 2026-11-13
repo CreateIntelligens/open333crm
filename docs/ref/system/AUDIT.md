@@ -878,6 +878,8 @@ UAT 上有沒有只差大小寫的成員，還沒有查過。
 
 **健檢來源**（2026-10-30，程式版本 `5c81102e`）：HC-PLATFORM-SETTINGS-01（[PLATFORM-SETTINGS 健檢](../features/health/PLATFORM-SETTINGS.md)）。證據：`apps/api/src/modules/platform/platform.routes.ts:492-506`、`apps/api/src/modules/platform/ai-privacy.service.ts:10-17`、`apps/api/src/modules/webhook/inbound-message-writer.ts:53`；測試租戶 `PUT /platform/settings/ai.privacy.<tid> {"value":"on"}` 回 200 之後，同一則模擬訊息回 503，以專用路由修回後恢復（健檢實測）。
 
+**新鍵不再沿用無型別的寫法（2026-11-14，change `add-comment-keyword-private-reply`）。** 留言自動私訊的 5 個 `commentReply.*` 鍵在 `PUT /settings/:key` 以 `parseCommentReplySettingValue()` 驗證型別與範圍，不合法回 400、不寫入；讀取端遇到舊的不合法值退回預設。這只涵蓋新鍵：`trial.*` 與 `ai.privacy.<tenantId>` 仍是上面描述的狀況，通用端點也仍不檢查鍵名，所以本項狀態不變。見[平台設定](../features/platform/SETTINGS.md)。
+
 **修正方向（2026-09-30 討論，尚未實作）**
 
 KV 表保留為底層儲存，不承擔型別。上面加一層殼層，每個設定群有自己的 API 路徑，型別、範圍、預設值與檢查都由殼層負責：
