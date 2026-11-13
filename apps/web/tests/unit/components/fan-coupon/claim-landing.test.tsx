@@ -5,6 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { beforeEach, describe, test, vi } from 'vitest';
+import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({ fetchPublicClaim: vi.fn() }));
@@ -96,5 +97,25 @@ describe('公開領券頁引導顧客傳送領券訊息', () => {
       fireEvent.click(screen.getByRole('button', { name: '重試' }));
     });
     assert.ok(screen.getByText('秋季九折'));
+  });
+
+  test('代碼換了之後，較晚回來的舊回應不覆蓋新代碼的內容（#362 B3）', async () => {
+    const pending = new Map<string, (page: unknown) => void>();
+    mocks.fetchPublicClaim.mockImplementation((code: string) => new Promise((resolve) => pending.set(code, resolve)));
+    let rerender: (ui: React.ReactElement) => void = () => {};
+    await act(async () => {
+      ({ rerender } = render(<ClaimLanding code="OLDCODE1" />));
+    });
+    await act(async () => {
+      rerender(<ClaimLanding code="NEWCODE2" />);
+    });
+    await act(async () => {
+      pending.get('NEWCODE2')?.({ available: true, message: null, coupon: { ...COUPON, name: '冬季八折' }, channel: LINE });
+    });
+    await act(async () => {
+      pending.get('OLDCODE1')?.({ available: true, message: null, coupon: COUPON, channel: LINE });
+    });
+    assert.ok(screen.getByText('冬季八折'));
+    assert.ok(screen.queryByText('秋季九折') === null, '舊代碼的回應應被丟棄');
   });
 });

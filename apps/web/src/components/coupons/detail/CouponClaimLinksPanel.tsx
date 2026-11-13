@@ -89,6 +89,21 @@ function CreateDialog({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  function resetForm() {
+    setName('');
+    setChannelId('');
+    setStartAt('');
+    setEndAt('');
+    setFieldError(null);
+    setSubmitError(null);
+  }
+
+  // 取消、按 Esc 或點背景關閉時清空表單與錯誤訊息：對話框沒有卸載，不清的話下次打開還看得到上次寫到一半的內容與錯誤（#362 B4）
+  function close() {
+    resetForm();
+    onClose();
+  }
+
   async function submit() {
     setSubmitError(null);
     if (!name.trim()) return setFieldError('請輸入連結名稱');
@@ -104,10 +119,7 @@ function CreateDialog({
         startAt: startAt ? new Date(startAt).toISOString() : null,
         endAt: endAt ? new Date(endAt).toISOString() : null,
       });
-      setName('');
-      setChannelId('');
-      setStartAt('');
-      setEndAt('');
+      resetForm();
       onCreated(created);
     } catch (err) {
       setSubmitError(getApiErrorMessage(err, '建立失敗，請稍後再試'));
@@ -122,10 +134,10 @@ function CreateDialog({
       title="建立領券連結"
       description="顧客開啟連結後，到你選的渠道傳送領券訊息就會收到這張券。"
       busy={busy}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={busy}>
+          <Button variant="outline" onClick={close} disabled={busy}>
             取消
           </Button>
           <Button onClick={submit} disabled={busy}>
