@@ -120,6 +120,8 @@ import { agentVisibilityResolver } from './services/channel-visibility.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { createBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
+import { createCommentReplyJobRunner, createCommentReplyProcessor } from './modules/comment-reply/comment-reply.worker.js';
+import { COMMENT_REPLY_QUEUE } from './modules/comment-reply/comment-reply.types.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
@@ -309,6 +311,8 @@ export async function bootstrap() {
         prisma: app.prisma, adminPrisma: app.prismaAdmin, redis: app.redis, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
       })) as JobProcessor,
       [EMAIL_DISPATCH_QUEUE]: createEmailDispatchProcessor() as JobProcessor,
+      // 留言自動私訊（change add-comment-keyword-private-reply D1）：app_tenant 連線、Redis token bucket 限流；concurrency 5（預設）
+      [COMMENT_REPLY_QUEUE]: createCommentReplyProcessor(createCommentReplyJobRunner({ prisma: app.prisma, redis: app.redis })) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },

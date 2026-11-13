@@ -52,7 +52,9 @@ export type RoutingWarningReason =
   /** 認領該帳號的渠道使用不同的 Meta App，已丟棄 */
   | 'app_mismatch'
   /** 整包含其他渠道的事件，無法轉發給下游 */
-  | 'downstream_skipped';
+  | 'downstream_skipped'
+  /** 留言收件失敗（讀規則或寫紀錄丟錯）；同一請求的私訊照常處理（change add-comment-keyword-private-reply） */
+  | 'comment_intake_failed';
 
 export interface RoutingChannel {
   id: string;

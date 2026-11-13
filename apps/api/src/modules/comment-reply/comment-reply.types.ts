@@ -26,6 +26,20 @@ export const COMMENT_REPLY_QUEUE = 'comment-reply';
 /** 佇列 job 名稱（design D1） */
 export const COMMENT_REPLY_JOB_DELIVER = 'deliver';
 
+/** job 選項（design D1）：attempts 只給網路錯誤的退避重試用，限流延後不消耗（D12） */
+export const COMMENT_REPLY_JOB_OPTIONS = {
+  attempts: 5,
+  backoff: { type: 'exponential', delay: 10_000 },
+  removeOnComplete: { age: 86_400 },
+  removeOnFail: { age: 604_800 },
+};
+
+/** job data 只有識別欄位，不放留言內容與名稱（spec「留言處理不把個資寫進工作與日誌」） */
+export interface CommentReplyJobData {
+  tenantId: string;
+  logId: string;
+}
+
 export type CommentReplyMatchMode = 'any' | 'all';
 export type CommentReplyPostScope = 'all' | 'selected';
 export type CommentReplyContentType = 'material' | 'text';
