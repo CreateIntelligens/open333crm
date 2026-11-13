@@ -189,3 +189,18 @@ test('main 新增的頁面依權限出現在子選單', () => {
   render(<SectionNav />);
   assert.equal(visible('優惠券'), true);
 });
+
+test('圖示欄滑鼠移上去顯示名稱提示，按 Esc 關閉（WCAG 1.4.13）', async () => {
+  auth.permissions = new Set(['analytics.view']);
+  render(<Sidebar />);
+  const link = screen.getByRole('link', { name: '報表' });
+  assert.equal(link.getAttribute('title'), null, '不再使用瀏覽器內建 title，避免出現兩個提示');
+
+  const wrapper = link.parentElement as HTMLElement;
+  fireEvent.mouseEnter(wrapper);
+  const tip = await screen.findByText('報表', { selector: 'span.relative' });
+  assert.ok(tip, '移上去後顯示「報表」提示');
+
+  fireEvent.keyDown(wrapper, { key: 'Escape' });
+  assert.equal(screen.queryByText('報表', { selector: 'span.relative' }), null, '按 Esc 後提示關閉');
+});

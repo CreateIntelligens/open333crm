@@ -164,6 +164,47 @@ function activeLinkId(groups: NavGroup[], pathname: string, sectionHref?: string
   return best?.id;
 }
 
+/**
+ * 圖示欄的文字提示：滑鼠移上去或鍵盤 Tab 聚焦時，在圖示右側顯示名稱。
+ * 原本只有瀏覽器內建的 title（約 1 秒才出現、不能調樣式、鍵盤聚焦不會顯示）。
+ * 依 WCAG 1.4.13：可按 Esc 關閉；提示只是視覺輔助，名稱已由 aria-label 提供，所以提示本身 aria-hidden。
+ */
+function RailTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = (delay: number) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(true), delay);
+  };
+  const hide = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setOpen(false);
+  };
+  React.useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => show(120)}
+      onMouseLeave={hide}
+      onFocus={(e) => { if ((e.target as HTMLElement).matches(':focus-visible')) show(0); }}
+      onBlur={hide}
+      onKeyDown={(e) => { if (e.key === 'Escape') hide(); }}
+      onClick={hide}
+    >
+      {children}
+      {open && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-full top-1/2 z-50 ml-2.5 -translate-y-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[13px] font-medium leading-4 text-background shadow-dropdown"
+        >
+          <span className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-foreground" />
+          <span className="relative">{label}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function RailIcon({ item, className }: { item: RailItem; className?: string }) {
   const Icon = item.icon;
   return <Icon className={className} aria-hidden="true" />;
@@ -299,13 +340,13 @@ export function Sidebar() {
           const collapsible = !wide && Boolean(item.sections?.length);
           return (
             <li key={item.id}>
+              <RailTooltip label={item.label}>
               {collapsible ? (
                 // 窄螢幕：有子頁的圖示改成按鈕，點了彈出子選單
                 <button
                   type="button"
                   data-rail-trigger
                   onClick={() => setFlyoutId((id) => (id === item.id ? null : item.id))}
-                  title={item.label}
                   aria-label={item.label}
                   aria-expanded={flyoutId === item.id}
                   aria-controls="rail-flyout"
@@ -317,7 +358,6 @@ export function Sidebar() {
               ) : (
                 <Link
                   href={entryHref(item)}
-                  title={item.label}
                   aria-label={item.label}
                   aria-current={item.id === active?.id ? 'page' : undefined}
                   className={itemCls(isActive)}
@@ -325,21 +365,25 @@ export function Sidebar() {
                   <RailIcon item={item} className="h-5 w-5" />
                 </Link>
               )}
+              </RailTooltip>
             </li>
           );
         })}
       </ul>
       <div className="mt-6 h-px w-full bg-border" aria-hidden="true" />
       <div className="flex-1" />
-      <button
-        type="button"
-        onClick={logout}
-        title="登出"
-        aria-label="登出"
-        className="mb-6 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <LogoutIcon className="h-5 w-5" />
-      </button>
+      <div className="mb-6">
+        <RailTooltip label="登出">
+          <button
+            type="button"
+            onClick={logout}
+            aria-label="登出"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <LogoutIcon className="h-5 w-5" />
+          </button>
+        </RailTooltip>
+      </div>
 
       {/* 窄螢幕彈出的子選單：貼在圖示欄右側，蓋在內容上 */}
       {flyout?.sections?.length ? (
