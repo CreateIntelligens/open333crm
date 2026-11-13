@@ -1745,7 +1745,9 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 <a id="mkt-01"></a>
 ### MKT-01：群發失敗後重試，逐人送出的群發會重送給已送達的人
 
-`POST /marketing/broadcasts/:id/send` 在 HTTP 請求內 `await` `marketing.service.ts` 的 `executeBroadcast()`，整筆群發送完才回應。
+原本 `POST /marketing/broadcasts/:id/send` 在 HTTP 請求內 `await` `marketing.service.ts` 的 `executeBroadcast()`，整筆群發送完才回應。
+
+**送出改成背景工作（#362，change `fix-plain-broadcast-send-362`，2026-11-13）。** 一般群發與附券廣播相同：立即發送回 202，同一個交易在 outbox 寫 `coupon-broadcast` job，由 API 行程的佇列執行；排程器是後備。job 與排程器只搶 `scheduled` 且時間已到的群發，發送失敗後 job 重試不會重送。請求不再逾時。MCP 工具 `crm_line_broadcast_initiate` 仍在請求內同步執行。
 
 **部分修正（`f0d88b0e`，#283，2026-10-15）。** 同一筆群發不會再同時執行兩次：
 
@@ -1753,7 +1755,7 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 - 狀態是 `sending` 的群發再送出時回 409 `BROADCAST_ALREADY_SENDING`。
 - 「立即發送」的按鈕在請求期間停用。
 
-立即發送的路由、排程器與 MCP 工具都呼叫 `executeBroadcast()`，所以三條路徑都受這個保護。
+佇列 job、排程器與 MCP 工具都呼叫 `executeBroadcast()`，所以三條路徑都受這個保護。
 
 **仍未修正：**
 
@@ -1769,7 +1771,7 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 - 全部對象都送出失敗：沒有人收到過，重送不會重複。
 - 送出途中發生例外：逐人送出的群發，例外之前已經送達的人，重送時會再收到一次。
 
-**修正方向**：送出改成背景工作；重試時跳過已有成功收件紀錄的聯絡人；為停在 `sending` 的群發提供逾時或復原的途徑。
+**修正方向**：重試時跳過已有成功收件紀錄的聯絡人；為停在 `sending` 的群發提供逾時或復原的途徑（送出改成背景工作已在 #362 完成）。
 
 <a id="mkt-05"></a>
 ### MKT-05：分群的建立日期條件以 UTC 切日

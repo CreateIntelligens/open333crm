@@ -31,8 +31,8 @@ description: >
 | 2 | 活動詳情與狀態 | 點卡片 → `campaigns/[campaignId]` | `PATCH /marketing/campaigns/:id {status}`；只允許 draft→active/cancelled、active→completed/cancelled | 讀取時彙總送達、回覆、開案數 | `marketing.manage` |
 | 3 | 建立分群 | `/dashboard/marketing/segments`；條件 `channelType`(LINE/FB/WEBCHAT/WHATSAPP)、`tag`、`createdAfter/Before`(date)，AND/OR | `POST /marketing/segments/preview`、`POST /marketing/segments` | 刪除是硬刪，不檢查是否被排程群發引用 | `marketing.manage` / **不隱藏** |
 | 4 | 建立群發 | `/dashboard/marketing/broadcasts`「建立廣播」：渠道、素材、活動、受眾(all/segment/tags；FB/IG 只有 all)、附券、排程 `datetime-local`→ISO | 即時預估 `POST /marketing/broadcasts/audience-preview`；建立 `POST /marketing/broadcasts` → `marketing.service.ts` `createBroadcast` | 有 `scheduledAt` 為 scheduled，排程器 `broadcast-scheduled` 每 60 秒取 10 筆。渠道選單只列啟用中、能主動推送的渠道（LINE/FB/THREADS，`activePushChannels()`）。WebChat 建立與送出回 400 `CHANNEL_PUSH_NOT_SUPPORTED`，舊的 WebChat 排程到期標 `failed` 寫原因（#415） | `marketing.manage`；帶排程另要 `marketing.broadcast`、帶券另要 `coupon.issue`（403 `details.requiredPermission` 分辨），預估帶券要 `coupon.view` / 沒權限時排程與附券欄位停用並說明。排程器送出前以 `scheduledById`（null 時建立者）當下權限重驗，不過標 `failed`＋`SCHEDULED_SENDER_*`（`broadcast-send-authority.ts`） |
-| 5 | 立即發送/重送/取消 | 群發列 ▶ ↻ ✕ | `POST /marketing/broadcasts/:id/send`、`/cancel` | 附券：202，寫 `coupon-broadcast` 佇列並把 `scheduledById` 設為按下的人，`runCouponBroadcast` 逐人保留→送出→確認；一般：請求內同步 `executeBroadcast`，素材網址換短連結，LINE 無變數 multicast 每批 499 | `marketing.broadcast`（附券另要 `coupon.issue`）/ **不隱藏** |
-| 6 | 附券結果 | 群發列 👁 | `GET /marketing/broadcasts/:id`、`/recipients?status=failed\|skipped` | — | `marketing.view` |
+| 5 | 立即發送/重送/取消 | 群發列 ▶ ↻ ✕ | `POST /marketing/broadcasts/:id/send`、`/cancel` | 附券與一般群發都回 202，寫 `coupon-broadcast` 佇列並把 `scheduledById` 設為按下的人，`runQueuedBroadcast` 依有沒有附券分派。附券：`runCouponBroadcast` 逐人保留→送出→確認；一般：`runPlainBroadcast`→`executeBroadcast`（queued 模式只搶已排程的），查訊息額度，素材網址換短連結，LINE 無變數 multicast 每批 499，送不出的收件人 `skipReason=DELIVERY_FAILED` | `marketing.broadcast`（附券另要 `coupon.issue`）/ **不隱藏** |
+| 6 | 發送結果（附券與一般群發） | 群發列 👁 | `GET /marketing/broadcasts/:id`、`/recipients?status=failed\|skipped` | — | `marketing.view` |
 
 ### 後台：素材
 | # | 流程 | 入口 | API → 後端 | 備註 |
@@ -71,7 +71,8 @@ description: >
 
 ## 不可破壞的規則
 - 附券群發與批次發券一律「保留 → 送出 → 確認或作廢」，在同一交易用 `enqueueJob` 寫佇列；不要改成先送再記帳，否則超發。
-- 一般群發同步執行，用條件更新把狀態改成 `sending` 防重複，已在發送回 409 `BROADCAST_ALREADY_SENDING`。逐人送出的重送會重送給已送達的人（MKT-01）。
+- 一般群發在背景執行（`coupon-broadcast` 佇列，排程器是後備），佇列 job 與排程器只搶 `scheduled` 且時間已到的群發，用條件更新改成 `sending` 防重複，已在發送回 409 `BROADCAST_ALREADY_SENDING`。逐人送出的重送會重送給已送達的人（MKT-01）。MCP 工具仍同步呼叫 `executeBroadcast()`。
+- 群發發送前查訊息額度只依外掛能力（`extensions.analytics.getMessageQuota`），附券與一般群發共用 `broadcast-quota.ts`；不要加 `channelType === 'LINE'` 分支。
 - 素材含 `{{coupon.url}}` 必須附券；素材渠道必須等於發送渠道；附券必須 ACTIVE、用途 MARKETING、固定效期未過期。前後端都有檢查，改一邊要改另一邊（`apps/web/src/lib/marketing/broadcast-form.ts`）。
 - 排程時間：前端 `datetime-local` 轉 ISO 送出；後端日期一律 `z.coerce.date()`，不要用 `z.string().datetime()`（會擋掉 `2026-12-31T23:59`）。
 - 分群無條件時是 0 人（fail-closed），不是全部聯絡人。
@@ -100,7 +101,7 @@ description: >
 - E2E：`apps/web/tests/e2e-uat/tenant-marketing.spec.ts`、`apps/web/tests/e2e-uat/tenant-materials-all-types.spec.ts`。
 
 ## 常見 bug 從哪裡查
-- 「群發卡在發送中」：一般群發看 `executeBroadcast` 是否中途拋錯；附券群發看 `coupon-broadcast` 佇列與 `runCouponBroadcast`；UI 沒有取消 sending 的按鈕。
+- 「群發卡在發送中」：一般群發看 `coupon-broadcast` 佇列與 `executeBroadcast` 是否中途拋錯；附券群發看 `coupon-broadcast` 佇列與 `runCouponBroadcast`；UI 沒有取消 sending 的按鈕。
 - 「影片/圖片素材送不出去」：LINE 拒收 Google Drive 分享連結等非直連網址；失敗原因在 `BroadcastDeliveryAttempt`，後台不一定看得到。
 - 「領券沒反應」：先看訊息是否被 `inbound-coupon-claim.ts` 攔截（代碼格式、渠道是否相符），再看回覆顧客的失敗原因。
 - 「素材選單少了素材」：前端要 200 筆、後端上限 100；分群下拉只拿第一頁 50 筆。
