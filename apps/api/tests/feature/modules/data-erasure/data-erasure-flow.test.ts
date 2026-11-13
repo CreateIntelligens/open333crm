@@ -38,6 +38,7 @@ const { inTenant } = await import('#src/lib/tenant-ctx.js');
 const { mergeContacts } = await import('#src/modules/contact/contact-merge.service.js');
 const { revertMergeFlow } = await import('#src/modules/contact/contact.flow.js');
 const { ALL_CHANNELS } = await import('#src/services/channel-visibility.js');
+const { createCommentReplyFixtures } = await import('../../../support/comment-reply-fixtures.js');
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -89,6 +90,12 @@ const channel3 = await owner.channel.create({
 const channel2 = await owner.channel.create({
   data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch2`, credentialsEncrypted: 'x' },
 });
+// 留言自動私訊（design D27）：FB 渠道上的一條規則，留言者對應與觸發紀錄由 commentSubject() 建立
+const fbChannel = await owner.channel.create({
+  data: { tenantId: A, channelType: 'FB', displayName: `${MARK}-fb`, credentialsEncrypted: 'x' },
+});
+const crFx = createCommentReplyFixtures(owner, MARK);
+const crRule = await crFx.rule(A, fbChannel.id);
 const foreignContact = await owner.contact.create({ data: { tenantId: tenantB.id, displayName: `${MARK}-其他租戶` } });
 const tag = await owner.tag.create({ data: { tenantId: A, name: `${MARK}-tag` } });
 const activity = await owner.portalActivity.create({
@@ -221,6 +228,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await Promise.all([eraserApp.close(), plainApp.close()]);
+  await crFx.deleteCommentData([A, tenantB.id]);
   for (const tenantId of [A, tenantB.id]) {
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
     await owner.outbox.deleteMany({ where: { tenantId } });
@@ -859,4 +867,110 @@ test('解除合併等鎖期間保留方又被併入已刪除的聯絡人：取�
   });
   const log = await owner.contactMergeLog.findUniqueOrThrow({ where: { id: merge.mergeLogId } });
   assert.equal(log.revertedAt, null, '合併紀錄維持未解除');
+});
+
+/** 一位聯絡人帶留言者對應與 n 筆觸發紀錄（個資欄位都有值） */
+async function commentSubject(contactId: string, logs = 2) {
+  const author = await crFx.author(A, fbChannel.id, contactId, { psid: `${MARK}-psid-${++seq}` });
+  const rows = [];
+  for (let i = 0; i < logs; i++) {
+    // 去重鍵（部分唯一）只能有一筆 SENT 帶著
+    rows.push(await crFx.log(crRule, author, i === 0 ? { dedupeKey: `${crRule.id}:${author.externalUserId}` } : {}));
+  }
+  return { author, logs: rows };
+}
+
+/** 與收件流程相同的寫法：同一則留言（渠道＋留言 ID）重投時 ON CONFLICT 不插入 */
+const redeliver = (log: { channelId: string; commentId: string; ruleId: string; commentAuthorId: string }) =>
+  owner.$executeRaw`
+    INSERT INTO comment_reply_logs ("tenantId", "channelId", "ruleId", "commentAuthorId", "commentId", "postId", "commentCreatedAt", "updatedAt")
+    VALUES (${A}::uuid, ${log.channelId}::uuid, ${log.ruleId}::uuid, ${log.commentAuthorId}::uuid, ${log.commentId}, 'POST_1', now(), now())
+    ON CONFLICT ("channelId", "commentId") DO NOTHING`;
+
+test('匿名化清除留言自動私訊的個資', async () => {
+  const { contact } = await createSubject();
+  const { author, logs } = await commentSubject(contact.id);
+  const request = await createRequest(contact.id, 'anonymize');
+  await runJob(request);
+
+  const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stored.status, 'completed', stored.error ?? '');
+  const afterAuthor = await owner.commentAuthor.findUniqueOrThrow({ where: { id: author.id } });
+  assert.equal(afterAuthor.displayName, null);
+  assert.equal(afterAuthor.username, null);
+  assert.equal(afterAuthor.psid, null);
+  assert.equal(afterAuthor.externalUserId, `erased:${author.id}`, '留言者 ID 改成不可識別的值');
+  assert.equal(afterAuthor.contactId, contact.id, '仍對應原聯絡人');
+
+  const afterLogs = await owner.commentReplyLog.findMany({ where: { commentAuthorId: author.id }, orderBy: { createdAt: 'asc' } });
+  assert.equal(afterLogs.length, 2);
+  for (const [i, log] of afterLogs.entries()) {
+    assert.equal(log.commenterId, null);
+    assert.equal(log.commenterName, null);
+    assert.equal(log.commenterUsername, null);
+    assert.equal(log.commentText, null);
+    assert.equal(log.recipientUid, null);
+    assert.equal(log.dedupeKey, null);
+    assert.equal(log.sentContentSnapshot, null);
+    const before = logs.find((l) => l.id === log.id)!;
+    assert.equal(log.commentId, before.commentId, `第 ${i + 1} 筆的 commentId 不變`);
+    assert.equal(log.status, before.status, '狀態保留');
+    assert.deepEqual(log.sentAt, before.sentAt, '時間保留');
+  }
+  const affected = stored.affected as Record<string, number>;
+  assert.equal(affected.commentAuthors, 1);
+  assert.equal(affected.commentReplyLogs, 2);
+
+  // Meta 重投同一則留言：唯一鍵仍在，不產生新紀錄（收件流程沒插入就結束，不會排程呼叫 Meta）
+  assert.equal(await redeliver(afterLogs[0]), 0);
+  assert.equal(await owner.commentReplyLog.count({ where: { channelId: fbChannel.id, commentId: afterLogs[0].commentId } }), 1);
+});
+
+test('匿名化一併清除併入的封存聯絡人的留言者對應', async () => {
+  const { contact } = await createSubject();
+  // 由留言建立、之後併入 contact 的封存聯絡人
+  const archived = await owner.contact.create({
+    data: { tenantId: A, displayName: '留言者', isArchived: true, mergedIntoId: contact.id },
+  });
+  const { author } = await commentSubject(archived.id, 1);
+  const request = await createRequest(contact.id, 'anonymize');
+  await runJob(request);
+
+  const afterAuthor = await owner.commentAuthor.findUniqueOrThrow({ where: { id: author.id } });
+  assert.equal(afterAuthor.displayName, null);
+  assert.equal(afterAuthor.externalUserId, `erased:${author.id}`);
+  const [log] = await owner.commentReplyLog.findMany({ where: { commentAuthorId: author.id } });
+  assert.equal(log.commentText, null);
+  assert.equal((await affectedOf(request.id)).commentReplyLogs, 1);
+});
+
+test('匿名化不動其他聯絡人的留言者對應', async () => {
+  const { contact } = await createSubject();
+  await commentSubject(contact.id, 1);
+  const other = await owner.contact.create({ data: { tenantId: A, displayName: '其他留言者' } });
+  const { author: otherAuthor, logs: otherLogs } = await commentSubject(other.id, 1);
+  await runJob(await createRequest(contact.id, 'anonymize'));
+
+  const kept = await owner.commentAuthor.findUniqueOrThrow({ where: { id: otherAuthor.id } });
+  assert.equal(kept.displayName, otherAuthor.displayName);
+  assert.equal(kept.externalUserId, otherAuthor.externalUserId);
+  const keptLog = await owner.commentReplyLog.findUniqueOrThrow({ where: { id: otherLogs[0].id } });
+  assert.equal(keptLog.commentText, otherLogs[0].commentText);
+});
+
+test('硬刪除刪除留言自動私訊紀錄', async () => {
+  const { contact } = await createSubject();
+  const { author, logs } = await commentSubject(contact.id);
+  const request = await createRequest(contact.id, 'hard_delete');
+  await runJob(request);
+
+  const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stored.status, 'completed', `刪除交易成功：${stored.error ?? ''}`);
+  assert.equal(await owner.contact.count({ where: { id: contact.id } }), 0);
+  assert.equal(await owner.commentAuthor.count({ where: { id: author.id } }), 0, '留言者對應已刪除');
+  assert.equal(await owner.commentReplyLog.count({ where: { id: { in: logs.map((l) => l.id) } } }), 0, '2 筆紀錄已刪除');
+  const affected = stored.affected as Record<string, number>;
+  assert.equal(affected.commentReplyLogs, 2);
+  assert.equal(affected.commentAuthors, 1);
+  assert.ok(await owner.commentReplyRule.findUnique({ where: { id: crRule.id } }), '規則保留');
 });

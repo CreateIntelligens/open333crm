@@ -11,16 +11,15 @@
  *   const agent = await fx.agent(tenant.id, role.id, { channels: [{ channelId: fb.id, accessLevel: 'full' }] });
  *   afterAll(() => fx.cleanup());
  *
- * 本檔目前只含不依賴新資料表的部分（租戶、方案、渠道、角色、成員與渠道可見範圍）。
- * TODO(add-comment-keyword-private-reply 第 3 節之後)：comment_reply_rules、comment_reply_logs、comment_authors、
- *   comment_reply_usages 建好後，在這裡補 rule()、log()、author() helper，並在 cleanup() 依 FK 順序先刪
- *   logs → authors／usages → rules，再刪渠道與租戶。
+ * 留言資料：rule()、author()、log() 直接寫入 comment_reply_rules、comment_authors、comment_reply_logs，
+ * 不經過收件流程。tenantId 與 channelId 由呼叫端給，所以也能用在測試自己建立的租戶上（那些租戶要自己清理，
+ * 順序同 cleanup()：logs → authors／usages → rules）。
  *
  * 寫入用呼叫端給的 client（feature 測試的 PrismaClient 連的是測試資料庫）。需要驗 RLS 的測試，
  * 讀寫請另外用 app_tenant 連線，這裡只負責準備資料。
  */
 import { randomUUID } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 
 export interface PlanInput {
@@ -162,12 +161,95 @@ export function createCommentReplyFixtures(prisma: PrismaClient, mark = `cr-${Da
     return a;
   }
 
+  /** 留言規則（預設：文字內容、關鍵字「優惠」、全部貼文） */
+  async function rule(tenantId: string, channelId: string, input: Partial<Prisma.CommentReplyRuleUncheckedCreateInput> = {}) {
+    return prisma.commentReplyRule.create({
+      data: {
+        name: `${mark} 規則 ${next()}`,
+        keywords: ['優惠'],
+        contentType: 'text',
+        messageText: '感謝留言，優惠資訊如下',
+        ...input,
+        tenantId,
+        channelId,
+      },
+    });
+  }
+
+  /** 留言者對應（一位留言者在一個渠道一筆；contactId 必填） */
+  async function author(
+    tenantId: string,
+    channelId: string,
+    contactId: string,
+    input: Partial<Prisma.CommentAuthorUncheckedCreateInput> = {},
+  ) {
+    const now = new Date();
+    return prisma.commentAuthor.create({
+      data: {
+        externalUserId: `ASID_${next()}`,
+        displayName: '留言的王小明',
+        username: 'ming.wang',
+        firstCommentAt: now,
+        lastCommentAt: now,
+        ...input,
+        tenantId,
+        channelId,
+        contactId,
+      },
+    });
+  }
+
+  /**
+   * 觸發紀錄（預設 SENT，帶齊會被匿名化的個資欄位）。dedupeKey 預設 null：同一個去重鍵只能有一筆
+   * SENDING／SENT（部分唯一索引），同一位留言者要多筆 SENT 時只給其中一筆 `<ruleId>:<commenterId>`。
+   */
+  async function log(
+    ruleRow: { id: string; tenantId: string; channelId: string },
+    authorRow: { id: string; externalUserId: string },
+    input: Partial<Prisma.CommentReplyLogUncheckedCreateInput> = {},
+  ) {
+    const commentId = input.commentId ?? `POST_1_${next()}`;
+    return prisma.commentReplyLog.create({
+      data: {
+        postId: 'POST_1',
+        commenterId: authorRow.externalUserId,
+        commenterName: '留言的王小明',
+        commenterUsername: 'ming.wang',
+        commentText: '我要優惠，電話 0912345678',
+        commentCreatedAt: new Date(),
+        matchedKeywords: ['優惠'],
+        status: 'SENT',
+        recipientUid: `PSID_${next()}`,
+        sentAt: new Date(),
+        sentContentSnapshot: { type: 'text', text: '感謝留言，優惠資訊如下' },
+        ...input,
+        commentId,
+        tenantId: ruleRow.tenantId,
+        channelId: ruleRow.channelId,
+        ruleId: ruleRow.id,
+        commentAuthorId: authorRow.id,
+      },
+    });
+  }
+
+  /** 依 FK 順序刪除這些租戶的留言資料：紀錄 → 留言者／用量 → 規則 */
+  async function deleteCommentData(ids: string[]) {
+    if (!ids.length) return;
+    const where = { tenantId: { in: ids } };
+    await prisma.commentReplyLog.deleteMany({ where });
+    await prisma.commentAuthor.deleteMany({ where });
+    await prisma.commentReplyUsage.deleteMany({ where });
+    await prisma.commentReplyRule.deleteMany({ where });
+  }
+
   /**
    * 刪除本檔建立的所有資料。測試自己在租戶下建立的其他資料（對話、聯絡人、稽核…）要先由測試刪除，
    * 或在 extra 裡刪，否則外鍵會擋下渠道與租戶的刪除。
    */
   async function cleanup(extra?: (tenantIds: string[]) => Promise<void>) {
     try {
+      // 留言紀錄對留言者是 Restrict：先刪，測試在 extra 裡刪聯絡人時才不會被擋
+      await deleteCommentData(tenantIds);
       if (extra) await extra([...tenantIds]);
       if (tenantIds.length) {
         const where = { tenantId: { in: tenantIds } };
@@ -187,5 +269,5 @@ export function createCommentReplyFixtures(prisma: PrismaClient, mark = `cr-${Da
     }
   }
 
-  return { mark, plan, tenant, channel, fbChannel, igChannel, role, agent, cleanup };
+  return { mark, plan, tenant, channel, fbChannel, igChannel, role, agent, rule, author, log, deleteCommentData, cleanup };
 }
