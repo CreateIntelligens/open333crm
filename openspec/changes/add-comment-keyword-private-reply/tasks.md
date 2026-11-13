@@ -73,10 +73,10 @@
 
 ## 8. 資料治理
 
-- [ ] 8.1 測試 `apps/api/tests/feature/modules/data-erasure/data-erasure-flow.test.ts` 與 `apps/workers/tests/unit/handlers/data-erasure.handler.test.ts`（擴充）：「匿名化清除留言自動私訊的個資」「硬刪除刪除留言自動私訊紀錄」；既有 scenario 保持通過
-- [ ] 8.2 測試 `apps/api/tests/feature/modules/data-export/data-export-flow.test.ts` 與 `apps/workers/tests/unit/handlers/data-export.handler.test.ts`（擴充）：「匯出含留言自動私訊資料」；匯出不含權杖
-- [ ] 8.3 測試 `apps/api/tests/feature/modules/contact/comment-reply-merge.test.ts`：「Comment private reply joins the contact created from a comment」「Comment author moved back on reversal」「合併後顯示存活者」「解除合併後顯示原本的人」
-- [ ] 8.4 實作：`apps/workers/src/handlers/data-erasure.handler.ts`、`data-export.handler.ts` 加新表（design D27）；`contact-merge.service.ts` 搬 `comment_authors.contactId` 並記入合併紀錄、解除合併搬回
+- [x] 8.1 測試 `apps/api/tests/feature/modules/data-erasure/data-erasure-flow.test.ts` 與 `apps/workers/tests/unit/handlers/data-erasure.handler.test.ts`（擴充）：「匿名化清除留言自動私訊的個資」「硬刪除刪除留言自動私訊紀錄」；既有 scenario 保持通過
+- [x] 8.2 測試 `apps/api/tests/feature/modules/data-export/data-export-flow.test.ts` 與 `apps/workers/tests/unit/handlers/data-export.handler.test.ts`（擴充）：「匯出含留言自動私訊資料」；匯出不含權杖
+- [x] 8.3 測試 `apps/api/tests/feature/modules/contact/comment-reply-merge.test.ts`：「Comment private reply joins the contact created from a comment」「Comment author moved back on reversal」「合併後顯示存活者」「解除合併後顯示原本的人」
+- [x] 8.4 實作：`apps/workers/src/handlers/data-erasure.handler.ts`、`data-export.handler.ts` 加新表（design D27）；`contact-merge.service.ts` 搬 `comment_authors.contactId` 並記入合併紀錄、解除合併搬回
 
 ## 9. 平台層
 
