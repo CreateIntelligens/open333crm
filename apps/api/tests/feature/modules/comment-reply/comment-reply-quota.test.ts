@@ -14,9 +14,12 @@ import {
   jobsForLog,
   owner,
   postToPlatform,
+  recordingPublisher,
+  redis,
   resetHarness,
   resetPlatformSettings,
   runJobOnce,
+  tenantDb,
 } from '#tests/support/comment-reply-harness.js';
 import assert from 'node:assert/strict';
 import { afterAll, beforeEach, describe, test } from 'vitest';
@@ -24,6 +27,7 @@ import { taipeiMonthString } from '@open333crm/core';
 import { createCommentReplyFixtures } from '#tests/support/comment-reply-fixtures.js';
 import { useFakeMetaGraph } from '#tests/support/fake-meta-graph.js';
 import { fbCommentPayload } from '#tests/support/meta-webhook.js';
+import { BASE, buildCommentReplyApp, MANAGE, VIEW } from '#tests/support/comment-reply-app.js';
 
 const fx = createCommentReplyFixtures(owner);
 const graph = useFakeMetaGraph();
@@ -44,7 +48,8 @@ afterAll(async () => {
 });
 
 async function setup(limit: number | null, rule: Parameters<typeof createRule>[2] = {}) {
-  const tenant = await fx.tenant({ plan: { features: ['comment_reply'], limits: { monthlyCommentReplies: limit } } });
+  // channels、inbox：後台重試路由需要渠道檢視權限（方案天花板）
+  const tenant = await fx.tenant({ plan: { features: ['comment_reply', 'channels', 'inbox', 'core'], limits: { monthlyCommentReplies: limit } } });
   const fb = await fx.fbChannel(tenant.id);
   await createRule(tenant.id, fb.id, { keywords: ['+1'], ...rule });
   await clearRateBuckets([fb.id]);
@@ -55,6 +60,22 @@ async function comment(fb: { id: string; externalAccountId: string }) {
   const commentId = uid('c');
   await postToPlatform(fbCommentPayload([{ pageId: fb.externalAccountId, commentId, from: { id: uid('U'), name: '顧客' }, createdTime: Math.floor(Date.now() / 1000) }]));
   return owner.commentReplyLog.findFirstOrThrow({ where: { channelId: fb.id, commentId } });
+}
+
+/**
+ * 後台「重試」走真的 POST /logs/:id/retry（comment-reply-log.routes → retryLogFlow → enqueueCommentReplyDelivery），
+ * outbox 以 recordingPublisher 記下 job，之後由 index.ts 同一個 runner 工廠處理。
+ */
+async function retryViaRoute(tenantId: string, logId: string) {
+  const role = await fx.role(tenantId, [VIEW, MANAGE, 'channel.view', 'channel.view_all', 'inbox.view']);
+  const agent = await fx.agent(tenantId, role.id);
+  const app = await buildCommentReplyApp({ owner, tenantDb, redis, events: recordingPublisher }, { id: agent.id, tenantId, roleId: role.id });
+  try {
+    const res = await app.inject({ method: 'POST', url: `${BASE}/logs/${logId}/retry` });
+    assert.equal(res.statusCode, 202, res.body);
+  } finally {
+    await app.close();
+  }
 }
 
 const okFb = () => graph.on('POST', 'graph.facebook.com', FB_SEND, () => ({ body: { recipient_id: uid('PSID'), message_id: uid('m_') } }));
@@ -122,10 +143,9 @@ describe('每月私訊數上限', () => {
     await drainJobs();
     assert.equal((await reload(b.id)).reasonCode, 'PLAN_QUOTA_EXCEEDED');
     await owner.tenant.update({ where: { id: tenant.id }, data: { limitOverrides: { monthlyCommentReplies: 5 } } });
-    // 後台「重試」（POST /logs/:id/retry，tasks 7.3）把紀錄改回 PENDING 並排入新的工作；這裡直接模擬那兩步
-    await owner.commentReplyLog.update({ where: { id: b.id }, data: { status: 'PENDING', reasonCode: null } });
-    const job = { ...jobsForLog(b.id)[0]!, state: 'pending' as const, attemptsMade: 0, delayedUntil: null };
-    await runJobOnce(job);
+    await retryViaRoute(tenant.id, b.id);
+    assert.equal(jobsForLog(b.id).length, 2, '重試排入第二個工作');
+    await drainJobs();
     assert.equal((await reload(b.id)).status, 'SENT');
     assert.equal((await usage(tenant.id))!.sentCount, 2);
   });
@@ -160,5 +180,30 @@ describe('每月私訊數上限', () => {
     await drainJobs();
     assert.equal((await reload(a.id)).status, 'SENT');
     assert.equal((await usage(tenant.id))!.sentCount, 1);
+  });
+});
+
+describe('手動重試', () => {
+  test('重試可重試的失敗', async () => {
+    const { fb } = await setup(null);
+    graph.on('POST', 'graph.facebook.com', FB_SEND, {
+      status: 400,
+      body: { error: { message: 'meta error 190', type: 'OAuthException', code: 190, error_subcode: 463, fbtrace_id: 'TRACE' } },
+    });
+    const log = await comment(fb);
+    await drainJobs();
+    assert.equal((await reload(log.id)).reasonCode, 'TOKEN_EXPIRED');
+
+    // 權杖修好後重試：紀錄改回 PENDING、排入工作，工作執行完是 SENT
+    okFb();
+    await retryViaRoute(fb.tenantId, log.id);
+    assert.equal((await reload(log.id)).status, 'PENDING');
+    const retried = jobsForLog(log.id).at(-1)!;
+    assert.equal(retried.row.name, 'deliver');
+    assert.deepEqual(retried.row.payload, { tenantId: fb.tenantId, logId: log.id });
+    await drainJobs();
+    const after = await reload(log.id);
+    assert.equal(after.status, 'SENT');
+    assert.equal(after.reasonCode, null);
   });
 });

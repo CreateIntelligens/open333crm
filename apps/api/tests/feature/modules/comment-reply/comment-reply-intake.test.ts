@@ -40,6 +40,7 @@ import jsonPayloadGuardPlugin from '#src/plugins/json-payload-guard.plugin.js';
 import { DEFAULT_JSON_PAYLOAD_LIMITS } from '#src/shared/utils/json-payload-limits.js';
 import webhookRoutes from '#src/modules/webhook/webhook.routes.js';
 import { urls } from '#tests/setup/feature-config.js';
+import { BASE, buildCommentReplyApp, MANAGE, VIEW } from '#tests/support/comment-reply-app.js';
 
 const fx = createCommentReplyFixtures(owner);
 /** 留言時間預設為現在（fixture 的預設時間是 2024 年，會被判為超過 7 天） */
@@ -460,5 +461,110 @@ describe('指定貼文與規則順序（tasks 4.2）', () => {
     const logs = await logsOf(fb.id);
     assert.equal(logs[1]!.ruleId, second.id);
     await clearRateBuckets([fb.id]);
+  });
+});
+
+/**
+ * 後台路由與收件的整合（tasks 7.1「試算與收件結果相同」、4.2 的刪除與排序改打真路由）。
+ * 規則經真的 /rules 路由建立、刪除、排序（flow 在 commit 後遞增 cr:rules-ver:<channelId>），
+ * 留言經真的 webhook 入口收件（讀同一個版本號的規則快取）：兩組模組之間只要鍵或規則查詢不一致，這裡就會失敗。
+ */
+describe('試算與收件經真路由與真入口', () => {
+  async function routeSetup() {
+    const tenant = await fx.tenant({ plan: { features: ['comment_reply', 'channels', 'inbox', 'core'] } });
+    // 粉專 ID 用數字（parsePostReference 只接受數字的 {pageId}_{postId}）
+    const fb = await fx.fbChannel(tenant.id, { mode: 'platform', externalAccountId: `${Date.now()}${++seq}` });
+    const role = await fx.role(tenant.id, [VIEW, MANAGE, 'channel.view', 'channel.view_all']);
+    const agent = await fx.agent(tenant.id, role.id);
+    const app = await buildCommentReplyApp({ owner, tenantDb, redis }, { id: agent.id, tenantId: tenant.id, roleId: agent.roleId });
+    const createViaRoute = async (name: string) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `${BASE}/rules`,
+        payload: {
+          channelId: fb.id,
+          name,
+          keywords: ['+1'],
+          matchMode: 'any',
+          postScope: 'all',
+          posts: [],
+          content: { type: 'text', text: '感謝留言' },
+          publicReply: { enabled: false, texts: [] },
+        },
+      });
+      assert.equal(res.statusCode, 201, res.body);
+      return res.json().data as { id: string };
+    };
+    const testViaRoute = async (text: string) => {
+      const res = await app.inject({ method: 'POST', url: `${BASE}/rules/test`, payload: { channelId: fb.id, postId: '999', text } });
+      assert.equal(res.statusCode, 200, res.body);
+      return res.json().data as { matched: boolean; ruleId?: string };
+    };
+    const comment = (text: string) =>
+      postToPlatform(fbComments([{ pageId: fb.externalAccountId, commentId: uid('c'), postId: `${fb.externalAccountId}_999`, from: { id: uid('U'), name: 'A' }, message: text }]));
+    return { tenant, fb, app, createViaRoute, testViaRoute, comment };
+  }
+
+  test('試算與收件結果相同', async () => {
+    const { fb, app, createViaRoute, testViaRoute, comment } = await routeSetup();
+    try {
+      const first = await createViaRoute('規則 A');
+      const second = await createViaRoute('規則 B');
+      const tried = await testViaRoute('我要 +1');
+      await comment('我要 +1');
+      let logs = await logsOf(fb.id);
+      assert.equal(logs.length, 1);
+      assert.equal(tried.matched, true);
+      assert.equal(logs[0]!.ruleId, tried.ruleId, '試算與實際收件命中同一條規則');
+      assert.equal(logs[0]!.ruleId, first.id);
+
+      // 經真路由調整順序：flow 遞增版本號，收件的規則快取立即失效，兩邊都改成 B
+      const reorder = await app.inject({ method: 'PUT', url: `${BASE}/rules/order`, payload: { ids: [second.id, first.id] } });
+      assert.equal(reorder.statusCode, 200, reorder.body);
+      const triedAgain = await testViaRoute('我要 +1');
+      await comment('我要 +1');
+      logs = await logsOf(fb.id);
+      assert.equal(logs.length, 2);
+      assert.equal(triedAgain.ruleId, second.id);
+      assert.equal(logs[1]!.ruleId, triedAgain.ruleId);
+
+      // 試算未命中時，收件也不留紀錄
+      assert.equal((await testViaRoute('完全無關')).matched, false);
+      await comment('完全無關');
+      assert.equal((await logsOf(fb.id)).length, 2);
+    } finally {
+      await app.close();
+      await clearRateBuckets([fb.id]);
+    }
+  });
+
+  test('經後台路由刪除後不再命中', async () => {
+    const { fb, app, createViaRoute, comment } = await routeSetup();
+    try {
+      const rule = await createViaRoute('會被刪除的規則');
+      await comment('+1');
+      assert.equal((await logsOf(fb.id)).length, 1, '刪除前命中（同時把規則放進收件快取）');
+      const del = await app.inject({ method: 'DELETE', url: `${BASE}/rules/${rule.id}` });
+      assert.ok(del.statusCode === 200 || del.statusCode === 204, del.body);
+      await comment('+1');
+      assert.equal((await logsOf(fb.id)).length, 1, '刪除後收件快取已失效，不再命中');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('經後台路由停用後不再命中', async () => {
+    const { fb, app, createViaRoute, comment } = await routeSetup();
+    try {
+      const rule = await createViaRoute('會被停用的規則');
+      await comment('+1');
+      assert.equal((await logsOf(fb.id)).length, 1);
+      const off = await app.inject({ method: 'PATCH', url: `${BASE}/rules/${rule.id}/active`, payload: { isActive: false } });
+      assert.equal(off.statusCode, 200, off.body);
+      await comment('+1');
+      assert.equal((await logsOf(fb.id)).length, 1);
+    } finally {
+      await app.close();
+    }
   });
 });

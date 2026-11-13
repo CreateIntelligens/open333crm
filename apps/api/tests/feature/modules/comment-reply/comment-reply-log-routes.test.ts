@@ -47,6 +47,8 @@ const { app: noInboxApp } = await appOf(noInboxRole.id);
 const { app: branchApp } = await appOf(branchRole.id, [{ channelId: fbA.id }]);
 const { app: readOnlyApp } = await appOf(branchRole.id, [{ channelId: fbA.id, accessLevel: 'read_only' }]);
 const { app: noViewApp } = await appOf(noViewRole.id);
+const viewOnlyRole = await fx.role(T, [VIEW, 'channel.view', 'channel.view_all', 'inbox.view']);
+const { app: viewOnlyApp } = await appOf(viewOnlyRole.id);
 
 const ruleA = await rec.rule(T, fbA.id, { name: '渠道 A 規則', postIds: [`${fbA.externalAccountId}_9`], postSnapshots: [{ postId: `${fbA.externalAccountId}_9`, excerpt: '雙十一活動', permalink: 'https://facebook.com/p/9' }] });
 const ruleB = await rec.rule(T, fbB.id, { name: '渠道 B 規則' });
@@ -218,6 +220,17 @@ describe('手動重試', () => {
     assert.equal(res.statusCode, 409, res.body);
     assert.equal(res.json().error.details.reason, 'EXPIRED');
     assert.equal((await owner.commentReplyLog.findUniqueOrThrow({ where: { id: log.id } })).status, 'FAILED');
+  });
+
+  test('只有檢視權限重試：403，details.requiredPermission 是 comment_reply.manage，紀錄不變、不排入工作', async () => {
+    const log = await logA({ status: 'FAILED', reasonCode: 'NETWORK', commentCreatedAt: days(1) });
+    const res = await retry(viewOnlyApp, log.id);
+    assert.equal(res.statusCode, 403, res.body);
+    // 斷言是 manage 這道守門（不是渠道可見範圍或其他檢查剛好給 403，突變 12.18）
+    assert.equal(res.json().error.details.requiredPermission, MANAGE);
+    assert.equal((await owner.commentReplyLog.findUniqueOrThrow({ where: { id: log.id } })).status, 'FAILED');
+    const jobs = await owner.outbox.findMany({ where: { tenantId: T, kind: 'job', queueName: COMMENT_REPLY_QUEUE } });
+    assert.equal(jobs.filter((j) => (j.payload as { logId?: string }).logId === log.id).length, 0);
   });
 
   test('唯讀層級重試：403 CHANNEL_ACCESS_DENIED；看不到的渠道：404', async () => {
