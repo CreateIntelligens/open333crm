@@ -12,6 +12,8 @@
  * callback 沒有登入 session，但整段只碰 Redis 與 Graph API、不查資料庫，不需要 prismaAdmin。
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
+import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { getConfig } from '../../config/env.js';
@@ -25,11 +27,25 @@ import {
   patchChannelSettings,
   verifyChannel,
 } from '../channel/channel.service.js';
+import { isCommentReplyPlanEnabled } from '../comment-reply/comment-reply-plan.js';
+import { readCommentReplyPlatformSettings } from '../comment-reply/comment-reply-platform-settings.js';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const SESSION_TTL_MS = 10 * 60 * 1000;
-/** 訂閱粉專時要接收的事件（referral 供跨渠道綁定、echo 供辨識自己送出的訊息） */
-export const SUBSCRIBED_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referrals', 'message_echoes'];
+/** 訂閱粉專時一定要接收的私訊事件（referral 供跨渠道綁定、echo 供辨識自己送出的訊息） */
+export const BASE_SUBSCRIBED_FIELDS: readonly string[] = ['messages', 'messaging_postbacks', 'messaging_referrals', 'message_echoes'];
+/** 留言自動私訊需要的 page 欄位（change add-comment-keyword-private-reply design D19） */
+export const COMMENT_FEED_FIELD = 'feed';
+
+/**
+ * 粉專要訂閱的完整欄位：4 個私訊欄位，渠道開啟留言接收（settings.commentReply.receiving）時再加 feed。
+ * `POST /{page-id}/subscribed_apps` 是整份取代：首次連結、重新連結、補訂閱、關閉接收都經這裡算出完整清單，
+ * 少帶一個私訊欄位就是整個粉專的私訊中斷（design D19、風險 R1）。
+ */
+export function subscribedFieldsFor(channelSettings: unknown): string[] {
+  const s = channelSettings && typeof channelSettings === 'object' ? (channelSettings as Record<string, any>) : {};
+  return s.commentReply?.receiving === true ? [...BASE_SUBSCRIBED_FIELDS, COMMENT_FEED_FIELD] : [...BASE_SUBSCRIBED_FIELDS];
+}
 /** 傳統授權（未設定 Facebook Login for Business 設定 ID 時）要求的權限 */
 const LEGACY_SCOPES = ['pages_show_list', 'pages_manage_metadata', 'pages_messaging', 'pages_read_engagement'];
 
@@ -89,6 +105,11 @@ interface StatePayload {
   agentId: string;
 }
 
+/** state 另外帶的資料：連結完成後要回到的站內路徑（已由路由驗證為 /dashboard/ 開頭） */
+interface StateExtras {
+  returnTo?: string;
+}
+
 interface SessionPage {
   id: string;
   name: string;
@@ -103,10 +124,15 @@ interface SessionPayload extends StatePayload {
 // ── 1. start ────────────────────────────────────────────────────────────────
 
 /** 回傳授權網址與 state；呼叫端須以 stateBinding(state) 在發起者瀏覽器設 cookie */
-export async function startConnect(store: MetaConnectStore, actor: StatePayload): Promise<{ url: string; state: string }> {
+export async function startConnect(
+  store: MetaConnectStore,
+  actor: StatePayload,
+  extras: StateExtras = {},
+): Promise<{ url: string; state: string }> {
   const cfg = requireMetaAppConfig();
   const state = token();
-  await store.set(stateKey(state), JSON.stringify(actor), 'PX', SESSION_TTL_MS, 'NX');
+  const payload = { ...actor, ...(extras.returnTo ? { returnTo: extras.returnTo } : {}) };
+  await store.set(stateKey(state), JSON.stringify(payload), 'PX', SESSION_TTL_MS, 'NX');
   const params = new URLSearchParams({
     client_id: cfg.appId,
     redirect_uri: cfg.redirectUri,
@@ -134,7 +160,9 @@ async function graphGet(url: string, bearer?: string): Promise<Record<string, an
   return body;
 }
 
-export type CallbackResult = { ok: true; connectId: string } | { ok: false; reason: 'denied' | 'invalid_state' | 'exchange_failed' | 'no_pages' };
+export type CallbackResult =
+  | { ok: true; connectId: string; returnTo?: string }
+  | { ok: false; reason: 'denied' | 'invalid_state' | 'exchange_failed' | 'no_pages' };
 
 /**
  * OAuth 回呼。回傳結果由路由轉成前端網址；任何失敗都不留下 token。
@@ -152,7 +180,8 @@ export async function handleCallback(
   // 完成授權的必須是發起授權的同一個瀏覽器
   if (!sameBinding(stateBinding(query.state!), browserBinding)) return { ok: false, reason: 'invalid_state' };
   if (query.error || !query.code) return { ok: false, reason: 'denied' };
-  const actor = JSON.parse(raw) as StatePayload;
+  const parsed = JSON.parse(raw) as StatePayload & StateExtras;
+  const actor: StatePayload = { tenantId: parsed.tenantId, agentId: parsed.agentId };
 
   let pages: SessionPage[];
   try {
@@ -200,7 +229,7 @@ export async function handleCallback(
   const connectId = token();
   const payload: SessionPayload = { ...actor, pages };
   await store.set(sessionKey(connectId), encryptCredentials(payload as unknown as Record<string, unknown>), 'PX', SESSION_TTL_MS, 'NX');
-  return { ok: true, connectId };
+  return { ok: true, connectId, ...(parsed.returnTo ? { returnTo: parsed.returnTo } : {}) };
 }
 
 // ── 3. pages ────────────────────────────────────────────────────────────────
@@ -264,17 +293,42 @@ export type ConnectPageResult =
   | { pageId: string; status: 'reconnected'; channelId: string }
   | { pageId: string; status: 'failed'; code: string; message: string };
 
-async function subscribePage(pageId: string, pageToken: string, appSecret: string): Promise<void> {
-  const res = await fetch(`${GRAPH}/${pageId}/subscribed_apps`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      subscribed_fields: SUBSCRIBED_FIELDS.join(','),
-      appsecret_proof: appSecretProof(pageToken, appSecret),
-    }).toString(),
-  });
-  const body = (await res.json().catch(() => ({}))) as Record<string, any>;
-  if (!res.ok || body.error || !body.success) throw new Error(body.error?.message ?? `HTTP ${res.status}`);
+/**
+ * 訂閱粉專到平台 App。實作在 FB 外掛的 extensions.comments.subscribeFields()（與留言自動私訊的補訂閱共用同一份，
+ * design D19）；fields 是完整清單，外掛原樣送出。失敗丟錯（MetaApiError）。
+ */
+async function subscribePage(pageId: string, pageToken: string, appSecret: string, fields: string[]): Promise<void> {
+  const ext = getChannelPlugin(CHANNEL_TYPE.FB)?.extensions?.comments;
+  if (!ext) throw new Error('Facebook 外掛未註冊，無法訂閱粉專');
+  await ext.subscribeFields({ pageAccessToken: pageToken, pageId }, { accountId: pageId, fields, appSecret });
+}
+
+/**
+ * 新連結的粉專是否預設開啟留言接收：租戶方案含 comment_reply，且平台開放 FB 留言私訊（design D19；Open Questions 4）。
+ */
+async function receiveCommentsOnNewPage(db: Pick<Prisma.TransactionClient, 'tenant' | 'platformSetting'>, tenantId: string): Promise<boolean> {
+  const [planEnabled, settings] = await Promise.all([
+    isCommentReplyPlanEnabled(db, tenantId),
+    readCommentReplyPlatformSettings(db),
+  ]);
+  return planEnabled && settings.capabilities.fbPrivateReply;
+}
+
+/** 訂閱成功後寫進渠道的 settings.commentReply（保留既有子鍵） */
+function commentReplySettingsPatch(existing: unknown, receiving: boolean, fields: string[]): Record<string, unknown> {
+  const prev =
+    existing && typeof existing === 'object' && (existing as Record<string, any>).commentReply && typeof (existing as Record<string, any>).commentReply === 'object'
+      ? ((existing as Record<string, any>).commentReply as Record<string, unknown>)
+      : {};
+  const at = new Date().toISOString();
+  return {
+    commentReply: {
+      ...prev,
+      receiving,
+      ...(receiving && !prev.subscribedAt ? { subscribedAt: at } : {}),
+      subscription: { status: receiving ? 'ok' : 'disabled', fields, checkedAt: at },
+    },
+  };
 }
 
 /**
@@ -330,7 +384,7 @@ export async function connectPages(
     //    先用新權杖訂閱成功才寫入；失敗時原渠道完全不動（不可像新建流程那樣刪除）
     const existing = await db.channel.findFirst({
       where: { tenantId: actor.tenantId, channelType: CHANNEL_TYPE.FB, externalAccountId: page.id, isActive: true },
-      select: { id: true, credentialsEncrypted: true },
+      select: { id: true, credentialsEncrypted: true, settings: true },
     });
     if (existing) {
       // 自備應用程式的渠道不轉成平台模式：下游 Webhook 轉發只走渠道自己的網址，轉過去會靜默停止轉發
@@ -343,8 +397,10 @@ export async function connectPages(
         });
         continue;
       }
+      // 重新連結沿用渠道既有的留言接收狀態：已開啟的粉專一定要帶 feed，不然留言接收被蓋掉
+      const fields = subscribedFieldsFor(existing.settings);
       try {
-        await subscribePage(page.id, page.accessToken, cfg.appSecret);
+        await subscribePage(page.id, page.accessToken, cfg.appSecret, fields);
       } catch (err) {
         logger.warn('[MetaConnect] 重新連結時粉專訂閱失敗，原渠道不變', {
           tenantId: actor.tenantId,
@@ -364,7 +420,10 @@ export async function connectPages(
         db,
         existing.id,
         actor.tenantId,
-        { metaConnect: { mode: 'platform', connectedAt: new Date().toISOString(), connectedBy: actor.agentId, reconnected: true } },
+        {
+          metaConnect: { mode: 'platform', connectedAt: new Date().toISOString(), connectedBy: actor.agentId, reconnected: true },
+          ...(fields.includes(COMMENT_FEED_FIELD) ? commentReplySettingsPatch(existing.settings, true, fields) : {}),
+        },
         ['tokenHealth', 'tokenExpiresAt'],
       );
       await verifyChannel(db, existing.id, actor.tenantId).catch((err: unknown) =>
@@ -375,6 +434,8 @@ export async function connectPages(
     }
 
     // 1. 先建立渠道並寫入帳號 ID：唯一索引先擋掉重複連結，不會對別人正在用的粉專做任何 Meta 呼叫
+    const receiving = await receiveCommentsOnNewPage(db, actor.tenantId);
+    const fields = subscribedFieldsFor({ commentReply: { receiving } });
     let channelId: string;
     try {
       const channel = await createChannel(db, actor.tenantId, {
@@ -395,7 +456,7 @@ export async function connectPages(
 
     // 2. 訂閱粉專到平台 App；失敗就刪掉剛建立的渠道（尚無任何訊息，直接刪除），不留半套
     try {
-      await subscribePage(page.id, page.accessToken, cfg.appSecret);
+      await subscribePage(page.id, page.accessToken, cfg.appSecret, fields);
     } catch (err) {
       await removeUnsubscribedChannel(db, channelId, actor.tenantId);
       logger.warn('[MetaConnect] 粉專訂閱失敗，已移除渠道', {
@@ -409,6 +470,8 @@ export async function connectPages(
 
     // 3. 平台模式渠道收事件走 /webhooks/meta，不需要渠道自己的回呼網址
     await db.channel.updateMany({ where: { id: channelId, tenantId: actor.tenantId }, data: { webhookUrl: null } });
+    // 訂閱含 feed 才標記開啟留言接收（訂閱失敗的渠道上面已移除）
+    if (receiving) await patchChannelSettings(db, channelId, actor.tenantId, commentReplySettingsPatch(null, true, fields));
     // 4. 補做一次驗證：寫入導流識別、「開始使用」按鈕檢查等；失敗不影響連結（渠道已可收發）
     await verifyChannel(db, channelId, actor.tenantId).catch((err: unknown) =>
       logger.warn('[MetaConnect] 連結後驗證失敗（不影響收發）', { channelId, error: err instanceof Error ? err.message : String(err) }),

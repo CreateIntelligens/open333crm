@@ -2,7 +2,7 @@
  * 租戶以 Facebook 登入連結粉專（change fix-meta-webhook-page-routing 第 3 階段）。
  *
  * GET  /status                         是否已設定平台 Meta App（前端決定是否顯示按鈕）
- * POST /start                          產生 Facebook 登入網址
+ * POST /start                          產生 Facebook 登入網址（選填 returnTo：連結完成後回到的站內路徑）
  * GET  /callback                       Facebook 導回（公開，無登入 session；只碰 Redis 與 Graph）
  * GET  /sessions/:connectId/pages      這次授權可連結的粉專（不含 token）
  * POST /sessions/:connectId/connect    連結選定的粉專
@@ -33,6 +33,16 @@ export interface MetaConnectRoutesOptions {
 }
 
 const connectIdParams = z.object({ connectId: z.string().min(16).max(64) });
+
+/**
+ * 連結完成後要回到的站內路徑（change add-comment-keyword-private-reply design「API」）：只接受 `/dashboard/` 開頭的
+ * 相對路徑；`//evil.example`、絕對網址、反斜線、空白一律 400，不做開放重導。
+ */
+export const returnToSchema = z
+  .string()
+  .max(500)
+  .refine((v) => v.startsWith('/dashboard/') && !v.includes('//') && !/[\\\s]/.test(v), { message: '只能回到站內 /dashboard/ 開頭的頁面' });
+const startBody = z.object({ returnTo: returnToSchema.optional() }).nullish();
 const connectBody = z.object({ pageIds: z.array(z.string().regex(/^\d{1,32}$/, '粉專 ID 格式不正確')).min(1).max(20) });
 
 const actorOf = (request: FastifyRequest) => ({ tenantId: request.agent.tenantId, agentId: request.agent.id });
@@ -46,7 +56,8 @@ export default async function metaConnectRoutes(fastify: FastifyInstance, opts: 
   });
 
   fastify.post('/start', { preHandler: [fastify.authenticate, requirePermission('channel.create')] }, async (request, reply) => {
-    const { url, state } = await startConnect(store(), actorOf(request));
+    const body = startBody.parse(request.body);
+    const { url, state } = await startConnect(store(), actorOf(request), { returnTo: body?.returnTo });
     reply.setCookie(BINDING_COOKIE, stateBinding(state), {
       httpOnly: true,
       sameSite: 'lax',
@@ -70,8 +81,10 @@ export default async function metaConnectRoutes(fastify: FastifyInstance, opts: 
     if (!query.success) return fail('invalid_state');
     try {
       const result = await handleCallback(store(), query.data, binding);
+      // 有 returnTo 時帶給渠道頁：選完粉專、連結完成後由前端導回該路徑（returnTo 已在 /start 驗證過）
+      const back = result.ok && result.returnTo ? `&returnTo=${encodeURIComponent(result.returnTo)}` : '';
       return result.ok
-        ? reply.redirect(`${channelsPage()}?metaConnect=${encodeURIComponent(result.connectId)}`)
+        ? reply.redirect(`${channelsPage()}?metaConnect=${encodeURIComponent(result.connectId)}${back}`)
         : fail(result.reason);
     } catch (err) {
       request.log.error({ err: err instanceof Error ? err.message : err }, 'Meta connect callback failed');
