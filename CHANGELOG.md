@@ -20,6 +20,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **滿意度：工單重開後客人點舊問卷不再把工單結案**（issue #520）：`recordCsatScore()` 原本只檢查工單還沒評分、不看狀態，工單寄過問卷後被改回處理中，客人點舊的問卷卡片就會記分、把處理中的工單關掉並關閉對話，低分時還發通知；逾時結案後點舊問卷也會記分。現在客人評分只在工單狀態是「已解決」時記錄，讀取與條件更新都要求 `RESOLVED`；其他狀態不記分、不送感謝訊息、不改工單與對話。客服代評不受影響，任何狀態都可代評。
 - **fast-xml-parser 升到 5.12.0，處理 Dependabot 警示 #184**（GHSA-474x-hrwr-fgx4，遇到未結束的 stop-node 標籤時 CPU 用量呈平方成長）。它由 `@aws-sdk/client-s3` 帶入，用來解析 S3／MinIO 的回應。
   - `pnpm.overrides` 原本把它鎖在 5.7.0（#355 為修上一個警示而鎖），Dependabot 改不了 overrides，因此自動更新工作一直失敗。
   - 一併把 override `fast-xml-builder` 從 1.1.9 改為 1.3.1：fast-xml-parser 5.12.0 要求 `^1.3.1`，舊的 override 會強迫它搭配不相容的版本。
