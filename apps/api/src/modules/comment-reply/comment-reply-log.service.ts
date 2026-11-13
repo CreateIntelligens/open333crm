@@ -159,7 +159,7 @@ export async function listLogs(
     and.push({ OR: [{ createdAt: { lt: c } }, { createdAt: c, id: { lt: i } }] });
   }
   const rows = await ctx.tx.commentReplyLog.findMany({
-    where: { AND: and },
+    where: { tenantId: ctx.tenantId, AND: and },
     include: logInclude,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: q.limit + 1,
@@ -183,7 +183,7 @@ export async function summarizeLogs(
   const [groups, failed24h] = await Promise.all([
     ctx.tx.commentReplyLog.groupBy({ by: ['status'], where: buildWhere(ctx, visible, q, { includeStatus: false }), _count: { _all: true } }),
     ctx.tx.commentReplyLog.count({
-      where: { AND: [buildWhere(ctx, visible, { ...q, status: undefined, from: undefined, to: undefined, since: undefined }), { status: 'FAILED', createdAt: { gte: new Date(now.getTime() - DAY_MS) } }] },
+      where: { tenantId: ctx.tenantId, AND: [buildWhere(ctx, visible, { ...q, status: undefined, from: undefined, to: undefined, since: undefined }), { status: 'FAILED', createdAt: { gte: new Date(now.getTime() - DAY_MS) } }] },
     }),
   ]);
   return { counts: Object.fromEntries(groups.map((g) => [g.status, g._count._all])), failed24h };
