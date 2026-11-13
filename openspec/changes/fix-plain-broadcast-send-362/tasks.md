@@ -41,7 +41,7 @@
 ## 5. 完成定義
 
 - [x] 5.1 `pnpm test`
-- [ ] 5.2 碰到的 feature 測試（`TEST_DATABASE_NAME=open333crm_test_362bc`）：`tests/feature/modules/marketing`、`channel/channel-scoped-visibility`、`mcp`、`coupon`
+- [x] 5.2 碰到的 feature 測試（`TEST_DATABASE_NAME=open333crm_test_362bc`）：`tests/feature/modules/marketing`、`channel/channel-scoped-visibility`、`mcp`、`coupon`；另跑完整 feature 套件 159 檔 1559 個全過
 - [x] 5.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict`（`request.tenantPrisma` 少 1 處，已更新基準檔）
 - [x] 5.4 `node scripts/validate-openspec.mjs fix-plain-broadcast-send-362` 與 `--specs`
 - [x] 5.5 `pnpm build`

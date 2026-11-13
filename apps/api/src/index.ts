@@ -114,7 +114,7 @@ import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { agentVisibilityResolver } from './services/channel-visibility.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
-import { createCouponBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
+import { createBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
@@ -283,8 +283,8 @@ export async function bootstrap() {
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
       [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,
       [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
-      // 附券廣播「立即發送」與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
-      [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createCouponBroadcastJobRunner({
+      // 廣播「立即發送」（附券與一般群發）與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
+      [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createBroadcastJobRunner({
         prisma: app.prisma, adminPrisma: app.prismaAdmin, redis: app.redis, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
       })) as JobProcessor,
     },
@@ -310,7 +310,7 @@ export async function bootstrap() {
   // Redis 連不上時 API 照常啟動，排程等 Redis 恢復後才開始
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
   setupAnalyticsScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
-  // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
+  // 排程只以 prismaAdmin 查到期清單；發送以 app_tenant 連線綁定租戶執行，票券連結存 Redis（design D29）
   setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, app.redis, {
     prisma: app.prisma,
     store: app.redis,

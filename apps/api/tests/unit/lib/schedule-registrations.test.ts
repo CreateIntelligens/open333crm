@@ -89,10 +89,11 @@ test('csat：發送與自動結案各一個排程，都是每 60 秒', () => {
   ]);
 });
 
-test('broadcast：每 60 秒，不加鎖', () => {
+// 兩期排程不重疊（change fix-plain-broadcast-send-362）：一期處理的群發可能跑超過 60 秒
+test('broadcast：每 60 秒，加鎖 30 分鐘（兩期排程不重疊）', () => {
   const { scheduler, defs } = fakeScheduler();
   setupBroadcastScheduler(scheduler, prisma, io);
-  assert.deepEqual(defs.map(shape), [{ id: 'broadcast-scheduled', every: 60_000, pattern: undefined, withoutOverlapping: undefined }]);
+  assert.deepEqual(defs.map(shape), [{ id: 'broadcast-scheduled', every: 60_000, pattern: undefined, withoutOverlapping: { expiresInMs: 30 * 60_000 } }]);
 });
 
 test('inactivity-close：每 5 分鐘，不加鎖', () => {
