@@ -2,6 +2,28 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-14]
+
+### Added
+
+- **Facebook／Instagram 貼文留言關鍵字自動私訊**（change `add-comment-keyword-private-reply`）：留言命中租戶設定的關鍵字規則時，系統以 Meta Private Replies 私訊留言者，可選擇同時公開回覆留言。
+  - 規則：關鍵字（NFKC 全形半形與大小寫視為相同，比對方式 any／all）、全部或指定貼文、文字或素材、每位留言者只私訊一次、排序（同時命中套用第一條）、啟用；試算與實際收件用同一份規則查詢與比對。
+  - 收件：webhook 在私訊之後處理留言分支，依粉專 ID 分派到所屬租戶；只記命中的留言，同一則留言只建一筆紀錄；留言收件失敗不影響私訊。顧客刪除留言時清空留言內容。
+  - 背景送出：API 行程的 `comment-reply` 佇列（outbox 排入）；送前重新檢查平台開關、方案、渠道、規則、素材與 7 天期限；每渠道每小時限速（Redis token bucket，限流延後不消耗重試次數）；Meta 呼叫不在交易內；業務失敗不讓 job 失敗。排程 `comment-reply-recover`（補回遺失的工作、標記過期）、`comment-reply-health`（ops-alert 與租戶通知）、`comment-reply-retention`（保存期限）。
+  - 聯絡人與收件匣：命中就建立或沿用聯絡人（`comment_authors`），私訊成功後以 `recipient_id` 接上渠道身分；顧客回覆私訊時對話標示「來自留言」並補入私訊內容。資料匯出、刪除與聯絡人合併涵蓋新資料。
+  - API：`/api/v1/comment-replies` 的規則（`/rules`、`/rules/:id`、`/rules/:id/active`、`/rules/order`、`/rules/test`、`/material-options`）、觸發紀錄（`/logs`、`/logs/summary`、`/logs/:id`、`/logs/:id/retry`）、渠道端（`/readiness`、`/channels/:id/posts`、`/channels/:id/posts/resolve`、`/channels/:id/subscribe-comments`）；`POST /meta-connect/start` 加選填 `returnTo`；平台 `GET /api/v1/platform/comment-reply/health`。Meta 連結訂閱一律帶完整欄位（4 個私訊欄位，開啟留言接收時加 `feed`）。
+  - 前端：`/dashboard/comment-replies`（規則、觸發紀錄、前置條件卡）、側欄「留言自動私訊」、收件匣「來自留言」標籤、`/admin/comment-reply`、`/admin/plans` 兩個上限欄位。
+  - 資料表：`comment_reply_rules`、`comment_authors`、`comment_reply_logs`、`comment_reply_usages`（RLS），`conversations.originCommentReplyLogId`。migration `20261114100000_add_comment_reply_tables`、`20261114110000_conversation_comment_origin`。
+  - 平台設定：`commentReply.capabilities`、`commentReply.testPhase`、`commentReply.emergencyStop`、`commentReply.rateLimits`、`commentReply.logRetentionDays`，在 `PUT /platform/settings/:key` 驗證型別與範圍。部署後沒有任何鍵＝能力全關，功能對所有租戶不生效。
+  - 方案：功能 `comment_reply`（既有方案都不含，平台在 `/admin/plans` 勾選）、上限 `maxCommentReplyRules`、`monthlyCommentReplies`。
+  - 權限點 `comment_reply.view`、`comment_reply.manage`（預設 admin、supervisor 兩者，agent 只有 view）。**部署後要執行 `scripts/reconcile-system-role-permissions.mjs`（或 `grant-new-role-permissions.mjs comment_reply.view comment_reply.manage`），並 SCAN＋DEL Redis 的 `perms:tenant:*` 清權限快取**，既有租戶才有這兩個權限點。
+  - 維運：補訂閱腳本 `apps/api/src/scripts/comment-reply-subscriptions.ts`（預設 dry-run）；runbook 見 `docs/ref/features/platform/COMMENT-REPLY.md`。
+
+### Changed
+
+- **權限被方案擋下時，403 說明是方案未包含**：`requirePermission()` 在角色有這個權限、但租戶方案不含對應功能時，`error.details` 多帶 `reason: 'PLAN_FEATURE_NOT_INCLUDED'`，訊息改為「目前的方案未包含這項功能，請洽管理員升級方案。」。角色本身沒有權限時維持原樣。
+- **首次招呼語不送給留言建立的聯絡人**：留言收件建立的聯絡人第一次私訊進站時不送招呼語，建立當下不發 `contact.created`，改在第一次進站時補發一次。一般新顧客第一次私訊仍照舊送招呼語。
+
 ## [2026-11-13]
 
 ### Changed
