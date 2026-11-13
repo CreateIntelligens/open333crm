@@ -584,7 +584,8 @@ function LogDetailDrawer({
 
   const platformName = detail?.channel ? (platformOf(detail.channel.channelType) === 'ig' ? 'Instagram' : 'Facebook') : 'Facebook';
   const action = detail?.reasonCode ? COMMENT_REPLY_REASON_ACTIONS[detail.reasonCode] ?? null : null;
-  const canRetry = canManage && detail?.status === 'FAILED' && detail.retryable === true;
+  // 是否可重試由後端判斷（失敗的暫時性原因、被月額度略過等，design D8）
+  const canRetry = canManage && detail?.retryable === true;
   const replied = detail ? customerReplied(detail) : false;
   const result = detail ? resultText(detail) : null;
 

@@ -178,6 +178,13 @@ describe('詳情與重試', () => {
     await screen.findByText('已重新排入處理');
   });
 
+  test('被月額度略過的紀錄也可以重試', async () => {
+    items = [log('1', 'SKIPPED', { reasonCode: 'PLAN_QUOTA_EXCEEDED', retryable: true })];
+    await renderLogs(true);
+    const drawer = await openDetail('顧客1');
+    within(drawer).getByRole('button', { name: '重試' });
+  });
+
   test('不可重試的失敗不顯示重試', async () => {
     items = [log('1', 'FAILED', { reasonCode: 'USER_UNAVAILABLE', retryable: false })];
     await renderLogs(true);
