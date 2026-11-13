@@ -63,13 +63,13 @@
 
 ## 7. 後台 API
 
-- [ ] 7.1 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rule-routes.test.ts`：「建立 FB 文字規則並讀回」「選 LINE 渠道」「沒有 manage 權限」「IG 規則選素材」「選收據範本素材」「其他租戶的素材」「文字含顧客專屬券連結」「沒有行銷權限也能選素材」「IG 渠道沒有素材選項」「修改時帶渠道」「無法辨識的貼文參照」「平台未開放公開回覆」「排序清單少一條」「試算與收件結果相同」「只有檢視權限試算」「分店帳號只看到自己渠道的規則」「讀看不到的渠道的規則」「唯讀層級修改規則」「其他租戶的規則」「IG 私訊尚未開放」「方案不含時路由被擋」「平台勾選後可用」；渠道外掛不支援公開回覆時 400；排序 ids 重複 400
-- [ ] 7.2 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rule-limits.test.ts`：「建立第三條啟用規則」「以停用狀態建立」「停用一條後再啟用」「方案沒有設定上限」「降級後超過上限」；`PATCH /rules/:id` 把 isActive 改 true 也被擋；已刪除規則不計入；覆寫值優先
-- [ ] 7.3 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-log-routes.test.ts`：「分店帳號只看到自己渠道的紀錄」「讀看不到的渠道的紀錄」「沒有檢視權限」「沒有收件匣權限」「重試可重試的失敗」「重試不可重試的失敗」「重試已送出的紀錄」「重試已過期的留言」「重試觸發紀錄時寫稽核」；`q` 搜尋、cursor 分頁穩定、`countOnly`
-- [ ] 7.4 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-channel-routes.test.ts`：「用量與上限」「Meta 回應很慢」「自備 App 的渠道」「只列看得到的渠道」「FB 開啟留言接收」「IG 開啟留言接收」「自備 App 的渠道用自己的密鑰」「缺渠道修改權限」「Meta 回權限錯誤」「Meta 回其他錯誤」「關閉後只剩私訊欄位」「權杖失效」「平台未開放貼文挑選」「解析 FB 貼文網址」「任意外部網址」「沒有設定時的預設」「關閉測試階段」
-- [ ] 7.5 測試 `apps/api/tests/feature/modules/meta-connect/meta-connect-comment-fields.test.ts`：「已開啟接收的粉專重新連結」「未開啟接收的粉專重新連結」「方案不含功能時新連結」「站內路徑」「外部網址」；方案含功能且 `fbPrivateReply` 開啟時新連結訂 `feed`；欄位清單另以一份字面清單比對（測試註解寫明理由）
-- [ ] 7.6 測試 `apps/api/tests/feature/modules/tenant-audit/comment-reply-audit.test.ts`：「建立留言規則時寫稽核」；修改、刪除、啟用切換、排序、開關留言接收各寫一筆，payload 不含留言內容
-- [ ] 7.7 實作：`comment-reply-rule.service.ts`、`comment-reply-log.service.ts`、`comment-reply.flow.ts`、`comment-reply-rule.routes.ts`、`comment-reply-log.routes.ts`、`comment-reply-channel.routes.ts`（design「API」）；權限點（design D20）與預設角色；`meta-connect.service.ts` 的 `BASE_SUBSCRIBED_FIELDS`、`subscribedFieldsFor()`、可傳欄位的 `subscribePage()`、`returnTo`（design D19）；租戶稽核（design D24）；`apps/api/src/index.ts` 註冊路由
+- [x] 7.1 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rule-routes.test.ts`：「建立 FB 文字規則並讀回」「選 LINE 渠道」「沒有 manage 權限」「IG 規則選素材」「選收據範本素材」「其他租戶的素材」「文字含顧客專屬券連結」「沒有行銷權限也能選素材」「IG 渠道沒有素材選項」「修改時帶渠道」「無法辨識的貼文參照」「平台未開放公開回覆」「排序清單少一條」「試算與收件結果相同」「只有檢視權限試算」「分店帳號只看到自己渠道的規則」「讀看不到的渠道的規則」「唯讀層級修改規則」「其他租戶的規則」「IG 私訊尚未開放」「方案不含時路由被擋」「平台勾選後可用」；渠道外掛不支援公開回覆時 400；排序 ids 重複 400（2026-11-13：32 個測試；「試算與收件結果相同」目前比對試算與收件共用的 `listActiveRulesForChannel()`＋`matchCommentRule()` 結果，收件 flow 合併後應再補一次經 webhook 的比對；「方案不含時路由被擋」另在 `requirePermission` 加 `details.reason: PLAN_FEATURE_NOT_INCLUDED`）
+- [x] 7.2 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rule-limits.test.ts`：「建立第三條啟用規則」「以停用狀態建立」「停用一條後再啟用」「方案沒有設定上限」「降級後超過上限」；`PATCH /rules/:id` 把 isActive 改 true 也被擋；已刪除規則不計入；覆寫值優先
+- [x] 7.3 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-log-routes.test.ts`：「分店帳號只看到自己渠道的紀錄」「讀看不到的渠道的紀錄」「沒有檢視權限」「沒有收件匣權限」「重試可重試的失敗」「重試不可重試的失敗」「重試已送出的紀錄」「重試已過期的留言」「重試觸發紀錄時寫稽核」；`q` 搜尋、cursor 分頁穩定、`countOnly`（2026-11-13：「重試可重試的失敗」斷言紀錄改回 PENDING 並以 `deliver` 排入 `comment-reply`，「工作執行成功後是 SENT」待送出消費者）
+- [x] 7.4 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-channel-routes.test.ts`：「用量與上限」「Meta 回應很慢」「自備 App 的渠道」「只列看得到的渠道」「FB 開啟留言接收」「IG 開啟留言接收」「自備 App 的渠道用自己的密鑰」「缺渠道修改權限」「Meta 回權限錯誤」「Meta 回其他錯誤」「關閉後只剩私訊欄位」「權杖失效」「平台未開放貼文挑選」「解析 FB 貼文網址」「任意外部網址」「沒有設定時的預設」「關閉測試階段」
+- [x] 7.5 測試 `apps/api/tests/feature/modules/meta-connect/meta-connect-comment-fields.test.ts`：「已開啟接收的粉專重新連結」「未開啟接收的粉專重新連結」「方案不含功能時新連結」「站內路徑」「外部網址」；方案含功能且 `fbPrivateReply` 開啟時新連結訂 `feed`；欄位清單另以一份字面清單比對（測試註解寫明理由）（2026-11-13：returnTo 由 callback 帶給渠道頁 `?metaConnect=…&returnTo=…`，前端渠道頁連結完成後導回的部分尚未實作）
+- [x] 7.6 測試 `apps/api/tests/feature/modules/tenant-audit/comment-reply-audit.test.ts`：「建立留言規則時寫稽核」；修改、刪除、啟用切換、排序、開關留言接收各寫一筆，payload 不含留言內容
+- [x] 7.7 實作：`comment-reply-rule.service.ts`、`comment-reply-log.service.ts`、`comment-reply.flow.ts`、`comment-reply-rule.routes.ts`、`comment-reply-log.routes.ts`、`comment-reply-channel.routes.ts`（design「API」）；權限點（design D20）與預設角色；`meta-connect.service.ts` 的 `BASE_SUBSCRIBED_FIELDS`、`subscribedFieldsFor()`、可傳欄位的 `subscribePage()`、`returnTo`（design D19）；租戶稽核（design D24）；`apps/api/src/index.ts` 註冊路由（2026-11-13：另有 `comment-reply-channel.service.ts`、`comment-reply-access.ts`、`comment-reply-request.ts`、`comment-reply-plan.ts`；重試以 `requeueCommentReplyLog()` 排入）
 
 ## 8. 資料治理
 
@@ -80,17 +80,17 @@
 
 ## 9. 平台層
 
-- [ ] 9.1 測試 `apps/api/tests/feature/modules/platform/platform-comment-reply-settings.test.ts`：「寫入合法的能力開關」「寫入不合法的值」；5 個鍵各一組合法與不合法值
-- [ ] 9.2 測試 `apps/api/tests/feature/modules/platform/platform-comment-reply-health.test.ts`：「健康表只列開啟接收的渠道」「非平台身分」；24 小時統計與佇列數量
+- [x] 9.1 測試 `apps/api/tests/feature/modules/platform/platform-comment-reply-settings.test.ts`：「寫入合法的能力開關」「寫入不合法的值」；5 個鍵各一組合法與不合法值
+- [x] 9.2 測試 `apps/api/tests/feature/modules/platform/platform-comment-reply-health.test.ts`：「健康表只列開啟接收的渠道」「非平台身分」；24 小時統計與佇列數量（2026-11-13：服務在 `modules/platform/comment-reply-health.service.ts`，已在 check-prisma-admin-usage 白名單 `modules/platform/` 內，不需另加）
 - [x] 9.3 測試 `apps/api/tests/feature/modules/platform/comment-reply-plan-feature.test.ts`：「部署後既有方案都不含」；`/platform/registry` 回傳 `comment_reply` 與兩個權限點；平台在方案勾選後權限天花板放行（快取失效）
   - 突變驗證：`updatePlan` 拿掉 `invalidatePlanPermissions` → 「勾選後天花板放行」失敗；seed 的 light 方案加 `comment_reply` → 「部署後既有方案都不含」失敗
 - [x] 9.4 測試 `apps/api/tests/unit/modules/platform/plan-limits.test.ts`（擴充）：兩個新上限鍵依「有效上限解析」解析（覆寫優先、null 無上限）
   - `LimitKey` 改由匯出的 `LIMIT_KEYS` 推導；解析邏輯本來就是泛型，所以除了「上限鍵清單」外的案例寫好就通過（對照既有的覆寫優先、null 無上限突變）
-- [ ] 9.5 既有 `apps/api/tests/unit/modules/queue-monitoring/monitored-queues.test.ts` 加入 `comment-reply` 後先紅再綠；測試 `apps/api/tests/feature/modules/queue-monitoring/comment-reply-queue-list.test.ts`：「列出留言自動私訊佇列」
-- [ ] 9.6 測試 `apps/api/tests/feature/modules/role/reconcile-comment-reply-permissions.test.ts`：跑 reconcile 腳本後既有租戶的 ADMIN、SUPERVISOR system role 有 view＋manage，AGENT 有 view（依 Open Questions 2 定案）
+- [ ] 9.5 既有 `apps/api/tests/unit/modules/queue-monitoring/monitored-queues.test.ts` 加入 `comment-reply` 後先紅再綠；測試 `apps/api/tests/feature/modules/queue-monitoring/comment-reply-queue-list.test.ts`：「列出留言自動私訊佇列」（2026-11-13：`API_QUEUES` 已加、新測試紅轉綠；「API 行程的每個 Worker 都在監控清單內」要等送出消費者以 `[COMMENT_REPLY_QUEUE]` 註冊進 `startQueueWorkers()` 才通過，所以未勾）
+- [x] 9.6 測試 `apps/api/tests/feature/modules/role/reconcile-comment-reply-permissions.test.ts`：跑 reconcile 腳本後既有租戶的 ADMIN、SUPERVISOR system role 有 view＋manage，AGENT 有 view（依 Open Questions 2 定案）（2026-11-13：腳本從 repo 根目錄解析不到 workspace 套件，測試呼叫腳本所用的 `seedRolesForTenant()` 並核對腳本呼叫它）
 - [x] 9.7 元件測試 `apps/web/tests/unit/components/admin/plan-limit-keys.test.tsx`：「設定上限並讀回」（兩個上限欄位，留空送 null）
 - [x] 9.8 元件測試 `apps/web/tests/unit/components/admin/comment-reply-platform-settings.test.tsx`：「從頁面存設定」；緊急停止開關、限速與保存天數的範圍錯誤訊息；健康表渲染
-- [ ] 9.9 實作：`packages/core/src/rbac/features.ts` 加 `comment_reply`（不寫方案資料 migration，design D23）；`plan-limits.service.ts` 的 `LimitKey`；`/admin/plans` 的 `LIMIT_KEYS`；`platform.routes.ts` 的 5 個鍵型別驗證與 `comment-reply-platform-settings.ts`（解析函式，租戶端共用）；`GET /platform/comment-reply/health`（加進 `check-prisma-admin-usage.mjs` 白名單）；`/admin/comment-reply` 頁與平台側欄入口
+- [x] 9.9 實作：`packages/core/src/rbac/features.ts` 加 `comment_reply`（不寫方案資料 migration，design D23）；`plan-limits.service.ts` 的 `LimitKey`；`/admin/plans` 的 `LIMIT_KEYS`；`platform.routes.ts` 的 5 個鍵型別驗證與 `comment-reply-platform-settings.ts`（解析函式，租戶端共用）；`GET /platform/comment-reply/health`（加進 `check-prisma-admin-usage.mjs` 白名單）；`/admin/comment-reply` 頁與平台側欄入口
   - 部分完成（wip/cr-db）：`features.ts` 的 `comment_reply`、`LimitKey`／`LIMIT_KEYS`、權限點 `comment_reply.view`／`comment_reply.manage` 與預設角色；`/admin/plans` 的 `LIMIT_KEYS`、5 個平台設定鍵、健康 API、平台頁尚未做
 
 ## 10. 維運排程
@@ -126,14 +126,14 @@
 - [ ] 12.8 拿掉 7 天判斷；安全邊際改 0：「7 天前的留言」「排隊到過期」；「安全邊際內」失敗
 - [ ] 12.9 月額度改成先讀再寫（非原子）：「並行不超賣」失敗
 - [ ] 12.10 去重改成收件時佔名額：「第一則失敗後的留言仍會嘗試」失敗
-- [ ] 12.11 補訂閱只送 `['feed']`、少送 `message_echoes`：「FB 開啟留言接收」「已開啟接收的粉專重新連結」失敗（外掛部分 2026-11-13：`subscribeFields` 改送 `feed` → `comment-subscription.test.ts` 2 個測試失敗；路由情境待第 7 節）
-- [ ] 12.12 拿掉 `inbox.view` 判斷：「沒有收件匣權限」失敗
-- [ ] 12.13 拿掉渠道可見範圍過濾：「分店帳號只看到自己渠道的規則」「分店帳號只看到自己渠道的紀錄」失敗
+- [x] 12.11 補訂閱只送 `['feed']`、少送 `message_echoes`：「FB 開啟留言接收」「已開啟接收的粉專重新連結」失敗（外掛部分 2026-11-13：`subscribeFields` 改送 `feed` → `comment-subscription.test.ts` 2 個測試失敗）（2026-11-13 路由情境：`commentSubscriptionFields` 改送 `['feed']` →「FB 開啟留言接收」失敗；重新連結改送 4 個私訊欄位 →「已開啟接收的粉專重新連結」失敗；`BASE_SUBSCRIBED_FIELDS` 少 `message_echoes` → 7 個測試失敗）
+- [x] 12.12 拿掉 `inbox.view` 判斷：「沒有收件匣權限」失敗（2026-11-13：拿掉 `viewer.canViewInbox` 判斷 →「沒有收件匣權限」失敗）
+- [x] 12.13 拿掉渠道可見範圍過濾：「分店帳號只看到自己渠道的規則」「分店帳號只看到自己渠道的紀錄」失敗（2026-11-13：`listRules` 拿掉可見渠道條件 →「分店帳號只看到自己渠道的規則」失敗；`listLogs` 拿掉 →「分店帳號只看到自己渠道的紀錄」失敗）
 - [ ] 12.14 拿掉背景的方案 feature 檢查（只留路由 403）：「方案不含留言自動私訊」「排隊期間方案移除功能」失敗
 - [ ] 12.15 `attachCommentOrigin` 的條件更新不檢查 `conversationId IS NULL`：「顧客再傳第二則」「兩則回覆並行」失敗
-- [ ] 12.16 `resolvePostUrl` 直接 fetch 使用者網址：「任意外部網址」失敗
+- [x] 12.16 `resolvePostUrl` 直接 fetch 使用者網址：「任意外部網址」失敗（2026-11-13：FB 外掛 dist 的 `resolvePostUrl` 開頭加 `fetch(input)` →「任意外部網址」與「解析 FB 貼文網址」失敗（白名單外 host 違規））
 - [ ] 12.17 限流延後改成丟錯讓 BullMQ 重試：「本小時額度用完」（重試次數沒有增加）失敗
-- [ ] 12.18 403 斷言 `details.requiredPermission`／`details.limitKey`／`details.capability`，確認不是另一道守門剛好給 403
+- [ ] 12.18 403 斷言 `details.requiredPermission`／`details.limitKey`／`details.capability`，確認不是另一道守門剛好給 403（2026-11-13 第 7、9 節部分：POST /rules 的守門改成 view → 被 CHANNEL_ACCESS_DENIED 擋下，「沒有 manage 權限」因斷言 `requiredPermission` 失敗；拿掉 subscribe-comments 的 `channel.update` → 「缺渠道修改權限」失敗；上限與能力開關的 403 都斷言 `limitKey`／`capability`。收件、送出相關路由待第 4、5 節）
 
 ## 13. 文件
 
