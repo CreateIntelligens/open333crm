@@ -80,6 +80,15 @@ const envSchema = z.object({
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),
   EMAIL_FROM: z.string().min(1).optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
+  EMAIL_SMTP_FAILOVER: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  EMAIL_FALLBACK_FROM: z.string().min(1).optional(),
+  EMAIL_SMTP_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(3),
+  EMAIL_SMTP_RATE_PER_SEC: z.coerce.number().int().min(1).max(1000).default(10),
+  EMAIL_SMTP_BULK_RATE_PER_SEC: z.coerce.number().int().min(1).max(1000).optional(),
+  EMAIL_RESEND_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
+  EMAIL_RESEND_RATE_PER_SEC: z.coerce.number().int().min(1).max(1000).default(2),
+  EMAIL_FAILOVER_COOLDOWN_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(60_000),
+  EMAIL_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   // 注意：z.coerce.boolean() 對 'false' 會轉成 true（非空字串皆 truthy），故明確解析字串
@@ -108,6 +117,24 @@ const envSchema = z.object({
       path: ['SMTP_HOST'],
       message: 'SMTP_HOST is required when EMAIL_DELIVERY_MODE=smtp',
     });
+  }
+  if (cfg.EMAIL_SMTP_BULK_RATE_PER_SEC !== undefined && cfg.EMAIL_SMTP_BULK_RATE_PER_SEC > cfg.EMAIL_SMTP_RATE_PER_SEC) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['EMAIL_SMTP_BULK_RATE_PER_SEC'],
+      message: 'EMAIL_SMTP_BULK_RATE_PER_SEC must be less than or equal to EMAIL_SMTP_RATE_PER_SEC',
+    });
+  }
+  if (cfg.EMAIL_SMTP_FAILOVER && cfg.EMAIL_DELIVERY_MODE === 'smtp') {
+    if (!cfg.EMAIL_FROM) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['EMAIL_FROM'], message: 'EMAIL_FROM is required for SMTP failover' });
+    }
+    if (!cfg.RESEND_API_KEY) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['RESEND_API_KEY'], message: 'RESEND_API_KEY is required for SMTP failover' });
+    }
+    if (!cfg.EMAIL_FALLBACK_FROM) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['EMAIL_FALLBACK_FROM'], message: 'EMAIL_FALLBACK_FROM is required for SMTP failover' });
+    }
   }
   if (cfg.EMAIL_DELIVERY_MODE === 'resend' && !cfg.RESEND_API_KEY) {
     ctx.addIssue({

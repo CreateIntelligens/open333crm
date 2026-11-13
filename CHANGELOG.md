@@ -6,6 +6,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **SMTP 郵件備援與自動分批限速**：可選擇在 SMTP 故障時切換至 Resend，以 Redis 協調跨實例並行上限、1 秒滑動視窗限速、即時系統信額度保留、冷卻時間與單一恢復探測；區分 SES `454 Maximum sending rate exceeded` 短暫節流（退避重試、不誤切 Resend），無法確認 SMTP 是否已收件時不跨供應商重寄。新增可調環境參數（`EMAIL_SMTP_MAX_CONCURRENCY`、`EMAIL_SMTP_RATE_PER_SEC`、`EMAIL_SMTP_BULK_RATE_PER_SEC`、`EMAIL_RESEND_MAX_CONCURRENCY`、`EMAIL_RESEND_RATE_PER_SEC`、`EMAIL_FAILOVER_COOLDOWN_MS`、`EMAIL_BATCH_SIZE`）與 `email-dispatch` 佇列（`enqueueEmailBatch` 自動分批錯峰與 Canvas 郵件排隊），支撐大量郵件平滑投遞。
+
 - **一般群發改在背景發送**（issue #362，change `fix-plain-broadcast-send-362`）：`POST /api/v1/marketing/broadcasts/:id/send` 對一般群發改回 202 `{ id, status: 'scheduled', scheduledAt }`，發送交給 `coupon-broadcast` 佇列在背景執行（原本在 HTTP 請求裡同步跑完整份名單，大名單會逾時、前端看到失敗但其實已部分送出）。發送時的錯誤（受眾為空、額度不足等）改寫在廣播的 `status`、`failureCode`、`failureReason`，不再回 400。已在發送中仍回 409，網站聊天室仍回 400。
   - 發送前查訊息額度：與附券廣播共用 `broadcast-quota.ts`，依外掛有沒有 `getMessageQuota` 判斷；不足或查不到時整則不送（`LINE_QUOTA_INSUFFICIENT`、`LINE_QUOTA_CHECK_FAILED`）。
   - 每位收件人的失敗原因：送不出的收件人寫 `skipReason = DELIVERY_FAILED`；行銷頁每一則已發送的廣播都有「發送結果」，看得到誰沒收到。

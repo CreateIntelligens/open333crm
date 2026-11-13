@@ -33,6 +33,33 @@ test('email-delivery', async () => {
     /EMAIL_FROM/,
   );
   assert.equal(parseEnvConfig({ ...requiredEnv, EMAIL_DELIVERY_MODE: 'smtp', SMTP_HOST: 'smtp.example.com' }).EMAIL_DELIVERY_MODE, 'smtp');
+  assert.equal(parseEnvConfig({ ...requiredEnv, EMAIL_DELIVERY_MODE: 'smtp', SMTP_HOST: 'smtp.example.com' }).EMAIL_SMTP_FAILOVER, false);
+
+  const smtpFallbackConfig = {
+    ...requiredEnv,
+    EMAIL_DELIVERY_MODE: 'smtp',
+    SMTP_HOST: 'smtp.example.com',
+    EMAIL_FROM: 'primary@example.com',
+    EMAIL_SMTP_FAILOVER: 'true',
+    EMAIL_FALLBACK_FROM: 'backup@example.com',
+    RESEND_API_KEY: 're_test_key',
+  };
+  assert.throws(() => parseEnvConfig({ ...smtpFallbackConfig, RESEND_API_KEY: undefined }), /RESEND_API_KEY/);
+  assert.throws(() => parseEnvConfig({ ...smtpFallbackConfig, EMAIL_FROM: undefined }), /EMAIL_FROM/);
+  assert.throws(() => parseEnvConfig({ ...smtpFallbackConfig, EMAIL_FALLBACK_FROM: undefined }), /EMAIL_FALLBACK_FROM/);
+  assert.equal(parseEnvConfig(smtpFallbackConfig).EMAIL_SMTP_FAILOVER, true);
+  const defaultPacing = parseEnvConfig(smtpFallbackConfig);
+  assert.equal(defaultPacing.EMAIL_SMTP_MAX_CONCURRENCY, 3);
+  assert.equal(defaultPacing.EMAIL_SMTP_RATE_PER_SEC, 10);
+  assert.equal(defaultPacing.EMAIL_SMTP_BULK_RATE_PER_SEC, undefined);
+  assert.equal(defaultPacing.EMAIL_RESEND_MAX_CONCURRENCY, 5);
+  assert.equal(defaultPacing.EMAIL_RESEND_RATE_PER_SEC, 2);
+  assert.equal(defaultPacing.EMAIL_FAILOVER_COOLDOWN_MS, 60_000);
+  assert.equal(defaultPacing.EMAIL_BATCH_SIZE, 100);
+  assert.throws(
+    () => parseEnvConfig({ ...smtpFallbackConfig, EMAIL_SMTP_RATE_PER_SEC: '10', EMAIL_SMTP_BULK_RATE_PER_SEC: '11' }),
+    /EMAIL_SMTP_BULK_RATE_PER_SEC/,
+  );
 
   const originalFetch = globalThis.fetch;
   const originalLoggerInfo = logger.info;

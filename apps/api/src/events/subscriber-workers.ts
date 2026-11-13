@@ -36,7 +36,7 @@ export function createEventRouter() {
   };
 }
 
-export type JobProcessor = (job: Job) => Promise<unknown>;
+export type JobProcessor = (job: Job, token?: string) => Promise<unknown>;
 
 /** 訂閱者佇列的 processor：job data 轉回事件（timestamp 轉回 Date）再交給處理程式 */
 export function subscriberProcessor(handler: EventHandler): JobProcessor {

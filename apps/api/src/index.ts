@@ -16,6 +16,7 @@ import {
   EVENT_AUTOMATION_QUEUE,
   EVENT_NOTIFICATION_QUEUE,
   EVENT_WEBHOOK_QUEUE,
+  EMAIL_DISPATCH_QUEUE,
   USAGE_ALERT_EMAIL_QUEUE,
   WEBHOOK_DELIVERY_QUEUE,
   closeOutboxQueues,
@@ -122,6 +123,9 @@ import { redactSensitiveQuery } from './lib/log-redact.js';
 import { setupInactivityCloseWorker } from './modules/conversation/inactivity-close.worker.js';
 import { registerChannelPlugin, getAllChannelPlugins, linePlugin, fbPlugin, webchatPlugin, threadsPlugin } from '@open333crm/channel-plugins';
 import { preloadUploadContentDetector } from './modules/upload/upload-content-detector.js';
+import { EmailFailoverCoordinator } from './modules/email/email-failover.js';
+import { closeEmailDispatchQueue, createEmailDispatchProcessor, enqueueEmail } from './modules/email/email-queue.js';
+import { configureEmailFailover } from './modules/email/email.service.js';
 
 export async function bootstrap() {
   const config = loadEnvConfig();
@@ -188,6 +192,16 @@ export async function bootstrap() {
   });
   await app.register(prismaPlugin);
   await app.register(redisPlugin);
+  if (config.EMAIL_DELIVERY_MODE === 'smtp') {
+    configureEmailFailover(new EmailFailoverCoordinator(app.redis, {
+      smtpMaxConcurrency: config.EMAIL_SMTP_MAX_CONCURRENCY,
+      smtpRatePerSec: config.EMAIL_SMTP_RATE_PER_SEC,
+      smtpBulkRatePerSec: config.EMAIL_SMTP_BULK_RATE_PER_SEC,
+      resendMaxConcurrency: config.EMAIL_RESEND_MAX_CONCURRENCY,
+      resendRatePerSec: config.EMAIL_RESEND_RATE_PER_SEC,
+      cooldownMs: config.EMAIL_FAILOVER_COOLDOWN_MS,
+    }));
+  }
   await app.register(cookiePlugin);
   await app.register(authPlugin);
   await app.register(socketPlugin);
@@ -287,9 +301,11 @@ export async function bootstrap() {
       [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createBroadcastJobRunner({
         prisma: app.prisma, adminPrisma: app.prismaAdmin, redis: app.redis, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
       })) as JobProcessor,
+      [EMAIL_DISPATCH_QUEUE]: createEmailDispatchProcessor() as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
+      [EMAIL_DISPATCH_QUEUE]: { concurrency: config.EMAIL_SMTP_MAX_CONCURRENCY + config.EMAIL_RESEND_MAX_CONCURRENCY },
     }),
   );
   app.addHook('onClose', () => subscriberWorkers.close());
@@ -304,7 +320,8 @@ export async function bootstrap() {
   });
   app.addHook('onClose', () => failedAlerts.close());
   app.addHook('onClose', () => closeOpsAlertQueue());
-  setupCanvasWorker(app.prismaAdmin, app.io);
+  app.addHook('onClose', () => closeEmailDispatchQueue());
+  setupCanvasWorker(app.prismaAdmin, app.io, { enqueueEmail });
 
   // 定時工作一律經 Job Scheduler：多個實例時每一期只執行一次。註冊不等 Redis 回應，
   // Redis 連不上時 API 照常啟動，排程等 Redis 恢復後才開始

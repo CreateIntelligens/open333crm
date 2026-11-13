@@ -14,6 +14,8 @@ export const EVENT_WEBHOOK_QUEUE = 'event-webhook';
 export const WEBHOOK_DELIVERY_QUEUE = 'webhook-delivery';
 /** 用量告警信：每個事件、每位管理員一個 job（design 決策 10） */
 export const USAGE_ALERT_EMAIL_QUEUE = 'usage-alert-email';
+/** 系統與大量郵件的分批限速佇列（api 行程消費） */
+export const EMAIL_DISPATCH_QUEUE = 'email-dispatch';
 
 const NOTIFICATION_EVENTS: ReadonlySet<string> = new Set<AppEventName>([
   'case.assigned',

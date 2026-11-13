@@ -204,6 +204,17 @@ EMAIL_FROM=open333CRM <noreply@aitago.tw>
 # SMTP_PORT=587
 # SMTP_USER=your-user
 # SMTP_PASS=your-password
+# SMTP failures can use Resend when enabled; the fallback sender must be verified by Resend.
+# EMAIL_SMTP_FAILOVER=true
+# EMAIL_FALLBACK_FROM=open333CRM <noreply@example.com>
+# RESEND_API_KEY=re_your_server_side_api_key
+# EMAIL_SMTP_MAX_CONCURRENCY=3
+# EMAIL_SMTP_RATE_PER_SEC=10
+# EMAIL_SMTP_BULK_RATE_PER_SEC=8
+# EMAIL_RESEND_MAX_CONCURRENCY=5
+# EMAIL_RESEND_RATE_PER_SEC=2
+# EMAIL_FAILOVER_COOLDOWN_MS=60000
+# EMAIL_BATCH_SIZE=100
 ```
 
 ---

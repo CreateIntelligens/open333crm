@@ -374,7 +374,7 @@
       "paths": [
         "apps/api/src/modules/notification/*",
         "apps/api/src/modules/trial/usage-alert-emails.ts",
-        "apps/api/src/modules/email/email.service.ts",
+        "apps/api/src/modules/email/*",
         "apps/workers/src/handlers/notification.handler.ts",
         "apps/workers/src/lib/notification-queue.ts",
         "packages/core/src/agent/agent-lookup.ts"
@@ -3226,7 +3226,7 @@
       "usedBy": [
         {
           "domain": "notifications",
-          "why": "event-notification、notification、usage-alert-email 佇列在監控清單與失敗告警內；通知經 outbox 送出"
+          "why": "event-notification、notification、usage-alert-email、email-dispatch 佇列在監控清單與失敗告警內；通知經 outbox 送出"
         },
         {
           "domain": "automation",
