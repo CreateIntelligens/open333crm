@@ -4,7 +4,9 @@ import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Plus, Search, Copy, Trash2, MoreHorizontal, Edit, X, FolderCog } from 'lucide-react';
+import { Search, Copy, Trash2, MoreHorizontal, X, FolderCog } from 'lucide-react';
+import { AddIcon, EditIcon } from '@/components/icons/figma-icons';
+import { Select } from '@/components/ui/select';
 import { Topbar } from '@/components/layout/Topbar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -86,19 +88,16 @@ export default function MaterialsListPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-muted">
-      <Topbar title="行銷" />
+    // 版面依 Claude Design「訊息素材庫列表頁」：標題列＋說明，右側主要按鈕；左側分類樹維持（分類為多層樹狀，改成橫向頁籤會選不到子分類）
+    <div className="flex h-full flex-col">
+      <Topbar title="訊息素材庫" description="管理可重複使用的訊息素材，從版型建立內容後即可套用於推播、自動化與客服快速回覆">
+        <Button size="lg" onClick={() => router.push('/dashboard/marketing/materials/new')}>
+          <AddIcon />
+          從版型建立新素材
+        </Button>
+      </Topbar>
       <main className="flex-1 overflow-y-auto px-7 pb-7">
-        <div className="mx-auto max-w-6xl space-y-5">
-          <header className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">訊息素材</h1>
-              <p className="mt-1 text-sm text-muted-foreground">已客製化的可發送內容。支援 per-recipient 變數替換。</p>
-            </div>
-            <Button onClick={() => router.push('/dashboard/marketing/materials/new')}>
-              <Plus className="mr-1 h-4 w-4" />從版型建立
-            </Button>
-          </header>
+        <div className="space-y-5">
 
           <div className="flex gap-5">
             {/* ── 左側：分類樹 + 標籤 ── */}
@@ -159,34 +158,31 @@ export default function MaterialsListPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="relative min-w-[180px] flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜尋素材名稱" className="pl-9" />
+                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="依素材名稱搜尋" className="pl-9" />
                 </div>
-                <div className="flex gap-2">
+                <div role="group" aria-label="依頻道篩選" className="flex h-10 items-center gap-1 rounded-md border border-border bg-muted p-1">
                   {CHANNEL_FILTERS.map((f) => (
                     <button
                       key={f.value}
                       type="button"
+                      aria-pressed={channelType === f.value}
                       onClick={() => setChannelType(f.value)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                        channelType === f.value
-                          ? 'border-foreground bg-foreground text-white'
-                          : 'border-border bg-white text-muted-foreground hover:border-input dark:bg-card'
-                      }`}
+                      className={cn(
+                        'flex h-8 items-center rounded-md px-3.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        channelType === f.value ? 'bg-background font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+                      )}
                     >
                       {f.label}
                     </button>
                   ))}
                 </div>
-                <select
+                <Select
                   value={sort}
                   onChange={(e) => setSort(e.target.value as MaterialSort)}
-                  className="rounded-md border border-border bg-white px-2.5 py-1.5 text-xs text-foreground dark:bg-card"
                   aria-label="排序方式"
-                >
-                  {SORT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>排序：{o.label}</option>
-                  ))}
-                </select>
+                  className="w-[180px]"
+                  options={SORT_OPTIONS.map((o) => ({ value: o.value, label: `排序：${o.label}` }))}
+                />
               </div>
 
               {hasFilters && (
@@ -204,7 +200,7 @@ export default function MaterialsListPage() {
                 </div>
               )}
 
-              <div className="overflow-hidden rounded-lg border border-border bg-white dark:bg-card">
+              <div className="overflow-hidden rounded-lg border border-border bg-background">
                 {isLoading && <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>}
                 {!isLoading && materials.length === 0 && (
                   <div className="py-16 text-center">
@@ -213,22 +209,23 @@ export default function MaterialsListPage() {
                     </div>
                     {!hasFilters && (
                       <Button className="mt-3" onClick={() => router.push('/dashboard/marketing/materials/new')}>
-                        <Plus className="mr-1 h-4 w-4" />從版型建立第一個素材
+                        <AddIcon />從版型建立第一個素材
                       </Button>
                     )}
                   </div>
                 )}
                 {!isLoading && materials.length > 0 && (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-sm">
+                    <table data-plain className="w-full min-w-[860px] text-sm">
                       <thead>
-                        <tr className="border-b border-border bg-muted text-xs uppercase tracking-wide text-muted-foreground">
-                          <th className="px-4 py-3 text-left font-semibold">名稱</th>
-                          <th className="px-4 py-3 text-left font-semibold">狀態</th>
-                          <th className="px-4 py-3 text-left font-semibold">版本</th>
-                          <th className="px-4 py-3 text-left font-semibold">使用率</th>
-                          <th className="px-4 py-3 text-left font-semibold">最後使用</th>
-                          <th className="px-4 py-3"></th>
+                        <tr className="border-b border-border bg-muted text-sm text-muted-foreground">
+                          <th scope="col" className="px-5 py-2.5 text-left font-medium">素材名稱 / 分類</th>
+                          <th scope="col" className="px-4 py-2.5 text-left font-medium">頻道</th>
+                          <th scope="col" className="px-4 py-2.5 text-left font-medium">狀態</th>
+                          <th scope="col" className="px-4 py-2.5 text-left font-medium">版本歷史</th>
+                          <th scope="col" className="px-4 py-2.5 text-left font-medium">使用率</th>
+                          <th scope="col" className="px-4 py-2.5 text-left font-medium">最後使用</th>
+                          <th scope="col" className="px-5 py-2.5 text-right font-medium">操作</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -248,7 +245,12 @@ export default function MaterialsListPage() {
                 )}
               </div>
 
-              {meta && <div className="text-xs text-muted-foreground">共 {meta.total} 個素材</div>}
+              {meta && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+                  <span>共 {meta.total} 筆素材</span>
+                  <span>本頁 已核准 {materials.filter((m) => m.status === 'approved').length} · 草稿 {materials.filter((m) => m.status === 'draft').length}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -342,61 +344,84 @@ function MaterialRow({ material, maxUsage, onDuplicate, onDelete, onEdit }: {
     ? formatDistanceToNow(new Date(material.lastUsedAt), { addSuffix: true, locale: zhTW })
     : '—';
 
+  const lastUsedAt = material.lastUsedAt ? new Date(material.lastUsedAt) : null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const category = material.materialCategory?.name ?? material.category;
+
   return (
-    <tr className="border-b border-border last:border-b-0 hover:bg-muted">
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Badge color={channelColor}>{channelLabel}</Badge>
-          <span className="font-semibold text-foreground">{material.name}</span>
-        </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+    <tr className="border-b border-border last:border-b-0 hover:bg-surface-hover">
+      <td className="px-5 py-3.5">
+        <div className="font-semibold text-foreground">{material.name}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span className="font-mono">{material.contentType}</span>
+          {category && (<><span aria-hidden="true">·</span><span>{category}</span></>)}
           {material.tags.map((t) => (
-            <span key={t} className="rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground">{t}</span>
+            <span key={t} className="rounded bg-muted px-1.5 py-px text-xs text-muted-foreground">{t}</span>
           ))}
         </div>
       </td>
-      <td className="px-4 py-3">
-        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${statusInfo.cls}`}>
+      <td className="px-4 py-3.5"><Badge color={channelColor}>{channelLabel}</Badge></td>
+      <td className="px-4 py-3.5">
+        <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${statusInfo.cls}`}>
           {statusInfo.label}
         </span>
       </td>
-      <td className="px-4 py-3 text-xs tabular-nums text-muted-foreground">
-        <button type="button" className="underline decoration-dotted hover:text-foreground" onClick={() => onEdit(material.id)}>
-          歷史
+      <td className="px-4 py-3.5 text-sm">
+        <button type="button" className="text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onEdit(material.id)}>
+          歷史紀錄
         </button>
       </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="tabular-nums text-foreground">{material.usageCount.toLocaleString()}</span>
-          <span className="inline-block h-1.5 w-12 overflow-hidden rounded-full bg-muted">
+      <td className="px-4 py-3.5">
+        <div className="flex flex-col gap-1">
+          <span className="text-foreground"><span className="tabular-nums font-medium">{material.usageCount.toLocaleString()}</span> <span className="text-xs text-muted-foreground">次</span></span>
+          <span className="inline-block h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden="true">
             <span className="block h-full rounded-full bg-primary" style={{ width: `${usagePct}%` }} />
           </span>
         </div>
       </td>
-      <td className="px-4 py-3 text-xs text-muted-foreground">{lastUsed}</td>
-      <td className="relative px-4 py-3 text-right">
-        <Button variant="ghost" size="sm" onClick={() => onEdit(material.id)}>
-          <Edit className="mr-1 h-3 w-3" />編輯
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setMenuOpen((v) => !v)}>
-          <MoreHorizontal className="h-3 w-3" />
-        </Button>
+      <td className="px-4 py-3.5 text-sm tabular-nums" title={lastUsed}>
+        {lastUsedAt ? (
+          <span className="flex flex-col leading-5">
+            <span className="text-foreground">{`${lastUsedAt.getFullYear()}/${pad(lastUsedAt.getMonth() + 1)}/${pad(lastUsedAt.getDate())}`}</span>
+            <span className="text-xs text-muted-foreground">{`${pad(lastUsedAt.getHours())}:${pad(lastUsedAt.getMinutes())}`}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">尚未使用</span>
+        )}
+      </td>
+      <td className="relative px-5 py-3.5">
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="xs" onClick={() => onEdit(material.id)} aria-label={`編輯「${material.name}」`}>
+            <EditIcon />編輯
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label={`「${material.name}」更多操作`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <MoreHorizontal />
+          </Button>
+        </div>
         {menuOpen && (
-          <div className="absolute right-4 top-full z-10 mt-1 w-32 rounded-md border border-border bg-white py-1 shadow-md dark:bg-card">
+          <div role="menu" className="absolute right-5 top-full z-10 mt-1 w-36 rounded-md border border-border bg-background py-1 shadow-dropdown">
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover"
               onClick={() => { setMenuOpen(false); onDuplicate(material.id); }}
             >
-              <Copy className="h-3 w-3" />複製
+              <Copy className="h-4 w-4" aria-hidden="true" />複製
             </button>
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-destructive hover:bg-destructive-subtle"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive-subtle"
               onClick={() => { setMenuOpen(false); onDelete(material.id); }}
             >
-              <Trash2 className="h-3 w-3" />刪除
+              <Trash2 className="h-4 w-4" aria-hidden="true" />刪除
             </button>
           </div>
         )}
