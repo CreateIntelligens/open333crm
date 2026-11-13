@@ -60,6 +60,9 @@ function makePrisma(created: CreatedMessage[]) {
       async update() {
         return {};
       },
+      async updateMany() {
+        return { count: 1 };
+      },
     },
     message: {
       async create(args: CreatedMessage) {

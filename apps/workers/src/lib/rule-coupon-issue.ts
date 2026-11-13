@@ -385,6 +385,11 @@ async function recordFailureNotice(
   const message = await prisma.message.create({
     data: { conversationId: conv.id, direction: 'OUTBOUND', senderType: 'SYSTEM', contentType: 'text', content, metadata },
   });
+  // 比照送出成功更新 lastMessageAt，讓對話浮到收件匣上方（#362 #11）
+  await prisma.conversation.updateMany({
+    where: { id: conv.id, tenantId: conv.tenantId },
+    data: { lastMessageAt: message.createdAt },
+  });
   await publishMessageNew(redis, conv, { id: message.id, contentType: 'text', content, metadata, createdAt: message.createdAt });
 }
 
