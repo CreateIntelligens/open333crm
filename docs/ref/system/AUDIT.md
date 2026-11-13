@@ -119,7 +119,7 @@
 | [CASE-08](#case-08) | 對話、工單與自動化 | P2 | 未處理 | 工單的「團隊」下拉讀錯欄位，永遠只有「未指定」，畫面上無法觸發依團隊輪流指派 | 執行時確認 |
 | [CASE-09](#case-09) | 對話、工單與自動化 | P2 | 未處理 | 建立工單時帶負責人、升級時改派，新負責人都收不到通知；建立時帶負責人的工單狀態也停在 `OPEN` | 執行時確認 |
 | [CASE-10](#case-10) | 對話、工單與自動化 | P2 | 未處理 | 工單詳情頁的 SLA「首次回應」以時間軸上第一個客服事件判斷，指派或改狀態就顯示「已達」 | 靜態確認 |
-| [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
+| [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 成功的執行仍不寫執行紀錄，執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字。有動作失敗的執行已寫入執行紀錄（#362） | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
@@ -1564,7 +1564,8 @@ change `migrate-ai-llm-tenant-ctx`（#337 6a）之前，讀 Chat 設定時沒有
 寫入 `AutomationLog`、更新 `AutomationRule.runCount` 與 `lastRunAt` 的程式，原本只存在 API 端 `action-executor.ts` 的 `executeActions()`。這個函式自 `9255245` 起沒有呼叫端，檔案已在 `8e25e1b`（#209）刪除。workers 的執行路徑不寫這些欄位，因此目前沒有任何程式寫入。
 
 - 自動化頁的規則清單原本顯示執行次數與最後執行時間，停在搬遷前的值，搬遷後建立的規則永遠顯示 0。2026-10-05 起規則清單不再顯示這兩個值（change `improve-automation-page-readability`）；欄位本身仍然沒有更新。
-- `GET /automation/logs` 查不到搬遷後的任何執行。前端沒有呼叫這個端點。
+- `GET /automation/logs` 查不到搬遷後成功的執行。前端沒有呼叫這個端點。
+- 2026-11-13 起（#362，change `fix-automation-delivery-visibility`），workers 的 `executeWorkerAutomationActions()` 在有動作失敗時寫一筆 `AutomationLog`（`success: false`、`errorMsg`、`actionsRan`）。沒有 `ruleId` 的 SLA 路徑不寫。成功的執行、`runCount` 與 `lastRunAt` 仍沒有程式寫入。
 
 `AutomationExecution` 表則是從來沒有任何程式讀寫。
 

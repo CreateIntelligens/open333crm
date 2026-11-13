@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-13：自動化動作失敗寫入執行紀錄（AUTO-02 部分修正）
+
+issue #362，change `fix-automation-delivery-visibility`。以 workers 單元測試（記憶體假資料庫、走 `executeWorkerAutomationActions`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-02 | 部分修正：有動作失敗的執行寫入 `AutomationLog`；成功的執行、`runCount`、`lastRunAt` 仍不寫 | `apps/workers/tests/unit/lib/automation-delivery-failure-visibility.test.ts` |
+
 ## 2026-11-11：滿意度問卷與工單重新開啟（CASE-04、CASE-02、CASE-05、RBAC-03）
 
 issue #339，change `csat-reresolve-decisions-339`。依使用者 2026-11-11 在 issue 留言的 8 項決定修改。以單元測試、元件測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_339`）驗證，沒有連 UAT。
