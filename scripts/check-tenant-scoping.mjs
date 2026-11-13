@@ -37,6 +37,8 @@ const TENANT_MODELS = new Set([
   'broadcastDeliveryAttempt', 'contactMergeLog',
   // 優惠券與門市（add-coupon-system）
   'coupon', 'couponInstance', 'couponCode', 'store', 'storeAccount',
+  // 留言關鍵字自動私訊（add-comment-keyword-private-reply）
+  'commentReplyRule', 'commentReplyLog', 'commentAuthor', 'commentReplyUsage',
 ]);
 
 // query 方法（會回傳/影響多列、需 tenantId 限定的）

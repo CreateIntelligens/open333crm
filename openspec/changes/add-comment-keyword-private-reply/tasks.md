@@ -30,9 +30,9 @@
 
 ## 3. 資料庫與 RLS
 
-- [ ] 3.1 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rls.test.ts`：`app_tenant` 未綁租戶查 4 張新表 count = 0；綁 A 寫 `tenantId` 為 B 的列被擋；以 A 的 `tenantId` 參照 B 的 `channelId`／`ruleId`／`commentAuthorId` 外鍵錯誤；`(channelId, commentId)` 並行兩次只有一筆；去重部分唯一索引只在 `SENDING`／`SENT` 生效
-- [ ] 3.2 實作：schema（design「資料模型」）；migration `…_add_comment_reply_tables`（含部分索引、ENABLE＋FORCE RLS、`tenant_isolation`、明確 GRANT `app_tenant`）、`…_conversation_comment_origin`；`scripts/check-tenant-scoping.mjs` 的 `TENANT_MODELS` 加 4 個 model；`pnpm db:generate`
-- [ ] 3.3 確認 `platform-table-grants.test.ts`、`rls-isolation.test.ts` 通過
+- [x] 3.1 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rls.test.ts`：`app_tenant` 未綁租戶查 4 張新表 count = 0；綁 A 寫 `tenantId` 為 B 的列被擋；以 A 的 `tenantId` 參照 B 的 `channelId`／`ruleId`／`commentAuthorId` 外鍵錯誤；`(channelId, commentId)` 並行兩次只有一筆；去重部分唯一索引只在 `SENDING`／`SENT` 生效
+- [x] 3.2 實作：schema（design「資料模型」）；migration `…_add_comment_reply_tables`（含部分索引、ENABLE＋FORCE RLS、`tenant_isolation`、明確 GRANT `app_tenant`）、`…_conversation_comment_origin`；`scripts/check-tenant-scoping.mjs` 的 `TENANT_MODELS` 加 4 個 model；`pnpm db:generate`
+- [x] 3.3 確認 `platform-table-grants.test.ts`、`rls-isolation.test.ts` 通過
 
 ## 4. 收件
 
