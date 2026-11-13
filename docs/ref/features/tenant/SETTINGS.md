@@ -69,6 +69,7 @@
 
 - 渠道的 `botConfig.offlineGreeting` 有值時，優先用它，而不是營業時間設定的訊息。
 - 同一個聯絡人 30 分鐘內只回一次。這個去重記錄存在 API 行程的記憶體，API 重新啟動或有多個行程時會各自計算。
+- 加好友、封鎖、群組加入離開、收回訊息等系統事件（`contentType` 是 `follow`、`unfollow`、`join`、`leave`、`memberJoined`、`memberLeft`、`unsend`、`videoPlayComplete`、`accountLink`、`beacon`）不送自動回覆（#362）。
 
 營業時間只影響這則自動回覆。機器人、自動化與 SLA 的計時都不看營業時間。
 
