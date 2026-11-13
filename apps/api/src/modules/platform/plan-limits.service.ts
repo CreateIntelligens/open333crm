@@ -13,7 +13,21 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 /** 查當月加購量只需要 planChangeRequest：租戶交易（ctx.tx）、app_admin 連線都可以傳入 */
 type TopupExecutor = Pick<Prisma.TransactionClient, 'planChangeRequest'>;
 
-type LimitKey = 'maxAgents' | 'maxTags' | 'monthlyTokens' | 'maxChannels';
+/**
+ * 方案與租戶覆寫可設定的數值上限鍵。方案沒有某個鍵＝無上限（null）。
+ * maxCommentReplyRules（啟用中的留言私訊規則數）、monthlyCommentReplies（台灣月私訊數）見
+ * add-comment-keyword-private-reply design D23 與「上限檢查點」。
+ */
+export const LIMIT_KEYS = [
+  'maxAgents',
+  'maxTags',
+  'monthlyTokens',
+  'maxChannels',
+  'maxCommentReplyRules',
+  'monthlyCommentReplies',
+] as const;
+
+export type LimitKey = (typeof LIMIT_KEYS)[number];
 
 /**
  * @description 給定已載入的 tenant（含 plan）解析有效上限，避免重複查詢。

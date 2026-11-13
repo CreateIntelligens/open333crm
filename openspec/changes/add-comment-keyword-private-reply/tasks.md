@@ -31,6 +31,7 @@
 ## 3. 資料庫與 RLS
 
 - [x] 3.1 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rls.test.ts`：`app_tenant` 未綁租戶查 4 張新表 count = 0；綁 A 寫 `tenantId` 為 B 的列被擋；以 A 的 `tenantId` 參照 B 的 `channelId`／`ruleId`／`commentAuthorId` 外鍵錯誤；`(channelId, commentId)` 並行兩次只有一筆；去重部分唯一索引只在 `SENDING`／`SENT` 生效
+  - 突變驗證（2026-11-13，直接改測試庫後還原）：dedupe 部分索引改成 `PENDING`／`SENT` → 兩個 dedupe 案例失敗；規則外鍵改單欄 → 「參照 B 的 ruleId」失敗；收回 `comment_reply_usages` 的 GRANT＋`comment_authors` 關 FORCE → 資料表設定與未綁租戶案例失敗；拿掉 `(channelId, commentId)` 唯一 → 並行案例失敗；`comment_reply_rules` policy 改 `true` → 3 個 RLS 案例失敗
 - [x] 3.2 實作：schema（design「資料模型」）；migration `…_add_comment_reply_tables`（含部分索引、ENABLE＋FORCE RLS、`tenant_isolation`、明確 GRANT `app_tenant`）、`…_conversation_comment_origin`；`scripts/check-tenant-scoping.mjs` 的 `TENANT_MODELS` 加 4 個 model；`pnpm db:generate`
 - [x] 3.3 確認 `platform-table-grants.test.ts`、`rls-isolation.test.ts` 通過
 
@@ -81,13 +82,16 @@
 
 - [ ] 9.1 測試 `apps/api/tests/feature/modules/platform/platform-comment-reply-settings.test.ts`：「寫入合法的能力開關」「寫入不合法的值」；5 個鍵各一組合法與不合法值
 - [ ] 9.2 測試 `apps/api/tests/feature/modules/platform/platform-comment-reply-health.test.ts`：「健康表只列開啟接收的渠道」「非平台身分」；24 小時統計與佇列數量
-- [ ] 9.3 測試 `apps/api/tests/feature/modules/platform/comment-reply-plan-feature.test.ts`：「部署後既有方案都不含」；`/platform/registry` 回傳 `comment_reply` 與兩個權限點；平台在方案勾選後權限天花板放行（快取失效）
-- [ ] 9.4 測試 `apps/api/tests/unit/modules/platform/plan-limits.test.ts`（擴充）：兩個新上限鍵依「有效上限解析」解析（覆寫優先、null 無上限）
+- [x] 9.3 測試 `apps/api/tests/feature/modules/platform/comment-reply-plan-feature.test.ts`：「部署後既有方案都不含」；`/platform/registry` 回傳 `comment_reply` 與兩個權限點；平台在方案勾選後權限天花板放行（快取失效）
+  - 突變驗證：`updatePlan` 拿掉 `invalidatePlanPermissions` → 「勾選後天花板放行」失敗；seed 的 light 方案加 `comment_reply` → 「部署後既有方案都不含」失敗
+- [x] 9.4 測試 `apps/api/tests/unit/modules/platform/plan-limits.test.ts`（擴充）：兩個新上限鍵依「有效上限解析」解析（覆寫優先、null 無上限）
+  - `LimitKey` 改由匯出的 `LIMIT_KEYS` 推導；解析邏輯本來就是泛型，所以除了「上限鍵清單」外的案例寫好就通過（對照既有的覆寫優先、null 無上限突變）
 - [ ] 9.5 既有 `apps/api/tests/unit/modules/queue-monitoring/monitored-queues.test.ts` 加入 `comment-reply` 後先紅再綠；測試 `apps/api/tests/feature/modules/queue-monitoring/comment-reply-queue-list.test.ts`：「列出留言自動私訊佇列」
 - [ ] 9.6 測試 `apps/api/tests/feature/modules/role/reconcile-comment-reply-permissions.test.ts`：跑 reconcile 腳本後既有租戶的 ADMIN、SUPERVISOR system role 有 view＋manage，AGENT 有 view（依 Open Questions 2 定案）
 - [ ] 9.7 元件測試 `apps/web/tests/unit/components/admin/plan-limit-keys.test.tsx`：「設定上限並讀回」（兩個上限欄位，留空送 null）
 - [ ] 9.8 元件測試 `apps/web/tests/unit/components/admin/comment-reply-platform-settings.test.tsx`：「從頁面存設定」；緊急停止開關、限速與保存天數的範圍錯誤訊息；健康表渲染
 - [ ] 9.9 實作：`packages/core/src/rbac/features.ts` 加 `comment_reply`（不寫方案資料 migration，design D23）；`plan-limits.service.ts` 的 `LimitKey`；`/admin/plans` 的 `LIMIT_KEYS`；`platform.routes.ts` 的 5 個鍵型別驗證與 `comment-reply-platform-settings.ts`（解析函式，租戶端共用）；`GET /platform/comment-reply/health`（加進 `check-prisma-admin-usage.mjs` 白名單）；`/admin/comment-reply` 頁與平台側欄入口
+  - 部分完成（wip/cr-db）：`features.ts` 的 `comment_reply`、`LimitKey`／`LIMIT_KEYS`、權限點 `comment_reply.view`／`comment_reply.manage` 與預設角色；`/admin/plans` 的 `LIMIT_KEYS`、5 個平台設定鍵、健康 API、平台頁尚未做
 
 ## 10. 維運排程
 
