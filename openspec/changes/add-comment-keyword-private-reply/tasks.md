@@ -18,15 +18,15 @@
 
 ## 2. 比對與規則的純函式
 
-- [ ] 2.1 重構前先跑 `packages/automation/tests/unit/keyword-match.test.ts` 當基準；補「關鍵字回覆的 `＋１` 不命中 `+1`」案例（關鍵字回覆行為不變）
-- [ ] 2.2 測試 `packages/automation/tests/unit/keyword-match-normalize.test.ts`：「全形半形與大小寫」「全部關鍵字才命中」「短關鍵字包含比對」「只有貼圖的留言」
-- [ ] 2.3 實作：抽出 `matchKeywords(keywords, matchMode, text, { normalize })`；`matchKeywordTrigger()` 改呼叫它（`lowercase`），留言用 `nfkc`
-- [ ] 2.4 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply-match.test.ts`：「非指定貼文的留言」「兩條規則都命中」（純函式層）、停用與已刪除規則不命中、別的渠道的規則不命中、規則建立後才發布的貼文命中
-- [ ] 2.5 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply-expiry.test.ts`：「7 天前的留言」「安全邊際內」「6 天前的留言」「排隊到過期」（`now` 注入；邊際值以常數斷言）
-- [ ] 2.6 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply-content.test.ts`：「素材含留言者名稱與變數」「同一則留言重算選到同一則文字」
-- [ ] 2.7 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply.schemas.test.ts`：「關鍵字正規化後重複」「指定貼文卻沒有貼文」「開啟公開回覆但沒有文字」「沒帶公開回覆」（正反成對：合法值 parse 後值不變；`publishedAt` 用前端送的格式）
-- [ ] 2.8 測試 `packages/shared/tests/unit/comment-reply-codes.test.ts`：每個狀態、原因、警示代碼都有中文標籤
-- [ ] 2.9 實作：`comment-reply-match.ts`、`comment-reply-content.ts`、`comment-reply.schemas.ts`、`comment-reply.types.ts`、`packages/shared/src/comment-reply.ts`（design D8）
+- [x] 2.1 重構前先跑 `packages/automation/tests/unit/keyword-match.test.ts` 當基準；補「關鍵字回覆的 `＋１` 不命中 `+1`」案例（關鍵字回覆行為不變）
+- [x] 2.2 測試 `packages/automation/tests/unit/keyword-match-normalize.test.ts`：「全形半形與大小寫」「全部關鍵字才命中」「短關鍵字包含比對」「只有貼圖的留言」
+- [x] 2.3 實作：抽出 `matchKeywords(keywords, matchMode, text, { normalize })`；`matchKeywordTrigger()` 改呼叫它（`lowercase`），留言用 `nfkc`
+- [x] 2.4 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply-match.test.ts`：「非指定貼文的留言」「兩條規則都命中」（純函式層）、停用與已刪除規則不命中、別的渠道的規則不命中、規則建立後才發布的貼文命中
+- [x] 2.5 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply-expiry.test.ts`：「7 天前的留言」「安全邊際內」「6 天前的留言」「排隊到過期」（`now` 注入；邊際值以常數斷言）
+- [x] 2.6 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply-content.test.ts`：「素材含留言者名稱與變數」「同一則留言重算選到同一則文字」
+- [x] 2.7 測試 `apps/api/tests/unit/modules/comment-reply/comment-reply.schemas.test.ts`：「關鍵字正規化後重複」「指定貼文卻沒有貼文」「開啟公開回覆但沒有文字」「沒帶公開回覆」（正反成對：合法值 parse 後值不變；`publishedAt` 用前端送的格式）
+- [x] 2.8 測試 `packages/shared/tests/unit/comment-reply-codes.test.ts`：每個狀態、原因、警示代碼都有中文標籤
+- [x] 2.9 實作：`comment-reply-match.ts`、`comment-reply-content.ts`、`comment-reply.schemas.ts`、`comment-reply.types.ts`、`packages/shared/src/comment-reply.ts`（design D8）；7 天期限另放 `comment-reply-expiry.ts`
 
 ## 3. 資料庫與 RLS
 
@@ -115,7 +115,7 @@
 - [x] 12.1 `postMessage()` 把 `recipient: { id }` 改成 `{ comment_id }` 或拿掉 `messaging_type`：「Direct message unchanged」失敗（2026-11-13 實測：main 的 body 本來就沒有 `messaging_type`，改以「多加 `messaging_type`」突變；兩種突變都讓 2 個測試失敗）
 - [ ] 12.2 泛型分派忽略 `accountId`：`webhook-account-routing.test.ts` 與「回呼網址與粉專屬於不同租戶」失敗（前半 2026-11-13 完成：`routeWebhookMessages` 忽略 accountId → 14 個測試 11 個失敗；`routePlatformMessages` 的同類突變現有測試抓不到（都是單一粉專 payload），留給「回呼網址與粉專屬於不同租戶」）
 - [ ] 12.3 讓留言建立的聯絡人第一次回覆也送招呼語：「留言私訊後顧客第一次回覆」「留言建立的聯絡人自己傳私訊」失敗
-- [ ] 12.4 `matchKeywordTrigger()` 也改成 NFKC：2.1 補的案例失敗
+- [x] 12.4 `matchKeywordTrigger()` 也改成 NFKC：2.1 補的案例失敗（2026-11-13 已驗證：改成 `{ normalize: 'nfkc' }` 後「關鍵字回覆的全形「＋１」不命中半形「+1」」失敗，還原後通過）
 - [ ] 12.5 拿掉外掛「排除自己帳號」：「粉專自己的留言」「Comment by the page itself」「自己帳號的留言」失敗（外掛部分 2026-11-13 完成：「Comment by the page itself」「自己帳號的留言」失敗；「粉專自己的留言」待第 4 節）
 - [ ] 12.6 拿掉 `ON CONFLICT DO NOTHING`（改一般 INSERT 吞錯）：「同一個請求重送三次」「兩個入口並行」失敗（斷言 Meta 呼叫次數）
 - [ ] 12.7 認領不檢查 `status='PENDING'`：「同一筆紀錄的工作執行兩次」失敗
