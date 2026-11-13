@@ -41,8 +41,10 @@
   - 2026-11-13：經真入口（processPlatformMetaWebhook／processWebhookEvent，部分經 Fastify inject 打真的 webhook.routes）＋真外掛＋fake-meta-graph。修正前（留言分支拿掉）29 個測試 17 個失敗。另加「平台關閉 FB 私訊能力時不收件」
 - [x] 4.2 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-intake.test.ts`：「手動輸入的貼文 ID 命中 webhook 留言」「從最近貼文挑選的 ID 命中 webhook 留言」「刪除後不再命中」「兩條規則都命中」「調整順序後套用新的第一條」
   - 2026-11-13：規則刪除、調整順序以直接改資料表＋`bumpCommentReplyRulesVersion()` 模擬後台路由（第 7 節）的異動，路由合併後可改打真路由
+  - 2026-11-14（整合）：另加「試算與收件經真路由與真入口」三個測試：規則經真的 `/rules` 路由建立、排序、刪除、停用，留言經 webhook 收件（驗證兩組共用 `cr:rules-ver:<channelId>`）；突變：`bumpCommentReplyRulesVersion` 改遞增別的鍵 → 3 個測試失敗
 - [x] 4.3 實作：`comment-reply-intake.service.ts`、`comment-reply-entitlement.ts`（方案 feature、能力開關、緊急停止，讀平台設定快取 60 秒）、`comment-reply-intake.flow.ts`（`inTenant`、`ON CONFLICT DO NOTHING`、`enqueueJob`）；規則快取與 Redis 版本號；`webhook.service.ts` 加留言分支（私訊之後、丟錯只記 `comment_intake_failed`）；`cr:last-event:<channelId>`
   - 2026-11-13：平台設定讀取沿用後台 API 組（wip/cr-routes）的 `comment-reply-platform-settings.ts`（`readCommentReplyPlatformSettings`，同一份檔案內容）；方案檢查用 `comment-reply-plan.ts` 的 `isCommentReplyPlanEnabled()`；規則來源 `listActiveRulesForChannel()`（與 cr-routes 同名同簽章，合併時收成一份）
+  - 2026-11-14（整合）：`listActiveRulesForChannel()` 只留 `comment-reply-rule.service.ts`；規則版本號只留 `comment-reply-rule-cache.ts`；送出工作的排入收成 `comment-reply-enqueue.ts` 的 `enqueueCommentReplyDelivery()`（收件、重試、補回共用）
 - [x] 4.4 測試 `apps/api/tests/feature/modules/webhook/webhook-shutdown-drain.test.ts`：關閉 app 時進行中的留言背景處理仍完成（design D3）；實作 in-flight 追蹤與 `onClose` 等待
   - 2026-11-13：`webhook-inflight.ts`；突變：拿掉 onClose 等待 → 測試失敗
 
@@ -59,7 +61,7 @@
 - [x] 5.6 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-queue-wiring.test.ts`：走真的 outbox relay＋BullMQ＋Redis，一則留言到 `SENT`（佇列名、job 名、job data 接線）
 - [x] 5.7 測試 `apps/api/tests/feature/modules/queue-monitoring/comment-reply-failed-job.test.ts`：「資料庫錯誤重試用盡」；業務失敗（551）job 正常完成、沒有 `queue-failed` 告警
 - [x] 5.8 實作：`comment-reply-delivery.service.ts`（認領、去重、額度、終態、還名額）、`comment-reply-delivery.flow.ts`（design「資料流」步驟 0～6、D9～D14）、`comment-reply-rate-gate.ts`（Redis Lua token bucket）、`comment-reply.worker.ts`；`apps/api/src/index.ts` 註冊 Worker（concurrency 5）；`COMMENT_REPLY_QUEUE` 加進 `API_QUEUES`
-  - 2026-11-13：`COMMENT_REPLY_QUEUE` 加進 `API_QUEUES` 由後台 API 組（wip/cr-routes）完成；本分支的 `monitored-queues.test.ts`「API 行程的每個 Worker 都在監控清單內」要等兩邊合併才會過
+  - 2026-11-13：`COMMENT_REPLY_QUEUE` 加進 `API_QUEUES` 由後台 API 組（wip/cr-routes）完成；本分支的 `monitored-queues.test.ts`「API 行程的每個 Worker 都在監控清單內」要等兩邊合併才會過（2026-11-14 合併後通過）
 
 ## 6. 聯絡人與收件匣
 
@@ -75,9 +77,9 @@
 
 ## 7. 後台 API
 
-- [x] 7.1 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rule-routes.test.ts`：「建立 FB 文字規則並讀回」「選 LINE 渠道」「沒有 manage 權限」「IG 規則選素材」「選收據範本素材」「其他租戶的素材」「文字含顧客專屬券連結」「沒有行銷權限也能選素材」「IG 渠道沒有素材選項」「修改時帶渠道」「無法辨識的貼文參照」「平台未開放公開回覆」「排序清單少一條」「試算與收件結果相同」「只有檢視權限試算」「分店帳號只看到自己渠道的規則」「讀看不到的渠道的規則」「唯讀層級修改規則」「其他租戶的規則」「IG 私訊尚未開放」「方案不含時路由被擋」「平台勾選後可用」；渠道外掛不支援公開回覆時 400；排序 ids 重複 400（2026-11-13：32 個測試；「試算與收件結果相同」目前比對試算與收件共用的 `listActiveRulesForChannel()`＋`matchCommentRule()` 結果，收件 flow 合併後應再補一次經 webhook 的比對；「方案不含時路由被擋」另在 `requirePermission` 加 `details.reason: PLAN_FEATURE_NOT_INCLUDED`）
+- [x] 7.1 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rule-routes.test.ts`：「建立 FB 文字規則並讀回」「選 LINE 渠道」「沒有 manage 權限」「IG 規則選素材」「選收據範本素材」「其他租戶的素材」「文字含顧客專屬券連結」「沒有行銷權限也能選素材」「IG 渠道沒有素材選項」「修改時帶渠道」「無法辨識的貼文參照」「平台未開放公開回覆」「排序清單少一條」「試算與收件結果相同」「只有檢視權限試算」「分店帳號只看到自己渠道的規則」「讀看不到的渠道的規則」「唯讀層級修改規則」「其他租戶的規則」「IG 私訊尚未開放」「方案不含時路由被擋」「平台勾選後可用」；渠道外掛不支援公開回覆時 400；排序 ids 重複 400（2026-11-13：32 個測試；「試算與收件結果相同」目前比對試算與收件共用的 `listActiveRulesForChannel()`＋`matchCommentRule()` 結果，收件 flow 合併後應再補一次經 webhook 的比對（2026-11-14 已補：`comment-reply-intake.test.ts`「試算與收件結果相同」經真路由與真 webhook 入口）；「方案不含時路由被擋」另在 `requirePermission` 加 `details.reason: PLAN_FEATURE_NOT_INCLUDED`）
 - [x] 7.2 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-rule-limits.test.ts`：「建立第三條啟用規則」「以停用狀態建立」「停用一條後再啟用」「方案沒有設定上限」「降級後超過上限」；`PATCH /rules/:id` 把 isActive 改 true 也被擋；已刪除規則不計入；覆寫值優先
-- [x] 7.3 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-log-routes.test.ts`：「分店帳號只看到自己渠道的紀錄」「讀看不到的渠道的紀錄」「沒有檢視權限」「沒有收件匣權限」「重試可重試的失敗」「重試不可重試的失敗」「重試已送出的紀錄」「重試已過期的留言」「重試觸發紀錄時寫稽核」；`q` 搜尋、cursor 分頁穩定、`countOnly`（2026-11-13：「重試可重試的失敗」斷言紀錄改回 PENDING 並以 `deliver` 排入 `comment-reply`，「工作執行成功後是 SENT」待送出消費者）
+- [x] 7.3 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-log-routes.test.ts`：「分店帳號只看到自己渠道的紀錄」「讀看不到的渠道的紀錄」「沒有檢視權限」「沒有收件匣權限」「重試可重試的失敗」「重試不可重試的失敗」「重試已送出的紀錄」「重試已過期的留言」「重試觸發紀錄時寫稽核」；`q` 搜尋、cursor 分頁穩定、`countOnly`（2026-11-13：「重試可重試的失敗」斷言紀錄改回 PENDING 並以 `deliver` 排入 `comment-reply`，「工作執行成功後是 SENT」待送出消費者；2026-11-14 已補：`comment-reply-quota.test.ts`「重試可重試的失敗」經真的重試路由排入、真 runner 執行到 SENT，「升級後重試被上限略過的紀錄」也改打真路由；突變：`retryLogFlow` 拿掉排入 → 2 個測試失敗）
 - [x] 7.4 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-channel-routes.test.ts`：「用量與上限」「Meta 回應很慢」「自備 App 的渠道」「只列看得到的渠道」「FB 開啟留言接收」「IG 開啟留言接收」「自備 App 的渠道用自己的密鑰」「缺渠道修改權限」「Meta 回權限錯誤」「Meta 回其他錯誤」「關閉後只剩私訊欄位」「權杖失效」「平台未開放貼文挑選」「解析 FB 貼文網址」「任意外部網址」「沒有設定時的預設」「關閉測試階段」
 - [x] 7.5 測試 `apps/api/tests/feature/modules/meta-connect/meta-connect-comment-fields.test.ts`：「已開啟接收的粉專重新連結」「未開啟接收的粉專重新連結」「方案不含功能時新連結」「站內路徑」「外部網址」；方案含功能且 `fbPrivateReply` 開啟時新連結訂 `feed`；欄位清單另以一份字面清單比對（測試註解寫明理由）（2026-11-13：returnTo 由 callback 帶給渠道頁 `?metaConnect=…&returnTo=…`，前端渠道頁連結完成後導回的部分尚未實作）
 - [x] 7.6 測試 `apps/api/tests/feature/modules/tenant-audit/comment-reply-audit.test.ts`：「建立留言規則時寫稽核」；修改、刪除、啟用切換、排序、開關留言接收各寫一筆，payload 不含留言內容
@@ -98,7 +100,7 @@
   - 突變驗證：`updatePlan` 拿掉 `invalidatePlanPermissions` → 「勾選後天花板放行」失敗；seed 的 light 方案加 `comment_reply` → 「部署後既有方案都不含」失敗
 - [x] 9.4 測試 `apps/api/tests/unit/modules/platform/plan-limits.test.ts`（擴充）：兩個新上限鍵依「有效上限解析」解析（覆寫優先、null 無上限）
   - `LimitKey` 改由匯出的 `LIMIT_KEYS` 推導；解析邏輯本來就是泛型，所以除了「上限鍵清單」外的案例寫好就通過（對照既有的覆寫優先、null 無上限突變）
-- [ ] 9.5 既有 `apps/api/tests/unit/modules/queue-monitoring/monitored-queues.test.ts` 加入 `comment-reply` 後先紅再綠；測試 `apps/api/tests/feature/modules/queue-monitoring/comment-reply-queue-list.test.ts`：「列出留言自動私訊佇列」（2026-11-13：`API_QUEUES` 已加、新測試紅轉綠；「API 行程的每個 Worker 都在監控清單內」要等送出消費者以 `[COMMENT_REPLY_QUEUE]` 註冊進 `startQueueWorkers()` 才通過，所以未勾）
+- [x] 9.5 既有 `apps/api/tests/unit/modules/queue-monitoring/monitored-queues.test.ts` 加入 `comment-reply` 後先紅再綠；測試 `apps/api/tests/feature/modules/queue-monitoring/comment-reply-queue-list.test.ts`：「列出留言自動私訊佇列」（2026-11-13：`API_QUEUES` 已加、新測試紅轉綠；「API 行程的每個 Worker 都在監控清單內」要等送出消費者以 `[COMMENT_REPLY_QUEUE]` 註冊進 `startQueueWorkers()` 才通過，所以未勾）（2026-11-14 合併後通過，`index.ts` 以 `[COMMENT_REPLY_QUEUE]` 註冊）
 - [x] 9.6 測試 `apps/api/tests/feature/modules/role/reconcile-comment-reply-permissions.test.ts`：跑 reconcile 腳本後既有租戶的 ADMIN、SUPERVISOR system role 有 view＋manage，AGENT 有 view（依 Open Questions 2 定案）（2026-11-13：腳本從 repo 根目錄解析不到 workspace 套件，測試呼叫腳本所用的 `seedRolesForTenant()` 並核對腳本呼叫它）
 - [x] 9.7 元件測試 `apps/web/tests/unit/components/admin/plan-limit-keys.test.tsx`：「設定上限並讀回」（兩個上限欄位，留空送 null）
 - [x] 9.8 元件測試 `apps/web/tests/unit/components/admin/comment-reply-platform-settings.test.tsx`：「從頁面存設定」；緊急停止開關、限速與保存天數的範圍錯誤訊息；健康表渲染
@@ -113,7 +115,7 @@
 - [x] 10.3 測試 `apps/api/tests/unit/modules/channel/meta-token-health.test.ts`（擴充）：「Meta 取消了 feed 訂閱」「查詢時網路錯誤」
 - [x] 10.4 測試 `apps/api/tests/feature/modules/comment-reply/comment-reply-retention.test.ts`：「超過保存天數的紀錄」；每月用量保留 25 個月
 - [x] 10.5 實作：API `job-scheduler` 註冊 `comment-reply-recover`（5 分鐘）、`comment-reply-health`（5 分鐘，含 `lastCommentEventAt` 同步）、`comment-reply-retention`（每小時），皆 `withoutOverlapping`；`meta-token-health` 加訂閱檢查（design D25、D26）；補訂閱腳本 `apps/api/src/scripts/comment-reply-subscriptions.ts`（`--dry-run` 預設，加進白名單）
-  - 2026-11-13：補訂閱腳本的欄位暫以 `SUBSCRIBED_FIELDS`＋`feed`／IG `messages`＋`comments` 組成，7.7 的 `subscribedFieldsFor()` 合併後改用它
+  - 2026-11-13：補訂閱腳本的欄位暫以 `SUBSCRIBED_FIELDS`＋`feed`／IG `messages`＋`comments` 組成，7.7 的 `subscribedFieldsFor()` 合併後改用它（2026-11-14 已改：FB 用 `subscribedFieldsFor()`、IG 用 `IG_BASE_SUBSCRIBED_FIELDS`＋`IG_COMMENT_FIELD`；原本引用不存在的 `SUBSCRIBED_FIELDS` 讓 `pnpm build` 失敗）
 
 ## 11. 前端
 
@@ -126,7 +128,8 @@
 - [x] 11.7 既有 `apps/web/tests/unit/components/settings/role-permission-matrix.test.tsx` 出現「留言自動私訊」群組；`apps/web/tests/unit/app/no-emoji-in-ui.test.ts` 涵蓋新頁面
 - [x] 11.8 實作：`/dashboard/comment-replies`（規則、觸發紀錄分頁）、`/new`、`/[ruleId]`；側欄「行銷與渠道」入口（`comment_reply.view`）；前置條件卡；收件匣標籤與系統訊息連結；共用代碼表的中文標籤
 
-- [ ] 11.9 回歸：MODIFIED 需求既有的 scenario（`channel-plugins`、`first-contact-greeting`、`inbound-contact-resolution`、`contact-management`、`tenant-data-erasure`、`tenant-data-export`、`queue-monitoring`、`tenant-audit-log`）由既有測試涵蓋，改動後全部重跑通過：`inbound-message-processing.test.ts`、`webhook-account-routing.test.ts`、`first-contact-greeting.test.ts`、`line-system-events.test.ts`、`contact-merge-routes.test.ts`、`contact-merge-same-channel.test.ts`、`data-erasure-flow.test.ts`、`data-export-flow.test.ts`、`failed-event.test.ts`、`tenant-audit.test.ts`、`meta-connect.test.ts`、`meta-connect-routes.test.ts`、`automation-keyword-scope.test.ts`
+- [x] 11.9 回歸：MODIFIED 需求既有的 scenario（`channel-plugins`、`first-contact-greeting`、`inbound-contact-resolution`、`contact-management`、`tenant-data-erasure`、`tenant-data-export`、`queue-monitoring`、`tenant-audit-log`）由既有測試涵蓋，改動後全部重跑通過：`inbound-message-processing.test.ts`、`webhook-account-routing.test.ts`、`first-contact-greeting.test.ts`、`line-system-events.test.ts`、`contact-merge-routes.test.ts`、`contact-merge-same-channel.test.ts`、`data-erasure-flow.test.ts`、`data-export-flow.test.ts`、`failed-event.test.ts`、`tenant-audit.test.ts`、`meta-connect.test.ts`、`meta-connect-routes.test.ts`、`automation-keyword-scope.test.ts`
+  - 2026-11-14（整合）：全部在 `pnpm test`（api 1930、workers 177 通過）與 `pnpm test:feature`（api 185 檔、1835 個測試通過，獨立資料庫 `open333crm_test_crmerge`）中重跑通過
 
 ## 12. 突變驗證（寫好就通過或需確認測到那一道檢查）
 
@@ -149,7 +152,7 @@
 - [x] 12.15 `attachCommentOrigin` 的條件更新不檢查 `conversationId IS NULL`：「顧客再傳第二則」「兩則回覆並行」失敗
 - [x] 12.16 `resolvePostUrl` 直接 fetch 使用者網址：「任意外部網址」失敗（2026-11-13：FB 外掛 dist 的 `resolvePostUrl` 開頭加 `fetch(input)` →「任意外部網址」與「解析 FB 貼文網址」失敗（白名單外 host 違規））
 - [x] 12.17 限流延後改成丟錯讓 BullMQ 重試：「本小時額度用完」（重試次數沒有增加）失敗
-- [ ] 12.18 403 斷言 `details.requiredPermission`／`details.limitKey`／`details.capability`，確認不是另一道守門剛好給 403（2026-11-13 第 7、9 節部分：POST /rules 的守門改成 view → 被 CHANNEL_ACCESS_DENIED 擋下，「沒有 manage 權限」因斷言 `requiredPermission` 失敗；拿掉 subscribe-comments 的 `channel.update` → 「缺渠道修改權限」失敗；上限與能力開關的 403 都斷言 `limitKey`／`capability`。收件、送出相關路由待第 4、5 節）
+- [x] 12.18 403 斷言 `details.requiredPermission`／`details.limitKey`／`details.capability`，確認不是另一道守門剛好給 403（2026-11-13 第 7、9 節部分：POST /rules 的守門改成 view → 被 CHANNEL_ACCESS_DENIED 擋下，「沒有 manage 權限」因斷言 `requiredPermission` 失敗；拿掉 subscribe-comments 的 `channel.update` → 「缺渠道修改權限」失敗；上限與能力開關的 403 都斷言 `limitKey`／`capability`。收件、送出相關路由待第 4、5 節）
   - 2026-11-13：外掛 dist 的 `fromId === accountId` 改 false →「粉專自己的留言」失敗
   - 2026-11-13：收件快路徑檢查拿掉＋`ON CONFLICT DO NOTHING` 改 `DO UPDATE`（每次都回傳 id）→「同一個請求重送三次」「兩個入口並行」失敗（斷言只排 1 個 job、Meta 1 次）
   - 2026-11-13：認領的條件更新拿掉 `status='PENDING'` →「同一筆紀錄的工作執行兩次」失敗。原本兩次執行依序跑時，第二次在讀紀錄時就被擋（同一結果的第二道檢查），改成每個交易提交後延遲 100ms 讓兩次都先讀到 PENDING
@@ -159,13 +162,14 @@
   - 2026-11-13：`checkTenantEntitlement` 的方案檢查拿掉 →「方案不含留言自動私訊」（收件）「排隊期間方案移除功能」（送出）失敗
   - 2026-11-13：條件更新拿掉 `conversationId IS NULL` →「顧客再傳第二則」「兩則回覆並行」仍通過（查詢條件與依序處理是同一結果的另一道檢查）；新增「兩個關聯同時進行時只關聯一次」（交易內延遲讓兩個關聯都讀到未關聯）→ 失敗
   - 2026-11-13：限流延後改成丟錯 →「本小時額度用完」（重試次數增加）失敗
+  - 2026-11-14（收件、送出相關路由）：收件與送出是背景工作，沒有 403；與它們相關的路由是重試。新增「只有檢視權限重試」斷言 `details.requiredPermission` 是 `comment_reply.manage`，突變：重試路由守門改成 view → 失敗。唯讀層級重試斷言 `CHANNEL_ACCESS_DENIED`（既有）
 
 ## 13. 文件
 
-- [ ] 13.1 `docs/ref/modules/CHANNEL-PLUGINS.md`（留言擴充、兩處入站聯絡人建立邏輯需同步）、`docs/ref/DATABASE-ERD.md`、`docs/16_DB_SCHEMA.md`（新表與索引理由）、`docs/ref/modules/PERMISSIONS.md`
-- [ ] 13.2 `docs/ref/features/platform/`：5 個平台設定鍵、`/admin/comment-reply`、runbook（留言沒觸發、緊急停止、webhook 被 Meta 停用、大量 PENDING）
-- [ ] 13.3 新增 `.claude/skills/feature-comment-reply/`（或併入 `feature-channels`）功能顧問說明；操作手冊章節於上線後補（截圖需真實畫面）
-- [ ] 13.4 若修到 AUDIT 項目（例如平台設定一般鍵無型別檢查 TRIAL-02 的部分修正），更新 `docs/ref/system/AUDIT.md` 與 `AUDIT-REVIEWS.md`
+- [x] 13.1 `docs/ref/modules/CHANNEL-PLUGINS.md`（留言擴充、兩處入站聯絡人建立邏輯需同步）、`docs/ref/DATABASE-ERD.md`、`docs/16_DB_SCHEMA.md`（新表與索引理由）、`docs/ref/modules/PERMISSIONS.md`
+- [x] 13.2 `docs/ref/features/platform/`：5 個平台設定鍵、`/admin/comment-reply`、runbook（留言沒觸發、緊急停止、webhook 被 Meta 停用、大量 PENDING）
+- [x] 13.3 新增 `.claude/skills/feature-comment-reply/`（或併入 `feature-channels`）功能顧問說明；操作手冊章節於上線後補（截圖需真實畫面）（2026-11-14：`.claude/skills/feature-comment-reply/SKILL.md`，`feature-map.json` 加 `comment-reply` 領域；平台文件 `docs/ref/features/platform/COMMENT-REPLY.md`）
+- [x] 13.4 若修到 AUDIT 項目（例如平台設定一般鍵無型別檢查 TRIAL-02 的部分修正），更新 `docs/ref/system/AUDIT.md` 與 `AUDIT-REVIEWS.md`（2026-11-14：TRIAL-02 補新鍵已有型別檢查，狀態不變；AUDIT-REVIEWS 加紀錄）
 
 ## 14. Meta 與 UAT 外部動作（每一步都需使用者同意；UAT 就是正式環境）
 
@@ -182,12 +186,12 @@
 
 ## 15. 完成定義
 
-- [ ] 15.1 `pnpm test`
-- [ ] 15.2 `pnpm test:feature`（本 change 改了資料庫、Redis、RLS）
-- [ ] 15.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict` 沒有本 change 新增的違規
-- [ ] 15.4 `node scripts/check-workspace-esm.mjs --strict`
-- [ ] 15.5 `pnpm build`
-- [ ] 15.6 `CHANGELOG.md` 在 `## [YYYY-MM-DD]` 區段寫 `Added` 條目（不可用 `[Unreleased]`）
-- [ ] 15.7 每個 scenario 至少一個測試、測試名稱＝scenario 名稱；`planning/05-qa.md` §3.3 整合缺口表：每個 flow 單元測試的分支都有 feature 情境走過同一個入口
-- [ ] 15.8 `node scripts/validate-openspec.mjs add-comment-keyword-private-reply` 與 `node scripts/validate-openspec.mjs --specs`
+- [x] 15.1 `pnpm test`（2026-11-14：17 個套件全部通過；api 1930、web 1091、workers 177）
+- [x] 15.2 `pnpm test:feature`（本 change 改了資料庫、Redis、RLS）（2026-11-14：`TEST_DATABASE_NAME=open333crm_test_crmerge TEST_REDIS_URL=redis://localhost:6380/4`，185 檔、1835 個測試通過）
+- [x] 15.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict` 沒有本 change 新增的違規（2026-11-14：三支都 exit 0；tenant-scoping 的 LEAK_SUSPECT 0，comment-reply 有 6 筆 NEEDS_REVIEW，皆為已以租戶條件讀出後依主鍵更新，或 where 由變數組成且含 tenantId）
+- [x] 15.4 `node scripts/check-workspace-esm.mjs --strict`（2026-11-14：exit 0）
+- [x] 15.5 `pnpm build`（2026-11-14：exit 0；補訂閱腳本引用不存在的 `SUBSCRIBED_FIELDS` 已修正）
+- [x] 15.6 `CHANGELOG.md` 在 `## [YYYY-MM-DD]` 區段寫 `Added` 條目（不可用 `[Unreleased]`）（2026-11-14：`## [2026-11-14]` 的 Added 與 Changed）
+- [x] 15.7 每個 scenario 至少一個測試、測試名稱＝scenario 名稱；`planning/05-qa.md` §3.3 整合缺口表：每個 flow 單元測試的分支都有 feature 情境走過同一個入口（2026-11-14：本 change 新增的 scenario 都有同名測試，新補「留言收件建立聯絡人時不發布」；另 16 個 scenario 是 MODIFIED 需求帶進來的既有 scenario（`channel-plugins` 2、`contact-management` 8、`first-contact-greeting` 4、`inbound-contact-resolution` 2），由 11.9 的既有測試以原本的名稱涵蓋，未改名。§3.3 缺口表：補「排隊期間渠道停用」「排隊期間租戶停用」「第一次送出就回已私訊過」「Meta 回超過可私訊的期限」，五列都有 feature 情境走過同一個入口）
+- [x] 15.8 `node scripts/validate-openspec.mjs add-comment-keyword-private-reply` 與 `node scripts/validate-openspec.mjs --specs`（2026-11-14：兩者都通過；`--specs` 123 項）
 - [ ] 15.9 確認 0.1、0.2 的相依 change 已歸檔並核對 MODIFIED 內容後，以 `pnpm exec openspec archive add-comment-keyword-private-reply` 歸檔；新主規格的 `## Purpose` 換掉「TBD」
