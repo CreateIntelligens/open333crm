@@ -463,3 +463,47 @@ test('表單開著時失去權限：送出時不帶先前選的券與排程時�
   assert.equal(payload.couponId, undefined, '不帶看不到的券');
   assert.equal(payload.scheduledAt, undefined, '不帶停用的排程時間');
 });
+
+// ─── 一般群發的結果與附券名額確認（change fix-plain-broadcast-send-362） ─────────────
+
+test('一般群發的結果按鈕：已完成的一般群發也有「發送結果」按鈕', () => {
+  data.broadcasts = [
+    { id: 'b-p', name: '週年慶', status: 'completed', targetType: 'all', totalCount: 2, successCount: 1, failedCount: 1 },
+    { id: 'b-d', name: '草稿', status: 'draft', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
+  ];
+  render(<MarketingPage />);
+  const buttons = screen.getAllByRole('button', { name: '查看發送結果' });
+  assert.equal(buttons.length, 1, '只有已發送的那一則有結果按鈕');
+});
+
+/** 附上優惠券；預估的回應由 preview 控制 */
+async function attachCoupon(preview: () => Promise<unknown>) {
+  api.get.mockImplementation(async (url: string) =>
+    String(url).startsWith('/coupons') ? { data: { data: [{ id: 'cp-1', name: '秋季九折' }] } } : { data: { data: TAGS } });
+  api.post.mockImplementation(async (url: string) =>
+    url === '/marketing/broadcasts/audience-preview' ? preview() : { data: { data: {} } });
+  const { dialog } = openCreateDialog();
+  await within(dialog).findByRole('option', { name: '秋季九折' });
+  fireEvent.change(within(dialog).getByLabelText('附上優惠券（選填）'), { target: { value: 'cp-1' } });
+  return dialog;
+}
+
+test('名額預估還沒回應：附券時建立按鈕停用', async () => {
+  const dialog = await attachCoupon(() => new Promise(() => {}));
+  await waitFor(() => assert.ok(api.post.mock.calls.some(([u, p]) => u === '/marketing/broadcasts/audience-preview' && p?.couponId === 'cp-1')));
+  assert.equal(createButton(dialog).disabled, true);
+});
+
+test('名額預估失敗：建立按鈕停用，顯示原因與重試，重試成功後可以建立', async () => {
+  let fail = true;
+  const dialog = await attachCoupon(async () => {
+    if (fail) throw { response: { status: 500, data: { error: { message: '無法預估' } } } };
+    return { data: { data: { matched: 2, reachable: 2, messagingWindowHours: null, coupon: { remaining: null, limitReached: 0 } } } };
+  });
+  await within(dialog).findByText(/無法預估/);
+  assert.equal(createButton(dialog).disabled, true);
+  fail = false;
+  fireEvent.click(within(dialog).getByRole('button', { name: '重試' }));
+  await within(dialog).findByText('符合條件 2 人');
+  await waitFor(() => assert.equal(createButton(dialog).disabled, false));
+});

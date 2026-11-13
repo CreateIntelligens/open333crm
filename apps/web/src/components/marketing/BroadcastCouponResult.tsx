@@ -1,8 +1,9 @@
 'use client';
 
 /**
- * 附券廣播的結果（add-coupon-system design D29）：發券張數、依原因分列的跳過與失敗人數，
- * 並列出失敗與跳過的收件人與原因（例如「素材已送達，優惠券訊息送不出」的人要另外處理）。
+ * 廣播的結果。附券廣播（add-coupon-system design D29）：發券張數、依原因分列的跳過與失敗人數；
+ * 一般群發（change fix-plain-broadcast-send-362）：成功、失敗、略過人數。
+ * 兩者都列出失敗與跳過的收件人與原因（例如「素材已送達，優惠券訊息送不出」的人要另外處理）。
  */
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -11,6 +12,7 @@ import { getApiErrorMessage } from '@/lib/api-error';
 import {
   couponBroadcastReasonLabel,
   couponResultLines,
+  plainResultLines,
   type CouponBroadcastSummary,
 } from '@/lib/marketing/coupon-broadcast';
 
@@ -23,6 +25,8 @@ interface RecipientRow {
 
 interface ResultState {
   summary: CouponBroadcastSummary | null;
+  /** 一般群發的人數（廣播列的 successCount、failedCount、skippedCount） */
+  counts: { successCount?: number; failedCount?: number; skippedCount?: number };
   failed: RecipientRow[];
   failedTotal: number;
   skipped: RecipientRow[];
@@ -45,6 +49,7 @@ export function BroadcastCouponResult({ broadcastId }: { broadcastId: string }) 
         if (cancelled) return;
         setState({
           summary: detail.data.data?.couponSummary ?? null,
+          counts: detail.data.data ?? {},
           failed: failed.data.data ?? [],
           failedTotal: failed.data.meta?.total ?? 0,
           skipped: skipped.data.data ?? [],
@@ -68,7 +73,7 @@ export function BroadcastCouponResult({ broadcastId }: { broadcastId: string }) 
     );
   }
 
-  const lines = state.summary ? couponResultLines(state.summary) : [];
+  const lines = state.summary ? couponResultLines(state.summary) : plainResultLines(state.counts);
   return (
     <div className="space-y-4 text-sm">
       <ul className="flex flex-wrap gap-x-4 gap-y-1">
