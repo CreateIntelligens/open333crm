@@ -58,6 +58,9 @@ import lineProfileRoutes from './modules/line/line-profile.routes.js';
 import richMenuRoutes from './modules/line/rich-menu.routes.js';
 import quickReplyPresetRoutes from './modules/line/quick-reply-preset.routes.js';
 import metaConnectRoutes from './modules/meta-connect/meta-connect.routes.js';
+import commentReplyRuleRoutes from './modules/comment-reply/comment-reply-rule.routes.js';
+import commentReplyLogRoutes from './modules/comment-reply/comment-reply-log.routes.js';
+import commentReplyChannelRoutes from './modules/comment-reply/comment-reply-channel.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
 import analyticsRoutes from './modules/analytics/analytics.routes.js';
 import settingsRoutes from './modules/settings/settings.routes.js';
@@ -117,6 +120,9 @@ import { agentVisibilityResolver } from './services/channel-visibility.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { createBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
+import { createCommentReplyJobRunner, createCommentReplyProcessor } from './modules/comment-reply/comment-reply.worker.js';
+import { COMMENT_REPLY_QUEUE } from './modules/comment-reply/comment-reply.types.js';
+import { setupCommentReplySchedulers } from './modules/comment-reply/comment-reply.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
@@ -241,6 +247,10 @@ export async function bootstrap() {
   await app.register(richMenuRoutes, { prefix: '/api/v1/line/rich-menus' });
   await app.register(quickReplyPresetRoutes, { prefix: '/api/v1/line/quick-reply-presets' });
   await app.register(metaConnectRoutes, { prefix: '/api/v1/meta-connect' });
+  // 留言自動私訊（change add-comment-keyword-private-reply）：規則、觸發紀錄、渠道端三個資源
+  await app.register(commentReplyRuleRoutes, { prefix: '/api/v1/comment-replies' });
+  await app.register(commentReplyLogRoutes, { prefix: '/api/v1/comment-replies' });
+  await app.register(commentReplyChannelRoutes, { prefix: '/api/v1/comment-replies' });
   await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await app.register(analyticsRoutes, { prefix: '/api/v1/analytics' });
   await app.register(settingsRoutes, { prefix: '/api/v1/settings' });
@@ -302,6 +312,8 @@ export async function bootstrap() {
         prisma: app.prisma, adminPrisma: app.prismaAdmin, redis: app.redis, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
       })) as JobProcessor,
       [EMAIL_DISPATCH_QUEUE]: createEmailDispatchProcessor() as JobProcessor,
+      // 留言自動私訊（change add-comment-keyword-private-reply D1）：app_tenant 連線、Redis token bucket 限流；concurrency 5（預設）
+      [COMMENT_REPLY_QUEUE]: createCommentReplyProcessor(createCommentReplyJobRunner({ prisma: app.prisma, redis: app.redis })) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
@@ -342,6 +354,8 @@ export async function bootstrap() {
   setupContractReminderScheduler(jobScheduler, app.prismaAdmin);
   setupCouponScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   setupOutboxSchedulers(jobScheduler, app.prismaAdmin);
+  // 留言自動私訊：補回遺失的工作、健康告警、保存期限（跨租戶掃描用 prismaAdmin，寫入逐租戶 inTenant）
+  setupCommentReplySchedulers(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma, redis: app.redis, io: app.io });
   jobScheduler.start();
   app.addHook('onClose', () => jobScheduler.close());
   app.addHook('onClose', () => closeOutboxQueues());

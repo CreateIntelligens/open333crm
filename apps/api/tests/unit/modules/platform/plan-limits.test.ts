@@ -1,7 +1,7 @@
 /** 有效上限解析（主規格 plan-limits-core「有效上限解析」） */
 import assert from 'node:assert/strict';
 import { afterEach, test, vi } from 'vitest';
-import { getEffectiveLimit, resolveEffectiveLimit } from '#src/modules/platform/plan-limits.service.js';
+import { getEffectiveLimit, LIMIT_KEYS, resolveEffectiveLimit } from '#src/modules/platform/plan-limits.service.js';
 
 test('覆寫優先：方案 maxAgents=3、租戶覆寫 5，有效上限是 5', () => {
   const tenant = { limitOverrides: { maxAgents: 5 }, plan: { limits: { maxAgents: 3 } } };
@@ -29,6 +29,40 @@ test('方案沒有設定這個上限：方案的 limits 沒有 maxChannels，結
   const tenant = { limitOverrides: {}, plan: { limits: { maxAgents: 3 } } };
   assert.equal(resolveEffectiveLimit(tenant, 'maxChannels'), null);
 });
+
+// ── 留言自動私訊的上限鍵（add-comment-keyword-private-reply design D23、「上限檢查點」） ──
+
+test('上限鍵清單含留言自動私訊的 maxCommentReplyRules、monthlyCommentReplies', () => {
+  assert.ok(LIMIT_KEYS.includes('maxCommentReplyRules'));
+  assert.ok(LIMIT_KEYS.includes('monthlyCommentReplies'));
+});
+
+for (const key of ['maxCommentReplyRules', 'monthlyCommentReplies'] as const) {
+  test(`${key}：租戶覆寫優先於方案`, () => {
+    const tenant = { limitOverrides: { [key]: 20 }, plan: { limits: { [key]: 10 } } };
+    assert.equal(resolveEffectiveLimit(tenant, key), 20);
+  });
+
+  test(`${key}：沒有覆寫時採用方案的值`, () => {
+    const tenant = { limitOverrides: {}, plan: { limits: { [key]: 10 } } };
+    assert.equal(resolveEffectiveLimit(tenant, key), 10);
+  });
+
+  test(`${key}：覆寫成 null 時無上限`, () => {
+    const tenant = { limitOverrides: { [key]: null }, plan: { limits: { [key]: 10 } } };
+    assert.equal(resolveEffectiveLimit(tenant, key), null);
+  });
+
+  test(`${key}：方案沒有這個鍵（既有方案）時無上限`, () => {
+    const tenant = { limitOverrides: {}, plan: { limits: { maxAgents: 3 } } };
+    assert.equal(resolveEffectiveLimit(tenant, key), null);
+  });
+
+  test(`${key}：不加 AI 加購量`, () => {
+    const tenant = { limitOverrides: {}, plan: { limits: { [key]: 10 } } };
+    assert.equal(resolveEffectiveLimit(tenant, key, 5000), 10);
+  });
+}
 
 // ── AI 月額度含當月加購量（主規格 plan-limits-core「AI 月額度含當月加購量」） ──
 

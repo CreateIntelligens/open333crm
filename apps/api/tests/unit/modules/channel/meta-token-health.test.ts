@@ -4,7 +4,14 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'vitest';
-import { nextTokenHealth, probeChannelToken, type TokenHealth } from '#src/modules/channel/meta-token-health.js';
+import {
+  checkCommentSubscription,
+  nextCommentSubscription,
+  nextTokenHealth,
+  probeChannelToken,
+  type TokenHealth,
+} from '#src/modules/channel/meta-token-health.js';
+import type { ChannelPlugin } from '@open333crm/channel-plugins';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -124,4 +131,56 @@ test('102 與 200 系列其他錯誤碼：失效', async () => {
     fakeFetch(400, { error: { type: 'OAuthException', code, message: 'x' } });
     assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid', `code ${code}`);
   }
+});
+
+// ── 留言訂閱檢查（change add-comment-keyword-private-reply tasks 10.3，design D25）──────────
+
+function subscriptionDeps(result: { subscribed: boolean | null } | Error) {
+  const writes: string[] = [];
+  const prisma = { $executeRaw: async (_s: TemplateStringsArray, ...values: unknown[]) => void writes.push(String(values[0])) } as never;
+  const plugin = {
+    extensions: {
+      comments: {
+        getSubscriptionStatus: async () => {
+          if (result instanceof Error) throw result;
+          return { ...result, missingPermissions: null, canPrivateReply: null, canPublicReply: null };
+        },
+      },
+    },
+  } as unknown as ChannelPlugin;
+  return { writes, prisma, plugins: () => plugin };
+}
+
+const receivingChannel = (subscription?: unknown) => ({
+  id: 'ch-1',
+  tenantId: 't-1',
+  channelType: 'FB',
+  externalAccountId: 'PAGE-1',
+  settings: { commentReply: { receiving: true, ...(subscription ? { subscription } : {}) } },
+});
+
+test('Meta 取消了 feed 訂閱', async () => {
+  const deps = subscriptionDeps({ subscribed: false });
+  const next = await checkCommentSubscription(deps.prisma, receivingChannel({ status: 'ok', checkedAt: now.toISOString() }), {}, hoursLater(6), deps.plugins);
+  assert.equal(next?.status, 'missing');
+  assert.equal(deps.writes.length, 1);
+  assert.equal(JSON.parse(deps.writes[0]!).status, 'missing');
+});
+
+test('查詢時網路錯誤：不改訂閱狀態', async () => {
+  const prev = { status: 'ok' as const, checkedAt: now.toISOString() };
+  for (const result of [{ subscribed: null }, new Error('ECONNRESET')]) {
+    const deps = subscriptionDeps(result);
+    assert.equal(await checkCommentSubscription(deps.prisma, receivingChannel(prev), {}, hoursLater(6), deps.plugins), undefined);
+    assert.equal(deps.writes.length, 0);
+  }
+  // 從未查到過：記 unknown
+  assert.equal(nextCommentSubscription(undefined, { subscribed: null }, now)?.status, 'unknown');
+});
+
+test('沒有開啟留言接收的渠道不查訂閱', async () => {
+  const deps = subscriptionDeps({ subscribed: false });
+  const ch = { ...receivingChannel(), settings: { commentReply: { receiving: false } } };
+  assert.equal(await checkCommentSubscription(deps.prisma, ch, {}, now, deps.plugins), undefined);
+  assert.equal(deps.writes.length, 0);
 });

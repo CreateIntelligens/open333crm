@@ -28,6 +28,8 @@ export const FEATURES: readonly FeatureDef[] = [
   { slug: 'analytics', label: '分析報表', desc: '各維度數據報表、個人績效、報表匯出' },
   { slug: 'knowledge', label: '知識庫', desc: '知識文章、語意搜尋、批次匯入' },
   { slug: 'portal', label: '粉絲活動', desc: '活動頁、抽獎、會員點數' },
+  // 平台在 /admin/plans 勾選；既有方案預設不含，所以不寫方案資料 migration（add-comment-keyword-private-reply D23）
+  { slug: 'comment_reply', label: '留言自動私訊', desc: 'Facebook／Instagram 貼文留言關鍵字自動私訊、公開回覆、觸發紀錄' },
   { slug: 'core', label: '帳號 · 角色 · 設定', desc: '成員與角色權限、系統設定、SLA、Webhook、方案用量（核心功能，恆開）', core: true },
 ] as const;
 

@@ -178,7 +178,7 @@ async function resolveRoleId(request: FastifyRequest): Promise<string | null> {
  * 當前 agent 的有效權限（角色權限 ∩ 方案天花板，比照 requirePermission guard）。
  * 可見範圍、指派範圍與層級解析共用這一份，避免各自計算而漂移。
  */
-async function effectivePermissionsFromRequest(request: FastifyRequest): Promise<Set<string>> {
+export async function effectivePermissionsFromRequest(request: FastifyRequest): Promise<Set<string>> {
   const roleId = await resolveRoleId(request);
   const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent.tenantId);
   return getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);

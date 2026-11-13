@@ -4,7 +4,8 @@
  * 兩種模式：
  *  - anonymize（預設）：抹去 Contact 的 PII 欄位、刪除可識別的子資料（ContactAttribute /
  *    ChannelIdentity / IdentityMap / LongTermMemory）、抹去 inbound 訊息內容並刪除其 MinIO 媒體檔，
- *    但保留 Conversation / Case 統計骨架（讓報表數字不變）與客服上傳的出站媒體檔。
+ *    但保留 Conversation / Case 統計骨架（讓報表數字不變）與客服上傳的出站媒體檔。留言自動私訊的留言者對應與
+ *    觸發紀錄清除個資、保留留言 ID（design D27）。
  *  - hard_delete：在 transaction 內先算 affected 計數，再連鎖刪除該聯絡人的所有資料與聯絡人本身，
  *    並刪除對應的 MinIO 媒體附件。
  *
@@ -14,7 +15,8 @@
  * commit 之後通知發起者。發起者已被永久刪除時稽核記下請求上的名稱與 email 快照，不送通知。
  */
 import type { Job } from 'bullmq';
-import type { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import { claimOne, isConversationMediaKey, logger, MinioStorageProvider } from '@open333crm/core';
 import { enqueueNotification } from '../lib/notification-queue.js';
@@ -238,6 +240,56 @@ async function lockContactConversations(tx: Prisma.TransactionClient, tenantId: 
     ORDER BY id
     FOR UPDATE`;
   return rows.map((r) => r.id);
+}
+
+/**
+ * 交易內鎖住這批聯絡人的留言者對應（comment_authors）並回傳 id（呼叫前聯絡人列已由 lockErasureContacts 鎖住）。
+ *  - 聯絡人已鎖：收件流程替這批聯絡人新建留言者對應時，外鍵檢查要對聯絡人取 FOR KEY SHARE，會等這個交易結束。
+ *  - 留言者 FOR UPDATE：新的觸發紀錄要對留言者取 FOR KEY SHARE，會等這個交易結束；硬刪除後它的外鍵檢查失敗，
+ *    不會在刪除與刪聯絡人之間插進一筆紀錄，讓 Restrict 擋下整個刪除交易。
+ */
+async function lockCommentAuthors(tx: Prisma.TransactionClient, tenantId: string, contactIds: string[]): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM comment_authors
+    WHERE "contactId" = ANY(${contactIds}::uuid[]) AND "tenantId" = ${tenantId}::uuid
+    ORDER BY id
+    FOR UPDATE`;
+  return rows.map((r) => r.id);
+}
+
+/**
+ * 匿名化留言自動私訊的個資（design D27）：
+ *  - 留言者對應清空名稱、帳號名稱與私訊 ID，留言者 ID 改成 `erased:<authorId>`（唯一鍵 [channelId, externalUserId]
+ *    仍成立；同一位留言者再留言時找不到這筆，會當成新的留言者）。
+ *  - 觸發紀錄清空留言者 ID、名稱、帳號名稱、留言內容、私訊 ID、去重鍵與送出內容快照；保留留言 ID（唯一鍵
+ *    [channelId, commentId] 讓 Meta 重投同一則留言時不再私訊）、狀態與時間。
+ */
+async function anonymizeCommentReplies(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  authorIds: string[],
+): Promise<{ commentAuthors: number; commentReplyLogs: number }> {
+  if (authorIds.length === 0) return { commentAuthors: 0, commentReplyLogs: 0 };
+  const logs = await tx.commentReplyLog.updateMany({
+    where: { tenantId, commentAuthorId: { in: authorIds } },
+    data: {
+      commenterId: null,
+      commenterName: null,
+      commenterUsername: null,
+      commentText: null,
+      recipientUid: null,
+      dedupeKey: null,
+      sentContentSnapshot: Prisma.DbNull,
+    },
+  });
+  // externalUserId 每筆不同，逐筆改（一位聯絡人每個渠道最多一筆留言者對應）
+  for (const id of authorIds) {
+    await tx.commentAuthor.updateMany({
+      where: { tenantId, id },
+      data: { displayName: null, username: null, psid: null, externalUserId: `erased:${id}` },
+    });
+  }
+  return { commentAuthors: authorIds.length, commentReplyLogs: logs.count };
 }
 
 /**
@@ -501,6 +553,9 @@ async function anonymize(
     const identityMaps = await tx.identityMap.deleteMany({ where: { contactId: ofContacts, tenantId } });
     const memories = await tx.longTermMemory.deleteMany({ where: { contactId: ofContacts } });
 
+    // 留言自動私訊：留言者對應與觸發紀錄的個資（鎖的順序：聯絡人 → 留言者 → 對話）
+    const commentReplies = await anonymizeCommentReplies(tx, tenantId, await lockCommentAuthors(tx, tenantId, contactIds));
+
     // 抹 inbound 訊息內容（只這批聯絡人所屬對話的入站訊息；保留骨架）。
     // 先鎖對話，等並行寫入的進站訊息 commit，再讀訊息與改寫（見 lockContactConversations）
     const convIds = await lockContactConversations(tx, tenantId, contactIds);
@@ -530,6 +585,8 @@ async function anonymize(
       channelIdentities: identities.count,
       identityMaps: identityMaps.count,
       longTermMemories: memories.count,
+      commentAuthors: commentReplies.commentAuthors,
+      commentReplyLogs: commentReplies.commentReplyLogs,
       messagesRedacted,
       mediaObjects: media.keys.length,
       mediaObjectsShared: media.shared,
@@ -554,7 +611,8 @@ async function anonymize(
  *   1. 鎖住目標與封存聯絡人，收集訊息 storageKey（只留本租戶這些對話的 media 目錄）與頭像檔 key（供刪 MinIO）
  *   2. 刪 Conversation（Cascade 帶走 Message / ConversationTag / ChatboxSession）
  *   3. 刪 Case（Conversation 已刪，caseId Restrict 已解除；Cascade 帶走 CaseEvent/CaseNote/CaseTag/CaseRelation）
- *   4. 刪 PortalSubmission / PointTransaction（Restrict，需顯式刪）
+ *   4. 刪 PortalSubmission / PointTransaction（Restrict，需顯式刪）；留言自動私訊先刪觸發紀錄（對留言者 Restrict）
+ *      再刪留言者對應（design D27）
  *   5. 刪 Contact（Cascade 帶走 ContactAttribute/ChannelIdentity/IdentityMap/LongTermMemory/ContactTag/ContactRelation）
  *   6. 刪 MinIO 媒體物件（transaction 外，每個最多一次，失敗筆數記進 affected）
  */
@@ -575,6 +633,7 @@ async function hardDelete(
     const mergedIds = contactIds.slice(1);
     const ofContacts = { in: contactIds };
     avatars = await readAvatarObjects(tx, tenantId, contactIds);
+    const authorIds = await lockCommentAuthors(tx, tenantId, contactIds);
     const convIds = await lockContactConversations(tx, tenantId, contactIds);
     const mediaMessages =
       convIds.length > 0
@@ -616,6 +675,13 @@ async function hardDelete(
     // 4. Restrict 關聯需顯式刪（封存聯絡人有合併時轉出點數的積分紀錄）
     await tx.portalSubmission.deleteMany({ where: { contactId: ofContacts, tenantId } });
     await tx.pointTransaction.deleteMany({ where: { contactId: ofContacts, tenantId } });
+    // 留言自動私訊：觸發紀錄對留言者是 Restrict，先刪紀錄；留言者對應雖會隨聯絡人 Cascade，顯式刪才有筆數
+    const commentReplyLogs =
+      authorIds.length > 0
+        ? (await tx.commentReplyLog.deleteMany({ where: { tenantId, commentAuthorId: { in: authorIds } } })).count
+        : 0;
+    const commentAuthors =
+      authorIds.length > 0 ? (await tx.commentAuthor.deleteMany({ where: { tenantId, id: { in: authorIds } } })).count : 0;
     // 5. 刪 Contact（Cascade 帶走 ContactAttribute/ChannelIdentity/IdentityMap/LongTermMemory/ContactTag/ContactRelation）
     if (mergedIds.length > 0) {
       await tx.contact.deleteMany({ where: { id: { in: mergedIds }, tenantId } });
@@ -632,6 +698,8 @@ async function hardDelete(
       longTermMemories: memoryCount,
       portalSubmissions: portalSubmissionCount,
       pointTransactions: pointTxCount,
+      commentReplyLogs,
+      commentAuthors,
       contacts: 1 + mergedIds.length,
       mergedContacts: mergedIds.length,
       mediaObjects: media.keys.length,

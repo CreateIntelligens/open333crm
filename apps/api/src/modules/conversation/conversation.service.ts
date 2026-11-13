@@ -57,6 +57,15 @@ export function mergeLineDeliveryMetadata(
   };
 }
 
+/**
+ * 對話列表的來源：`{ type: 'comment_private_reply', logId, at }`（at＝私訊送出時間，前端標籤顯示 7 天）；
+ * 不是來自留言時為 null。
+ */
+export function conversationOrigin(log: { id: string; sentAt: Date | null } | null | undefined) {
+  if (!log) return null;
+  return { type: 'comment_private_reply' as const, logId: log.id, at: log.sentAt };
+}
+
 export async function listConversations(
   prisma: TenantDb,
   tenantId: string,
@@ -174,6 +183,8 @@ export async function listConversations(
             metadata: true,
           },
         },
+        // 對話來源是留言自動私訊時列表顯示「來自留言」（change add-comment-keyword-private-reply D18）
+        originCommentReplyLog: { select: { id: true, sentAt: true } },
       },
       orderBy: { updatedAt: 'desc' },
       skip: (pagination.page - 1) * pagination.limit,
@@ -184,10 +195,11 @@ export async function listConversations(
 
   // Flatten lastMessage from the messages array
   const result = conversations.map((conv) => {
-    const { messages, ...rest } = conv;
+    const { messages, originCommentReplyLog, ...rest } = conv;
     return {
       ...rest,
       lastMessage: messages[0] ?? null,
+      origin: conversationOrigin(originCommentReplyLog),
     };
   });
 

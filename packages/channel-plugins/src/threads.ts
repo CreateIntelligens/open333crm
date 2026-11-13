@@ -4,9 +4,11 @@
 
 import type {
   ChannelPlugin,
+  ChannelCommentExtension,
   ParsedWebhookMessage,
   OutboundPayload,
 } from './index.js';
+import { createInstagramCommentExtension } from './instagram-comments.js';
 import { createHmac } from 'node:crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { refOf } from './referral.js';
@@ -25,6 +27,8 @@ export class ThreadsPlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.THREADS;
   /** Messenger／IG 只能對 24 小時內互動過的人發一般訊息 */
   readonly messagingWindowHours = 24;
+  /** 貼文留言：解析留言事件、私訊留言者（只能文字）、公開回覆（change add-comment-keyword-private-reply） */
+  readonly extensions: { comments: ChannelCommentExtension } = { comments: createInstagramCommentExtension() };
 
   // ─── Task 1.5: verifySignature ────────────────────────────────────
   // Instagram uses X-Hub-Signature-256: sha256=<hmac>

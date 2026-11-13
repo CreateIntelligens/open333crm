@@ -132,7 +132,8 @@ t('每個權限點的必要欄位都有值：code、group、feature、label、de
 
 t('註冊表的權限碼都符合命名規則：兩段以上的小寫片段，片段可含 - 與 _', () => {
   for (const code of PERMISSION_CODES) {
-    assert.match(code, /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9_-]*)+$/, `${code} 不符合命名規則`);
+    // 主規格 permission-model「權限碼命名」：每一段（含第一段資源名稱）都可含 - 與 _（例如 comment_reply.view）
+    assert.match(code, /^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/, `${code} 不符合命名規則`);
   }
 });
 

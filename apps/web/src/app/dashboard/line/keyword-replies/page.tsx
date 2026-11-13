@@ -129,6 +129,9 @@ export default function KeywordRepliesPage() {
             <div className="mt-2 rounded border border-warning/30 bg-warning-subtle px-3 py-1.5 text-xs text-warning">
               客人每傳一則含關鍵字的訊息就會觸發一次，沒有次數上限；客服接手的對話也會自動回覆。比對方式是「包含」且不分大小寫，例如關鍵字「價」也會命中「評價」，關鍵字請盡量具體。每條規則只在所選渠道的對話觸發，並對這個渠道的所有帳號生效（例如所有 LINE 官方帳號、所有粉專）；命中的規則能在這個對話的渠道送出回覆時，AI 就不再另外回覆。Facebook 與 Instagram 的顧客開啟票券時以 email 驗證身分。
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              顧客在 Facebook、Instagram 貼文留言時要自動私訊，請到「<Link href="/dashboard/comment-replies" className="text-primary underline">留言自動私訊</Link>」設定。
+            </p>
           </section>
 
           {/* 渠道篩選（change add-fb-ig-keyword-coupon design D1） */}

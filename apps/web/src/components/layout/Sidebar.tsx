@@ -69,6 +69,8 @@ const NAV_TREE: NavNode[] = [
           { id: 'line-quick-replies', label: 'LINE 快速回覆', href: '/dashboard/line/quick-replies', icon: MessageSquare },
         ],
       },
+      // 留言自動私訊放在第一層，不放進「渠道」：該群組整組要 richmenu.manage，只有 comment_reply.view 的人會看不到（design Open Questions 9）
+      { id: 'comment-replies', label: '留言自動私訊', href: '/dashboard/comment-replies', icon: MessagesSquare, perm: 'comment_reply.view' },
       {
         id: 'portal', label: '粉絲活動', href: '/dashboard/portal', icon: Trophy, perm: 'portal.view', children: [
           { id: 'portal-activities', label: '活動管理', href: '/dashboard/portal/activities', icon: Trophy },

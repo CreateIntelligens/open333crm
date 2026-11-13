@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-14：留言自動私訊的平台設定鍵（TRIAL-02 相關）
+
+change `add-comment-keyword-private-reply`（尚未部署）。以本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_crmerge`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| TRIAL-02 | 狀態不變，內文補一段：新增的 5 個 `commentReply.*` 鍵在路由驗證型別與範圍，不合法回 400；`trial.*`、`ai.privacy.<tenantId>` 與通用端點不檢查鍵名的問題未處理 | `apps/api/tests/feature/modules/platform/platform-comment-reply-settings.test.ts`「寫入合法的能力開關」「寫入不合法的值」，5 個鍵各一組合法與不合法值 |
+| 權限天花板的 403 原因（未列入 `AUDIT.md`） | 新增：`requirePermission()` 被方案天花板擋下時，`details.reason` 是 `PLAN_FEATURE_NOT_INCLUDED` | `comment-reply-rule-routes.test.ts`「方案不含時路由被擋」 |
+
 ## 2026-11-13：自動化動作失敗寫入執行紀錄（AUTO-02 部分修正）
 
 issue #362，change `fix-automation-delivery-visibility`。以 workers 單元測試（記憶體假資料庫、走 `executeWorkerAutomationActions`）驗證，沒有連 UAT。

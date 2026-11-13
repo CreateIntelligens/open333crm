@@ -52,7 +52,9 @@ export type RoutingWarningReason =
   /** 認領該帳號的渠道使用不同的 Meta App，已丟棄 */
   | 'app_mismatch'
   /** 整包含其他渠道的事件，無法轉發給下游 */
-  | 'downstream_skipped';
+  | 'downstream_skipped'
+  /** 留言收件失敗（讀規則或寫紀錄丟錯）；同一請求的私訊照常處理（change add-comment-keyword-private-reply） */
+  | 'comment_intake_failed';
 
 export interface RoutingChannel {
   id: string;
@@ -61,16 +63,24 @@ export interface RoutingChannel {
   externalAccountId: string | null;
 }
 
-export interface RoutedGroup {
+/**
+ * 分派只看事件的 accountId，所以私訊（ParsedWebhookMessage）與留言（ParsedCommentEvent）共用同一套規則
+ * （change add-comment-keyword-private-reply）。
+ */
+export interface AccountRoutable {
+  accountId?: string;
+}
+
+export interface RoutedGroup<T extends AccountRoutable = ParsedWebhookMessage> {
   channel: RoutingChannel;
   credentials: Record<string, unknown>;
-  messages: ParsedWebhookMessage[];
+  messages: T[];
   /** 目標渠道的 settings（網址渠道本身不帶，呼叫端已有）；用來檢查目標渠道自己的下游轉發設定 */
   settings?: unknown;
 }
 
-export interface RoutingResult {
-  groups: RoutedGroup[];
+export interface RoutingResult<T extends AccountRoutable = ParsedWebhookMessage> {
+  groups: RoutedGroup<T>[];
   /** 整包事件是否都屬於網址渠道（且沒有丟棄）；下游轉發只在此時進行 */
   allToUrlChannel: boolean;
 }
@@ -80,28 +90,28 @@ function legacyRoutingEnabled(): boolean {
   return process.env.META_WEBHOOK_ROUTING === 'legacy';
 }
 
-export async function routeWebhookMessages(
+export async function routeWebhookMessages<T extends AccountRoutable = ParsedWebhookMessage>(
   prisma: PrismaClient,
   urlChannel: RoutingChannel,
   urlCredentials: Record<string, unknown>,
   /** 驗簽實際使用的 secret（FB／IG 為 App Secret） */
   verifySecret: string,
-  messages: ParsedWebhookMessage[],
-): Promise<RoutingResult> {
-  const urlGroup: RoutedGroup = { channel: urlChannel, credentials: urlCredentials, messages: [] };
+  messages: T[],
+): Promise<RoutingResult<T>> {
+  const urlGroup: RoutedGroup<T> = { channel: urlChannel, credentials: urlCredentials, messages: [] };
   if (!ROUTED_CHANNEL_TYPES.has(urlChannel.channelType) || legacyRoutingEnabled()) {
     urlGroup.messages = messages;
     return { groups: messages.length ? [urlGroup] : [], allToUrlChannel: true };
   }
 
-  const byAccount = new Map<string | undefined, ParsedWebhookMessage[]>();
+  const byAccount = new Map<string | undefined, T[]>();
   for (const m of messages) {
     const list = byAccount.get(m.accountId) ?? [];
     list.push(m);
     byAccount.set(m.accountId, list);
   }
 
-  const others: RoutedGroup[] = [];
+  const others: RoutedGroup<T>[] = [];
   let allToUrlChannel = true;
 
   for (const [accountId, list] of byAccount) {
@@ -228,18 +238,18 @@ export async function recordRoutingWarning(
  * 事件只會交給以 Facebook 登入連結（connectMode = 'platform'）的渠道，其餘一律丟棄並記 log。
  * 驗簽已在呼叫前以平台 App Secret 完成。
  */
-export async function routePlatformMessages(
+export async function routePlatformMessages<T extends AccountRoutable = ParsedWebhookMessage>(
   prisma: PrismaClient,
   channelType: string,
-  messages: ParsedWebhookMessage[],
-): Promise<RoutedGroup[]> {
-  const byAccount = new Map<string, ParsedWebhookMessage[]>();
+  messages: T[],
+): Promise<RoutedGroup<T>[]> {
+  const byAccount = new Map<string, T[]>();
   for (const m of messages) {
     if (!m.accountId) continue;
     byAccount.set(m.accountId, [...(byAccount.get(m.accountId) ?? []), m]);
   }
 
-  const groups: RoutedGroup[] = [];
+  const groups: RoutedGroup<T>[] = [];
   for (const [accountId, list] of byAccount) {
     const target = await prisma.channel.findUnique({
       where: { channelType_externalAccountId: { channelType: channelType as never, externalAccountId: accountId } },

@@ -1,9 +1,10 @@
-import { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
+import type { ChannelPlugin, ChannelCommentExtension, ParsedWebhookMessage, OutboundPayload } from '../index.js';
 import crypto from 'crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { refOf } from '../referral.js';
 import { signaturesMatch } from '../signature.js';
 import { findSitePathUrl, resolveSitePathUrls } from '../site-path-urls.js';
+import { createFbCommentExtension, type PostMessageResult } from './comments.js';
 
 const FB_GRAPH_API = 'https://graph.facebook.com/v21.0';
 
@@ -20,9 +21,14 @@ export class FbPlugin implements ChannelPlugin {
   /** Messenger／IG 只能對 24 小時內互動過的人發一般訊息 */
   readonly messagingWindowHours = 24;
   private readonly siteBaseUrl: () => string | undefined;
+  /** 貼文留言：解析留言事件、私訊留言者、公開回覆（change add-comment-keyword-private-reply） */
+  readonly extensions: { comments: ChannelCommentExtension };
 
   constructor(options: FbPluginOptions = {}) {
     this.siteBaseUrl = options.siteBaseUrl ?? (() => process.env.WEB_BASE_URL);
+    this.extensions = {
+      comments: createFbCommentExtension({ postMessage: (recipient, message, credentials) => this.postMessage(recipient, message, credentials) }),
+    };
   }
 
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {
@@ -142,29 +148,10 @@ export class FbPlugin implements ChannelPlugin {
   }
 
   async sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
-    const token = credentials.pageAccessToken as string;
-    const { contentType } = message;
-
-    // 站內路徑（存檔前的舊素材、示範圖）Facebook 不收，送出前換成公開網址
-    // （spec material-system「FB 素材發送時把站內路徑換成公開網址」）
-    const sitePath = findSitePathUrl(message.content);
-    const base = this.siteBaseUrl()?.trim();
-    if (sitePath && !base) {
-      return {
-        success: false,
-        error: `素材的網址「${sitePath}」是站內路徑，系統沒有設定網站公開網址（WEB_BASE_URL），Facebook 無法讀取。請把網址改成 https:// 開頭的完整網址，或請管理員設定 WEB_BASE_URL`,
-      };
-    }
-    const content = sitePath && base ? resolveSitePathUrls(message.content, base) : message.content;
-
-    const fbMessage = this.buildFbMessage(contentType, content);
-
     try {
-      const response = await fetch(`${FB_GRAPH_API}/me/messages?access_token=${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipient: { id: to }, message: fbMessage }),
-      });
+      const r = await this.postMessage({ id: to }, message, credentials);
+      if ('sitePathError' in r) return { success: false, error: r.sitePathError };
+      const response = r.response;
 
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({})) as { error?: { message?: string } };
@@ -176,6 +163,40 @@ export class FbPlugin implements ChannelPlugin {
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * 一般私訊與留言私訊共用的送出（design D6）：組 Messenger message、把站內路徑換成公開網址、POST /me/messages。
+   * recipient 一般私訊是 `{ id: PSID }`，留言私訊是 `{ comment_id }`；body 只有 recipient 與 message，不帶 messaging_type。
+   * fetch 丟錯會往外丟，由呼叫端轉成各自的錯誤格式。
+   */
+  private async postMessage(
+    recipient: Record<string, string>,
+    message: OutboundPayload,
+    credentials: Record<string, unknown>,
+  ): Promise<PostMessageResult> {
+    const token = credentials.pageAccessToken as string;
+    const { contentType } = message;
+
+    // 站內路徑（存檔前的舊素材、示範圖）Facebook 不收，送出前換成公開網址
+    // （spec material-system「FB 素材發送時把站內路徑換成公開網址」）
+    const sitePath = findSitePathUrl(message.content);
+    const base = this.siteBaseUrl()?.trim();
+    if (sitePath && !base) {
+      return {
+        sitePathError: `素材的網址「${sitePath}」是站內路徑，系統沒有設定網站公開網址（WEB_BASE_URL），Facebook 無法讀取。請把網址改成 https:// 開頭的完整網址，或請管理員設定 WEB_BASE_URL`,
+      };
+    }
+    const content = sitePath && base ? resolveSitePathUrls(message.content, base) : message.content;
+
+    const fbMessage = this.buildFbMessage(contentType, content);
+
+    const response = await fetch(`${FB_GRAPH_API}/me/messages?access_token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient, message: fbMessage }),
+    });
+    return { response };
   }
 
   private buildFbMessage(contentType: string, content: Record<string, unknown>): Record<string, unknown> {

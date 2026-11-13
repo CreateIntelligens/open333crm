@@ -44,6 +44,30 @@ function walk(dir: string): string[] {
   });
 }
 
+/**
+ * 掃描範圍必須涵蓋的檔案。新功能的頁面列在這裡，確認它們真的在掃描範圍內
+ * （例如目錄名稱含 `[ruleId]` 這類特殊字元時沒有被漏掉）。
+ */
+const MUST_SCAN = [
+  // 留言自動私訊（change add-comment-keyword-private-reply tasks 11.7）
+  'app/dashboard/comment-replies/page.tsx',
+  'app/dashboard/comment-replies/new/page.tsx',
+  'app/dashboard/comment-replies/[ruleId]/page.tsx',
+  'app/admin/comment-reply/page.tsx',
+  'components/comment-replies/CommentReplyRuleEditor.tsx',
+  'components/comment-replies/CommentReplyRuleList.tsx',
+  'components/comment-replies/CommentReplyLogs.tsx',
+  'components/comment-replies/CommentReplyReadinessCard.tsx',
+  'components/comment-replies/CommentReplyTestPanel.tsx',
+  'lib/comment-reply/codes.ts',
+];
+
+test('掃描範圍涵蓋新功能的頁面', () => {
+  const scanned = new Set(walk(SRC).map((file) => relative(SRC, file)));
+  const missing = MUST_SCAN.filter((rel) => !scanned.has(rel));
+  assert.deepEqual(missing, []);
+});
+
 test('後台介面的文字不含 emoji', () => {
   const hits: string[] = [];
   for (const file of walk(SRC)) {

@@ -8,6 +8,11 @@ export interface ProcessInboundMessageOptions {
   conversationId?: string;
   clientMessageId?: string;
   messageMetadata?: Record<string, unknown>;
+  /**
+   * app_tenant 連線：顧客回覆留言私訊時，以 inTenant() 綁租戶關聯觸發紀錄（change add-comment-keyword-private-reply D18）。
+   * 沒給時退回入站的連線。
+   */
+  tenantPrisma?: PrismaClient;
 }
 
 export interface InboundChannelRef {
@@ -47,6 +52,11 @@ export interface InboundMessageContext {
    * 由 recordInboundFollow 設定；其他事件沒有值。
    */
   isFirstFollow?: boolean;
+  /**
+   * 聯絡人由留言自動私訊的收件建立（change add-comment-keyword-private-reply D17）：第一次進站不送招呼語，
+   * contact.created 改在第一次進站時以 comment_authors.contactEventPublishedAt 認領後發一次。
+   */
+  fromCommentReply?: boolean;
   channelIdentity?: {
     contactId: string;
     contact?: unknown;
