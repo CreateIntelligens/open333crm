@@ -421,6 +421,8 @@ model Channel {
   couponClaimLinks  CouponClaimLink[]
 
   @@unique([channelType, externalAccountId])
+  /// 給 coupon_claim_links 的複合外鍵 (channelId, tenantId) 參照：連結與渠道必須同一租戶（#362 A3）
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([publicKey])
   @@map("channels")
@@ -1348,6 +1350,8 @@ model Broadcast {
   campaign   Campaign?            @relation(fields: [campaignId], references: [id])
   segment    Segment?             @relation(fields: [segmentId], references: [id])
   material   Material?            @relation(fields: [materialId], references: [id])
+  // 附券（#362 A4）：只有草稿券能刪，草稿券掛不上廣播（附券必須進行中），刪除時把 couponId 清成 NULL
+  coupon     Coupon?              @relation(fields: [couponId], references: [id], onDelete: SetNull)
   recipients BroadcastRecipient[]
   deliveryAttempts BroadcastDeliveryAttempt[]
 
@@ -2386,8 +2390,11 @@ model Coupon {
   instances CouponInstance[]
   codes     CouponCode[]
   claimLinks CouponClaimLink[]
+  broadcasts Broadcast[]
 
   @@unique([tenantId, displayCode])
+  /// 給 coupon_claim_links 的複合外鍵 (couponId, tenantId) 參照：連結與券必須同一租戶（#362 A3）
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, purpose, status])
@@ -2513,8 +2520,9 @@ model CouponClaimLink {
   updatedAt   DateTime @updatedAt
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  channel Channel @relation(fields: [channelId], references: [id])
+  // 複合外鍵：券與渠道都必須和連結同一租戶，資料庫層擋下跨租戶寫入（#362 A3）
+  coupon  Coupon  @relation(fields: [couponId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId, tenantId], references: [id, tenantId])
 
   @@index([tenantId])
   @@index([tenantId, couponId])
