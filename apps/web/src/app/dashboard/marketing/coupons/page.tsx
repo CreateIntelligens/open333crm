@@ -6,8 +6,6 @@
  */
 import React, { Suspense, useCallback, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Topbar } from '@/components/layout/Topbar';
-import { MarketingTabs } from '@/components/marketing/MarketingTabs';
 import { CouponListView, type CouponListQuery } from '@/components/coupons/list/CouponListView';
 import type { CouponStatus } from '@/hooks/useCoupons';
 
@@ -58,13 +56,10 @@ function CouponListPageInner() {
 }
 
 export default function CouponListPage() {
+  // 新版面：由左側子選單切換行銷各頁，不再顯示舊的「行銷」大標題與頁籤；標題區在 CouponListView 的 PageHeader
   return (
-    <div className="flex h-screen flex-col bg-muted">
-      <Topbar title="行銷" />
-      <div className="bg-background">
-        <MarketingTabs active="coupons" />
-      </div>
-      <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+    <div className="flex h-full flex-col">
+      <main className="flex-1 overflow-y-auto px-7 pb-7 pt-7">
         {/* useSearchParams 需要 Suspense 邊界，否則 next build 會失敗 */}
         <Suspense fallback={null}>
           <CouponListPageInner />

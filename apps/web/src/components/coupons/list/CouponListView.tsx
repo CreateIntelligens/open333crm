@@ -7,8 +7,9 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AddIcon } from '@/components/icons/figma-icons';
 import { useAuth } from '@/providers/AuthProvider';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { formatNumber } from '@/lib/coupon/labels';
@@ -100,14 +101,22 @@ function ListFrame({ header, children }: { header: React.ReactNode; children: Re
   );
 }
 
+/** 標題區：與其他頁面的 Topbar 一致（麵包屑、標題 22、說明在左，主要按鈕在右） */
 function PageHeader({ action }: { action: React.ReactNode }) {
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">優惠券</h1>
-        <p className="mt-1 text-sm text-muted-foreground">管理客服補償與行銷推廣用的優惠券，追蹤發放、領取與核銷成效</p>
+    <header className="flex flex-col gap-3">
+      <nav aria-label="麵包屑" className="flex flex-wrap items-center gap-1 text-sm leading-5 text-foreground">
+        <span>行銷</span>
+        <span aria-hidden="true">&gt;</span>
+        <span aria-current="page">優惠券</span>
+      </nav>
+      <div className="flex flex-wrap items-center gap-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1 className="text-2xl font-semibold leading-7 text-foreground">優惠券</h1>
+          <p className="text-base text-muted-foreground">管理客服補償與行銷推廣用的優惠券，追蹤發放、領取與核銷成效</p>
+        </div>
+        {action}
       </div>
-      {action}
     </header>
   );
 }
@@ -119,8 +128,8 @@ function PageHeader({ action }: { action: React.ReactNode }) {
 function CreateButton({ canManage, onClick }: { canManage: boolean; onClick: () => void }) {
   if (canManage) {
     return (
-      <Button onClick={onClick}>
-        <Plus className="h-4 w-4" aria-hidden="true" />
+      <Button size="lg" onClick={onClick}>
+        <AddIcon />
         建立優惠券
       </Button>
     );
@@ -132,8 +141,8 @@ function CreateButton({ canManage, onClick }: { canManage: boolean; onClick: () 
       aria-describedby="coupon-create-hint"
       className="group relative inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <Button disabled aria-disabled="true" tabIndex={-1}>
-        <Plus className="h-4 w-4" aria-hidden="true" />
+      <Button size="lg" disabled aria-disabled="true" tabIndex={-1}>
+        <AddIcon />
         建立優惠券
       </Button>
       <span
