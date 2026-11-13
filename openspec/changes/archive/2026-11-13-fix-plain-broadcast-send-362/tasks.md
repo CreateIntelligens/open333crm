@@ -46,4 +46,4 @@
 - [x] 5.4 `node scripts/validate-openspec.mjs fix-plain-broadcast-send-362` 與 `--specs`
 - [x] 5.5 `pnpm build`
 - [x] 5.6 `CHANGELOG.md`（由使用者統一撰寫）
-- [ ] 5.7 歸檔
+- [x] 5.7 歸檔

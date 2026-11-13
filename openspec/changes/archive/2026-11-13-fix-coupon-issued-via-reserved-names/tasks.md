@@ -12,4 +12,4 @@
 - [x] 2.3 `check-tenant-scoping`、`check-prisma-admin-usage` 加 `--strict`
 - [x] 2.4 `node scripts/validate-openspec.mjs fix-coupon-issued-via-reserved-names` 與 `--specs`
 - [x] 2.5 `CHANGELOG.md` 條目（這次的 agent 不改 CHANGELOG，由合併的人補）
-- [ ] 2.6 歸檔
+- [x] 2.6 歸檔

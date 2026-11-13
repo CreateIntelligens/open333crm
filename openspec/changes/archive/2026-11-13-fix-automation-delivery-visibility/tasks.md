@@ -40,4 +40,4 @@
 - [x] 6.4 `node scripts/validate-openspec.mjs fix-automation-delivery-visibility` 與 `--specs`
 - [x] 6.5 `pnpm build`
 - [x] 6.6 `CHANGELOG.md` 加 Fixed 條目（由整合 #362 的 PR 統一寫）
-- [ ] 6.7 歸檔：6.6 完成後以 `pnpm exec openspec archive fix-automation-delivery-visibility` 歸檔
+- [x] 6.7 歸檔：6.6 完成後以 `pnpm exec openspec archive fix-automation-delivery-visibility` 歸檔

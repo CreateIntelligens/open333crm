@@ -35,4 +35,4 @@
 - [x] 6.4 `node scripts/validate-openspec.mjs fix-line-follow-unfollow-events` 與 `--specs`
 - [x] 6.5 `pnpm build`
 - [x] 6.6 `CHANGELOG.md` 條目（由整合 #362 的人統一撰寫）
-- [ ] 6.7 歸檔
+- [x] 6.7 歸檔

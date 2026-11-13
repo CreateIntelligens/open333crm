@@ -1,7 +1,7 @@
 ## 0. 前置
 
-- [ ] 0.1 確認 `fix-line-follow-unfollow-events` 已歸檔（本 change 的 `first-contact-greeting`「首次進站時送出招呼語」MODIFIED 以它的版本為底）；未歸檔前不可歸檔本 change
-- [ ] 0.2 確認 `fix-meta-webhook-page-routing` 的狀態：已歸檔就把 `comment-reply-meta-subscription`「重新連結粉專時保留留言欄位」改寫成 `meta-page-connect` 的 MODIFIED（保留其既有 scenario 名稱）；未歸檔則維持本 change 的 ADDED，並在歸檔前再核對一次
+- [x] 0.1 確認 `fix-line-follow-unfollow-events` 已歸檔（2026-11-13 於本分支歸檔）（本 change 的 `first-contact-greeting`「首次進站時送出招呼語」MODIFIED 以它的版本為底）；未歸檔前不可歸檔本 change
+- [x] 0.2 確認 `fix-meta-webhook-page-routing` 的狀態（2026-11-13：仍有 14 項長期待辦未歸檔，維持 ADDED）：已歸檔就把 `comment-reply-meta-subscription`「重新連結粉專時保留留言欄位」改寫成 `meta-page-connect` 的 MODIFIED（保留其既有 scenario 名稱）；未歸檔則維持本 change 的 ADDED，並在歸檔前再核對一次
 - [ ] 0.3 新增測試支援檔：`apps/api/tests/support/fake-meta-graph.ts`（依 host＋path＋method 設定回應、記錄每次呼叫、白名單外的 host 讓測試失敗）、`apps/api/tests/support/meta-webhook.ts`（組 FB／IG 留言與私訊 payload、算簽章、呼叫入口）、`apps/api/tests/support/comment-reply-fixtures.ts`（建租戶、方案、渠道、規則、角色與可見範圍，`afterAll` 刪除）；fixture 放 `packages/channel-plugins/tests/fixtures/meta-comments/`，「待實測」的錯誤碼在檔頭註明
 
 ## 1. 渠道外掛
