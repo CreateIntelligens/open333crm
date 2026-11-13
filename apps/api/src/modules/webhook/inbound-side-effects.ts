@@ -16,6 +16,8 @@ import {
   emitToConversationChannel,
 } from './inbound-socket-presenter.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import { canvasEventTypeOf, isSystemEventContentType } from './inbound-system-events.js';
+import { FOLLOW_CONTENT_TYPE } from './inbound-follow-tracking.js';
 
 const outsideHoursReplyCache = new Map<string, number>();
 const OUTSIDE_HOURS_DEDUP_MS = 30 * 60 * 1000; // 30 minutes
@@ -188,12 +190,16 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
 export async function triggerWebhookFlow(ctx: InboundMessageContext): Promise<void> {
   if (!ctx.contactId) throw new Error('Contact must be resolved before canvas webhook trigger');
 
+  // 事件類型由外掛正規化後的 contentType 推導；封鎖不觸發任何流程（issue #362，design D5）
+  const eventType = canvasEventTypeOf(ctx.contentType);
+  if (!eventType) return;
+
   await handleWebhookFlowTrigger({
     tenantId: ctx.tenantId,
     channelType: ctx.channel.channelType,
     channelId: ctx.channel.id,
     contactId: ctx.contactId,
-    eventType: normalizeCanvasEventType(ctx),
+    eventType,
     payload: {
       contentType: ctx.contentType,
       content: ctx.content,
@@ -209,6 +215,8 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
   if (!ctx.conversation || !ctx.contactId) {
     throw new Error('Contact and conversation must be resolved before office-hours auto-reply');
   }
+  // 加好友、封鎖、群組加入離開、收回訊息等系統事件不是顧客在等回覆，不送非營業時間訊息（issue #362）
+  if (isSystemEventContentType(ctx.contentType)) return;
 
   try {
     // 收訊管線還沒有搬遷（#337 階段 4），沒有租戶交易：以管線的 client 組成 TenantCtx。查詢都帶 tenantId
@@ -259,21 +267,6 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
   } catch (err) {
     logger.error('[Webhook] Office hours auto-reply error:', err);
   }
-}
-
-function normalizeCanvasEventType(ctx: InboundMessageContext): string {
-  const rawType = (ctx.parsed as { eventType?: string; type?: string }).eventType
-    ?? (ctx.parsed as { eventType?: string; type?: string }).type;
-
-  if (typeof rawType === 'string' && rawType.length > 0) {
-    return rawType;
-  }
-
-  if (ctx.parsed.contentType === 'postback') {
-    return 'postback';
-  }
-
-  return 'message';
 }
 
 /**
@@ -345,7 +338,7 @@ export async function sendFirstContactGreeting(
     });
     emitToConversationChannel(ctx.io, ctx.tenantId, ctx.conversation, 'message.new', payload);
 
-    await deliver(ctx.prisma, ctx.conversation.id, storedContent.content.text as string);
+    await deliver(ctx.prisma, ctx.conversation.id, greetingPayload(ctx, storedContent.content.text as string));
 
     logger.info('[Webhook] First-contact greeting sent', {
       conversationId: ctx.conversation.id,
@@ -355,4 +348,20 @@ export async function sendFirstContactGreeting(
   } catch (err) {
     logger.error('[Webhook] First-contact greeting error:', err);
   }
+}
+
+/**
+ * 招呼語的送出內容（issue #362，design D4）：加好友事件帶 replyToken 時用 reply，不消耗 push 額度；
+ * 超過 reply 的安全時間或 reply 失敗時，deliverToChannel() 會改用 push 送一次。
+ * 其他事件照舊 push：一般訊息的 replyToken 留給關鍵字回覆、KB 自動回覆等真正回答問題的回覆。
+ */
+function greetingPayload(ctx: InboundMessageContext, text: string): Parameters<typeof deliverToChannel>[2] {
+  if (ctx.contentType !== FOLLOW_CONTENT_TYPE) return text;
+  const replyToken = (ctx.parsed as { rawPayload?: { replyToken?: unknown } } | undefined)?.rawPayload?.replyToken;
+  if (typeof replyToken !== 'string' || replyToken.length === 0) return text;
+  return {
+    contentType: 'text',
+    content: { text },
+    delivery: { replyToken, receivedAt: ctx.now.toISOString() },
+  };
 }

@@ -149,7 +149,7 @@ describe('群發只能使用能主動推送的渠道', () => {
   it('送出網站聊天室的舊草稿', async () => {
     sent.length = 0;
     const { db, state } = sendDb('WEBCHAT');
-    await assert.rejects(executeBroadcast(db, io, 'bc-1', allChannels), isPushRejection);
+    await assert.rejects(executeBroadcast(db, io, T, 'bc-1', allChannels), isPushRejection);
     assert.equal(state.status, 'failed', '廣播標為失敗');
     assert.match(String(state.failureReason), /網站聊天室/, '寫入看得到的原因');
     assert.equal(state.successCount, undefined, '沒有回報成功人數');
@@ -159,7 +159,7 @@ describe('群發只能使用能主動推送的渠道', () => {
   it('LINE 群發不受影響：照常送出', async () => {
     sent.length = 0;
     const { db, state } = sendDb('LINE');
-    const result = await executeBroadcast(db, io, 'bc-1', allChannels);
+    const result = await executeBroadcast(db, io, T, 'bc-1', allChannels);
     assert.equal(result.success, 1);
     assert.equal(state.status, 'completed');
     assert.deepEqual(sent.map((s) => s.channelType), ['LINE']);

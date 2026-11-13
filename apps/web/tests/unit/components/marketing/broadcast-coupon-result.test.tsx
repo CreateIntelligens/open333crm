@@ -40,3 +40,26 @@ test('結果載入失敗時說明原因', async () => {
   render(<BroadcastCouponResult broadcastId="b1" />);
   await screen.findByText(/系統忙碌/);
 });
+
+// ─── 一般群發的結果（change fix-plain-broadcast-send-362，spec broadcast-failure-reason「所有廣播都可以查看收件人結果」）───
+
+test('一般群發的結果列出失敗的人', async () => {
+  h.get.mockReset();
+  h.get.mockImplementation(async (url: string) => {
+    if (url === '/marketing/broadcasts/b2') {
+      return { data: { data: { id: 'b2', name: '週年慶', couponId: null, successCount: 1, failedCount: 1, skippedCount: 0, couponSummary: null } } };
+    }
+    if (url.startsWith('/marketing/broadcasts/b2/recipients?status=failed')) {
+      return { data: { data: [{ contactId: 'c2', displayName: '乙', deliveryStatus: 'failed', reason: 'DELIVERY_FAILED' }], meta: { total: 1 } } };
+    }
+    if (url.startsWith('/marketing/broadcasts/b2/recipients?status=skipped')) {
+      return { data: { data: [], meta: { total: 0 } } };
+    }
+    throw new Error(url);
+  });
+  render(<BroadcastCouponResult broadcastId="b2" />);
+  await screen.findByText('成功 1');
+  assert.ok(screen.getByText('失敗 1'));
+  assert.ok(screen.getByText('乙'));
+  assert.ok(screen.getByText('訊息送不出（顧客可能已封鎖）'));
+});

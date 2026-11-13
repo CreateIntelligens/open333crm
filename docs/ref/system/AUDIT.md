@@ -119,7 +119,7 @@
 | [CASE-08](#case-08) | 對話、工單與自動化 | P2 | 未處理 | 工單的「團隊」下拉讀錯欄位，永遠只有「未指定」，畫面上無法觸發依團隊輪流指派 | 執行時確認 |
 | [CASE-09](#case-09) | 對話、工單與自動化 | P2 | 未處理 | 建立工單時帶負責人、升級時改派，新負責人都收不到通知；建立時帶負責人的工單狀態也停在 `OPEN` | 執行時確認 |
 | [CASE-10](#case-10) | 對話、工單與自動化 | P2 | 未處理 | 工單詳情頁的 SLA「首次回應」以時間軸上第一個客服事件判斷，指派或改狀態就顯示「已達」 | 靜態確認 |
-| [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
+| [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 成功的執行仍不寫執行紀錄，執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字。有動作失敗的執行已寫入執行紀錄（#362） | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
 | [AUTO-07](#auto-07) | 對話、工單與自動化 | P2 | 未處理 | SLA 規則的執行路徑不做契約驗證，也不帶 `contactId`：貼標動作永遠被略過，已停用的動作不會被擋下 | 執行時確認 |
@@ -1564,7 +1564,8 @@ change `migrate-ai-llm-tenant-ctx`（#337 6a）之前，讀 Chat 設定時沒有
 寫入 `AutomationLog`、更新 `AutomationRule.runCount` 與 `lastRunAt` 的程式，原本只存在 API 端 `action-executor.ts` 的 `executeActions()`。這個函式自 `9255245` 起沒有呼叫端，檔案已在 `8e25e1b`（#209）刪除。workers 的執行路徑不寫這些欄位，因此目前沒有任何程式寫入。
 
 - 自動化頁的規則清單原本顯示執行次數與最後執行時間，停在搬遷前的值，搬遷後建立的規則永遠顯示 0。2026-10-05 起規則清單不再顯示這兩個值（change `improve-automation-page-readability`）；欄位本身仍然沒有更新。
-- `GET /automation/logs` 查不到搬遷後的任何執行。前端沒有呼叫這個端點。
+- `GET /automation/logs` 查不到搬遷後成功的執行。前端沒有呼叫這個端點。
+- 2026-11-13 起（#362，change `fix-automation-delivery-visibility`），workers 的 `executeWorkerAutomationActions()` 在有動作失敗時寫一筆 `AutomationLog`（`success: false`、`errorMsg`、`actionsRan`）。沒有 `ruleId` 的 SLA 路徑不寫。成功的執行、`runCount` 與 `lastRunAt` 仍沒有程式寫入。
 
 `AutomationExecution` 表則是從來沒有任何程式讀寫。
 
@@ -1744,7 +1745,9 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 <a id="mkt-01"></a>
 ### MKT-01：群發失敗後重試，逐人送出的群發會重送給已送達的人
 
-`POST /marketing/broadcasts/:id/send` 在 HTTP 請求內 `await` `marketing.service.ts` 的 `executeBroadcast()`，整筆群發送完才回應。
+原本 `POST /marketing/broadcasts/:id/send` 在 HTTP 請求內 `await` `marketing.service.ts` 的 `executeBroadcast()`，整筆群發送完才回應。
+
+**送出改成背景工作（#362，change `fix-plain-broadcast-send-362`，2026-11-13）。** 一般群發與附券廣播相同：立即發送回 202，同一個交易在 outbox 寫 `coupon-broadcast` job，由 API 行程的佇列執行；排程器是後備。job 與排程器只搶 `scheduled` 且時間已到的群發，發送失敗後 job 重試不會重送。請求不再逾時。MCP 工具 `crm_line_broadcast_initiate` 仍在請求內同步執行。
 
 **部分修正（`f0d88b0e`，#283，2026-10-15）。** 同一筆群發不會再同時執行兩次：
 
@@ -1752,7 +1755,7 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 - 狀態是 `sending` 的群發再送出時回 409 `BROADCAST_ALREADY_SENDING`。
 - 「立即發送」的按鈕在請求期間停用。
 
-立即發送的路由、排程器與 MCP 工具都呼叫 `executeBroadcast()`，所以三條路徑都受這個保護。
+佇列 job、排程器與 MCP 工具都呼叫 `executeBroadcast()`，所以三條路徑都受這個保護。
 
 **仍未修正：**
 
@@ -1768,7 +1771,7 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 - 全部對象都送出失敗：沒有人收到過，重送不會重複。
 - 送出途中發生例外：逐人送出的群發，例外之前已經送達的人，重送時會再收到一次。
 
-**修正方向**：送出改成背景工作；重試時跳過已有成功收件紀錄的聯絡人；為停在 `sending` 的群發提供逾時或復原的途徑。
+**修正方向**：重試時跳過已有成功收件紀錄的聯絡人；為停在 `sending` 的群發提供逾時或復原的途徑（送出改成背景工作已在 #362 完成）。
 
 <a id="mkt-05"></a>
 ### MKT-05：分群的建立日期條件以 UTC 切日

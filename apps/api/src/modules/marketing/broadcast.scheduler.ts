@@ -1,26 +1,27 @@
 import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
-import { executeBroadcast } from './marketing.service.js';
-import { runCouponBroadcast, type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
+import { type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
+import { createBroadcastJobRunner } from './broadcast-coupon.worker.js';
 import { logger } from '@open333crm/core';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
-import { rejectUnauthorizedScheduledSend } from './broadcast-send-authority.js';
-import { rejectDisabledTenantSend } from './broadcast-tenant-active.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
+/**
+ * 一期最久會跑多久（withoutOverlapping 的鎖存活時間）：一期最多處理 10 則，大名單的群發可能超過 60 秒。
+ * 鎖到期後下一期才會開始；同一則廣播仍由條件更新保證只發送一次。
+ */
+const MAX_RUN_MS = 30 * 60_000;
 
 /**
- * Polls for scheduled broadcasts whose scheduledAt <= now and executes them.
+ * 每分鐘找出排程時間已到的廣播並發送（change fix-plain-broadcast-send-362）。
  *
- * 附券廣播（couponId 有值）改由 runCouponBroadcast 以 app_tenant 的連線逐步發送（design D29），
- * 需要 couponDeps 的 app_tenant 基底連線與票券連結儲存（Redis）。「立即發送」與批次發券由
- * coupon-broadcast 佇列馬上執行（broadcast-coupon.worker.ts），這裡是後備：job 沒有執行時，時間到的廣播照樣發送。
+ * 跨租戶的連線（prismaAdmin）只用來查到期清單（id、tenantId）與計算有效權限；每一則交給與 coupon-broadcast 佇列 job
+ * 相同的執行函式（createBroadcastJobRunner）：租戶停用檢查 → 排定成員的發送權限重驗 → 發送。發送以 app_tenant 的連線
+ * 綁定廣播的租戶執行（附券廣播每一步一個 inTenant()，一般群發每個查詢各自 withTenant()），RLS 有效。
  *
- * 送出前以排定送出的成員「當下」的有效權限重新檢查（change require-broadcast-send-permissions；佇列 job 也檢查）：
- * 成員不存在、已停用或少了需要的權限時不送出，廣播標為失敗並寫 failureCode／failureReason。
- *
- * 租戶停用（含試用到期）時也不送出，廣播標為失敗（failureCode = TENANT_DISABLED，issue #410；broadcast-tenant-active.ts）。
+ * 「立即發送」由佇列馬上執行，這裡是後備：job 沒有執行時，時間到的廣播照樣發送；兩者誰先搶占誰發送。
+ * 不能送時（租戶停用 TENANT_DISABLED、成員沒有權限 SCHEDULED_SENDER_*）廣播標為失敗並寫 failureCode／failureReason。
  */
 export function setupBroadcastScheduler(
   scheduler: JobScheduler,
@@ -30,30 +31,22 @@ export function setupBroadcastScheduler(
   couponDeps: Omit<CouponBroadcastDeps, 'io'>,
 ) {
   async function pollScheduled() {
-    const authorityDeps = { prisma: couponDeps.prisma, adminPrisma: prisma, redis };
+    const run = createBroadcastJobRunner({ ...couponDeps, io, adminPrisma: prisma, redis });
     try {
       const due = await prisma.broadcast.findMany({
         where: {
           status: 'scheduled',
           scheduledAt: { lte: new Date() },
         },
+        select: { id: true, tenantId: true, name: true },
         orderBy: { scheduledAt: 'asc' },
         take: 10,
       });
 
       for (const broadcast of due) {
         try {
-          // 租戶已停用時標為失敗、不送出（broadcast-tenant-active.ts，issue #410）
-          if (await rejectDisabledTenantSend(couponDeps, broadcast.tenantId, broadcast.id)) continue;
-          // 排定的成員當下沒有發送權限時標為失敗、不送出（broadcast-send-authority.ts）
-          if (await rejectUnauthorizedScheduledSend(authorityDeps, broadcast.tenantId, broadcast)) continue;
-          if (broadcast.couponId) {
-            const result = await runCouponBroadcast({ ...couponDeps, io }, broadcast.tenantId, broadcast.id);
-            logger.info(`[BroadcastScheduler] 附券廣播 ${broadcast.id}（${broadcast.name}）：${result.status}`);
-            continue;
-          }
-          await executeBroadcast(prisma, io, broadcast.id, couponDeps.visibilityOf);
-          logger.info(`[BroadcastScheduler] Executed broadcast ${broadcast.id} (${broadcast.name})`);
+          const result = (await run(broadcast.tenantId, broadcast.id)) as { status?: string } | undefined;
+          logger.info(`[BroadcastScheduler] 廣播 ${broadcast.id}（${broadcast.name}）：${result?.status ?? 'done'}`);
         } catch (err) {
           // 失敗原因已寫進廣播（failureReason），後台看得到
           logger.error(`[BroadcastScheduler] Failed broadcast ${broadcast.id}:`, err);
@@ -64,5 +57,10 @@ export function setupBroadcastScheduler(
     }
   }
 
-  scheduler.registerSchedule({ id: 'broadcast-scheduled', every: POLL_INTERVAL_MS, run: pollScheduled });
+  scheduler.registerSchedule({
+    id: 'broadcast-scheduled',
+    every: POLL_INTERVAL_MS,
+    withoutOverlapping: { expiresInMs: MAX_RUN_MS },
+    run: pollScheduled,
+  });
 }

@@ -121,6 +121,10 @@ beforeEach(() => {
 afterAll(async () => {
   setCouponClaimDepsForTest(null);
   const contacts = { displayName: { startsWith: MARK } };
+  // 發券寫的 outbox 事件（例如貼領券標籤的 contact.tagged）只刪本檔聯絡人的，不動同租戶其他測試的事件（#362 A6）
+  for (const { id } of await owner.contact.findMany({ where: contacts, select: { id: true } })) {
+    await owner.outbox.deleteMany({ where: { payload: { path: ['contactId'], equals: id } } });
+  }
   await owner.couponClaimLink.deleteMany({ where: { createdById: creatorId } });
   await owner.coupon.deleteMany({ where: { createdById: creatorId } });
   await owner.message.deleteMany({ where: { conversation: { contact: contacts } } });
@@ -156,7 +160,7 @@ describe('顧客傳送領券代碼後發券', () => {
     assert.equal(instance.deliveryPendingAt, null, '已確認發出');
     assert.equal((await owner.couponClaimLink.findUnique({ where: { id: l.id } }))?.claimCount, 1, '領取數加 1');
 
-    const card = await owner.message.findFirst({ where: { conversationId: p.conversationId, direction: 'OUTBOUND' } });
+    const card = await owner.message.findFirst({ where: { conversationId: p.conversationId, direction: 'OUTBOUND' }, orderBy: { createdAt: 'desc' } });
     assert.equal((card?.content as { coupon?: { instanceId?: string } }).coupon?.instanceId, instance.id, '收件匣畫成券卡');
   });
 
@@ -324,7 +328,7 @@ describe('公開領券失敗時回覆顧客', () => {
 
     assert.equal((await instancesOf(p.contactId)).length, 0, '券作廢、名額歸還');
     assert.equal((await owner.couponClaimLink.findUnique({ where: { id: l.id } }))?.claimCount, 0);
-    const note = await owner.message.findFirst({ where: { conversationId: p.conversationId, direction: 'OUTBOUND' } });
+    const note = await owner.message.findFirst({ where: { conversationId: p.conversationId, direction: 'OUTBOUND' }, orderBy: { createdAt: 'desc' } });
     const meta = note?.metadata as { deliveryFailed?: boolean; couponClaimFailed?: { reason?: string } };
     assert.equal(meta.deliveryFailed, true);
     assert.equal(meta.couponClaimFailed?.reason, 'DELIVERY_FAILED');
@@ -354,7 +358,7 @@ describe('公開領券失敗時回覆顧客', () => {
     assert.equal(attempts.length, 2, '發券訊息一次、失敗說明一次，不重試');
     assert.equal(sentTo(p.conversationId).at(-1)?.text, '目前無法發送優惠券，請稍後再試一次');
     assert.equal((await instancesOf(p.contactId)).length, 0, '券作廢、名額歸還');
-    const note = await owner.message.findFirst({ where: { conversationId: p.conversationId, direction: 'OUTBOUND' } });
+    const note = await owner.message.findFirst({ where: { conversationId: p.conversationId, direction: 'OUTBOUND' }, orderBy: { createdAt: 'desc' } });
     assert.equal((note?.content as { text?: string }).text, '目前無法發送優惠券，請稍後再試一次', '紀錄是顧客實際收到的說明');
     const meta = note?.metadata as { deliveryFailed?: boolean; couponClaimFailed?: { reason?: string } };
     assert.equal(meta.couponClaimFailed?.reason, 'DELIVERY_FAILED', '客服看得到發券訊息送不出');

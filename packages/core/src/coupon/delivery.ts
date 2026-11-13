@@ -20,12 +20,16 @@ import { applyCouponClaimTag, type CouponTx } from './issue.js';
 export async function voidPendingInstance(tx: CouponTx, tenantId: string, instanceId: string): Promise<boolean> {
   // 先鎖住這張券再判斷：確認流程正在清除發送中標記時，等它提交後再看。
   // 不鎖的話，確認在「查到發送中」與「刪除」之間提交，序號會被歸還、之後再發給別人
-  const pending = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id FROM coupon_instances
+  const pending = await tx.$queryRaw<{ id: string; couponId: string }[]>`
+    SELECT id, "couponId" FROM coupon_instances
     WHERE id = ${instanceId}::uuid AND "tenantId" = ${tenantId}::uuid AND "deliveryPendingAt" IS NOT NULL
     FOR UPDATE`;
   if (pending.length === 0) return false;
-  await tx.couponCode.updateMany({ where: { tenantId, instanceId }, data: { status: 'AVAILABLE', instanceId: null } });
+  // 只歸還這張券序號包裡、仍指派給這張券的序號：資料錯置時不會把序號放回別張券的庫存（#362 D13）
+  await tx.couponCode.updateMany({
+    where: { tenantId, couponId: pending[0].couponId, instanceId, status: 'ASSIGNED' },
+    data: { status: 'AVAILABLE', instanceId: null },
+  });
   const removed = await tx.couponInstance.deleteMany({ where: { id: instanceId, tenantId, deliveryPendingAt: { not: null } } });
   return removed.count > 0;
 }
@@ -33,14 +37,14 @@ export async function voidPendingInstance(tx: CouponTx, tenantId: string, instan
 export interface ConfirmPendingParams {
   tenantId: string;
   instanceId: string;
-  /** 收到券的聯絡人：領券標籤貼在這位聯絡人身上 */
+  /** 收到券的聯絡人：領券標籤貼在這位聯絡人身上。必須是這張券的持有人，否則視為沒有確認（#362 D12） */
   contactId: string;
   coupon: { claimTagId: string | null; claimTagTtlDays: number | null };
   now?: number;
 }
 
 export type ConfirmPendingResult =
-  /** 券在確認前已被作廢（發送超過 5 分鐘，被排程作廢） */
+  /** 券在確認前已被作廢（發送超過 5 分鐘，被排程作廢），或傳入的聯絡人不是持有人 */
   | { confirmed: false }
   /** tag 為這次貼上的領券標籤；呼叫端用它發出 contact.tagged 事件（API 的 flow 用 publishEvent，workers 寫 outbox） */
   | { confirmed: true; tag: { tagId: string; tagName: string } | null };
@@ -52,8 +56,9 @@ export type ConfirmPendingResult =
  */
 export async function confirmPendingInstance(tx: CouponTx, params: ConfirmPendingParams): Promise<ConfirmPendingResult> {
   const { tenantId, instanceId, contactId, coupon } = params;
+  // 比對持有人：呼叫端傳錯聯絡人時不確認，也不會把領券標籤貼到別人身上（#362 D12）
   const confirmed = await tx.couponInstance.updateMany({
-    where: { id: instanceId, tenantId, deliveryPendingAt: { not: null } },
+    where: { id: instanceId, tenantId, contactId, deliveryPendingAt: { not: null } },
     data: { deliveryPendingAt: null },
   });
   if (confirmed.count === 0) return { confirmed: false };

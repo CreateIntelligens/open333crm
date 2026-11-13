@@ -4,6 +4,24 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-13：自動化動作失敗寫入執行紀錄（AUTO-02 部分修正）
+
+issue #362，change `fix-automation-delivery-visibility`。以 workers 單元測試（記憶體假資料庫、走 `executeWorkerAutomationActions`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-02 | 部分修正：有動作失敗的執行寫入 `AutomationLog`；成功的執行、`runCount`、`lastRunAt` 仍不寫 | `apps/workers/tests/unit/lib/automation-delivery-failure-visibility.test.ts` |
+
+## 2026-11-13：一般群發改在背景發送（MKT-01）
+
+issue #362 的群發部分，change `fix-plain-broadcast-send-362`。以單元測試、元件測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_362bc`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| MKT-01 | 部分修正，狀態不變（內文補上「送出改成背景工作」） | 一般群發的立即發送回 202 並排入 `coupon-broadcast` job，`executeBroadcast()` 的 `queued` 模式只搶 `scheduled` 且時間已到的群發。`broadcast-plain-send.test.ts`（feature）「立即發送一般群發回 202 並在背景送出」修正前失敗在斷言上（回 200 與發送結果）；「發送失敗後 job 重試不重送」以 mutation 驗證（搶占條件也接受 `failed` 時失敗）。仍未處理：重試對逐人送出的群發全部重送、停在 `sending` 的一般群發不能重送 |
+| 排程器的 RLS 與重疊（未列入 `AUDIT.md`） | 已修正 | 排程器只以 `prismaAdmin` 查到期清單，發送以 `app_tenant` 連線綁定租戶執行；`executeBroadcast()` 讀廣播比對 `tenantId`；排程加上 `withoutOverlapping`。`broadcast-plain-send.test.ts`「排程器以租戶連線發送一般群發」修正前失敗（跨租戶連線讀寫了廣播、渠道、素材與收件紀錄） |
+| 一般群發的訊息額度與收件人原因（未列入 `AUDIT.md`） | 已修正 | 額度檢查與附券廣播共用 `broadcast-quota.ts`；收件人送不出寫 `skipReason = DELIVERY_FAILED`。mutation：拿掉額度檢查、原因寫 null 時對應的測試失敗 |
+
 ## 2026-11-11：滿意度問卷與工單重新開啟（CASE-04、CASE-02、CASE-05、RBAC-03）
 
 issue #339，change `csat-reresolve-decisions-339`。依使用者 2026-11-11 在 issue 留言的 8 項決定修改。以單元測試、元件測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_339`）驗證，沒有連 UAT。

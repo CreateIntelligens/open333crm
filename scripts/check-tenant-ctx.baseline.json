@@ -41,7 +41,7 @@
     "modules/contact/contact.routes.ts": 7,
     "modules/conversation/conversation.routes.ts": 10,
     "modules/identity-binding/binding-common.ts": 2,
-    "modules/marketing/marketing.routes.ts": 18,
+    "modules/marketing/marketing.routes.ts": 17,
     "modules/marketing/material.routes.ts": 19,
     "modules/mcp/mcp.routes.ts": 1,
     "modules/meta-connect/meta-connect.routes.ts": 3,

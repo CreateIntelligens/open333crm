@@ -22,6 +22,11 @@ test('不認得的值顯示「其他方式」，沒有值不顯示', () => {
   assert.equal(issuedViaLabel(null), null);
 });
 
+test('含點的自訂代碼不顯示為自動化（#362 A1）', () => {
+  assert.equal(issuedViaLabel('partner.sync'), '其他方式');
+  assert.equal(issuedViaLabel('message.received'), '自動化');
+});
+
 test('關鍵字規則發券的歸因：上行規則名稱，下行「關鍵字」', () => {
   assert.deepEqual(
     issuedSourceLines({ issuedVia: 'keyword', issuedSourceName: '秋季領券', issuedByName: null }),

@@ -320,6 +320,8 @@ function BroadcastTab() {
     (CouponAudiencePreview & { matched: number; messagingWindowHours: number | null }) | null
   >(null);
   const [audiencePreviewError, setAudiencePreviewError] = useState<string | null>(null);
+  // 預估失敗時按「重試」：改變這個值重新預估
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const tagKey = formData.tagIds.join(',');
   useEffect(() => {
     setAudiencePreview(null);
@@ -344,7 +346,7 @@ function BroadcastTab() {
     };
     // tagIds 以字串比較，避免每次重繪產生新陣列就重新查詢
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError, effectiveForm.couponId]);
+  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError, effectiveForm.couponId, previewAttempt]);
 
   const couponWarning = effectiveForm.couponId ? couponCapacityWarning(audiencePreview) : null;
   // 附券廣播素材可以不選（只送預設發券文字）；沒有素材也沒有附券時說明原因（Instagram 只能附券）
@@ -352,9 +354,12 @@ function BroadcastTab() {
   // 素材有顧客專屬券連結時要附券，否則顧客會看到 {{coupon.url}}（change improve-coupon-url-insert-ux）
   const sourceError = broadcastSourceError(selectedChannel?.channelType, effectiveForm, selectedMaterial?.body);
   const isInstagram = (selectedChannel?.channelType ?? '').toUpperCase() === 'THREADS';
+  // 附券時要先看到名額：預估還沒回應或失敗都不能建立（C3，change fix-plain-broadcast-send-362）
+  const couponPreviewPending = Boolean(effectiveForm.couponId) && (!audiencePreview || Boolean(audiencePreviewError));
   // 名額不足要先勾選確認
   const createBlocked =
     !formData.name || !formData.channelId || Boolean(sourceError) || Boolean(audienceError)
+    || couponPreviewPending
     || Boolean(couponWarning && !couponAck);
 
   const toggleTag = (tagId: string) => {
@@ -407,15 +412,15 @@ function BroadcastTab() {
     const broadcast = broadcasts.find((b) => b.id === id);
     const channel = (channels as ChannelRow[]).find((c) => c.id === broadcast?.channelId);
     const withWindow = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
-    // 附券廣播在背景發送；重送時已處理的人不會再收到（design D29）
+    // 廣播都在背景發送（一般群發見 change fix-plain-broadcast-send-362）；附券廣播重送時已處理的人不會再收到（design D29）
     const question = broadcast?.couponId
       ? `${withWindow}\n\n附券廣播會在背景馬上開始發送，進度會顯示在廣播列表；已收到券的人不會重複收到。`
-      : withWindow;
+      : `${withWindow}\n\n廣播會在背景馬上開始發送，進度與結果會顯示在廣播列表。`;
     if (!confirm(question)) return;
     setSendingId(id);
     try {
       const res = await api.post(`/marketing/broadcasts/${id}/send`);
-      if (res.status === 202) alert('已開始在背景發送，廣播列表會自動更新進度與結果');
+      if (res.status === 202) alert('已開始在背景發送，廣播列表會自動更新進度與結果，完成後可以在該列查看每位收件人的結果');
     } catch (err) {
       alert(getApiErrorMessage(err, '發送失敗'));
     } finally {
@@ -515,8 +520,15 @@ function BroadcastTab() {
                   </td>
                   <td className="py-3">
                     <div className="flex gap-1">
-                      {b.couponId && ['completed', 'failed', 'sending'].includes(b.status) && (
-                        <Button size="sm" variant="ghost" onClick={() => setResultId(b.id)} title="發券結果" aria-label="查看發券結果">
+                      {/* 所有已發送的廣播都可以看收件人結果（一般群發見 change fix-plain-broadcast-send-362） */}
+                      {['completed', 'failed', 'sending'].includes(b.status) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setResultId(b.id)}
+                          title={b.couponId ? '發券結果' : '發送結果'}
+                          aria-label={b.couponId ? '查看發券結果' : '查看發送結果'}
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
                       )}
@@ -747,7 +759,17 @@ function BroadcastTab() {
               <p className="text-xs text-destructive">{audienceError}</p>
             )}
             {audiencePreviewError && (
-              <p className="text-xs text-destructive">{audiencePreviewError}</p>
+              <div className="flex items-center gap-2 text-xs text-destructive">
+                <p role="alert">
+                  {effectiveForm.couponId ? `無法確認優惠券名額，確認前不能建立：${audiencePreviewError}` : audiencePreviewError}
+                </p>
+                <Button size="sm" variant="outline" onClick={() => setPreviewAttempt((n) => n + 1)}>
+                  重試
+                </Button>
+              </div>
+            )}
+            {effectiveForm.couponId && !audiencePreview && !audiencePreviewError && formData.channelId && !audienceError && (
+              <p className="text-xs text-muted-foreground">正在確認優惠券名額…</p>
             )}
             {audiencePreview && (
               <div className="rounded-md bg-muted px-3 py-2 text-xs">
@@ -815,7 +837,7 @@ function BroadcastTab() {
       <Dialog open={resultId !== null} onOpenChange={(open) => !open && setResultId(null)}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>發券結果</DialogTitle>
+            <DialogTitle>{broadcasts.find((b) => b.id === resultId)?.couponId ? '發券結果' : '發送結果'}</DialogTitle>
           </DialogHeader>
           {resultId && <BroadcastCouponResult broadcastId={resultId} />}
           <DialogFooter>

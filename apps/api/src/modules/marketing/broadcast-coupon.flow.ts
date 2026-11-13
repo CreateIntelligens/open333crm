@@ -23,8 +23,16 @@ import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import type { AccessibleChannels, AgentVisibilityResolver } from '../../services/channel-visibility.js';
 import { decryptCredentials } from '../channel/channel.service.js';
-import { UNEXPECTED_FAILURE_REASON, convertBodyUrlsToShortLinks } from './marketing.service.js';
+import {
+  UNEXPECTED_FAILURE_REASON,
+  convertBodyUrlsToShortLinks,
+  executeBroadcast,
+  findBroadcastSendKind,
+  type BroadcastExecutionResult,
+} from './marketing.service.js';
+import { tenantScopedClient } from '../../lib/tenant-db.js';
 import { buildVariableMap, renderTemplateBody } from './template-renderer.js';
+import { checkBroadcastQuota } from './broadcast-quota.js';
 import {
   COUPON_BROADCAST_JOB_OPTIONS,
   COUPON_BROADCAST_QUEUE,
@@ -32,6 +40,7 @@ import {
   PROGRESS_EVERY,
   claimCouponBroadcast,
   createBatchIssue,
+  queueBroadcast,
   queueCouponBroadcast,
   confirmRecipient,
   failCouponBroadcast,
@@ -98,6 +107,36 @@ export function queueCouponBroadcastFlow(
   });
 }
 
+/**
+ * 群發頁「立即發送」：附券廣播與一般群發都排入背景發送並馬上排一個執行的 job（一般群發見 change fix-plain-broadcast-send-362）。
+ * 修正前建立的網站聊天室一般群發：與修正前的同步發送相同，標為失敗並寫原因後丟 400（design D6）；
+ * 排入的交易已經 rollback，所以另開一個交易寫入。附券廣播維持不排入、不改狀態。
+ */
+export async function queueBroadcastFlow(
+  deps: QueueBroadcastDeps,
+  tenantId: string,
+  broadcastId: string,
+  now?: number,
+  /** 按下發送的人（scheduledById），排程器與佇列 job 以他當下的權限重新檢查 */
+  actorId?: string,
+) {
+  try {
+    return await inTenant(deps.prisma, tenantId, async (scope) => {
+      const { job, ...queued } = await queueBroadcast(scope, broadcastId, now, actorId);
+      await enqueueBroadcastRun(scope, deps, job);
+      return queued;
+    });
+  } catch (err) {
+    if (err instanceof AppError && err.code === 'CHANNEL_PUSH_NOT_SUPPORTED') {
+      await inTenant(deps.prisma, tenantId, async (ctx) => {
+        const kind = await findBroadcastSendKind(ctx, broadcastId);
+        if (kind && !kind.couponId) await failCouponBroadcast(ctx, broadcastId, err.code, err.message);
+      });
+    }
+    throw err;
+  }
+}
+
 /** 券詳情頁的批次發券：建立廣播、排入發送並馬上排一個執行的 job */
 export function createBatchIssueFlow(
   deps: QueueBroadcastDeps,
@@ -133,6 +172,58 @@ export type CouponBroadcastRunResult =
   | { status: 'completed' | 'failed'; summary: CouponBroadcastSummary }
   /** 這次執行已被重新排入的新執行取代：停止，進度與結果由新的執行寫入 */
   | { status: 'superseded'; summary?: CouponBroadcastSummary };
+
+/** 一般群發背景執行的結果（佇列 job、排程器） */
+export type PlainBroadcastRunResult =
+  | { status: 'not_claimed' }
+  | { status: 'completed' | 'failed'; result: BroadcastExecutionResult }
+  | { status: 'failed'; failureCode: string };
+
+/**
+ * 背景發送一則已排入的廣播（coupon-broadcast 佇列 job 與排程器共用，design D1）：有券走 runCouponBroadcast()，
+ * 沒券走 runPlainBroadcast()。查不到廣播回 not_claimed。
+ */
+export async function runQueuedBroadcast(
+  deps: CouponBroadcastDeps,
+  tenantId: string,
+  broadcastId: string,
+): Promise<CouponBroadcastRunResult | PlainBroadcastRunResult> {
+  const kind = await step(deps, tenantId, (ctx) => findBroadcastSendKind(ctx, broadcastId));
+  if (!kind) return { status: 'not_claimed' };
+  if (kind.couponId) return runCouponBroadcast(deps, tenantId, broadcastId);
+  return runPlainBroadcast(deps, tenantId, broadcastId);
+}
+
+/**
+ * 背景發送一則一般群發。只搶已排程且時間已到的廣播（搶不到回 not_claimed），發送失敗後 job 重試不會重送（design D2）。
+ * 以綁定租戶的連線執行：每個查詢各自開一個 withTenant() 交易，渠道 API 不在交易內（design D3）。
+ * 預期內的失敗（受眾為空、額度不足等）原因已寫進廣播，回 failed；非預期的錯誤也已寫進廣播，往上拋讓佇列記錄。
+ */
+export async function runPlainBroadcast(
+  deps: CouponBroadcastDeps,
+  tenantId: string,
+  broadcastId: string,
+): Promise<PlainBroadcastRunResult> {
+  const now = new Date((deps.now ?? Date.now)());
+  try {
+    const result = await executeBroadcast(
+      tenantScopedClient(deps.prisma, tenantId),
+      deps.io as Server,
+      tenantId,
+      broadcastId,
+      deps.visibilityOf,
+      { queued: { now } },
+    );
+    if (!result) return { status: 'not_claimed' };
+    return { status: result.success === 0 && result.failed > 0 ? 'failed' : 'completed', result };
+  } catch (err) {
+    if (err instanceof AppError) {
+      logger.warn('[Broadcast] 一般群發沒有發送', { tenantId, broadcastId, code: err.code });
+      return { status: 'failed', failureCode: err.code };
+    }
+    throw err;
+  }
+}
 
 interface OutboundMessage {
   contentType: string;
@@ -266,23 +357,11 @@ export async function runCouponBroadcast(
     if (prepared.total === 0) return fail('BROADCAST_NO_RECIPIENTS', noRecipientReason(plan.broadcast.targetType));
 
     // 訊息額度：剩餘額度小於這次要送的人數就整則不送、不建任何券（同一次推送多則只算一次）
-    const quotaOf = plugin.extensions?.analytics?.getMessageQuota;
-    if (prepared.pending.length > 0 && quotaOf) {
-      let quota: { totalUsage: number; maxMessages?: number };
-      try {
-        quota = await quotaOf(credentials);
-      } catch (err) {
-        logger.error('[CouponBroadcast] 查詢訊息額度失敗', { tenantId, broadcastId, error: (err as Error).message });
-        return fail('LINE_QUOTA_CHECK_FAILED', '無法查詢官方帳號本月的訊息額度，沒有發送。請稍後重新發送');
-      }
-      if (quota.maxMessages !== undefined && quota.maxMessages - quota.totalUsage < prepared.pending.length) {
-        const left = Math.max(0, quota.maxMessages - quota.totalUsage);
-        return fail(
-          'LINE_QUOTA_INSUFFICIENT',
-          `官方帳號本月剩餘訊息額度 ${left} 則，少於這次要發送的 ${prepared.pending.length} 人，沒有發送也沒有發出任何券。請提高額度或縮小對象後重新發送`,
-        );
-      }
-    }
+    const quota = await checkBroadcastQuota(plugin, credentials, prepared.pending.length, {
+      withCoupon: true,
+      log: { tenantId, broadcastId },
+    });
+    if (quota) return fail(quota.code, quota.reason);
 
     let firstError: string | null = null;
     let stopped: { code: string; reason: string } | undefined;

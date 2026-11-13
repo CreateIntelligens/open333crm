@@ -76,6 +76,16 @@ export function couponResultLines(summary: CouponBroadcastSummary): CouponResult
   return lines;
 }
 
+/** 一般群發（不附券）的結果：成功、失敗人數，略過人數大於 0 時才列（change fix-plain-broadcast-send-362） */
+export function plainResultLines(counts: { successCount?: number; failedCount?: number; skippedCount?: number }): CouponResultLine[] {
+  const lines: CouponResultLine[] = [
+    { kind: 'issued', label: '成功', count: counts.successCount ?? 0 },
+    { kind: 'failed', label: '失敗', count: counts.failedCount ?? 0 },
+  ];
+  if ((counts.skippedCount ?? 0) > 0) lines.push({ kind: 'skipped', label: '略過', count: counts.skippedCount ?? 0 });
+  return lines;
+}
+
 /** 附券廣播與批次發放失敗代碼的補充說明（廣播的 failureReason 已是中文，這裡只補行動建議） */
 export const COUPON_BROADCAST_FAILURE_HINTS: Record<string, string> = {
   LINE_QUOTA_INSUFFICIENT: '可到 LINE Official Account Manager 提高本月訊息額度，或縮小對象後重新發送。',

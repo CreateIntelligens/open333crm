@@ -122,6 +122,7 @@ export default function ContactDetailPage() {
                     channelType: string;
                     uid: string;
                     profileName?: string;
+                    blockedAt?: string | null;
                     channel?: { id: string; displayName: string; channelType: string };
                   }> | undefined
                 )?.map((ci) => ({
@@ -131,6 +132,8 @@ export default function ContactDetailPage() {
                   displayName: ci.profileName || undefined,
                   // 同一租戶可能接多個 LINE OA／粉專，要顯示是哪一個渠道
                   channelName: ci.channel?.displayName,
+                  // 顧客封鎖了這個官方帳號（收到 unfollow 時記錄，重新加入好友時清空）
+                  blockedAt: ci.blockedAt ?? null,
                 })),
                 tags: (
                   contact.tags as Array<{

@@ -87,6 +87,12 @@ async function recordDeliveryFailure(
         createdAt: now,
       },
     });
+    // 失敗紀錄也算對話的最新訊息：比照送出成功更新 lastMessageAt，對話才會浮到收件匣上方，
+    // 重新整理後也排在同一個位置（#362 #11）。前端收到 message.new 時以訊息時間更新列表
+    await prisma.conversation.updateMany({
+      where: { id: conv.id, tenantId: conv.tenantId },
+      data: { lastMessageAt: now },
+    });
     const wsPayload = {
       conversationId: conv.id,
       message: {
@@ -133,7 +139,7 @@ export interface DeliverRecordOptions {
 
 export type DeliverResult =
   | { ok: true; channelMsgId: string | null; sentAt: Date }
-  /** recorded：失敗是否已寫成對話中看得到的紀錄（找不到對話或渠道停用時沒有寫） */
+  /** recorded：失敗是否已寫成對話中看得到的紀錄（只有找不到對話時沒有寫：沒有地方可寫） */
   | { ok: false; error: string; recorded: boolean };
 
 /**
@@ -175,9 +181,16 @@ export async function sendToChannelFromWorker(
     logger.error('[worker:deliver] Conversation not found:', conversationId);
     return { ok: false, error: '找不到對話', recorded: false };
   }
-  if (!conv.channel?.isActive) {
-    logger.error('[worker:deliver] Channel inactive/missing for conv:', conversationId);
-    return { ok: false, error: '渠道已停用', recorded: false };
+  if (!conv.channel) {
+    logger.error('[worker:deliver] Channel missing for conv:', conversationId);
+    return { ok: false, error: '找不到對話的渠道', recorded: false };
+  }
+  if (!conv.channel.isActive) {
+    // 對話還在：失敗寫進對話，客服才看得出規則有觸發卻沒送出（#362 #12，原本只寫 log）
+    logger.error('[worker:deliver] Channel inactive for conv:', conversationId);
+    const error = '渠道已停用，無法送出';
+    await recordDeliveryFailure(prisma, redis, conv, payload, new Error(error), new Date(), record);
+    return { ok: false, error, recorded: true };
   }
 
   const identity = conv.contact?.channelIdentities?.find(

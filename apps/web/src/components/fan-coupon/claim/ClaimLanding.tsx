@@ -10,7 +10,7 @@
  *
  * 不能領（停用、不在期間、券不是進行中）時只顯示說明，不顯示按鈕；代碼不存在時不顯示任何商家資料。
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link2Off, Loader2, TicketX, WifiOff } from 'lucide-react';
 import { fetchPublicClaim, type PublicClaimPage } from '@/lib/fan-coupon/claim';
 import { conditionText, faceValue, ymd } from '@/lib/fan-coupon/labels';
@@ -114,12 +114,19 @@ function ClaimSteps({ channel }: { channel: NonNullable<PublicClaimPage['channel
 
 export function ClaimLanding({ code }: { code: string }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
+  // 每次載入的序號：代碼換了或按了重試，較早送出、較晚回來的回應不可覆蓋最新的結果（#362 B3）
+  const requestSeq = useRef(0);
 
   const load = useCallback(() => {
+    const seq = ++requestSeq.current;
+    const isLatest = () => seq === requestSeq.current;
     setPhase({ kind: 'loading' });
     fetchPublicClaim(code)
-      .then((page) => setPhase({ kind: 'ok', page }))
+      .then((page) => {
+        if (isLatest()) setPhase({ kind: 'ok', page });
+      })
       .catch((err: unknown) => {
+        if (!isLatest()) return;
         const status = (err as { response?: { status?: number } }).response?.status;
         setPhase(status === 404 ? { kind: 'not_found' } : { kind: 'error' });
       });

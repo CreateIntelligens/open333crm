@@ -5,7 +5,6 @@ import {
   listBroadcasts,
   getBroadcast,
   createBroadcast,
-  executeBroadcast,
   cancelBroadcast,
   previewBroadcastAudience,
 } from './marketing.service.js';
@@ -27,11 +26,11 @@ import {
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { getBroadcastChannelIdFlow } from './marketing.flow.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { agentVisibilityResolverOf, assertChannelVisible, isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { assertChannelVisible, isChannelAccessible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import {
   getCouponBroadcastSummaryFlow,
   listBroadcastRecipientsFlow,
-  queueCouponBroadcastFlow,
+  queueBroadcastFlow,
 } from './broadcast-coupon.flow.js';
 import { assertPermission, requirePermission, requirePermissionWhen } from '../../guards/rbac.guard.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
@@ -371,19 +370,15 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(paginated(result.items, result.total, result.page, result.limit));
   });
 
-  // POST /broadcasts/:id/send — manually trigger broadcast execution
+  // POST /broadcasts/:id/send — 立即發送：排入背景發送，回 202（附券廣播 design D29；一般群發 change fix-plain-broadcast-send-362）。
+  // 發送結果寫在廣播的 status、failureCode、failureReason 與收件紀錄，不在這個回應裡
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/send', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
     const broadcast = await visibleBroadcast(request, request.params.id);
-    // 附券廣播：排入排程立即執行，不在 HTTP 請求內發送（design D29）；結果在廣播列表查看
-    if (broadcast.couponId) {
-      // 附券群發每位收件人各發一張券：發送的人也要有 coupon.issue（MKT-03）
-      await assertPermission(request, 'coupon.issue', COUPON_NEEDS_ISSUE);
-      // 排程器後備送出時，以按下發送的人當下的權限重新檢查（scheduledById）
-      const queued = await queueCouponBroadcastFlow(fastify, request.agent.tenantId, broadcast.id, undefined, request.agent.id);
-      return reply.status(202).send(success(queued));
-    }
-    const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id, agentVisibilityResolverOf(fastify));
-    return reply.send(success(result));
+    // 附券群發每位收件人各發一張券：發送的人也要有 coupon.issue（MKT-03）
+    if (broadcast.couponId) await assertPermission(request, 'coupon.issue', COUPON_NEEDS_ISSUE);
+    // 排程器與佇列 job 送出時，以按下發送的人當下的權限重新檢查（scheduledById）
+    const queued = await queueBroadcastFlow(fastify, request.agent.tenantId, broadcast.id, undefined, request.agent.id);
+    return reply.status(202).send(success(queued));
   });
 
   // POST /broadcasts/:id/cancel — cancel a draft/scheduled broadcast

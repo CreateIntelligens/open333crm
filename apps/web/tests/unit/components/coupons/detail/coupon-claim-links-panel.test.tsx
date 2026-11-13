@@ -34,6 +34,8 @@ import type { Coupon } from '#src/hooks/useCoupons.js';
 
 const COUPON_ID = '11111111-1111-4111-8111-111111111111';
 const LINE_ID = '22222222-2222-4222-8222-222222222222';
+const FB_ID = '33333333-3333-4333-8333-333333333333';
+const IG_ID = '44444444-4444-4444-8444-444444444444';
 
 function coupon(overrides: Partial<Coupon> = {}): Coupon {
   return { id: COUPON_ID, name: '秋季九折', purpose: 'MARKETING', status: 'ACTIVE', ...overrides } as Coupon;
@@ -67,11 +69,17 @@ function renderPanel(props: Partial<{ coupon: Coupon; canManage: boolean }> = {}
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // resetAllMocks 連 mockResolvedValue 等實作一起清掉，前一個測試設定的回傳值不會留到下一個測試（#362 A8）；
+  // clearAllMocks 只清呼叫紀錄。清掉之後重新設定每個測試共用的預設值
+  vi.resetAllMocks();
+  h.mutate.mockResolvedValue(undefined);
   h.links = [link()];
   h.channels = [
     { id: LINE_ID, channelType: 'LINE', displayName: '總店 LINE', isActive: true },
+    { id: FB_ID, channelType: 'FB', displayName: '粉絲專頁', isActive: true },
+    { id: IG_ID, channelType: 'THREADS', displayName: '官方 IG', isActive: true },
     { id: 'web', channelType: 'WEBCHAT', displayName: '官網客服', isActive: true },
+    { id: 'old-fb', channelType: 'FB', displayName: '停用粉專', isActive: false },
   ];
 });
 
@@ -84,7 +92,11 @@ describe('管理者可建立公開領券連結', () => {
     fireEvent.change(within(dialog).getByLabelText('連結名稱'), { target: { value: '官網橫幅' } });
     // 只列出 LINE、Facebook、Instagram 渠道
     const select = within(dialog).getByLabelText('領券的渠道') as HTMLSelectElement;
-    assert.deepEqual([...select.options].map((o) => o.textContent), ['請選擇渠道', '總店 LINE（LINE）']);
+    assert.deepEqual(
+      [...select.options].map((o) => o.textContent),
+      ['請選擇渠道', '總店 LINE（LINE）', '粉絲專頁（Facebook）', '官方 IG（Instagram）'],
+      '網站客服與停用的渠道不列出',
+    );
     fireEvent.change(select, { target: { value: LINE_ID } });
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: '建立' }));
@@ -114,6 +126,32 @@ describe('管理者可建立公開領券連結', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '建立' }));
     assert.equal(h.createClaimLink.mock.calls.length, 0);
     assert.ok(within(dialog).getByText('請輸入連結名稱'));
+  });
+
+  test('取消後重新開啟，表單與錯誤訊息都清空（#362 B4）', async () => {
+    h.createClaimLink.mockRejectedValue({ response: { data: { error: { message: '找不到這個渠道，請重新選擇' } } } });
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: '建立領券連結' }));
+    let dialog = screen.getByRole('alertdialog', { name: '建立領券連結' });
+    fireEvent.change(within(dialog).getByLabelText('連結名稱'), { target: { value: '官網橫幅' } });
+    fireEvent.change(within(dialog).getByLabelText('領券的渠道'), { target: { value: LINE_ID } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: '建立' }));
+    });
+    assert.ok(within(dialog).queryByRole('alert') !== null, '先出現送出失敗的訊息');
+    fireEvent.change(within(dialog).getByLabelText('連結名稱'), { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '建立' }));
+    assert.ok(within(dialog).queryByText('請輸入連結名稱') !== null, '也出現欄位錯誤');
+    fireEvent.change(within(dialog).getByLabelText('連結名稱'), { target: { value: '寫到一半' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: '建立領券連結' }));
+    dialog = screen.getByRole('alertdialog', { name: '建立領券連結' });
+
+    assert.equal((within(dialog).getByLabelText('連結名稱') as HTMLInputElement).value, '');
+    assert.equal((within(dialog).getByLabelText('領券的渠道') as HTMLSelectElement).value, '');
+    assert.ok(within(dialog).queryByRole('alert') === null, '送出失敗的訊息清掉');
+    assert.ok(within(dialog).queryByText('請輸入連結名稱') === null, '欄位錯誤清掉');
   });
 
   test('客服補償券不能建立領券連結', () => {

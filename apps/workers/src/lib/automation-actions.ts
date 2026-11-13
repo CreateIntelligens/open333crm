@@ -13,7 +13,7 @@ import {
 import { claimSideEffect, dispatchOutboxRows, logger, writeOutbox, type OutboxRow } from '@open333crm/core';
 import { publishSocketEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
-import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
+import { recordSkippedDelivery, renderTemplateBody, sendToChannelFromWorker } from './channel-delivery.js';
 import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
 import { couponIssuedViaForTrigger, issueCouponForRule } from './rule-coupon-issue.js';
 
@@ -385,19 +385,75 @@ function notifyJobOptions(context: WorkerActionContext, actionKey: string | null
   return actionKey ? { jobId: `${context.eventId}__${actionKey}__${agentId}` } : undefined;
 }
 
+/** 單一動作的執行結果；寫進規則執行紀錄 automation_logs.actionsRan */
+export interface WorkerActionOutcome {
+  index: number;
+  type: string;
+  /** ok：已執行或依設計略過；failed：該做卻沒做到；duplicate：同一事件已執行過 */
+  status: 'ok' | 'failed' | 'duplicate';
+  error?: string;
+}
+
+/**
+ * 有動作失敗時寫一筆規則執行紀錄（#362 #12）。
+ * 失敗不可以只寫 log：對話不存在時沒有地方留下訊息，這筆紀錄是唯一查得到原因的地方（GET /automation/logs）。
+ * 紀錄本身寫不進去時只記 log，不讓已執行的動作被佇列重試而重複送出。
+ */
+async function recordFailedExecution(
+  prisma: PrismaClient,
+  context: WorkerActionContext,
+  outcomes: WorkerActionOutcome[],
+): Promise<void> {
+  const failed = outcomes.filter((outcome) => outcome.status === 'failed');
+  if (failed.length === 0 || !context.ruleId) return;
+  try {
+    await prisma.automationLog.create({
+      data: {
+        tenantId: context.tenantId,
+        ruleId: context.ruleId,
+        triggerRef: context.eventId ?? null,
+        success: false,
+        actionsRan: outcomes as unknown as object,
+        errorMsg: failed.map((outcome) => `${outcome.type}：${outcome.error ?? '執行失敗'}`).join('；').slice(0, 1000),
+      },
+    });
+  } catch (err) {
+    logger.error('[automation] 寫入規則執行紀錄失敗', { tenantId: context.tenantId, ruleId: context.ruleId, err });
+  }
+}
+
 export async function executeWorkerAutomationActions(
   prisma: PrismaClient,
   redisPublisher: IORedis,
   actions: WorkerAutomationAction[],
   context: WorkerActionContext,
-): Promise<void> {
+): Promise<WorkerActionOutcome[]> {
+  const outcomes = await runWorkerAutomationActions(prisma, redisPublisher, actions, context);
+  await recordFailedExecution(prisma, context, outcomes);
+  return outcomes;
+}
+
+async function runWorkerAutomationActions(
+  prisma: PrismaClient,
+  redisPublisher: IORedis,
+  actions: WorkerAutomationAction[],
+  context: WorkerActionContext,
+): Promise<WorkerActionOutcome[]> {
+  const outcomes: WorkerActionOutcome[] = [];
   for (const [index, action] of actions.entries()) {
+    const outcome: WorkerActionOutcome = { index, type: action.type, status: 'ok' };
+    outcomes.push(outcome);
+    const fail = (error: string) => {
+      outcome.status = 'failed';
+      outcome.error = error;
+    };
     // 同一個事件的同一個動作最多執行一次（automation-engine「規則動作每個事件最多執行一次」）。
     // 認領在 try 之外：認領的交易失敗時丟錯，由佇列重試（side-effect-claims「認領 commit 之前的失敗由佇列重試」）。
     // 認領之後執行失敗也不還原、只記 log：送出訊息這類動作寧可少做，不重複做
     const actionKey = context.eventId && context.ruleId ? `${context.ruleId}#${index}` : null;
     if (actionKey && !(await claimAction(prisma, context, actionKey))) {
       logger.info(`[automation] Worker action "${action.type}" skipped: already executed for event ${context.eventId} (${actionKey})`);
+      outcome.status = 'duplicate';
       continue;
     }
     try {
@@ -584,13 +640,14 @@ export async function executeWorkerAutomationActions(
           logger.info('[automation] send_message skipped: empty text');
           continue;
         }
-        await deliverToChannelFromWorker(
+        const sent = await sendToChannelFromWorker(
           prisma,
           redisPublisher,
           context.pluginRegistry,
           context.conversationId,
           { contentType: 'text', content: { text }, delivery: keywordReplyDelivery(context) },
         );
+        if (!sent.ok) fail(sent.error);
         continue;
       }
 
@@ -610,6 +667,7 @@ export async function executeWorkerAutomationActions(
         });
         if (!material) {
           logger.warn(`[automation] send_material skipped: material ${materialId} not found`);
+          fail('找不到素材');
           continue;
         }
 
@@ -634,6 +692,7 @@ export async function executeWorkerAutomationActions(
               `素材是 ${channelLabel(matChannelType)} 素材，這個對話是 ${channelLabel(convChannelType)}，沒有送出`,
             );
           }
+          fail('素材渠道與對話渠道不符');
           continue;
         }
 
@@ -648,13 +707,14 @@ export async function executeWorkerAutomationActions(
         const renderedBody = stripUnresolvedPlaceholders(
           renderTemplateBody(material.body as Record<string, unknown>, variables),
         );
-        await deliverToChannelFromWorker(
+        const sent = await sendToChannelFromWorker(
           prisma,
           redisPublisher,
           context.pluginRegistry,
           context.conversationId,
           { contentType: material.contentType, content: renderedBody, delivery: keywordReplyDelivery(context) },
         );
+        if (!sent.ok) fail(sent.error);
         continue;
       }
 
@@ -688,8 +748,10 @@ export async function executeWorkerAutomationActions(
       logger.warn(`[automation] Unsupported worker action "${action.type}" skipped`);
     } catch (err) {
       logger.error(`[automation] Worker action "${action.type}" failed`, { err });
+      fail((err instanceof Error ? err.message : String(err)).slice(0, 500));
     }
   }
+  return outcomes;
 }
 
 export async function getSupervisorAndAdminAgentIds(
