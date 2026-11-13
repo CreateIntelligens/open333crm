@@ -79,6 +79,8 @@ export function createCommentReplyRecords(prisma: PrismaClient) {
     await prisma.commentAuthor.deleteMany({ where });
     await prisma.commentReplyRule.deleteMany({ where });
     await prisma.commentReplyUsage.deleteMany({ where });
+    await prisma.message.deleteMany({ where: { conversation: where } });
+    await prisma.conversation.deleteMany({ where });
     await prisma.material.deleteMany({ where });
     await prisma.tenantAuditLog.deleteMany({ where });
     await prisma.outbox.deleteMany({ where });

@@ -58,6 +58,9 @@ import lineProfileRoutes from './modules/line/line-profile.routes.js';
 import richMenuRoutes from './modules/line/rich-menu.routes.js';
 import quickReplyPresetRoutes from './modules/line/quick-reply-preset.routes.js';
 import metaConnectRoutes from './modules/meta-connect/meta-connect.routes.js';
+import commentReplyRuleRoutes from './modules/comment-reply/comment-reply-rule.routes.js';
+import commentReplyLogRoutes from './modules/comment-reply/comment-reply-log.routes.js';
+import commentReplyChannelRoutes from './modules/comment-reply/comment-reply-channel.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
 import analyticsRoutes from './modules/analytics/analytics.routes.js';
 import settingsRoutes from './modules/settings/settings.routes.js';
@@ -241,6 +244,10 @@ export async function bootstrap() {
   await app.register(richMenuRoutes, { prefix: '/api/v1/line/rich-menus' });
   await app.register(quickReplyPresetRoutes, { prefix: '/api/v1/line/quick-reply-presets' });
   await app.register(metaConnectRoutes, { prefix: '/api/v1/meta-connect' });
+  // 留言自動私訊（change add-comment-keyword-private-reply）：規則、觸發紀錄、渠道端三個資源
+  await app.register(commentReplyRuleRoutes, { prefix: '/api/v1/comment-replies' });
+  await app.register(commentReplyLogRoutes, { prefix: '/api/v1/comment-replies' });
+  await app.register(commentReplyChannelRoutes, { prefix: '/api/v1/comment-replies' });
   await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await app.register(analyticsRoutes, { prefix: '/api/v1/analytics' });
   await app.register(settingsRoutes, { prefix: '/api/v1/settings' });

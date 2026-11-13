@@ -45,11 +45,14 @@ const keywordsSchema = z
     }
   });
 
+/** null 視為沒填：前端把讀回的貼文（permalink 等為 null）原樣送回 */
+const optionalText = (max: number) => z.preprocess((v) => (v === null ? undefined : v), z.string().max(max).optional());
+
 const postSchema = z.object({
   postId: z.string().trim().min(1, '貼文 ID 不可空白').max(300, '貼文 ID 太長'),
-  permalink: z.string().max(2000).optional(),
-  thumbnailUrl: z.string().max(2000).optional(),
-  excerpt: z.string().max(200).optional(),
+  permalink: optionalText(2000),
+  thumbnailUrl: optionalText(2000),
+  excerpt: optionalText(200),
   publishedAt: optionalDate,
 });
 
