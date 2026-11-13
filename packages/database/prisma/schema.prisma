@@ -545,6 +545,9 @@ model ChannelIdentity {
   lastFollowedAt  DateTime?
   /// 系統記錄到的加入好友次數（上線前的加入不計）
   followCount     Int       @default(0)
+  /// 封鎖官方帳號的時間（issue #362）：收到 unfollow 時記下，重新 follow 時清空；有值表示目前封鎖中。
+  /// 只供顯示，發送路徑不據此排除收件人。與客服手動設定的 Contact.isBlocked 無關
+  blockedAt       DateTime?
 
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
