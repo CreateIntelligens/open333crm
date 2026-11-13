@@ -10,16 +10,11 @@
 import type { PrismaClient } from '@prisma/client';
 import { logger, taipeiMonthString } from '@open333crm/core';
 import { inTenant } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher, enqueueJob, type EventPublisher } from '../../events/outbox-publisher.js';
+import { createOutboxPublisher, type EventPublisher } from '../../events/outbox-publisher.js';
 import { COMMENT_REPLY_WINDOW_MS, COMMENT_REPLY_WINDOW_SAFETY_MARGIN_MS } from './comment-reply-expiry.js';
 import { SENDING_STALE_MS } from './comment-reply-delivery.service.js';
 import { readCommentReplyPlatformSettings } from './comment-reply-platform-settings.js';
-import {
-  COMMENT_REPLY_JOB_DELIVER,
-  COMMENT_REPLY_JOB_OPTIONS,
-  COMMENT_REPLY_QUEUE,
-  type CommentReplyJobData,
-} from './comment-reply.types.js';
+import { enqueueCommentReplyDelivery } from './comment-reply-enqueue.js';
 
 /** PENDING 這麼久沒有進展視為工作遺失（D2） */
 export const PENDING_STALE_MS = 10 * 60_000;
@@ -81,8 +76,7 @@ export async function runCommentReplyRecover(deps: MaintenanceDeps): Promise<{ r
   for (const [tenantId, ids] of groupByTenant(stale)) {
     await inTenant(deps.prisma, tenantId, async (scope) => {
       for (const logId of ids) {
-        const job: CommentReplyJobData = { tenantId, logId };
-        await enqueueJob(scope, publisher, COMMENT_REPLY_QUEUE, COMMENT_REPLY_JOB_DELIVER, job, COMMENT_REPLY_JOB_OPTIONS);
+        await enqueueCommentReplyDelivery(scope, publisher, logId);
         requeued += 1;
       }
     });

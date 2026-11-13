@@ -5,12 +5,12 @@
  * - Meta 呼叫（readiness、留言接收開關、最近貼文、網址解析）一律在交易外：先短交易讀渠道，交易外呼叫外掛，
  *   成功後再開交易寫結果與稽核（design D1）。
  * - 規則異動 commit 後遞增 Redis 版本號 `cr:rules-ver:<channelId>`，讓收件端 30 秒的規則快取失效（design D4）。
- * - 重試：紀錄改回 PENDING 與 outbox 排入同一交易（requeueCommentReplyLog），job 名稱與收件相同。
+ * - 重試：紀錄改回 PENDING 與 outbox 排入同一交易（enqueueCommentReplyDelivery，與收件、補回排程共用）。
  */
 import type { PrismaClient } from '@prisma/client';
 import type { Redis } from 'ioredis';
 import { logger } from '@open333crm/core';
-import { createOutboxPublisher, enqueueJob, type EventPublisher } from '../../events/outbox-publisher.js';
+import { createOutboxPublisher, type EventPublisher } from '../../events/outbox-publisher.js';
 import type { RequestActor } from '../../lib/request-actor.js';
 import { inTenant, type TenantCtx, type TenantScope } from '../../lib/tenant-ctx.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
@@ -29,8 +29,8 @@ import {
 } from './comment-reply-channel.service.js';
 import { getLog, listLogs, markLogForRetry, summarizeLogs } from './comment-reply-log.service.js';
 import { readCommentReplyPlatformSettings } from './comment-reply-platform-settings.js';
+import { bumpCommentReplyRulesVersion } from './comment-reply-rule-cache.js';
 import {
-  commentReplyRulesVersionKey,
   createRule,
   deleteRule,
   getRule,
@@ -42,7 +42,7 @@ import {
   updateRule,
 } from './comment-reply-rule.service.js';
 import type { LogsQuery, RuleInput, RulePatch } from './comment-reply.schemas.js';
-import { COMMENT_REPLY_JOB_DELIVER, COMMENT_REPLY_QUEUE } from './comment-reply.types.js';
+import { enqueueCommentReplyDelivery } from './comment-reply-enqueue.js';
 
 export interface CommentReplyFlowDeps {
   prisma: PrismaClient;
@@ -52,19 +52,11 @@ export interface CommentReplyFlowDeps {
   events?: EventPublisher;
 }
 
-/** 佇列 job 的選項（design D1）：attempts 5、指數退避 10 秒 */
-export const COMMENT_REPLY_JOB_OPTIONS = {
-  attempts: 5,
-  backoff: { type: 'exponential', delay: 10_000 },
-  removeOnComplete: { age: 86_400 },
-  removeOnFail: { age: 604_800 },
-} as const;
-
 function bumpRulesVersion(scope: TenantScope, deps: CommentReplyFlowDeps, channelIds: string[]) {
   const redis = deps.redis;
   if (!redis || channelIds.length === 0) return;
   scope.afterCommit('comment-reply rules version', async () => {
-    await Promise.all(channelIds.map((id) => redis.incr(commentReplyRulesVersionKey(id))));
+    await Promise.all(channelIds.map((id) => bumpCommentReplyRulesVersion(redis, id)));
   });
 }
 
@@ -179,26 +171,11 @@ export const summarizeLogsFlow = (deps: CommentReplyFlowDeps, actor: RequestActo
 export const getLogFlow = (deps: CommentReplyFlowDeps, actor: RequestActor, viewer: CommentReplyViewer, id: string) =>
   tx(deps, actor.tenantId, (s) => getLog(s, viewer, id));
 
-/**
- * 把一筆（已是 PENDING 的）紀錄排入送出工作：寫 outbox，commit 後送進 comment-reply 佇列，job 名稱與收件相同。
- * job 資料只有識別欄位（spec「留言處理不把個資寫進工作與日誌」）；消費者以 status='PENDING' 條件認領，重複排入無害。
- */
-export async function requeueCommentReplyLog(scope: TenantScope, deps: Pick<CommentReplyFlowDeps, 'prisma' | 'events'>, logId: string): Promise<void> {
-  await enqueueJob(
-    scope,
-    deps.events ?? createOutboxPublisher(deps.prisma),
-    COMMENT_REPLY_QUEUE,
-    COMMENT_REPLY_JOB_DELIVER,
-    { tenantId: scope.tenantId, logId },
-    COMMENT_REPLY_JOB_OPTIONS,
-  );
-}
-
 /** POST /logs/:id/retry：紀錄改回 PENDING、排入工作、寫稽核，同一交易 */
 export function retryLogFlow(deps: CommentReplyFlowDeps, actor: RequestActor, viewer: CommentReplyViewer, id: string) {
   return tx(deps, actor.tenantId, async (scope) => {
     const log = await markLogForRetry(scope, viewer, id);
-    await requeueCommentReplyLog(scope, deps, log.id);
+    await enqueueCommentReplyDelivery(scope, deps.events ?? createOutboxPublisher(deps.prisma), log.id);
     await recordTenantAudit(scope, {
       actorId: actor.agentId,
       action: 'comment_reply.log.retry',

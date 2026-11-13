@@ -6,7 +6,7 @@
  *     租戶停用／方案不含 comment_reply／渠道停用 → 結束（不寫資料）
  *   b 讀啟用規則（快取）→ 比對 → 沒命中：結束
  *   c～e 每則命中的留言一個 inTenant() 交易：插入 PENDING 紀錄（ON CONFLICT DO NOTHING）、找或建聯絡人、
- *        enqueueJob（outbox，與紀錄同交易）
+ *        enqueueCommentReplyDelivery（outbox，與紀錄同交易）
  * 刪除留言（verb=remove）一律處理（清空留言內容是個資保護，不看方案與開關）。
  *
  * 日誌只寫 ID 與數量，不寫留言內容、留言者名稱（spec「留言處理不把個資寫進工作與日誌」）。
@@ -16,29 +16,25 @@ import type { Redis } from 'ioredis';
 import type { ParsedCommentEvent } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { inTenant } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher, enqueueJob, type EventPublisher } from '../../events/outbox-publisher.js';
+import { createOutboxPublisher, type EventPublisher } from '../../events/outbox-publisher.js';
 import { matchCommentRule } from './comment-reply-match.js';
 import { checkPlatformSwitches, checkTenantEntitlement } from './comment-reply-entitlement.js';
 import { readCommentReplyPlatformSettings } from './comment-reply-platform-settings.js';
 import type { CommentReplyPlatform } from './comment-reply-entitlement.js';
 import { getCachedRules } from './comment-reply-rule-cache.js';
+// 試算（testRules）與收件共用同一份規則查詢，兩邊對同一則留言得到同一條規則
+import { listActiveRulesForChannel } from './comment-reply-rule.service.js';
 import {
   hasCommentLog,
   insertPendingLog,
   isChannelActive,
-  listActiveRulesForChannel,
   toIntakeRule,
   markCommentDeleted,
   resolveCommentAuthor,
   touchCommentAuthor,
   type IntakeRule,
 } from './comment-reply-intake.service.js';
-import {
-  COMMENT_REPLY_JOB_DELIVER,
-  COMMENT_REPLY_JOB_OPTIONS,
-  COMMENT_REPLY_QUEUE,
-  type CommentReplyJobData,
-} from './comment-reply.types.js';
+import { enqueueCommentReplyDelivery } from './comment-reply-enqueue.js';
 
 /** 最後收到留言事件的時間（D25）：health 排程在值變動時才同步到渠道設定，避免每則留言寫渠道列 */
 export function lastCommentEventKey(channelId: string): string {
@@ -169,8 +165,7 @@ async function intakeOne(
       // 並行的另一個請求先寫了同一則留言：回滾本交易（含剛建的聯絡人）
       if (!logId) throw new DuplicateCommentError();
       if (!author.createdNow) await touchCommentAuthor(scope, author.authorId, event.createdAt);
-      const job: CommentReplyJobData = { tenantId: channel.tenantId, logId };
-      await enqueueJob(scope, publisher, COMMENT_REPLY_QUEUE, COMMENT_REPLY_JOB_DELIVER, job, COMMENT_REPLY_JOB_OPTIONS);
+      await enqueueCommentReplyDelivery(scope, publisher, logId);
       return 'enqueued' as const;
     });
   } catch (err) {

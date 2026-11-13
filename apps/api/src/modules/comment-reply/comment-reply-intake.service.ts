@@ -13,6 +13,7 @@ import { resolveUidToContact } from '@open333crm/core';
 import { channelDisplayName } from '@open333crm/shared';
 import type { ParsedCommentEvent } from '@open333crm/channel-plugins';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { commenterDisplayName } from './comment-reply-content.js';
 import type { MatchableCommentRule } from './comment-reply-match.js';
 import type { CommentReplyMatchMode, CommentReplyPostScope } from './comment-reply.types.js';
 
@@ -25,18 +26,7 @@ export interface IntakeRule extends MatchableCommentRule {
   publicReplyEnabled: boolean;
 }
 
-/**
- * 某渠道啟用中、未刪除的規則，依 priority、建立時間排序（收件 flow 與試算共用，兩邊對同一則留言得到同一條規則）。
- * 與後台 API（wip/cr-routes）的 comment-reply-rule.service.ts 同名、同簽章；合併時收成一份。
- */
-export async function listActiveRulesForChannel(ctx: TenantCtx, channelId: string): Promise<CommentReplyRule[]> {
-  return ctx.tx.commentReplyRule.findMany({
-    where: { tenantId: ctx.tenantId, channelId, isActive: true, deletedAt: null },
-    orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-  });
-}
-
-/** 規則列轉成比對用的形狀 */
+/** 規則列（comment-reply-rule.service 的 listActiveRulesForChannel()，與試算共用）轉成比對用的形狀 */
 export function toIntakeRule(r: CommentReplyRule): IntakeRule {
   return { ...r, matchMode: r.matchMode as CommentReplyMatchMode, postScope: r.postScope as CommentReplyPostScope };
 }
@@ -68,9 +58,7 @@ export interface ResolvedCommentAuthor {
 
 /** 新聯絡人的名稱：FB 名稱、IG @帳號，都沒有時與入站一致用「<渠道名稱> User <ID 後 6 碼>」 */
 export function commentAuthorDisplayName(channelType: string, event: Pick<ParsedCommentEvent, 'commenterId' | 'commenterName' | 'commenterUsername'>): string {
-  if (event.commenterName) return event.commenterName;
-  if (event.commenterUsername) return `@${event.commenterUsername}`;
-  return `${channelDisplayName(channelType)} User ${event.commenterId.slice(-6)}`;
+  return commenterDisplayName(event) || `${channelDisplayName(channelType)} User ${event.commenterId.slice(-6)}`;
 }
 
 /**

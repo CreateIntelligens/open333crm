@@ -8,6 +8,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import { decryptCredentials } from '../channel/channel.service.js';
+import { appModeOf } from '../comment-reply/comment-reply-access.js';
 
 export type QueueCounts = Record<string, number>;
 
@@ -51,7 +52,7 @@ function obj(v: unknown): Record<string, any> {
 export function channelAppMode(credentialsEncrypted: string | null): 'platform' | 'own_app' {
   if (!credentialsEncrypted) return 'own_app';
   try {
-    return decryptCredentials(credentialsEncrypted).connectMode === 'platform' ? 'platform' : 'own_app';
+    return appModeOf(decryptCredentials(credentialsEncrypted));
   } catch {
     return 'own_app';
   }

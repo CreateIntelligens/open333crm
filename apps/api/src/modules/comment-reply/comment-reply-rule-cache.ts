@@ -5,7 +5,7 @@
  * 規則異動時以 Redis 版本號 `cr:rules-ver:<channelId>` 讓所有 API 實例的快取立即失效：
  * 收件時先 GET 版本號（一次 Redis 往返），與快取記下的版本不同就重讀。
  *
- * 規則異動的路由（建立、修改、刪除、啟用切換、排序）在交易提交後呼叫 bumpCommentReplyRulesVersion()。
+ * 規則異動的 flow（comment-reply.flow.ts 的建立、修改、刪除、啟用切換、排序）在交易提交後呼叫 bumpCommentReplyRulesVersion()。
  * Redis 讀不到版本號時不用快取，直接查資料庫（寧可多查，也不能用到舊規則）。
  */
 import type { Redis } from 'ioredis';
@@ -13,7 +13,7 @@ import type { IntakeRule } from './comment-reply-intake.service.js';
 
 export const COMMENT_REPLY_RULE_CACHE_TTL_MS = 30_000;
 
-/** 與後台 API（wip/cr-routes）的 comment-reply-rule.service.ts 同名、同值；合併時收成一份 */
+/** 規則版本號的唯一定義：後台規則異動（comment-reply.flow.ts）遞增、收件讀取，兩邊都經這個模組 */
 export const commentReplyRulesVersionKey = (channelId: string) => `cr:rules-ver:${channelId}`;
 
 /** 規則異動後呼叫：遞增版本號，所有實例的快取在下一則留言時重讀 */

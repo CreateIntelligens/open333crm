@@ -17,6 +17,7 @@ import type { Redis } from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
 import { logger } from '@open333crm/core';
 import type { OpsAlert } from '../ops-alert/ops-alert.service.js';
+import { commentReplySettingsOf } from './comment-reply-access.js';
 import { lastCommentEventKey } from './comment-reply-intake.flow.js';
 import { signatureFailureKey, SIGNATURE_FAILURE_BUCKET_MS } from '../webhook/webhook-signature-failures.js';
 
@@ -148,7 +149,7 @@ export async function collectHealthSnapshot(deps: Pick<HealthDeps, 'admin' | 're
   const receiving = await receivingChannels(deps.admin);
   const subscriptionMissing: ChannelRef[] = [];
   for (const ch of receiving) {
-    const cr = commentReplySettings(ch.settings);
+    const cr = commentReplySettingsOf(ch.settings);
     if (cr.subscription?.status !== 'missing') continue;
     const hasRule = await deps.admin.commentReplyRule.count({ where: { tenantId: ch.tenantId, channelId: ch.id, isActive: true, deletedAt: null } });
     if (hasRule > 0) subscriptionMissing.push({ channelId: ch.id, tenantId: ch.tenantId, displayName: ch.displayName });
@@ -166,18 +167,6 @@ export async function collectHealthSnapshot(deps: Pick<HealthDeps, 'admin' | 're
   return { channelStats: [...byChannel.values()], stuckPending: Number(stuck), expiringPending: Number(expiring), subscriptionMissing, signatureFailures };
 }
 
-interface CommentReplyChannelSettings {
-  receiving?: boolean;
-  lastCommentEventAt?: string;
-  subscription?: { status?: string };
-}
-
-export function commentReplySettings(settings: unknown): CommentReplyChannelSettings {
-  const s = (settings ?? {}) as Record<string, unknown>;
-  const cr = s.commentReply;
-  return cr && typeof cr === 'object' ? (cr as CommentReplyChannelSettings) : {};
-}
-
 async function receivingChannels(admin: PrismaClient) {
   return admin.channel.findMany({
     where: { isActive: true, settings: { path: ['commentReply', 'receiving'], equals: true } },
@@ -192,7 +181,7 @@ export async function syncLastCommentEventAt(deps: Pick<HealthDeps, 'admin' | 'r
     const raw = await deps.redis.get(lastCommentEventKey(ch.id)).catch(() => null);
     if (!raw) continue;
     const iso = new Date(Number(raw)).toISOString();
-    if (commentReplySettings(ch.settings).lastCommentEventAt === iso) continue;
+    if (commentReplySettingsOf(ch.settings).lastCommentEventAt === iso) continue;
     await deps.admin.$executeRaw`
       UPDATE channels
       SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{commentReply,lastCommentEventAt}', to_jsonb(${iso}::text), true)

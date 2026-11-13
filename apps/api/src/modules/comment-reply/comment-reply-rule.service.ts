@@ -527,5 +527,3 @@ export async function listMaterialOptions(
     .map((m) => ({ id: m.id, name: m.name, contentType: m.contentType, preview: materialPreview(m.body, m.name) }));
 }
 
-/** 留言規則異動時讓收件端的規則快取失效（design D4：程序內快取 30 秒，以 Redis 版本號失效） */
-export const commentReplyRulesVersionKey = (channelId: string) => `cr:rules-ver:${channelId}`;
