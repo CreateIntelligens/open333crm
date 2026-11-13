@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Queue } from 'bullmq';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod/v3';
 import { ChannelType } from '@prisma/client';
@@ -38,6 +39,13 @@ import {
 } from './platform-tenant.service.js';
 import { getPlatformSetting, setPlatformSetting } from './platform-setting.service.js';
 import { CONTRACT_REMINDER_DAYS_KEY, parseContractReminderDays } from './contract-policy.service.js';
+import {
+  clearCommentReplyPlatformSettingsCache,
+  isCommentReplySettingKey,
+  parseCommentReplySettingValue,
+} from '../comment-reply/comment-reply-platform-settings.js';
+import { COMMENT_REPLY_QUEUE } from '../comment-reply/comment-reply.types.js';
+import { getCommentReplyHealth, type QueueCounts } from './comment-reply-health.service.js';
 import aiPrivacyRoutes from './ai-privacy.routes.js';
 import {
   getUsageOverview,
@@ -109,7 +117,23 @@ const changePasswordSchema = z.object({
 const forgotPasswordSchema = z.object({ email: platformEmail });
 const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(8) });
 
-export default async function platformRoutes(fastify: FastifyInstance) {
+export interface PlatformRoutesOptions {
+  /** 測試用：替換 comment-reply 佇列數量的讀取（預設以 REDIS_URL 建一個只讀的 Queue） */
+  commentReplyQueueCounts?: () => Promise<QueueCounts | null>;
+}
+
+export default async function platformRoutes(fastify: FastifyInstance, opts: PlatformRoutesOptions = {}) {
+  // 留言自動私訊健康頁的佇列數量：第一次查詢才建立 Queue，關機時關閉
+  let commentReplyQueue: Queue | null = null;
+  fastify.addHook('onClose', async () => {
+    await commentReplyQueue?.close();
+  });
+  const commentReplyQueueCounts =
+    opts.commentReplyQueueCounts ??
+    (async () => {
+      commentReplyQueue ??= new Queue(COMMENT_REPLY_QUEUE, { connection: { url: getConfig().REDIS_URL } });
+      return commentReplyQueue.getJobCounts('waiting', 'active', 'delayed', 'failed', 'completed');
+    });
   /**
    * 方案異動 commit 之後重新計算租戶已連線 socket 的渠道房間（PR #438 審查，主規格 socket-room-authorization）。
    * 呼叫前服務已失效權限與租戶方案快取。syncSocketChannelRooms 失敗只記 log，不影響回應；沒有 socket 時不做事
@@ -526,15 +550,28 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     return success(result);
   });
 
+  // 留言自動私訊健康頁（design D21、D25）：跨租戶唯讀、不呼叫 Meta
+  fastify.get('/comment-reply/health', guard, async () => {
+    return success(await getCommentReplyHealth(fastify.prismaAdmin, commentReplyQueueCounts));
+  });
+
   // Platform settings (KV)
   fastify.get<{ Params: { key: string } }>('/settings/:key', guard, async (request) => {
     return success(await getPlatformSetting(fastify.prismaAdmin, request.params.key));
   });
   fastify.put<{ Params: { key: string } }>('/settings/:key', guard, async (request) => {
     const { value: raw } = z.object({ value: z.unknown() }).parse(request.body);
-    // 合約到期提醒天數有型別：不合法回 400、不改存預設值；其他鍵仍無型別（AUDIT TRIAL-02）
-    const value = request.params.key === CONTRACT_REMINDER_DAYS_KEY ? parseContractReminderDays(raw) : raw;
-    await setPlatformSetting(fastify.prismaAdmin, request.params.key, value);
+    // 合約到期提醒天數與留言自動私訊的 5 個鍵有型別：不合法回 400、不寫入；其他鍵仍無型別（AUDIT TRIAL-02）
+    const key = request.params.key;
+    const value =
+      key === CONTRACT_REMINDER_DAYS_KEY
+        ? parseContractReminderDays(raw)
+        : isCommentReplySettingKey(key)
+          ? parseCommentReplySettingValue(key, raw)
+          : raw;
+    await setPlatformSetting(fastify.prismaAdmin, key, value);
+    // 同一行程立即生效；其他行程（多個 API 實例）最多 60 秒後生效（design D21、D22）
+    if (isCommentReplySettingKey(key)) clearCommentReplyPlatformSettingsCache();
     await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'setting.update',
