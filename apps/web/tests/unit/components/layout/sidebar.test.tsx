@@ -113,3 +113,17 @@ test('沒有設定權限時隱藏 AI 設定', () => {
   renderExpanded();
   assert.equal(visible('Embedding'), true, '對照組：有 settings.manage 時顯示');
 });
+
+test('留言自動私訊在「行銷與渠道」第一層，只要 comment_reply.view（change add-comment-keyword-private-reply 11.8）', () => {
+  auth.permissions = new Set(['comment_reply.view']);
+  renderExpanded();
+  const link = screen.getByRole('link', { name: '留言自動私訊' });
+  assert.equal(link.getAttribute('href'), '/dashboard/comment-replies');
+  // 沒有 richmenu.manage 也看得到（不在「渠道」群組底下）
+  assert.equal(visible('關鍵字回覆'), false, '對照組：沒有 richmenu.manage 時「渠道」群組隱藏');
+
+  cleanup();
+  auth.permissions = new Set(['richmenu.manage']);
+  renderExpanded();
+  assert.equal(visible('留言自動私訊'), false);
+});
