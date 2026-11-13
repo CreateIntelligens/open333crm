@@ -109,7 +109,7 @@
 - [x] 11.4 元件測試 `apps/web/tests/unit/components/comment-replies/comment-reply-logs.test.tsx`：7 種狀態與「排隊中」「可能已送達」的顯示、未知原因代碼、篩選同步 URL、重試按鈕的出現條件與確認文案、「到收件匣查看對話」的權限條件、留言內容含 `<script>` 以純文字顯示
 - [x] 11.5 元件測試 `apps/web/tests/unit/components/comment-replies/comment-reply-readiness-card.test.tsx`：空狀態 A（沒有渠道、渠道都不在可見範圍）、B（未開啟接收）、C（權限不足；IG 顯示重新產生權杖）、D（測試階段；自備 App 不顯示）、E（方案未含）、平台暫停中
 - [x] 11.6 元件測試 `apps/web/tests/unit/components/inbox/conversation-comment-origin.test.tsx`：「來自留言」標籤（顯示期間依 Open Questions 6）、「查看留言紀錄」連結只對有 `comment_reply.view` 顯示
-- [ ] 11.7 既有 `apps/web/tests/unit/components/settings/role-permission-matrix.test.tsx` 出現「留言自動私訊」群組；`apps/web/tests/unit/app/no-emoji-in-ui.test.ts` 涵蓋新頁面
+- [x] 11.7 既有 `apps/web/tests/unit/components/settings/role-permission-matrix.test.tsx` 出現「留言自動私訊」群組；`apps/web/tests/unit/app/no-emoji-in-ui.test.ts` 涵蓋新頁面
 - [x] 11.8 實作：`/dashboard/comment-replies`（規則、觸發紀錄分頁）、`/new`、`/[ruleId]`；側欄「行銷與渠道」入口（`comment_reply.view`）；前置條件卡；收件匣標籤與系統訊息連結；共用代碼表的中文標籤
 
 - [ ] 11.9 回歸：MODIFIED 需求既有的 scenario（`channel-plugins`、`first-contact-greeting`、`inbound-contact-resolution`、`contact-management`、`tenant-data-erasure`、`tenant-data-export`、`queue-monitoring`、`tenant-audit-log`）由既有測試涵蓋，改動後全部重跑通過：`inbound-message-processing.test.ts`、`webhook-account-routing.test.ts`、`first-contact-greeting.test.ts`、`line-system-events.test.ts`、`contact-merge-routes.test.ts`、`contact-merge-same-channel.test.ts`、`data-erasure-flow.test.ts`、`data-export-flow.test.ts`、`failed-event.test.ts`、`tenant-audit.test.ts`、`meta-connect.test.ts`、`meta-connect-routes.test.ts`、`automation-keyword-scope.test.ts`
