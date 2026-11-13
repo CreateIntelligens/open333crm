@@ -2,6 +2,37 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-13]
+
+### Changed
+
+- **一般群發改在背景發送**（issue #362，change `fix-plain-broadcast-send-362`）：`POST /api/v1/marketing/broadcasts/:id/send` 對一般群發改回 202 `{ id, status: 'scheduled', scheduledAt }`，發送交給 `coupon-broadcast` 佇列在背景執行（原本在 HTTP 請求裡同步跑完整份名單，大名單會逾時、前端看到失敗但其實已部分送出）。發送時的錯誤（受眾為空、額度不足等）改寫在廣播的 `status`、`failureCode`、`failureReason`，不再回 400。已在發送中仍回 409，網站聊天室仍回 400。
+  - 發送前查訊息額度：與附券廣播共用 `broadcast-quota.ts`，依外掛有沒有 `getMessageQuota` 判斷；不足或查不到時整則不送（`LINE_QUOTA_INSUFFICIENT`、`LINE_QUOTA_CHECK_FAILED`）。
+  - 每位收件人的失敗原因：送不出的收件人寫 `skipReason = DELIVERY_FAILED`；行銷頁每一則已發送的廣播都有「發送結果」，看得到誰沒收到。
+  - 排程只以 `prismaAdmin` 查到期清單，發送改用綁定租戶的連線；加上 `withoutOverlapping`；`executeBroadcast()` 讀廣播比對 `tenantId`。
+- **聯絡人詳情顯示「已封鎖官方帳號」**（issue #362，change `fix-line-follow-unfollow-events`）：收到 LINE unfollow 時在渠道身分寫入 `blockedAt`，重新加好友時清空；聯絡人詳情該渠道顯示紅色徽章。只記錄，不排除：群發、自動化、招呼語照常發送。migration `20261113100000_add_channel_identity_blocked_at`（新增可為 NULL 的欄位，不回填）。
+
+### Fixed
+
+- **LINE 加好友、封鎖等系統事件與一般訊息分流**（issue #362，change `fix-line-follow-unfollow-events`）：
+  - 沒見過的使用者封鎖時，不再建立聯絡人與渠道身分，也不送首次招呼語。
+  - 加好友、封鎖、群組加入離開、收回訊息等系統事件不再觸發非營業時間的自動回覆。
+  - 加好友的首次招呼語改用該事件的 replyToken 回覆（不佔訊息額度），reply 失敗退回 push。
+  - Canvas「加好友」觸發原本永遠不成立（`normalizeCanvasEventType` 讀不存在的欄位）；改依 contentType 判斷，封鎖不觸發任何流程。
+- **自動化送出失敗看得到**（issue #362，change `fix-automation-delivery-visibility`）：
+  - workers 寫入送出失敗紀錄（`recordDeliveryFailure`、發券的 `recordFailureNotice`）時更新對話的 `lastMessageAt`，對話會浮到列表上方。
+  - 渠道已停用時，`sendToChannelFromWorker` 自己在對話寫失敗紀錄；`send_message`／`send_material` 依回傳值標記失敗，有動作失敗的執行寫入 `automation_logs`（`success: false`、`errorMsg`）。原本只寫 log。
+  - 規則的必要條件限定渠道時，「傳送素材」的素材渠道必須相同，否則回 400 `VALIDATION_ERROR`（原本只有前端擋）。
+  - LINE 關鍵字回覆頁存檔時保留第二個以後的同類動作（原本會被刪掉）；新加的素材排在第一個發券動作之前。
+- **優惠券**（issue #362，change `fix-coupon-issued-via-reserved-names`）：
+  - 發券 API 的 `issuedVia` 不再把所有含「.」的值當系統保留值：只保留系統寫過的舊觸發事件名稱，整合程式可以用 `partner.sync` 這類代碼，後台顯示「其他方式」。
+  - `confirmPendingInstance` 比對持有人（`contactId`），傳入的聯絡人不是持有人時不確認、不貼標。
+  - `voidPendingInstance` 歸還序號時限定 `status: 'ASSIGNED'` 與該券的 `couponId`。
+  - 領券連結改用複合外鍵 `(couponId, tenantId)`、`(channelId, tenantId)`，資料庫層擋下跨租戶的連結（migration `20261113110000_coupon_claim_links_tenant_fk`；既有資料不符時 migration 失敗並列出連結 id，不刪資料）。
+  - `broadcasts.couponId` 加外鍵，刪除草稿券時設為 NULL（migration `20261113120000_broadcast_coupon_fk`，先清掉指向不存在券的孤兒）。
+  - 公開領券頁連續重試時丟棄過期的回應；建立領券連結的對話框取消時清空欄位與錯誤。
+  - 附券廣播的名額預估還沒完成或失敗時，不能按「建立」，失敗時顯示原因與重試。
+
 ## [2026-11-12]
 
 ### 🛡️ Security & Runtime Upgrade (Node.js 26.13.1 & 24.22.3 Security Hardening)

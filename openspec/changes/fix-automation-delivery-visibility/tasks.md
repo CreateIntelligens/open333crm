@@ -39,5 +39,5 @@
 - [x] 6.3 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 加 `--strict`
 - [x] 6.4 `node scripts/validate-openspec.mjs fix-automation-delivery-visibility` 與 `--specs`
 - [x] 6.5 `pnpm build`
-- [ ] 6.6 `CHANGELOG.md` 加 Fixed 條目（由整合 #362 的 PR 統一寫）
+- [x] 6.6 `CHANGELOG.md` 加 Fixed 條目（由整合 #362 的 PR 統一寫）
 - [ ] 6.7 歸檔：6.6 完成後以 `pnpm exec openspec archive fix-automation-delivery-visibility` 歸檔

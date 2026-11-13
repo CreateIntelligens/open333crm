@@ -45,5 +45,5 @@
 - [x] 5.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict`（`request.tenantPrisma` 少 1 處，已更新基準檔）
 - [x] 5.4 `node scripts/validate-openspec.mjs fix-plain-broadcast-send-362` 與 `--specs`
 - [x] 5.5 `pnpm build`
-- [ ] 5.6 `CHANGELOG.md`（由使用者統一撰寫）
+- [x] 5.6 `CHANGELOG.md`（由使用者統一撰寫）
 - [ ] 5.7 歸檔
