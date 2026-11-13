@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
+import { Button } from '@/components/ui/button';
 import { Topbar } from '@/components/layout/Topbar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNotifications, useUnreadCount, useNotificationActions } from '@/hooks/useNotifications';
@@ -87,19 +88,17 @@ export default function NotificationsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Topbar title="通知">
-        <button
-          className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs hover:bg-accent"
-          onClick={handleMarkAllAsRead}
-        >
-          <CheckCheck className="h-3.5 w-3.5" />
+      {/* 版面與其他列表頁一致：標題列＋說明，右側操作按鈕 */}
+      <Topbar title="通知" description="查看系統通知、工單指派與 SLA 提醒">
+        <Button variant="outline" size="lg" onClick={handleMarkAllAsRead}>
+          <CheckCheck />
           全部已讀
-        </button>
+        </Button>
       </Topbar>
 
       <div className="flex-1 overflow-auto px-7 pb-7">
         {/* Tabs */}
-        <Tabs value={tab} onValueChange={handleTabChange} className="mb-4">
+        <Tabs value={tab} onValueChange={handleTabChange} variant="underline" className="mb-5">
           <TabsList>
             <TabsTrigger value="all">全部</TabsTrigger>
             <TabsTrigger value="unread">未讀</TabsTrigger>
@@ -118,7 +117,7 @@ export default function NotificationsPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-1">
+          <ul className="overflow-hidden rounded-lg border border-border">
             {notifications.map(
               (n: {
                 id: string;
@@ -137,19 +136,25 @@ export default function NotificationsPage() {
                 const Icon = config.icon;
 
                 return (
-                  <div
+                  // 主要內容是一顆按鈕（可用鍵盤開啟），「標記已讀」為旁邊獨立的按鈕，避免按鈕包按鈕；未讀以淡藍底表示
+                  <li
                     key={n.id}
-                    className={`flex items-start gap-4 rounded-lg border p-4 cursor-pointer hover:bg-accent/50 transition-colors ${
-                      !n.isRead ? 'bg-accent/20 border-accent' : ''
+                    className={`flex items-start gap-3 border-b border-border px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-hover ${
+                      !n.isRead ? 'bg-primary-subtle/50' : 'bg-background'
                     }`}
-                    onClick={() => handleNotificationClick(n)}
                   >
+                    <button
+                      type="button"
+                      onClick={() => handleNotificationClick(n)}
+                      aria-label={`${n.isRead ? '' : '未讀：'}${n.title}`}
+                      className="flex min-w-0 flex-1 items-start gap-4 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                     <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full ${config.color}`}>
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${config.color}`}>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${config.color}`}>
                           {config.label}
                         </span>
                         <span className="text-xs text-muted-foreground">
@@ -159,28 +164,31 @@ export default function NotificationsPage() {
                           })}
                         </span>
                       </div>
-                      <p className="mt-1 text-sm font-medium">{n.title}</p>
+                      <p className={`mt-1 text-sm ${n.isRead ? 'font-medium' : 'font-semibold'} text-foreground`}>{n.title}</p>
                       <p className="text-sm text-muted-foreground">{n.body}</p>
                     </div>
+                    </button>
                     <div className="flex items-center gap-2">
                       {!n.isRead && (
                         <>
-                          <span className="h-2 w-2 rounded-full bg-primary" />
-                          <button
-                            className="rounded-md p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-primary" />
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={(e) => handleMarkSingleRead(e, n.id)}
                             title="標記已讀"
+                            aria-label={`將「${n.title}」標記為已讀`}
                           >
-                            <CheckCheck className="h-4 w-4" />
-                          </button>
+                            <CheckCheck />
+                          </Button>
                         </>
                       )}
                     </div>
-                  </div>
+                  </li>
                 );
               },
             )}
-          </div>
+          </ul>
         )}
 
         {/* Pagination */}

@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, Store as StoreIcon } from "lucide-react";
+import { Loader2, Store as StoreIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SettingsHeader } from "../SettingsHeader";
+import { AddIcon } from "@/components/icons/figma-icons";
 import { LoadErrorNotice } from "@/components/shared/LoadErrorNotice";
 import { CouponToast, useCouponToast } from "@/components/coupons/CouponToast";
 import api from "@/lib/api";
@@ -178,21 +180,19 @@ export function StoreManagement() {
   };
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">門市與核銷帳號</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            每間門市可建立共用帳號給店員登入核銷台。把櫃檯海報印出來貼在門市，店員用手機掃描即可開啟登入頁。
-          </p>
-        </div>
+    // 版面與其他設定子頁一致：共用標題區（標題＋說明在左、主要按鈕在右）
+    <div className="flex max-w-[960px] flex-col gap-5">
+      <SettingsHeader
+        title="門市與核銷帳號"
+        description="每間門市可建立共用帳號給店員登入核銷台。把櫃檯海報印出來貼在門市，店員用手機掃描即可開啟登入頁。"
+      >
         <div className="flex flex-col items-end gap-1">
-          <Button onClick={() => setNameDialog({ mode: "create" })} disabled={!canManage} title={canManage ? undefined : "需主管權限"}>
-            <Plus /> 新增門市
+          <Button size="lg" onClick={() => setNameDialog({ mode: "create" })} disabled={!canManage} title={canManage ? undefined : "需主管權限"}>
+            <AddIcon /> 新增門市
           </Button>
           {!canManage && <span className="text-xs text-muted-foreground">你目前只能查看，新增與異動需主管權限</span>}
         </div>
-      </div>
+      </SettingsHeader>
 
       {loading ? (
         <div className="flex items-center justify-center py-12" role="status" aria-label="載入中">
