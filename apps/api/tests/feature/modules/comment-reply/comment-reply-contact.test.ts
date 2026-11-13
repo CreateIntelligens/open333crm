@@ -120,6 +120,22 @@ describe('留言命中規則時建立或沿用聯絡人', () => {
     assert.equal(graph.calls('POST', FB_SEND).length, 0);
   });
 
+  // first-contact-greeting「留言收件建立聯絡人時不發布」：確認聯絡人真的新建了，且沒有發布 contact.created
+  test('留言收件建立聯絡人時不發布', async () => {
+    const { fb, tenant } = await setupFb();
+    const before = await owner.contact.count({ where: { tenantId: tenant.id } });
+    const spy = vi.spyOn(eventBus, 'publish');
+    try {
+      const log = await fbComment(fb, { id: uid('U'), name: '新留言者' });
+      assert.ok(log.commentAuthor?.contactId, '留言收件建立了聯絡人');
+    } finally {
+      spy.mockRestore();
+    }
+    assert.equal(await owner.contact.count({ where: { tenantId: tenant.id } }), before + 1);
+    assert.equal(spy.mock.calls.filter(([e]) => (e as { name: string }).name === 'contact.created').length, 0);
+    assert.equal(await owner.outbox.count({ where: { tenantId: tenant.id, name: 'contact.created' } }), 0);
+  });
+
   test('IdentityMap 已拼接時建在拼接的聯絡人', async () => {
     const { fb, tenant } = await setupFb();
     const u1 = uid('U');

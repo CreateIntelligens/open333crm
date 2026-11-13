@@ -191,6 +191,29 @@ describe('送出前重新檢查', () => {
     assert.equal(after.reasonCode, 'PLAN_FEATURE_DISABLED');
   });
 
+  // 05-qa §3.3 整合缺口：單元測試的「渠道停用」「租戶停用」略過分支，經真入口收件後由真 runner 走過
+  test('排隊期間渠道停用', async () => {
+    const { fb } = await setupFb();
+    const log = await comment(fb);
+    await owner.channel.update({ where: { id: fb.id }, data: { isActive: false } });
+    await drainJobs();
+    assert.equal(graph.calls('POST', FB_SEND).length, 0);
+    const after = await reload(log.id);
+    assert.equal(after.status, 'SKIPPED');
+    assert.equal(after.reasonCode, 'CHANNEL_INACTIVE');
+  });
+
+  test('排隊期間租戶停用', async () => {
+    const { fb, tenant } = await setupFb();
+    const log = await comment(fb);
+    await owner.tenant.update({ where: { id: tenant.id }, data: { isActive: false } });
+    await drainJobs();
+    assert.equal(graph.calls('POST', FB_SEND).length, 0);
+    const after = await reload(log.id);
+    assert.equal(after.status, 'SKIPPED');
+    assert.equal(after.reasonCode, 'TENANT_DISABLED');
+  });
+
   test('排隊期間素材被停用', async () => {
     const tenant = await fx.tenant({ plan: { features: ['comment_reply'] } });
     const fb = await fx.fbChannel(tenant.id);
@@ -283,6 +306,30 @@ describe('重複執行的工作不重複私訊', () => {
 });
 
 describe('私訊失敗的原因與可否重試', () => {
+  // 05-qa §3.3 整合缺口：「已私訊過」在非復原時是 FAILED（不是 SENT_UNCONFIRMED）、Meta 回期限已過是 EXPIRED
+  test('第一次送出就回已私訊過', async () => {
+    const { fb } = await setupFb();
+    graph.on('POST', 'graph.facebook.com', FB_SEND, graphError(10900));
+    const log = await comment(fb);
+    await drainJobs();
+    const after = await reload(log.id);
+    assert.equal(after.status, 'FAILED');
+    assert.equal(after.reasonCode, 'ALREADY_REPLIED');
+    assert.equal(after.metaErrorCode, 10900);
+    assert.equal(jobsForLog(log.id)[0]!.state, 'completed', '業務失敗不讓 BullMQ 重試');
+  });
+
+  test('Meta 回超過可私訊的期限', async () => {
+    const { fb } = await setupFb();
+    graph.on('POST', 'graph.facebook.com', FB_SEND, graphError(10903));
+    const log = await comment(fb);
+    await drainJobs();
+    const after = await reload(log.id);
+    assert.equal(after.status, 'EXPIRED');
+    assert.equal(after.reasonCode, 'EXPIRED_BY_META');
+    assert.equal(jobsForLog(log.id)[0]!.state, 'completed');
+  });
+
   test('權杖失效', async () => {
     const { fb } = await setupFb();
     graph.on('POST', 'graph.facebook.com', FB_SEND, graphError(190, { error_subcode: 463 }));
