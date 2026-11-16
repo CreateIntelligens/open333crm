@@ -275,7 +275,7 @@ export function CommentReplyReadinessCard({ readiness, onChanged }: Props) {
               <>
                 <div className="font-semibold">{c.displayName}缺少必要的授權</div>
                 <p className="mt-1 text-foreground">
-                  連結 Facebook 時沒有同意「管理粉專貼文互動」與「讀取貼文留言」權限，系統收不到留言也無法私訊。
+                  連結 Facebook 時沒有同意傳送訊息或管理粉專設定的權限，系統收不到留言也無法私訊。
                   重新連結時，請在 Facebook 的授權畫面保留所有勾選的項目。
                 </p>
                 <div className="mt-2">
