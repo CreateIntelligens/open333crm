@@ -54,6 +54,8 @@ export interface ConversationRow {
   caseId?: string | null;
   csatScore?: number | null;
   lastMessageSentiment?: string;
+  /** 對話的第一個來源（留言自動私訊：type = 'comment_private_reply'） */
+  origin?: { type: string; logId?: string | null; at?: string | null; sentAt?: string | null } | null;
 }
 
 interface ConversationsMeta {

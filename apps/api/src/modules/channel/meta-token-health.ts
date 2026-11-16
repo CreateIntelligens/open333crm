@@ -18,6 +18,8 @@ import type { JobScheduler } from '../../lib/job-scheduler.js';
 import { createAndDispatch } from '../notification/notification.service.js';
 import { sendEmail } from '../email/email.service.js';
 import { decryptCredentials } from './channel.service.js';
+import { getChannelPlugin, type ChannelPlugin, type CommentSubscriptionStatus } from '@open333crm/channel-plugins';
+import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
 
 const HOUR_MS = 3600_000;
 const CHECK_INTERVAL_MS = 6 * HOUR_MS;
@@ -170,11 +172,65 @@ async function notifyAdmins(
   }
 }
 
+// ── 留言訂閱檢查（change add-comment-keyword-private-reply design D25）──────────────
+
+/** settings.commentReply.subscription：ok＝訂閱含留言欄位，missing＝被取消，unknown＝從未查到 */
+export interface CommentSubscriptionHealth {
+  status: 'ok' | 'missing' | 'unknown';
+  checkedAt: string;
+}
+
+/**
+ * 依查詢結果決定新的訂閱狀態。查不到（網路錯誤、限流、IG 不提供查詢）時不改狀態：
+ * 沒有前一次紀錄時記 unknown，有紀錄時回傳 undefined（不寫入）。
+ */
+export function nextCommentSubscription(
+  prev: CommentSubscriptionHealth | undefined,
+  status: Pick<CommentSubscriptionStatus, 'subscribed'>,
+  now: Date,
+): CommentSubscriptionHealth | undefined {
+  if (status.subscribed === true) return { status: 'ok', checkedAt: now.toISOString() };
+  if (status.subscribed === false) return { status: 'missing', checkedAt: now.toISOString() };
+  return prev ? undefined : { status: 'unknown', checkedAt: now.toISOString() };
+}
+
+/** 開了留言接收（settings.commentReply.receiving）的渠道：查 Meta 的訂閱，寫進 settings.commentReply.subscription */
+export async function checkCommentSubscription(
+  prisma: PrismaClient,
+  ch: { id: string; tenantId: string; channelType: string; externalAccountId: string | null; settings: unknown },
+  credentials: Record<string, unknown>,
+  now: Date,
+  plugins: (type: string) => ChannelPlugin | undefined = getChannelPlugin,
+): Promise<CommentSubscriptionHealth | undefined> {
+  const cr = ((ch.settings ?? {}) as Record<string, any>).commentReply as { receiving?: boolean; subscription?: CommentSubscriptionHealth } | undefined;
+  if (cr?.receiving !== true || !ch.externalAccountId) return undefined;
+  const ext = plugins(ch.channelType)?.extensions?.comments;
+  if (!ext) return undefined;
+  let status: Pick<CommentSubscriptionStatus, 'subscribed'>;
+  try {
+    const platformApp = credentials.connectMode === 'platform' ? getMetaAppConfig() : null;
+    status = await ext.getSubscriptionStatus(credentials, {
+      accountId: ch.externalAccountId,
+      ...(platformApp ? { appId: platformApp.appId, appSecret: platformApp.appSecret } : {}),
+    });
+  } catch {
+    status = { subscribed: null };
+  }
+  const next = nextCommentSubscription(cr.subscription, status, now);
+  if (!next) return undefined;
+  await prisma.$executeRaw`
+    UPDATE channels
+    SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{commentReply,subscription}', ${JSON.stringify(next)}::jsonb, true),
+        "updatedAt" = now()
+    WHERE id = ${ch.id}::uuid AND "tenantId" = ${ch.tenantId}::uuid AND settings ? 'commentReply'`;
+  return next;
+}
+
 /** 檢查所有啟用中的 FB／IG 渠道（跨租戶，需 BYPASSRLS 連線）。逐渠道 try/catch，單一失敗不影響其他 */
 export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIOServer, now = new Date()): Promise<void> {
   const channels = await prisma.channel.findMany({
     where: { isActive: true, channelType: { in: [CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS] as never }, tenant: { isActive: true } },
-    select: { id: true, tenantId: true, channelType: true, displayName: true, credentialsEncrypted: true, settings: true },
+    select: { id: true, tenantId: true, channelType: true, displayName: true, credentialsEncrypted: true, settings: true, externalAccountId: true },
   });
   for (const ch of channels) {
     try {
@@ -186,6 +242,12 @@ export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIO
       } catch {
         // 加密金鑰不同（例如從別的環境同步過來的資料）：權杖讀不出來，同樣收不到訊息
         probe = { status: 'invalid', reason: '渠道憑證無法解密，請重新填寫存取權杖' };
+      }
+      // 留言訂閱：權杖有效時才查（失效時查詢一定失敗，留給權杖狀態告知）
+      if (probe.status === 'valid') {
+        await checkCommentSubscription(prisma, ch, credentials, now).catch((err: unknown) =>
+          logger.error('[MetaTokenHealth] 留言訂閱檢查失敗', { channelId: ch.id, error: err instanceof Error ? err.message : String(err) }),
+        );
       }
       const prev = ((ch.settings ?? {}) as Record<string, unknown>).tokenHealth as TokenHealth | undefined;
       const { health, notify } = nextTokenHealth(prev, probe, now);

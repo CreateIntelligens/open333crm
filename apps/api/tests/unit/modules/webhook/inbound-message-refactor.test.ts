@@ -311,8 +311,9 @@ async function testFacadeAndCallerContractsFromSource() {
   assert.equal(webhookSource.includes('await runInboundPostbackInterceptors(ctx)'), true);
   assert.equal(webhookSource.includes('await triggerWebhookFlow(ctx)'), true);
 
-  // FB／IG 依 entry.id 分派後，每組以分派到的渠道、憑證與租戶進入入站管線（change fix-meta-webhook-page-routing）
-  assert.equal(webhookSource.includes('await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed)'), true);
+  // FB／IG 依 entry.id 分派後，每組以分派到的渠道、憑證與租戶進入入站管線（change fix-meta-webhook-page-routing）；
+  // 另帶 app_tenant 連線給留言私訊的收件匣串接（change add-comment-keyword-private-reply D18）
+  assert.equal(webhookSource.includes('await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed, { tenantPrisma: deps.tenantPrisma })'), true);
   assert.equal(chatboxSource.includes('const result = await processInboundMessage('), true);
   assert.equal(chatboxSource.includes('conversationId: session.conversationId'), true);
   assert.equal(chatboxSource.includes('clientMessageId: input.clientMessageId'), true);

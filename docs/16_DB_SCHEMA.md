@@ -34,6 +34,8 @@
 | `km_articles(tenantId, status)` | 知識庫列表 |
 | `channel_identities(channelId, uid)` | 唯一鍵，webhook 進來時反查聯絡人 |
 
+留言自動私訊 4 張表的索引與理由另見下方決策 8。
+
 ---
 
 ## 重要設計決策
@@ -62,7 +64,7 @@
 
 ### 6. 租戶隔離由 Postgres RLS 在資料庫層強制執行
 
-78 張資料表中有 71 張啟用 RLS 並掛上 `tenant_isolation` policy。未啟用的 7 張全部是平台層資料表：`tenants`、`plans`、`platform_users`、`platform_audit_logs`、`platform_settings`、`model_pricings`、`trial_signups`。這些資料表管理租戶本身，不屬於任何租戶。
+78 張資料表中有 71 張啟用 RLS（2026-09 的數字；之後新增的租戶表，例如留言自動私訊的 4 張，也都啟用） 並掛上 `tenant_isolation` policy。未啟用的 7 張全部是平台層資料表：`tenants`、`plans`、`platform_users`、`platform_audit_logs`、`platform_settings`、`model_pricings`、`trial_signups`。這些資料表管理租戶本身，不屬於任何租戶。
 
 要點：
 
@@ -80,6 +82,34 @@
 `trial_signups` 同時排除在 RLS 之外。試用防濫用流程需要跨租戶查詢候選資料，該路徑走 `prismaAdmin` 白名單（見 `20260827100000_rls_enable_tenantid_tables` migration 的註解）。
 
 另有 6 張資料表帶 `tenant_id` 卻沒有外鍵。那 6 張不是設計決策，是改造遺漏，寫在下方「已知落差」第 3 項。完整清單與其他鬆耦合欄位，見 `docs/ref/DATABASE-ERD.md`。
+
+### 8. 留言自動私訊的資料表與索引（2026-11-14）
+
+change `add-comment-keyword-private-reply` 新增 `comment_reply_rules`、`comment_authors`、`comment_reply_logs`、`comment_reply_usages`（migration `20261114100000_add_comment_reply_tables`），並在 `conversations` 加 `originCommentReplyLogId`（`20261114110000_conversation_comment_origin`）。關聯見 `docs/ref/DATABASE-ERD.md` 的 N 節。
+
+取捨：
+
+- **只記命中規則的留言。** `feed` 事件量大，不命中的留言不寫資料庫（比對在收件時做）。
+- **紀錄不存 `contactId`，經 `comment_authors` 取得聯絡人。** 聯絡人合併與解除合併只搬一張表；`commentAuthorId` 外鍵 Restrict，資料刪除（erasure）若沒有先刪紀錄就硬刪聯絡人，交易會失敗，而不是留下孤兒紀錄。
+- **複合外鍵 `(id, tenantId)`。** 規則、留言者、渠道都以 `(id, tenantId)` 參照，RLS 之外再由外鍵擋住跨租戶參照。
+- **每月用量用計數表。** `comment_reply_usages` 以 `UPDATE … SET sentCount = sentCount + 1 WHERE sentCount < limit` 原子扣減，並行不超賣；保留 25 個月。
+- **原因代碼存 `TEXT`。** 代碼與中文標籤的單一來源在 `packages/shared/src/comment-reply.ts`，新增代碼不必改 enum。
+
+| 索引 | 用途 |
+| ---- | ---- |
+| `comment_reply_logs(channelId, commentId)` 唯一 | 收件冪等：`INSERT … ON CONFLICT DO NOTHING`，Meta 重送與兩個入口並行都只有一筆 |
+| `comment_reply_logs(dedupeKey)` 部分唯一，`WHERE status IN ('SENDING','SENT')` | 每位留言者只私訊一次，送出時才佔名額；失敗或略過的紀錄不擋後面的留言 |
+| `comment_reply_logs(coalesce(nextAttemptAt, updatedAt))` 部分，`WHERE status = 'PENDING'` | 補回排程找遺失的工作 |
+| `comment_reply_logs(sendAttemptedAt)` 部分，`WHERE status = 'SENDING'` | 補回排程找送到一半中斷的紀錄 |
+| `comment_reply_logs(channelId, recipientUid, sentAt DESC)` 部分，`WHERE status = 'SENT' AND conversationId IS NULL` | 顧客第一次回覆私訊時找要關聯的紀錄 |
+| `comment_reply_logs(tenantId, commentCreatedAt DESC, id DESC)` | 觸發紀錄列表的 cursor 分頁 |
+| `comment_reply_logs(tenantId, status, createdAt DESC)`、`(channelId, createdAt DESC)`、`(ruleId, createdAt DESC)` | 狀態篩選、渠道篩選、規則 7 天統計 |
+| `comment_reply_logs(createdAt)` | 保存期限排程分批刪除 |
+| `comment_reply_rules(channelId)` 部分，`WHERE isActive AND deletedAt IS NULL` | 收件讀渠道的啟用規則 |
+| `comment_authors(channelId, externalUserId)` 唯一；`(channelId, psid)` 部分唯一 | 並行兩則留言只建一位留言者；私訊進站以 PSID 找回留言建立的聯絡人 |
+| `conversations(originCommentReplyLogId)` 部分，`WHERE originCommentReplyLogId IS NOT NULL` | 收件匣「來自留言」 |
+
+Prisma 不支援部分索引，schema 以註解標示，實際定義在 migration SQL。
 
 ---
 

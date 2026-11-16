@@ -2,8 +2,8 @@
 
 本文件說明各訊息渠道（LINE、Facebook（內部代號 `FB`）、Instagram 私訊（內部代號 `THREADS`）、網站聊天室（內部代號 `WEBCHAT`））的差異怎麼收在外掛裡：外掛的介面、各渠道的實作、訊息進站與送出時怎麼經過外掛，以及哪些渠道專屬的功能沒有走外掛。渠道怎麼建立、怎麼設定 webhook，見[渠道管理](../features/tenant/CHANNELS.md)；一則訊息進站後經過哪些模組，見[租戶後台](../features/tenant/README.md#一則訊息進來之後)。
 
-- **資料來源**：`packages/channel-plugins/src/*`、`apps/api/src/index.ts`、`apps/api/src/modules/webhook/*`、`apps/api/src/modules/conversation/conversation.service.ts`、`apps/api/src/modules/channel/*`、`apps/workers/src/index.ts`、`apps/workers/src/lib/channel-delivery.ts`、`apps/workers/src/lib/credentials.ts`、`apps/web/src/hooks/useKeywordReplies.ts`
-- **核對日期**：2026-09-30
+- **資料來源**：`packages/channel-plugins/src/*`、`apps/api/src/index.ts`、`apps/api/src/modules/webhook/*`、`apps/api/src/modules/conversation/conversation.service.ts`、`apps/api/src/modules/channel/*`、`apps/workers/src/index.ts`、`apps/workers/src/lib/channel-delivery.ts`、`apps/workers/src/lib/credentials.ts`、`apps/web/src/hooks/useKeywordReplies.ts`、`apps/api/src/modules/comment-reply/*`、`apps/api/src/modules/webhook/inbound-comment-origin.ts`
+- **核對日期**：2026-09-30；留言擴充一節 2026-11-14
 
 ## 這份文件回答的問題
 
@@ -14,6 +14,7 @@
 | 進站的 webhook 怎麼經過外掛？ | [進站](#進站) |
 | 客服回覆與自動化發送怎麼經過外掛？ | [送出](#送出) |
 | 渠道的憑證存在哪裡、怎麼解密？ | [憑證](#憑證) |
+| FB／IG 的貼文留言怎麼經過外掛？留言建立的聯絡人與入站建立的聯絡人怎麼保持一致？ | [留言擴充](#留言擴充) |
 | 哪些渠道專屬的功能沒有走外掛？ | [外掛之外的渠道專屬程式](#外掛之外的渠道專屬程式) |
 | 新增一種渠道要做哪些事？ | [新增一種渠道](#新增一種渠道) |
 | 目前有哪些已知問題？ | [目前的限制](#目前的限制) |
@@ -41,6 +42,7 @@
 | `extensions.ui` | 否 | workers 的 `rich-menu-bind.handler.ts` | 圖文選單的綁定與解除 |
 | `extensions.analytics` | 否 | `mcp.server.ts` | 查詢 LINE 的訊息額度 |
 | `extensions.audience` | 否 | 沒有呼叫端 | 分眾名單 |
+| `extensions.comments` | 否 | `webhook.service.ts`（留言收件）、`comment-reply` 模組（送出、規則、渠道端）、`meta-connect.service.ts`（訂閱）、`meta-token-health.ts`（訂閱檢查） | FB／IG 貼文留言：解析留言事件、私訊與公開回覆留言、最近貼文、訂閱欄位。見[留言擴充](#留言擴充) |
 
 `ParsedWebhookMessage` 的 `contactUid` 是聯絡人在這個渠道的 ID，寫入 `ChannelIdentity.uid`。`OutboundPayload.delivery` 目前只有 LINE 使用，用來選擇 reply 或 push，見[送出](#送出)。
 
@@ -102,6 +104,35 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 其他 | 不檢查 |
 
 解密函式有兩份：API 的 `channel.service.ts` 與 workers 的 `lib/credentials.ts`。兩者的演算法相同，`CREDENTIAL_ENCRYPTION_KEY` 缺少或短於 32 個字元時都拋出錯誤（主規格 `credential-encryption`）。
+
+## 留言擴充
+
+留言關鍵字自動私訊（change `add-comment-keyword-private-reply`）的渠道差異都在 `extensions.comments`（`ChannelCommentExtension`，`packages/channel-plugins/src/index.ts`）。`comment-reply` 模組不比對 `channelType`，只問「這個外掛有沒有留言擴充」與 `capabilities`（`platform: 'fb' | 'ig'`、可用的私訊內容類型、是否支援公開回覆）。目前 `fbPlugin` 與 `threadsPlugin` 實作；LINE、WebChat 沒有，所以規則 API 選 LINE 渠道回 400 `CHANNEL_NOT_SUPPORTED`。
+
+| 方法 | 呼叫端 | 作用 |
+| --- | --- | --- |
+| `parseCommentEvents()` | `webhook.service.ts` | 從同一份 webhook 原始內容解析留言事件。外掛已排除自己帳號的留言、非留言的 feed 變更、直播留言；FB `verb=remove` 回 `kind: 'remove'`。壞掉的內容回空陣列，不丟錯 |
+| `parsePostReference()` | 規則 API（指定貼文） | 手動輸入的貼文 ID 或網址離線正規化（FB 為 `{pageId}_{postId}`），不發網路請求 |
+| `sendPrivateReply()`、`replyToComment()` | 送出 flow（`comment-reply-delivery.flow.ts`） | 私訊留言者（FB 以 `recipient: { comment_id }`）與公開回覆。Meta 錯誤正規化成 `reason`（`TOKEN_EXPIRED`、`USER_UNAVAILABLE`、`ALREADY_REPLIED` 等），以回傳值表示，不丟錯 |
+| `listRecentPosts()`、`resolvePostUrl()` | 渠道端路由（貼文挑選） | 只呼叫 Graph API；`resolvePostUrl()` 不 fetch 使用者給的網址 |
+| `getSubscriptionStatus()`、`subscribeFields()` | readiness、開關留言接收、`meta-connect`、補訂閱腳本、`meta-token-health` | `POST subscribed_apps` 是整份取代，`fields` 必須是完整清單 |
+
+**訂閱欄位只有一份定義。** FB 的完整欄位由 `meta-connect.service.ts` 的 `subscribedFieldsFor(channelSettings)` 算出：4 個私訊欄位（`BASE_SUBSCRIBED_FIELDS`），`settings.commentReply.receiving` 為 true 時加 `feed`。IG 用 `comment-reply-channel.service.ts` 的 `IG_BASE_SUBSCRIBED_FIELDS`（`messages`）加 `comments`。首次連結、重新連結、開關留言接收、補訂閱腳本（`apps/api/src/scripts/comment-reply-subscriptions.ts`）都經這兩處；少帶一個私訊欄位就是那個粉專的私訊全部中斷。
+
+**進站的留言分支。** 平台 App（`/webhooks/meta`）與渠道網址（`/webhooks/fb|threads/:channelId`）驗簽後，先照舊處理私訊，再以 `parseCommentEvents()` 解析留言、以與私訊相同的帳號分派（`routePlatformMessages()`／`routeWebhookMessages()`，依 `entry.id`）分到各渠道，交給 `comment-reply-intake.flow.ts`。單一渠道的留言收件失敗只寫 `comment_intake_failed` 分派警示與 error log，不影響同一請求的私訊。
+
+**兩個註冊表。** workers 的 `createWorkerPluginRegistry()` 放的是同一個 `fbPlugin`、`threadsPlugin` 物件，留言擴充自動帶過去；目前只有 API 行程使用留言擴充（收件、送出、排程都在 API 行程）。
+
+### 兩處建立聯絡人的邏輯要同步
+
+FB／IG 的聯絡人現在有兩個建立入口，規則必須一致，改一邊要一起改另一邊：
+
+| 入口 | 程式 | 做什麼 |
+| --- | --- | --- |
+| 留言收件 | `comment-reply-intake.service.ts` 的 `resolveCommentAuthor()`、`comment-reply-contact.service.ts` 的 `linkRecipientIdentity()` | 命中規則的留言：依序找 `comment_authors`、同渠道 `uid` 相同的 `ChannelIdentity`、IdentityMap（`resolveUidToContact()`），都沒有才建聯絡人（`createdContact=true`），**不建 `ChannelIdentity`**、不發 `contact.created`。私訊成功後才以 `recipient_id` 建身分；該身分已屬於另一位聯絡人時，留言建立的聯絡人以合併引擎併入（`source='COMMENT_REPLY'`） |
+| 私訊進站 | `inbound-contact-resolver.ts` 的 `resolveInboundContact()`，經 `webhook/inbound-comment-origin.ts` | 新 UID 建聯絡人前先查 `comment_authors`（`psid` 或留言者 ID 等於 UID）→ 把身分建在那位聯絡人。聯絡人是留言建立的：不送招呼語，第一次進站時以 `contactEventPublishedAt` 條件更新認領後補發一次 `contact.created`；訊息落地後 `attachInboundCommentOrigin()` 把留言私訊紀錄關聯到對話 |
+
+聯絡人顯示名稱的後備（`<渠道名稱> User <ID 後 6 碼>`）兩邊相同。新增建立聯絡人的條件（例如新的身分來源）時，兩個入口都要處理，否則同一位顧客會被建成兩位聯絡人。
 
 ## 外掛之外的渠道專屬程式
 

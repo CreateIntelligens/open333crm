@@ -174,6 +174,8 @@ function makeDb() {
     kbArticleFeedback: table([{ id: 'kb-m', tenantId: T, contactId: 'M' }]),
     // 合併時券跟著移到保留方（add-coupon-system）
     couponInstance: table([{ id: 'cpn-m', tenantId: T, contactId: 'M' }]),
+    // 留言自動私訊的留言者對應跟著聯絡人走（add-comment-keyword-private-reply，design D27）
+    commentAuthor: table([{ id: 'cma-m', tenantId: T, contactId: 'M' }]),
     contactTag: table(
       [
         { id: 'tag-s-vip', contactId: 'S', tagId: 'vip', expiresAt: null },
@@ -242,6 +244,7 @@ test('合併：各表關聯資料全數搬到 survivor，merged 封存不刪除'
     ['clickLog', 'cl-m'],
     ['flowExecution', 'fe-m'],
     ['kbArticleFeedback', 'kb-m'],
+    ['commentAuthor', 'cma-m'],
   ] as const) {
     assert.equal(owner(db, t, id), 'S', `${t} ${id} 應搬到 survivor`);
   }
@@ -257,6 +260,7 @@ test('合併：各表關聯資料全數搬到 survivor，merged 封存不刪除'
   assert.equal(log.source, 'MANUAL');
   const moved = log.movedRecords as MovedRecords;
   assert.deepEqual(moved.channelIdentity.sort(), ['ci-m-fb', 'ci-m-ig']);
+  assert.deepEqual(moved.commentAuthor, ['cma-m']);
   assert.equal(moved.pointsTransferred, 50);
 });
 

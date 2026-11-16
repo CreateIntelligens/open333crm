@@ -3261,6 +3261,89 @@
           "why": "api-scheduler 的 analytics-daily 排程"
         }
       ]
+    },
+    {
+      "id": "comment-reply",
+      "title": "留言自動私訊",
+      "doc": "docs/ref/features/platform/COMMENT-REPLY.md",
+      "paths": [
+        "apps/api/src/modules/comment-reply/*",
+        "apps/api/src/modules/webhook/inbound-comment-origin.ts",
+        "apps/api/src/modules/webhook/webhook-inflight.ts",
+        "apps/api/src/modules/platform/comment-reply-health.service.ts",
+        "apps/api/src/scripts/comment-reply-subscriptions.ts",
+        "packages/channel-plugins/src/facebook/comments.ts",
+        "packages/channel-plugins/src/meta-graph.ts",
+        "packages/shared/src/comment-reply.ts"
+      ],
+      "pages": [
+        "apps/web/src/app/dashboard/comment-replies/**",
+        "apps/web/src/app/admin/comment-reply/page.tsx",
+        "apps/web/src/components/comment-replies/*",
+        "apps/web/src/lib/comment-reply/*"
+      ],
+      "tables": [
+        "CommentReplyRule",
+        "CommentAuthor",
+        "CommentReplyLog",
+        "CommentReplyUsage"
+      ],
+      "events": [
+        "contact.created"
+      ],
+      "permissions": [
+        "comment_reply.view",
+        "comment_reply.manage"
+      ],
+      "specs": [],
+      "audit": [
+        "TRIAL-02"
+      ],
+      "manual": [],
+      "e2e": [],
+      "tests": [
+        "apps/api/tests/unit/modules/comment-reply/*",
+        "apps/api/tests/feature/modules/comment-reply/*",
+        "apps/api/tests/feature/modules/platform/platform-comment-reply-*.test.ts",
+        "apps/api/tests/feature/modules/meta-connect/meta-connect-comment-fields.test.ts",
+        "packages/channel-plugins/tests/unit/*comment*.test.ts",
+        "apps/web/tests/unit/components/comment-replies/*"
+      ],
+      "dependsOn": [
+        {
+          "domain": "channels",
+          "why": "FB／IG 外掛的 extensions.comments、Meta 連結與訂閱欄位、webhook 帳號分派、渠道可見範圍"
+        },
+        {
+          "domain": "contacts",
+          "why": "留言者建立或沿用聯絡人、私訊成功後接上渠道身分、合併引擎 source=COMMENT_REPLY"
+        },
+        {
+          "domain": "inbox",
+          "why": "顧客回覆私訊時關聯對話（originCommentReplyLogId）、招呼語與 contact.created 的例外"
+        },
+        {
+          "domain": "marketing",
+          "why": "規則可選素材（material-options，不 implies marketing.view）"
+        },
+        {
+          "domain": "platform-plans",
+          "why": "方案功能 comment_reply、上限 maxCommentReplyRules／monthlyCommentReplies"
+        },
+        {
+          "domain": "platform-settings",
+          "why": "commentReply.* 5 個平台設定鍵（能力開關、測試階段、緊急停止、限速、保存天數）"
+        },
+        {
+          "domain": "platform-queue-monitoring",
+          "why": "comment-reply 佇列在 API 行程，列入監控清單"
+        },
+        {
+          "domain": "governance",
+          "why": "規則與重試寫租戶稽核；資料匯出與刪除涵蓋留言資料"
+        }
+      ],
+      "usedBy": []
     }
   ]
 }

@@ -1,7 +1,7 @@
 /**
  * 統一聯絡人合併引擎（change add-cross-channel-one-id，design D5 / D8）。
  *
- * 所有合併路徑（手動合併、合併建議、LINE Login、FB Login、綁定代碼）一律走這裡，
+ * 所有合併路徑（手動合併、合併建議、LINE Login、FB Login、綁定代碼、email／手機登記、留言自動私訊）一律走這裡，
  * 確保「每張帶 contactId 的表」都被搬到存續聯絡人（survivor），被合併方（merged）
  * 只封存不刪除，並把搬了哪些 id 記進 ContactMergeLog，供稽核與解除合併使用。
  *
@@ -20,7 +20,16 @@ import { addPointTransaction, getLatestPointEntry, lockPointLedgers } from '../p
 import { findCompletedErasure } from '../data-erasure/data-erasure.service.js';
 import { lockContactsForMerge } from './contact.service.js';
 
-export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL' | 'PHONE';
+export type MergeSource =
+  | 'MANUAL'
+  | 'SUGGESTION'
+  | 'LINE_LOGIN'
+  | 'FB_LOGIN'
+  | 'BINDING_CODE'
+  | 'EMAIL'
+  | 'PHONE'
+  /** 留言自動私訊：私訊成功後 recipient_id 已是另一位聯絡人的身分，把由留言建立的聯絡人併入他（design D16-4） */
+  | 'COMMENT_REPLY';
 
 /** 單次合併搬移的紀錄（存於 ContactMergeLog.movedRecords） */
 export interface MovedRecords {
@@ -40,6 +49,8 @@ export interface MovedRecords {
   broadcastRecipient: string[];
   /** 搬過去的優惠券（舊紀錄沒有這個欄位） */
   couponInstance?: string[];
+  /** 搬過去的留言者對應 comment_authors（舊紀錄沒有這個欄位；觸發紀錄經由它顯示聯絡人，跟著一起走） */
+  commentAuthor?: string[];
   /** 搬過去的 tagId（解除時不回收） */
   contactTag: string[];
   /** 搬過去的屬性 key（解除時不回收） */
@@ -95,7 +106,8 @@ type RevertibleKey =
   | 'flowExecution'
   | 'kbArticleFeedback'
   | 'broadcastRecipient'
-  | 'couponInstance';
+  | 'couponInstance'
+  | 'commentAuthor';
 
 async function moveIds(
   find: () => Promise<Array<{ id: string }>>,
@@ -292,6 +304,11 @@ export async function mergeContacts(ctx: TenantCtx, input: MergeContactsInput): 
     () => db.couponInstance.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
     (ids) => db.couponInstance.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
   );
+  // 留言者對應：觸發紀錄沒有自己的 contactId，經由留言者對應顯示聯絡人（design D27）
+  const commentAuthor = await moveIds(
+    () => db.commentAuthor.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
+    (ids) => db.commentAuthor.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
+  );
 
   // ── 2. 有唯一鍵的表：survivor 已有的保留 survivor，其餘搬過去 ─────────────
   // 標籤：唯一鍵 [contactId, tagId]；用 updateMany 搬才能保留 addedAt / expiresAt
@@ -419,6 +436,7 @@ export async function mergeContacts(ctx: TenantCtx, input: MergeContactsInput): 
     kbArticleFeedback,
     broadcastRecipient,
     couponInstance,
+    commentAuthor,
     contactTag,
     contactAttribute,
     filledFields,
@@ -590,6 +608,9 @@ export async function revertMerge(ctx: TenantCtx, input: RevertMergeInput): Prom
   }
   if (has('broadcastRecipient')) {
     await db.broadcastRecipient.updateMany({ where: { id: inList('broadcastRecipient'), contactId: heldBy }, data: back });
+  }
+  if (has('commentAuthor')) {
+    await db.commentAuthor.updateMany({ where: { tenantId, id: inList('commentAuthor'), contactId: heldBy }, data: back });
   }
 
   // 合併「之後」才在 survivor 上新開、屬於被搬回渠道的對話與案件（不在 movedRecords 裡），

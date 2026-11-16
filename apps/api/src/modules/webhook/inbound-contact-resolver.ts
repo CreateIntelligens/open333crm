@@ -5,6 +5,7 @@ import { inTransaction } from '../identity-binding/binding-common.js';
 import { scheduleAvatarRefresh } from './inbound-avatar-refresh.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { channelDisplayName } from '@open333crm/shared';
+import { findCommentAuthorContact, resolveCommentContactEvent } from './inbound-comment-origin.js';
 
 export async function resolveInboundContact(ctx: InboundMessageContext): Promise<void> {
   let channelIdentity = await ctx.prisma.channelIdentity.findUnique({
@@ -84,6 +85,34 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
     }
   }
 
+  // 留言自動私訊建立的聯絡人（私訊失敗、還沒有渠道身分）：留言者 ID 或 psid 等於這個 uid 時，
+  // 把渠道身分建在那位聯絡人，不建立新聯絡人（change add-comment-keyword-private-reply D16、inbound-contact-resolution）
+  if (!channelIdentity) {
+    const commentContactId = await findCommentAuthorContact(ctx);
+    if (commentContactId) {
+      try {
+        channelIdentity = await ctx.prisma.channelIdentity.create({
+          data: {
+            contactId: commentContactId,
+            channelId: ctx.channel.id,
+            channelType: ctx.channel.channelType as never,
+            uid: ctx.contactUid,
+          },
+          include: { contact: true },
+        });
+        ctx.isFirstContact = true;
+      } catch (err) {
+        if ((err as { code?: string }).code !== 'P2002') throw err;
+        channelIdentity = await ctx.prisma.channelIdentity.findUnique({
+          where: { channelId_uid: { channelId: ctx.channel.id, uid: ctx.contactUid } },
+          include: { contact: true },
+        });
+        if (!channelIdentity) throw err;
+      }
+      contactId = channelIdentity.contactId;
+    }
+  }
+
   if (!channelIdentity) {
     let displayName = `${channelDisplayName(ctx.channel.channelType)} User ${ctx.contactUid.slice(-6)}`;
     let avatarUrl: string | undefined;
@@ -153,9 +182,18 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
   // 頭像存進物件儲存，平台網址失效後才不會只剩縮寫（IDENT-06）。在背景執行，不延後訊息落地
   if (channelIdentity) scheduleAvatarRefresh(ctx, channelIdentity);
 
+  // 留言收件建立的聯絡人（D17）：不送招呼語；contact.created 在第一次進站時發一次（不論身分何時建立）
+  let publishContactCreated = ctx.isFirstContact === true;
+  try {
+    if (await resolveCommentContactEvent(ctx, contactId)) publishContactCreated = true;
+    else if (ctx.fromCommentReply) publishContactCreated = false;
+  } catch (err) {
+    logger.error('[Webhook] 留言建立的聯絡人判斷失敗', err);
+  }
+
   // 首次建立渠道身分時發布 contact.created，供自動化規則觸發。
   // fire-and-forget：事件發布失敗不得影響聯絡人/對話/訊息的落地。
-  if (ctx.isFirstContact) {
+  if (publishContactCreated) {
     try {
       const contact = channelIdentity?.contact as
         | { displayName?: string | null; email?: string | null; phone?: string | null }

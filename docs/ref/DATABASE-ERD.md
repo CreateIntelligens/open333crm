@@ -4,7 +4,7 @@
 
 - **資料來源**：`packages/database/prisma/schema.prisma`
 - **資料庫**：PostgreSQL 16 + pgvector + pgcrypto
-- **規模**（2026-09-01 核對）：78 張資料表、24 個 enum、114 條外鍵關聯
+- **規模**（2026-09-01 核對）：78 張資料表、24 個 enum、114 條外鍵關聯。之後的 change 另有新增；2026-11-14 留言自動私訊加了 4 張表、1 個 enum（`CommentReplyStatus`）與 13 條外鍵，見[N. 留言自動私訊](#n-留言自動私訊)
 - **圖表格式**：Mermaid `erDiagram`，GitHub 會直接渲染，不需要額外工具
 
 > 本文件說明資料表**關聯**與**存什麼資料**。欄位定義以 `packages/database/prisma/schema.prisma` 為唯一真實來源；設計決策、索引策略與已知落差請看 `docs/16_DB_SCHEMA.md`。
@@ -182,7 +182,7 @@ erDiagram
 
 | 資料表             | Prisma model     | 儲存什麼                                                                 | 關鍵欄位型別                                                                                      |
 | ------------------ | ---------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `conversations`    | `Conversation`   | 對話串：狀態、指派對象、未讀數、最後訊息時間、機器人回覆次數、轉真人原因 | `status` 為 `ConversationStatus` enum；`metadata` 為 `Json`                                       |
+| `conversations`    | `Conversation`   | 對話串：狀態、指派對象、未讀數、最後訊息時間、機器人回覆次數、轉真人原因 | `status` 為 `ConversationStatus` enum；`metadata` 為 `Json`；`originCommentReplyLogId` 指向開啟對話的留言私訊紀錄（見 N 節） |
 | `messages`         | `Message`        | 單則訊息：方向、發送者類型、內容、渠道側訊息 ID、序號、已讀狀態          | `content`／`metadata` 為 `Json`（可存文字、圖片、Flex 等結構）；`direction`／`senderType` 為 enum |
 | `chatbox_sessions` | `ChatboxSession` | WebChat 訪客的安全連線：token 摘要、瀏覽器指紋、到期與撤銷時間、風險等級 | `tokenDigest`／`fingerprintHash` 為雜湊；`riskLevel` 為 `ChatboxSessionRiskLevel` enum            |
 
@@ -393,6 +393,38 @@ erDiagram
 
 ---
 
+## N. 留言自動私訊
+
+FB／IG 貼文留言命中關鍵字規則時，系統私訊留言者（change `add-comment-keyword-private-reply`）。4 張表都是租戶表，`ENABLE`＋`FORCE ROW LEVEL SECURITY` 與 `tenant_isolation` policy；對 `channels`、規則、留言者的外鍵都是 `(id, tenantId)` 複合外鍵，跨租戶參照會被資料庫擋下。
+
+```mermaid
+erDiagram
+    tenants ||--o{ comment_reply_rules : "規則"
+    channels ||--o{ comment_reply_rules : "所屬渠道"
+    materials ||--o{ comment_reply_rules : "私訊素材"
+    tenants ||--o{ comment_authors : "留言者"
+    channels ||--o{ comment_authors : "所屬渠道"
+    contacts ||--o{ comment_authors : "對應聯絡人"
+    tenants ||--o{ comment_reply_logs : "觸發紀錄"
+    channels ||--o{ comment_reply_logs : "所屬渠道"
+    comment_reply_rules ||--o{ comment_reply_logs : "命中規則"
+    comment_authors ||--o{ comment_reply_logs : "留言者"
+    conversations ||--o{ comment_reply_logs : "顧客回覆的對話"
+    comment_reply_logs ||--o{ conversations : "對話來源"
+    tenants ||--o{ comment_reply_usages : "每月用量"
+```
+
+| 資料表                 | Prisma model        | 儲存什麼                                                                                                     | 關鍵欄位型別                                                                                                                                                         |
+| ---------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comment_reply_rules`  | `CommentReplyRule`  | 關鍵字規則：渠道、關鍵字與比對方式、指定貼文、私訊內容（文字或素材）、每人一次、公開回覆、啟用與排序          | `keywords`／`postIds`／`publicReplyTexts` 為 `String[]`；`postSnapshots` 為 `Json`（只做顯示）；軟刪除 `deletedAt`；`material` 刪除時 SetNull；渠道刪除時 Cascade |
+| `comment_authors`      | `CommentAuthor`     | 留言者（webhook 的 `from.id`）對應到哪位聯絡人、私訊成功後的 PSID、是否由留言收件建立聯絡人                    | `(channelId, externalUserId)` 唯一；`psid` 部分唯一；`createdContact`、`contactEventPublishedAt` 供招呼語與 `contact.created` 判斷；聯絡人刪除時 Cascade            |
+| `comment_reply_logs`   | `CommentReplyLog`   | 觸發紀錄：只記命中規則的留言。留言內容（前 2,000 字）、狀態與原因、Meta 錯誤、去重鍵、送出結果、公開回覆結果 | `status` 為 `CommentReplyStatus` enum；`reasonCode` 為 `TEXT`（代碼表在 `packages/shared/src/comment-reply.ts`）；`(channelId, commentId)` 唯一；規則與留言者外鍵 Restrict |
+| `comment_reply_usages` | `CommentReplyUsage` | 每月（台灣時間）私訊與公開回覆的用量，原子扣減                                                               | 複合主鍵 `[tenantId, month]`；`month` 為 `Char(7)`（`YYYY-MM`）                                                                                                      |
+
+紀錄不存 `contactId`：聯絡人經 `comment_authors.contactId` 取得，聯絡人合併與解除合併只搬 `comment_authors`。`conversations.originCommentReplyLogId` 在紀錄被保存期限清除時 SetNull。
+
+---
+
 ## 多租戶隔離
 
 多數資料表帶 `tenant_id` 欄位。沒有這個欄位的資料表分成兩類：
@@ -494,6 +526,7 @@ schema 裡有一批 `xxxId` 欄位只存 ID，沒有宣告 Prisma 關聯，因�
 | `TemplateViewStatus`                          | `template_views.status`                                            | 模板審核狀態                                   |
 | `StitchSource`                                | `identity_maps.source`                                             | 身分縫合來源                                   |
 | `SuggestionStatus`                            | `merge_suggestions.status`                                         | 合併建議審核狀態                               |
+| `CommentReplyStatus`                          | `comment_reply_logs.status`                                        | PENDING、SENDING、SENT、FAILED、EXPIRED、SKIPPED、SKIPPED_DUPLICATE |
 
 完整的 enum 值請直接看 `packages/database/prisma/schema.prisma` 第 16 至 186 行。
 

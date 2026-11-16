@@ -40,6 +40,13 @@ test('列出 workers 行程的佇列', async () => {
   assert.deepEqual(sorted(names), sorted(MONITORED_QUEUES));
 });
 
+test('列出留言自動私訊佇列：API 行程的 comment-reply 在監控清單內（也會發 queue-failed 告警）', async () => {
+  const { ALERTED_QUEUES } = await import('#src/modules/queue-monitoring/monitored-queues.js');
+  assert.ok(API_QUEUES.includes('comment-reply'), 'API_QUEUES 缺少 comment-reply');
+  assert.ok(MONITORED_QUEUES.includes('comment-reply'));
+  assert.ok(ALERTED_QUEUES.includes('comment-reply'));
+});
+
 test('workers 行程的每個 Worker 都在監控清單內', () => {
   const source = readFileSync(join(repoRoot, 'apps/workers/src/index.ts'), 'utf8');
   const workerQueues = [...source.matchAll(/new Worker\(\s*'([^']+)'/g)].map((m) => m[1]);
@@ -60,7 +67,13 @@ test('API 行程的每個 Worker 都在監控清單內', async () => {
   const core = await import('@open333crm/core');
   const opsAlert = await import('#src/modules/ops-alert/ops-alert.service.js');
   const couponBroadcast = await import('#src/modules/marketing/broadcast-coupon.service.js');
-  const values = { ...core, ...opsAlert, COUPON_BROADCAST_QUEUE: couponBroadcast.COUPON_BROADCAST_QUEUE } as Record<string, unknown>;
+  const commentReply = await import('#src/modules/comment-reply/comment-reply.types.js');
+  const values = {
+    ...core,
+    ...opsAlert,
+    COUPON_BROADCAST_QUEUE: couponBroadcast.COUPON_BROADCAST_QUEUE,
+    COMMENT_REPLY_QUEUE: commentReply.COMMENT_REPLY_QUEUE,
+  } as Record<string, unknown>;
   const apiWorkerQueues = constants.map((name) => values[name]);
 
   assert.deepEqual(sorted(API_QUEUES), sorted([...apiWorkerQueues as string[], 'api-scheduler']));

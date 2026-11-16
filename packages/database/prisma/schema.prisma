@@ -271,6 +271,12 @@ model Tenant {
 
   stores         Store[]
   storeAccounts  StoreAccount[]
+
+  // 留言關鍵字自動私訊（add-comment-keyword-private-reply）
+  commentReplyRules  CommentReplyRule[]
+  commentAuthors     CommentAuthor[]
+  commentReplyLogs   CommentReplyLog[]
+  commentReplyUsages CommentReplyUsage[]
   @@map("tenants")
 }
 
@@ -419,6 +425,9 @@ model Channel {
   chatboxSessions   ChatboxSession[]
   shortLinks        ShortLink[]         @relation("ShortLinkLineChannel")
   couponClaimLinks  CouponClaimLink[]
+  commentReplyRules CommentReplyRule[]
+  commentAuthors    CommentAuthor[]
+  commentReplyLogs  CommentReplyLog[]
 
   @@unique([channelType, externalAccountId])
   /// 給 coupon_claim_links 的複合外鍵 (channelId, tenantId) 參照：連結與渠道必須同一租戶（#362 A3）
@@ -525,6 +534,7 @@ model Contact {
   identityMaps      IdentityMap[]
   portalSubmissions PortalSubmission[]
   pointTransactions PointTransaction[]
+  commentAuthors    CommentAuthor[]
 
   @@index([tenantId])
   @@index([tenantId, phone])
@@ -683,6 +693,8 @@ model Conversation {
   botRepliesCount Int                @default(0)
   handoffReason   String?
   metadata        Json               @default("{}")
+  /// 由留言自動私訊開啟的對話：指向那筆觸發紀錄（add-comment-keyword-private-reply D7、D18）
+  originCommentReplyLogId String?    @db.Uuid
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -696,7 +708,10 @@ model Conversation {
   messages       Message[]
   tags           ConversationTag[]
   chatboxSession ChatboxSession?
+  originCommentReplyLog CommentReplyLog?  @relation("ConversationOriginComment", fields: [originCommentReplyLogId], references: [id], onDelete: SetNull)
+  commentReplyLogs      CommentReplyLog[] @relation("CommentReplyLogConversation")
 
+  // migration SQL：部分索引 (originCommentReplyLogId) WHERE "originCommentReplyLogId" IS NOT NULL
   @@index([tenantId, status])
   @@index([tenantId, contactId])
   @@index([caseId])
@@ -1108,6 +1123,7 @@ model Material {
   broadcasts Broadcast[]
   versions   MaterialVersion[]
   shortLinks ShortLink[]
+  commentReplyRules CommentReplyRule[]
 
   @@index([tenantId, channelType])
   @@index([tenantId, isActive])
@@ -2613,4 +2629,174 @@ model SideEffectClaim {
   @@unique([kind, sourceId, subKey])
   @@index([createdAt])
   @@map("side_effect_claims")
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 留言關鍵字自動私訊（change add-comment-keyword-private-reply，design「資料模型」、D7～D11）
+// 4 張租戶表都 ENABLE＋FORCE RLS（tenant_isolation），並在 migration 明確 GRANT app_tenant。
+// 外鍵用 (xxxId, tenantId) 複合外鍵：外鍵檢查不受 RLS 影響，單欄外鍵會讓 A 租戶的列指向 B 的渠道／規則／留言者。
+// 部分索引 Prisma 不支援，寫在 migration SQL，下面以註解標示。
+// ════════════════════════════════════════════════════════════════════
+
+/// 觸發紀錄狀態（design D8）；原因代碼存 TEXT，列舉與中文對照在 packages/shared/src/comment-reply.ts
+enum CommentReplyStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  EXPIRED
+  SKIPPED
+  SKIPPED_DUPLICATE
+}
+
+/// 留言關鍵字自動私訊規則。軟刪除（deletedAt）
+model CommentReplyRule {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String    @db.Uuid
+  channelId          String    @db.Uuid
+  name               String    @db.VarChar(200)
+  keywords           String[]
+  matchMode          String    @default("any") // any | all
+  postScope          String    @default("all") // all | selected
+  postIds            String[]  @default([]) // 外掛正規化後的貼文 ID
+  postSnapshots      Json      @default("[]") // 只做顯示：[{ postId, permalink, thumbnailUrl, excerpt, publishedAt }]
+  contentType        String // material | text
+  materialId         String?   @db.Uuid
+  messageText        String?
+  dedupePerCommenter Boolean   @default(true)
+  publicReplyEnabled Boolean   @default(false)
+  publicReplyTexts   String[]  @default([])
+  isActive           Boolean   @default(true)
+  priority           Int       @default(0)
+  createdById        String?   @db.Uuid
+  updatedById        String?   @db.Uuid
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id])
+  channel  Channel           @relation(fields: [channelId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  material Material?         @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  logs     CommentReplyLog[]
+
+  /// 給 comment_reply_logs 的複合外鍵 (ruleId, tenantId) 參照
+  @@unique([id, tenantId])
+  @@index([tenantId, channelId, priority])
+  // migration SQL：部分索引 (channelId) WHERE "isActive" AND "deletedAt" IS NULL
+  @@map("comment_reply_rules")
+}
+
+/// 留言者（webhook from.id）與聯絡人、私訊 ID（PSID）的對應（design D16）
+model CommentAuthor {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String    @db.Uuid
+  channelId               String    @db.Uuid
+  externalUserId          String
+  displayName             String?
+  username                String?
+  contactId               String    @db.Uuid
+  createdContact          Boolean   @default(false) // 聯絡人由留言收件建立（D16、D17）
+  contactEventPublishedAt DateTime? // 已補發 contact.created
+  psid                    String? // 私訊成功後的 recipient_id
+  firstCommentAt          DateTime
+  lastCommentAt           DateTime
+  commentCount            Int       @default(1)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  tenant  Tenant            @relation(fields: [tenantId], references: [id])
+  channel Channel           @relation(fields: [channelId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  contact Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  logs    CommentReplyLog[]
+
+  /// 給 comment_reply_logs 的複合外鍵 (commentAuthorId, tenantId) 參照
+  @@unique([id, tenantId])
+  @@unique([channelId, externalUserId])
+  @@index([contactId])
+  @@index([tenantId])
+  // migration SQL：部分唯一 (channelId, psid) WHERE psid IS NOT NULL
+  @@map("comment_authors")
+}
+
+/// 觸發紀錄：只記命中規則的留言（design D4）
+model CommentReplyLog {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String             @db.Uuid
+  channelId             String             @db.Uuid
+  ruleId                String             @db.Uuid
+  commentAuthorId       String             @db.Uuid
+  conversationId        String?            @db.Uuid
+  commentId             String
+  postId                String
+  parentCommentId       String?
+  adId                  String?
+  commenterId           String? // 匿名化時清空
+  commenterName         String?
+  commenterUsername     String?
+  commentText           String? // 前 2,000 字
+  commentCreatedAt      DateTime
+  createdAtSource       String             @default("comment") // comment | notification
+  receivedAt            DateTime           @default(now())
+  matchedKeywords       String[]           @default([])
+  status                CommentReplyStatus @default(PENDING)
+  reasonCode            String?
+  reasonMessage         String? // Meta 原始訊息前 200 字
+  metaErrorCode         Int?
+  metaErrorSubcode      Int?
+  metaTraceId           String?
+  dedupeKey             String? // <ruleId>:<commenterId>（D10）
+  holderLogId           String?            @db.Uuid
+  attemptCount          Int                @default(0)
+  metaRateLimitHits     Int                @default(0)
+  nextAttemptAt         DateTime?
+  quotaMonth            String?            @db.Char(7) // 已扣用量的台灣月份 YYYY-MM（D11）
+  sendAttemptedAt       DateTime?
+  sentAt                DateTime?
+  sentMessageId         String?
+  recipientUid          String?
+  sentContentSnapshot   Json?
+  publicReplyStatus     String             @default("NOT_CONFIGURED")
+  publicReplyText       String?
+  publicReplyCommentId  String?
+  publicReplyReasonCode String?
+  publicReplyAt         DateTime?
+  customerRepliedAt     DateTime?
+  commentDeletedAt      DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  channel       Channel          @relation(fields: [channelId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  rule          CommentReplyRule @relation(fields: [ruleId, tenantId], references: [id, tenantId], onDelete: Restrict) // 規則只軟刪
+  commentAuthor CommentAuthor    @relation(fields: [commentAuthorId, tenantId], references: [id, tenantId], onDelete: Restrict) // erasure 須先刪紀錄
+  conversation  Conversation?    @relation("CommentReplyLogConversation", fields: [conversationId], references: [id], onDelete: SetNull)
+  originOf      Conversation[]   @relation("ConversationOriginComment")
+
+  @@unique([channelId, commentId])
+  @@index([tenantId, commentCreatedAt(sort: Desc), id(sort: Desc)])
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([ruleId, createdAt(sort: Desc)])
+  @@index([commentAuthorId])
+  @@index([createdAt])
+  // migration SQL：
+  //   UNIQUE (dedupeKey) WHERE "dedupeKey" IS NOT NULL AND status IN ('SENDING','SENT')
+  //   (coalesce("nextAttemptAt","updatedAt")) WHERE status = 'PENDING'
+  //   ("sendAttemptedAt") WHERE status = 'SENDING'
+  //   (channelId, recipientUid, sentAt DESC) WHERE status = 'SENT' AND "conversationId" IS NULL
+  @@map("comment_reply_logs")
+}
+
+/// 每月（台灣時間）私訊用量，原子扣減（design D11）
+model CommentReplyUsage {
+  tenantId         String   @db.Uuid
+  month            String   @db.Char(7)
+  sentCount        Int      @default(0)
+  publicReplyCount Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, month])
+  @@map("comment_reply_usages")
 }
