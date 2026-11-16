@@ -133,12 +133,52 @@ describe('前置條件查詢', () => {
     assert.deepEqual(data.testPhase, { fb: false, ig: true });
   });
 
+  // issue #529：pages_manage_engagement、pages_read_engagement 未過審時所有粉專都拿不到，不可當成必要權限
+  const onlyMessagingScopes = () =>
+    graph.on('GET', 'graph.facebook.com', '/v21.0/debug_token', { body: { data: { scopes: ['pages_show_list', 'pages_manage_metadata', 'pages_messaging'] } } });
+
+  test('公開回覆與貼文挑選未開放時不回報缺少其權限', async () => {
+    await setPlatformCapabilities(owner, { fbPublicReply: false, fbPostPicker: false });
+    onlyMessagingScopes();
+    const c = channelOf(await readiness(), fbPlatform.id);
+    assert.deepEqual(c.missingPermissions, []);
+    assert.deepEqual(c.missingOptionalPermissions, { publicReply: [], postPicker: [] });
+    assert.equal(c.canPrivateReply, true);
+    assert.equal(c.canPublicReply, false);
+  });
+
+  test('公開回覆開放時回報缺少公開回覆權限', async () => {
+    await setPlatformCapabilities(owner, { fbPublicReply: true, fbPostPicker: false });
+    onlyMessagingScopes();
+    const c = channelOf(await readiness(), fbPlatform.id);
+    assert.deepEqual(c.missingPermissions, []);
+    assert.deepEqual(sorted(c.missingOptionalPermissions.publicReply), ['pages_manage_engagement', 'pages_read_engagement']);
+    assert.deepEqual(c.missingOptionalPermissions.postPicker, []);
+  });
+
+  test('只開放貼文挑選時回報缺少讀取貼文權限', async () => {
+    await setPlatformCapabilities(owner, { fbPublicReply: false, fbPostPicker: true });
+    onlyMessagingScopes();
+    const c = channelOf(await readiness(), fbPlatform.id);
+    assert.deepEqual(c.missingPermissions, []);
+    assert.deepEqual(c.missingOptionalPermissions, { publicReply: [], postPicker: ['pages_read_engagement'] });
+  });
+
+  test('缺少私訊權限', async () => {
+    await setPlatformCapabilities(owner, { fbPublicReply: false, fbPostPicker: false });
+    graph.on('GET', 'graph.facebook.com', '/v21.0/debug_token', { body: { data: { scopes: ['pages_show_list', 'pages_manage_metadata'] } } });
+    const c = channelOf(await readiness(), fbPlatform.id);
+    assert.deepEqual(c.missingPermissions, ['pages_messaging']);
+    assert.equal(c.canPrivateReply, false);
+  });
+
   test('IG 近 24 小時有權限不足的失敗：missingPermissions 含留言權限', async () => {
     const rule = await rec.rule(T, ig.id);
     const author = await rec.author(T, ig.id);
     await rec.log(T, ig.id, rule.id, author.id, { status: 'FAILED', reasonCode: 'PERMISSION_MISSING' });
     const data = await readiness();
     assert.deepEqual(channelOf(data, ig.id).missingPermissions, ['instagram_business_manage_comments']);
+    assert.deepEqual(channelOf(data, ig.id).missingOptionalPermissions, { publicReply: [], postPicker: [] });
   });
 });
 

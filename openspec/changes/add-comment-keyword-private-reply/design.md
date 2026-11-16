@@ -650,7 +650,7 @@ Meta 錯誤正規化（外掛內）：190 → `TOKEN_EXPIRED`；10、200～299 �
 | `GET /logs/summary` | view | 同篩選 | 各狀態筆數＋`failed24h` | — |
 | `GET /logs/:id` | view | uuid | `LogDetail`（`conversationId` 只在有 `inbox.view` 且看得到渠道時回；否則只回 `customerReplied`） | `LOG_NOT_FOUND` 404 |
 | `POST /logs/:id/retry` | manage | uuid | 202 `{ status: 'PENDING' }` | `LOG_NOT_FOUND`、`RETRY_NOT_ALLOWED` 409（`details.reason`：`NOT_FAILED`／`NOT_RETRYABLE`／`EXPIRED`）、`CHANNEL_ACCESS_DENIED` |
-| `GET /readiness` | view | — | `{ testPhase, capabilities, emergencyStopped, quota: { monthlyUsed, monthlyLimit, activeRules, maxRules }, channels: [{ channelId, channelType, displayName, appMode, receiving, subscribed, missingPermissions, canPrivateReply, canPublicReply, tokenStatus, lastCommentEventAt, capabilities }] }` | — |
+| `GET /readiness` | view | — | `{ testPhase, capabilities, emergencyStopped, quota: { monthlyUsed, monthlyLimit, activeRules, maxRules }, channels: [{ channelId, channelType, displayName, appMode, receiving, subscribed, missingPermissions, missingOptionalPermissions: { publicReply, postPicker }, canPrivateReply, canPublicReply, tokenStatus, lastCommentEventAt, capabilities }] }` | — |
 | `GET /channels/:channelId/posts` | manage | `cursor?` | `{ posts, nextCursor }` | `CHANNEL_NOT_FOUND` 404、`CAPABILITY_DISABLED` 403、`POSTS_UNAVAILABLE` 502（`details.reason`） |
 | `POST /channels/:channelId/posts/resolve` | manage | `{ url(≤2000) }` | `RecentPost` | `POST_NOT_FOUND` 404、`CAPABILITY_DISABLED` 403、`POSTS_UNAVAILABLE` 502 |
 | `POST /channels/:channelId/subscribe-comments` | `channel.update`＋`comment_reply.view` | — | `{ receiving: true }` | `CHANNEL_NOT_FOUND`、`REAUTH_REQUIRED` 409、`SUBSCRIBE_FAILED` 502 |

@@ -201,6 +201,16 @@ export interface CommentReplyCapabilities {
   materialChannelType: string | null;
   /** 貼文挑選畫面開啟貼文連結的文字，例如「在 Facebook 開啟」 */
   postLinkLabel: string;
+  /**
+   * 只有選用功能才需要的權限（issue #529）。沒有列在這裡的權限都是收留言、私訊的必要權限。
+   * 平台是否開放這些功能由呼叫端判斷：外掛不讀平台設定。IG 沒有 debug_token，不提供。
+   */
+  optionalPermissions?: {
+    /** 公開回覆留言 */
+    readonly publicReply: readonly string[];
+    /** 從最近貼文挑選、以網址找貼文 */
+    readonly postPicker: readonly string[];
+  };
 }
 
 /**
@@ -251,7 +261,10 @@ export interface RecentPost {
 export interface CommentSubscriptionStatus {
   /** null＝無法查詢（查詢失敗，或平台不提供查詢方式） */
   subscribed: boolean | null;
-  /** null＝無法得知（IG 沒有 debug_token，或查詢失敗） */
+  /**
+   * 權杖缺少的權限，含選用功能的權限（哪些屬於選用見 capabilities.optionalPermissions）。
+   * null＝無法得知（IG 沒有 debug_token，或查詢失敗）
+   */
   missingPermissions: string[] | null;
   /** 權限未知時為 null */
   canPrivateReply: boolean | null;

@@ -75,8 +75,10 @@ export interface CommentReplyReadinessChannel {
   receiving: boolean;
   /** 查 Meta 逾時或不明時是 null */
   subscribed: boolean | null;
-  /** null＝無法得知（IG Instagram Login 沒有 debug_token） */
+  /** 收留言、私訊的必要權限中缺少的。null＝無法得知（IG Instagram Login 沒有 debug_token） */
   missingPermissions: string[] | null;
+  /** 平台已開放的選用功能所缺少的權限（功能未開放時是空陣列；私訊不受影響） */
+  missingOptionalPermissions?: { publicReply: string[]; postPicker: string[] };
   canPrivateReply: boolean;
   canPublicReply: boolean;
   tokenStatus?: string | null;

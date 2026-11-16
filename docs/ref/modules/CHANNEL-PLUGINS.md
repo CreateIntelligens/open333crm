@@ -115,7 +115,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | `parsePostReference()` | 規則 API（指定貼文） | 手動輸入的貼文 ID 或網址離線正規化（FB 為 `{pageId}_{postId}`），不發網路請求 |
 | `sendPrivateReply()`、`replyToComment()` | 送出 flow（`comment-reply-delivery.flow.ts`） | 私訊留言者（FB 以 `recipient: { comment_id }`）與公開回覆。Meta 錯誤正規化成 `reason`（`TOKEN_EXPIRED`、`USER_UNAVAILABLE`、`ALREADY_REPLIED` 等），以回傳值表示，不丟錯 |
 | `listRecentPosts()`、`resolvePostUrl()` | 渠道端路由（貼文挑選） | 只呼叫 Graph API；`resolvePostUrl()` 不 fetch 使用者給的網址 |
-| `getSubscriptionStatus()`、`subscribeFields()` | readiness、開關留言接收、`meta-connect`、補訂閱腳本、`meta-token-health` | `POST subscribed_apps` 是整份取代，`fields` 必須是完整清單 |
+| `getSubscriptionStatus()`、`subscribeFields()` | readiness、開關留言接收、`meta-connect`、補訂閱腳本、`meta-token-health` | `POST subscribed_apps` 是整份取代，`fields` 必須是完整清單。`getSubscriptionStatus()` 的 `missingPermissions` 是權杖缺少的所有權限；只屬於公開回覆、貼文挑選的權限由外掛列在 `capabilities.optionalPermissions`，readiness（`splitMissingPermissions()`）依平台能力開關決定哪些算缺少，外掛不讀平台設定 |
 
 **訂閱欄位只有一份定義。** FB 的完整欄位由 `meta-connect.service.ts` 的 `subscribedFieldsFor(channelSettings)` 算出：4 個私訊欄位（`BASE_SUBSCRIBED_FIELDS`），`settings.commentReply.receiving` 為 true 時加 `feed`。IG 用 `comment-reply-channel.service.ts` 的 `IG_BASE_SUBSCRIBED_FIELDS`（`messages`）加 `comments`。首次連結、重新連結、開關留言接收、補訂閱腳本（`apps/api/src/scripts/comment-reply-subscriptions.ts`）都經這兩處；少帶一個私訊欄位就是那個粉專的私訊全部中斷。
 

@@ -195,3 +195,8 @@
 - [x] 15.7 每個 scenario 至少一個測試、測試名稱＝scenario 名稱；`planning/05-qa.md` §3.3 整合缺口表：每個 flow 單元測試的分支都有 feature 情境走過同一個入口（2026-11-14：本 change 新增的 scenario 都有同名測試，新補「留言收件建立聯絡人時不發布」；另 16 個 scenario 是 MODIFIED 需求帶進來的既有 scenario（`channel-plugins` 2、`contact-management` 8、`first-contact-greeting` 4、`inbound-contact-resolution` 2），由 11.9 的既有測試以原本的名稱涵蓋，未改名。§3.3 缺口表：補「排隊期間渠道停用」「排隊期間租戶停用」「第一次送出就回已私訊過」「Meta 回超過可私訊的期限」，五列都有 feature 情境走過同一個入口）
 - [x] 15.8 `node scripts/validate-openspec.mjs add-comment-keyword-private-reply` 與 `node scripts/validate-openspec.mjs --specs`（2026-11-14：兩者都通過；`--specs` 123 項）
 - [ ] 15.9 確認 0.1、0.2 的相依 change 已歸檔並核對 MODIFIED 內容後，以 `pnpm exec openspec archive add-comment-keyword-private-reply` 歸檔；新主規格的 `## Purpose` 換掉「TBD」
+
+## 16. 修正：readiness 誤報缺少必要的授權（issue #529）
+
+- [x] 16.1 測試（先失敗）：`apps/api/tests/unit/modules/comment-reply/comment-reply-readiness.test.ts`、`packages/channel-plugins/tests/unit/comment-posts-and-status.test.ts`、`apps/web/tests/unit/components/comment-replies/comment-reply-readiness-card.test.tsx`；feature 測試 `comment-reply-channel-routes.test.ts` 加「公開回覆與貼文挑選未開放時不回報缺少其權限」「公開回覆開放時回報缺少公開回覆權限」「只開放貼文挑選時回報缺少讀取貼文權限」「缺少私訊權限」（feature 測試以變異驗證：`buildReadiness` 改回直接用外掛的 `missingPermissions` 時 4 個都失敗）
+- [x] 16.2 實作：外掛 `capabilities.optionalPermissions` 標出只屬於公開回覆、貼文挑選的權限；`buildReadiness` 以 `splitMissingPermissions()` 依平台能力分成 `missingPermissions`（必要）與 `missingOptionalPermissions`；前置條件卡對只缺選用功能權限的渠道顯示資訊卡
