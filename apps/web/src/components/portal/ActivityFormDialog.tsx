@@ -7,12 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { toLocalInputValue, toIsoForApi } from '@/lib/datetime-local';
@@ -158,11 +158,11 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
   const showFields = type === 'FORM';
 
   return (
-    <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{editData ? '編輯活動' : '建立活動'}</DialogTitle>
-        </DialogHeader>
+    <PageDialog section="粉絲活動" parent="活動管理" open={open} onOpenChange={() => onClose()}>
+      <PageDialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <PageDialogHeader>
+          <PageDialogTitle>{editData ? '編輯活動' : '建立活動'}</PageDialogTitle>
+        </PageDialogHeader>
 
         {editData && loadingFull && (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
@@ -363,14 +363,14 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
           </div>
         )}
 
-        <DialogFooter>
+        <PageDialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={handleSave} disabled={saving || !title || editNotReady}>
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             {editData ? '儲存' : '建立'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </PageDialogFooter>
+      </PageDialogContent>
+    </PageDialog>
   );
 }

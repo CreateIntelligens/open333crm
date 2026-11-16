@@ -4,6 +4,9 @@
  *
  * 修正前：素材短連結沒有標題，列表顯示「-」，與手動連結混在一起；刪除或改目標網址／
  * 到期時間會讓已發給客人的訊息連結失效或導向別處，畫面沒有任何警告。
+ *
+ * 本分支的列表改成 role=row 的格線（不是 <table>），編輯改為獨立頁面（LinkForm），
+ * 所以「編輯時警告」改成檢查導向編輯頁，警告本身在 tests/unit/components/shortlink/link-form.test.tsx 測。
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
@@ -11,7 +14,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 
 const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), delete: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
 vi.mock('#src/lib/api.js', () => ({ default: api }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard/shortlinks/links' }));
+const { router } = vi.hoisted(() => ({ router: { push: vi.fn() } }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard/shortlinks/links', useRouter: () => router }));
 vi.mock('#src/components/layout/Topbar.js', () => ({ Topbar: () => null }));
 vi.mock('#src/components/shortlink/ClickStatsView.js', () => ({ ClickStatsView: () => null }));
 vi.mock('#src/components/shortlink/QrCodeDialog.js', () => ({ QrCodeDialog: () => null }));
@@ -41,7 +45,7 @@ afterEach(() => {
 });
 
 function row(slug: string) {
-  return screen.getByText(`/s/${slug}`).closest('tr') as HTMLElement;
+  return screen.getByText(`/s/${slug}`).closest('[role="row"]') as HTMLElement;
 }
 
 test('素材短連結標示為廣播自動建立，不再顯示「-」', () => {
@@ -60,8 +64,8 @@ test('刪除素材短連結時警告已發出的訊息會失效', () => {
   assert.doesNotMatch(String(confirmSpy.mock.calls[1][0]), /已發出|已經發給/);
 });
 
-test('編輯素材短連結時顯示會影響已發出訊息的警告', () => {
+test('編輯素材短連結時開啟編輯頁（警告在編輯頁顯示）', () => {
   render(<ShortLinksPage />);
   fireEvent.click(within(row('auto1')).getByTitle('編輯'));
-  assert.ok(screen.getByRole('dialog').textContent?.includes('已經發給客人'));
+  assert.equal(router.push.mock.calls.at(-1)?.[0], '/dashboard/shortlinks/links/l-auto/edit');
 });

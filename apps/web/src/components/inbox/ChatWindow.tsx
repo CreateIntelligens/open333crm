@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Loader2, Lightbulb, XCircle } from 'lucide-react';
+import { Loader2, Lightbulb } from 'lucide-react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useMessages } from '@/hooks/useMessages';
 import { MessageBubble } from './MessageBubble';
@@ -17,7 +17,6 @@ import { CouponToast, useCouponToast } from '@/components/coupons/CouponToast';
 import { issuedCouponsKey, type CouponMessageContent } from '@/lib/coupon/issue';
 import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -96,9 +95,10 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
     ...agents.map((a) => ({ value: a.id, label: a.name })),
   ];
 
+  // 狀態名稱與列表的處理狀態標籤一致（Claude Design：等待客服／客服處理中／已關閉）
   const statusOptions = [
-    { value: 'ACTIVE', label: '進行中' },
-    { value: 'AGENT_HANDLED', label: '已處理' },
+    { value: 'ACTIVE', label: '等待客服' },
+    { value: 'AGENT_HANDLED', label: '客服處理中' },
     { value: 'CLOSED', label: '已關閉' },
   ];
 
@@ -247,60 +247,80 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
   const isClosed = conversation.status === 'CLOSED';
 
   const statusColor: Record<string, string> = {
-    ACTIVE: 'bg-success-subtle text-success',
-    BOT_HANDLED: 'bg-ai-subtle text-ai',
-    AGENT_HANDLED: 'bg-primary-subtle text-primary',
-    CLOSED: 'bg-muted text-foreground',
+    ACTIVE: 'bg-orange-50 text-amber-800',
+    BOT_HANDLED: 'bg-primary-subtle text-primary-hover',
+    AGENT_HANDLED: 'bg-success-subtle text-success',
+    CLOSED: 'bg-surface-hover text-muted-foreground',
   };
 
   const statusLabel: Record<string, string> = {
-    ACTIVE: '進行中',
-    BOT_HANDLED: 'Bot 處理中',
-    AGENT_HANDLED: '已處理',
+    ACTIVE: '等待客服',
+    BOT_HANDLED: '機器人處理中',
+    AGENT_HANDLED: '客服處理中',
     CLOSED: '已關閉',
   };
 
   return (
     <div className="relative flex h-full flex-col">
-      {/* Chat Header */}
+      {/* Chat Header：版面依 Claude Design「收件匣 v4」
+          第一行 名字＋渠道＋狀態標籤；第二行 負責人、狀態；右側主要操作。依 Figma 微調 */}
       {/* 收件匣在 1280 寬時聊天區只剩約 400px：允許換行、名稱截斷，避免撐寬把右側面板擠出畫面 */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-6 py-3.5">
+        <div className="flex min-w-[180px] flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="min-w-0 max-w-full truncate font-semibold">
+            <h3 className="min-w-0 max-w-full truncate text-xl font-bold leading-7 text-foreground">
               {conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人'}
             </h3>
             <ChannelLabel
               channelType={conversation.channelType}
               channelName={conversation.channel?.displayName}
-              nameClassName="max-w-[12rem] text-sm"
+              nameClassName="max-w-[12rem] text-xs text-muted-foreground"
             />
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                statusColor[conversation.status] || 'bg-success-subtle text-success'
+              className={`inline-flex items-center rounded-[5px] px-[7px] py-px text-xs font-semibold ${
+                statusColor[conversation.status] || 'bg-surface-hover text-muted-foreground'
               }`}
             >
               {statusLabel[conversation.status] || conversation.status}
             </span>
-            <Select
-              className="h-8 w-36 text-xs"
-              options={agentOptions}
-              value={conversation.assignedToId || ''}
-              onChange={handleAssign}
-            />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <label className="flex items-center gap-1.5">
+              負責人
+              <select
+                value={conversation.assignedToId || ''}
+                onChange={handleAssign}
+                className="h-7 cursor-pointer rounded-md border border-transparent bg-transparent pr-1 text-xs font-medium text-foreground hover:border-border focus-visible:border-primary focus-visible:outline-none"
+              >
+                {agentOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <span aria-hidden="true">·</span>
+            <label className="flex items-center gap-1.5">
+              狀態
+              <select
+                value={conversation.status}
+                onChange={handleStatusChange}
+                className="h-7 cursor-pointer rounded-md border border-transparent bg-transparent pr-1 text-xs font-medium text-foreground hover:border-border focus-visible:border-primary focus-visible:outline-none"
+              >
+                {/* Bot 處理中只能由系統切換，但要能顯示目前值 */}
+                {conversation.status === 'BOT_HANDLED' && <option value="BOT_HANDLED">機器人處理中</option>}
+                {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* AI Suggest button */}
+        <div className="flex flex-none flex-wrap items-center gap-2">
           {!isClosed && (
             <Button
-              variant={showAiSuggest ? 'default' : 'ghost'}
-              size="icon"
-              className="h-8 w-8"
+              variant={showAiSuggest ? 'secondary' : 'subtle'}
+              size="sm"
               onClick={onShowAiSuggest}
               title="AI 建議回覆"
+              aria-pressed={showAiSuggest}
             >
-              <Lightbulb className="h-4 w-4" />
+              <Lightbulb />
+              AI 建議
             </Button>
           )}
           <ReturnToBotButton
@@ -310,25 +330,16 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
           />
           {!isClosed && (
             <Button
-              variant="ghost"
               size="sm"
-              className="h-8 gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => {
                 setCloseError(null);
                 setCloseDialogOpen(true);
               }}
               title="結案此對話"
             >
-              <XCircle className="h-4 w-4" />
-              <span className="text-xs">結案</span>
+              結束對話
             </Button>
           )}
-          <Select
-            className="h-8 w-32 text-xs"
-            options={statusOptions}
-            value={conversation.status}
-            onChange={handleStatusChange}
-          />
         </div>
       </div>
 
@@ -346,7 +357,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
       />
 
       {/* Messages */}
-      <div ref={scrollRef} data-testid="chat-messages" className="flex-1 overflow-y-auto bg-muted/30">
+      <div ref={scrollRef} data-testid="chat-messages" className="flex-1 overflow-y-auto bg-muted">
         {messagesError && (
           <div role="alert" className="flex items-center justify-between gap-2 border-b bg-destructive-subtle px-4 py-2 text-xs text-destructive">
             <span>訊息載入失敗：{getApiErrorMessage(messagesError, '請稍後重試')}</span>
@@ -405,7 +416,13 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
                 const csatRatedBy = msg.metadata?.csatRatedBy === 'agent' ? 'agent' : msg.metadata?.csatRatedBy === 'customer' ? 'customer' : undefined;
                 return <CsatMessage key={msg.id} score={score} ratedBy={csatRatedBy} readonly={isClosed || !!score} caseId={csatCaseId} deliveryError={csatDeliveryError} />;
               }
-              return <MessageBubble key={msg.id} message={msg} />;
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  contactName={conversation.contact?.name || conversation.contact?.displayName}
+                />
+              );
             })}
             {conversation && (
               <TypingIndicator conversationId={conversation.id} />

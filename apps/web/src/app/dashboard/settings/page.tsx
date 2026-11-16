@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Topbar } from "@/components/layout/Topbar";
 import { ChannelManagement } from "@/components/settings/ChannelManagement";
 import { AgentManagement } from "@/components/settings/AgentManagement";
 import { TagManagement } from "@/components/settings/TagManagement";
@@ -16,15 +15,16 @@ import { WebTalkSettings } from "@/components/settings/WebTalkSettings";
 import { CliSessionManagement } from "@/components/settings/CliSessionManagement";
 import { RolePermissionMatrix } from "@/components/settings/RolePermissionMatrix";
 import { PasskeyManagement } from "@/components/settings/PasskeyManagement";
+import { Badge } from "@/components/ui/badge";
+import { SettingsHeader } from "@/components/settings/SettingsHeader";
 import { StoreManagement } from "@/components/settings/stores/StoreManagement";
-import { Network } from "lucide-react";
 import { usePermission } from "@/providers/AuthProvider";
 import api from "@/lib/api";
 
 const SETTINGS_TABS = [
   { key: "channels", label: "渠道管理" },
-  { key: "agents", label: "人員與權限" },
-  { key: "roles", label: "角色與權限", perm: "role.view" },
+  { key: "agents", label: "人員管理" },
+  { key: "roles", label: "角色權限", perm: "role.view" },
   { key: "tags", label: "標籤管理" },
   { key: "sla", label: "SLA 政策" },
   { key: "office-hours", label: "營業時間" },
@@ -50,10 +50,11 @@ export default function SettingsPage() {
   const canViewStores = usePermission("store.view");
 
   return (
-    <div className="flex h-full flex-col">
-      <Topbar title="設定" />
+    // 依 Figma：設定頁不再有上方標題列，內容區內距 32，最上方是麵包屑
+    <div className="flex min-h-full flex-col gap-3 p-7">
+      <p className="text-sm leading-5 text-foreground">設定 &gt; {SETTINGS_TABS.find((tab) => tab.key === activeTab)?.label}</p>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div>
           {activeTab === "channels" && <ChannelManagement />}
           {activeTab === "agents" && <AgentManagement />}
           {activeTab === "roles" && (canViewRoles ? <RolePermissionMatrix /> : <PermissionDenied />)}
@@ -75,7 +76,7 @@ export default function SettingsPage() {
 }
 
 function PermissionDenied() {
-  return <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">你沒有查看此設定的權限。</div>;
+  return <div className="rounded-lg border border-dashed p-7 text-center text-sm text-muted-foreground">你沒有查看此設定的權限。</div>;
 }
 
 function A2ASettings() {
@@ -98,31 +99,41 @@ function A2ASettings() {
   }, []);
 
   return (
-    <section className="max-w-3xl space-y-6">
-      <div>
-        <p className="text-sm font-medium text-muted-foreground">整合</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">A2A</h1>
-        <p className="mt-2 text-sm text-muted-foreground">標準 A2A 長駐連線的安全狀態與執行資訊。</p>
-      </div>
-      <div className="rounded-lg border bg-card p-5">
-        <div className="flex items-start gap-3">
-          <div className="rounded-md bg-primary/10 p-2 text-primary"><Network className="h-5 w-5" aria-hidden="true" /></div>
-          <div>
-            <h2 className="font-medium">連線狀態</h2>
-            <p className="mt-1 text-sm text-muted-foreground">A2A bridge 的連線狀態將由伺服器端提供。Hub key 與 Agent token 僅能透過部署 secret 設定，不會在瀏覽器顯示。</p>
-          </div>
+    // 版面依 Claude Design「A2A」：標題區、連線狀態卡（狀態燈＋唯讀、欄位列表、憑證說明）；依 Figma 微調
+    <section className="flex max-w-[760px] flex-col gap-5">
+      <SettingsHeader title="A2A" description="標準 A2A 長駐連線的安全狀態與執行資訊" />
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-lg font-semibold text-foreground">連線狀態</span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+            <span
+              className={`h-2 w-2 rounded-full ${status?.connectionState === 'connected' ? 'bg-online' : 'bg-status-neutral'}`}
+              aria-hidden="true"
+            />
+            {status?.connectionState ?? '載入中…'}
+          </span>
+          <Badge variant="secondary" className="ml-auto">唯讀</Badge>
         </div>
-        {error && <p className="mt-5 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-        <dl className="mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
-          <div><dt className="text-muted-foreground">協定</dt><dd className="mt-1 font-medium">{status?.protocol ?? '載入中…'}</dd></div>
-          <div><dt className="text-muted-foreground">傳輸層</dt><dd className="mt-1 font-medium">{status?.transport ?? '載入中…'}</dd></div>
-          <div><dt className="text-muted-foreground">Hub</dt><dd className="mt-1 break-all font-medium">{status?.hubUrl ?? '載入中…'}</dd></div>
-          <div><dt className="text-muted-foreground">Agent ID</dt><dd className="mt-1 font-medium">{status?.agentId ?? '未設定'}</dd></div>
-          <div><dt className="text-muted-foreground">目前狀態</dt><dd className="mt-1 font-medium">{status?.connectionState ?? '載入中…'}</dd></div>
-          <div><dt className="text-muted-foreground">Tenant 綁定</dt><dd className="mt-1 font-medium">{status?.tenantBinding ?? '載入中…'}</dd></div>
-          <div><dt className="text-muted-foreground">Hub key</dt><dd className="mt-1 font-medium">部署 secret 管理</dd></div>
-          <div><dt className="text-muted-foreground">Agent token</dt><dd className="mt-1 font-medium">bridge credentials 管理</dd></div>
+        <p className="text-sm text-muted-foreground">
+          A2A bridge 的連線狀態由伺服器端提供，Hub key 與 Agent token 僅能透過部署 secret 設定，不會在瀏覽器顯示。
+        </p>
+        {error && <p role="alert" className="rounded-md bg-destructive-subtle p-3 text-sm text-destructive">{error}</p>}
+        <dl className="grid gap-x-6 gap-y-4 border-t border-border pt-4 text-sm sm:grid-cols-2">
+          <div><dt className="text-muted-foreground">協定</dt><dd className="mt-1 font-medium text-foreground">{status?.protocol ?? '載入中…'}</dd></div>
+          <div><dt className="text-muted-foreground">傳輸層</dt><dd className="mt-1 font-medium text-foreground">{status?.transport ?? '載入中…'}</dd></div>
+          <div><dt className="text-muted-foreground">Hub</dt><dd className="mt-1 break-all font-medium text-foreground">{status?.hubUrl ?? '載入中…'}</dd></div>
+          <div>
+            <dt className="text-muted-foreground">Agent ID</dt>
+            {/* 依設計稿只顯示末四碼 */}
+            <dd className="mt-1 font-mono font-medium text-foreground">{status?.agentId ? `••••${status.agentId.slice(-4)}` : '未設定'}</dd>
+          </div>
+          <div><dt className="text-muted-foreground">Tenant 綁定</dt><dd className="mt-1 font-medium text-foreground">{status?.tenantBinding ?? '載入中…'}</dd></div>
+          <div><dt className="text-muted-foreground">Hub key</dt><dd className="mt-1 font-medium text-foreground">部署 secret 管理</dd></div>
+          <div><dt className="text-muted-foreground">Agent token</dt><dd className="mt-1 font-medium text-foreground">bridge credentials 管理</dd></div>
         </dl>
+        <p className="rounded-md bg-muted p-3 text-xs leading-5 text-muted-foreground">
+          憑證值一律不會回傳至前端。需輪替金鑰時請由部署環境的 secret 管理更新，bridge 會在下次重連時套用。
+        </p>
       </div>
     </section>
   );

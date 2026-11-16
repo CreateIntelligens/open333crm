@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /**
  * 租戶端方案頁（change make-token-topup-monthly，plan-change-request「畫面說明加購僅限當月」）。
+ * 本分支的方案頁把「升級方案／加購 Token」改成分頁（role=tab），查詢改用 tab，測試目的不變。
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
@@ -58,7 +59,7 @@ test('租戶選擇加購時看到當月限制：點「加購 Token」後顯示�
   state.reqs = [];
   render(<PlanPage />);
 
-  fireEvent.click(await screen.findByRole('button', { name: '加購 Token' }));
+  fireEvent.click(await screen.findByRole('tab', { name: '加購 Token' }));
 
   assert.ok(screen.queryByText('加購的額度只在核准當月（台灣時間）有效，下個月回到方案額度。') !== null);
 });
@@ -69,6 +70,6 @@ test('AI 額度無上限時不能申請加購：「加購 Token」停用並顯�
   render(<PlanPage />);
 
   assert.ok((await screen.findByText('目前方案的 AI 額度已無上限，不需要加購')) !== null);
-  assert.equal((screen.getByRole('button', { name: '加購 Token' }) as HTMLButtonElement).disabled, true);
-  assert.equal((screen.getByRole('button', { name: '升級方案' }) as HTMLButtonElement).disabled, false);
+  assert.equal((screen.getByRole('tab', { name: '加購 Token' }) as HTMLButtonElement).disabled, true);
+  assert.equal((screen.getByRole('tab', { name: '升級方案' }) as HTMLButtonElement).disabled, false);
 });

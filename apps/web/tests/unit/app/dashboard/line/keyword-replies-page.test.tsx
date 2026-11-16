@@ -2,6 +2,9 @@
 /**
  * 關鍵字回覆列表的渠道欄、渠道篩選與啟用開關（change add-fb-ig-keyword-coupon；spec coupon-management
  * 「關鍵字回覆列表標示渠道」「關鍵字回覆列表在切換或存檔後立即更新」）。
+ *
+ * 本分支改版：列表是 role=row 的格線（不是 <table>）、啟用狀態是開關（role=switch，名稱是按下去的動作）、
+ * 頁面標題在 Topbar（測試 mock 掉 Topbar，所以不查 heading）。查詢方式跟著改，測試目的不變。
  */
 import assert from 'node:assert/strict';
 import React from 'react';
@@ -63,7 +66,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-const rowOf = (name: string) => screen.getByText(name).closest('tr')!;
+const rowOf = (name: string) => screen.getByText(name).closest('[role="row"]') as HTMLElement;
 
 test('列表顯示每條規則的渠道：LINE、Facebook、Instagram、未限定渠道，頁面沒有 THREADS', () => {
   render(<KeywordRepliesPage />);
@@ -73,7 +76,6 @@ test('列表顯示每條規則的渠道：LINE、Facebook、Instagram、未限�
   assert.ok(within(rowOf('舊規則')).getByText('未限定渠道'));
   assert.ok(within(rowOf('網站規則')).getByText('渠道條件請到自動化規則編輯'));
   assert.doesNotMatch(document.body.textContent ?? '', /THREADS/);
-  screen.getByRole('heading', { name: '關鍵字回覆' });
 });
 
 test('依渠道篩選：點選 Facebook 只剩 Facebook 的規則', () => {
@@ -89,10 +91,12 @@ test('依渠道篩選：點選 Facebook 只剩 Facebook 的規則', () => {
 
 test('停用後列表顯示停用：按下開關後重新載入，顯示後端的新狀態', async () => {
   render(<KeywordRepliesPage />);
-  const toggle = within(rowOf('LINE 領券')).getByRole('button', { name: /啟用/ });
+  const toggle = within(rowOf('LINE 領券')).getByRole('switch');
+  assert.equal(toggle.getAttribute('aria-checked'), 'true', '對照組：原本是啟用');
   await act(async () => {
     fireEvent.click(toggle);
   });
   assert.deepEqual(toggleKeywordReply.mock.calls[0], ['r-line', false]);
-  assert.ok(within(rowOf('LINE 領券')).getByRole('button', { name: /停用/ }));
+  assert.equal(within(rowOf('LINE 領券')).getByRole('switch').getAttribute('aria-checked'), 'false');
+  assert.ok(within(rowOf('LINE 領券')).getByText('停用'));
 });

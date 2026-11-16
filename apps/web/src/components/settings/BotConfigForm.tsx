@@ -9,12 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
 
 type HandoffPromptStyle = 'text' | 'button' | 'both' | 'none';
@@ -180,13 +180,13 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
+    <PageDialog section="設定" parent="渠道管理" open={open} onOpenChange={onOpenChange}>
+      <PageDialogContent className="max-w-lg">
+        <PageDialogHeader>
+          <PageDialogTitle>
             Bot 設定 — {channel?.displayName}
-          </DialogTitle>
-        </DialogHeader>
+          </PageDialogTitle>
+        </PageDialogHeader>
 
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
           {/* Bot Mode */}
@@ -412,7 +412,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
           )}
         </div>
 
-        <DialogFooter>
+        <PageDialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
@@ -423,8 +423,8 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
               '儲存'
             )}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </PageDialogFooter>
+      </PageDialogContent>
+    </PageDialog>
   );
 }

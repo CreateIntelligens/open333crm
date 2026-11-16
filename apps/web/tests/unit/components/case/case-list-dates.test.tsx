@@ -19,6 +19,8 @@ test('建立時間以數字日期顯示，不出現英文月份', () => {
       cases={[{ id: 'c0000000-0000-0000-0000-000000000001', title: '測試工單', status: 'OPEN', priority: 'MEDIUM', createdAt }]}
     />,
   );
-  assert.ok(screen.queryByText('2026/07/14 09:05') !== null, '應顯示 2026/07/14 09:05');
+  // 新版列表日期與時間分兩行顯示（Claude Design），仍為數字格式
+  assert.ok(screen.queryByText('2026/07/14') !== null, '應顯示 2026/07/14');
+  assert.ok(screen.queryByText('09:05') !== null, '應顯示 09:05');
   assert.ok(screen.queryByText(/Jul/) === null, '不應顯示英文月份');
 });

@@ -32,10 +32,11 @@ test('優先級、狀態、負責人、SLA、建立時間欄位不換行', () =>
     狀態: screen.getByText('開啟'),
     負責人: screen.getByText('未指派'),
     SLA: screen.getByText(/^剩 /),
-    建立時間: screen.getByText('2026/07/14 09:05'),
+    建立時間: screen.getByText('2026/07/14'),
   };
   for (const [name, el] of Object.entries(cells)) {
-    const td = el.closest('td');
+    // 列表改為 CSS Grid（role="cell"），沿用 #293 的不換行要求
+    const td = el.closest('[role="cell"]');
     assert.ok(td !== null, `${name} 應在表格儲存格內`);
     assert.ok(td.classList.contains('whitespace-nowrap'), `${name} 欄位應設定不換行`);
   }

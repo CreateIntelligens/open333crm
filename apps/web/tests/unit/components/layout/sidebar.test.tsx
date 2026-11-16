@@ -27,21 +27,10 @@ const { nav, auth, authValue } = vi.hoisted(() => {
 vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }));
 vi.mock('#src/providers/AuthProvider.js', () => ({ useAuth: () => authValue }));
 
-import { Sidebar } from '#src/components/layout/Sidebar.js';
+import { Sidebar, SectionNav } from '#src/components/layout/Sidebar.js';
 
-const visible = (label: string | RegExp) => screen.queryAllByText(label).length > 0;
-
-/** 展開所有折疊的項目，讓檢查只看權限過濾，不受目前位置與分組方式影響。 */
-function renderExpanded() {
-  const { container } = render(<Sidebar />);
-  for (let i = 0; i < 100; i++) {
-    // 每次只點一個：同一個項目可能有兩個展開按鈕，連點兩個會再收合。
-    const collapsed = container.querySelector('[aria-expanded="false"]');
-    if (!collapsed) return;
-    fireEvent.click(collapsed);
-  }
-  throw new Error('展開側邊選單超過 100 次，仍有項目是收合的');
-}
+// 圖示欄只有圖示，名稱放在 aria-label；子選單是文字連結。兩者都用 link 的可及名稱判斷。
+const visible = (label: string | RegExp) => screen.queryAllByRole('link', { name: label }).length > 0;
 
 beforeEach(() => {
   nav.pathname = '/dashboard/inbox';
@@ -52,64 +41,151 @@ beforeEach(() => {
 
 test('權限載入失敗時顯示提示並可重試：側邊選單', () => {
   render(<Sidebar />);
-  assert.equal(visible(/無法載入你的權限/), false, '對照組：載入成功時不顯示');
+  assert.equal(screen.queryAllByRole('button', { name: /重試/ }).length, 0, '對照組：載入成功時不顯示');
   cleanup();
 
   auth.permissionsError = true;
   render(<Sidebar />);
-  assert.equal(visible(/無法載入你的權限/), true);
-  fireEvent.click(screen.getByRole('button', { name: '重試' }));
+  fireEvent.click(screen.getByRole('button', { name: /無法載入你的權限.*重試/ }));
   assert.equal(authValue.reloadPermissions.mock.calls.length, 1);
 });
 
 test('沒有權限時隱藏選單項目', () => {
   auth.permissions = new Set(['automation.view']);
-  renderExpanded();
+  render(<Sidebar />);
   assert.equal(visible('自動化'), true, '對照組：有權限的項目要顯示');
   assert.equal(visible('報表'), false);
 });
 
 test('有權限時顯示選單項目', () => {
   auth.permissions = new Set(['analytics.view']);
-  renderExpanded();
+  render(<Sidebar />);
   assert.equal(visible('報表'), true);
 });
 
-test('子項目全部隱藏時隱藏上層項目', () => {
-  auth.permissions = new Set(['role.view', 'analytics.view']);
-  renderExpanded();
-  assert.equal(visible('一般設定'), true, '對照組：「設定」已展開');
-  assert.equal(visible('整合'), false);
+test('子選單依權限顯示項目', () => {
+  nav.pathname = '/dashboard/settings/general';
+  auth.permissions = new Set(['role.view']);
+  render(<SectionNav />);
+  assert.equal(visible('一般設定'), true, '對照組：進入「設定」時顯示子選單');
+  assert.equal(visible('角色權限'), true, '有 role.view 時顯示「角色權限」');
+  assert.equal(visible('A2A'), false, '沒有 settings.manage 時隱藏「A2A」');
 
   cleanup();
-  auth.permissions = new Set(['role.view', 'analytics.view', 'settings.manage']);
-  renderExpanded();
-  assert.equal(visible('整合'), true, '對照組：有 settings.manage 時顯示「整合」');
+  auth.permissions = new Set(['role.view', 'settings.manage']);
+  render(<SectionNav />);
+  assert.equal(visible('A2A'), true, '對照組：有 settings.manage 時顯示「A2A」');
 });
 
+test('沒有子頁的區塊不顯示子選單', () => {
+  nav.pathname = '/dashboard/inbox';
+  const { container } = render(<SectionNav />);
+  assert.equal(container.innerHTML, '');
+});
+
+test('點有子選單的圖示會直接進第一個子頁', () => {
+  auth.permissions = new Set(['knowledge.view']);
+  render(<Sidebar />);
+  const link = screen.getByRole('link', { name: '知識庫' });
+  assert.equal(link.getAttribute('href'), '/dashboard/knowledge/articles');
+  assert.equal(
+    screen.getByRole('link', { name: '收件匣' }).getAttribute('href'),
+    '/dashboard/inbox',
+    '對照組：沒有子選單的區塊維持原本網址',
+  );
+});
+
+test('停在區塊首頁時，子選單第一項呈現選中', () => {
+  auth.permissions = new Set(['knowledge.view']);
+  nav.pathname = '/dashboard/knowledge';
+  render(<SectionNav />);
+  assert.equal(screen.getByRole('link', { name: '文章管理' }).getAttribute('aria-current'), 'page');
+  assert.equal(screen.getByRole('link', { name: '語義搜尋' }).getAttribute('aria-current'), null);
+  assert.equal(screen.queryAllByRole('link', { name: '知識庫' }).length, 0, '子選單標題不是連結');
+});
+
+test('窄螢幕：圖示欄常駐，點有子頁的圖示彈出子選單，選了就收起', () => {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: false, media: query, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {},
+    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  try {
+    auth.permissions = new Set(['knowledge.view']);
+    render(<Sidebar />);
+    const trigger = screen.getByRole('button', { name: '知識庫' });
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(screen.queryAllByRole('link', { name: '文章管理' }).length, 0, '對照組：還沒點之前沒有子選單');
+    fireEvent.click(trigger);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    const link = screen.getByRole('link', { name: '文章管理' });
+    fireEvent.click(link);
+    assert.equal(screen.queryAllByRole('link', { name: '文章管理' }).length, 0, '選了之後子選單收起');
+    assert.equal(screen.getByRole('link', { name: '收件匣' }).getAttribute('href'), '/dashboard/inbox', '沒有子頁的圖示維持連結');
+  } finally {
+    window.matchMedia = original;
+  }
+});
+
+// 以下兩個測試來自 main（G09、A06），原本測 main 的樹狀側欄（renderExpanded）；
+// 本分支改為圖示欄＋子選單，改寫成測 Sidebar（圖示）與 SectionNav（子選單），測試目的不變。
 test('只有個人報表權限時顯示我的績效', () => {
+  nav.pathname = '/dashboard/analytics/my';
   auth.permissions = new Set(['analytics.view.self']);
-  renderExpanded();
+  render(<><Sidebar /><SectionNav /></>);
   assert.equal(visible('報表'), true);
   assert.equal(visible('我的績效'), true);
   assert.equal(visible('總覽'), false);
 
   cleanup();
   auth.permissions = new Set(['analytics.view', 'analytics.view.self']);
-  renderExpanded();
+  render(<><Sidebar /><SectionNav /></>);
   assert.equal(visible('總覽'), true, '對照組：有 analytics.view 時顯示「總覽」');
 });
 
+test('報表的子頁都沒有權限時隱藏報表圖示', () => {
+  auth.permissions = new Set(['analytics.view.self']);
+  render(<Sidebar />);
+  assert.equal(visible('報表'), true, '對照組：有任一子頁權限時顯示');
+
+  cleanup();
+  auth.permissions = new Set(['automation.view']);
+  render(<Sidebar />);
+  assert.equal(visible('報表'), false);
+});
+
 test('沒有設定權限時隱藏 AI 設定', () => {
+  nav.pathname = '/dashboard/knowledge/articles';
   auth.permissions = new Set(['knowledge.view']);
-  renderExpanded();
-  assert.equal(visible('知識庫'), true, '對照組：「知識庫」已顯示');
-  assert.equal(visible('AI 設定'), false);
+  render(<SectionNav />);
+  assert.equal(visible('文章管理'), true, '對照組：「知識庫」子選單已顯示');
+  assert.ok(screen.queryByText('AI 設定') === null);
   assert.equal(visible('Embedding'), false);
   assert.equal(visible('Chat & Prompt'), false);
 
   cleanup();
   auth.permissions = new Set(['knowledge.view', 'settings.manage']);
-  renderExpanded();
+  render(<SectionNav />);
   assert.equal(visible('Embedding'), true, '對照組：有 settings.manage 時顯示');
+});
+
+test('main 新增的頁面依權限出現在子選單', () => {
+  nav.pathname = '/dashboard/settings/general';
+  auth.permissions = new Set(['store.view', 'settings.manage']);
+  render(<SectionNav />);
+  assert.equal(visible('門市與核銷帳號'), true);
+  assert.equal(visible('WebTalk 協作'), true);
+
+  cleanup();
+  auth.permissions = new Set();
+  render(<SectionNav />);
+  assert.equal(visible('門市與核銷帳號'), false, '沒有 store.view 時隱藏');
+  assert.equal(visible('WebTalk 協作'), false, '沒有 settings.manage 時隱藏');
+
+  cleanup();
+  nav.pathname = '/dashboard/marketing/campaigns';
+  auth.permissions = new Set(['marketing.view', 'coupon.view']);
+  render(<SectionNav />);
+  assert.equal(visible('優惠券'), true);
 });

@@ -26,6 +26,8 @@ export interface ShortLink {
   utmContent?: string | null;
   utmTerm?: string | null;
   tagOnClick?: string | null;
+  /** 廣播自動建立的素材連結才有（M14） */
+  materialId?: string | null;
   isActive: boolean;
   expiresAt?: string | null;
   totalClicks: number;

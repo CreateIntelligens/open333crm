@@ -1,34 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
-import { Plus, Copy, QrCode, BarChart3, Loader2, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Check, Loader2 } from 'lucide-react';
+import { AddIcon, CopyIcon, DeleteIcon, OpenInNewIcon, QrcodeIcon } from '@/components/icons/figma-icons';
 import { useShortLinks } from '@/hooks/useShortLinks';
-import { LinkFormDialog } from '@/components/shortlink/LinkFormDialog';
 import { ClickStatsView } from '@/components/shortlink/ClickStatsView';
 import { QrCodeDialog } from '@/components/shortlink/QrCodeDialog';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 
+// 欄寬依 Figma 10.1.1 連結管理：標題 150、短網址 150、目標 URL 彈性、數字與狀態各 102、操作置中
+const COLS = 'grid grid-cols-[150px_150px_minmax(0,1fr)_102px_102px_102px_102px_200px] items-center gap-4 px-5';
+
 function LinkList() {
+  const router = useRouter();
   const { links, isLoading, mutate } = useShortLinks();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrLinkId, setQrLinkId] = useState<string | null>(null);
   const [qrTitle, setQrTitle] = useState('');
-  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
   const [copied, setCopied] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.get('/tags').then((res) => {
-      setTags((res.data.data || []).map((t: Record<string, unknown>) => ({ id: t.id as string, name: t.name as string })));
-    }).catch(() => {});
-  }, []);
 
   const baseUrl = typeof window !== 'undefined'
     ? window.location.origin.replace(/^http:\/\/localhost:3000$/, 'http://localhost')
@@ -56,121 +50,112 @@ function LinkList() {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => { setEditData(null); setDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-1" /> 建立連結
-        </Button>
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
+    );
+  }
 
-      {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="text-left p-3">標題</th>
-                <th className="text-left p-3">短網址</th>
-                <th className="text-left p-3">目標 URL</th>
-                <th className="text-right p-3">總點擊</th>
-                <th className="text-right p-3">唯一</th>
-                <th className="text-center p-3">狀態</th>
-                <th className="text-left p-3">到期</th>
-                <th className="text-center p-3">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {links.map((l: Record<string, unknown>) => {
-                const isExpired = l.expiresAt && new Date(l.expiresAt as string) < new Date();
-                const isActive = l.isActive && !isExpired;
-                const isMaterialLink = Boolean(l.materialId);
-                return (
-                  <tr key={l.id as string} className="border-t">
-                    <td className="p-3 font-medium">
-                      {(l.title as string) || (isMaterialLink ? '' : '-')}
-                      {isMaterialLink && (
-                        <span className="block text-xs font-normal text-muted-foreground">素材連結（廣播自動建立）</span>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">/s/{l.slug as string}</code>
-                    </td>
-                    <td className="p-3 max-w-[200px] truncate text-muted-foreground">
-                      {l.targetUrl as string}
-                    </td>
-                    <td className="p-3 text-right">{l.totalClicks as number}</td>
-                    <td className="p-3 text-right">{l.uniqueClicks as number}</td>
-                    <td className="p-3 text-center">
-                      <Badge color={isActive ? '#22c55e' : '#ef4444'}>
-                        {isActive ? '啟用' : isExpired ? '已過期' : '停用'}
-                      </Badge>
-                    </td>
-                    <td className="p-3 text-xs text-muted-foreground">
-                      {l.expiresAt ? new Date(l.expiresAt as string).toLocaleDateString('zh-TW') : '-'}
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleCopy(l.slug as string)}
-                          title="複製 URL"
-                        >
-                          <Copy className={`h-3.5 w-3.5 ${copied === l.slug ? 'text-success' : ''}`} />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => { setQrLinkId(l.id as string); setQrTitle((l.title || l.slug) as string); setQrOpen(true); }}
-                          title="QR Code"
-                        >
-                          <QrCode className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => { setEditData(l); setDialogOpen(true); }}
-                          title="編輯"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive"
-                          onClick={() => handleDelete(l.id as string, isMaterialLink)}
-                          title="刪除"
-                        >
-                          &times;
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {links.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                    尚無短連結，點擊「建立連結」開始
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+  return (
+    <>
+      <div role="table" aria-label="短連結列表" className="overflow-x-auto rounded-lg border border-border">
+        <div className="min-w-[1180px]">
+          <div role="row" className={`${COLS} border-b border-border bg-muted py-2 text-sm font-medium leading-7 text-muted-foreground`}>
+            <span role="columnheader">標題</span>
+            <span role="columnheader">短網址</span>
+            <span role="columnheader">目標 URL</span>
+            <span role="columnheader">總點擊</span>
+            <span role="columnheader">唯一</span>
+            <span role="columnheader">狀態</span>
+            <span role="columnheader">到期</span>
+            <span role="columnheader" className="text-center">操作</span>
+          </div>
 
-      <LinkFormDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSaved={() => mutate()}
-        editData={editData}
-        tags={tags}
-      />
+          {links.map((l: Record<string, unknown>) => {
+            const isExpired = Boolean(l.expiresAt && new Date(l.expiresAt as string) < new Date());
+            const isActive = Boolean(l.isActive) && !isExpired;
+            const slug = l.slug as string;
+            const targetUrl = l.targetUrl as string;
+            // 廣播自動建立的素材連結：標示來源，刪除前警告（M14，取自 main）
+            const isMaterialLink = Boolean(l.materialId);
+            return (
+              <div
+                key={l.id as string}
+                role="row"
+                className={`${COLS} min-h-20 border-b border-border bg-background py-5 text-sm font-medium leading-5 text-muted-foreground transition-colors last:border-b-0 hover:bg-shell`}
+              >
+                <span role="cell" className="min-w-0">
+                  <span className="block truncate">{(l.title as string) || (isMaterialLink ? '' : '-')}</span>
+                  {isMaterialLink && (
+                    <span className="block text-xs font-normal text-muted-foreground">素材連結（廣播自動建立）</span>
+                  )}
+                </span>
+                <span role="cell">
+                  <span className="inline-flex items-center rounded-lg border border-border bg-muted px-[9px] py-px font-mono text-[10px] leading-[15px] text-muted-foreground">
+                    /s/{slug}
+                  </span>
+                </span>
+                <span role="cell" className="min-w-0">
+                  {/* 只有 http(s) 網址才做成連結，避免 javascript: 之類的網址被點擊執行 */}
+                  {isHttpUrl(targetUrl) ? (
+                    <a
+                      href={targetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={targetUrl}
+                      className="block truncate hover:text-primary"
+                    >
+                      {targetUrl}
+                    </a>
+                  ) : (
+                    <span className="block truncate" title={targetUrl}>{targetUrl}</span>
+                  )}
+                </span>
+                <span role="cell" className="tabular-nums">{l.totalClicks as number}</span>
+                <span role="cell" className="tabular-nums">{l.uniqueClicks as number}</span>
+                <span role="cell">
+                  <span
+                    className={`inline-flex h-7 items-center rounded-full px-3 text-xs font-medium leading-4 ${
+                      isActive ? 'bg-primary text-white' : 'border border-control-disabled bg-shell text-tertiary-foreground'
+                    }`}
+                  >
+                    {isActive ? '啟用' : isExpired ? '已過期' : '停用'}
+                  </span>
+                </span>
+                <span role="cell" className="tabular-nums">
+                  {l.expiresAt ? new Date(l.expiresAt as string).toLocaleDateString('zh-TW') : '-'}
+                </span>
+                <span role="cell" className="flex items-center justify-center gap-7 text-tertiary-foreground">
+                  <IconAction label={copied === slug ? '已複製' : '複製短網址'} onClick={() => handleCopy(slug)}>
+                    {copied === slug ? <Check className="h-4 w-4 text-success" /> : <CopyIcon className="h-5 w-5" />}
+                  </IconAction>
+                  <IconAction
+                    label="QR Code"
+                    onClick={() => { setQrLinkId(l.id as string); setQrTitle((l.title || slug) as string); setQrOpen(true); }}
+                  >
+                    <QrcodeIcon className="h-5 w-5" />
+                  </IconAction>
+                  {/* Figma 這個位置用「open in new」圖示，功能沿用原本的「編輯」 */}
+                  <IconAction label="編輯" onClick={() => router.push(`/dashboard/shortlinks/links/${l.id as string}/edit`)}>
+                    <OpenInNewIcon className="h-5 w-5" />
+                  </IconAction>
+                  <IconAction label="刪除" onClick={() => handleDelete(l.id as string, isMaterialLink)} className="text-destructive">
+                    <DeleteIcon className="h-5 w-5" />
+                  </IconAction>
+                </span>
+              </div>
+            );
+          })}
+
+          {links.length === 0 && (
+            <div role="row" className="px-5 py-10 text-center text-sm text-muted-foreground">
+              <span role="cell">尚無短連結，點擊「建立連結」開始</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       <QrCodeDialog
         open={qrOpen}
@@ -178,25 +163,55 @@ function LinkList() {
         linkId={qrLinkId}
         linkTitle={qrTitle}
       />
-    </div>
+    </>
+  );
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function IconAction({ label, onClick, className, children }: { label: string; onClick: () => void; className?: string; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`flex h-5 w-5 items-center justify-center rounded hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className ?? ''}`}
+    >
+      {children}
+    </button>
   );
 }
 
 export default function ShortLinksPage() {
+  const router = useRouter();
   const section = usePathname().split('/').at(-1);
   const tab = section === 'stats' ? 'stats' : 'links';
 
   return (
     <div className="flex flex-1 flex-col">
-      <Topbar title="短連結" />
-      <div className="flex-1 overflow-auto p-6">
+      {/* 說明文字：Figma 10.1.1 的說明是從渠道頁複製過來的佔位文字，這裡改成短連結的說明 */}
+      <Topbar title="短連結" description={tab === 'links' ? '建立短網址並追蹤每個連結的點擊' : '查看短連結的點擊統計'}>
+        {tab === 'links' && (
+          <Button size="lg" className="w-[140px]" onClick={() => router.push('/dashboard/shortlinks/links/new')}>
+            <AddIcon />
+            建立連結
+          </Button>
+        )}
+      </Topbar>
+      <div className="flex-1 overflow-auto px-7 pb-7">
         <Tabs value={tab} onValueChange={() => undefined}>
-
-          <TabsContent value="links" className="mt-4">
+          <TabsContent value="links">
             <LinkList />
           </TabsContent>
-
-          <TabsContent value="stats" className="mt-4">
+          <TabsContent value="stats">
             <ClickStatsView />
           </TabsContent>
         </Tabs>
