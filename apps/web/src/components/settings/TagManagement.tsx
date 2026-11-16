@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Tag } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import {
   PageDialogFooter,
 } from '@/components/ui/page-dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface Tag {
   id: string;
@@ -214,7 +215,7 @@ export function TagManagement() {
           </div>
         ))}
         {filtered.length === 0 && (
-          <div className="py-10 text-center text-sm text-muted-foreground">此範圍目前沒有標籤</div>
+          <div role="row"><div role="cell"><EmptyState icon={<Tag />} title="此範圍目前沒有標籤" description="建立標籤後可分類聯繫人與工單" /></div></div>
         )}
       </div>
       {filtered.length > 0 && <p className="text-sm text-muted-foreground">共 {filtered.length} 個標籤</p>}

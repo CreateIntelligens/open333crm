@@ -17,6 +17,7 @@ import { ResetPasswordDialog } from "./ResetPasswordDialog";
 import { StorePosterDialog } from "./StorePosterDialog";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import type { Store, StoreAccount } from "./store-types";
+import { EmptyState } from '@/components/shared/EmptyState';
 
 /**
  * 後台「門市與核銷帳號」（openspec add-coupon-system / store-redemption、design D13）。
@@ -208,11 +209,7 @@ export function StoreManagement() {
           }}
         />
       ) : stores.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-10 text-center">
-          <StoreIcon className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-          <p className="mt-3 text-sm font-medium">尚未建立門市</p>
-          <p className="mt-1 text-sm text-muted-foreground">新增門市後，再為門市建立店員共用的核銷帳號。</p>
-        </div>
+        <EmptyState icon={<StoreIcon />} title="尚未建立門市" description="新增門市後，再為門市建立店員共用的核銷帳號。" />
       ) : (
         <div className="space-y-4">
           {stores.map((store) => (

@@ -17,6 +17,7 @@ import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { LoadErrorNotice } from '@/components/shared/LoadErrorNotice';
 import { getPublicApiHost } from '@/lib/public-api-host';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface ApiKey {
   id: string;
@@ -106,13 +107,7 @@ export function ApiKeyManagement() {
           onRetry={() => { setLoading(true); fetchKeys(); }}
         />
       ) : keys.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
-          <Key className="mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-sm font-medium">尚未建立任何金鑰</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            點「建立金鑰」開始為合作方產生第一把
-          </p>
-        </div>
+        <EmptyState icon={<Key />} title="尚未建立任何金鑰" description="點「建立金鑰」開始為合作方產生第一把" />
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full">

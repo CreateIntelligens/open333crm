@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface ContactCandidate {
   id: string;
@@ -187,8 +188,8 @@ export function PointsTab() {
                 })}
                 {transactions.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                      尚無交易記錄
+                    <td colSpan={5}>
+                      <EmptyState icon={<Coins />} title="尚無交易記錄" />
                     </td>
                   </tr>
                 )}

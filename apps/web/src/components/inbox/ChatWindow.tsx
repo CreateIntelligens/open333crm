@@ -235,7 +235,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
     return (
       <div className="flex h-full flex-col items-center justify-center">
         <EmptyState
-          icon={<MessageSquare className="h-16 w-16" />}
+          icon={<MessageSquare />}
           title="選擇對話"
           description="從左側面板選擇一個對話開始傳訊"
         />

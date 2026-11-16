@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
   PageDialogTitle,
   PageDialogFooter,
 } from '@/components/ui/page-dialog';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface SlaPolicy {
   id: string;
@@ -202,7 +203,7 @@ export function SlaManagement() {
           </div>
         ))}
         {policies.length === 0 && (
-          <div className="py-10 text-center text-sm text-muted-foreground">尚未建立 SLA 政策</div>
+          <div role="row"><div role="cell"><EmptyState icon={<Clock />} title="尚未建立 SLA 政策" description="設定首次回應與解決時限，工單逾時前會提醒" /></div></div>
         )}
       </div>
 

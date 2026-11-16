@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Copy, Trash2, Edit, MoreHorizontal, Send, Undo2, Users } from 'lucide-react';
+import { Plus, Copy, Trash2, Edit, MoreHorizontal, Send, Undo2, Users, LayoutGrid } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +30,7 @@ import {
   richMenuUnpublishConfirm,
 } from '@/lib/rich-menu-confirm';
 import { isRichMenuPublishInterrupted } from '@/lib/rich-menu-status';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: '#94a3b8' },
@@ -150,16 +151,17 @@ export default function RichMenusPage() {
           )}
 
           {channelId && !isLoading && richMenus.length === 0 && (
-            <div className="rounded-lg border border-dashed border-input bg-white py-16 text-center">
-              <div className="text-sm text-muted-foreground">尚未建立任何 Rich Menu</div>
-              <Button
-                className="mt-3"
-                onClick={() => router.push(`/dashboard/line/rich-menus/new?channelId=${channelId}`)}
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                建立第一個 Rich Menu
-              </Button>
-            </div>
+            <EmptyState
+              icon={<LayoutGrid />}
+              title="尚未建立任何 Rich Menu"
+              description="Rich Menu 是 LINE 聊天室下方的圖文選單"
+              action={
+                <Button onClick={() => router.push(`/dashboard/line/rich-menus/new?channelId=${channelId}`)}>
+                  <Plus className="mr-1 h-4 w-4" />
+                  建立第一個 Rich Menu
+                </Button>
+              }
+            />
           )}
 
           {channelId && !isLoading && richMenus.length > 0 && (

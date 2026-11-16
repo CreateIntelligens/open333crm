@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Topbar } from '@/components/layout/Topbar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNotifications, useUnreadCount, useNotificationActions } from '@/hooks/useNotifications';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { BellIcon } from '@/components/icons/figma-icons';
 
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   case_assigned: { icon: UserCheck, color: 'bg-primary-subtle text-primary', label: '工單指派' },
@@ -110,12 +112,10 @@ export default function NotificationsPage() {
         {isLoading ? (
           <div className="py-12 text-center text-sm text-muted-foreground">載入中...</div>
         ) : notifications.length === 0 ? (
-          <div className="py-12 text-center">
-            <Bell className="mx-auto h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-sm text-muted-foreground">
-              {tab === 'unread' ? '沒有未讀通知' : tab === 'read' ? '沒有已讀通知' : '目前沒有通知'}
-            </p>
-          </div>
+          <EmptyState
+            icon={<BellIcon />}
+            title={tab === 'unread' ? '沒有未讀通知' : tab === 'read' ? '沒有已讀通知' : '目前沒有通知'}
+          />
         ) : (
           <ul className="overflow-hidden rounded-lg border border-border">
             {notifications.map(

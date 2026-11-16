@@ -10,7 +10,7 @@
  */
 
 import React, { useState } from 'react';
-import { ChevronDown, Info } from 'lucide-react';
+import { ChevronDown, Info, MessageSquareText, SearchX } from 'lucide-react';
 import Link from 'next/link';
 import { Switch } from '@/components/ui/switch';
 import { AddIcon, DeleteIcon, EditIcon } from '@/components/icons/figma-icons';
@@ -31,6 +31,7 @@ import {
   type KeywordReply,
   type KeywordReplyChannel,
 } from '@/hooks/useKeywordReplies';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 // 欄寬依 Claude Design：狀態、規則名稱、渠道、關鍵字、回覆素材、優惠券、動作（固定欄寬，避免文字被擠成直排）
 const COLS = 'grid grid-cols-[120px_minmax(140px,1fr)_120px_minmax(200px,1.3fr)_minmax(150px,1fr)_minmax(140px,1fr)_150px] items-center gap-4 px-5';
@@ -163,17 +164,14 @@ export default function KeywordRepliesPage() {
         {isLoading ? (
           <div className="flex flex-col gap-3">{Array.from({ length: 4 }).map((_, i) => <span key={i} className="block h-14 animate-pulse rounded-lg bg-muted" />)}</div>
         ) : replies.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
-            <span className="text-sm text-muted-foreground">尚未建立任何關鍵字回覆</span>
-            <Button onClick={handleOpenCreate}>
-              <AddIcon />
-              建立第一條規則
-            </Button>
-          </div>
+          <EmptyState
+            icon={<MessageSquareText />}
+            title="尚未建立任何關鍵字回覆"
+            description="顧客傳來的訊息含關鍵字時，自動回覆素材或發送優惠券"
+            action={<Button onClick={handleOpenCreate}><AddIcon />建立第一條規則</Button>}
+          />
         ) : visibleReplies.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-            這個渠道還沒有關鍵字回覆
-          </div>
+          <EmptyState icon={<SearchX />} title="這個渠道還沒有關鍵字回覆" description="換一個渠道看看，或建立新的規則" />
         ) : (
           <>
             <div role="table" aria-label="關鍵字回覆規則" className="overflow-x-auto rounded-lg border border-border">

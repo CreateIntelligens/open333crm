@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Plus, Search, Zap } from 'lucide-react';
+import { Loader2, Plus, Search, Zap, SearchX } from 'lucide-react';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Topbar } from '@/components/layout/Topbar';
@@ -81,7 +81,7 @@ export default function AutomationPage() {
           </div>
         ) : rules.length === 0 ? (
           <EmptyState
-            icon={<Zap className="h-12 w-12" />}
+            icon={<Zap />}
             title="還沒有自動化規則"
             description="自動化規則可以在收到訊息、建立工單等時機，自動幫你貼標籤、開工單或通知同事"
             action={
@@ -118,7 +118,7 @@ export default function AutomationPage() {
             </div>
 
             {visibleRules.length === 0 ? (
-              <p className="py-12 text-center text-sm text-muted-foreground">沒有符合條件的規則</p>
+              <EmptyState icon={<SearchX />} title="沒有符合條件的規則" description="換個狀態或觸發條件看看" />
             ) : (
               <div role="table" aria-label="自動化規則" className="overflow-hidden rounded-lg border border-border">
                 <div role="row" className={`${COLS} border-b border-border bg-muted py-2 text-sm font-medium leading-7 text-muted-foreground`}>

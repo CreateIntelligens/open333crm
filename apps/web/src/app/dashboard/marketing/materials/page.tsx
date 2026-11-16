@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Search, Copy, Trash2, MoreHorizontal, X, FolderCog } from 'lucide-react';
+import { Search, Copy, Trash2, MoreHorizontal, X, FolderCog, Images, SearchX } from 'lucide-react';
 import { AddIcon, EditIcon } from '@/components/icons/figma-icons';
 import { Select } from '@/components/ui/select';
 import { Topbar } from '@/components/layout/Topbar';
@@ -24,6 +24,7 @@ import {
 import { MaterialCategoryManager } from '@/components/materials/MaterialCategoryManager';
 import { cn } from '@/lib/utils';
 import { channelDisplayName } from '@open333crm/shared';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 const CHANNEL_FILTERS = [
   { value: '', label: '全部' },
@@ -203,16 +204,16 @@ export default function MaterialsListPage() {
               <div className="overflow-hidden rounded-lg border border-border bg-background">
                 {isLoading && <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>}
                 {!isLoading && materials.length === 0 && (
-                  <div className="py-16 text-center">
-                    <div className="text-sm text-muted-foreground">
-                      {hasFilters ? '此篩選條件下沒有素材' : '尚未建立任何素材'}
-                    </div>
-                    {!hasFilters && (
-                      <Button className="mt-3" onClick={() => router.push('/dashboard/marketing/materials/new')}>
+                  <EmptyState
+                    icon={hasFilters ? <SearchX /> : <Images />}
+                    title={hasFilters ? '此篩選條件下沒有素材' : '尚未建立任何素材'}
+                    description={hasFilters ? '換個分類或篩選條件看看' : '素材可用在關鍵字回覆、廣播與自動化規則'}
+                    action={!hasFilters ? (
+                      <Button onClick={() => router.push('/dashboard/marketing/materials/new')}>
                         <AddIcon />從版型建立第一個素材
                       </Button>
-                    )}
-                  </div>
+                    ) : undefined}
+                  />
                 )}
                 {!isLoading && materials.length > 0 && (
                   <div className="overflow-x-auto">

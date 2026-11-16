@@ -408,7 +408,7 @@ export function ChannelManagement() {
           />
         ) : channels.length === 0 ? (
           <EmptyState
-            icon={<Settings className="h-12 w-12" />}
+            icon={<Settings />}
             title="沒有渠道"
             description={canCreateChannels ? '新增您的第一個渠道以開始接收訊息' : '目前沒有你看得到的渠道'}
             action={canCreateChannels ? <Button onClick={() => setShowAddDialog(true)}><AddIcon /> 新增渠道</Button> : undefined}

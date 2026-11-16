@@ -61,7 +61,7 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
   if (cases.length === 0) {
     return (
       <EmptyState
-        icon={<Briefcase className="h-12 w-12" />}
+        icon={<Briefcase />}
         title="找不到工單"
         description="建立後工單將顯示在這裡"
       />

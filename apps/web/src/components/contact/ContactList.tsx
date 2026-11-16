@@ -78,7 +78,7 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
   if (contacts.length === 0) {
     return (
       <EmptyState
-        icon={<Users className="h-12 w-12" />}
+        icon={<Users />}
         title="找不到聯繫人"
         description="客人從任何渠道傳訊息進來後，就會出現在這裡"
       />

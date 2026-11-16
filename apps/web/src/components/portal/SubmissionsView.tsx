@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 // 版面依 Claude Design「提交紀錄」稿：活動選單＋抽獎按鈕、表格（聯繫人／提交時間／答案摘要／中獎／積分）、底部統計列、未選活動空狀態。
 // 圖示：Figma 圖示庫沒有對應的抽獎、文件、篩選圖示，用 lucide-react 補。
@@ -131,10 +132,7 @@ export function SubmissionsView() {
           </div>
 
           {submissions.length === 0 ? (
-            <div className="flex flex-col items-center gap-2.5 px-5 py-16">
-              <FileText className="h-7 w-7 text-tertiary-foreground" strokeWidth={1.6} />
-              <p className="text-sm text-muted-foreground">尚無提交記錄</p>
-            </div>
+            <EmptyState icon={<FileText />} title="尚無提交記錄" description="粉絲參加活動並送出後，紀錄會出現在這裡" />
           ) : (
             <div className="flex items-center justify-between gap-4 border-t border-border bg-muted px-5 py-3 text-[13px] text-muted-foreground">
               <span>共 {submissions.length} 筆提交</span>

@@ -2,12 +2,12 @@
 
 import React, { useState, useCallback } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil, X } from 'lucide-react';
+import { Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil, X, SearchX } from 'lucide-react';
 import { useKnowledge, useCategories, useSources } from '@/hooks/useKnowledge';
 import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
 import { ArticleList, type Article } from '@/components/knowledge/ArticleList';
 import { Chip } from '@/components/ui/chip';
-import { AddIcon, KnowledgeArticleIcon } from '@/components/icons/figma-icons';
+import { AddIcon, KnowledgeArticleIcon, KnowledgeIcon } from '@/components/icons/figma-icons';
 import { ArticleFormDialog, type ArticleFormArticle } from '@/components/knowledge/ArticleFormDialog';
 import { ImportDialog } from '@/components/knowledge/ImportDialog';
 import { EmbeddingSettings } from '@/components/knowledge/EmbeddingSettings';
@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
 import { usePermission } from '@/providers/AuthProvider';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 const statusTabs = [
   { value: 'all', label: '全部' },
@@ -374,7 +375,7 @@ export default function KnowledgePage() {
               )}
 
               {!searching && searchResults.length === 0 && searchQuery && (
-                <p className="py-8 text-center text-sm text-muted-foreground">沒有找到相關文章，請嘗試不同的查詢詞</p>
+                <EmptyState icon={<SearchX />} title="沒有找到相關文章" description="請嘗試不同的查詢詞" />
               )}
             </div>
           </TabsContent>
@@ -393,9 +394,7 @@ export default function KnowledgePage() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : feedback.length === 0 ? (
-                <p className="py-12 text-center text-sm text-muted-foreground">
-                  目前沒有待處理的回報
-                </p>
+                <EmptyState icon={<KnowledgeIcon />} title="目前沒有待處理的回報" description="客人按「沒幫到我」後，回報會出現在這裡" />
               ) : (
                 <div className="space-y-3">
                   {feedback.map((f) => (

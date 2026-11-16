@@ -183,7 +183,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
           </div>
         ) : conversations.length === 0 ? (
           <EmptyState
-            icon={<MessageSquare className="h-10 w-10" />}
+            icon={<MessageSquare />}
             title="沒有對話"
             description={
               search.trim()

@@ -9,13 +9,15 @@ import {
   XCircle,
   Eye,
   RotateCcw,
+  Send,
+  Users,
 } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useChannels } from '@/hooks/useChannels';
 import { useCampaigns, useSegments, useBroadcasts } from '@/hooks/useMarketing';
 import { useMaterials, type Material } from '@/hooks/useMaterials';
 import { MaterialPreview } from '@/components/materials/MaterialPreview';
-import { AddIcon } from '@/components/icons/figma-icons';
+import { AddIcon, MarketingIcon } from '@/components/icons/figma-icons';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +51,7 @@ import { COUPON_URL_NEEDS_COUPON_MESSAGE } from '@/lib/marketing/coupon-url';
 import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { usePermission } from '@/providers/AuthProvider';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 // 建立群發的額外權限（change require-broadcast-send-permissions）：沒有權限時欄位停用並說明，後端也會擋
 const SCHEDULE_NEEDS_BROADCAST = '排程發送需要「執行群發」權限。可以先存成草稿，再請有權限的成員發送';
@@ -142,7 +145,7 @@ function CampaignTab({ dialogOpen, setDialogOpen }: TabProps) {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : campaigns.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無行銷活動</p>
+        <EmptyState icon={<MarketingIcon />} title="尚無行銷活動" description="點右上角「新增活動」建立第一個行銷活動" />
       ) : (
         // Figma 7.1.1 是列表樣式（表格內容是佔位資料），欄位沿用原本卡片上的資訊；依 Figma 微調
         <div role="table" aria-label="行銷活動" className="overflow-hidden rounded-lg border border-border">
@@ -463,7 +466,7 @@ function BroadcastTab({ dialogOpen, setDialogOpen }: TabProps) {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : broadcasts.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無廣播記錄</p>
+        <EmptyState icon={<Send />} title="尚無廣播記錄" description="建立廣播後，發送紀錄與結果會顯示在這裡" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -955,7 +958,7 @@ function SegmentTab({ dialogOpen, setDialogOpen }: TabProps) {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : segments.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無受眾分群</p>
+        <EmptyState icon={<Users />} title="尚無受眾分群" description="依標籤或條件建立分群，廣播時可直接選用" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

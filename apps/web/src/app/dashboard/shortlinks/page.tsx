@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Check, Loader2 } from 'lucide-react';
-import { AddIcon, CopyIcon, DeleteIcon, OpenInNewIcon, QrcodeIcon } from '@/components/icons/figma-icons';
+import { AddIcon, CopyIcon, DeleteIcon, OpenInNewIcon, QrcodeIcon, LinkIcon } from '@/components/icons/figma-icons';
 import { useShortLinks } from '@/hooks/useShortLinks';
 import { ClickStatsView } from '@/components/shortlink/ClickStatsView';
 import { QrCodeDialog } from '@/components/shortlink/QrCodeDialog';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 // 欄寬依 Figma 10.1.1 連結管理：標題 150、短網址 150、目標 URL 彈性、數字與狀態各 102、操作置中
 const COLS = 'grid grid-cols-[150px_150px_minmax(0,1fr)_102px_102px_102px_102px_200px] items-center gap-4 px-5';
@@ -150,8 +151,10 @@ function LinkList() {
           })}
 
           {links.length === 0 && (
-            <div role="row" className="px-5 py-10 text-center text-sm text-muted-foreground">
-              <span role="cell">尚無短連結，點擊「建立連結」開始</span>
+            <div role="row">
+              <div role="cell">
+                <EmptyState icon={<LinkIcon />} title="尚無短連結" description="點擊「建立連結」開始" />
+              </div>
             </div>
           )}
         </div>

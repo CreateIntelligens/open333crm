@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, SearchX } from 'lucide-react';
 import { useActivities } from '@/hooks/usePortal';
 import { ActivityFormDialog } from '@/components/portal/ActivityFormDialog';
 import { SubmissionsView } from '@/components/portal/SubmissionsView';
@@ -11,10 +11,11 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Chip } from '@/components/ui/chip';
-import { AddIcon } from '@/components/icons/figma-icons';
+import { AddIcon, PortalIcon } from '@/components/icons/figma-icons';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface ActivityItem {
   id: string;
@@ -151,9 +152,11 @@ function ActivityList({ dialogOpen, setDialogOpen }: ActivityListProps) {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : visible.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-          {all.length === 0 && !showArchived ? '還沒有活動，點右上角「新增活動」開始' : '此條件下沒有活動，換個狀態或類型看看'}
-        </div>
+        all.length === 0 && !showArchived ? (
+          <EmptyState icon={<PortalIcon />} title="還沒有活動" description="點右上角「新增活動」開始" />
+        ) : (
+          <EmptyState icon={<SearchX />} title="此條件下沒有活動" description="換個狀態或類型看看" />
+        )
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-5">
           {visible.map((a) => {

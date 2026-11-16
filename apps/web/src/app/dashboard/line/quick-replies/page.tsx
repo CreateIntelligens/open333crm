@@ -8,7 +8,7 @@
  */
 
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Info } from 'lucide-react';
+import { Plus, Edit, Trash2, Info, Reply } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { PresetEditDialog } from '@/components/line/quick-reply/PresetEditDialog';
@@ -20,6 +20,7 @@ import {
   deleteQuickReplyPreset,
   type QuickReplyPreset,
 } from '@/hooks/useQuickReplyPresets';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 export default function QuickReplyPresetsPage() {
   const { presets, isLoading, mutate } = useQuickReplyPresets();
@@ -108,13 +109,12 @@ export default function QuickReplyPresetsPage() {
           )}
 
           {!isLoading && presets.length === 0 && (
-            <div className="rounded-lg border border-dashed border-input bg-white py-16 text-center">
-              <div className="text-sm text-muted-foreground">尚未建立任何預設組</div>
-              <Button className="mt-3" onClick={handleOpenCreate}>
-                <Plus className="mr-1 h-4 w-4" />
-                建立第一個預設組
-              </Button>
-            </div>
+            <EmptyState
+              icon={<Reply />}
+              title="尚未建立任何預設組"
+              description="建立可重複使用的快速回覆按鈕組，回覆客人時一鍵帶入"
+              action={<Button onClick={handleOpenCreate}><Plus className="mr-1 h-4 w-4" />建立第一個預設組</Button>}
+            />
           )}
 
           {!isLoading && presets.length > 0 && (

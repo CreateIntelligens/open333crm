@@ -92,7 +92,7 @@ export function ArticleList({
   if (articles.length === 0) {
     return (
       <EmptyState
-        icon={<BookOpen className="h-12 w-12" />}
+        icon={<BookOpen />}
         title="尚無文章"
         description="點擊「新增文章」開始建立知識庫"
       />

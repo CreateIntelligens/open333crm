@@ -3,10 +3,12 @@
 /**
  * 列表的系統狀態（《優惠券後台 UX 規則》第 5 節）：
  * 「沒有資料」與「沒有符合條件」用不同文案與按鈕；錯誤提供重試；無權限時說明原因。
+ * 沒有資料／沒有符合條件用全站共用的 EmptyState；錯誤與無權限另有警示色，留在本檔的 StateBlock。
  */
 import React from 'react';
 import { AlertTriangle, Lock, SearchX, TicketPercent } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 function StateBlock({
   icon,
@@ -42,8 +44,8 @@ function StateBlock({
 
 export function CouponListEmpty({ createButton }: { createButton: React.ReactNode }) {
   return (
-    <StateBlock
-      icon={<TicketPercent className="h-6 w-6" />}
+    <EmptyState
+      icon={<TicketPercent />}
       title="還沒有優惠券"
       description="建立第一張優惠券，就能在客服對話、行銷活動或廣播中發放給顧客。"
       action={createButton}
@@ -53,8 +55,8 @@ export function CouponListEmpty({ createButton }: { createButton: React.ReactNod
 
 export function CouponListNoMatch({ onClear }: { onClear: () => void }) {
   return (
-    <StateBlock
-      icon={<SearchX className="h-6 w-6" />}
+    <EmptyState
+      icon={<SearchX />}
       title="沒有符合條件的優惠券"
       description="試著調整搜尋關鍵字或狀態篩選"
       action={
