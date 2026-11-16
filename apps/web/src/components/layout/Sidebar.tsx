@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, CreditCard } from 'lucide-react';
+// PanelLeftClose／PanelLeftOpen：Figma 圖示庫沒有收合圖示，先用 lucide 補
+import { AlertTriangle, CreditCard, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import {
   AutomationIcon, ChannelsIcon, ContactsIcon, InboxIcon, KnowledgeIcon, LinkIcon, LogoutIcon,
   MarketingIcon, PortalIcon, ReportIcon, SettingIcon, WorkCaseIcon,
@@ -254,6 +255,33 @@ function useWideScreen() {
   return wide;
 }
 
+// ─── 子選單收合（左下角按鈕） ────────────────────────────────
+// 圖示欄與子選單是兩個元件，收合狀態放在 localStorage 讓兩邊共用，重新整理後也記得。
+// 只是個人偏好：讀寫失敗（無痕模式、封鎖儲存）時當作展開。
+const COLLAPSE_KEY = 'open333crm:section-nav-collapsed';
+const collapseListeners = new Set<() => void>();
+
+function readCollapsed() {
+  try { return window.localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
+}
+
+function setCollapsed(value: boolean) {
+  try {
+    if (value) window.localStorage.setItem(COLLAPSE_KEY, '1');
+    else window.localStorage.removeItem(COLLAPSE_KEY);
+  } catch { /* 存不了就只影響這次 */ }
+  collapseListeners.forEach((fn) => fn());
+}
+
+function subscribeCollapsed(fn: () => void) {
+  collapseListeners.add(fn);
+  return () => { collapseListeners.delete(fn); };
+}
+
+function useSectionNavCollapsed() {
+  return useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
+}
+
 // ─── 子選單內容（常駐的 SectionNav 與彈出的子選單共用） ─────────
 
 function SectionLinks({ item, current, onNavigate }: { item: RailItem; current?: string; onNavigate?: () => void }) {
@@ -290,6 +318,7 @@ export function Sidebar() {
   const active = useActiveItem(rail);
   const pathname = usePathname();
   const wide = useWideScreen();
+  const collapsed = useSectionNavCollapsed();
   const { logout, permissionsError, reloadPermissions } = useAuth();
   // 窄螢幕時彈出的子選單（記住是哪一區）
   const [flyoutId, setFlyoutId] = useState<string | null>(null);
@@ -298,6 +327,13 @@ export function Sidebar() {
 
   // 換頁、變寬螢幕時收起彈出選單
   useEffect(() => { setFlyoutId(null); }, [pathname, wide]);
+
+  // 收合只在「有子選單的頁面之間」延續：換到沒有子選單的頁面（收件匣、工單⋯）就重設，
+  // 下次進有子選單的區塊會展開。用完整的 RAIL 判斷，不受權限載入時機影響。
+  useEffect(() => {
+    const here = RAIL.find((item) => under(pathname, item.match ?? item.href));
+    if (!here?.sections?.length && readCollapsed()) setCollapsed(false);
+  }, [pathname]);
 
   // 點外面或按 Esc 關閉
   useEffect(() => {
@@ -372,6 +408,29 @@ export function Sidebar() {
       </ul>
       <div className="mt-6 h-px w-full bg-border" aria-hidden="true" />
       <div className="flex-1" />
+      {/* 只有寬螢幕、且目前這區有子選單時才需要收合按鈕 */}
+      {wide && Boolean(active?.sections?.length) && (
+        <div className="mb-3">
+          <RailTooltip label={collapsed ? '展開子選單' : '收合子選單'}>
+            <button
+              type="button"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? '展開子選單' : '收合子選單'}
+              aria-expanded={!collapsed}
+              // 未收合：default；收合後：pressed，用 Figma Sidebar Item 的 Active 樣式（藍底白圖示）
+              // 例外：收合按鈕用圓形（設計決定），和方形圓角的選單圖示區分
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                collapsed
+                  ? 'bg-primary text-white hover:bg-primary-hover'
+                  : 'text-muted-foreground hover:bg-black/5 hover:text-foreground',
+              )}
+            >
+              {collapsed ? <PanelLeftOpen className="h-5 w-5" aria-hidden="true" /> : <PanelLeftClose className="h-5 w-5" aria-hidden="true" />}
+            </button>
+          </RailTooltip>
+        </div>
+      )}
       <div className="mb-6">
         <RailTooltip label="登出">
           <button
@@ -411,7 +470,8 @@ export function SectionNav() {
   const rail = useVisibleRail();
   const active = useActiveItem(rail);
   const pathname = usePathname();
-  if (!active?.sections?.length) return null;
+  const collapsed = useSectionNavCollapsed();
+  if (!active?.sections?.length || collapsed) return null;
 
   return (
     <nav aria-label={`${active.label}選單`} className="hidden w-[208px] flex-none flex-col gap-3.5 overflow-y-auto py-5 pl-2 pr-4 lg:flex">

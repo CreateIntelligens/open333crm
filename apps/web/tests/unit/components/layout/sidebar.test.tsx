@@ -33,6 +33,7 @@ import { Sidebar, SectionNav } from '#src/components/layout/Sidebar.js';
 const visible = (label: string | RegExp) => screen.queryAllByRole('link', { name: label }).length > 0;
 
 beforeEach(() => {
+  window.localStorage.clear();
   nav.pathname = '/dashboard/inbox';
   auth.permissions = new Set();
   auth.permissionsError = false;
@@ -203,4 +204,115 @@ test('圖示欄滑鼠移上去顯示名稱提示，按 Esc 關閉（WCAG 1.4.13�
 
   fireEvent.keyDown(wrapper, { key: 'Escape' });
   assert.equal(screen.queryByText('報表', { selector: 'span.relative' }), null, '按 Esc 後提示關閉');
+});
+
+// ─── 左下角收合子選單 ───────────────────────────────────────
+
+const mockNarrowScreen = () => {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: false, media: query, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {},
+    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  return () => { window.matchMedia = original; };
+};
+
+test('寬螢幕：按左下角收合按鈕隱藏子選單，再按一次展開', () => {
+  nav.pathname = '/dashboard/settings/general';
+  render(<><Sidebar /><SectionNav /></>);
+  assert.equal(visible('一般設定'), true, '對照組：預設展開');
+
+  const collapse = screen.getByRole('button', { name: '收合子選單' });
+  assert.equal(collapse.getAttribute('aria-expanded'), 'true');
+  fireEvent.click(collapse);
+  assert.equal(visible('一般設定'), false, '收合後子選單隱藏');
+
+  const expand = screen.getByRole('button', { name: '展開子選單' });
+  assert.equal(expand.getAttribute('aria-expanded'), 'false');
+  fireEvent.click(expand);
+  assert.equal(visible('一般設定'), true, '再按一次展開');
+});
+
+// 換頁：測試裡 usePathname 是假的，改 nav.pathname 後 rerender 模擬換到新網址
+const shell = () => <><Sidebar /><SectionNav /></>;
+
+test('收合後切到其他有子選單的頁面，維持收合', () => {
+  nav.pathname = '/dashboard/settings/general';
+  auth.permissions = new Set(['knowledge.view']);
+  const { rerender } = render(shell());
+  fireEvent.click(screen.getByRole('button', { name: '收合子選單' }));
+
+  const icon = screen.getByRole('link', { name: '知識庫' });
+  assert.equal(icon.getAttribute('href'), '/dashboard/knowledge/articles', '收合時圖示仍是連結，照常換頁');
+  fireEvent.click(icon);
+  nav.pathname = '/dashboard/knowledge/articles';
+  rerender(shell());
+  assert.equal(visible('文章管理'), false, '維持收合，不會每點一次就展開');
+  assert.ok(screen.queryByRole('dialog') === null, '不彈出子選單');
+  assert.ok(screen.queryByRole('button', { name: '展開子選單' }) !== null, '要展開再按左下角按鈕');
+});
+
+test('收合後到過沒有子選單的頁面，再進有子選單的頁面會展開', () => {
+  nav.pathname = '/dashboard/settings/general';
+  auth.permissions = new Set(['knowledge.view']);
+  const { rerender } = render(shell());
+  fireEvent.click(screen.getByRole('button', { name: '收合子選單' }));
+
+  nav.pathname = '/dashboard/inbox';
+  rerender(shell());
+  nav.pathname = '/dashboard/knowledge/articles';
+  rerender(shell());
+  assert.equal(visible('文章管理'), true, '展開原本的子選單');
+  assert.ok(screen.queryByRole('button', { name: '收合子選單' }) !== null);
+});
+
+test('重新整理後記住收合狀態', () => {
+  nav.pathname = '/dashboard/settings/general';
+  render(<><Sidebar /><SectionNav /></>);
+  fireEvent.click(screen.getByRole('button', { name: '收合子選單' }));
+  cleanup();
+
+  render(<><Sidebar /><SectionNav /></>);
+  assert.equal(visible('一般設定'), false);
+  assert.ok(screen.queryByRole('button', { name: '展開子選單' }) !== null);
+});
+
+test('沒有子選單的頁面不顯示收合按鈕', () => {
+  nav.pathname = '/dashboard/inbox';
+  render(<Sidebar />);
+  assert.ok(screen.queryByRole('button', { name: /收合子選單|展開子選單/ }) === null);
+
+  cleanup();
+  nav.pathname = '/dashboard/settings/general';
+  render(<Sidebar />);
+  assert.ok(screen.queryByRole('button', { name: '收合子選單' }) !== null, '對照組：有子選單的頁面顯示');
+});
+
+test('窄螢幕不顯示收合按鈕（子選單本來就收起）', () => {
+  const restore = mockNarrowScreen();
+  try {
+    // 停在有子選單的頁面，才不會因為「沒有子選單」而隱藏
+    nav.pathname = '/dashboard/settings/general';
+    render(<Sidebar />);
+    assert.ok(screen.queryByRole('button', { name: /收合子選單|展開子選單/ }) === null);
+  } finally {
+    restore();
+  }
+});
+
+test('收合按鈕：未收合是 default，收合後是 pressed（Figma Sidebar Item Active 樣式）', () => {
+  nav.pathname = '/dashboard/settings/general';
+  render(<><Sidebar /><SectionNav /></>);
+  const toggle = screen.getByRole('button', { name: '收合子選單' });
+  // 樣式判斷：自動測試看不到畫面，只能檢查套用的 class
+  assert.ok(!toggle.className.split(' ').includes('bg-primary'), '未收合：default（沒有藍底）');
+
+  fireEvent.click(toggle);
+  const pressed = screen.getByRole('button', { name: '展開子選單' });
+  const cls = pressed.className.split(' ');
+  assert.ok(cls.includes('bg-primary') && cls.includes('text-white'), '收合後：pressed（藍底白圖示）');
+
+  fireEvent.click(pressed);
+  assert.ok(!screen.getByRole('button', { name: '收合子選單' }).className.split(' ').includes('bg-primary'), '再展開回到 default');
 });
