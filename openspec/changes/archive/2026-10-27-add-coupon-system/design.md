@@ -14,7 +14,7 @@
 | 卡片訊息版型 | 現成 | 16 種（LINE 6 / FB 9） |
 | 外部 API 呼叫 | 現成 | `executeApiFetchNode`（canvas） |
 | LINE 身分驗證（LIFF） | 現成但**前置卡關** | `line-login` 的 `verifyIdToken`；需 LINE Login channel（見 D11） |
-| Account Link 發 token／收事件 | 現成 | `channel-plugins/src/line/index.ts:613`／`:282` |
+| Account Link 發 token／收事件 | 現成；已被 D12 取代（2026-10-20），顧客身分改用 One ID 歸戶驗證 | `channel-plugins/src/line/index.ts:613`／`:282` |
 | 粉絲端前端 | **零** | `apps/web/src/app/liff/` 僅 callback／redirect 兩支導流頁 |
 
 因此本 change 的實作重心是**券本身的資料模型、狀態機與 LIFF 前端**，而非發送或觸發機制。
@@ -117,7 +117,7 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 
 目前僅服務活動與點數，風險尚可控；但**券帶金錢價值後屬上線阻斷**——取得或猜到他人 contactId 即可領走、核銷其券。必須與券夾同時完成，不可延後。
 
-⚠️ **前置條件不成立**：LIFF app 須建於 LINE Login channel 之下，客戶短期內無法取得。過渡期改以 Account Link 驗證身分，見 **D11**；本決策於 channel 到位後生效。「不可僅憑 contactId 發 token」的要求兩階段皆適用。
+⚠️ **前置條件不成立**：LIFF app 須建於 LINE Login channel 之下，客戶短期內無法取得。過渡期改以 Account Link 驗證身分，見 **D11**（D11 已被 D12 取代（2026-10-20），過渡期改用 One ID 歸戶驗證）；本決策於 channel 到位後生效。「不可僅憑 contactId 發 token」的要求兩階段皆適用。
 
 ### D9：使用條款支援有限 HTML，需伺服器端消毒
 
@@ -131,7 +131,7 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 
 **顯示位置**：券詳情頁（LIFF 內）。這是條款唯一的呈現位置 —— 對話中的發券訊息只帶連結，不含條款內容。
 
-### D11：LINE Login channel 不可得時，以 Account Link 作為過渡認證
+### D11：LINE Login channel 不可得時，以 Account Link 作為過渡認證——已被 D12 取代（2026-10-20）
 
 **背景**：D8 要求 fan auth 以 LIFF `id_token` 驗證身分，而 LIFF app 必須建立在 **LINE Login channel** 之下。客戶告知短期內無法取得該 channel，D8 的前置條件不成立。
 
@@ -527,7 +527,7 @@ B2.2（關鍵字與加好友用 reply）、B2.3（分眾群發）、B2.5（FB／
 | 新增權限點後既有租戶 403 | 部署後執行 reconcile 並清權限快取（列入 tasks） |
 | 新表漏接 RLS | RLS policy migration 列為 A1 的一部分，並由 `check-tenant-scoping.mjs` 把關 |
 | 設定驅動介面設計不足，客製仍需改程式 | 介面設計階段先蒐集 2–3 個真實客戶的 API 規格驗證涵蓋度 |
-| LINE Login channel 遲遲未到位 | 過渡走 Account Link（僅需 Messaging API），認證入口可替換、資料結構不變（D11） |
+| LINE Login channel 遲遲未到位 | 過渡走 Account Link（僅需 Messaging API），認證入口可替換、資料結構不變（D11）。已被 D12 取代（2026-10-20）：改用 One ID 歸戶驗證 |
 | linkToken 效期由 LINE 決定且可能變動 | 不寫死 10 分鐘假設；過期以「請重新點選領取」引導重試 |
 | 領取憑證被轉發，券遭他人領走 | 憑證一次性、短效、僅供領取；訊息明示勿轉發；高價值券限 LINE 發放 |
 | 附券廣播對大名單較慢、名額或額度不足 | 每人 push；發送前檢查 LINE 額度與剩餘名額並警示（D29） |
@@ -542,7 +542,7 @@ B2.2（關鍵字與加好友用 reply）、B2.3（分眾群發）、B2.5（FB／
 
 ## Open Questions
 
-- 客戶取得 LINE Login channel 的時程？逾三個月則 Account Link 應視為主力設計（見 D11）。
+- 客戶取得 LINE Login channel 的時程？逾三個月則 Account Link 應視為主力設計（見 D11）。已被 D12 取代（2026-10-20），不再以 Account Link 為設計方向。
 
 - 券圖的儲存走既有 MinIO 或外部 CDN？（影響 A6 的上傳流程）
 - 核銷台是否需要獨立登入（店員非系統座席）？目前假設用座席帳號，若商家不願為店員開帳號則需另設計。

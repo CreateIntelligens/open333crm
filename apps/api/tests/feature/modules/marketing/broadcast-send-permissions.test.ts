@@ -23,7 +23,7 @@ import marketingRoutes from '#src/modules/marketing/marketing.routes.js';
 import { setupBroadcastScheduler } from '#src/modules/marketing/broadcast.scheduler.js';
 import { createBroadcast } from '#src/modules/marketing/marketing.service.js';
 import { createBatchIssueFlow } from '#src/modules/marketing/broadcast-coupon.flow.js';
-import { createCouponBroadcastJobRunner } from '#src/modules/marketing/broadcast-coupon.worker.js';
+import { createBroadcastJobRunner } from '#src/modules/marketing/broadcast-coupon.worker.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
@@ -366,7 +366,7 @@ describe('The Scheduler Rechecks The Scheduling Member\'s Permissions', () => {
 describe('The Queue Job Rechecks The Sending Member\'s Permissions', () => {
   /** 執行佇列 job，與 index.ts 的 coupon-broadcast 佇列相同的組法 */
   const runJob = (broadcastId: string) =>
-    createCouponBroadcastJobRunner({ prisma, adminPrisma: owner, redis, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, broadcastId);
+    createBroadcastJobRunner({ prisma, adminPrisma: owner, redis, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, broadcastId);
 
   it('Sender lost the coupon permission before the queued job ran', async () => {
     const couponId = await coupon(`${MARK}券8`);

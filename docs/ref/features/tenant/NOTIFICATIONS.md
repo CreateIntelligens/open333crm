@@ -28,11 +28,13 @@
 
 AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理員送一個工作進 `usage-alert-email` queue，工作的 id 是 `<事件 id>__<成員 ID>`，由 API 行程的 `usage-alert-email.worker.ts` 寄出。所以事件重送時不會重寄；寄送失敗時，BullMQ 重試，共 3 次。
 
+系統信可選擇啟用 SMTP 至 Resend 備援：`EMAIL_DELIVERY_MODE=smtp`、`EMAIL_SMTP_FAILOVER=true`，並設定 `RESEND_API_KEY` 與 Resend 已驗證的 `EMAIL_FALLBACK_FROM`。Redis 以滑動 1 秒視窗協調跨實例並行數與每秒速率上限（預設 SMTP 並行 3、總速率 10/秒、批次速率 8/秒，保留即時系統信額度；Resend 並行 5、速率 2/秒；可透過環境變數調整），SMTP 故障後冷卻 60 秒（`EMAIL_FAILOVER_COOLDOWN_MS`）再由單一請求探測恢復。遇到 SES `454 Maximum sending rate exceeded` 節流會釋放租約並延遲重試，不誤開 Resend 電路；送出後若無法確認是否已收件，不以 Resend 重寄該封信。大量郵件與 Canvas 郵件走 `email-dispatch` 佇列（依 `EMAIL_BATCH_SIZE` 自動分批錯峰投遞，遇限流自動延後重排）。
+
 **收件成員已被永久刪除或已停用時不寫入。** 每個寫入通知的地方（workers 的通知工作、API 的 `createAndDispatch()`、序號明細背景匯出的通知）都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入：一條條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`），只有收件成員同租戶、還在、仍啟用時才寫入。查完才被永久刪除的競爭也不會撞外鍵；在交易內也不會讓交易中止。成員不存在或 `isActive` 為 `false` 時，這則通知被略過：不寫入、不推送，寫一行 info log，工作正常完成，不重試。成員重新啟用後，停用期間略過的通知不會補送（issue #484）。
 
 下列來源不經過上面的流程：
 
-- **CSAT 低分**：`csat.service.ts` 的 `recordCsatScore()` 直接呼叫 `createAndDispatch()`，在 API 行程寫入並推送。
+- **CSAT 低分**：`csat.service.ts` 的 `notifyCsatLowScore()` 直接呼叫 `createAndDispatch()`，在 API 行程寫入並推送。送不出時工單時間軸寫一筆 `csat_low_score_notify_failed`（#339）。
 - **SLA 預警與逾時**：workers 的 `sla.handler.ts` 自己送進 queue，見[服務水準協議](../SLA.md)。
 
 ## 哪些事件通知誰
@@ -43,7 +45,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 | 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派、且負責人仍啟用並看得到該渠道時只通知負責人；未指派，或負責人已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
 | 工單被指派 | `case_assigned` | 被指派的成員 | `case.assigned` |
 | 工單升級 | `case_escalated` | 依升級對話框的勾選：所有 `ADMIN` 與 `SUPERVISOR`、升級前的負責人，見[工單](./CASES.md#升級) | `case.escalated` |
-| CSAT 兩分以下 | `csat_low_score` | 所有 `SUPERVISOR`，不含 `ADMIN` | `recordCsatScore()` |
+| CSAT 兩分以下 | `csat_low_score` | 有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員，含管理員；不看舊的角色列舉（`resolveCaseManagerRecipients()`，#339）。預設的客服角色也有 `case.assign` | `recordCsatScore()` |
 | SLA 預警與逾時 | `sla_warning`、`sla_breached` | 見[服務水準協議](../SLA.md) | workers |
 | AI 額度達 80% 或 100% | `usage_quota_warning`、`usage_quota_critical` | 所有 `ADMIN`，另外寄 email | `usage.quota.threshold` |
 | 自動化規則的通知動作 | 依規則 | 工單負責人，或所有 `ADMIN` 與 `SUPERVISOR` | workers 的自動化動作 |

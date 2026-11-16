@@ -8,7 +8,10 @@ interface OverviewData {
   totalMessages: number;
   openCases: number;
   slaAchievementRate: number | null;
+  /** 只算客人自評的平均（issue #339） */
   csatAvg: number | null;
+  /** 期間內客服代評的工單數，不計入平均；舊版 API 沒有這個欄位 */
+  csatAgentRatedCount?: number;
 }
 
 interface KpiCardsProps {
@@ -31,7 +34,10 @@ export function KpiCards({ data, isLoading, error, onRetry }: KpiCardsProps) {
   const empty = !isLoading && data != null && data.totalMessages === 0 && data.openCases === 0 && data.slaAchievementRate == null && data.csatAvg == null;
   const slaLow = data?.slaAchievementRate != null && data.slaAchievementRate < SLA_TARGET;
 
-  const cards = [
+  const cards: Array<{
+    key: string; icon: typeof MessageSquare; title: string; tint: string;
+    value: string; unit?: string; note: string; warn?: boolean; extra?: string;
+  }> = [
     { key: 'msg', icon: MessageSquare, title: '訊息總量', tint: 'bg-primary-subtle text-primary',
       value: data ? num(data.totalMessages) : '—', note: '選定期間內，所有渠道' },
     { key: 'open', icon: Briefcase, title: '開啟中案件', tint: 'bg-surface-hover text-muted-foreground',
@@ -41,12 +47,15 @@ export function KpiCards({ data, isLoading, error, onRetry }: KpiCardsProps) {
       value: data?.slaAchievementRate != null ? `${data.slaAchievementRate.toFixed(1)}%` : '—',
       note: `目標 ${SLA_TARGET.toFixed(1)}%，選定期間內`, warn: slaLow },
     { key: 'csat', icon: Star, title: 'CSAT 分數', tint: 'bg-orange-50 text-amber-700',
-      value: data?.csatAvg != null ? `${data.csatAvg.toFixed(1)} / 5.0` : '—', note: '顧客滿意度平均' },
+      value: data?.csatAvg != null ? data.csatAvg.toFixed(1) : '—',
+      unit: data?.csatAvg != null ? '/ 5.0' : undefined, note: '顧客滿意度平均',
+      // 客服代評不計入平均（issue #339 決定 8），另外列出筆數讓主管知道有多少分數不是客人給的
+      extra: data?.csatAgentRatedCount ? `客服代評 ${data.csatAgentRatedCount} 筆（不計入平均）` : undefined },
   ];
 
   return (
     <section aria-label="關鍵指標" className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-      {cards.map(({ key, icon: Icon, title, tint, value, note, warn }) => (
+      {cards.map(({ key, icon: Icon, title, tint, value, unit, note, warn, extra }) => (
         <div key={key} className="flex items-start gap-4 rounded-lg border border-border bg-background p-5">
           <span className={`flex h-11 w-11 flex-none items-center justify-center rounded-[10px] ${tint}`} aria-hidden="true">
             <Icon className="h-5 w-5" />
@@ -61,7 +70,12 @@ export function KpiCards({ data, isLoading, error, onRetry }: KpiCardsProps) {
             ) : (
               <>
                 <span className={`whitespace-nowrap text-[28px] font-semibold leading-[34px] tabular-nums ${warn ? 'text-warning' : 'text-foreground'}`}>
-                  {empty ? '—' : value}
+                  {empty ? '—' : (
+                    <>
+                      <span>{value}</span>
+                      {unit && <> <span>{unit}</span></>}
+                    </>
+                  )}
                 </span>
                 {warn && !empty && (
                   <span className="flex items-center gap-1 text-xs font-semibold text-warning">
@@ -70,6 +84,7 @@ export function KpiCards({ data, isLoading, error, onRetry }: KpiCardsProps) {
                   </span>
                 )}
                 <span className="text-xs text-muted-foreground">{empty ? '此期間沒有資料' : note}</span>
+                {extra && !empty && <span className="text-xs text-muted-foreground">{extra}</span>}
               </>
             )}
           </div>

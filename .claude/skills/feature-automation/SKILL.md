@@ -48,7 +48,7 @@ description: >
 | 10 | 加好友禮 | `/dashboard/line/follow-gift` | 同一組路由，`contact.followed` + `issue_coupon`；每租戶只能一條（409） | — | 沒權限時頁面顯示「無法載入加好友禮設定」 |
 | 11 | Canvas | **沒有前端** | `/api/v1/canvas` CRUD、`/api/v1/canvas/:id/activate`、`/api/v1/canvas/:id/trigger {contactId,vars}`、`/api/v1/canvas/:id/executions`、`/api/v1/canvas/:id/analytics` | — | `canvas.use`（**agent 系統角色預設就有**） |
 
-**有後端、沒有前端入口**：`GET /automation/logs`（而且自 `9255245` 起沒有任何程式寫入，AUDIT AUTO-02）；Canvas 全部；規則復原；`AutomationExecution` 表沒有任何程式讀寫。
+**有後端、沒有前端入口**：`GET /automation/logs`（自 `9255245` 起成功的執行沒有寫入；#362 起有動作失敗時 workers 寫一筆，AUDIT AUTO-02）；Canvas 全部；規則復原；`AutomationExecution` 表沒有任何程式讀寫。
 
 ## 前端實際送出的值
 - 規則：`{name, description:'', trigger:{type, keywords?, match_mode?}, priority:number, isActive, stopOnMatch, conditions, actions:[{type, params}]}`。
@@ -114,10 +114,10 @@ description: >
 
 ## 常見 bug 從哪裡查
 - 「規則沒觸發」：先看事件是不是 AUTO-05 的不會觸發事件；再看列表有沒有「規則不會執行」；再看條件值的型別（直接查 `automation_rules.conditions`；數字欄位的比較值存成字串時，「等於」類條件不會命中）；再看是否被更高優先序、勾了「執行後停止」的規則擋掉。workers log 有 `[automation] N/M rule(s) matched`。
-- 「有觸發但客人沒收到」：查該對話的外送訊息 `metadata.deliveryFailed` / `deliveryError`（憑證、WebChat 外掛、素材渠道不符）。
+- 「有觸發但客人沒收到」：查該對話的外送訊息 `metadata.deliveryFailed` / `deliveryError`（憑證、WebChat 外掛、素材渠道不符、渠道停用）；對話已不存在時查 `automation_logs` 的 `errorMsg`（#362）。
 - 「同一則訊息回兩次」：一則訊息命中幾條關鍵字規則就回幾次；或關鍵字規則不能回覆而 AI 沒讓步（`keyword-yield.ts`）。
 - 「SLA 規則的貼標沒作用」：SLA 路徑沒傳 contactId（`apps/workers/src/handlers/sla.handler.ts` 的 `evaluateSlaAutomationRules`）。
 - 「規則改成已解決，客人沒收到滿意度調查」：#417 起 `update_case_status` 會寫 `resolvedAt`；仍沒收到時查工單有沒有關聯對話、租戶是否停用、`csatSentAt` 是否已寫入。
-- 「執行紀錄空白」：AUTO-02，沒有程式寫入。
+- 「執行紀錄空白」：AUTO-02，成功的執行不寫；只有動作失敗時寫（#362）。
 - 「Canvas 流程跑完一步就失敗」：節點 `nextNodeId` 無法指到同一請求建立的節點；執行紀錄 `errorMessage` 會是 `Node … not found in flow`。
 - 「Canvas 手動觸發回 404／409」：觸發前檢查流程屬於本租戶而且是 `ACTIVE`（409 `FLOW_NOT_ACTIVE`），也檢查聯絡人屬於本租戶（404）。引擎在 commit 之後才開始執行。觸發回 202、execution 卻一直停在 `RUNNING` 時，查 API log 的 `[Canvas] 流程執行失敗`。

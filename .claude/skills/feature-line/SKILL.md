@@ -18,7 +18,7 @@ description: >
 - 功能現況：`docs/ref/features/tenant/LINE.md`（只寫了圖文選單與快速回覆；webhook、LIFF、Flex、憑證寫在本 Skill 與健檢報告）
 - 健檢結果與已知問題：`docs/ref/features/health/LINE.md`
 - 規格：`openspec/specs/line-webhook-events/spec.md`、`openspec/specs/line-messaging/spec.md`、`openspec/specs/line-safe-reply/spec.md`、`openspec/specs/line-rich-menu/spec.md`、`openspec/specs/line-downstream-webhook/spec.md`、`openspec/specs/credential-encryption/spec.md`
-  - 注意：規格有多項沒有實作（unsend 標記收回、follow 更新 `channelStatus`、Flex `content.flexJson`、Rich Menu Alias、群發額度檢查），見健檢「完備度對照」，不要以為規格寫了就有。
+  - 注意：規格有多項沒有實作（unsend 標記收回、Flex `content.flexJson`、Rich Menu Alias、群發額度檢查），見健檢「完備度對照」，不要以為規格寫了就有。
 - LINE 官方文件（公開網址）：
   - Messaging API 教學：https://developers.line.biz/en/docs/messaging-api/
   - Messaging API 規格（端點、參數、webhook 事件）：https://developers.line.biz/en/reference/messaging-api/
@@ -54,6 +54,7 @@ description: >
 - `message`：text／image／video／audio／file／location／sticker；LINE 代管的媒體存 `contentId`，背景下載到物件儲存，失敗寫 `content.mediaError`（25 MB 上限）。
 - `postback`：存成 `contentType: 'postback'`、`content.text = postback.data`（收件匣直接顯示原始資料，例如 `tag:<uuid>`、`menu=main`）；`postback.params`（日期選擇器選的值）**丟掉**。
 - `follow`／`unfollow`／`join`／`leave`／`memberJoined`／`memberLeft`／`unsend`／`videoPlayComplete`／`accountLink`／`beacon`：都存成一則進站訊息，收件匣顯示「[不支援的訊息類型]」並加未讀數。`unsend` **不會**隱藏原訊息。
+  系統事件的分流在 `apps/api/src/modules/webhook/inbound-system-events.ts`（依 `contentType`，#362）：不觸發非營業時間自動回覆；Canvas 以自己的事件類型比對（unfollow 不觸發）；unfollow 遇到沒見過的 uid 整筆略過、不建聯絡人；unfollow 在 `ChannelIdentity.blockedAt` 記封鎖時間、follow 清空（只供顯示，發送路徑不排除）；加好友招呼語用 follow 的 replyToken（失敗退回 push）。
 - 來源 `userId ?? groupId`：群組訊息掛在發話者的一對一對話；`join` 事件以 groupId 建一個聯絡人。`roomId` 不處理。
 - 去重只看 `message.id`（`channelMsgId`）。postback、follow 等沒有訊息 id 的事件，LINE 重送（`deliveryContext.isRedelivery`）會重複處理；`webhookEventId` 只有下游轉發的迴圈防護在用。
 

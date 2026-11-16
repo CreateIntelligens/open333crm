@@ -97,11 +97,29 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
   const tenantOk = (r: Row, where: Row) => where.tenantId === undefined || r.tenantId === where.tenantId;
   const pending = (r: Row, where: Row) =>
     where.deliveryPendingAt === undefined ? true : where.deliveryPendingAt?.not === null ? r.deliveryPendingAt != null : r.deliveryPendingAt === where.deliveryPendingAt;
-  const matchInstance = (r: Row, where: Row) =>
+  /** 欄位條件：值、`{ in }`、`{ gt }`、`{ not }`；null 比對 null（與 Prisma 相同） */
+  const fieldOk = (value: unknown, cond: unknown): boolean => {
+    if (cond === undefined) return true;
+    if (cond === null || typeof cond !== 'object' || cond instanceof Date) {
+      return cond instanceof Date ? value instanceof Date && value.getTime() === cond.getTime() : value === cond;
+    }
+    const c = cond as Row;
+    if ('in' in c && !(c.in as unknown[]).includes(value)) return false;
+    if ('gt' in c && !(value != null && (value as Date | number) > c.gt)) return false;
+    if ('not' in c && (c.not === null ? value == null : value === c.not)) return false;
+    return true;
+  };
+  // 序號明細、每人上限（countsTowardContactLimit）用到 status 的 in、巢狀 OR 與 expiresAt；
+  // 沒實作時這些條件會被忽略，過期的券也算進上限，測試會通過錯的行為（#362 A7）
+  const matchInstance = (r: Row, where: Row): boolean =>
     (where.id === undefined || r.id === where.id) &&
     (where.couponId === undefined || r.couponId === where.couponId) &&
     (where.contactId === undefined || r.contactId === where.contactId) &&
     (where.code === undefined || r.code === where.code) &&
+    fieldOk(r.status, where.status) &&
+    fieldOk(r.expiresAt ?? null, where.expiresAt) &&
+    (where.OR === undefined || (where.OR as Row[]).some((sub) => matchInstance(r, sub))) &&
+    (where.AND === undefined || (where.AND as Row[]).every((sub) => matchInstance(r, sub))) &&
     pending(r, where);
 
   const conversationView = (c: (typeof state.conversations)[number]) => {
@@ -127,11 +145,11 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
     // pg_advisory_xact_lock、SAVEPOINT：記憶體裡不需要
     async $executeRaw() { return 0; },
     async $executeRawUnsafe() { return 0; },
-    // voidPendingInstance 的 SELECT ... FOR UPDATE：值依序為 instanceId、tenantId
+    // voidPendingInstance 的 SELECT id, "couponId" ... FOR UPDATE：值依序為 instanceId、tenantId
     async $queryRaw(_strings: TemplateStringsArray, instanceId: string, tenantId: string) {
       return state.instances
         .filter((r) => r.id === instanceId && r.tenantId === tenantId && r.deliveryPendingAt != null)
-        .map((r) => ({ id: r.id }));
+        .map((r) => ({ id: r.id, couponId: r.couponId }));
     },
     coupon: {
       async findFirst({ where }: { where: Row }) {
@@ -212,6 +230,7 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
       async updateMany({ where, data }: { where: Row; data: Row }) {
         const rows = byTenant(state.codes, where).filter(
           (c) => (where.id === undefined || c.id === where.id) &&
+            (where.couponId === undefined || c.couponId === where.couponId) &&
             (where.status === undefined || c.status === where.status) &&
             (where.instanceId === undefined || c.instanceId === where.instanceId),
         );
@@ -246,11 +265,19 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
     },
     outbox: {
       async create({ data }: { data: Row }) {
-        const row = { id: randomUUID(), ...data, queueName: null, jobOptions: null, createdAt: new Date() };
+        const row = { id: randomUUID(), dispatchedAt: null, ...data, queueName: null, jobOptions: null, createdAt: new Date() };
         state.outbox.push(row);
         return row;
       },
-      async updateMany() { return { count: 1 }; },
+      // dispatchOutboxRows：只標記清單內、尚未送出的列（#362 A7）
+      async updateMany({ where, data }: { where: Row; data: Row }) {
+        const rows = state.outbox.filter(
+          (r) => (where.id?.in === undefined || where.id.in.includes(r.id)) &&
+            (where.dispatchedAt === undefined || (where.dispatchedAt === null ? r.dispatchedAt == null : r.dispatchedAt === where.dispatchedAt)),
+        );
+        rows.forEach((r) => Object.assign(r, data));
+        return { count: rows.length };
+      },
     },
     sideEffectClaim: { async createMany() { return { count: 1 }; } },
   };

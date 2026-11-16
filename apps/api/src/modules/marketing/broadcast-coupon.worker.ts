@@ -1,5 +1,6 @@
 /**
- * 立即執行附券廣播的 job（change fix-coupon-broadcast-immediate-run）。
+ * 立即執行廣播的 job（change fix-coupon-broadcast-immediate-run；一般群發見 change fix-plain-broadcast-send-362）。
+ * 佇列名稱仍是 coupon-broadcast，附券廣播與一般群發共用：job 只帶 tenantId 與 broadcastId，執行時依有沒有附券分派。
  *
  * queueCouponBroadcast() 在排入發送的交易裡寫進 outbox，commit 後送進 coupon-broadcast 佇列，
  * 這裡在 API 行程收到後馬上執行 runCouponBroadcast()（要用 fastify.io 推播與 app_tenant 連線）。
@@ -12,7 +13,7 @@ import type { Redis } from 'ioredis';
 import type { Job } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
 import type { CouponBroadcastJobData } from './broadcast-coupon.service.js';
-import { runCouponBroadcast, type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
+import { runQueuedBroadcast, type CouponBroadcastDeps } from './broadcast-coupon.flow.js';
 import { rejectUnauthorizedScheduledSend } from './broadcast-send-authority.js';
 import { rejectDisabledTenantSend, TENANT_DISABLED_FAILURE } from './broadcast-tenant-active.js';
 
@@ -29,11 +30,11 @@ export function createCouponBroadcastProcessor(run: RunCouponBroadcast) {
 }
 
 /**
- * coupon-broadcast 佇列的執行函式（index.ts）。發送前與排程器相同，以排定送出的成員當下的權限重新檢查：
+ * coupon-broadcast 佇列與排程器共用的執行函式（index.ts、broadcast.scheduler.ts）。發送前以排定送出的成員當下的權限重新檢查：
  * job 重試或 outbox 延後送出時，成員可能已經被停用或降權（PR #438 審查）。不能送時群發標為失敗，job 正常結束。
  * 租戶已停用（含試用到期）時也不送出，群發標為失敗（issue #410）。
  */
-export function createCouponBroadcastJobRunner(deps: CouponBroadcastDeps & { adminPrisma: PrismaClient; redis: Redis }): RunCouponBroadcast {
+export function createBroadcastJobRunner(deps: CouponBroadcastDeps & { adminPrisma: PrismaClient; redis: Redis }): RunCouponBroadcast {
   const { adminPrisma, redis, ...couponDeps } = deps;
   return async (tenantId, broadcastId) => {
     if (await rejectDisabledTenantSend(couponDeps, tenantId, broadcastId)) {
@@ -41,6 +42,6 @@ export function createCouponBroadcastJobRunner(deps: CouponBroadcastDeps & { adm
     }
     const denial = await rejectUnauthorizedScheduledSend({ prisma: couponDeps.prisma, adminPrisma, redis }, tenantId, broadcastId);
     if (denial) return { status: 'denied', failureCode: denial.code };
-    return runCouponBroadcast(couponDeps, tenantId, broadcastId);
+    return runQueuedBroadcast(couponDeps, tenantId, broadcastId);
   };
 }

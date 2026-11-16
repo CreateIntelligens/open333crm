@@ -15,7 +15,7 @@ export const COUPON_LIST_PATH = '/dashboard/marketing/coupons';
 
 /**
  * 後端 issuedVia 的值 → 發放方式文字。代碼與文字和 @open333crm/shared 同一份（design D32）；
- * 舊資料的 keyword.matched 顯示「關鍵字」、其他觸發事件名稱顯示「自動化」。不認得的值不顯示代碼，改用「其他方式」。
+ * 舊資料的 keyword.matched 顯示「關鍵字」、其他舊的觸發事件名稱顯示「自動化」。不認得的值（含有「.」的自訂代碼也一樣）不顯示代碼，改用「其他方式」。
  */
 export function issuedViaLabel(via: string | null | undefined): string | null {
   if (!via) return null;

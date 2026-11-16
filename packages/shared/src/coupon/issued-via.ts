@@ -41,13 +41,43 @@ export const COUPON_ISSUED_VIA_LABELS: Record<CouponIssuedVia, string> = {
 /** 舊資料：workers 曾以觸發事件名稱當發放方式（例如 keyword.matched、message.received），不回填 */
 const LEGACY_KEYWORD_EVENT = 'keyword.matched';
 
-const isLegacyEventName = (issuedVia: string) => issuedVia.includes('.');
+/**
+ * workers 曾寫入 issuedVia 的觸發事件名稱（#347～#364 期間 `context.trigger ?? 'automation'`）。
+ * 取自當時 packages/automation 的自動化事件清單（AUTOMATION_EVENTS），另加之後才新增的 contact.followed 以防萬一。
+ * 這份清單是凍結的歷史：#364 起 workers 改寫 D32 的代碼，之後新增的自動化事件不會再被寫進 issuedVia，
+ * 所以不要跟著 AUTOMATION_EVENTS 同步。
+ * 只有這些名稱視為舊事件；整合程式自訂、含「.」的代碼（例如 partner.sync）不是（#362 A1）。
+ */
+const LEGACY_TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
+  'message.received',
+  'message.postback',
+  LEGACY_KEYWORD_EVENT,
+  'conversation.created',
+  'case.created',
+  'case.updated',
+  'case.escalated',
+  'case.closed',
+  'case.status_changed',
+  'case.assigned',
+  'contact.created',
+  'contact.updated',
+  'contact.tagged',
+  'contact.followed',
+  'link.clicked',
+  'sla.first_response.warning',
+  'sla.first_response.breached',
+  'sla.resolution.warning',
+  'sla.resolution.breached',
+  'sla.customer_waiting.breached',
+]);
+
+const isLegacyEventName = (issuedVia: string) => LEGACY_TRIGGER_EVENT_NAMES.has(issuedVia);
 
 /** 用 hasOwn 而不是 in：`constructor`、`toString` 等原型上的名稱不能被當成代碼 */
 const isKnownCode = (issuedVia: string): issuedVia is CouponIssuedVia => Object.hasOwn(COUPON_ISSUED_VIA_LABELS, issuedVia);
 
 /**
- * 發放方式的顯示文字。舊資料的 `keyword.matched` 顯示「關鍵字」，其他含 `.` 的觸發事件名稱顯示「自動化」。
+ * 發放方式的顯示文字。舊資料的 `keyword.matched` 顯示「關鍵字」，其他舊的觸發事件名稱顯示「自動化」。
  * 沒有值或不認得的值回 undefined，由呼叫端決定（後台顯示「其他方式」）。
  */
 export function couponIssuedViaLabel(issuedVia: string | null | undefined): string | undefined {
@@ -60,8 +90,8 @@ export function couponIssuedViaLabel(issuedVia: string | null | undefined): stri
 
 /**
  * 系統保留的發放方式：只有系統自己的發券流程能寫入，發券 API 帶入時要拒絕（design D31）。
- * 除了 `api` 以外的代碼都是保留；舊的觸發事件名稱（含 `.`）會被顯示成「關鍵字」或「自動化」，也視為保留，
- * 否則整合程式可以冒用。
+ * 除了 `api` 以外的代碼都是保留；舊的觸發事件名稱會被顯示成「關鍵字」或「自動化」，也視為保留，
+ * 否則整合程式可以冒用。其他含 `.` 的自訂代碼（例如 `partner.sync`）不是保留。
  */
 export function isReservedCouponIssuedVia(issuedVia: string): boolean {
   if (issuedVia === COUPON_ISSUED_VIA.API) return false;

@@ -174,3 +174,47 @@ scenario('客服代評的時間軸紀錄標明客服', async (tx) => {
   const after = await tx.message.findUniqueOrThrow({ where: { id: survey.id } });
   assert.equal((after.metadata as Record<string, unknown>).csatRatedBy, 'agent');
 });
+
+/**
+ * 客人只能替已解決的工單評分（issue #520，change csat-rate-only-resolved-520）：
+ * 工單重開或已結案後，客人點舊問卷不記分、不結案、不送感謝訊息。
+ */
+async function assertCustomerRatingRejected(tx: TenantDb, target: { caseId: string; conversationId: string }, status: string) {
+  const kase = await tx.case.findUniqueOrThrow({ where: { id: target.caseId } });
+  assert.equal(kase.status, status, '工單狀態不變');
+  assert.equal(kase.csatScore, null, '沒有寫入分數');
+  assert.equal(kase.csatRatedBy, null);
+  const conversation = await tx.conversation.findUniqueOrThrow({ where: { id: target.conversationId } });
+  assert.notEqual(conversation.status, 'CLOSED', '對話沒有被關閉');
+  assert.equal(await tx.message.count({ where: { conversationId: target.conversationId } }), 0, '對話沒有感謝訊息');
+  assert.equal(await tx.caseEvent.count({ where: { caseId: target.caseId } }), 0, '時間軸沒有評分或結案紀錄');
+}
+
+scenario('工單重開後客人點舊問卷', async (tx) => {
+  const own = await createCase(tx, TENANT_A, 'reopened');
+  await tx.case.update({ where: { id: own.caseId }, data: { status: 'IN_PROGRESS', csatSentAt: new Date() } });
+  const recorded = await recordCsatScore(tx, io, own.caseId, 2, undefined, { tenantId: TENANT_A, contactId: own.contactId });
+  assert.equal(recorded, false);
+  await assertCustomerRatingRejected(tx, own, 'IN_PROGRESS');
+});
+
+scenario('逾時結案後客人點舊問卷', async (tx) => {
+  const own = await createCase(tx, TENANT_A, 'timed-out');
+  await tx.case.update({ where: { id: own.caseId }, data: { status: 'CLOSED', csatSentAt: new Date(), closedAt: new Date() } });
+  const recorded = await recordCsatScore(tx, io, own.caseId, 5, undefined, { tenantId: TENANT_A, contactId: own.contactId });
+  assert.equal(recorded, false);
+  await assertCustomerRatingRejected(tx, own, 'CLOSED');
+});
+
+scenario('客服代評不限工單狀態', async (tx) => {
+  const own = await createCase(tx, TENANT_A, 'agent-in-progress');
+  await tx.case.update({ where: { id: own.caseId }, data: { status: 'IN_PROGRESS' } });
+  const agent = await tx.agent.create({
+    data: { tenantId: TENANT_A, email: `csat-agent-${own.caseId}@example.test`, name: 'csat-agent', passwordHash: 'x' },
+  });
+  const recorded = await recordCsatScore(tx, io, own.caseId, 4, undefined, { tenantId: TENANT_A, agentId: agent.id });
+  assert.equal(recorded, true);
+  const kase = await tx.case.findUniqueOrThrow({ where: { id: own.caseId } });
+  assert.equal(kase.csatScore, 4);
+  assert.equal(kase.csatRatedBy, 'agent');
+});

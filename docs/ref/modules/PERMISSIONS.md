@@ -26,7 +26,7 @@
 
 1. **權限碼**：角色被授予哪些權限碼，再扣掉方案不允許的部分。路由以 `requirePermission()` 檢查。
 2. **渠道可見範圍**：同一個租戶內，成員看得到哪些渠道，以及在每個渠道能做到哪個層級。收件匣與工單的路由以 `assert*ChannelVisible()` 檢查。
-3. **舊的角色列舉 `role`**：`ADMIN`、`SUPERVISOR`、`AGENT`。不用來擋請求，但工單自動指派、通知收件人等業務規則依它決定對象，見 `../system/AUDIT.md` 的 RBAC-03。
+3. **舊的角色列舉 `role`**：`ADMIN`、`SUPERVISOR`、`AGENT`。不用來擋請求，但工單自動指派、通知收件人等業務規則依它決定對象，見 `../system/AUDIT.md` 的 RBAC-03。CSAT 低分通知已改依權限：有效權限含 `case.assign`、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`，#339）。
 
 三者各自獨立。有 `inbox.reply` 權限碼、但渠道層級只有 `read_only` 的成員，回覆會被擋下；反過來，渠道層級是 `full`，也不會因此多出任何權限碼。**一條路由掛了哪幾種檢查，由路由自己決定**；對話與工單的路由兩種都檢查，知識庫的讀取路由兩種都沒有，見 `../system/AUDIT.md` 的 RBAC-01。
 

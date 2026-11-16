@@ -98,19 +98,22 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 預估人數用和發送相同的受眾解析與訊息視窗，回傳 `{ matched, reachable, messagingWindowHours }`，不建立群發。建立群發的表單選好渠道與受眾後顯示這兩個數字。排程群發在執行時重新計算，人數可能和建立時不同。
 
-排程的群發由 `broadcast.scheduler.ts` 在 API 行程定期檢查，時間到了就執行。送出前以「排定送出的成員」當下的有效權限（角色權限 ∩ 方案天花板）重新檢查：`broadcasts.scheduledById` 記錄這個人，建立排程時是建立者，附券群發「立即發送」與券詳情批次發券是按下的人；舊資料為 null 時看建立者。一般群發要 `marketing.broadcast`，群發頁的附券群發要 `marketing.broadcast` 與 `coupon.issue`，批次發券只要 `coupon.issue`。成員已不存在、已停用，或少了需要的權限時不送出，群發標為 `failed`，`failureCode` 為 `SCHEDULED_SENDER_NOT_FOUND`、`SCHEDULED_SENDER_INACTIVE` 或 `SCHEDULED_SENDER_FORBIDDEN`，`failureReason` 寫明成員與缺少的權限，列表看得到；有權限的成員可以按「重新發送」。檢查在 `broadcast-send-authority.ts`。權限檢查之前先檢查租戶：租戶停用（含試用到期）時不送出，群發標為 `failed`，`failureCode` 為 `TENANT_DISABLED`，不保留 `scheduled`，避免重新啟用後突然送出過期內容；附券群發的 `coupon-broadcast` 佇列 job 也檢查（`broadcast-tenant-active.ts`，issue #410）。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
+排程的群發由 `broadcast.scheduler.ts` 在 API 行程每 60 秒檢查一次（`withoutOverlapping`，上一期沒結束時下一期不開始），時間到了就執行。排程器只以 `prismaAdmin` 跨租戶查到期清單（`id`、`tenantId`）與計算有效權限；每一則交給與 `coupon-broadcast` 佇列 job 相同的執行函式（`createBroadcastJobRunner()`），發送以 `app_tenant` 連線綁定廣播的租戶執行（附券廣播每一步一個 `inTenant()`，一般群發用 `tenantScopedClient()`，每個查詢各自 `withTenant()`）。送出前以「排定送出的成員」當下的有效權限（角色權限 ∩ 方案天花板）重新檢查：`broadcasts.scheduledById` 記錄這個人，建立排程時是建立者，「立即發送」（附券與一般群發）與券詳情批次發券是按下的人；舊資料為 null 時看建立者。一般群發要 `marketing.broadcast`，群發頁的附券群發要 `marketing.broadcast` 與 `coupon.issue`，批次發券只要 `coupon.issue`。成員已不存在、已停用，或少了需要的權限時不送出，群發標為 `failed`，`failureCode` 為 `SCHEDULED_SENDER_NOT_FOUND`、`SCHEDULED_SENDER_INACTIVE` 或 `SCHEDULED_SENDER_FORBIDDEN`，`failureReason` 寫明成員與缺少的權限，列表看得到；有權限的成員可以按「重新發送」。檢查在 `broadcast-send-authority.ts`。權限檢查之前先檢查租戶：租戶停用（含試用到期）時不送出，群發標為 `failed`，`failureCode` 為 `TENANT_DISABLED`，不保留 `scheduled`，避免重新啟用後突然送出過期內容；`coupon-broadcast` 佇列 job（附券與一般群發）也檢查（`broadcast-tenant-active.ts`，issue #410）。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
 
 ### 發送時做什麼
 
 `executeBroadcast()` 依序執行：
 
-1. 把狀態改成 `sending`。
+1. 把狀態改成 `sending`（背景發送只搶 `scheduled` 且排程時間已到的群發，搶不到就不做事）。讀群發時同時比對 `id` 與 `tenantId`。
 2. 取出素材內容。素材內的外部連結換成帶素材 ID 的短連結，讓點擊能歸因到素材；轉換失敗就用原內容。
 3. 解析發送對象，見下表。
 4. 對象是零人時，把群發標為 `failed` 並回傳錯誤，不會顯示為完成。
    渠道有訊息視窗時，略過視窗外的人，見下方「訊息視窗」。
-5. 送出，並逐一寫入收件紀錄（`BroadcastRecipient`）。
-6. 更新成功與失敗數。全部失敗時狀態為 `failed`；至少一人成功時為 `completed`，包含部分失敗。
+5. 查訊息額度：渠道外掛有 `extensions.analytics.getMessageQuota`（目前只有 LINE）時，剩餘額度小於要送的人數就整則不送，群發標為 `failed`、`failureCode` 為 `LINE_QUOTA_INSUFFICIENT`；查不到額度時為 `LINE_QUOTA_CHECK_FAILED`。與附券廣播共用 `broadcast-quota.ts`。
+6. 送出，並逐一寫入收件紀錄（`BroadcastRecipient`）。送不出的人 `deliveryStatus = failed`、`skipReason = DELIVERY_FAILED`（multicast 整批失敗時整批共用）；重新發送時依這次的結果更新既有紀錄。
+7. 更新成功與失敗數。全部失敗時狀態為 `failed`；至少一人成功時為 `completed`，包含部分失敗。失敗時 `failureCode` 為錯誤代碼（非預期錯誤為 `UNEXPECTED_ERROR`），`failureReason` 為中文原因。
+
+行銷頁每一則已發送、發送中或失敗的群發都有結果按鈕（附券是「發券結果」，一般群發是「發送結果」），列出成功、失敗、略過人數與失敗、跳過的收件人和原因（`GET /marketing/broadcasts/:id/recipients`）。
 
 | 發送對象 | 怎麼找人 |
 | --- | --- |
@@ -125,9 +128,9 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 **訊息視窗。** 渠道 plugin 宣告 `messagingWindowHours` 時，群發只送給發送當下往前這段時間內，在這個渠道傳過訊息給我們的人（顧客傳入的訊息，含按鈕回應）。FB 與 IG（`THREADS`）是 24 小時，因為 Meta 只允許對 24 小時內互動過的人發一般訊息，送給其他人會被擋下，大量被擋可能讓粉專被限制發訊。略過的人不送出、不寫收件紀錄，人數記在 `skippedCount`，列表顯示「略過 N」；`totalCount` 仍是符合條件的人數。全部被略過時群發標為 `failed`（`BROADCAST_OUTSIDE_MESSAGING_WINDOW`）。FB 與 IG 群發的受眾只有「24 小時內傳過訊息的人」一個選項，表單不提供分群與標籤（API 仍接受）。建立群發的表單在有視窗的渠道顯示發送注意事項，FB 群發按「立即發送」時確認視窗也會提醒。要發給視窗外的人只能用 Meta 付費的 Marketing Messages（按送達則數計費），本系統沒有支援。只按表情回應、或點 m.me 連結但沒有傳訊息的人沒有存成訊息，會被略過。LINE 沒有訊息視窗。
 
-**在請求內同步執行。** 立即發送的 API 會等整筆群發送完才回應。附券廣播（含券詳情頁的批次發券）例外：API 回 202，同一個交易在 outbox 寫一個 `coupon-broadcast` job，commit 後 API 行程馬上執行 `runCouponBroadcast()`；每分鐘的排程是後備，job 沒有執行時，時間到的附券廣播照樣發送。job 與排程以條件更新搶占，只有一個發送。廣播列表與券詳情的發放紀錄在有發送中、或排程時間已到的廣播時每 5 秒重新載入，完成或失敗後停止。
+**在背景執行。** 立即發送（附券與一般群發）與券詳情頁的批次發券：API 把群發設為 `scheduled`、排程時間為現在，回 202 `{ id, status: 'scheduled', scheduledAt }`，同一個交易在 outbox 寫一個 `coupon-broadcast` job，commit 後 API 行程馬上執行（`runQueuedBroadcast()` 依有沒有附券分派到 `runCouponBroadcast()` 或 `runPlainBroadcast()`）。發送的結果寫在群發的狀態、`failureCode`、`failureReason` 與收件紀錄，不在 HTTP 回應裡。每分鐘的排程是後備，job 沒有執行時，時間到的群發照樣發送。MCP 工具 `crm_line_broadcast_initiate` 例外，仍在請求內同步呼叫 `executeBroadcast()`。job 與排程以條件更新搶占，只有一個發送。廣播列表與券詳情的發放紀錄在有發送中、或排程時間已到的廣播時每 5 秒重新載入，完成或失敗後停止。
 
-**同一筆群發只執行一次。** `executeBroadcast()` 以條件更新把狀態從 `draft`、`scheduled` 或 `failed` 改成 `sending`，只有搶到的請求會發送。狀態已經是 `sending` 時，再送出回 409 `BROADCAST_ALREADY_SENDING`。因此連按兩次，或請求與排程器同時執行，都只會送一次。狀態是 `failed` 的群發可以重試，行銷頁的失敗群發有「重新發送」按鈕。逐人送出的群發重試時會對全部對象重新發送，送出途中失敗的群發會讓已送達的人再收到一次，見 `../../system/AUDIT.md` 的 MKT-01。
+**同一筆群發只執行一次。** 立即發送只接受 `draft`、`scheduled` 或 `failed` 的群發；佇列 job 與排程器以條件更新把 `scheduled` 且時間已到的群發改成 `sending`，只有搶到的會發送，發送失敗後 job 重試搶不到，不會重送。狀態已經是 `sending` 時，再送出回 409 `BROADCAST_ALREADY_SENDING`。因此連按兩次，或 job 與排程器同時執行，都只會送一次。狀態是 `failed` 的群發可以重試，行銷頁的失敗群發有「重新發送」按鈕。逐人送出的群發重試時會對全部對象重新發送，送出途中失敗的群發會讓已送達的人再收到一次，見 `../../system/AUDIT.md` 的 MKT-01。
 
 ## 成效與歸因
 
@@ -165,7 +168,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 | 限制 | 說明 |
 | --- | --- |
 | **群發失敗後重試，逐人送出的群發會重送給已送達的人** | 詳見 `../../system/AUDIT.md` 的 MKT-01 |
-| 群發在 API 請求內同步執行 | 逐人送出的大量群發可能讓請求逾時。行程在送出途中結束時，狀態停在 `sending`，這筆群發只能取消，不能重送 |
+| 一般群發停在 `sending` 不能重送 | 群發已改在背景執行，請求不會逾時；但行程在送出途中結束時，一般群發的狀態停在 `sending`（沒有逐人進度，不能判斷誰已送達），這筆群發只能用 API 取消，不能重送 |
 | 分群的人數不會自動更新 | `contactCount` 只在建立與修改時計算 |
 | `isBlocked` 不影響發送 | 詳見 `../../system/AUDIT.md` 的 DB-04 |
 

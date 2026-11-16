@@ -31,7 +31,7 @@ describe('發放方式代碼', () => {
     });
   });
 
-  it('舊資料的觸發事件名稱：keyword.matched 為關鍵字，其他含點的為自動化', () => {
+  it('舊資料的觸發事件名稱：keyword.matched 為關鍵字，其他舊事件名稱為自動化', () => {
     assert.equal(couponIssuedViaLabel('keyword.matched'), '關鍵字');
     assert.equal(couponIssuedViaLabel('message.received'), '自動化');
     assert.equal(couponIssuedViaLabel('follow'), '加好友');
@@ -42,6 +42,11 @@ describe('發放方式代碼', () => {
     assert.equal(couponIssuedViaLabel(null), undefined);
     assert.equal(couponIssuedViaLabel(''), undefined);
     assert.equal(couponIssuedViaLabel('partner'), undefined);
+  });
+
+  it('整合程式自訂、含點的代碼不是舊事件名稱，不顯示成自動化（#362 A1）', () => {
+    assert.equal(couponIssuedViaLabel('partner.sync'), undefined);
+    assert.equal(couponIssuedViaLabel('crm.v2'), undefined);
   });
 });
 
@@ -61,5 +66,21 @@ describe('系統保留的發放方式', () => {
   it('整合程式自訂的代碼不是保留', () => {
     assert.equal(isReservedCouponIssuedVia('partner'), false);
     assert.equal(isReservedCouponIssuedVia('crm_sync'), false);
+  });
+
+  it('含點的自訂代碼可以使用，只有舊的觸發事件名稱是保留（#362 A1）', () => {
+    assert.equal(isReservedCouponIssuedVia('partner.sync'), false);
+    assert.equal(isReservedCouponIssuedVia('crm.v2.import'), false);
+  });
+
+  it('workers 曾寫入的每個觸發事件名稱都是保留（#347～#364 期間的自動化事件清單）', () => {
+    const legacy = [
+      'message.received', 'message.postback', 'keyword.matched', 'conversation.created',
+      'case.created', 'case.updated', 'case.escalated', 'case.closed', 'case.status_changed', 'case.assigned',
+      'contact.created', 'contact.updated', 'contact.tagged', 'contact.followed', 'link.clicked',
+      'sla.first_response.warning', 'sla.first_response.breached', 'sla.resolution.warning',
+      'sla.resolution.breached', 'sla.customer_waiting.breached',
+    ];
+    for (const name of legacy) assert.equal(isReservedCouponIssuedVia(name), true, name);
   });
 });

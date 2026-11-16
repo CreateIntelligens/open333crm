@@ -172,6 +172,51 @@ test('拿掉素材：只移除傳送素材，其他動作保留', async () => {
   ]);
 });
 
+// #362 B1：原本存檔時第二個同類動作被刪掉（例如規則編輯器加的第二個傳送素材）
+test('有兩個傳送素材的規則：只更換第一個，第二個原樣保留', async () => {
+  const [reply] = await loadReplies([
+    ruleDetail({
+      conditions: { all: [LINE_CONDITION] },
+      actions: [
+        { type: 'send_material', params: { materialId: 'm-1' } },
+        { type: 'add_tag', params: { tagName: '詢價' } },
+        { type: 'send_material', params: { materialId: 'm-2' } },
+      ],
+    }),
+  ]);
+
+  await updateKeywordReply(reply, { name: '詢價', keywords: ['價格'], matchMode: 'any', channel: 'LINE', materialId: 'm-3', couponId: null, failureText: '' });
+
+  assert.deepEqual(lastPatchBody().actions, [
+    { type: 'send_material', params: { materialId: 'm-3' } },
+    { type: 'add_tag', params: { tagName: '詢價' } },
+    { type: 'send_material', params: { materialId: 'm-2' } },
+  ]);
+});
+
+// #362 B2：原本新加的素材一律接在最後，顧客先收到券、才收到說明的素材
+test('只發券的規則加上素材：素材排在發券之前', async () => {
+  const [reply] = await loadReplies([
+    ruleDetail({
+      conditions: { all: [LINE_CONDITION] },
+      actions: [
+        { type: 'add_tag', params: { tagName: '詢價' } },
+        { type: 'issue_coupon', params: { couponId: 'coupon-1' } },
+        { type: 'notify', params: { message: '有人領券' } },
+      ],
+    }),
+  ]);
+
+  await updateKeywordReply(reply, { name: '詢價', keywords: ['領券'], matchMode: 'any', channel: 'LINE', materialId: 'm-1', couponId: 'coupon-1', failureText: '' });
+
+  assert.deepEqual(lastPatchBody().actions, [
+    { type: 'add_tag', params: { tagName: '詢價' } },
+    { type: 'send_material', params: { materialId: 'm-1' } },
+    { type: 'issue_coupon', params: { couponId: 'coupon-1' } },
+    { type: 'notify', params: { message: '有人領券' } },
+  ]);
+});
+
 test('任一條件群組：LINE 條件與原本的群組都要成立', async () => {
   const [reply] = await loadReplies([ruleDetail({ conditions: { any: [VIP_CONDITION] } })]);
 

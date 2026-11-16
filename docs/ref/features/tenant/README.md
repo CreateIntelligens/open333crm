@@ -75,17 +75,17 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 | 步驟 | 函式 | 做什麼 | 涉及的模組 |
 | --- | --- | --- | --- |
-| 1 | `resolveInboundContact()` | 依渠道身分（`ChannelIdentity`）找出聯絡人；找不到再查 `IdentityMap`；都沒有就建立 | `contact` |
+| 1 | `resolveInboundContact()` | 依渠道身分（`ChannelIdentity`）找出聯絡人；找不到再查 `IdentityMap`；都沒有就建立。封鎖（`unfollow`）事件查不到渠道身分時，在這一步之前整筆略過，不建聯絡人（#362） | `contact` |
 | 2 | `resolveInboundConversation()` | 找出該聯絡人在該渠道尚未關閉的對話，找不到就建立。新對話的初始狀態看渠道的機器人設定：`botMode` 是 `off` 時為 `AGENT_HANDLED`，其他值為 `BOT_HANDLED` | `conversation` |
 | 3 | `findDuplicateInboundMessage()`、`createInboundMessage()` | 排除渠道重送的重複訊息，然後寫入訊息 | `conversation` |
 | 4 | `updateConversationAfterInboundMessage()` | 更新對話的最後訊息時間與未讀數 | `conversation` |
-| 5 | `sendFirstContactGreeting()` | 聯絡人第一次進站、而且渠道設定了 `firstContactGreeting` 時，送出招呼語 | `channel` |
+| 5 | `sendFirstContactGreeting()` | 聯絡人第一次進站、而且渠道設定了 `firstContactGreeting` 時，送出招呼語。加好友（`follow`）事件帶 replyToken 時用 reply，失敗退回 push；其他事件用 push | `channel` |
 | 6 | `runInboundPostbackInterceptors()` | 處理按鈕回傳。點擊貼標處理完會繼續往下；CSAT 評分、知識庫回饋與轉真人處理完，管線就在這一步結束 | `tag`、`csat`、`knowledge`、`conversation` |
 | 7 | `trackInboundBroadcastReply()` | 把這次回覆記到該聯絡人最近一筆群發的收件紀錄 | `marketing` |
 | 8 | `emitInboundSocketEvents()` | 推送 `message.new` 與 `conversation.updated`，收件匣即時更新 | `socket` |
 | 9 | `publishMessageReceived()` | 以 `eventBus.publish()` 發出 `message.received`，送進各訂閱者的佇列 | 見下表 |
-| 10 | `triggerWebhookFlow()` | 觸發 Canvas 流程 | `canvas` |
-| 11 | `sendOutsideHoursAutoReply()` | 營業時間外送出自動回覆。同一個聯絡人在去重間隔內只回一次 | `settings`（營業時間） |
+| 10 | `triggerWebhookFlow()` | 觸發 Canvas 流程。事件類型由 `contentType` 推導（系統事件用自己的類型、`postback`、其他是 `message`）；封鎖不觸發 | `canvas` |
+| 11 | `sendOutsideHoursAutoReply()` | 營業時間外送出自動回覆。同一個聯絡人在去重間隔內只回一次；系統事件不回 | `settings`（營業時間） |
 
 `publishMessageReceived()` 發出的 `message.received`，訂閱者都在 API 行程，各自從自己的佇列取得事件：
 

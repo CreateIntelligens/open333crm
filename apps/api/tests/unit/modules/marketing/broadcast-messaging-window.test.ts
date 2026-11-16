@@ -77,6 +77,8 @@ function fixture(channelType: string, lastInboundHoursAgo: Array<number | null>,
     },
     broadcastRecipient: {
       create: async ({ data }: { data: Record<string, unknown> }) => (recipients.push(data), data),
+      upsert: async ({ create }: { create: Record<string, unknown> }) => (recipients.push(create), create),
+      updateMany: async () => ({ count: 0 }),
       createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => (recipients.push(...data), { count: data.length }),
     },
     broadcastDeliveryAttempt: { findFirst: async () => null, create: async ({ data }: any) => ({ id: 'a', ...data }), updateMany: async () => ({ count: 1 }) },
@@ -92,7 +94,7 @@ const io = { to: () => ({ emit() {} }) } as never;
 test('FB 群發略過超過 24 小時沒互動的人', async () => {
   const sends = plugin('FB', 24);
   const f = fixture('FB', [2, 30, null]);
-  await executeBroadcast(f.prisma, io, 'bc-1', allChannels);
+  await executeBroadcast(f.prisma, io, TENANT, 'bc-1', allChannels);
   assert.deepEqual(sends, ['uid-0']);
   assert.equal(f.state.totalCount, 3);
   assert.equal(f.state.successCount, 1);
@@ -109,7 +111,7 @@ test('FB 群發略過超過 24 小時沒互動的人', async () => {
 test('全部在視窗外時群發失敗', async () => {
   const sends = plugin('FB', 24);
   const f = fixture('FB', [25, null]);
-  await assert.rejects(executeBroadcast(f.prisma, io, 'bc-1', allChannels));
+  await assert.rejects(executeBroadcast(f.prisma, io, TENANT, 'bc-1', allChannels));
   assert.deepEqual(sends, []);
   assert.equal(f.state.status, 'failed');
   assert.equal(f.state.skippedCount, 2);
@@ -122,7 +124,7 @@ test('沒有訊息視窗的渠道不略過', async () => {
   // 不用 LINE：LINE 沒有變數時改走 multicast，一次請求只記到第一位
   const sends = plugin('THREADS');
   const f = fixture('THREADS', [48, null]);
-  await executeBroadcast(f.prisma, io, 'bc-1', allChannels);
+  await executeBroadcast(f.prisma, io, TENANT, 'bc-1', allChannels);
   assert.deepEqual(sends, ['uid-0', 'uid-1']);
   assert.equal(f.state.skippedCount, 0);
   assert.equal(f.conversationQueries.length, 0, '沒有視窗就不查互動時間');

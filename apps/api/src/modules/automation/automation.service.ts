@@ -11,7 +11,8 @@ import type { TopLevelCondition } from 'json-rules-engine';
 import { evaluateRules } from './engine/rule-engine.js';
 import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine.js';
 import { AppError } from '../../shared/utils/response.js';
-import { validateAutomationRuleContract } from '@open333crm/automation';
+import { AUTOMATION_FACT_KEYS, validateAutomationRuleContract } from '@open333crm/automation';
+import { channelDisplayName } from '@open333crm/shared';
 import { couponNotPastFixedEnd } from '@open333crm/core';
 import { notFound } from '../../shared/messages/resource.js';
 import { bodyHasCouponUrl } from '../marketing/template-renderer.js';
@@ -125,6 +126,60 @@ async function assertSendMaterialReferences(
 }
 
 /**
+ * 條件一定要成立的「對話渠道等於 X」：頂層 all（含巢狀 all）裡的條件。
+ * 放在 any 裡的不是必要條件，不列入。
+ */
+function requiredConversationChannels(conditions: unknown): string[] {
+  const found: string[] = [];
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    if (Array.isArray(n.all)) {
+      n.all.forEach(visit);
+      return;
+    }
+    if (n.fact === AUTOMATION_FACT_KEYS.CONVERSATION_CHANNEL_TYPE && n.operator === 'equal' && typeof n.value === 'string') {
+      found.push(n.value);
+    }
+  };
+  visit(conditions);
+  return [...new Set(found)];
+}
+
+/**
+ * 規則條件限定對話渠道時，「傳送素材」的素材要是同一個渠道的素材（#362 D8）。
+ * workers 執行時素材渠道與對話渠道不同會略過素材（只在對話留下紀錄），規則看起來有效卻從不送出。
+ * 原本只有關鍵字回覆頁在前端擋，API、CLI、MCP 都能存。
+ * 比對的是資料值：條件值與素材的 channelType 不分大小寫相同（與 workers 的比對一致），不寫死渠道。
+ * 不看素材是否啟用：停用的素材由 assertSendMaterialReferences 在更換動作時檢查。
+ */
+async function assertSendMaterialChannels(
+  { tx, tenantId }: TenantCtx,
+  conditions: unknown,
+  actions: Array<Record<string, unknown>>,
+): Promise<void> {
+  const channels = requiredConversationChannels(conditions);
+  if (channels.length === 0) return;
+  const ids = [...new Set(actions
+    .filter((a) => a?.type === 'send_material')
+    .map((a) => (a.params as { materialId?: unknown } | undefined)?.materialId)
+    .filter((id): id is string => typeof id === 'string' && UUID_RE.test(id)))];
+  if (ids.length === 0) return;
+  const found = await tx.material.findMany({
+    where: { tenantId, id: { in: ids } },
+    select: { id: true, channelType: true },
+  });
+  for (const material of found) {
+    const materialChannel = (material.channelType ?? '').toLowerCase();
+    const mismatched = channels.find((channel) => channel.toLowerCase() !== materialChannel);
+    if (mismatched === undefined) continue;
+    const message = `傳送的是 ${channelDisplayName(material.channelType)} 素材，與規則的渠道條件 ${channelDisplayName(mismatched)} 不符，`
+      + '規則觸發時不會送出。請改選同一個渠道的素材，或修改渠道條件';
+    throw new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'actions', message }] });
+  }
+}
+
+/**
  * 「發送優惠券」的 couponId 要是同租戶、進行中的券（add-coupon-system design D25）。
  * 原本是文字框、存檔不檢查，貼錯或其他租戶的券都能存，規則觸發時才發不出去。
  * 關鍵字回覆頁、加好友禮頁與 API 都經過這裡。
@@ -200,6 +255,7 @@ export async function createRule(
   const eventType = String(data.trigger.type ?? '');
   validateRuleContract(eventType, data.conditions, data.actions);
   await assertSendMaterialReferences(ctx, data.actions);
+  await assertSendMaterialChannels(ctx, data.conditions, data.actions);
   await assertIssueCouponReferences(ctx, data.actions);
   await assertSingleFollowGift(ctx, eventType, data.actions);
 
@@ -267,6 +323,10 @@ export async function updateRule(
     if (data.actions !== undefined) {
       await assertSendMaterialReferences(ctx, nextActions);
       await assertIssueCouponReferences(ctx, nextActions, existing.actions);
+    }
+    // 只改條件也可能讓既有素材與渠道不符；只是改為啟用不檢查（舊規則要能照常開關）
+    if (data.conditions !== undefined || data.actions !== undefined) {
+      await assertSendMaterialChannels(ctx, nextConditions, nextActions);
     }
   }
 

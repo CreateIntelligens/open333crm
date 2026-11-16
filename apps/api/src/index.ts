@@ -16,6 +16,7 @@ import {
   EVENT_AUTOMATION_QUEUE,
   EVENT_NOTIFICATION_QUEUE,
   EVENT_WEBHOOK_QUEUE,
+  EMAIL_DISPATCH_QUEUE,
   USAGE_ALERT_EMAIL_QUEUE,
   WEBHOOK_DELIVERY_QUEUE,
   closeOutboxQueues,
@@ -114,7 +115,7 @@ import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { agentVisibilityResolver } from './services/channel-visibility.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
-import { createCouponBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
+import { createBroadcastJobRunner, createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
 import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
@@ -122,6 +123,9 @@ import { redactSensitiveQuery } from './lib/log-redact.js';
 import { setupInactivityCloseWorker } from './modules/conversation/inactivity-close.worker.js';
 import { registerChannelPlugin, getAllChannelPlugins, linePlugin, fbPlugin, webchatPlugin, threadsPlugin } from '@open333crm/channel-plugins';
 import { preloadUploadContentDetector } from './modules/upload/upload-content-detector.js';
+import { EmailFailoverCoordinator } from './modules/email/email-failover.js';
+import { closeEmailDispatchQueue, createEmailDispatchProcessor, enqueueEmail } from './modules/email/email-queue.js';
+import { configureEmailFailover } from './modules/email/email.service.js';
 
 export async function bootstrap() {
   const config = loadEnvConfig();
@@ -188,6 +192,16 @@ export async function bootstrap() {
   });
   await app.register(prismaPlugin);
   await app.register(redisPlugin);
+  if (config.EMAIL_DELIVERY_MODE === 'smtp') {
+    configureEmailFailover(new EmailFailoverCoordinator(app.redis, {
+      smtpMaxConcurrency: config.EMAIL_SMTP_MAX_CONCURRENCY,
+      smtpRatePerSec: config.EMAIL_SMTP_RATE_PER_SEC,
+      smtpBulkRatePerSec: config.EMAIL_SMTP_BULK_RATE_PER_SEC,
+      resendMaxConcurrency: config.EMAIL_RESEND_MAX_CONCURRENCY,
+      resendRatePerSec: config.EMAIL_RESEND_RATE_PER_SEC,
+      cooldownMs: config.EMAIL_FAILOVER_COOLDOWN_MS,
+    }));
+  }
   await app.register(cookiePlugin);
   await app.register(authPlugin);
   await app.register(socketPlugin);
@@ -283,13 +297,15 @@ export async function bootstrap() {
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
       [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,
       [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
-      // 附券廣播「立即發送」與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
-      [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createCouponBroadcastJobRunner({
+      // 廣播「立即發送」（附券與一般群發）與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
+      [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor(createBroadcastJobRunner({
         prisma: app.prisma, adminPrisma: app.prismaAdmin, redis: app.redis, io: app.io, store: app.redis, visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
       })) as JobProcessor,
+      [EMAIL_DISPATCH_QUEUE]: createEmailDispatchProcessor() as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
+      [EMAIL_DISPATCH_QUEUE]: { concurrency: config.EMAIL_SMTP_MAX_CONCURRENCY + config.EMAIL_RESEND_MAX_CONCURRENCY },
     }),
   );
   app.addHook('onClose', () => subscriberWorkers.close());
@@ -304,13 +320,14 @@ export async function bootstrap() {
   });
   app.addHook('onClose', () => failedAlerts.close());
   app.addHook('onClose', () => closeOpsAlertQueue());
-  setupCanvasWorker(app.prismaAdmin, app.io);
+  app.addHook('onClose', () => closeEmailDispatchQueue());
+  setupCanvasWorker(app.prismaAdmin, app.io, { enqueueEmail });
 
   // 定時工作一律經 Job Scheduler：多個實例時每一期只執行一次。註冊不等 Redis 回應，
   // Redis 連不上時 API 照常啟動，排程等 Redis 恢復後才開始
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
   setupAnalyticsScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
-  // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
+  // 排程只以 prismaAdmin 查到期清單；發送以 app_tenant 連線綁定租戶執行，票券連結存 Redis（design D29）
   setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, app.redis, {
     prisma: app.prisma,
     store: app.redis,

@@ -18,7 +18,10 @@ import conversationRoutes from '#src/modules/conversation/conversation.routes.js
 import caseRoutes from '#src/modules/case/case.routes.js';
 import marketingRoutes from '#src/modules/marketing/marketing.routes.js';
 import { processInboundMessage } from '#src/modules/webhook/webhook.service.js';
-import { getAccessibleChannelIds, resolveChannelAccessLevel } from '#src/services/channel-visibility.js';
+import { agentVisibilityResolver, getAccessibleChannelIds, resolveChannelAccessLevel } from '#src/services/channel-visibility.js';
+import { redis } from '@open333crm/core';
+import { createBroadcastJobRunner } from '#src/modules/marketing/broadcast-coupon.worker.js';
+import { memBindingStore } from '#tests/support/mem-binding-store.js';
 
 const sendMessage = vi.fn(async () => ({ success: true, channelMsgId: 'stub-msg' }));
 
@@ -79,6 +82,17 @@ async function createConversation(
   });
 }
 
+/**
+ * 執行群發的佇列 job（與 index.ts 的 coupon-broadcast 佇列相同的組法）。「立即發送」回 202 後在背景發送
+ * （change fix-plain-broadcast-send-362），發送結果寫在群發上，不在 HTTP 回應裡
+ */
+async function runSendJob(broadcastId: string) {
+  await createBroadcastJobRunner({
+    prisma: tenantDb, adminPrisma: owner, redis, io: io as never, store: memBindingStore(), visibilityOf: agentVisibilityResolver(owner, redis),
+  })(A, broadcastId);
+  return owner.broadcast.findFirst({ where: { id: broadcastId } });
+}
+
 const bind = (channelId: string, agentId: string, accessLevel: 'read_only' | 'reply_only' | 'full' = 'full') =>
   owner.agentChannelAccess.create({ data: { channelId, agentId, accessLevel } });
 
@@ -137,6 +151,9 @@ afterAll(async () => {
   await broadcasterApp.close();
   const channels = await owner.channel.findMany({ where: { displayName: { startsWith: MARK } }, select: { id: true } });
   const channelIds = channels.map((c) => c.id);
+  // 立即發送寫進 outbox 的群發 job（change fix-plain-broadcast-send-362）
+  const broadcastIds = (await owner.broadcast.findMany({ where: { channelId: { in: channelIds } }, select: { id: true } })).map((b) => b.id);
+  await owner.$executeRaw`DELETE FROM outbox WHERE "queueName" = 'coupon-broadcast' AND payload->>'broadcastId' = ANY(${broadcastIds}::text[])`;
   await owner.broadcast.deleteMany({ where: { channelId: { in: channelIds } } });
   await owner.material.deleteMany({ where: { name: { startsWith: MARK } } });
   await owner.case.deleteMany({ where: { channelId: { in: channelIds } } });
@@ -225,7 +242,9 @@ test('群發不檢查渠道層級：唯讀渠道的成員有 marketing.broadcast
 
   const res = await broadcasterApp.inject({ method: 'POST', url: `/api/v1/marketing/broadcasts/${broadcast.id}/send` });
 
-  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.statusCode, 202, res.body);
+  const done = await runSendJob(broadcast.id);
+  assert.equal(done?.status, 'completed', done?.failureReason ?? '');
   assert.equal(sendMessage.mock.calls.length, 1, '送給唯一的收件人');
 });
 
@@ -636,8 +655,10 @@ test('分店建立的分群群發只以可見渠道判斷條件：預估與送�
   });
   sendMessage.mockClear();
   const res = await marketerApp.inject({ method: 'POST', url: `/api/v1/marketing/broadcasts/${broadcast.id}/send` });
-  assert.equal(res.statusCode, 400, res.body);
-  assert.equal(res.json().error.code, 'BROADCAST_NO_RECIPIENTS');
+  assert.equal(res.statusCode, 202, res.body);
+  const done = await runSendJob(broadcast.id);
+  assert.equal(done?.status, 'failed');
+  assert.equal(done?.failureCode, 'BROADCAST_NO_RECIPIENTS');
   assert.equal(sendMessage.mock.calls.length, 0);
 });
 
@@ -660,6 +681,8 @@ test('總店建立的分群群發以所有渠道判斷條件：分店成員按�
   sendMessage.mockClear();
   // 由分店成員按下送出：條件仍依建立者（總店）判斷，與排程器背景送出相同
   const res = await marketerApp.inject({ method: 'POST', url: `/api/v1/marketing/broadcasts/${broadcast.id}/send` });
-  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.statusCode, 202, res.body);
+  const done = await runSendJob(broadcast.id);
+  assert.equal(done?.status, 'completed', done?.failureReason ?? '');
   assert.ok(sendMessage.mock.calls.length >= 1);
 });
