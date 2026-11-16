@@ -162,7 +162,16 @@ export async function deliverCommentReply(
   const quotaMonth = claim.quotaMonth;
 
   // 4 交易外呼叫 Meta
-  const credentials = decryptCredentials(log.channel.credentialsEncrypted);
+  // 已認領（SENDING、名額已扣）：解密失敗也要走失敗分類，否則會卡在 SENDING、名額不還。當成權杖失效，提示重新連結渠道
+  let credentials: Record<string, unknown>;
+  try {
+    credentials = decryptCredentials(log.channel.credentialsEncrypted);
+  } catch (err) {
+    const message = `渠道憑證無法解密：${err instanceof Error ? err.message : String(err)}`;
+    return handleSendError(deps, tenantId, log, { message, reason: 'TOKEN_EXPIRED', transient: false }, {
+      mode, quotaMonth, attempt, settings, platform, credentials: {}, at: now(),
+    });
+  }
   const result = await ext.sendPrivateReply(log.commentId, payload.payload, credentials);
   const at = now();
 

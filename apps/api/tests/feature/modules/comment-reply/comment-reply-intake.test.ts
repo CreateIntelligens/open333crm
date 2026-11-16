@@ -127,6 +127,30 @@ describe('命中規則的新留言建立處理中紀錄', () => {
     }
   });
 
+  // PR #526 審查第 1 點：$queryRaw 傳 string[] 給 ::text[] 是否會被拆成多個參數
+  test('命中多個關鍵字時全部寫進 matchedKeywords', async () => {
+    const tenant = await fx.tenant({ plan: { features: ['inbox', 'core', 'comment_reply'] } });
+    const fb = await fx.fbChannel(tenant.id, { mode: 'platform' });
+    await createRule(tenant.id, fb.id, { keywords: ['+1', '想要', '價格'], matchMode: 'any' });
+    const app = await webhookApp();
+    try {
+      const payload = fbComments([
+        { pageId: fb.externalAccountId, commentId: uid('c'), from: { id: uid('U'), name: '王小明' }, message: '+1 想要，價格多少' },
+      ]);
+      const { raw, headers } = signed(payload, PLATFORM_APP_SECRET);
+      const res = await app.inject({ method: 'POST', url: '/api/v1/webhooks/meta', headers, payload: raw });
+      assert.equal(res.statusCode, 200);
+      const logs = await waitFor(async () => {
+        const l = await logsOf(fb.id);
+        return l.length ? l : null;
+      });
+      assert.equal(logs.length, 1);
+      assert.deepEqual([...logs[0]!.matchedKeywords].sort(), ['+1', '價格', '想要'].sort());
+    } finally {
+      await app.close();
+    }
+  });
+
   test('舊模式渠道網址', async () => {
     const secret = uid('own-secret-');
     const { fb } = await setup({ channelMode: 'own_app', appSecret: secret });

@@ -6,7 +6,7 @@
  *
  * 安全設計：
  *   - 預設 --dry-run：只查詢目前的訂閱並列出會送出的欄位；帶 --apply 才寫入
- *   - 單一渠道失敗只記錄、不中斷；權杖、appsecret_proof 不輸出
+ *   - 單一渠道失敗只記錄、不中斷；有任何渠道失敗時結束碼為 1；權杖、appsecret_proof 不輸出
  *   - 只處理有 externalAccountId、啟用中的 FB／IG 渠道
  *
  * 用法（在 apps/api 目錄，DATABASE_URL 指向 owner 或 app_admin）：
@@ -120,6 +120,8 @@ async function main() {
     }
   }
   console.log(`完成：成功 ${ok}、失敗 ${failed}${apply ? '' : '（dry-run 沒有寫入）'}`);
+  // 單一渠道失敗不中斷，但整批結果要反映在結束碼，`--apply || exit 1` 之類的呼叫端才看得到
+  if (failed > 0) process.exitCode = 1;
 }
 
 main()

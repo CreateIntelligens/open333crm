@@ -243,6 +243,25 @@ describe('最近貼文與網址解析', () => {
     assert.equal(graph.calls('GET', `/v21.0/${fbPlatform.externalAccountId}/published_posts`).length, 1);
   });
 
+  // PR #526 審查第 2 點：平台模式的讀取呼叫也要帶平台 App Secret 算的 appsecret_proof
+  test('平台模式讀最近貼文與解析網址：appsecret_proof 用平台 App Secret', async () => {
+    const token = String(fbPlatform.credentials.pageAccessToken);
+    const proof = createHmac('sha256', 'ci-cr-platform-secret').update(token).digest('hex');
+    const postId = `${fbPlatform.externalAccountId}_777`;
+    graph.on('GET', 'graph.facebook.com', `/v21.0/${fbPlatform.externalAccountId}/published_posts`, { body: { data: [] } });
+    graph.on('GET', 'graph.facebook.com', `/v21.0/${postId}`, { body: { message: '貼文', created_time: '2026-11-10T00:00:00+0000' } });
+    const list = await adminApp.inject({ method: 'GET', url: `${BASE}/channels/${fbPlatform.id}/posts?cursor=proof-check` });
+    assert.equal(list.statusCode, 200, list.body);
+    const resolve = await adminApp.inject({
+      method: 'POST',
+      url: `${BASE}/channels/${fbPlatform.id}/posts/resolve`,
+      payload: { url: 'https://www.facebook.com/somepage/posts/777' },
+    });
+    assert.equal(resolve.statusCode, 200, resolve.body);
+    assert.equal(graph.calls('GET', `/v21.0/${fbPlatform.externalAccountId}/published_posts`).at(-1)?.query.appsecret_proof, proof);
+    assert.equal(graph.calls('GET', `/v21.0/${postId}`).at(-1)?.query.appsecret_proof, proof);
+  });
+
   test('平台未開放貼文挑選：403 CAPABILITY_DISABLED，沒有呼叫 Graph API', async () => {
     await setPlatformCapabilities(owner, { fbPostPicker: false });
     const res = await adminApp.inject({ method: 'GET', url: `${BASE}/channels/${fbPlatform.id}/posts` });

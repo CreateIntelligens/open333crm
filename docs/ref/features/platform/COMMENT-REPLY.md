@@ -87,7 +87,7 @@ UAT 就是正式環境。下列每一步凡是寫入（改設定、跑腳本 `--
    npx tsx src/scripts/comment-reply-subscriptions.ts --mode resubscribe --channel <channelId>
    npx tsx src/scripts/comment-reply-subscriptions.ts --mode resubscribe --channel <channelId> --apply
    ```
-   腳本一律送完整欄位（FB：4 個私訊欄位＋`feed`；IG：`messages`＋`comments`），寫入前後各查一次訂閱欄位印出對照，單一渠道失敗不中斷，不輸出權杖。
+   腳本一律送完整欄位（FB：4 個私訊欄位＋`feed`；IG：`messages`＋`comments`），寫入前後各查一次訂閱欄位印出對照，單一渠道失敗不中斷，但只要有渠道失敗，最後的結束碼就是 1（看最後一行「完成：成功 N、失敗 M」）；不輸出權杖。
 3. 平台 App 本身被 Meta 停用 webhook 時，要到 Meta App 後台重新驗證回呼網址（需使用者本人操作）。
 
 ### 大量 PENDING

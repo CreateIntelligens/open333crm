@@ -349,7 +349,7 @@ export async function listRecentPostsMeta(
   }
   let page: { posts: RecentPost[]; nextCursor: string | null };
   try {
-    page = await channel.ext.listRecentPosts({ ...channel.credentials, pageId: channel.accountId || channel.credentials.pageId }, cursor);
+    page = await channel.ext.listRecentPosts(readCredentialsOf(channel), cursor);
   } catch (err) {
     throw postsUnavailable(err);
   }
@@ -358,11 +358,23 @@ export async function listRecentPostsMeta(
   return result;
 }
 
+/**
+ * 讀貼文用的憑證：補上 pageId；平台模式的 FB 渠道憑證沒有 App Secret，補上平台 App Secret 讓外掛算 appsecret_proof
+ * （與 subscribeFields、getSubscriptionStatus 一致；自備 App 的渠道沿用 credentials.appSecret）
+ */
+function readCredentialsOf(channel: CommentChannelHandle): Record<string, unknown> {
+  return {
+    ...channel.credentials,
+    pageId: channel.accountId || channel.credentials.pageId,
+    ...(channel.appSecret ? { appSecret: channel.appSecret } : {}),
+  };
+}
+
 /** 貼文網址換貼文（交易外）。只經外掛呼叫 Graph API，不對使用者網址發出請求；找不到 → 404 POST_NOT_FOUND */
 export async function resolvePostUrlMeta(channel: CommentChannelHandle, url: string): Promise<PostView> {
   let post: RecentPost | null;
   try {
-    post = await channel.ext.resolvePostUrl(url, { ...channel.credentials, pageId: channel.accountId || channel.credentials.pageId });
+    post = await channel.ext.resolvePostUrl(url, readCredentialsOf(channel));
   } catch (err) {
     throw postsUnavailable(err);
   }

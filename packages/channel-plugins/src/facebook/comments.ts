@@ -221,6 +221,7 @@ export function createFbCommentExtension(deps: FbCommentDeps): ChannelCommentExt
       const postId = parsePostReference(input, { accountId: pageId });
       if (postId) {
         const params = new URLSearchParams({ fields: POST_FIELDS, access_token: tokenOf(credentials) });
+        if (credentials.appSecret) params.set('appsecret_proof', appSecretProof(tokenOf(credentials), String(credentials.appSecret)));
         const res = await graphFetch(`${FB_GRAPH_API}/${postId}?${params}`);
         if (res.ok) return toRecentPost({ id: postId, ...res.body });
         if (res.error.code === 100) return null;

@@ -361,6 +361,16 @@ describe('Meta 明確拒絕與錯誤對照', () => {
     assert.equal(w.usage.sentCount, 0);
   });
 
+  // PR #526 審查第 3 點：認領（SENDING＋扣名額）後解密失敗，不能卡在 SENDING、名額要還
+  test('渠道憑證無法解密：不呼叫 Meta，FAILED/TOKEN_EXPIRED、還名額', async () => {
+    w.channel.credentialsEncrypted = 'not-a-valid-ciphertext';
+    const { p, calls } = plugin();
+    assert.deepEqual(await run(p), { kind: 'done', status: 'FAILED', reasonCode: 'TOKEN_EXPIRED' });
+    assert.equal(calls.send.length, 0);
+    assert.equal(w.log.status, 'FAILED');
+    assert.equal(w.usage.sentCount, 0);
+  });
+
   test('測試階段的平台模式渠道：PERMISSION_MISSING 轉 APP_NOT_APPROVED', async () => {
     w.settings['commentReply.testPhase'] = { fb: true, ig: true };
     const { p } = plugin({ send: [metaError('PERMISSION_MISSING', { code: 10 })] });
