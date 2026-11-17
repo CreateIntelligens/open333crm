@@ -36,7 +36,9 @@
 - [x] 4.2 `pnpm test:feature` 通過。結果：190 個測試檔、1865 項通過。
 - [x] 4.3 `node scripts/check-tenant-ctx.mjs --strict` 通過，並以 `--update-baseline` 更新基準檔（`csat.service.ts`、`case.routes.ts` 的舊寫法減少）。結果：`csat.service.ts` 3 → 0、`case.routes.ts` 1 → 0。
 - [x] 4.4 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規。
-- [ ] 4.5 `node scripts/feature-impact.mjs` 列出的直接受影響領域（工單、LINE），逐項走過 skill 的回歸清單；`feature-map.json` 需要時更新，`--check` 通過。
+- [x] 4.5 `node scripts/feature-impact.mjs` 列出的直接受影響領域（工單、LINE），逐項走過 skill 的回歸清單；`feature-map.json` 需要時更新，`--check` 通過。
+  - 2026-11-17 本地 dev 堆疊走過 `feature-cases` 回歸清單第 6 項（CSAT），以 API 與 SQL 驗證：LINE 工單解決 30 分鐘後寄出問卷（假憑證，問卷標示 `deliveryFailed`、時間軸 `csat_send_failed`）；網站聊天室工單不寄；`csatSentAt` 調到 72 小時前後排程結案、對話關閉、`case.closed` 進 outbox；客人以簽章的 LINE postback 評 2 分：結案、`csat_rated`、`status_changed`（`csat_rated`）、訊息改寫成「我的評分：2 分」、一則感謝訊息、對話關閉、3 位持 `case.assign` 的成員收到低分通知；再點 5 分不重複記錄；客服代評 4 分：結案、`csatRatedBy` 是 `agent`。
+  - 模擬器（`POST /simulator/send-message`）不經過 CSAT 攔截器，客人評分要用 LINE webhook 驗證；這是既有行為。前端問卷卡片的唯讀顯示這批沒有改，沒有在瀏覽器確認。
 - [x] 4.6 `node scripts/validate-openspec.mjs migrate-csat-tenant-ctx` 與 `--specs` 通過。
 - [x] 4.7 `CHANGELOG.md` 在 `Changed` 寫明可觀察的差異（記分一起 rollback、建立問卷訊息失敗會重試、`case.closed` 至少一次）。
 - [x] 4.8 更新 `docs/ref/` 中描述 csat 行為的文件與 `feature-cases` skill。更新 `docs/ref/features/tenant/CASES.md`、`NOTIFICATIONS.md`、`feature-map.json`、`feature-cases` 與 `feature-notifications` skill。
