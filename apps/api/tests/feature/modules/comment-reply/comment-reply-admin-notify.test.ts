@@ -37,7 +37,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-it('只通知該租戶啟用中的管理員，推播送到帶租戶 ID 的成員房間', async () => {
+it('留言私訊健康告警只通知該租戶啟用中的管理員', async () => {
   const notify = tenantAdminNotifier({ admin: owner, prisma, io: recordingIo(pushes) });
   await notify(TENANT_A, `${MARK} 告警`, '留言私訊暫停');
 
