@@ -94,6 +94,8 @@ test('Bulk rate cap reserves headroom for transactional emails and throttling ke
   assert.equal(await redis.get(`${prefix}:open`), null);
 
   // Failover respects Resend per-second rate cap
+  // 上面 4 次取得已用完 SMTP 每秒 4 封的額度。先等 1 秒視窗過去，否則下一次取得一定被限速
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
   const probe = await capped.acquire('transactional');
   await capped.finish(probe, 'fail');
   const r1 = await capped.acquire('bulk');
