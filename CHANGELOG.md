@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-17]
 
+### Fixed
+
+- **工單路由的路徑 id 先檢查格式**（#337 第八批 PR #537 審查）— `/api/v1/cases/:id` 系列的 15 個端點原本不檢查 `:id`、`:tagId`、`:conversationId`。不是 UUID 時，有的端點回 404，有的回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位；客服代評端點也會把未檢查的 id 寫進 log（CodeQL log injection）。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出該參數。
+
 ### Added
 
 - **公開的隱私權政策與資料刪除說明頁面**：新增 `/legal/privacy-policy.html`、`/legal/privacy-policy-en.html`、`/legal/data-deletion.html`、`/legal/data-deletion-en.html` 四個靜態頁面（`apps/web/public/legal/`），不需登入即可開啟，中英文版互相連結。隱私權政策第 4 章說明如何使用 Meta 平台資料（各權限取得的資料、用途、不做的事、刪除方式）；資料刪除說明寫明顧客與商家各自如何要求刪除、刪除哪些資料、處理期限。頁面不載入任何外部字型或追蹤工具。Meta App 審查需要這兩個網址。

@@ -17,6 +17,7 @@
 - **記分（webhook 進站與 `POST /api/v1/cases/:id/csat`）**：分數、問卷卡片的分數、時間軸、感謝訊息、工單結案、`case.closed`（經 outbox）在同一個交易內寫入，一起 commit 或一起 rollback。感謝訊息送渠道在 commit 之後執行。低分通知在另一個交易內寫入（`createAndDispatch()`），失敗時在第三個交易寫 `csat_low_score_notify_failed`。關閉對話在 commit 之後執行。
 - 讀取 AI 個資遮罩政策移到交易之前（#337 規劃 5.2）。讀取失敗時 `readAiPrivacyPolicy()` 丟出 503，流程在寫入之前停止。
 - 刪除 `notification-effects.ts` 的 `createAndDispatchWithoutTransaction()`。
+- `case.routes.ts` 的路徑參數（`:id`、`:tagId`、`:conversationId`）在讀寫資料之前檢查 UUID，不是 UUID 時回 400 `VALIDATION_ERROR`（PR #537 審查）。
 - **可觀察的差異：**
   - 記分時資料庫出錯，這次評分不會留下任何寫入。原本可能留下「有分數、沒結案」的工單。客人可以再點一次問卷，客服可以再按一次。
   - 建立問卷訊息失敗時，下一期會重試。原本這份問卷永遠不寄。
@@ -31,6 +32,7 @@
 ### Modified Capabilities
 
 - `csat-survey`：修改「每次解決最多寄出一份滿意度問卷」的「認領之後建立問卷訊息失敗」scenario；新增「記分的寫入一起成功或一起失敗」。
+- `case-management`：新增「工單路由驗證路徑參數」。
 
 ## Impact
 

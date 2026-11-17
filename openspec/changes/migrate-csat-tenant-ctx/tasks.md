@@ -43,3 +43,8 @@
 - [x] 4.7 `CHANGELOG.md` 在 `Changed` 寫明可觀察的差異（記分一起 rollback、建立問卷訊息失敗會重試、`case.closed` 至少一次）。
 - [x] 4.8 更新 `docs/ref/` 中描述 csat 行為的文件與 `feature-cases` skill。更新 `docs/ref/features/tenant/CASES.md`、`NOTIFICATIONS.md`、`feature-map.json`、`feature-cases` 與 `feature-notifications` skill。
 - [ ] 4.9 部署到 UAT 之後，重跑 #337 規劃 6.2 的量測（這批改到 `POST /cases/:id/csat`，GET 端點沒有改，只確認併發沒有變差）。
+
+## 5. PR #537 審查之後
+
+- [x] 5.1 `apps/api/tests/feature/modules/case/case-route-params.test.ts`：「工單路由驗證路徑參數」（ADDED）。15 個帶路徑參數的工單端點，共 17 種不合法的參數，各送一次不是 UUID 的值，預期 400 `VALIDATION_ERROR`，`error.details.issues` 指出該參數。修改前 17 項都失敗在斷言上（回 404、400 `DATABASE_ERROR`，或錯誤指向 body 欄位）。
+- [x] 5.2 `case.routes.ts` 每個帶路徑參數的路由先以 Zod 檢查參數，再檢查 body、讀寫資料。起因：CodeQL 對 `csat.flow.ts` 回報 log injection，污染來源是 `POST /:id/csat` 沒有檢查的 `request.params.id`。
