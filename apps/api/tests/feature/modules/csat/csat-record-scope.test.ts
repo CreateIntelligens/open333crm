@@ -1,7 +1,7 @@
 /**
  * CSAT 評分只能寫入「同租戶、同聯絡人」的工單（主規格 inbound-message-processing「CSAT 回覆的攔截」，AUDIT RLS-06）。
  *
- * 進站管線以 prismaAdmin（BYPASSRLS）呼叫 recordCsatScore()，RLS 擋不住跨租戶，
+ * 進站管線以 prismaAdmin（BYPASSRLS）呼叫 recordCsatScoreFlow()，RLS 擋不住跨租戶，
  * 因此這裡用同樣繞過 RLS 的 owner 連線，直接驗證應用層的查詢條件。
  * 每個測試在交易內建立資料，結束時 rollback。
  *
@@ -11,13 +11,33 @@ import assert from 'node:assert/strict';
 import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '#src/lib/tenant-db.js';
-import { recordCsatScore } from '#src/modules/csat/csat.service.js';
+import { recordCsatScoreFlow } from '#src/modules/csat/csat.flow.js';
+import type { CsatScope } from '#src/modules/csat/csat.service.js';
+import { createOutboxPublisher, type EventPublisher } from '#src/events/outbox-publisher.js';
 import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 
 const prisma = new PrismaClient();
 const io = { to: () => ({ emit: () => true }) } as never;
 
 class Rollback extends Error {}
+
+/** 只寫 outbox，不送進佇列 */
+const outboxOnly: EventPublisher = { write: createOutboxPublisher(prisma).write, dispatch: async () => {} };
+
+/**
+ * flow 以 inTenant() 自己開交易。測試已經在一個會 rollback 的交易內，所以把這個交易包成 flow 的 prisma：
+ * $transaction 直接在同一個交易內執行，資料看得到，結束時一起 rollback。
+ */
+const inSameTx = (tx: TenantDb) =>
+  new Proxy(tx as object, {
+    get(target, prop) {
+      if (prop === '$transaction') return (cb: (t: unknown) => unknown) => cb(target);
+      return Reflect.get(target, prop);
+    },
+  }) as never;
+
+const rate = (tx: TenantDb, caseId: string, score: number, scope: CsatScope) =>
+  recordCsatScoreFlow({ prisma: inSameTx(tx), io, events: outboxOnly, conversationDb: tx }, { caseId, score, scope });
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -60,7 +80,7 @@ async function assertUntouched(tx: TenantDb, target: { caseId: string; conversat
 
 scenario('同租戶、同聯絡人的工單寫入評分', async (tx) => {
   const own = await createCase(tx, TENANT_A, 'own');
-  const recorded = await recordCsatScore(tx, io, own.caseId, 5, undefined, {
+  const recorded = await rate(tx, own.caseId, 5, {
     tenantId: TENANT_A,
     contactId: own.contactId,
   });
@@ -72,7 +92,7 @@ scenario('同租戶、同聯絡人的工單寫入評分', async (tx) => {
 scenario('其他租戶的工單：不寫入、不送訊息', async (tx) => {
   const victim = await createCase(tx, TENANT_B, 'victim');
   const attacker = await createCase(tx, TENANT_A, 'attacker');
-  const recorded = await recordCsatScore(tx, io, victim.caseId, 1, undefined, {
+  const recorded = await rate(tx, victim.caseId, 1, {
     tenantId: TENANT_A,
     contactId: attacker.contactId,
   });
@@ -83,7 +103,7 @@ scenario('其他租戶的工單：不寫入、不送訊息', async (tx) => {
 scenario('同租戶其他聯絡人的工單：不寫入', async (tx) => {
   const victim = await createCase(tx, TENANT_A, 'victim');
   const attacker = await createCase(tx, TENANT_A, 'attacker');
-  const recorded = await recordCsatScore(tx, io, victim.caseId, 1, undefined, {
+  const recorded = await rate(tx, victim.caseId, 1, {
     tenantId: TENANT_A,
     contactId: attacker.contactId,
   });
@@ -92,7 +112,7 @@ scenario('同租戶其他聯絡人的工單：不寫入', async (tx) => {
 });
 
 scenario('不存在的工單：回傳 false', async (tx) => {
-  const recorded = await recordCsatScore(tx, io, '00000000-0000-4000-8000-000000000000', 5, undefined, {
+  const recorded = await rate(tx, '00000000-0000-4000-8000-000000000000', 5, {
     tenantId: TENANT_A,
   });
   assert.equal(recorded, false);
@@ -100,12 +120,12 @@ scenario('不存在的工單：回傳 false', async (tx) => {
 
 scenario('客服操作（不帶 contactId）只能寫入自己租戶的工單', async (tx) => {
   const other = await createCase(tx, TENANT_B, 'other');
-  const recorded = await recordCsatScore(tx, io, other.caseId, 4, undefined, { tenantId: TENANT_A });
+  const recorded = await rate(tx, other.caseId, 4, { tenantId: TENANT_A });
   assert.equal(recorded, false);
   await assertUntouched(tx, other);
 
   const own = await createCase(tx, TENANT_A, 'agent-own');
-  assert.equal(await recordCsatScore(tx, io, own.caseId, 4, undefined, { tenantId: TENANT_A }), true);
+  assert.equal(await rate(tx, own.caseId, 4, { tenantId: TENANT_A }), true);
 });
 
 /**
@@ -132,7 +152,7 @@ scenario('客人評分後問卷卡片顯示分數', async (tx) => {
   const other = await createCase(tx, TENANT_A, 'card-other');
   const otherSurvey = await addSurvey(tx, other.conversationId, other.caseId);
 
-  assert.equal(await recordCsatScore(tx, io, own.caseId, 2, undefined, { tenantId: TENANT_A, contactId: own.contactId }), true);
+  assert.equal(await rate(tx, own.caseId, 2, { tenantId: TENANT_A, contactId: own.contactId }), true);
 
   const after = await tx.message.findUniqueOrThrow({ where: { id: survey.id } });
   const metadata = after.metadata as Record<string, unknown>;
@@ -145,7 +165,7 @@ scenario('客人評分後問卷卡片顯示分數', async (tx) => {
 
 scenario('客人評分後時間軸有評分與自動關閉紀錄', async (tx) => {
   const own = await createCase(tx, TENANT_A, 'timeline');
-  await recordCsatScore(tx, io, own.caseId, 2, undefined, { tenantId: TENANT_A, contactId: own.contactId });
+  await rate(tx, own.caseId, 2, { tenantId: TENANT_A, contactId: own.contactId });
 
   const events = await tx.caseEvent.findMany({ where: { caseId: own.caseId }, orderBy: { createdAt: 'asc' } });
   const rated = events.find((e) => e.eventType === 'csat_rated');
@@ -165,7 +185,7 @@ scenario('客服代評的時間軸紀錄標明客服', async (tx) => {
     data: { tenantId: TENANT_A, email: `csat-agent-${Date.now()}@example.test`, name: '王小明', passwordHash: 'x', role: 'AGENT' },
   });
 
-  assert.equal(await recordCsatScore(tx, io, own.caseId, 4, undefined, { tenantId: TENANT_A, agentId: agent.id }), true);
+  assert.equal(await rate(tx, own.caseId, 4, { tenantId: TENANT_A, agentId: agent.id }), true);
 
   const rated = await tx.caseEvent.findFirstOrThrow({ where: { caseId: own.caseId, eventType: 'csat_rated' } });
   assert.equal(rated.actorType, 'agent');
@@ -193,7 +213,7 @@ async function assertCustomerRatingRejected(tx: TenantDb, target: { caseId: stri
 scenario('工單重開後客人點舊問卷', async (tx) => {
   const own = await createCase(tx, TENANT_A, 'reopened');
   await tx.case.update({ where: { id: own.caseId }, data: { status: 'IN_PROGRESS', csatSentAt: new Date() } });
-  const recorded = await recordCsatScore(tx, io, own.caseId, 2, undefined, { tenantId: TENANT_A, contactId: own.contactId });
+  const recorded = await rate(tx, own.caseId, 2, { tenantId: TENANT_A, contactId: own.contactId });
   assert.equal(recorded, false);
   await assertCustomerRatingRejected(tx, own, 'IN_PROGRESS');
 });
@@ -201,7 +221,7 @@ scenario('工單重開後客人點舊問卷', async (tx) => {
 scenario('逾時結案後客人點舊問卷', async (tx) => {
   const own = await createCase(tx, TENANT_A, 'timed-out');
   await tx.case.update({ where: { id: own.caseId }, data: { status: 'CLOSED', csatSentAt: new Date(), closedAt: new Date() } });
-  const recorded = await recordCsatScore(tx, io, own.caseId, 5, undefined, { tenantId: TENANT_A, contactId: own.contactId });
+  const recorded = await rate(tx, own.caseId, 5, { tenantId: TENANT_A, contactId: own.contactId });
   assert.equal(recorded, false);
   await assertCustomerRatingRejected(tx, own, 'CLOSED');
 });
@@ -212,7 +232,7 @@ scenario('客服代評不限工單狀態', async (tx) => {
   const agent = await tx.agent.create({
     data: { tenantId: TENANT_A, email: `csat-agent-${own.caseId}@example.test`, name: 'csat-agent', passwordHash: 'x' },
   });
-  const recorded = await recordCsatScore(tx, io, own.caseId, 4, undefined, { tenantId: TENANT_A, agentId: agent.id });
+  const recorded = await rate(tx, own.caseId, 4, { tenantId: TENANT_A, agentId: agent.id });
   assert.equal(recorded, true);
   const kase = await tx.case.findUniqueOrThrow({ where: { id: own.caseId } });
   assert.equal(kase.csatScore, 4);

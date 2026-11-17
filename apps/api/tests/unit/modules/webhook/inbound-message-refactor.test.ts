@@ -174,6 +174,9 @@ async function testDuplicateClientMessageReturnsExistingMessage() {
   assert.equal(events.length, 0);
 }
 
+/** 記分經 inTenant() 開交易，租戶 ID 必須是 UUID 格式 */
+const CSAT_TENANT_ID = 'c0000000-0000-4000-8000-000000000001';
+
 async function testCsatInterceptDoesNotPublishMessageReceived() {
   const { io } = createIoMock();
   const conversation = createConversation();
@@ -208,13 +211,16 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
     },
   };
 
+  // 記分改由 flow 以 inTenant() 開交易（change migrate-csat-tenant-ctx）：交易就是同一個替身
+  Object.assign(prisma, { $transaction: async (cb: (tx: unknown) => unknown) => cb({ ...prisma, $executeRaw: async () => 1 }) });
+
   const events = await captureEvents(async () => {
     const result = await processInboundMessage(
       prisma as never,
       io as never,
       {},
       { id: 'channel-1', channelType: 'WEBCHAT' },
-      'tenant-1',
+      CSAT_TENANT_ID,
       {
         contactUid: 'visitor-1',
         channelMsgId: 'channel-msg-1',
@@ -272,13 +278,16 @@ async function testCsatLookupScopedToTenantAndSender() {
     },
   };
 
+  // 記分改由 flow 以 inTenant() 開交易（change migrate-csat-tenant-ctx）：交易就是同一個替身
+  Object.assign(prisma, { $transaction: async (cb: (tx: unknown) => unknown) => cb({ ...prisma, $executeRaw: async () => 1 }) });
+
   const events = await captureEvents(async () => {
     await processInboundMessage(
       prisma as never,
       io as never,
       {},
       { id: 'channel-1', channelType: 'WEBCHAT' },
-      'tenant-1',
+      CSAT_TENANT_ID,
       {
         contactUid: 'visitor-1',
         channelMsgId: 'channel-msg-1',
@@ -292,7 +301,7 @@ async function testCsatLookupScopedToTenantAndSender() {
   assert.equal(prisma.case.findFirst.calls.length, 1);
   assert.deepEqual(prisma.case.findFirst.calls[0][0].where, {
     id: caseId,
-    tenantId: 'tenant-1',
+    tenantId: CSAT_TENANT_ID,
     contactId: 'contact-1',
   });
   assert.equal(prisma.case.update.calls.length, 0);

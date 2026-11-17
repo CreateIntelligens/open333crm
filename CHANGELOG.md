@@ -10,6 +10,12 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **滿意度問卷改成入口開交易**（#337 階段 4 第八批，change `migrate-csat-tenant-ctx`）— 寄問卷、問卷逾時結案與記分改由 `csat.flow.ts` 以 `inTenant()` 開交易（`app_tenant` 連線，受 RLS 約束），原本以 `prismaAdmin` 或 `request.tenantPrisma` 逐句執行。`POST /api/v1/cases/:id/csat` 的請求與回應不變。可觀察的差異如下：
+  - 記分時，分數、問卷卡片的分數、時間軸、感謝訊息、工單結案與 `case.closed` 一起 commit 或一起 rollback。其中一筆寫入失敗時不留下任何東西，客人可以再評分；原本可能留下「有分數、沒結案」的工單，而且兩個排程都不會再處理它。
+  - 寄問卷時，問卷訊息寫入失敗會讓 `csatSentAt` 一起 rollback，下一期重試；原本這份問卷永遠不寄。
+  - `case.closed`（評分後結案、問卷逾時結案）改經 outbox，至少送出一次；原本由 `eventBus.publish()` 直接送出，行程中斷時會遺失。
+  - 推播（`message.new`、`case.updated`）改在 commit 之後送出。
+  - 低分通知改在記分 commit 之後另開交易寫入；刪除第七批留下的 `createAndDispatchWithoutTransaction()`。
 - **站內通知改成入口開交易**（#337 階段 4 第七批）— 通知的 4 條路由（列表、未讀數、單則已讀、全部已讀）改呼叫 flow，每個請求在一個綁定租戶的交易內讀寫（`app_tenant` 連線，受 RLS 約束），請求與回應不變。可觀察的差異如下：
   - `PATCH /api/v1/notifications/:id/read` 的 `:id` 不是 UUID 時，回 400 `VALIDATION_ERROR`，不再查資料庫後回 400 `DATABASE_ERROR`。
   - API 行程寫入站內通知的入口都改用 `notification/notification-effects.ts` 的 `createAndDispatch()`：在綁定租戶的交易內寫入，commit 之後才推播 `notification.new`；交易 rollback 時通知與推播都作廢。推播房間從 `agent:<成員 id>` 改成 `tenant:<租戶 id>:agent:<成員 id>`，前端連線時已經加入這個房間。
@@ -19,6 +25,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **工單路由的路徑 id 先檢查格式**（#337 第八批 PR #537 審查）— `/api/v1/cases/:id` 系列的 15 個端點原本不檢查 `:id`、`:tagId`、`:conversationId`。不是 UUID 時，有的端點回 404，有的回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位；客服代評端點也會把未檢查的 id 寫進 log（CodeQL log injection）。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出該參數。
 - **安全掃描修正**：更新 Hono、`@hono/node-server` 與 CLI 的 `minimatch` 傳遞依賴；調整網址與郵件樣板的字串處理，避免長輸入造成不必要的正規表示式回溯；將外部資料改為結構化日誌。綁定碼使用隨機位元組的低 5 位產生 Base32 字元，維持均勻分布。
 - **限制外部請求頻率**：渠道更新與驗證每個來源 IP 各限每分鐘 30 次，知識庫路由每個來源 IP 限每分鐘 300 次，webhook 路由每個來源 IP 限每分鐘 6,000 次；超過上限回 429。計數保存在各 API 行程的記憶體中。
 - **檔案與開發工具**：逐字稿掃描改為讀取一次檔案後判斷是否為空；CLI 命令產生器建立檔案時不覆蓋既有檔案；Meta 截圖工具以完整主機名稱選擇分頁。

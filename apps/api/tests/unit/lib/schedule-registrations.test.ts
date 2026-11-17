@@ -82,7 +82,7 @@ test('canvas：每 60 秒，以 withoutOverlapping 防重疊，鎖最久 10 分�
 
 test('csat：發送與自動結案各一個排程，都是每 60 秒', () => {
   const { scheduler, defs } = fakeScheduler();
-  setupCsatScheduler(scheduler, prisma, io);
+  setupCsatScheduler(scheduler, { admin: prisma, prisma, io });
   assert.deepEqual(defs.map(shape), [
     { id: 'csat-send', every: 60_000, pattern: undefined, withoutOverlapping: undefined },
     { id: 'csat-auto-close', every: 60_000, pattern: undefined, withoutOverlapping: undefined },

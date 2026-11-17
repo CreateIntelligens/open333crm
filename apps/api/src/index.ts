@@ -345,7 +345,8 @@ export async function bootstrap() {
     store: app.redis,
     visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
   });
-  setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
+  // 掃描用 prismaAdmin，每張工單以 app_tenant 連線開租戶交易（change migrate-csat-tenant-ctx）
+  setupCsatScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma, io: app.io });
   setupMetaTokenHealthScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma, io: app.io });
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);
   setupCanvasScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });

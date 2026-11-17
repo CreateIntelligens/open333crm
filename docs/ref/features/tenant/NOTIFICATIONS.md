@@ -35,7 +35,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 下列來源不經過上面的流程：
 
 - **API 行程直接寫入的通知**：FB／IG 權杖失效、留言私訊健康告警、序號明細背景匯出都呼叫 `notification/notification-effects.ts` 的 `createAndDispatch()`。它在綁定租戶的交易內寫入（`app_tenant` 連線），commit 之後才推播到 `tenant:<租戶 id>:agent:<成員 id>`；交易 rollback 時通知與推播都作廢（#337）。
-- **CSAT 低分**：`csat.service.ts` 的 `notifyCsatLowScore()` 呼叫 `createAndDispatchWithoutTransaction()`，寫入後立刻推播。`csat` 還沒搬遷，手上沒有交易；搬遷 `csat` 時改用 `createAndDispatch()`。送不出時工單時間軸寫一筆 `csat_low_score_notify_failed`（#339）。
+- **CSAT 低分**：`csat.flow.ts` 的 `notifyCsatLowScoreFlow()` 在記分 commit 之後另開一個交易，呼叫 `createAndDispatch()` 寫入並在 commit 之後推播。送不出時，這個交易 rollback，再另開交易在工單時間軸寫一筆 `csat_low_score_notify_failed`，分數不受影響（#339、change `migrate-csat-tenant-ctx`）。
 - **SLA 預警與逾時**：workers 的 `sla.handler.ts` 自己送進 queue，見[服務水準協議](../SLA.md)。
 
 ## 哪些事件通知誰

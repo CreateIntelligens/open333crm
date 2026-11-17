@@ -13,9 +13,12 @@ import { linePlugin, registerChannelPlugin, webchatPlugin } from '@open333crm/ch
 import { loadEnvConfig } from '#src/config/env.js';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { setupCsatScheduler } from '#src/modules/csat/csat.scheduler.js';
+import { createOutboxPublisher, type EventPublisher } from '#src/events/outbox-publisher.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
+/** case.closed 經 outbox 發布：只寫 outbox，不送進佇列 */
+const outboxOnly: EventPublisher = { write: createOutboxPublisher(owner).write, dispatch: async () => {} };
 const stamp = `csat-cap-${Date.now().toString(36)}`;
 const io = { to: () => ({ emit: () => undefined }) } as never;
 const MINUTE = 60 * 1000;
@@ -90,7 +93,7 @@ async function runSchedule(id: 'csat-send' | 'csat-auto-close', caseIds: string[
     },
   }) as PrismaClient;
   const runs = new Map<string, () => Promise<void>>();
-  setupCsatScheduler({ registerSchedule: (d: { id: string; run: () => Promise<void> }) => runs.set(d.id, d.run) } as never, scoped, io);
+  setupCsatScheduler({ registerSchedule: (d: { id: string; run: () => Promise<void> }) => runs.set(d.id, d.run) } as never, { admin: scoped as never, prisma: owner, io, events: outboxOnly });
   await runs.get(id)!();
 }
 

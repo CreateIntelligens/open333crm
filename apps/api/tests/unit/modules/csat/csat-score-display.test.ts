@@ -2,7 +2,7 @@
  * 評分後客服看得到結果（issue #444，change show-csat-score-444）：
  * - 問卷訊息的 metadata 寫入分數與評分者，並再推一次 message.new，收件匣的問卷卡片顯示分數。
  * - 工單時間軸寫一筆 csat_rated，評分後自動關閉寫一筆 status_changed。
- * 資料庫以替身實作 recordCsatScore() 用到的方法；JSON 條件與租戶條件另見
+ * 資料庫以替身實作 recordCsatScoreFlow() 用到的方法；JSON 條件與租戶條件另見
  * tests/feature/modules/csat/csat-record-scope.test.ts。
  */
 import assert from 'node:assert/strict';
@@ -10,13 +10,17 @@ import { beforeEach, test, vi } from 'vitest';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
 import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
+import { csatFlowDeps } from '../../../support/csat-flow.js';
 
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async () => true,
   closeConversationsForCase: async () => 0,
 }));
 
-const { recordCsatScore } = await import('#src/modules/csat/csat.service.js');
+const { recordCsatScoreFlow } = await import('#src/modules/csat/csat.flow.js');
+
+const recordCsatScore = (db: TenantDb, ioServer: SocketIOServer, caseId: string, score: number, comment: string | undefined, scope: { tenantId: string; contactId?: string; agentId?: string }) =>
+  recordCsatScoreFlow(csatFlowDeps(db, ioServer), { caseId, score, comment, scope });
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 const CASE_ID = 'case-1';
@@ -55,7 +59,6 @@ function createDb() {
       }),
       // issue #339：評分以條件更新認領
       updateMany: async () => ({ count: 1 }),
-      update: async () => ({}),
       count: async () => 1,
     },
     message: {
@@ -85,7 +88,7 @@ function createDb() {
         return data;
       },
     },
-    conversation: { update: async () => ({}) },
+    conversation: { updateMany: async () => ({ count: 1 }) },
     agent: { findMany: async () => [] },
     // issue #339：低分通知的收件人（沒有方案、沒有角色 → 沒有收件人）
     tenant: { findUnique: async () => ({ planId: null }) },

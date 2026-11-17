@@ -1,6 +1,6 @@
 /**
  * 寄送滿意度問卷：排程的 job 可能重跑、兩期可能重疊，客服也可能在排程讀取之後重開工單。
- * sendCsatSurvey() 要先以條件更新認領工單，認領失敗就不建立問卷訊息、不送到渠道。
+ * sendCsatSurveyFlow() 要先以條件更新認領工單，認領失敗就不建立問卷訊息、不送到渠道。
  * 對應 openspec/changes/claim-csat-schedule-rows/specs/csat-survey/spec.md。
  */
 import assert from 'node:assert/strict';
@@ -8,6 +8,7 @@ import { test, vi } from 'vitest';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
 import { disabledAiPrivacy } from '../../../support/ai-privacy.js';
+import { csatFlowDeps } from '../../../support/csat-flow.js';
 
 const delivered = vi.hoisted(() => [] as unknown[][]);
 const delivery = vi.hoisted(() => ({ error: undefined as Error | undefined }));
@@ -35,7 +36,12 @@ vi.mock('@open333crm/channel-plugins', () => {
   return { getChannelPlugin: (type: string) => (type === 'LINE' ? plugin : undefined), getAllChannelPlugins: () => [plugin] };
 });
 
-const { sendCsatSurvey, recordCsatScore } = await import('#src/modules/csat/csat.service.js');
+const { sendCsatSurveyFlow, recordCsatScoreFlow } = await import('#src/modules/csat/csat.flow.js');
+
+const sendCsatSurvey = (db: TenantDb, io: SocketIOServer, caseId: string) =>
+  sendCsatSurveyFlow(csatFlowDeps(db, io), { tenantId: TENANT_ID, caseId });
+const recordCsatScore = (db: TenantDb, io: SocketIOServer, caseId: string, score: number, comment: string | undefined, scope: { tenantId: string; agentId?: string }) =>
+  recordCsatScoreFlow(csatFlowDeps(db, io), { caseId, score, comment, scope });
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 const CASE_ID = 'case-1';
@@ -54,7 +60,7 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
   const db = {
     ...disabledAiPrivacy,
     case: {
-      findUnique: async () => ({
+      findFirst: async () => ({
         id: CASE_ID,
         tenantId: TENANT_ID,
         contactId: 'contact-1',
@@ -94,7 +100,7 @@ function createDb(claimedCount: number, messageCreateError?: Error) {
       },
     },
     conversation: {
-      update: async () => ({}),
+      updateMany: async () => ({ count: 1 }),
     },
     channelIdentity: { findFirst: async () => ({ uid: 'U-line-user' }) },
   };
@@ -141,15 +147,18 @@ test('工單到了寄送時間，寄出一份問卷', async () => {
   assert.deepEqual(order, ['case.updateMany', 'message.create']);
 });
 
-// 認領之後寄送最多執行一次：任何一步失敗都不還原 csatSentAt，避免訊息其實已寫入時重寄
+// 認領與問卷訊息在同一個交易（change migrate-csat-tenant-ctx 修改這個 scenario）：
+// 問卷訊息寫入失敗時交易 rollback，csatSentAt 一起還原，之後的執行可以再寄；沒有送到渠道
 test('認領之後建立問卷訊息失敗', async () => {
   delivered.length = 0;
   const failure = new Error('connection reset');
   const { db, updateManyCalls } = createDb(1, failure);
+  const deps = csatFlowDeps(db, io);
 
-  await assert.rejects(sendCsatSurvey(db, io, CASE_ID), failure);
+  await assert.rejects(sendCsatSurveyFlow(deps, { tenantId: TENANT_ID, caseId: CASE_ID }), failure);
 
   assert.equal(updateManyCalls.length, 1);
+  assert.deepEqual(deps.log.entries, ['rollback'], '認領與問卷訊息一起 rollback');
   assert.equal(delivered.length, 0);
 });
 
@@ -194,7 +203,6 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
       case: {
         findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, status: 'RESOLVED', csatScore: null, conversations: [{ id: 'conv-1', channelId: 'ch-1' }] }),
         updateMany: async () => ({ count: 1 }),
-        update: async () => ({}),
       },
       message: {
         create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -205,7 +213,7 @@ test('System template message keeps its authored text: CSAT follow-up', async ()
         findMany: async () => [],
       },
       caseEvent: { create: async () => ({}) },
-      conversation: { update: async () => ({}) },
+      conversation: { updateMany: async () => ({ count: 1 }) },
     } as unknown as TenantDb;
 
     assert.equal(await recordCsatScore(db, io, CASE_ID, 5, undefined, { tenantId: TENANT_ID }), true);
@@ -240,10 +248,9 @@ async function closeUpdateAfterScore(status: string) {
         csatScore: null,
         conversations: [{ id: 'conv-1', channelId: 'ch-1' }],
       }),
-      updateMany: async () => ({ count: 1 }),
-      update: async ({ data }: { data: Record<string, unknown> }) => {
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
         updates.push(data);
-        return {};
+        return { count: 1 };
       },
     },
     message: {
@@ -253,7 +260,7 @@ async function closeUpdateAfterScore(status: string) {
     },
     // issue #444：評分與評分後結案寫時間軸
     caseEvent: { create: async () => ({}) },
-    conversation: { update: async () => ({}) },
+    conversation: { updateMany: async () => ({ count: 1 }) },
   } as unknown as TenantDb;
   // 客人只能替已解決的工單評分（issue #520），其他狀態的評分後結案只會來自客服代評
   const scope = status === 'RESOLVED' ? { tenantId: TENANT_ID } : { tenantId: TENANT_ID, agentId: 'agent-1' };
