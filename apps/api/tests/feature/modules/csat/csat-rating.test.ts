@@ -10,9 +10,9 @@
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '#src/lib/tenant-db.js';
-import { eventBus, type AppEvent } from '#src/events/event-bus.js';
-import { recordCsatScore } from '#src/modules/csat/csat.service.js';
+import { createOutboxPublisher, type EventPublisher } from '#src/events/outbox-publisher.js';
+import { recordCsatScoreFlow } from '#src/modules/csat/csat.flow.js';
+import type { CsatScope } from '#src/modules/csat/csat.service.js';
 import { resolveCaseManagerRecipients } from '#src/modules/notification/notification.service.js';
 
 const owner = new PrismaClient();
@@ -20,8 +20,10 @@ const second = new PrismaClient();
 const stamp = `csat-rate-${Date.now().toString(36)}`;
 const io = { to: () => ({ emit: () => true }) } as never;
 
-const closedEvents: AppEvent[] = [];
-eventBus.subscribe('case.closed', (event) => closedEvents.push(event));
+/** case.closed 經 outbox 發布（change migrate-csat-tenant-ctx）：只寫 outbox，不送進佇列 */
+const outboxOnly: EventPublisher = { write: createOutboxPublisher(owner).write, dispatch: async () => {} };
+const caseClosedCount = (caseId: string) =>
+  owner.outbox.count({ where: { tenantId, name: 'case.closed', payload: { path: ['caseId'], equals: caseId } } });
 
 let tenantId = '';
 let channelId = '';
@@ -62,6 +64,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await owner.outbox.deleteMany({ where: { tenantId } });
   await owner.notification.deleteMany({ where: { tenantId } });
   await owner.message.deleteMany({ where: { conversation: { tenantId } } });
   await owner.conversation.deleteMany({ where: { tenantId } });
@@ -88,7 +91,9 @@ async function createCase() {
   return { caseId: kase.id, conversationId: conversation.id };
 }
 
-const asDb = (client: PrismaClient) => client as unknown as TenantDb;
+/** 以指定的連線開交易記分；conversation 的函式用 owner（與進站的 prismaAdmin 相同不受 RLS 限制） */
+const rate = (client: PrismaClient, caseId: string, score: number, scope: CsatScope) =>
+  recordCsatScoreFlow({ prisma: client, io, events: outboxOnly, conversationDb: owner }, { caseId, score, scope });
 const customer = { get scope() { return { tenantId, contactId }; } };
 
 async function lowScoreRecipients(caseId: string): Promise<string[]> {
@@ -106,11 +111,12 @@ const followUpCount = (conversationId: string) =>
  * 兩個請求同時評分：兩條連線都讀到「還沒評分」之後才繼續（讀取完在柵欄等另一邊），
  * 重現兩次都通過 JS 檢查的時序，不靠運氣。
  */
-async function rateTwiceConcurrently(caseId: string, score: number): Promise<boolean[]> {
+async function rateTwiceConcurrently(caseId: string, score: number, scope: CsatScope = customer.scope): Promise<boolean[]> {
   let arrived = 0;
   let release!: () => void;
   const bothRead = new Promise<void>((resolve) => { release = resolve; });
-  const gated = (client: PrismaClient) => new Proxy(client, {
+  // flow 在 $transaction 給的交易連線上查詢，所以柵欄包在交易連線的 case.findFirst
+  const gateTx = (tx: PrismaClient) => new Proxy(tx, {
     get(target, prop) {
       if (prop !== 'case') return Reflect.get(target, prop);
       return new Proxy(target.case, {
@@ -127,9 +133,16 @@ async function rateTwiceConcurrently(caseId: string, score: number): Promise<boo
       });
     },
   });
+  const gated = (client: PrismaClient) => new Proxy(client, {
+    get(target, prop) {
+      if (prop !== '$transaction') return Reflect.get(target, prop);
+      return (cb: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) =>
+        target.$transaction((tx) => cb(gateTx(tx as PrismaClient)), opts as never);
+    },
+  });
   return Promise.all([
-    recordCsatScore(asDb(gated(owner)), io, caseId, score, undefined, customer.scope),
-    recordCsatScore(asDb(gated(second)), io, caseId, score, undefined, customer.scope),
+    rate(gated(owner), caseId, score, scope),
+    rate(gated(second), caseId, score, scope),
   ]);
 }
 
@@ -141,9 +154,20 @@ describe('評分只處理一次', () => {
 
     assert.deepEqual(results.filter(Boolean).length, 1, '只有一次回傳已記錄');
     assert.equal(await followUpCount(conversationId), 1, '只有一則感謝訊息');
-    assert.equal(closedEvents.filter((e) => e.payload.caseId === caseId).length, 1, 'case.closed 只發一次');
+    assert.equal(await caseClosedCount(caseId), 1, 'case.closed 只發一次');
     const recipients = await lowScoreRecipients(caseId);
     assert.equal(recipients.length, new Set(recipients).size, '每位收件成員只收到一則低分通知');
+  });
+
+  // 客服代評不限工單狀態，認領只靠 csatScore 仍是空值；客人評分另有「已解決」條件擋住第二次（issue #520）
+  it('客服同時送出兩次代評只處理一次', async () => {
+    const { caseId, conversationId } = await createCase();
+
+    const results = await rateTwiceConcurrently(caseId, 4, { tenantId, agentId: agents.admin });
+
+    assert.deepEqual(results.filter(Boolean).length, 1, '只有一次回傳已記錄');
+    assert.equal(await followUpCount(conversationId), 1, '只有一則感謝訊息');
+    assert.equal(await caseClosedCount(caseId), 1, 'case.closed 只發一次');
   });
 
   it('同一份評分同時送達兩次', async () => {
@@ -161,7 +185,7 @@ describe('低分只通知負責工單的成員', () => {
   it('低分通知有工單指派權限的管理員與主管', async () => {
     const { caseId } = await createCase();
 
-    assert.equal(await recordCsatScore(asDb(owner), io, caseId, 2, undefined, customer.scope), true);
+    assert.equal(await rate(owner, caseId, 2, customer.scope), true);
 
     const recipients = await lowScoreRecipients(caseId);
     assert.ok(recipients.includes(agents.admin), '持 case.assign 與 channel.view_all 的管理員收到');
@@ -172,19 +196,19 @@ describe('低分只通知負責工單的成員', () => {
 
   it('沒有工單指派權限的成員不收低分通知', async () => {
     const { caseId } = await createCase();
-    await recordCsatScore(asDb(owner), io, caseId, 1, undefined, customer.scope);
+    await rate(owner, caseId, 1, customer.scope);
     assert.equal((await lowScoreRecipients(caseId)).includes(agents.noAssign), false);
   });
 
   it('看不到渠道的成員不收低分通知', async () => {
     const { caseId } = await createCase();
-    await recordCsatScore(asDb(owner), io, caseId, 1, undefined, customer.scope);
+    await rate(owner, caseId, 1, customer.scope);
     assert.equal((await lowScoreRecipients(caseId)).includes(agents.noChannel), false);
   });
 
   it('停用的成員不收低分通知', async () => {
     const { caseId } = await createCase();
-    await recordCsatScore(asDb(owner), io, caseId, 1, undefined, customer.scope);
+    await rate(owner, caseId, 1, customer.scope);
     assert.equal((await lowScoreRecipients(caseId)).includes(agents.inactive), false);
     // 寫入通知時 createNotificationForActiveAgent 也會擋停用成員（#484）：另外直接檢查收件人名單，確定是這裡排除的
     const recipients = await resolveCaseManagerRecipients({ tx: owner as never, tenantId }, channelId);
@@ -194,7 +218,7 @@ describe('低分只通知負責工單的成員', () => {
 
   it('3 分不發低分通知', async () => {
     const { caseId } = await createCase();
-    await recordCsatScore(asDb(owner), io, caseId, 3, undefined, customer.scope);
+    await rate(owner, caseId, 3, customer.scope);
     assert.deepEqual(await lowScoreRecipients(caseId), []);
   });
 });
@@ -203,7 +227,7 @@ describe('評分後關閉對話與評分來源', () => {
   it('客人評分後對話關閉', async () => {
     const { caseId, conversationId } = await createCase();
 
-    await recordCsatScore(asDb(owner), io, caseId, 5, undefined, customer.scope);
+    await rate(owner, caseId, 5, customer.scope);
 
     const kase = await owner.case.findUniqueOrThrow({ where: { id: caseId } });
     const conversation = await owner.conversation.findUniqueOrThrow({ where: { id: conversationId } });
@@ -214,7 +238,7 @@ describe('評分後關閉對話與評分來源', () => {
   it('客服代評後對話關閉', async () => {
     const { caseId, conversationId } = await createCase();
 
-    await recordCsatScore(asDb(owner), io, caseId, 4, undefined, { tenantId, agentId: agents.admin });
+    await rate(owner, caseId, 4, { tenantId, agentId: agents.admin });
 
     const conversation = await owner.conversation.findUniqueOrThrow({ where: { id: conversationId } });
     assert.equal(conversation.status, 'CLOSED');
@@ -222,14 +246,14 @@ describe('評分後關閉對話與評分來源', () => {
 
   it('客人評分記錄來源', async () => {
     const { caseId } = await createCase();
-    await recordCsatScore(asDb(owner), io, caseId, 5, undefined, customer.scope);
+    await rate(owner, caseId, 5, customer.scope);
     const row = await owner.case.findUniqueOrThrow({ where: { id: caseId } });
     assert.equal((row as { csatRatedBy?: string | null }).csatRatedBy, 'customer');
   });
 
   it('客服代評記錄來源', async () => {
     const { caseId } = await createCase();
-    await recordCsatScore(asDb(owner), io, caseId, 4, undefined, { tenantId, agentId: agents.admin });
+    await rate(owner, caseId, 4, { tenantId, agentId: agents.admin });
     const row = await owner.case.findUniqueOrThrow({ where: { id: caseId } });
     assert.equal((row as { csatRatedBy?: string | null }).csatRatedBy, 'agent');
   });

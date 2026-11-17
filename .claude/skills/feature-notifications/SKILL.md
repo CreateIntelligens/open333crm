@@ -44,7 +44,7 @@ description: >
 | 客人傳訊息 | `message.received` | 對話有負責人、且負責人啟用中並看得到該渠道 → 只通知負責人；沒有負責人，或負責人已停用、看不到該渠道 → 看得到該渠道的啟用中 `ADMIN`、`SUPERVISOR`（#440，`getConversationRecipients()`） | `notification.worker.ts` → `notification` queue → workers | `new_message` / `/dashboard/inbox?conv=` |
 | 工單指派 | `case.assigned`（只有 `POST /cases/:id/assign` 與自動派案發布） | 被指派人 | 同上 | `case_assigned` / `/dashboard/cases/:id` |
 | 工單升級 | `case.escalated` | `resolveEscalationRecipients`：`notifyTargets` 含 `supervisor` → 所有 ADMIN+SUPERVISOR；含 `original_assignee` → 升級前負責人；沒帶 → 只有主管；`[]` → 沒人；升級的人自己一律排除。**升級時改派的新負責人不通知** | 同上 | `case_escalated` |
-| CSAT ≤ 2 分 | `recordCsatScore()` → `notifyCsatLowScore()` | 有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`resolveCaseManagerRecipients()`，#339；預設客服角色也有 `case.assign`） | API 行程直接 `createAndDispatchWithoutTransaction`（不經佇列、不重試；搬 csat 時改用 `createAndDispatch`） | `csat_low_score` / `/dashboard/cases?id=`（列表頁不讀 id） |
+| CSAT ≤ 2 分 | `recordCsatScoreFlow()` → `notifyCsatLowScoreFlow()` | 有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`resolveCaseManagerRecipients()`，#339；預設客服角色也有 `case.assign`） | API 行程以 `createAndDispatch` 在記分 commit 之後另開交易寫入（不經佇列、不重試） | `csat_low_score` / `/dashboard/cases?id=`（列表頁不讀 id） |
 | SLA 預警／逾時 | workers `sla.handler.ts` | 負責人；逾時再加 ADMIN+SUPERVISOR | workers 直接 `enqueueNotification` | `sla_warning`、`sla_breached`、`first_response_*`、`customer_waiting_breached` |
 | 自動化「傳送通知」 | workers `automation-actions.ts` | 指定客服 → 工單負責人 → 對話負責人（都要啟用中）→ 都沒有時 ADMIN+SUPERVISOR | 同上 | `sla_rule` / 工單或對話 |
 | 自動化「通知主管」 | 同上 | ADMIN+SUPERVISOR | 同上 | `sla_rule` / 只有工單時才有連結 |

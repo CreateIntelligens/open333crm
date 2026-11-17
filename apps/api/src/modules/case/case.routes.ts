@@ -16,7 +16,8 @@ import {
   updateCaseFlow,
 } from './case.flow.js';
 import { actorOf } from '../../lib/request-actor.js';
-import { recordCsatScore } from '../csat/csat.service.js';
+import { recordCsatScoreFlow } from '../csat/csat.flow.js';
+import { tenantScopedClient } from '../../lib/tenant-db.js';
 import { addTagToTargetFlow, removeTagFromTargetFlow } from '../tag/tag.flow.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible, assertChannelVisible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
@@ -343,14 +344,21 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = csatSchema.parse(request.body);
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：記錄 CSAT 為管理操作
 
-    const recorded = await recordCsatScore(
-      request.tenantPrisma,
-      fastify.io,
-      request.params.id,
-      data.score,
-      data.comment,
-      // 客服代評：時間軸記錄評分的客服（issue #444）
-      { tenantId: request.agent.tenantId, agentId: request.agent.id },
+    const actor = actorOf(request);
+    const recorded = await recordCsatScoreFlow(
+      {
+        prisma: fastify.prisma,
+        io: fastify.io,
+        // conversation 還沒搬遷：送感謝訊息、關閉對話要綁定租戶的連線（change migrate-csat-tenant-ctx design D4）
+        conversationDb: tenantScopedClient(fastify.prisma, actor.tenantId),
+      },
+      {
+        caseId: request.params.id,
+        score: data.score,
+        comment: data.comment,
+        // 客服代評：時間軸記錄評分的客服（issue #444）
+        scope: { tenantId: actor.tenantId, agentId: actor.agentId },
+      },
     );
 
     if (!recorded) {

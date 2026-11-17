@@ -587,7 +587,7 @@
       "usedBy": [
         {
           "domain": "inbox",
-          "why": "ContactInfoPanel 的「建立工單」、已關閉對話的 CSAT 與工單時間；ChatWindow 的 CSAT 卡片呼叫 POST /cases/:id/csat；進站 CSAT 攔截器呼叫 recordCsatScore"
+          "why": "ContactInfoPanel 的「建立工單」、已關閉對話的 CSAT 與工單時間；ChatWindow 的 CSAT 卡片呼叫 POST /cases/:id/csat；進站 CSAT 攔截器呼叫 recordCsatScoreFlow"
         },
         {
           "domain": "automation",

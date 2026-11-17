@@ -1,6 +1,6 @@
 ## Why
 
-#337 階段 4 第八批：把 `csat` 模組改成「入口以 `inTenant()` 開一個綁定租戶的交易，service 只收 `TenantCtx`」（AGENTS.md 結構規則 2）。
+這是 #337 階段 4 第八批：把 `csat` 模組改成「入口以 `inTenant()` 開一個綁定租戶的交易，service 只收 `TenantCtx`」（AGENTS.md 結構規則 2）。
 
 目前 csat 的三條流程都用 `prismaAdmin` 或 `request.tenantPrisma` 逐句執行，沒有交易包住：
 

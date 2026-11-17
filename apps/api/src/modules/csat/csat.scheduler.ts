@@ -1,10 +1,9 @@
 import type { ChannelType, PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
-import { csatSurveyChannelTypes, sendCsatSurvey } from './csat.service.js';
-import { closeConversationsForCase } from '../conversation/conversation.service.js';
-import { eventBus } from '../../events/event-bus.js';
+import { csatSurveyChannelTypes } from './csat.service.js';
+import { autoCloseCsatCaseFlow, sendCsatSurveyFlow, type CsatFlowDeps } from './csat.flow.js';
+import type { EventPublisher } from '../../events/outbox-publisher.js';
 import { logger } from '@open333crm/core';
-import { caseTransitionTimestamps } from '@open333crm/shared';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
@@ -12,20 +11,30 @@ const POLL_INTERVAL_MS = 60_000; // 60 seconds
 export const CSAT_SURVEY_DELAY_MINUTES = 30;
 const AUTO_CLOSE_HOURS = 72; // auto-close after 72h without CSAT response
 
+export interface CsatSchedulerDeps {
+  /** BYPASSRLS 的連線：跨租戶找出候選工單 */
+  admin: PrismaClient;
+  /** app_tenant 的基礎連線：每張工單以 inTenant() 處理 */
+  prisma: PrismaClient;
+  io: SocketIOServer;
+  /** 沒給時用 createOutboxPublisher(prisma) */
+  events?: EventPublisher;
+}
+
 /**
- * Setup CSAT scheduler with two polling tasks:
- * 1. Send CSAT surveys for resolved cases after delay
- * 2. Auto-close cases that haven't received CSAT response within timeout
+ * 滿意度問卷的兩個排程（change migrate-csat-tenant-ctx，design D1、D2）：
+ * 1. 工單解決 30 分鐘後寄問卷
+ * 2. 寄出 72 小時沒有回覆時結案
+ * 掃描用 admin 連線，每張工單用自己的租戶交易處理；一張失敗只影響這一張，下一期再處理（#337 規劃第 2 節）。
  */
-export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient, io: SocketIOServer) {
-  /**
-   * Poll for resolved cases that need CSAT survey sent.
-   */
+export function setupCsatScheduler(scheduler: JobScheduler, deps: CsatSchedulerDeps) {
+  const flowDeps: CsatFlowDeps = { prisma: deps.prisma, io: deps.io, events: deps.events, conversationDb: deps.admin };
+
   async function pollSendCsat() {
     try {
       const cutoff = new Date(Date.now() - CSAT_SURVEY_DELAY_MINUTES * 60 * 1000);
 
-      const cases = await prisma.case.findMany({
+      const cases = await deps.admin.case.findMany({
         where: {
           status: 'RESOLVED',
           csatSentAt: null,
@@ -37,19 +46,14 @@ export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient
           // 租戶停用（含試用到期）時不寄問卷給客人（issue #410）
           tenant: { isActive: true },
         },
-        include: {
-          conversations: {
-            select: { id: true },
-            take: 1,
-          },
-        },
+        select: { id: true, tenantId: true },
         orderBy: { resolvedAt: 'asc' },
         take: 10,
       });
 
       for (const c of cases) {
         try {
-          const sent = await sendCsatSurvey(prisma, io, c.id);
+          const sent = await sendCsatSurveyFlow(flowDeps, { tenantId: c.tenantId, caseId: c.id });
           if (sent) {
             logger.info(`[CsatScheduler] Sent CSAT survey for case ${c.id}`);
           }
@@ -62,81 +66,27 @@ export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient
     }
   }
 
-  /**
-   * Poll for cases that sent CSAT but haven't received response, auto-close after timeout.
-   */
   async function pollAutoClose() {
     try {
       const cutoff = new Date(Date.now() - AUTO_CLOSE_HOURS * 60 * 60 * 1000);
 
-      const cases = await prisma.case.findMany({
+      const cases = await deps.admin.case.findMany({
         where: {
           status: 'RESOLVED',
           csatSentAt: { not: null, lte: cutoff },
           csatRespondedAt: null,
         },
-        include: {
-          conversations: {
-            select: { id: true },
-          },
-        },
+        select: { id: true, tenantId: true },
         orderBy: { csatSentAt: 'asc' },
         take: 10,
       });
 
       for (const c of cases) {
         try {
-          const now = new Date();
-          // 以條件更新認領：讀取之後工單被重開、客人已評分，或別次執行已結案時，不再結案、不發事件
-          const { count } = await prisma.case.updateMany({
-            where: { id: c.id, tenantId: c.tenantId, status: 'RESOLVED', csatRespondedAt: null },
-            // RESOLVED → CLOSED：依共用規則（issue #417）寫 closedAt、保留 resolvedAt
-            data: {
-              status: 'CLOSED',
-              ...caseTransitionTimestamps('RESOLVED', 'CLOSED', now),
-            },
-          });
-          if (count === 0) {
-            logger.info(`[CsatScheduler] Skip auto-close for case ${c.id}: no longer RESOLVED or already rated`);
-            continue;
+          const closed = await autoCloseCsatCaseFlow(flowDeps, { tenantId: c.tenantId, caseId: c.id, autoCloseHours: AUTO_CLOSE_HOURS });
+          if (closed) {
+            logger.info(`[CsatScheduler] Auto-closed case ${c.id} (no CSAT response after ${AUTO_CLOSE_HOURS}h)`);
           }
-
-          // Publish case.closed event
-          eventBus.publish({
-            name: 'case.closed',
-            tenantId: c.tenantId,
-            timestamp: now,
-            payload: {
-              caseId: c.id,
-              contactId: c.contactId,
-              channelId: c.channelId,
-              assigneeId: c.assigneeId,
-              title: c.title,
-              autoClosedNoResponse: true,
-            },
-          });
-
-          io.to(`tenant:${c.tenantId}`).emit('case.updated', {
-            id: c.id,
-            status: 'CLOSED',
-            priority: c.priority,
-            assigneeId: c.assigneeId,
-          });
-
-          // Cascade: close every linked conversation in one batch.
-          try {
-            await closeConversationsForCase(prisma, io, c.id, c.tenantId, {
-              source: 'csat',
-              reason: `CSAT 未回覆，自動結案 (${AUTO_CLOSE_HOURS}h)`,
-            });
-          } catch (err) {
-            logger.error(
-              `[CsatScheduler] Failed to close conversations after case ${c.id} auto-close:`,
-              err,
-            );
-          }
-
-          logger.info(`[CsatScheduler] Auto-closed case ${c.id} (no CSAT response after ${AUTO_CLOSE_HOURS}h)`);
         } catch (err) {
           logger.error(`[CsatScheduler] Failed to auto-close case ${c.id}:`, err);
         }

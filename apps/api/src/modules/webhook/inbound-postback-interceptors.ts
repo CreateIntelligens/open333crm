@@ -1,7 +1,8 @@
 import { logger } from '@open333crm/core';
 import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { eventBus } from '../../events/event-bus.js';
-import { recordCsatScore, relabelCsatReplyMessage } from '../csat/csat.service.js';
+import { relabelCsatReplyMessage } from '../csat/csat.service.js';
+import { recordCsatScoreFlow } from '../csat/csat.flow.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { recordKbFeedbackFlow } from '../knowledge/knowledge.flow.js';
 import { addTagToTargetFlow } from '../tag/tag.flow.js';
@@ -83,10 +84,12 @@ async function handleCsatResponse(ctx: InboundMessageContext): Promise<boolean> 
 
   // 只接受同租戶、傳訊者本人的工單；不符時仍攔截，避免偽造的評分落入 AI 與自動化（AUDIT RLS-06）
   const recorded = ctx.contactId
-    ? await recordCsatScore(ctx.prisma, ctx.io, csatCaseId, score, undefined, {
-      tenantId: ctx.tenantId,
-      contactId: ctx.contactId,
-    })
+    ? await recordCsatScoreFlow(
+      // 以 app_tenant 連線開租戶交易；沒給時退回 webhook 的連線。conversation 還沒搬遷，送感謝訊息與關閉對話用
+      // webhook 的連線（change migrate-csat-tenant-ctx design D4）
+      { prisma: ctx.options.tenantPrisma ?? ctx.prisma, io: ctx.io, conversationDb: ctx.prisma },
+      { caseId: csatCaseId, score, scope: { tenantId: ctx.tenantId, contactId: ctx.contactId } },
+    )
     : false;
   if (recorded && !fromButton) await relabel();
   if (!recorded) {

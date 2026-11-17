@@ -148,10 +148,10 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 排程的 job 可能重跑，兩期也可能重疊，所以兩個工作都先以條件更新認領工單，認領成功才往下做：
 
-- 寄送滿意度問卷：`sendCsatSurvey()` 先寫入 `csatSentAt`，條件是工單仍是 `RESOLVED`、還沒有 `csatSentAt`、還沒有評分、租戶啟用中。沒寫入就不建立問卷訊息、不送到渠道。每次解決因此最多寄一份。
-- 問卷逾時結案：改成 `CLOSED` 的那次更新，條件是工單仍是 `RESOLVED`、還沒有 `csatRespondedAt`。沒寫入就不發事件、不關閉對話。排程讀取之後客服重開工單，或客人回覆評分，工單都不會被蓋回 `CLOSED`。
+- 寄送滿意度問卷：`sendCsatSurveyFlow()` 在同一個交易內寫入 `csatSentAt` 並建立問卷訊息。寫入 `csatSentAt` 的條件是工單仍是 `RESOLVED`、還沒有 `csatSentAt`、還沒有評分、租戶啟用中。沒寫入就不建立問卷訊息、不送到渠道。問卷訊息寫入失敗時，`csatSentAt` 一起 rollback，下一期重試。交易 commit 之後，才在交易外送到渠道。每次解決因此最多寄一份。
+- 問卷逾時結案：改成 `CLOSED` 的那次更新，條件是工單仍是 `RESOLVED`、還沒有 `csatRespondedAt`。這次更新與 `case.closed`（寫進 outbox）在同一個交易內 commit。沒寫入就不發事件、不關閉對話。排程讀取之後客服重開工單，或客人回覆評分，工單都不會被蓋回 `CLOSED`。
 
-兩個工作都是「最多一次」：認領之後任何一步失敗（建立問卷訊息、送到渠道），或行程中途結束，這張工單都不會再處理，問卷少寄一份，或工單已結案但沒有發事件、沒有關閉對話。寧可少寄，不重複寄。
+問卷送到渠道是「最多一次」：交易 commit 之後，送出失敗或行程中途結束，這張工單都不會再處理，問卷少寄一份。寧可少寄，不重複寄。問卷逾時結案的 `case.closed` 經 outbox 至少送出一次；commit 之後才關閉工單底下的對話，關閉失敗只記 log（change `migrate-csat-tenant-ctx`）。
 
 問卷送不到客人時（渠道停用、找不到客人在該渠道的帳號、渠道拒收或送出出錯），系統留下客服看得到的紀錄，不自動重寄，`csatSentAt` 保留：
 
@@ -162,9 +162,11 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 問卷的版型由渠道外掛的 `buildCsatSurvey()` 產生，csat 模組不比對 `channelType`。LINE 是 Flex Message，五個分數按鈕；其他渠道沒有實作，不寄問卷。
 
-客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScore()` 記錄，並回一則感謝訊息。每張工單只記第一次評分：寫入分數的更新帶 `csatScore: null` 條件，客人連點兩次時只有一次寫入，感謝訊息、低分通知與 `case.closed` 都只有一次（#339）。客服也可以用 `POST /cases/:id/csat` 代評。評分後工單改成 `CLOSED`，並關閉工單底下的對話，與問卷逾時結案相同。
+客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScoreFlow()` 記錄，並回一則感謝訊息。每張工單只記第一次評分：寫入分數的更新帶 `csatScore: null` 條件，客人連點兩次時只有一次寫入，感謝訊息、低分通知與 `case.closed` 都只有一次（#339）。客服也可以用 `POST /cases/:id/csat` 代評。評分後工單改成 `CLOSED`，並關閉工單底下的對話，與問卷逾時結案相同。
 
-1～2 分只發站內通知 `csat_low_score`，不升級工單。收件人是有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`），不看舊的角色列舉。預設的客服角色也有 `case.assign`。通知送不出時，工單時間軸寫一筆 `csat_low_score_notify_failed`。
+分數、問卷卡片的分數、時間軸、感謝訊息、工單結案與 `case.closed`（寫進 outbox）在同一個交易內寫入，一起 commit 或一起 rollback。任何一筆寫入失敗時，這次評分不留下任何東西，客人可以再點一次，客服可以再按一次（change `migrate-csat-tenant-ctx`）。commit 之後，系統才推送收件匣、把感謝訊息送到渠道、發低分通知、關閉對話。
+
+1～2 分只發站內通知 `csat_low_score`，不升級工單。收件人是有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`），不看舊的角色列舉。預設的客服角色也有 `case.assign`。低分通知在記分 commit 之後另開一個交易寫入。通知送不出時，這個交易 rollback，系統再另開交易在工單時間軸寫一筆 `csat_low_score_notify_failed`，分數不受影響。
 
 記錄分數之後，客服在後台看得到結果（issue #444）：
 
@@ -173,7 +175,7 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 - 工單時間軸寫一筆 `csat_rated`（客人評分 `actorType: 'contact'`，客服代評 `actorType: 'agent'` 並記錄客服），顯示為「客人評分：N 分（說明）」或「客服代評滿意度：N 分（說明）」。評分後自動關閉寫一筆 `status_changed`（`actorType: 'system'`、`payload.reason: 'csat_rated'`），顯示為「狀態：已解決 → 已關閉（評分後自動關閉）」。
 - 工單的 `csatRatedBy` 記錄評分來源（`customer` 或 `agent`，#339）。工單詳情頁的「滿意度」區塊顯示分數、說明與評分時間，客服代評時另外標示「客服代評」；問卷已寄出但還沒評分時顯示「問卷已寄出，客人尚未評分」。報表的 CSAT 平均只算客人自評，見[數據分析與報表](./ANALYTICS.md)。
 
-`recordCsatScore()` 只寫入屬於收訊租戶、而且聯絡人就是傳訊者的工單；客服手動記錄時只比對租戶。不符合條件的 CSAT 訊息仍會被攔截，但不寫入、不回覆。
+`recordCsatScoreFlow()` 只寫入屬於收訊租戶、而且聯絡人就是傳訊者的工單；客服手動記錄時只比對租戶。不符合條件的 CSAT 訊息仍會被攔截，但不寫入、不回覆。
 
 
 ## 刪除
