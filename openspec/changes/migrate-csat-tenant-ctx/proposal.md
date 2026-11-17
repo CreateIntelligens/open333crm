@@ -15,7 +15,7 @@
 - **寄問卷（排程 `csat-send`）**：認領工單與建立問卷訊息在同一個交易內寫入，commit 之後才推播。送 LINE 在交易外執行。送不出時，失敗紀錄在另一個交易內寫入。建立問卷訊息失敗時，認領一起 rollback，下一期重試。這時還沒有送出任何東西，所以仍是最多一次。
 - **問卷逾時結案（排程 `csat-auto-close`）**：認領、`case.closed`（改經 outbox）在同一個交易內寫入，commit 之後推播 `case.updated`。關閉對話仍呼叫 `conversation` 模組的 `closeConversationsForCase()`，在 commit 之後執行。
 - **記分（webhook 進站與 `POST /api/v1/cases/:id/csat`）**：分數、問卷卡片的分數、時間軸、感謝訊息、工單結案、`case.closed`（經 outbox）在同一個交易內寫入，一起 commit 或一起 rollback。感謝訊息送渠道在 commit 之後執行。低分通知在另一個交易內寫入（`createAndDispatch()`），失敗時在第三個交易寫 `csat_low_score_notify_failed`。關閉對話在 commit 之後執行。
-- 讀取 AI 個資遮罩政策移到交易之前（`readAiPrivacyPolicy()` 會接住資料庫錯誤，不能在交易內呼叫）。
+- 讀取 AI 個資遮罩政策移到交易之前（#337 規劃 5.2）。讀取失敗時 `readAiPrivacyPolicy()` 丟出 503，流程在寫入之前停止。
 - 刪除 `notification-effects.ts` 的 `createAndDispatchWithoutTransaction()`。
 - **可觀察的差異：**
   - 記分時資料庫出錯，這次評分不會留下任何寫入。原本可能留下「有分數、沒結案」的工單。客人可以再點一次問卷，客服可以再按一次。

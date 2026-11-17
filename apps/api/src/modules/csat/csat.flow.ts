@@ -4,8 +4,8 @@
  * - 問卷逾時結案：交易內認領、結案、case.closed 寫進 outbox → commit 之後關閉對話。
  * - 記分：交易 A 寫入分數到 case.closed → 交易外送感謝訊息 → 交易 B 低分通知（失敗時交易 C 留紀錄）→ 關閉對話。
  *
- * 推播一律在 commit 之後送出（notifyChannel、notifyTenant）。讀遮罩政策在開交易之前：
- * readAiPrivacyPolicy() 會接住資料庫錯誤，在交易內呼叫會讓交易失效（#337 規劃 5.2）。
+ * 推播一律在 commit 之後送出（notifyChannel、notifyTenant）。讀遮罩政策在開交易之前（#337 規劃 5.2）：
+ * readAiPrivacyPolicy() 讀取失敗時丟出 503，流程在寫入之前停止。
  */
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';

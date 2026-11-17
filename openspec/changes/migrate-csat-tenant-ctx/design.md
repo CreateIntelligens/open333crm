@@ -36,7 +36,7 @@ csat 有三條流程，入口與目前用的連線如下：
 | 步驟 | 交易 | 保證 | 失敗時 |
 | --- | --- | --- | --- |
 | 1. 排程以 `prismaAdmin` 跨租戶找出候選工單（只取 id 與 tenantId） | 無 | — | 這一期結束，下一期再找 |
-| 2. 讀遮罩政策 | 交易外 | — | `readAiPrivacyPolicy()` 自己接住錯誤，回傳不遮罩 |
+| 2. 讀遮罩政策 | 交易外 | — | `readAiPrivacyPolicy()` 丟出 503 `AI_PRIVACY_POLICY_UNAVAILABLE`，這張工單沒有寫入，下一期重試 |
 | 3. 認領 `csatSentAt`、建立問卷訊息、更新 `lastMessageAt`、讀出渠道與客人在該渠道的帳號，登記 `message.new` 推播 | 交易 A | 一起 commit 或一起 rollback | rollback：`csatSentAt` 維持空值，下一期重試（MODIFIED scenario） |
 | 4. 以步驟 3 讀出的渠道與帳號送 LINE | 交易外 | 最多一次 | 送不出時進入步驟 5 |
 | 5. 送不出時：問卷訊息標 `deliveryFailed`、時間軸寫 `csat_send_failed`，登記第二次 `message.new` | 交易 B | — | 寫入失敗只記 log；問卷不重寄 |
@@ -55,7 +55,7 @@ csat 有三條流程，入口與目前用的連線如下：
 
 | 步驟 | 交易 | 保證 | 失敗時 |
 | --- | --- | --- | --- |
-| 1. 讀遮罩政策 | 交易外 | — | 回傳不遮罩 |
+| 1. 讀遮罩政策 | 交易外 | — | 丟出 503 `AI_PRIVACY_POLICY_UNAVAILABLE`，沒有寫入任何東西：路由回 503，進站攔截往外丟 |
 | 2. 條件更新寫入分數；問卷卡片寫入分數；時間軸 `csat_rated`；建立感謝訊息、更新 `lastMessageAt`；工單改成 `CLOSED` 與 `status_changed` 事件；`publishEvent(case.closed)`；登記 `message.new`、`case.updated` 推播 | 交易 A | 一起 commit 或一起 rollback | rollback 後丟出錯誤：路由回 500；進站攔截照舊往外丟（原本的行為）。工單維持原狀，客人可以再評分 |
 | 3. 1～2 分時：查收件人、`createAndDispatch()` | 交易 B | 每位收件人最多一則（評分只處理一次） | 寫 `csat_low_score_notify_failed`（交易 C），分數不受影響（既有規格） |
 | 4. `deliverToChannel()` 送感謝訊息 | 交易外 | 最多一次 | 只記 log（原本的行為） |
