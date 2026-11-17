@@ -13,4 +13,4 @@
 - [x] 2.3 `node scripts/validate-openspec.mjs document-api-notification-writers` 通過。
 - [x] 2.4 `node scripts/validate-openspec.mjs --specs` 通過。
 - [x] 2.5 只改規格，不需要 `CHANGELOG.md` 條目。程式的改動已經寫在第七批的條目。
-- [ ] 2.6 PR 合併後，以 `pnpm exec openspec archive document-api-notification-writers` 歸檔。
+- [x] 2.6 PR #535 合併後，以 `pnpm exec openspec archive document-api-notification-writers` 歸檔。
