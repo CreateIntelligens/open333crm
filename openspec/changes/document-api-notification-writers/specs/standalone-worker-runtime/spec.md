@@ -12,7 +12,7 @@ The `apps/workers` notification worker SHALL be the sole processor that persists
 - **THEN** the `notificationQueue.add` call throws, the subscriber job for the event fails, and BullMQ retries that subscriber job; the error is not caught only to be logged
 
 ### Requirement: 站內通知只寫給仍啟用的成員
-API 行程直接寫入站內通知的路徑（`createAndDispatch`：CSAT 低分、權杖失效、留言私訊健康告警、序號明細背景匯出的完成與失敗通知）SHALL 在寫入時以 `tenantId` 檢查收件成員。成員已被永久刪除或已停用時，SHALL NOT 寫入通知或推播 `notification.new`，SHALL 寫 info log，且 SHALL NOT 丟錯。成員重新啟用後，系統 SHALL NOT 補送停用期間略過的通知。
+API 行程直接寫入站內通知的路徑（CSAT 低分、權杖失效、留言私訊健康告警、序號明細背景匯出的完成與失敗通知）SHALL 在寫入時以 `tenantId` 檢查收件成員。成員已被永久刪除或已停用時，SHALL NOT 寫入通知或推播 `notification.new`，SHALL 寫 info log，且 SHALL NOT 丟錯。成員重新啟用後，系統 SHALL NOT 補送停用期間略過的通知。
 
 #### Scenario: createAndDispatch 的收件成員已被永久刪除
 - **WHEN** 以已被永久刪除的成員 ID 呼叫 `createAndDispatch`
@@ -52,7 +52,7 @@ API 行程以 `createAndDispatch` 寫入站內通知時，SHALL 在綁定該租�
 - **THEN** `tenant:<租戶 ID>:agent:<成員 ID>` 房間收到一則 `notification.new`，內容的 `id` 等於寫入的通知的 `id`
 
 ### Requirement: API 行程直接寫入的站內通知
-API 行程 SHALL 只直接寫入這 4 種站內通知，其他通知都經過 `notification` 佇列：CSAT 低分、FB／IG 權杖失效、留言私訊健康告警、序號明細背景匯出的完成與失敗。這 4 種通知 SHALL 經過 `createAndDispatch`。新增的通知類型 SHALL 經過 `notification` 佇列。
+API 行程 SHALL 只直接寫入這 4 種站內通知，其他通知都經過 `notification` 佇列：CSAT 低分、FB／IG 權杖失效、留言私訊健康告警、序號明細背景匯出的完成與失敗。新增的通知類型 SHALL 經過 `notification` 佇列。
 
 #### Scenario: 留言私訊健康告警只通知該租戶啟用中的管理員
 - **WHEN** 留言私訊健康檢查對租戶 A 發出告警，租戶 A 有一位啟用中的管理員、一位停用的管理員、一位一般成員，租戶 B 有一位管理員

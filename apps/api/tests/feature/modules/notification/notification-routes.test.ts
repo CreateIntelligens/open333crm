@@ -9,7 +9,6 @@ import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
-import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import notificationRoutes from '#src/modules/notification/notification.routes.js';
 import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
@@ -37,8 +36,8 @@ async function buildApp(agentId: string) {
   await instance.register(errorHandlerPlugin);
   instance.decorate('prisma', prisma);
   instance.decorate('authenticate', async (request: FastifyRequest) => {
+    // 只設 request.agent：路由經 flow 以 fastify.prisma 開交易，不使用舊的 request.tenantPrisma
     request.agent = { id: agentId, tenantId: TENANT_A, role: 'AGENT', roleId: null } as never;
-    (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(prisma, TENANT_A);
   });
   await instance.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await instance.ready();
