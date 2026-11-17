@@ -38,10 +38,16 @@ export const FB_PRIVATE_REPLY_CONTENT_TYPES = [
   'fb_text', 'fb_image', 'fb_video', 'fb_button', 'fb_generic', 'fb_media', 'text', 'image', 'video', 'file',
 ] as const;
 
-/** 私訊、公開回覆、列貼文所需的粉專權限（planning/04-meta-app-review.md） */
+/**
+ * 私訊、公開回覆、列貼文所需的粉專權限（planning/04-meta-app-review.md §2）。
+ * 收留言（feed）＋私訊只需要 pages_show_list、pages_manage_metadata、pages_messaging；
+ * pages_manage_engagement、pages_read_engagement 只有公開回覆、列貼文才需要（issue #529）。
+ */
 const PRIVATE_REPLY_SCOPES = ['pages_messaging'];
 const PUBLIC_REPLY_SCOPES = ['pages_manage_engagement', 'pages_read_engagement'];
-const REQUIRED_SCOPES = ['pages_show_list', 'pages_manage_metadata', ...PRIVATE_REPLY_SCOPES, ...PUBLIC_REPLY_SCOPES];
+const POST_PICKER_SCOPES = ['pages_read_engagement'];
+/** getSubscriptionStatus 檢查的所有權限（必要＋選用）；哪些算缺少由呼叫端依平台能力決定 */
+const KNOWN_SCOPES = [...new Set(['pages_show_list', 'pages_manage_metadata', ...PRIVATE_REPLY_SCOPES, ...PUBLIC_REPLY_SCOPES, ...POST_PICKER_SCOPES])];
 
 const POST_FIELDS = 'id,message,created_time,permalink_url,full_picture,attachments{media_type}';
 
@@ -106,6 +112,7 @@ export function createFbCommentExtension(deps: FbCommentDeps): ChannelCommentExt
     publicReply: true,
     materialChannelType: 'fb',
     postLinkLabel: '在 Facebook 開啟',
+    optionalPermissions: { publicReply: PUBLIC_REPLY_SCOPES, postPicker: POST_PICKER_SCOPES },
   };
 
   function parsePostReference(input: string, ctx: { accountId: string }): string | null {
@@ -268,7 +275,7 @@ export function createFbCommentExtension(deps: FbCommentDeps): ChannelCommentExt
       const has = (list: string[]) => (scopes ? list.every((s) => scopes!.includes(s)) : null);
       return {
         subscribed,
-        missingPermissions: scopes ? REQUIRED_SCOPES.filter((s) => !scopes!.includes(s)) : null,
+        missingPermissions: scopes ? KNOWN_SCOPES.filter((s) => !scopes!.includes(s)) : null,
         canPrivateReply: has(PRIVATE_REPLY_SCOPES),
         canPublicReply: has(PUBLIC_REPLY_SCOPES),
       };

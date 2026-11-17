@@ -5,7 +5,8 @@
  *
  * - 狀態 A：沒有可用的 FB／IG 渠道 → CommentReplyNoChannelState（整頁空狀態）
  * - 狀態 B：尚未開啟留言接收（未訂閱 feed／comments）
- * - 狀態 C：權限不足（FB 重新連結、IG 重新產生權杖）
+ * - 狀態 C：權限不足（FB 重新連結、IG 重新產生權杖）；只缺已開放的選用功能（公開回覆、貼文挑選）的權限時，
+ *   另以資訊卡說明受影響的功能，私訊不受影響（issue #529）
  * - 狀態 D：平台測試階段（只對平台模式渠道）
  * - 狀態 E：方案未含或角色沒有檢視權限 → CommentReplyUnavailable
  * - 平台暫停中（緊急停止）、平台尚未開放某平台的私訊能力
@@ -104,6 +105,16 @@ function lacksPermission(c: CommentReplyReadinessChannel): boolean {
   return Array.isArray(c.missingPermissions) && c.missingPermissions.length > 0;
 }
 
+/** 渠道只缺選用功能（平台已開放）的權限：回傳受影響的功能名稱；缺必要權限時由「缺少必要的授權」卡處理 */
+export function affectedOptionalFeatures(c: CommentReplyReadinessChannel): string[] {
+  if (lacksPermission(c)) return [];
+  const optional = c.missingOptionalPermissions;
+  return [
+    ...(optional?.publicReply?.length ? ['公開回覆留言'] : []),
+    ...(optional?.postPicker?.length ? ['從最近貼文挑選'] : []),
+  ];
+}
+
 function ReconnectFacebookButton({ onError }: { onError: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -190,6 +201,9 @@ export function CommentReplyReadinessCard({ readiness, onChanged }: Props) {
 
   const notReceiving = readiness.channels.filter(isNotReceiving);
   const missing = readiness.channels.filter(lacksPermission);
+  const optionalMissing = readiness.channels
+    .map((channel) => ({ channel, features: affectedOptionalFeatures(channel) }))
+    .filter((x) => x.features.length > 0);
   const testPhase = testPhasePlatforms(readiness);
   const closedPlatforms = (['fb', 'ig'] as const).filter((p) => {
     const cap = p === 'fb' ? readiness.capabilities?.fbPrivateReply : readiness.capabilities?.igPrivateReply;
@@ -202,7 +216,7 @@ export function CommentReplyReadinessCard({ readiness, onChanged }: Props) {
   };
 
   const nothing =
-    !readiness.emergencyStopped && notReceiving.length === 0 && missing.length === 0 && testPhase.length === 0 && closedPlatforms.length === 0 && !success;
+    !readiness.emergencyStopped && notReceiving.length === 0 && missing.length === 0 && optionalMissing.length === 0 && testPhase.length === 0 && closedPlatforms.length === 0 && !success;
   if (nothing) return null;
 
   return (
@@ -261,7 +275,7 @@ export function CommentReplyReadinessCard({ readiness, onChanged }: Props) {
               <>
                 <div className="font-semibold">{c.displayName}缺少必要的授權</div>
                 <p className="mt-1 text-foreground">
-                  連結 Facebook 時沒有同意「管理粉專貼文互動」與「讀取貼文留言」權限，系統收不到留言也無法私訊。
+                  連結 Facebook 時沒有同意傳送訊息或管理粉專設定的權限，系統收不到留言也無法私訊。
                   重新連結時，請在 Facebook 的授權畫面保留所有勾選的項目。
                 </p>
                 <div className="mt-2">
@@ -273,6 +287,27 @@ export function CommentReplyReadinessCard({ readiness, onChanged }: Props) {
                 </div>
               </>
             )}
+          </div>
+        );
+      })}
+      {optionalMissing.map(({ channel: c, features }) => {
+        const names = features.map((f) => `「${f}」`).join('、');
+        return (
+          <div key={c.channelId} className="rounded-md border border-primary-border bg-primary-subtle px-4 py-3 text-sm text-primary">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <Info className="h-4 w-4" aria-hidden="true" />
+              <span>{c.displayName}尚未授權{names}</span>
+            </div>
+            <p className="mt-1 text-foreground/80">
+              留言自動私訊不受影響，系統仍會收到留言並私訊留言者。要使用{names}，請重新連結 Facebook，並在授權畫面保留所有勾選的項目。
+            </p>
+            <div className="mt-2">
+              {canReconnect ? (
+                <ReconnectFacebookButton onError={setReconnectError} />
+              ) : (
+                <span className="text-foreground/80">請洽管理員到渠道管理重新連結</span>
+              )}
+            </div>
           </div>
         );
       })}

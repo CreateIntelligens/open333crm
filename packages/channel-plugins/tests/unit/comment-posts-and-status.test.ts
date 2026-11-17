@@ -159,6 +159,14 @@ describe('getSubscriptionStatus', () => {
     assert.equal(dbg.searchParams.get('access_token'), 'APP1|sec');
   });
 
+  test('FB 在 capabilities 標出只屬於選用功能的權限；IG 沒有（issue #529）', () => {
+    assert.deepEqual(fbC().capabilities.optionalPermissions, {
+      publicReply: ['pages_manage_engagement', 'pages_read_engagement'],
+      postPicker: ['pages_read_engagement'],
+    });
+    assert.equal(igC().capabilities.optionalPermissions, undefined);
+  });
+
   test('FB 自己的 App 沒訂 feed → subscribed false', async () => {
     handler = (url) => (url.pathname.endsWith('/subscribed_apps')
       ? { data: [{ id: 'APP1', subscribed_fields: ['messages'] }] }

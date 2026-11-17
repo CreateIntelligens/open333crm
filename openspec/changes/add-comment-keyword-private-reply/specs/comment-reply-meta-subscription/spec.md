@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: 前置條件查詢
-`GET /api/v1/comment-replies/readiness` SHALL 回傳平台的測試階段、能力開關、緊急停止、本月用量與上限，以及檢視者看得到的每個 FB／IG 渠道的連結模式、是否開啟留言接收、訂閱狀態、缺少的權限、能否私訊與公開回覆、權杖狀態與最後收到留言的時間。查 Meta 的結果 SHALL 快取 5 分鐘，每個渠道最多等 3 秒，逾時回 `subscribed: null`。
+`GET /api/v1/comment-replies/readiness` SHALL 回傳平台的測試階段、能力開關、緊急停止、本月用量與上限，以及檢視者看得到的每個 FB／IG 渠道的連結模式、是否開啟留言接收、訂閱狀態、缺少的權限、能否私訊與公開回覆、權杖狀態與最後收到留言的時間。查 Meta 的結果 SHALL 快取 5 分鐘，每個渠道最多等 3 秒，逾時回 `subscribed: null`。`missingPermissions` SHALL 只列收留言與私訊的必要權限（FB：`pages_show_list`、`pages_manage_metadata`、`pages_messaging`）；公開回覆與貼文挑選的權限 SHALL 只在平台開放該能力時，列在 `missingOptionalPermissions.publicReply`、`missingOptionalPermissions.postPicker`。
 
 #### Scenario: 用量與上限
 - **WHEN** 租戶本月已私訊 12 則、`monthlyCommentReplies` 是 100、啟用規則 3 條、`maxCommentReplyRules` 是 5，呼叫 readiness
@@ -18,6 +18,22 @@
 #### Scenario: 只列看得到的渠道
 - **WHEN** 只看得到渠道 A 的成員呼叫 readiness
 - **THEN** `channels` 只含渠道 A
+
+#### Scenario: 公開回覆與貼文挑選未開放時不回報缺少其權限
+- **WHEN** 平台的 `fbPublicReply`、`fbPostPicker` 都關閉，FB 渠道的權杖只有 `pages_show_list`、`pages_manage_metadata`、`pages_messaging`，呼叫 readiness
+- **THEN** 該渠道 `missingPermissions` 是空陣列，`missingOptionalPermissions` 是 `{ publicReply: [], postPicker: [] }`，`canPrivateReply` 是 true
+
+#### Scenario: 公開回覆開放時回報缺少公開回覆權限
+- **WHEN** 平台開啟 `fbPublicReply`、關閉 `fbPostPicker`，FB 渠道的權杖只有 `pages_show_list`、`pages_manage_metadata`、`pages_messaging`
+- **THEN** 該渠道 `missingPermissions` 是空陣列，`missingOptionalPermissions.publicReply` 含 `pages_manage_engagement` 與 `pages_read_engagement`，`missingOptionalPermissions.postPicker` 是空陣列
+
+#### Scenario: 只開放貼文挑選時回報缺少讀取貼文權限
+- **WHEN** 平台開啟 `fbPostPicker`、關閉 `fbPublicReply`，FB 渠道的權杖只有 `pages_show_list`、`pages_manage_metadata`、`pages_messaging`
+- **THEN** 該渠道 `missingPermissions` 是空陣列，`missingOptionalPermissions` 是 `{ publicReply: [], postPicker: ['pages_read_engagement'] }`
+
+#### Scenario: 缺少私訊權限
+- **WHEN** 平台的 `fbPublicReply`、`fbPostPicker` 都關閉，FB 渠道的權杖只有 `pages_show_list`、`pages_manage_metadata`
+- **THEN** 該渠道 `missingPermissions` 是 `['pages_messaging']`，`canPrivateReply` 是 false
 
 ### Requirement: 開啟留言接收時送出完整的訂閱欄位
 `POST /api/v1/comment-replies/channels/:channelId/subscribe-comments` SHALL 需要 `channel.update` 與 `comment_reply.view`。FB 渠道 SHALL 以 `POST /{page-id}/subscribed_apps` 送出 4 個 messaging 欄位加 `feed` 的完整清單並帶 `appsecret_proof`；IG 渠道 SHALL 以 `POST graph.instagram.com/.../me/subscribed_apps` 送 `messages` 與 `comments`。成功後渠道標記為開啟接收、清除前置條件快取、寫租戶稽核。

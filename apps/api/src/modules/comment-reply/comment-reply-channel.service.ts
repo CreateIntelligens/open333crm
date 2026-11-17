@@ -214,6 +214,37 @@ async function lookupSubscription(channel: CommentChannelHandle, redis: Redis | 
   return result;
 }
 
+export interface MissingPermissionSplit {
+  /** 收留言、私訊的必要權限中缺少的；null＝無法得知 */
+  required: string[] | null;
+  /** 平台已開放的選用功能所缺少的權限（功能未開放或無法得知時是空陣列） */
+  optional: { publicReply: string[]; postPicker: string[] };
+}
+
+/**
+ * @description 把外掛回報的缺少權限分成「必要」與「已開放的選用功能」（issue #529）。
+ *   只屬於選用功能的權限（外掛的 capabilities.optionalPermissions）不算必要權限；平台沒有開放的功能不回報。
+ * @param missing 外掛回報權杖缺少的所有權限；null＝無法得知
+ * @param optionalScopes 外掛標示的選用功能權限；沒有時所有缺少的權限都算必要
+ * @param enabled 平台是否開放公開回覆、貼文挑選
+ */
+export function splitMissingPermissions(
+  missing: string[] | null,
+  optionalScopes: ChannelCommentExtension['capabilities']['optionalPermissions'],
+  enabled: { publicReply: boolean; postPicker: boolean },
+): MissingPermissionSplit {
+  const publicReply = optionalScopes?.publicReply ?? [];
+  const postPicker = optionalScopes?.postPicker ?? [];
+  if (!missing) return { required: null, optional: { publicReply: [], postPicker: [] } };
+  return {
+    required: missing.filter((s) => !publicReply.includes(s) && !postPicker.includes(s)),
+    optional: {
+      publicReply: enabled.publicReply ? missing.filter((s) => publicReply.includes(s)) : [],
+      postPicker: enabled.postPicker ? missing.filter((s) => postPicker.includes(s)) : [],
+    },
+  };
+}
+
 /** readiness 的回應（design「API」GET /readiness） */
 export async function buildReadiness(base: ReadinessBase, redis: Redis | undefined) {
   const channels = await Promise.all(
@@ -227,7 +258,12 @@ export async function buildReadiness(base: ReadinessBase, redis: Redis | undefin
         materials: c.ext.capabilities.materialChannelType !== null,
       };
       const status = await lookupSubscription(c, redis);
-      let missingPermissions = status.missingPermissions;
+      // 公開回覆、貼文挑選的權限只在平台開放該功能時才算缺少（issue #529：未過審的權限所有粉專都拿不到）
+      const split = splitMissingPermissions(status.missingPermissions, c.ext.capabilities.optionalPermissions, {
+        publicReply: caps.publicReply,
+        postPicker: caps.postPicker,
+      });
+      let missingPermissions = split.required;
       if (platform === 'ig' && c.igPermissionMissing24h) {
         missingPermissions = [...new Set([...(missingPermissions ?? []), IG_COMMENT_PERMISSION])];
       }
@@ -240,6 +276,7 @@ export async function buildReadiness(base: ReadinessBase, redis: Redis | undefin
         receiving: c.receiving,
         subscribed: status.subscribed,
         missingPermissions,
+        missingOptionalPermissions: split.optional,
         canPrivateReply: caps.privateReply && status.canPrivateReply !== false,
         canPublicReply: caps.publicReply && status.canPublicReply !== false,
         tokenStatus: c.tokenStatus,

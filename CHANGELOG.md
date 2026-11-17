@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-16]
+
+### Fixed
+
+- **留言自動私訊頁不再對每個 Facebook 粉專誤報「缺少必要的授權」**（issue #529）：前置條件（`GET /api/v1/comment-replies/readiness`）原本把公開回覆、貼文挑選才需要的 `pages_manage_engagement`、`pages_read_engagement` 也算成必要權限；這兩個權限尚未通過 Meta 審查，所有粉專都拿不到，重新連結也無效。現在 `missingPermissions` 只列收留言與私訊的必要權限（`pages_show_list`、`pages_manage_metadata`、`pages_messaging`）；公開回覆、貼文挑選的權限只在平台開放該能力（`fbPublicReply`、`fbPostPicker`）時，列在新欄位 `missingOptionalPermissions`，前置條件卡改以資訊卡說明受影響的功能（私訊不受影響）。Instagram 的判斷不變。
+
 ## [2026-11-14]
 
 ### Added

@@ -96,11 +96,71 @@ describe('狀態 B：尚未開啟留言接收', () => {
 });
 
 describe('狀態 C：權限不足', () => {
-  test('FB 缺授權時提示重新連結 Facebook', () => {
-    const r = makeReadiness({ channels: [readinessChannel({ missingPermissions: ['pages_manage_engagement', 'pages_read_engagement'] })] });
+  test('FB 缺必要授權（私訊權限）時提示重新連結 Facebook', () => {
+    const r = makeReadiness({ channels: [readinessChannel({ missingPermissions: ['pages_messaging'] })] });
     render(<CommentReplyReadinessCard readiness={r} onChanged={onChanged} />);
     screen.getByText('品牌粉專缺少必要的授權');
+    screen.getByText(/系統收不到留言也無法私訊/);
     screen.getByRole('button', { name: '重新連結 Facebook' });
+  });
+
+  test('權杖有私訊所需權限、沒有缺少選用功能的權限時不顯示任何卡片（issue #529）', () => {
+    const r = makeReadiness({
+      channels: [readinessChannel({ missingPermissions: [], missingOptionalPermissions: { publicReply: [], postPicker: [] }, canPublicReply: false })],
+    });
+    const { container } = render(<CommentReplyReadinessCard readiness={r} onChanged={onChanged} />);
+    absent(screen.queryByText(/缺少必要的授權/));
+    absent(screen.queryByRole('button', { name: '重新連結 Facebook' }));
+    assert.equal(container.textContent, '');
+  });
+
+  test('只缺公開回覆的權限：說明受影響的是公開回覆，不說收不到留言', () => {
+    const r = makeReadiness({
+      channels: [
+        readinessChannel({
+          missingPermissions: [],
+          missingOptionalPermissions: { publicReply: ['pages_manage_engagement', 'pages_read_engagement'], postPicker: [] },
+          canPublicReply: false,
+        }),
+      ],
+    });
+    const { container } = render(<CommentReplyReadinessCard readiness={r} onChanged={onChanged} />);
+    screen.getByText('品牌粉專尚未授權「公開回覆留言」');
+    screen.getByText(/留言自動私訊不受影響/);
+    absent(screen.queryByText(/缺少必要的授權/));
+    assert.ok(!container.textContent?.includes('收不到留言'), container.textContent ?? '');
+    screen.getByRole('button', { name: '重新連結 Facebook' });
+  });
+
+  test('只缺貼文挑選的權限：說明受影響的是從最近貼文挑選', () => {
+    const r = makeReadiness({
+      channels: [readinessChannel({ missingPermissions: [], missingOptionalPermissions: { publicReply: [], postPicker: ['pages_read_engagement'] } })],
+    });
+    const { container } = render(<CommentReplyReadinessCard readiness={r} onChanged={onChanged} />);
+    screen.getByText('品牌粉專尚未授權「從最近貼文挑選」');
+    assert.ok(!container.textContent?.includes('收不到留言'), container.textContent ?? '');
+  });
+
+  test('同時缺必要授權與選用功能的權限：只顯示必要授權那張卡', () => {
+    const r = makeReadiness({
+      channels: [
+        readinessChannel({ missingPermissions: ['pages_messaging'], missingOptionalPermissions: { publicReply: ['pages_manage_engagement'], postPicker: [] } }),
+      ],
+    });
+    render(<CommentReplyReadinessCard readiness={r} onChanged={onChanged} />);
+    screen.getByText('品牌粉專缺少必要的授權');
+    absent(screen.queryByText(/尚未授權/));
+    assert.equal(screen.getAllByRole('button', { name: '重新連結 Facebook' }).length, 1);
+  });
+
+  test('沒有重新連結權限時請洽管理員', () => {
+    auth.granted.delete('channel.create');
+    const r = makeReadiness({
+      channels: [readinessChannel({ missingPermissions: [], missingOptionalPermissions: { publicReply: ['pages_manage_engagement'], postPicker: [] } })],
+    });
+    render(<CommentReplyReadinessCard readiness={r} onChanged={onChanged} />);
+    absent(screen.queryByRole('button', { name: '重新連結 Facebook' }));
+    screen.getByText('請洽管理員到渠道管理重新連結');
   });
 
   test('IG 缺權限時提示重新產生權杖', () => {
