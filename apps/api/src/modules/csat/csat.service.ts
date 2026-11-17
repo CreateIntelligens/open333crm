@@ -5,7 +5,8 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { closeConversationsForCase, deliverToChannel } from '../conversation/conversation.service.js';
 import { getAllChannelPlugins, getChannelPlugin, type CsatSurveyInput } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
-import { createAndDispatch, resolveCaseManagerRecipients } from '../notification/notification.service.js';
+import { resolveCaseManagerRecipients } from '../notification/notification.service.js';
+import { createAndDispatchWithoutTransaction } from '../notification/notification-effects.js';
 import { eventBus } from '../../events/event-bus.js';
 import { emitToChannel } from '../../events/socket-push.js';
 import { logger } from '@open333crm/core';
@@ -535,8 +536,7 @@ export async function notifyCsatLowScore(
   try {
     const recipients = await resolveCaseManagerRecipients(ctx, input.channelId);
     for (const agentId of recipients) {
-      await createAndDispatch(ctx.tx, io, {
-        tenantId: ctx.tenantId,
+      await createAndDispatchWithoutTransaction(ctx, io, {
         agentId,
         type: 'csat_low_score',
         title: 'CSAT 低分警報',

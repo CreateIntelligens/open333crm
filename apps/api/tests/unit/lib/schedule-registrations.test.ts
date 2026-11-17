@@ -104,7 +104,7 @@ test('inactivity-close：每 5 分鐘，不加鎖', () => {
 
 test('meta-token-health：每 6 小時，不加鎖', () => {
   const { scheduler, defs } = fakeScheduler();
-  setupMetaTokenHealthScheduler(scheduler, prisma, io);
+  setupMetaTokenHealthScheduler(scheduler, { admin: prisma, prisma, io });
   assert.deepEqual(defs.map(shape), [{ id: 'meta-token-health', every: 21_600_000, pattern: undefined, withoutOverlapping: undefined }]);
 });
 

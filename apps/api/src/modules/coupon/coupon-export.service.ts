@@ -5,7 +5,7 @@
  * 產生失敗也發通知（失敗不能只寫 log）。下載只允許匯出者本人與同租戶。
  */
 import { randomBytes } from 'node:crypto';
-import { createNotificationForActiveAgent, logger } from '@open333crm/core';
+import { logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import { exportInstancesCsv, type RunInTenant } from './coupon-stats.service.js';
@@ -36,32 +36,12 @@ export interface ExportNotice {
 
 export interface BackgroundExportDeps {
   store: BindingStore;
-  /** 發站內通知（呼叫端以 inTenant＋recordExportNotice 實作） */
+  /** 發站內通知（呼叫端以 inTenant＋createAndDispatch 實作） */
   notify: (notice: ExportNotice) => Promise<void>;
   /** 在租戶交易內執行（入口以 inTenant 實作）；每頁一個交易，避開 5 秒的交易時限 */
   runInTenant: RunInTenant;
   /** 測試用：產生前執行，可丟錯模擬失敗 */
   beforeGenerate?: () => Promise<void>;
-}
-
-/**
- * 寫入站內通知，回傳寫入的通知；推播給匯出者由 flow 登記（coupon-export.flow.ts）。
- * 匯出者在產生期間被永久刪除或停用時不寫入，回傳 null（#484）。
- */
-export async function recordExportNotice(ctx: TenantCtx, notice: ExportNotice) {
-  // 條件寫入：在 inTenant 的交易內也不會因外鍵錯誤讓交易中止（createNotificationForActiveAgent 的說明）
-  const notification = await createNotificationForActiveAgent(ctx.tx, {
-    tenantId: ctx.tenantId,
-    agentId: notice.agentId,
-    type: notice.type,
-    title: notice.title,
-    body: notice.body,
-    clickUrl: notice.clickUrl,
-  });
-  if (!notification) {
-    logger.info(`[CouponExport] 略過通知 ${notice.type}：匯出者 ${notice.agentId} 已不存在或已停用（tenant ${ctx.tenantId}）`);
-  }
-  return notification;
 }
 
 export function countInstances(ctx: TenantCtx, couponId: string): Promise<number> {

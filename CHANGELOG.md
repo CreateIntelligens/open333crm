@@ -8,6 +8,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **公開的隱私權政策與資料刪除說明頁面**：新增 `/legal/privacy-policy.html`、`/legal/privacy-policy-en.html`、`/legal/data-deletion.html`、`/legal/data-deletion-en.html` 四個靜態頁面（`apps/web/public/legal/`），不需登入即可開啟，中英文版互相連結。隱私權政策第 4 章說明如何使用 Meta 平台資料（各權限取得的資料、用途、不做的事、刪除方式）；資料刪除說明寫明顧客與商家各自如何要求刪除、刪除哪些資料、處理期限。頁面不載入任何外部字型或追蹤工具。Meta App 審查需要這兩個網址。
 
+### Changed
+
+- **站內通知改成入口開交易**（#337 階段 4 第七批）— 通知的 4 條路由（列表、未讀數、單則已讀、全部已讀）改呼叫 flow，每個請求在一個綁定租戶的交易內讀寫（`app_tenant` 連線，受 RLS 約束），請求與回應不變。可觀察的差異如下：
+  - `PATCH /api/v1/notifications/:id/read` 的 `:id` 不是 UUID 時，回 400 `VALIDATION_ERROR`，不再查資料庫後回 400 `DATABASE_ERROR`。
+  - API 行程寫入站內通知的入口都改用 `notification/notification-effects.ts` 的 `createAndDispatch()`：在綁定租戶的交易內寫入，commit 之後才推播 `notification.new`；交易 rollback 時通知與推播都作廢。推播房間從 `agent:<成員 id>` 改成 `tenant:<租戶 id>:agent:<成員 id>`，前端連線時已經加入這個房間。
+  - FB／IG 權杖失效通知（`meta-token-health` 排程）與留言私訊健康告警改用 `app_tenant` 連線寫入通知，原本用 `prismaAdmin`。留言私訊告警同一個租戶的管理員通知在一個交易內寫入。
+  - 序號明細背景匯出的通知改用同一個 `createAndDispatch()`，移除重複的 `recordExportNotice()`。
+  - CSAT 低分通知屬於還沒搬的 `csat`，暫時用 `createAndDispatchWithoutTransaction()`：寫入後立刻推播到帶租戶 ID 的房間。
+
 ## [2026-11-16]
 
 ### Fixed
