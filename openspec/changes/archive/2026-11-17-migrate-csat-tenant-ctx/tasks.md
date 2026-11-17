@@ -42,7 +42,11 @@
 - [x] 4.6 `node scripts/validate-openspec.mjs migrate-csat-tenant-ctx` 與 `--specs` 通過。
 - [x] 4.7 `CHANGELOG.md` 在 `Changed` 寫明可觀察的差異（記分一起 rollback、建立問卷訊息失敗會重試、`case.closed` 至少一次）。
 - [x] 4.8 更新 `docs/ref/` 中描述 csat 行為的文件與 `feature-cases` skill。更新 `docs/ref/features/tenant/CASES.md`、`NOTIFICATIONS.md`、`feature-map.json`、`feature-cases` 與 `feature-notifications` skill。
-- [ ] 4.9 部署到 UAT 之後，重跑 #337 規劃 6.2 的量測（這批改到 `POST /cases/:id/csat`，GET 端點沒有改，只確認併發沒有變差）。
+- [x] 4.9 部署到 UAT 之後，重跑 #337 規劃 6.2 的量測（這批改到 `POST /cases/:id/csat`，GET 端點沒有改，只確認併發沒有變差）。
+  - 2026-11-17，main `2f0285c4`：PR #537 合併，「Deploy to UAT」成功（07:51 UTC）。只跑併發量測 `conc.mjs`，量了兩次：
+    - 第一次：10 人 p50 141.1 ms、p95 273.3 ms，p95 高於以往各批的範圍。
+    - 第二次：10 人 p50 135.7 ms、p95 194.0 ms，回到以往的範圍。
+    - 兩次的非 200、P2024、`Transaction already closed` 都是 0 次，`app_tenant` 是 5 條連線。這 6 個 GET 這批沒有改，所以判斷第一次的 p95 是雜訊。
 
 ## 5. PR #537 審查之後
 
