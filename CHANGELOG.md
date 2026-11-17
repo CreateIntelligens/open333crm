@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-17]
+
+### Added
+
+- **公開的隱私權政策與資料刪除說明頁面**：新增 `/legal/privacy-policy.html`、`/legal/privacy-policy-en.html`、`/legal/data-deletion.html`、`/legal/data-deletion-en.html` 四個靜態頁面（`apps/web/public/legal/`），不需登入即可開啟，中英文版互相連結。隱私權政策第 4 章說明如何使用 Meta 平台資料（各權限取得的資料、用途、不做的事、刪除方式）；資料刪除說明寫明顧客與商家各自如何要求刪除、刪除哪些資料、處理期限。頁面不載入任何外部字型或追蹤工具。Meta App 審查需要這兩個網址。
+
 ## [2026-11-16]
 
 ### Fixed
