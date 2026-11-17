@@ -346,7 +346,7 @@ export async function bootstrap() {
     visibilityOf: agentVisibilityResolver(app.prismaAdmin, app.redis),
   });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
-  setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);
+  setupMetaTokenHealthScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma, io: app.io });
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);
   setupCanvasScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   setupTrialScheduler(jobScheduler, app.prismaAdmin);

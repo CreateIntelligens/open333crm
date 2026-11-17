@@ -17,6 +17,8 @@ import type { Redis } from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
 import { logger } from '@open333crm/core';
 import type { OpsAlert } from '../ops-alert/ops-alert.service.js';
+import { inTenant } from '../../lib/tenant-ctx.js';
+import { createAndDispatch } from '../notification/notification-effects.js';
 import { commentReplySettingsOf } from './comment-reply-access.js';
 import { lastCommentEventKey } from './comment-reply-intake.flow.js';
 import { signatureFailureKey, SIGNATURE_FAILURE_BUCKET_MS } from '../webhook/webhook-signature-failures.js';
@@ -212,16 +214,17 @@ export async function runCommentReplyHealth(deps: HealthDeps): Promise<HealthAle
   return alerts;
 }
 
-/** 租戶管理員的站內通知（admin 連線，排程在白名單） */
-export function tenantAdminNotifier(
-  admin: PrismaClient,
-  io: SocketIOServer,
-  createAndDispatch: (prisma: PrismaClient, io: SocketIOServer, input: { tenantId: string; agentId: string; type: string; title: string; body: string; clickUrl?: string }) => Promise<unknown>,
-) {
+/**
+ * 租戶管理員的站內通知：以 admin 連線（排程在白名單）找出管理員，
+ * 再以 app_tenant 連線在綁定該租戶的交易內寫入通知，commit 之後推播（AGENTS.md 結構規則 2）
+ */
+export function tenantAdminNotifier(deps: { admin: PrismaClient; prisma: PrismaClient; io: SocketIOServer }) {
   return async (tenantId: string, title: string, body: string) => {
-    const admins = await admin.agent.findMany({ where: { tenantId, role: 'ADMIN', isActive: true }, select: { id: true } });
-    for (const a of admins) {
-      await createAndDispatch(admin, io, { tenantId, agentId: a.id, type: 'comment_reply_alert', title, body, clickUrl: '/dashboard/comment-replies' });
-    }
+    const admins = await deps.admin.agent.findMany({ where: { tenantId, role: 'ADMIN', isActive: true }, select: { id: true } });
+    await inTenant(deps.prisma, tenantId, async (scope) => {
+      for (const a of admins) {
+        await createAndDispatch(scope, deps.io, { agentId: a.id, type: 'comment_reply_alert', title, body, clickUrl: '/dashboard/comment-replies' });
+      }
+    });
   };
 }

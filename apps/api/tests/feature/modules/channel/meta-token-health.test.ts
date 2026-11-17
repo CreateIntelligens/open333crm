@@ -15,6 +15,9 @@ const { runMetaTokenHealthCheck } = await import('#src/modules/channel/meta-toke
 
 loadEnvConfig();
 const prisma = new PrismaClient();
+// 站內通知在綁定租戶的交易內寫入，走 app_tenant 連線（RLS）
+const tenantPrisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
+const deps = () => ({ admin: prisma, prisma: tenantPrisma, io });
 const stamp = Date.now();
 const T_A = process.env.RLS_TEST_TENANT_A ?? 'a0000000-0000-0000-0000-000000000001';
 const emitted: Array<{ room: string; event: string }> = [];
@@ -53,22 +56,22 @@ const notificationsFor = (title: string) =>
   prisma.notification.count({ where: { tenantId: T_A, agentId: admin.id, type: 'channel_token_invalid', title: { contains: title } } });
 
 test('權杖失效：寫入失效狀態，並以站內通知告知租戶管理員', async () => {
-  await runMetaTokenHealthCheck(prisma, io);
+  await runMetaTokenHealthCheck(deps());
   const h = await healthOf(bad.id);
   assert.equal(h?.status, 'invalid');
   assert.match(h?.reason ?? '', /validating access token/);
   assert.ok(h?.notifiedAt);
   assert.equal(await notificationsFor('CI 權杖 失效'), 1);
-  assert.ok(emitted.some((e) => e.room === `agent:${admin.id}` && e.event === 'notification.new'), '即時推播給管理員');
+  assert.ok(emitted.some((e) => e.room === `tenant:${T_A}:agent:${admin.id}` && e.event === 'notification.new'), '即時推播給管理員');
 });
 
 test('再跑一次（3 天內）：不重複通知', async () => {
-  await runMetaTokenHealthCheck(prisma, io);
+  await runMetaTokenHealthCheck(deps());
   assert.equal(await notificationsFor('CI 權杖 失效'), 1);
 });
 
 test('滿 3 天仍失效：再提醒一次', async () => {
-  await runMetaTokenHealthCheck(prisma, io, new Date(Date.now() + 73 * 3600_000));
+  await runMetaTokenHealthCheck(deps(), new Date(Date.now() + 73 * 3600_000));
   assert.equal(await notificationsFor('CI 權杖 失效'), 2);
 });
 
@@ -79,7 +82,7 @@ test('停用的渠道不檢查、不通知', async () => {
 
 test('權杖恢復有效：清除失效狀態', async () => {
   validTokens.add(`bad-${stamp}`);
-  await runMetaTokenHealthCheck(prisma, io);
+  await runMetaTokenHealthCheck(deps());
   const h = await healthOf(bad.id);
   assert.equal(h?.status, 'valid');
   assert.equal(h?.reason, undefined);
@@ -94,7 +97,7 @@ test('檢查途中權杖被換掉（重新連結）：不寫入舊權杖的結�
     }),
   );
   try {
-    await runMetaTokenHealthCheck(prisma, io);
+    await runMetaTokenHealthCheck(deps());
     assert.equal(await healthOf(racing.id), undefined);
     assert.equal(await notificationsFor('CI 權杖 競態'), 0);
   } finally {
@@ -108,7 +111,7 @@ test('憑證解不開：視為失效，原因寫明要重新填權杖', async ()
     data: { tenantId: T_A, channelType: 'FB', displayName: `CI 權杖 解不開 ${stamp}`, credentialsEncrypted: 'not-decryptable' },
   });
   try {
-    await runMetaTokenHealthCheck(prisma, io);
+    await runMetaTokenHealthCheck(deps());
     const h = await healthOf(broken.id);
     assert.equal(h?.status, 'invalid');
     assert.match(h?.reason ?? '', /無法解密/);
@@ -123,4 +126,5 @@ afterAll(async () => {
   await prisma.channel.deleteMany({ where: { id: { in: [bad.id, off.id] } } });
   await prisma.agent.deleteMany({ where: { id: admin.id } });
   await prisma.$disconnect();
+  await tenantPrisma.$disconnect();
 });

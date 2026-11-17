@@ -7,7 +7,6 @@ import type { Redis } from 'ioredis';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
 import { sendOpsAlert } from '../ops-alert/ops-alert.service.js';
-import { createAndDispatch } from '../notification/notification.service.js';
 import { runCommentReplyRecover, runCommentReplyRetention } from './comment-reply-maintenance.flow.js';
 import { runCommentReplyHealth, tenantAdminNotifier } from './comment-reply-health.js';
 
@@ -34,7 +33,7 @@ export function setupCommentReplySchedulers(scheduler: JobScheduler, deps: Comme
         admin: deps.admin,
         redis: deps.redis,
         sendAlert: (alert) => sendOpsAlert(alert, { redis: deps.redis }),
-        notifyTenantAdmins: tenantAdminNotifier(deps.admin, deps.io, createAndDispatch as never),
+        notifyTenantAdmins: tenantAdminNotifier({ admin: deps.admin, prisma: deps.prisma, io: deps.io }),
       }),
   });
   scheduler.registerSchedule({

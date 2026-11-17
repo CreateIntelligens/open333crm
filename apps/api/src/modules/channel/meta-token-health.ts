@@ -15,7 +15,8 @@ import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { getConfig } from '../../config/env.js';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
-import { createAndDispatch } from '../notification/notification.service.js';
+import { inTenant } from '../../lib/tenant-ctx.js';
+import { createAndDispatch } from '../notification/notification-effects.js';
 import { sendEmail } from '../email/email.service.js';
 import { decryptCredentials } from './channel.service.js';
 import { getChannelPlugin, type ChannelPlugin, type CommentSubscriptionStatus } from '@open333crm/channel-plugins';
@@ -140,13 +141,22 @@ function tokenInvalidEmailHtml(vars: { channelName: string; channelLabel: string
 </div>`;
 }
 
+/**
+ * 排程的依賴：admin 跨租戶掃描渠道（BYPASSRLS），prisma 是 app_tenant 連線，
+ * 站內通知在綁定該租戶的交易內寫入（AGENTS.md 結構規則 2）
+ */
+export interface MetaTokenHealthDeps {
+  admin: PrismaClient;
+  prisma: PrismaClient;
+  io: SocketIOServer;
+}
+
 async function notifyAdmins(
-  prisma: PrismaClient,
-  io: SocketIOServer,
+  deps: MetaTokenHealthDeps,
   channel: { tenantId: string; displayName: string; channelType: string },
   platformMode: boolean,
 ): Promise<void> {
-  const admins = await prisma.agent.findMany({
+  const admins = await deps.admin.agent.findMany({
     where: { tenantId: channel.tenantId, role: 'ADMIN', isActive: true },
     select: { id: true, email: true },
   });
@@ -158,7 +168,9 @@ async function notifyAdmins(
     : '目前收不到也無法回覆訊息。請到渠道管理更新存取權杖。';
   const url = `${getConfig().WEB_BASE_URL}${clickUrl}`;
   for (const admin of admins) {
-    await createAndDispatch(prisma, io, { tenantId: channel.tenantId, agentId: admin.id, type: 'channel_token_invalid', title, body, clickUrl }).catch(
+    await inTenant(deps.prisma, channel.tenantId, (scope) =>
+      createAndDispatch(scope, deps.io, { agentId: admin.id, type: 'channel_token_invalid', title, body, clickUrl }),
+    ).catch(
       (err: unknown) => logger.error('[MetaTokenHealth] 站內通知失敗', { agentId: admin.id, error: err instanceof Error ? err.message : String(err) }),
     );
     await sendEmail({
@@ -227,7 +239,8 @@ export async function checkCommentSubscription(
 }
 
 /** 檢查所有啟用中的 FB／IG 渠道（跨租戶，需 BYPASSRLS 連線）。逐渠道 try/catch，單一失敗不影響其他 */
-export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIOServer, now = new Date()): Promise<void> {
+export async function runMetaTokenHealthCheck(deps: MetaTokenHealthDeps, now = new Date()): Promise<void> {
+  const prisma = deps.admin;
   const channels = await prisma.channel.findMany({
     where: { isActive: true, channelType: { in: [CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS] as never }, tenant: { isActive: true } },
     select: { id: true, tenantId: true, channelType: true, displayName: true, credentialsEncrypted: true, settings: true, externalAccountId: true },
@@ -256,7 +269,7 @@ export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIO
       if (!(await writeTokenHealthIfUnchanged(prisma, ch, health))) continue;
       if (notify) {
         logger.warn('[MetaTokenHealth] 渠道權杖失效，通知管理員', { channelId: ch.id, tenantId: ch.tenantId, reason: probe.reason });
-        await notifyAdmins(prisma, io, ch, credentials.connectMode === 'platform');
+        await notifyAdmins(deps, ch, credentials.connectMode === 'platform');
       }
     } catch (err) {
       logger.error('[MetaTokenHealth] 檢查渠道失敗', { channelId: ch.id, error: err instanceof Error ? err.message : String(err) });
@@ -264,6 +277,6 @@ export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIO
   }
 }
 
-export function setupMetaTokenHealthScheduler(scheduler: JobScheduler, prisma: PrismaClient, io: SocketIOServer): void {
-  scheduler.registerSchedule({ id: 'meta-token-health', every: CHECK_INTERVAL_MS, run: () => runMetaTokenHealthCheck(prisma, io) });
+export function setupMetaTokenHealthScheduler(scheduler: JobScheduler, deps: MetaTokenHealthDeps): void {
+  scheduler.registerSchedule({ id: 'meta-token-health', every: CHECK_INTERVAL_MS, run: () => runMetaTokenHealthCheck(deps) });
 }

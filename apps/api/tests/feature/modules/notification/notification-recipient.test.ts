@@ -2,7 +2,7 @@
  * 站內通知只寫給仍啟用的成員（issue #484；change skip-inactive-notification-recipient-484，
  * spec standalone-worker-runtime「站內通知只寫給仍啟用的成員」）。
  *
- * API 行程直接寫入通知的兩條路徑：createAndDispatch（CSAT 低分、權杖失效）與序號明細背景匯出的通知。
+ * API 行程直接寫入通知的入口都經過 createAndDispatch（CSAT 低分、權杖失效、留言私訊告警、序號明細背景匯出）。
  * 走真實資料庫與 app_tenant 連線：永久刪除的成員會撞 notifications.agentId 外鍵，mock 測不到。
  * 成員以 MARK 標記，afterAll 刪除。
  */
@@ -10,10 +10,9 @@ import assert from 'node:assert/strict';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
-import { tenantScopedClient } from '#src/lib/tenant-db.js';
-import { createAndDispatch } from '#src/modules/notification/notification.service.js';
+import { createAndDispatch } from '#src/modules/notification/notification-effects.js';
 import { notifyExportResult } from '#src/modules/coupon/coupon-export.flow.js';
-import { recordingIo, type PushRecord } from '#tests/support/tenant-run.js';
+import { recordingIo, runInTenant, type PushRecord } from '#tests/support/tenant-run.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import { backendPid, waitUntilBlockedBy } from '#tests/support/wait-for-lock-wait.js';
 
@@ -33,7 +32,6 @@ const mkAgent = async (n: string, isActive = true) =>
   (await owner.agent.create({ data: { tenantId: T, email: `${MARK}-${n}@example.com`, name: n, passwordHash: 'x', isActive } })).id;
 
 const input = (agentId: string) => ({
-  tenantId: T,
   agentId,
   type: 'csat_low_score',
   title: 'CSAT 低分警報',
@@ -49,8 +47,11 @@ const exportNotice = (agentId: string) => ({
   body: `${MARK} 匯出`,
 });
 
+/** 以真實 inTenant() 開交易寫入；推播在 commit 之後才記錄 */
+const dispatch = (i: ReturnType<typeof input>) => runInTenant(prisma, T, (scope) => createAndDispatch(scope, io, i));
+
 const countFor = (agentId: string) => owner.notification.count({ where: { tenantId: T, agentId } });
-const pushesTo = (agentId: string) => pushes.filter((p) => p.room.endsWith(`agent:${agentId}`) && p.event === 'notification.new');
+const pushesTo = (agentId: string) => pushes.filter((p) => p.room === `tenant:${T}:agent:${agentId}` && p.event === 'notification.new');
 
 beforeAll(async () => {
   active = await mkAgent('active');
@@ -75,21 +76,21 @@ afterAll(async () => {
 
 describe('createAndDispatch 只寫給仍啟用的成員', () => {
   it('createAndDispatch 的收件成員已被永久刪除', async () => {
-    const result = await createAndDispatch(tenantScopedClient(prisma, T), io, input(purged));
+    const result = await dispatch(input(purged));
     assert.equal(result, null);
     assert.equal(await countFor(purged), 0);
     assert.equal(pushesTo(purged).length, 0);
   });
 
   it('createAndDispatch 的收件成員已停用', async () => {
-    const result = await createAndDispatch(tenantScopedClient(prisma, T), io, input(inactive));
+    const result = await dispatch(input(inactive));
     assert.equal(result, null);
     assert.equal(await countFor(inactive), 0);
     assert.equal(pushesTo(inactive).length, 0);
   });
 
   it('createAndDispatch 的收件成員啟用中', async () => {
-    const result = await createAndDispatch(tenantScopedClient(prisma, T), io, input(active));
+    const result = await dispatch(input(active));
     assert.ok(result);
     assert.equal(result.agentId, active);
     assert.equal(await countFor(active), 1);
@@ -97,14 +98,36 @@ describe('createAndDispatch 只寫給仍啟用的成員', () => {
   });
 
   it('重新啟用後不補送', async () => {
-    await createAndDispatch(tenantScopedClient(prisma, T), io, input(inactive));
+    await dispatch(input(inactive));
     await owner.agent.update({ where: { id: inactive }, data: { isActive: true } });
 
     assert.equal(await countFor(inactive), 0);
 
     // 重新啟用之後的新通知照常寫入
-    await createAndDispatch(tenantScopedClient(prisma, T), io, input(inactive));
+    await dispatch(input(inactive));
     assert.equal(await countFor(inactive), 1);
+  });
+});
+
+describe('createAndDispatch 在交易內寫入，commit 之後才推播', () => {
+  it('交易 rollback 時，通知與推播都作廢', async () => {
+    await assert.rejects(
+      runInTenant(prisma, T, async (scope) => {
+        await createAndDispatch(scope, io, input(active));
+        throw new Error('後續步驟失敗');
+      }),
+      /後續步驟失敗/,
+    );
+    assert.equal(await countFor(active), 0);
+    assert.equal(pushesTo(active).length, 0);
+  });
+
+  it('推播送到帶租戶 ID 的成員房間，內容是寫入的通知', async () => {
+    const result = await dispatch(input(active));
+    assert.ok(result);
+    const [push] = pushesTo(active);
+    assert.ok(push);
+    assert.equal((push.data as { id: string }).id, result.id);
   });
 });
 
@@ -157,7 +180,7 @@ async function raceWithPurge(write: (agentId: string) => Promise<unknown>) {
 
 describe('查詢通過後收件成員被永久刪除', () => {
   it('createAndDispatch：寫入時成員已被永久刪除，略過不丟錯', async () => {
-    const { victim, result } = await raceWithPurge((id) => createAndDispatch(tenantScopedClient(prisma, T), io, input(id)));
+    const { victim, result } = await raceWithPurge((id) => dispatch(input(id)));
     assert.equal(result, null);
     assert.equal(await countFor(victim), 0);
     assert.equal(pushesTo(victim).length, 0);
