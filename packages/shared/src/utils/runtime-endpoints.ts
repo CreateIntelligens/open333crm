@@ -3,7 +3,9 @@ const API_V1_PATH = '/api/v1';
 const API_PATH = '/api';
 
 function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, '');
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
 }
 
 export function normalizePublicApiUrl(value?: string): string {

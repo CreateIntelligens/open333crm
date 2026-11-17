@@ -211,10 +211,10 @@ function main(): void {
   }
 
   // Generate files
-  writeFileSync(commandFile, generateCommand(name, description, scope));
+  writeFileSync(commandFile, generateCommand(name, description, scope), { flag: 'wx' });
   console.log(`✅ Created ${commandFile}`);
 
-  writeFileSync(testFile, generateTest(name));
+  writeFileSync(testFile, generateTest(name), { flag: 'wx' });
   console.log(`✅ Created ${testFile}`);
 
   updateCommandsTs(name);

@@ -17,6 +17,12 @@ All notable changes to **open333CRM** will be documented in this file.
   - 序號明細背景匯出的通知改用同一個 `createAndDispatch()`，移除重複的 `recordExportNotice()`。
   - CSAT 低分通知屬於還沒搬的 `csat`，暫時用 `createAndDispatchWithoutTransaction()`：寫入後立刻推播到帶租戶 ID 的房間。
 
+### Fixed
+
+- **安全掃描修正**：更新 Hono、`@hono/node-server` 與 CLI 的 `minimatch` 傳遞依賴；調整網址與郵件樣板的字串處理，避免長輸入造成不必要的正規表示式回溯；將外部資料改為結構化日誌。綁定碼使用隨機位元組的低 5 位產生 Base32 字元，維持均勻分布。
+- **限制外部請求頻率**：渠道更新與驗證每個來源 IP 各限每分鐘 30 次，知識庫路由每個來源 IP 限每分鐘 300 次，webhook 路由每個來源 IP 限每分鐘 6,000 次；超過上限回 429。計數保存在各 API 行程的記憶體中。
+- **檔案與開發工具**：逐字稿掃描改為讀取一次檔案後判斷是否為空；CLI 命令產生器建立檔案時不覆蓋既有檔案；Meta 截圖工具以完整主機名稱選擇分頁。
+
 ## [2026-11-16]
 
 ### Fixed

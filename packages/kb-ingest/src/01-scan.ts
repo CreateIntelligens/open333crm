@@ -10,7 +10,7 @@
  *
  * 執行：pnpm --filter @open333crm/kb-ingest scan
  */
-import { readdirSync, statSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { TRANSCRIPT_DIR, FILES, ensureDataDir } from './lib/config.js';
 import { writeJsonl } from './lib/jsonl.js';
@@ -49,10 +49,10 @@ function main(): void {
 
   for (const full of files) {
     const rel = relative(TRANSCRIPT_DIR, full);
-    const size = statSync(full).size;
+    const raw = readFileSync(full, 'utf8');
     const { seat, date, time } = parseFilename(full);
 
-    if (size === 0) {
+    if (raw.length === 0) {
       emptyCount++;
       rows.push({
         file: rel, seat, date, time,
@@ -61,7 +61,6 @@ function main(): void {
       continue;
     }
 
-    const raw = readFileSync(full, 'utf8');
     const turns = parseTranscript(raw);
     parsedTurns += turns.length;
     const fullText = turnsToText(turns);

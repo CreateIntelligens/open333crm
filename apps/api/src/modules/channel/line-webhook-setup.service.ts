@@ -91,7 +91,7 @@ export async function autoSetupLineWebhook(
     data: { lastVerifiedAt: new Date() },
   });
 
-  logger.info(`[LineWebhookSetup] Channel ${channelId} webhook set to ${channel.webhookUrl}`);
+  logger.info('[LineWebhookSetup] Webhook configured', { channelId, webhookUrl: channel.webhookUrl });
 
   return {
     success: true,
