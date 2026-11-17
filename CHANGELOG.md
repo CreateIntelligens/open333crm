@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-17]
 
+### Added
+
+- **公開的隱私權政策與資料刪除說明頁面**：新增 `/legal/privacy-policy.html`、`/legal/privacy-policy-en.html`、`/legal/data-deletion.html`、`/legal/data-deletion-en.html` 四個靜態頁面（`apps/web/public/legal/`），不需登入即可開啟，中英文版互相連結。隱私權政策第 4 章說明如何使用 Meta 平台資料（各權限取得的資料、用途、不做的事、刪除方式）；資料刪除說明寫明顧客與商家各自如何要求刪除、刪除哪些資料、處理期限。頁面不載入任何外部字型或追蹤工具。Meta App 審查需要這兩個網址。
+
 ### Changed
 
 - **站內通知改成入口開交易**（#337 階段 4 第七批）— 通知的 4 條路由（列表、未讀數、單則已讀、全部已讀）改呼叫 flow，每個請求在一個綁定租戶的交易內讀寫（`app_tenant` 連線，受 RLS 約束），請求與回應不變。可觀察的差異如下：
