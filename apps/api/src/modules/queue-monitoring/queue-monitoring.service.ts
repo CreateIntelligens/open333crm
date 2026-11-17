@@ -37,6 +37,6 @@ export async function auditJobRetry(
       targetId: `${input.queueName}:${input.jobId}`,
     });
   } catch (err) {
-    logger.error(`[queue-monitoring] 重送 ${input.queueName}:${input.jobId} 的稽核寫入失敗`, err);
+    logger.error('[queue-monitoring] 重送工作的稽核寫入失敗', { queueName: input.queueName, jobId: input.jobId, error: err instanceof Error ? err.message : String(err) });
   }
 }

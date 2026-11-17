@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import {
   processPlatformMetaWebhook,
   processWebhookEvent,
@@ -14,6 +15,7 @@ import { assertJsonPayloadWithinLimits } from '../../plugins/json-payload-guard.
 import { createInFlightTracker, WEBHOOK_DRAIN_TIMEOUT_MS } from './webhook-inflight.js';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
+  await fastify.register(rateLimit, { global: true, max: 6000, timeWindow: '1 minute' });
   // 背景處理的進行中追蹤：關機時等它們完成（最多 10 秒），部署重啟不丟已回 200 的事件
   // （change add-comment-keyword-private-reply design D3）
   const inflight = createInFlightTracker();

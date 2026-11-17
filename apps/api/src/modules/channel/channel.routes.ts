@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod/v3';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
@@ -292,6 +293,7 @@ export interface ChannelRoutesOptions {
 }
 
 export default async function channelRoutes(fastify: FastifyInstance, opts: ChannelRoutesOptions = {}) {
+  await fastify.register(rateLimit, { global: false });
   const liffTestDeps = (): LiffTestDeps => ({
     prisma: fastify.prisma,
     checkIdToken: checkLineIdToken,
@@ -362,7 +364,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   });
 
   // PATCH /api/v1/channels/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } }, preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const parsed = updateChannelSchema.parse(request.body);
     const data = { ...parsed, credentials: stripSystemManagedCredentials(parsed.credentials) };
 
@@ -412,7 +414,7 @@ export default async function channelRoutes(fastify: FastifyInstance, opts: Chan
   });
 
   // POST /api/v1/channels/:id/verify
-  fastify.post<{ Params: { id: string } }>('/:id/verify', { preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/verify', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } }, preHandler: [requirePermission('channel.update'), requireVisibleChannel('full')] }, async (request, reply) => {
     const result = await verifyChannel(
       request.tenantPrisma,
       request.params.id,

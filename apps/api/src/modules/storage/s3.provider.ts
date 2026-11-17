@@ -107,7 +107,7 @@ export class S3StorageProvider implements StorageProvider {
     } catch (err) {
       // 找不到物件（NoSuchKey）或其他讀取錯誤 → 回 null，由呼叫端回 404。
       if ((err as { name?: string })?.name === 'NoSuchKey') return null;
-      logger.warn(`[Storage] getObject failed for key ${key}:`, err);
+      logger.warn('[Storage] getObject failed', { key, error: err instanceof Error ? err.message : String(err) });
       return null;
     }
   }

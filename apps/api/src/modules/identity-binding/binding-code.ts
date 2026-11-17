@@ -33,11 +33,11 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 // 在整段文字中「搜尋」代碼（不要求整句相符），顧客改動預填文字的前後內容仍可兌換
 const CODE_PATTERN = /BIND-([0-9A-HJKMNP-TV-Z]{10})(?![0-9A-Z])/i;
 
-/** 產生 `BIND-` + 10 碼 Crockford base32（約 50 bit；256 可被 32 整除，取餘數不會偏誤） */
+/** 產生 `BIND-` + 10 碼 Crockford base32（每個字元使用隨機位元組的低 5 位，共 50 bit） */
 export function generateBindingCode(): string {
   const bytes = randomBytes(CODE_LENGTH);
   let body = '';
-  for (const b of bytes) body += ALPHABET[b % ALPHABET.length];
+  for (const b of bytes) body += ALPHABET[b & 31];
   return CODE_PREFIX + body;
 }
 

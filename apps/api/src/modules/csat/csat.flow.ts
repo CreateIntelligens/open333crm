@@ -185,7 +185,7 @@ export async function recordCsatScoreFlow(
     return result;
   });
   if (!applied) {
-    logger.info(`[CsatService] Skip CSAT for case ${caseId}: already rated, or no longer RESOLVED`);
+    logger.info('[CsatService] Skip CSAT: already rated, or no longer RESOLVED', { caseId });
     return false;
   }
 
@@ -206,10 +206,10 @@ export async function recordCsatScoreFlow(
       reason: applied.ratedBy === 'agent' ? '客服代評滿意度後自動結案' : '客人評分後自動結案',
     });
   } catch (err) {
-    logger.error(`[CsatService] Failed to close conversations after CSAT for case ${caseId}:`, err);
+    logger.error('[CsatService] Failed to close conversations after CSAT', { caseId, error: err instanceof Error ? err.message : String(err) });
   }
 
-  logger.info(`[CsatService] CSAT recorded for case ${caseId}: score=${score}`);
+  logger.info('[CsatService] CSAT recorded', { caseId, score });
   return true;
 }
 
@@ -235,9 +235,11 @@ export async function notifyCsatLowScoreFlow(
       }
     });
   } catch (err) {
-    logger.error(`[CsatService] Failed to notify CSAT low score for case ${input.caseId}:`, err);
+    logger.error('[CsatService] Failed to notify CSAT low score', { caseId: input.caseId, error: err instanceof Error ? err.message : String(err) });
     await inTenant(deps.prisma, input.tenantId, (scope) => recordCsatLowScoreNotifyFailure(scope, { caseId: input.caseId, score: input.score }))
       .catch((recordErr: unknown) =>
-        logger.error(`[CsatService] Failed to record low score notify failure for case ${input.caseId}:`, recordErr));
+        logger.error('[CsatService] Failed to record low score notify failure', {
+          caseId: input.caseId, error: recordErr instanceof Error ? recordErr.message : String(recordErr),
+        }));
   }
 }

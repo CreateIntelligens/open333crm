@@ -4,10 +4,6 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-17]
 
-### Fixed
-
-- **工單路由的路徑 id 先檢查格式**（#337 第八批 PR #537 審查）— `/api/v1/cases/:id` 系列的 15 個端點原本不檢查 `:id`、`:tagId`、`:conversationId`。不是 UUID 時，有的端點回 404，有的回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位；客服代評端點也會把未檢查的 id 寫進 log（CodeQL log injection）。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出該參數。
-
 ### Added
 
 - **公開的隱私權政策與資料刪除說明頁面**：新增 `/legal/privacy-policy.html`、`/legal/privacy-policy-en.html`、`/legal/data-deletion.html`、`/legal/data-deletion-en.html` 四個靜態頁面（`apps/web/public/legal/`），不需登入即可開啟，中英文版互相連結。隱私權政策第 4 章說明如何使用 Meta 平台資料（各權限取得的資料、用途、不做的事、刪除方式）；資料刪除說明寫明顧客與商家各自如何要求刪除、刪除哪些資料、處理期限。頁面不載入任何外部字型或追蹤工具。Meta App 審查需要這兩個網址。
@@ -26,6 +22,13 @@ All notable changes to **open333CRM** will be documented in this file.
   - FB／IG 權杖失效通知（`meta-token-health` 排程）與留言私訊健康告警改用 `app_tenant` 連線寫入通知，原本用 `prismaAdmin`。留言私訊告警同一個租戶的管理員通知在一個交易內寫入。
   - 序號明細背景匯出的通知改用同一個 `createAndDispatch()`，移除重複的 `recordExportNotice()`。
   - CSAT 低分通知屬於還沒搬的 `csat`，暫時用 `createAndDispatchWithoutTransaction()`：寫入後立刻推播到帶租戶 ID 的房間。
+
+### Fixed
+
+- **工單路由的路徑 id 先檢查格式**（#337 第八批 PR #537 審查）— `/api/v1/cases/:id` 系列的 15 個端點原本不檢查 `:id`、`:tagId`、`:conversationId`。不是 UUID 時，有的端點回 404，有的回 400 `DATABASE_ERROR`「資料處理失敗」，沒有指出是哪個欄位；客服代評端點也會把未檢查的 id 寫進 log（CodeQL log injection）。現在路由先以 Zod 檢查，回 400 `VALIDATION_ERROR`，`error.details.issues` 指出該參數。
+- **安全掃描修正**：更新 Hono、`@hono/node-server` 與 CLI 的 `minimatch` 傳遞依賴；調整網址與郵件樣板的字串處理，避免長輸入造成不必要的正規表示式回溯；將外部資料改為結構化日誌。綁定碼使用隨機位元組的低 5 位產生 Base32 字元，維持均勻分布。
+- **限制外部請求頻率**：渠道更新與驗證每個來源 IP 各限每分鐘 30 次，知識庫路由每個來源 IP 限每分鐘 300 次，webhook 路由每個來源 IP 限每分鐘 6,000 次；超過上限回 429。計數保存在各 API 行程的記憶體中。
+- **檔案與開發工具**：逐字稿掃描改為讀取一次檔案後判斷是否為空；CLI 命令產生器建立檔案時不覆蓋既有檔案；Meta 截圖工具以完整主機名稱選擇分頁。
 
 ## [2026-11-16]
 

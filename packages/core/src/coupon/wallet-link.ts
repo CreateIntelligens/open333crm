@@ -62,7 +62,9 @@ export async function readWalletToken(store: WalletTokenStore, token: string): P
 }
 
 export function walletLinkUrl(webBaseUrl: string, token: string): string {
-  return `${webBaseUrl.replace(/\/+$/, '')}/coupon/open/${token}`;
+  let end = webBaseUrl.length;
+  while (end > 0 && webBaseUrl[end - 1] === '/') end--;
+  return `${webBaseUrl.slice(0, end)}/coupon/open/${token}`;
 }
 
 /** LINE 渠道的 LIFF 設定：LIFF App ID 與它所在的 LINE Login Channel ID（design D20） */

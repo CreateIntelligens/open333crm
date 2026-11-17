@@ -830,8 +830,8 @@ export async function deliverToChannel(
       },
     });
 
-    if (!conv) { logger.error('[deliverToChannel] Conversation not found:', conversationId); return false; }
-    if (!conv.channel?.isActive) { logger.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return false; }
+    if (!conv) { logger.error('[deliverToChannel] Conversation not found', { conversationId }); return false; }
+    if (!conv.channel?.isActive) { logger.error('[deliverToChannel] Channel inactive or missing', { conversationId }); return false; }
 
     const identity = conv.contact?.channelIdentities?.find(
       (ci) => ci.channelId === conv.channel.id,

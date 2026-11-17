@@ -84,7 +84,7 @@ async function clipByLabel(page, labelText, height = 130, out, { xFromLeft = tru
   let page = null;
   for (const ctx of browser.contexts()) {
     for (const p of ctx.pages()) {
-      if (p.url().includes('developers.facebook.com')) { page = p; break; }
+      if (URL.canParse(p.url()) && new URL(p.url()).hostname === 'developers.facebook.com') { page = p; break; }
     }
     if (page) break;
   }
