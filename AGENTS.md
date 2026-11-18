@@ -958,7 +958,7 @@ These paths contain tool-specific instructions and skills. Project-wide rules be
 | Path | Contents |
 | ---- | -------- |
 | `.agent/instructions.md` | Generic agent runners: `.agent/workflows/`, `.agent/skills/` |
-| `.agents/skills/`, `.agents/workflows/` | OpenSpec skills and workflows, and the `postgres-rls-tenant-isolation` skill |
+| `.agents/skills/`, `.agents/workflows/` | OpenSpec skills and workflows, the `postgres-rls-tenant-isolation` skill, and two writing skills: `simplified-technical-chinese` (Traditional Chinese technical documents) and `asd-ste100` (English text that an agent reads, MIT license) |
 | `.codex/skills/` | Codex: OpenSpec skills and the `open333crm-cli` skill |
 | `openspec/config.yaml` | OpenSpec context and per-artifact rules |
 | `.claude/agents/` | Claude Code subagent definitions |
