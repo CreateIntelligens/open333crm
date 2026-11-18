@@ -402,6 +402,12 @@ request:
       added. `docs/ref/system/AUDIT.md` records the violations that already exist on `main`.
 - [ ] `node scripts/check-tenant-ctx.mjs --strict` passes. If your change removes old forms, run
       `node scripts/check-tenant-ctx.mjs --update-baseline` and commit the baseline file.
+- [ ] If you changed `apps/api/src`, `apps/workers/src` or `packages/*/src`, the structure review
+      found no new problem, or the pull request tells why a finding does not apply. In Claude
+      Code, run the `structure-reviewer` subagent. It runs the scripts above, and then checks the
+      rules that no script can check, for example Socket events with channel data and errors in
+      job handlers. In other tools, check the diff against structure rules 1–5 and
+      `docs/ref/modules/API-MODULE.md` yourself.
 - [ ] `CHANGELOG.md` has an entry for each `feat`, `fix` or architecture change (see Conventions).
 - [ ] All OpenSpec tasks of the change have a check mark. Archive the change when all tasks are done.
 - [ ] Each delta spec uses `MODIFIED` for a requirement that already exists in `openspec/specs/`.
@@ -720,7 +726,7 @@ These paths contain tool-specific instructions and skills. Project-wide rules be
 | `.agents/skills/`, `.agents/workflows/` | OpenSpec skills and workflows, the `postgres-rls-tenant-isolation` skill, and two writing skills: `simplified-technical-chinese` (Traditional Chinese technical documents) and `asd-ste100` (English text that an agent reads, MIT license) |
 | `.codex/skills/` | Codex: OpenSpec skills and the `open333crm-cli` skill |
 | `openspec/config.yaml` | OpenSpec context and per-artifact rules |
-| `.claude/agents/` | Claude Code subagent definitions |
+| `.claude/agents/` | Claude Code subagent definitions, for example `feature-impact-reviewer` (affected feature areas) and `structure-reviewer` (structure rules) |
 | `.claude/skills/` | Claude Code skills: one `feature-<id>` skill for each feature area, and symlinks to `.agents/skills/` |
 | `docs/ref/features/health/` | Health check of each feature area: gaps between spec, code and UI, test results, and manual test results |
 

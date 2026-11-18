@@ -4,7 +4,7 @@
  *
  * 功能顧問子代理的 PreToolUse hook。在子代理的 frontmatter 掛上，只在該子代理執行期間生效。
  *
- *   node feature-agent-guard.mjs readonly   # feature-impact-reviewer：Bash 只准唯讀指令，不准寫檔
+ *   node feature-agent-guard.mjs readonly   # feature-impact-reviewer、structure-reviewer：Bash 只准唯讀指令，不准寫檔
  *   node feature-agent-guard.mjs health     # feature-health-checker：擋 git 寫入、連線到遠端主機、改環境的指令；
  *                                           # Write／Edit 只准寫健檢報告、feature Skill 與暫存目錄
  *
@@ -34,6 +34,8 @@ function segments(command) {
 
 const READONLY_COMMANDS = [
   /^node scripts\/feature-impact\.mjs(\s|$)/,
+  // 結構檢查腳本只讀程式碼。--update-baseline 會重寫基準檔，所以不准。
+  /^node scripts\/check-(tenant-ctx|tenant-scoping|prisma-admin-usage|workspace-esm)\.mjs(?![^\n]*--update-baseline)(\s|$)/,
   /^git (diff|log|show|status|ls-files|rev-parse|grep|blame|merge-base|rev-list)(\s|$)/,
   /^(grep|rg|cat|head|tail|wc|ls|pwd|echo|printf|sort|uniq|cut|tr|jq)(\s|$)/,
   /^sed -n(\s|$)/,
@@ -78,7 +80,7 @@ function checkHealthWrite(filePath) {
 const command = input.tool_input?.command ?? '';
 if (mode === 'readonly') {
   if (tool === 'Bash') checkReadonlyBash(command);
-  else if (['Write', 'Edit', 'NotebookEdit'].includes(tool)) block('影響審查只讀不改');
+  else if (['Write', 'Edit', 'NotebookEdit'].includes(tool)) block('這個子代理只讀不改');
 } else if (mode === 'health') {
   if (tool === 'Bash') checkHealthBash(command);
   else if (['Write', 'Edit'].includes(tool)) checkHealthWrite(input.tool_input?.file_path ?? '');
