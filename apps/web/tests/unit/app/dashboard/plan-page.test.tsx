@@ -73,3 +73,13 @@ test('AI 額度無上限時不能申請加購：「加購 Token」停用並顯�
   assert.equal((screen.getByRole('tab', { name: '加購 Token' }) as HTMLButtonElement).disabled, true);
   assert.equal((screen.getByRole('tab', { name: '升級方案' }) as HTMLButtonElement).disabled, false);
 });
+
+test('加購選項不顯示未確認的價格：每個額度都標「價格待確認」，畫面沒有 NT$ 金額', async () => {
+  state.reqs = [];
+  render(<PlanPage />);
+
+  fireEvent.click(await screen.findByRole('tab', { name: '加購 Token' }));
+
+  assert.equal(screen.queryAllByText('價格待確認').length, 3);
+  assert.equal(screen.queryAllByText(/NT\$/).length, 0);
+});

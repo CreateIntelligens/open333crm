@@ -27,7 +27,7 @@ const TOPUP_MONTHLY_NOTE = '加購的額度只在核准當月（台灣時間）�
 
 
 // TODO(PM 確認)：方案說明與加購價格目前沒有 API 可讀，先寫死在前端。
-// 說明文字依 seed 的方案額度撰寫；價格沿用 Claude Design 稿，上線前需確認。
+// 說明文字依 seed 的方案額度撰寫；加購價格尚未確認，先顯示「價格待確認」，確認後再填入。
 const PLANS = [
   { slug: 'standard', label: '標準版', hint: '含 300 萬 AI token／月、10 位客服、500 個標籤。' },
   { slug: 'professional', label: '專業版', hint: '含 800 萬 AI token／月、20 位客服，加開行銷與報表功能。' },
@@ -36,9 +36,9 @@ const PLANS = [
 const PLAN_LABEL: Record<string, string> = Object.fromEntries(PLANS.map((p) => [p.slug, p.label]));
 
 const TOPUPS = [
-  { tokens: 200_000, price: 'NT$ 4,800 / 次' },
-  { tokens: 500_000, price: 'NT$ 11,000 / 次' },
-  { tokens: 1_000_000, price: 'NT$ 19,800 / 次' },
+  { tokens: 200_000, price: '價格待確認' },
+  { tokens: 500_000, price: '價格待確認' },
+  { tokens: 1_000_000, price: '價格待確認' },
 ];
 
 const STATUS: Record<Req['status'], { label: string; cls: string }> = {
