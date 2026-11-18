@@ -37,11 +37,10 @@ function contrast(foreground: string, background: string): number {
 }
 
 /*
- * 色票規格：設計師決定（feat/claude-design-skin 分支，Claude Design / Figma 改版）。
- * main 的版本（change restore-figma-palette）檢查 #378ADD、#707E93、#EE3134 等原始 Figma 色；
- * 本分支的色票由設計師調整為 WCAG AA 版本（見 globals.css 各 token 註解），合併 main 時以本分支為準，
- * 所以這裡改成檢查本分支的色票。字級與元件高度依 Figma Design System，不採用 main 的「中文最小字級 13.5px」
- * 與「全域 44px 最小高度」；main 的鍵盤焦點外框、減少動態效果、強制色彩模式保留。
+ * 色票、字級與元件尺寸依設計師的改版決定（PR #521；change adopt-redesign-design-tokens，2026-11-18 使用者決定採用）。
+ * 色票調深讓亮色模式文字與主色、刪除紅、成功、警告都達 AA；輸入框框線維持 Figma Border/Default 是例外。
+ * 字級與元件高度依 Figma Design System，不採用舊規格的「中文最小字級 13.5pt」與「全域 44px 最小高度」；
+ * 鍵盤焦點外框、減少動態效果、強制色彩模式保留。
  */
 describe('Web accessibility design system contract', () => {
   test('Light theme primary action：主色、hover、主要文字是設計師決定的色票', () => {
@@ -67,7 +66,10 @@ describe('Web accessibility design system contract', () => {
     assert.ok(contrast(darkToken('warning'), darkToken('warning-subtle')) >= 4.5);
   });
 
-  test('Documented contrast exceptions：深色模式的成功、AI 標籤底色', () => {
+  test('Documented contrast exceptions：輸入框框線維持 Figma 色，深色模式的成功、AI 標籤底色', () => {
+    // 輸入框與分隔線：Figma Border/Default #E2E8F0，白底約 1.23:1，未達非文字 3:1（設計取捨）
+    assert.equal(token('input'), '214 32% 91%');
+    assert.equal(token('border'), '214 32% 91%');
     // 深色模式的成功、AI 標籤（文字在 subtle 底上）約 4.1:1、3.9:1（與 main 相同的例外）
     assert.equal(darkToken('success-subtle'), '149 40% 20%');
     assert.equal(darkToken('ai-subtle'), '276 45% 24%');
@@ -79,8 +81,15 @@ describe('Web accessibility design system contract', () => {
     assert.match(css, /forced-colors:\s*active/);
   });
 
-  test('Typography and sizing：不採用 main 的強制最小字級與全域 44px（設計師決定，依 Figma）', () => {
-    assert.doesNotMatch(css, /font-size:\s*0\.84375rem/);
+  test('Small utility text：最小字級 12px，沒有全域強制的 13.5pt', () => {
+    const tailwind = readFileSync(resolve(process.cwd(), 'tailwind.config.ts'), 'utf8');
+    assert.match(tailwind, /xs:\s*\["0\.75rem"/); // text-xs = 12px（Figma 最小字級）
+    assert.doesNotMatch(css, /font-size:\s*0\.84375rem/); // 舊規格的 13.5pt
+  });
+
+  test('Touch target：按鈕高度依 Figma（40／36／32／28px），沒有全域 44px 最小高度', () => {
+    const button = readFileSync(resolve(process.cwd(), 'src/components/ui/button.tsx'), 'utf8');
+    for (const h of ['h-10', 'h-9', 'h-8', 'h-7']) assert.match(button, new RegExp(`\\b${h}\\b`));
     assert.doesNotMatch(css, /min-height:\s*44px/);
   });
 });
