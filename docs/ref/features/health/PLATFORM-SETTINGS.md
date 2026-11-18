@@ -107,7 +107,7 @@ P0：無。HC-PLATFORM-SETTINGS-02 原列 P2，2026-10-30 使用者決定升為 
 
 ## 文件過時之處
 
-> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
 
 - `docs/ref/system/AUDIT.md` TRIAL-02 寫「清空數字欄位…JSON 序列化成 `null`；`PlatformSetting.value` 是必填的 `Json`，這筆寫入會失敗，而 `saveSetting()` 沒有 `catch`，頁面既不顯示成功也不顯示失敗」。實測寫入**成功**（200，存成 JSON `null`），畫面顯示「已更新」，讀取端靜默退回預設值。「失敗時沒有訊息」本身仍成立，但不是由清空欄位觸發。
 - `docs/ref/features/platform/SETTINGS.md`「目前有哪些鍵」寫「只有試用政策在用這張表」，已過時：個資遮罩 `ai.privacy.<tenantId>` 也存在這裡，而且有讀取端在每則訊息路徑上。

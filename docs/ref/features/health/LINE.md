@@ -115,7 +115,7 @@ P0：無。
 
 ## 文件過時之處
 
-> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
 
 - `docs/ref/features/tenant/LINE.md`：只寫圖文選單與快速回覆，沒有 webhook 收訊、事件存法、LIFF／LINE Login、Flex／imagemap、下游轉發、憑證加解密；核對日期 2026-09-30。「`error` 狀態不能修改，但可以重新發布」正確，但沒寫清楚只能從編輯頁重試、也不能刪除。
 - `openspec/specs/line-webhook-events/spec.md`：`channelStatus`、`recalled` 兩個欄位不存在。

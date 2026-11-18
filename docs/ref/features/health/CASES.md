@@ -131,7 +131,7 @@ P0、P1：無。
 
 ## 文件過時之處
 
-> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
 
 - `openspec/specs/case-management/spec.md` 的「Cases Dashboard Create Button Hidden」與現況相反（HC-CASES-12），應以 change 改成 MODIFIED 或 REMOVED。
 - `docs/ref/features/tenant/CASES.md`「升級」：寫「沒指定優先級時，自動提高一級」，但 `POST /cases/:id/escalate` 的 `newPriority` 是必填；自動提高只發生在 `PATCH status=ESCALATED`（畫面不會走這條，會改開升級視窗）。

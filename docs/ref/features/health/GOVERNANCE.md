@@ -137,7 +137,7 @@
 
 ## 文件過時之處
 
-> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
 
 - `docs/ref/features/tenant/GOVERNANCE.md` 的「目前會寫稽核的動作」與「沒有寫稽核的重要操作」：角色的建立、改名、刪除已有稽核；缺 `contact.binding_link_send` 等三項、Meta 串接的 `channel.update`、`mcp.line.*`（HC-GOVERNANCE-15）。
 - 同一份文件的「完成通知連到不存在的頁面」「`scope` 參數沒有作用」仍正確。

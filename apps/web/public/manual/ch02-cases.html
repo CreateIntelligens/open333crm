@@ -148,7 +148,7 @@
           <tr><td>優先級</td><td>是</td><td>低、中、高、緊急，預設「中」。會影響處理時限</td></tr>
           <tr><td>分類</td><td>是</td><td>產品諮詢、訂單問題、退換貨、帳號問題、技術支援、投訴建議、付款問題、物流配送、其他</td></tr>
           <tr><td>指派給</td><td></td><td>交給哪位客服。先不指派也可以</td></tr>
-          <tr><td>團隊</td><td></td><td>目前選不到任何團隊（清單是空的），請留空</td></tr>
+          <tr><td>團隊</td><td></td><td>選了負責客服後會自動帶入，通常不用動</td></tr>
           <tr><td>SLA 政策</td><td></td><td>處理時限的規則。留著「依優先級自動套用」就好</td></tr>
         </tbody>
       </table>
@@ -177,7 +177,7 @@
           <tr><td>狀態</td><td>下拉只會列出現在可以改成的狀態，見第 5 節</td></tr>
           <tr><td>優先級、分類</td><td>選了就自動儲存</td></tr>
           <tr><td>負責人</td><td>選了就自動儲存。工單還是「開啟」時，指派負責人會自動變成「處理中」</td></tr>
-          <tr><td>團隊</td><td>目前選不到任何團隊（清單是空的）</td></tr>
+          <tr><td>團隊</td><td>通常不用動</td></tr>
           <tr><td>SLA</td><td>顯示套用的政策、首次回應有沒有達標、解決目標與倒數（例如「剩 3 小時 20 分」）</td></tr>
           <tr><td>關聯對話</td><td>按「查看對話」回到收件匣的那筆對話</td></tr>
           <tr><td>案件標籤</td><td>替工單貼標籤，方便日後分類統計</td></tr>
@@ -265,8 +265,8 @@
         <img src="uploads/shots/ch02-timeline.png" alt="時間軸與備註：新增備註欄位與事件紀錄" loading="lazy">
         <figcaption>時間軸與備註。</figcaption>
       </figure>
-      <div class="info"><span>ℹ️</span><div>所有備註都只在後台看得到，不會傳給顧客。勾「內部備註」只是在備註上多一個「內部」標記。備註的作者目前都顯示為「客服」，需要的話請在內容裡寫上你的名字。</div></div>
-      <!-- KNOWN-ISSUE: 備註作者固定顯示「客服」；新增備註失敗沒有提示 -->
+      <div class="info"><span>ℹ️</span><div>所有備註都只在後台看得到，不會傳給顧客。勾「內部備註」只是在備註上多一個「內部」標記。備註的作者目前都顯示為「Agent」，需要的話請在內容裡寫上你的名字。</div></div>
+      <!-- KNOWN-ISSUE: 備註作者固定顯示 Agent；新增備註失敗沒有提示 -->
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch02-timeline-csat.png" alt="時間軸：客服代評滿意度 2 分、低分通知沒有送出的紅色紀錄、評分後自動關閉" loading="lazy">
         <figcaption>滿意度相關的紀錄：代評、低分通知沒有送出（紅色）、評分後自動關閉。</figcaption>

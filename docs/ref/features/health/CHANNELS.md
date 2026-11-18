@@ -124,7 +124,7 @@ P0：無。
 
 ## 文件過時之處
 
-> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
 
 - `docs/ref/features/tenant/CHANNELS.md`
   - 「負責的程式」表與「目前的限制」寫「Facebook token 沒有定期檢查，只有查詢狀態時才檢查」：已有每 6 小時的 `meta-token-health.ts` 排程，檢查 FB 與 IG、寫 `settings.tokenHealth`、通知管理員。
