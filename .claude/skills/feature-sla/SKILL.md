@@ -18,8 +18,6 @@ modules/sla、sla.handler.ts、packages/shared/src/sla、SlaPolicy、slaDueAt、
 
 ## 先讀
 - 功能現況：`docs/ref/features/SLA.md`
-  - 注意：其中「去重：24 小時內已經發生過就直接返回」已過時。change `fix-sla-outcome-repeat`（2026-10-15）之後，同一個期限只記一次（以期限、預警時間點或上次客服回覆為起點），見 `apps/workers/src/handlers/sla.handler.ts` 的 `hasCaseEventSince`。
-  - 注意：「政策如何套用」寫「依 priority 查一條政策」，程式是「該優先級勾了預設的優先，沒有預設取最早建立的」。
   - 文件沒寫：SLA 以日曆時間連續計算，**不扣營業時間與假日**（手冊 `apps/web/public/manual/ch17-settings.html` 有寫）。
 - 健檢結果與已知問題：`docs/ref/features/health/SLA.md`
 - 規格：`openspec/specs/sla-policy-selection/spec.md`；SLA 掃描與通知在 `openspec/specs/standalone-worker-runtime/spec.md`；SLA 事件與 facts 在 `openspec/specs/automation-engine/spec.md`（SLA Event Catalog、SLA Automation Facts、Shared SLA Domain Semantics）；收件匣建單選政策在 `openspec/specs/core-inbox/spec.md`

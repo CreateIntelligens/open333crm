@@ -18,7 +18,6 @@ link.clicked、link.stats.updated 時使用；「短連結點了沒反應」「�
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/SHORTLINKS.md`
-  - 注意：其中「過期或停用的連結回 410」只對 `POST /s/track` 成立；`GET /s/:slug` 回 404 的「連結已失效」頁。「自訂代碼與其他租戶重複時回伺服器錯誤」實際是 400，訊息是 Prisma 原始錯誤（健檢 HC-SHORTLINKS-03）。
 - 健檢結果與已知問題：`docs/ref/features/health/SHORTLINKS.md`
 - 規格：`openspec/specs/shortlink-routing/spec.md`、`openspec/specs/shortlink-ua-strategy/spec.md`、`openspec/specs/tracking-settings/spec.md`（後者的設定頁屬於設定領域，這裡只管中轉頁輸出）
 - 手冊：`apps/web/public/manual/ch12-shortlinks.html`

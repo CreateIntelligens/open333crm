@@ -21,9 +21,7 @@ channel plugin registry（API 的 registerChannelPlugin 與 workers 的 createWo
 
 ## 先讀
 - 功能現況：`docs/ref/features/tenant/CHANNELS.md`
-  - 注意：「Facebook token 沒有定期檢查」與「負責的程式」表已過時。程式有每 6 小時的 `apps/api/src/modules/channel/meta-token-health.ts` 排程，檢查 FB 與 IG 並通知；文件也沒寫 Meta 依粉專 ID 分派、用 Facebook 連結粉專。見健檢報告「文件過時之處」。
 - 外掛與送出路徑：`docs/ref/modules/CHANNEL-PLUGINS.md`
-  - 注意：其中「workers 只放 LINE 與 Facebook、送不出 Instagram」已過時，`apps/workers/src/lib/plugin-registry.ts` 已有 `threadsPlugin`（`95d68fc8`）；仍缺 `webchatPlugin`（CHAN-02）。
 - 健檢結果與已知問題：`docs/ref/features/health/CHANNELS.md`
 - 規格：`openspec/specs/channel-management/spec.md`、`openspec/specs/channel-visibility-defaults/spec.md`、`openspec/specs/channel-team-access/spec.md`、`openspec/specs/threads-channel/spec.md`、`openspec/specs/channel-plugins/spec.md`、`openspec/specs/webchat-admin-theme/spec.md`。可見範圍套用在對話與工單的規則在 `openspec/specs/channel-scoped-visibility/spec.md`（收件匣領域）。Meta 依粉專分派的規格還在未歸檔的 change `openspec/changes/fix-meta-webhook-page-routing/`。
 - 手冊：`apps/web/public/manual/ch15-channels.html`（已把多個已知問題寫成注意事項）

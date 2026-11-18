@@ -18,7 +18,6 @@ NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯�
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/NOTIFICATIONS.md`
-  - 注意：其中「除了 AI 額度告警，都不寄信」已過時，FB/IG 權杖失效也寄信（`apps/api/src/modules/channel/meta-token-health.ts`）；也沒列出權杖失效、資料匯出、資料刪除三種通知來源。見健檢「文件過時之處」。
   - `docs/20_NOTIFICATION.md` 是早期設計稿，裡面的 Web Push、靜音設定、工單事件寄信**都沒有實作**，不要照它回答。
 - 健檢結果與已知問題：`docs/ref/features/health/NOTIFICATIONS.md`
 - 規格：`openspec/specs/usage-quota-alerts/spec.md`、`openspec/specs/standalone-worker-runtime/spec.md`（Notification Job Consumer／Handling／Retry、同一個事件不重複建立站內通知）、`openspec/specs/email-delivery/spec.md`

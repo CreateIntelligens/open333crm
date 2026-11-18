@@ -17,7 +17,6 @@ AI 月額度（monthlyTokens、Redis 計數器 aiquota:*、PLAN_LIMIT_EXCEEDED�
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/USAGE.md`
-  - 注意：其中「`resolveGeminiKey()` 依序找租戶自填的金鑰、平台代設的金鑰、全域 `GEMINI_API_KEY`」已過時，程式只有兩層（租戶自填、全域 env），見健檢「文件過時之處」。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-USAGE.md`
 - 規格：`openspec/specs/ai-usage-recording/spec.md`、`openspec/specs/model-pricing/spec.md`、`openspec/specs/platform-usage/spec.md`、`openspec/specs/token-quota/spec.md`、`openspec/specs/usage-quota-alerts/spec.md`
 - 已知問題：`docs/ref/system/AUDIT.md` 的 AI-01、USAGE-01、USAGE-02、USAGE-03、PLAN-10

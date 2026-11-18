@@ -20,7 +20,6 @@ PortalActivity、PointTransaction 時使用。也在改優惠券票券夾（顧�
 
 ## 先讀
 - 功能現況：`docs/ref/features/tenant/PORTAL.md`
-  - 注意：其中「系統目前不簽發粉絲 token，粉絲端無法使用」已過時。優惠券票券夾開啟成功時會簽發 fanToken（`apps/api/src/modules/coupon/coupon-wallet.service.ts` 的 `grantWalletSession`），這顆 token 可以打 `/api/v1/fan/*` 的每一條路由，包括粉絲活動與會員綁定。見健檢 HC-PORTAL-02。
   - 「餘額是所有交易的總和」不精確：餘額取 `createdAt` 最新一筆的 `balance` 欄位（`apps/api/src/modules/portal/points.service.ts` 的 `getLatestPointEntry`）。
 - 健檢結果與已知問題：`docs/ref/features/health/PORTAL.md`
 - 規格：`openspec/specs/member-binding/spec.md`（會員綁定）。粉絲活動本身在 main 已有主規格 portal-activity（本 worktree 的版本還沒有）。

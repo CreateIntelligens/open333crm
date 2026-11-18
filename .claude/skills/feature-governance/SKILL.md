@@ -18,7 +18,6 @@ writeTenantAudit、操作紀錄、誰做了什麼、登入紀錄）、資料匯�
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/GOVERNANCE.md`
-  - 注意：其中「角色的建立、改名與刪除沒有稽核」已過時，`apps/api/src/modules/role/role.flow.ts` 都有寫（HC-GOVERNANCE-15）。「目前會寫稽核」表也缺代發連結、Meta 串接、MCP LINE 的稽核。
 - 健檢結果與已知問題：`docs/ref/features/health/GOVERNANCE.md`
 - 規格：`openspec/specs/tenant-audit-log/spec.md`、`openspec/specs/tenant-data-export/spec.md`、`openspec/specs/tenant-data-erasure/spec.md`、`openspec/specs/webhook-subscription-egress/spec.md`
 - 已知問題：`docs/ref/system/AUDIT.md` 的 AUD-01（稽核涵蓋範圍）、ERASE-01（刪除範圍）、EXPORT-01（匯出）、HOOK-01（對外 Webhook）、TRIAL-03（試用清除只標記）

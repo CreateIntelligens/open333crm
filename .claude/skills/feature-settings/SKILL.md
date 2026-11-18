@@ -18,7 +18,6 @@ identity-binding 設定、webtalk、api-keys、partner key、cli-sessions、CLI 
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/SETTINGS.md`
-  - 注意：其中的分頁表少了「跨渠道綁定」與「門市與核銷帳號」，「稽核」一節的 `section` 清單少了 `identity-binding` 與 `webtalk`，也沒寫營業時間在 `officeHours` 為 `{}` 時的狀況。見健檢的「文件過時之處」。
 - 健檢結果與已知問題：`docs/ref/features/health/SETTINGS.md`
 - 規格：`openspec/specs/office-hours-settings/spec.md`、`openspec/specs/tracking-settings/spec.md`、`openspec/specs/webtalk-collaboration/spec.md`、`openspec/specs/open333-cli-auth/spec.md`、`openspec/specs/a2a-agent-tenant-routing/spec.md`（側欄的權限規則在 `openspec/specs/permission-check/spec.md` 與 `openspec/specs/dashboard-tree-navigation/spec.md`）
 - 手冊：`apps/web/public/manual/ch17-settings.html`（AI 設定在 `apps/web/public/manual/ch07-ai-settings.html`）

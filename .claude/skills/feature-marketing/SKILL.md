@@ -17,7 +17,6 @@ open333CRM「行銷活動、素材與優惠券」功能顧問：行銷活動 cam
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/MARKETING.md`
-  - 注意：其中「分群沒有任何條件時等於全部聯絡人」已過時，程式是 fail-closed、算 0 人（`apps/api/src/modules/marketing/segment.service.ts`）。
 - 健檢結果與已知問題：`docs/ref/features/health/MARKETING.md`
 - 規格：`openspec/specs/coupon-management/spec.md`、`openspec/specs/coupon-redemption/spec.md`、`openspec/specs/store-redemption/spec.md`、`openspec/specs/broadcast-audience/spec.md`、`openspec/specs/material-system/spec.md`、`openspec/specs/marketing-scheduling/spec.md`（完整清單見 `docs/ref/features/feature-map.json`）
 - 手冊：`apps/web/public/manual/ch08-marketing.html`、`apps/web/public/manual/ch09-materials.html`、`apps/web/public/manual/ch18-coupons.html`

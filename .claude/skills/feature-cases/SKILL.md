@@ -18,10 +18,9 @@ CaseNote、case.created/assigned/escalated/resolved/closed 時使用。也在改
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/CASES.md`
-  - 注意：「沒指定優先級時自動提高一級」只在 `PATCH status=ESCALATED` 成立，`POST /cases/:id/escalate` 的 `newPriority` 是必填。「被指派的成員必須屬於同一個租戶」只對 `/assign` 與升級成立，建立與 `PATCH` 不檢查（健檢 HC-CASES-05）。
 - 健檢結果與已知問題：`docs/ref/features/health/CASES.md`
 - 規格：`openspec/specs/case-management/spec.md`、`openspec/specs/csat-survey/spec.md`、`openspec/specs/sla-policy-selection/spec.md`
-  - 注意：`case-management` 的「Cases Dashboard Create Button Hidden」已過時，列表頁從 `112cde53` 起有「新增工單」（HC-CASES-12）。
+  - 注意：`case-management` 的「Cases Dashboard Create Button Hidden」已過時，列表頁有「新增工單」（HC-CASES-12）。
 - SLA 計時、預警與逾時處置：`docs/ref/features/SLA.md`（`sla` 領域）
 - 手冊：`apps/web/public/manual/ch02-cases.html`
 - 影響分析：`node scripts/feature-impact.mjs --domain cases`

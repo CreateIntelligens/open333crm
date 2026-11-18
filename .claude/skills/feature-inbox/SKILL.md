@@ -18,7 +18,6 @@ handoff、return-to-bot、botConfig、「客服看不到對話」「訊息沒即
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/INBOX.md`
-  - 注意：其中「CSAT 逾時關閉時 `closeSource` 記成 `csat`」與程式不符：CSAT 走 `closeConversationsForCase()`，只改狀態、不寫結案 metadata（見健檢 HC-INBOX-18）。
 - 健檢結果與已知問題：`docs/ref/features/health/INBOX.md`
 - 規格：`openspec/specs/core-inbox/spec.md`、`openspec/specs/channel-scoped-visibility/spec.md`、`openspec/specs/bot-handoff-config/spec.md`、`openspec/specs/socket-room-authorization/spec.md`、`openspec/specs/fb-chat-media/spec.md`（完整清單見 `docs/ref/features/feature-map.json`）
 - 權限與可見範圍的計算：`docs/ref/modules/PERMISSIONS.md`

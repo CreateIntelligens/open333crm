@@ -19,7 +19,6 @@ automation、canvas 模組、packages/automation 契約、workers automation-act
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/AUTOMATION.md`
-  - 注意：它的「哪些事件能觸發規則」表沒有列「加入好友」`contact.followed`（會觸發，由 LINE follow 事件送進來，見 `packages/automation/src/contracts/events.ts`）；「哪些動作會執行」表沒有列 `issue_coupon`（編輯器隱藏，只在關鍵字回覆與加好友禮頁使用）。
 - Canvas：`docs/ref/modules/CANVAS-FLOW-ENGINE.md`（沒有前端；節點無法用 API 互相串接，見健檢 HC-AUTOMATION-06）
 - 健檢結果與已知問題：`docs/ref/features/health/AUTOMATION.md`
 - 規格：`openspec/specs/automation-engine/spec.md`、`openspec/specs/automation-contract-composer/spec.md`、`openspec/specs/interaction-canvas/spec.md`

@@ -16,7 +16,6 @@ merge、ChannelIdentity、IdentityMap、/dashboard/contacts、/dashboard/setting
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/CONTACTS.md`
-  - 注意：其中「email 登記不寄驗證信」已過時，程式目前會寄 6 位數驗證碼（`apps/api/src/modules/identity-binding/ownership-code.ts`），見健檢 HC-CONTACTS-01。
 - 健檢結果與已知問題：`docs/ref/features/health/CONTACTS.md`
 - 規格：`openspec/specs/contact-management/spec.md`、`openspec/specs/email-identity-merge/spec.md`、`openspec/specs/phone-identity-merge/spec.md`、`openspec/specs/cross-channel-binding-code/spec.md`、`openspec/specs/tag-management/spec.md`（完整清單見 `docs/ref/features/feature-map.json`）
 - 影響分析：`node scripts/feature-impact.mjs --domain contacts`

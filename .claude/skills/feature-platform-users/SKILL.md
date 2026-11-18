@@ -17,7 +17,6 @@ PlatformAuditLog 時使用。也在改平台登入、平台 guard、平台稽核
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/PLATFORM-USERS.md`
-  - 注意：其中「序列化衝突只在同時停用最後兩個帳號時發生」不完整，任何兩筆同時停用都可能有一邊失敗，見健檢 HC-PLATFORM-USERS-03。
 - 平台後台共通機制（稽核分工、資料模型）：`docs/ref/features/platform/README.md`；登入、忘記密碼、改密碼：`docs/ref/features/platform/AUTH.md`
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-USERS.md`；登入相關問題在 `docs/ref/features/health/PLATFORM-AUTH.md`
 - 規格：`openspec/specs/platform-user-management/spec.md`（改密碼與忘記密碼在 `openspec/specs/platform-password-recovery/spec.md`，guard 在 `openspec/specs/platform-auth/spec.md`）

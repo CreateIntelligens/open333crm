@@ -19,7 +19,6 @@ plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/PLANS.md`
-  - 注意：`docs/ref/system/AUDIT.md` 的 PLAN-01 寫「`/admin/plans` 也能切換」停售，已過時：頁面從來沒有停售、名稱、價格的欄位，只能打 API（健檢 HC-PLATFORM-PLANS-03）。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-PLANS.md`
 - 共通機制（天花板用語、快取連鎖、資料模型）：`docs/ref/features/platform/README.md`
 - 規格：`openspec/specs/tenant-plan/spec.md`、`openspec/specs/plan-limits-core/spec.md`、`openspec/specs/granular-plan-entitlement/spec.md`、`openspec/specs/token-quota/spec.md`

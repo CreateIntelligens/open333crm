@@ -18,7 +18,6 @@ analytics.routes、cli.routes、analytics.view、analytics.export 時使用。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/ANALYTICS.md`
-  - 注意：它沒有提到「優惠券成效」分頁與 `GET /analytics/coupons`，也沒寫 `/analytics/contacts`、`/analytics/csat` 前端沒有用到。見健檢「文件過時之處」。
 - 健檢結果與已知問題：`docs/ref/features/health/ANALYTICS.md`
 - 規格：`openspec/specs/analytics-reports/spec.md`、`openspec/specs/cli-analytics/spec.md`；CLI 授權看 `openspec/specs/rbac/spec.md` 的「CLI token 的授權」
 - 手冊：`apps/web/public/manual/ch13-analytics.html`（把多數「數字怎麼算」寫得很清楚，可當定義對照）
