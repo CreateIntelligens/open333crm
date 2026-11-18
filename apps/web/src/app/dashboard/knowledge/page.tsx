@@ -235,7 +235,7 @@ export default function KnowledgePage() {
       </Topbar>
 
       {/* Top-level page tabs: articles vs semantic search */}
-      <div className="flex-1 overflow-hidden px-7">
+      <div className="min-h-0 flex-1 overflow-y-auto px-7">
         <Tabs value={pageTab} onValueChange={() => undefined}>
 
           {/* ── Articles Tab ──────────────────────────────────── */}

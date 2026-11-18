@@ -12,6 +12,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - 名字含 emoji 時頭像縮寫亂碼；工單狀態顯示英文代碼；報表日期清空造成整頁錯誤、匯出 CSV 失敗沒有提示；工單「開啟中」統計卡可點但沒有作用（改為僅顯示）；Bot 訊息泡泡改為淡紫色，與客人訊息區分（皆來自設計師分支）。
+- 知識庫的回報調教、語意搜尋、Embedding 與 Chat 設定分頁內容過長時被裁切、捲不到底部欄位，改為內容區可垂直捲動。
 
 ## [2026-11-17]
 
