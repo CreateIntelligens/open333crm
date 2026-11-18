@@ -110,6 +110,6 @@ open333CRM「行銷活動、素材與優惠券」功能顧問：行銷活動 cam
 - 「領券沒反應」：先看訊息是否被 `inbound-coupon-claim.ts` 攔截（代碼格式、渠道是否相符），再看回覆顧客的失敗原因。
 - 「素材選單少了素材」：前端要 200 筆、後端上限 100；分群下拉只拿第一頁 50 筆。
 - 「排程群發失敗：選擇『受眾分群』時必須指定一個分群」：分群在排程後被刪了（FK `ON DELETE SET NULL`，刪除不檢查引用）。
-- 「網站客服（WebChat）群發已完成，顧客卻沒收到」：WebChat plugin 的 `sendMessage` 不推送也不寫訊息（`packages/channel-plugins/src/webchat/index.ts`）。#415 起群發、附券廣播與批次發券都拒絕 WebChat（清單在 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`，檢查在 `assertChannelSupportsPush()`、`claimCouponBroadcast()`）。之前建立的 WebChat 群發會在送出或到期時失敗並寫原因。
+- 「網站客服（WebChat）不能群發」：WebChat plugin 的 `sendMessage` 不推送也不寫訊息（`packages/channel-plugins/src/webchat/index.ts`），所以群發、附券廣播與批次發券都拒絕 WebChat（清單在 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`，檢查在 `assertChannelSupportsPush()`、`claimCouponBroadcast()`）。
 - 「沒有權限的人看到空白列表」：行銷活動、分群、群發、素材頁的 SWR 錯誤不顯示，403 會顯示成「尚無…」。
 - 「顧客開不了票券」：租戶要啟用 email 登記；看 `/fan/coupons/session` 回的 `status`。

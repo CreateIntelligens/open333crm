@@ -56,7 +56,7 @@ NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯�
 | FB/IG 權杖失效 | `meta-token-health.ts` 每 6 小時；持續失效每 3 天再提醒 | 所有 `ADMIN` | API 行程 `createAndDispatch` + `sendEmail` | `channel_token_invalid` / `/dashboard/settings/channels` |
 | 資料匯出／刪除完成 | workers `data-export.handler.ts`、`data-erasure.handler.ts` | 發起人 | `enqueueNotification` | `data_export_ready`、`data_export_failed`（連到不存在的頁面，EXPORT-01）、`data_erasure_done`（無連結） |
 
-**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 已訂閱（#419，CONV-03 已修正）：類型 `conversation_handoff`，收件人與 `message.received` 相同（`getConversationRecipients()`，#440）。
+**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 有訂閱：類型 `conversation_handoff`，收件人與 `message.received` 相同（`getConversationRecipients()`，#440）。
 
 **有後端、沒有前端入口**：無。**前端有、後端沒有**：無。**兩邊都沒有**：通知偏好／靜音、刪除通知、保留期限、Web Push、工單事件寄信（`docs/20_NOTIFICATION.md` 的設計未實作）。
 
@@ -69,7 +69,7 @@ NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯�
 - 只寫給同租戶、仍啟用的成員：每個寫入 `notifications` 的地方都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入（workers `notification.handler.ts`、API 的 `recordNotification()`，`createAndDispatch()` 經過它），它是一條條件寫入，回 `null` 表示略過。不符合時寫 info log、不丟錯（永久刪除的成員會撞外鍵，丟錯只會重試三次再失敗）；重新啟用不補送（#484）。不要改回「先查再 `notification.create`」：查完到寫入之間成員可能被刪除；也不要 catch P2003，交易內接住後交易已中止（PR #489 審查）。新增寫入點要沿用同一個函式。
 - 用量告警不可阻擋 AI 回覆：每一步失敗只寫 log，回覆最多多等一個 Redis 指令的逾時（1 秒）；告警信一定經佇列，不在訂閱者內直接寄。
 - 告警信與權杖失效信的使用者輸入（租戶名稱、渠道名稱）要 HTML 轉義。
-- 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、用量告警、權杖失效六個地方（CSAT 已由 #339 改看 `case.assign` 與渠道可見範圍，可沿用 `notification.service.ts` 的 `resolveCaseManagerRecipients()`）。
+- 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、用量告警、權杖失效六個地方（CSAT 低分看 `case.assign` 與渠道可見範圍，可沿用 `notification.service.ts` 的 `resolveCaseManagerRecipients()`）。
 - worker 走 BYPASSRLS 連線（`app.prismaAdmin` 傳給 `setupNotificationWorker`），每個查詢都要自帶 `tenantId`。
 - 成員清除（`purgeAgent`）會先刪他的通知（外鍵 RESTRICT）；新增掛在 Agent 上的通知相關表也要加進去。
 

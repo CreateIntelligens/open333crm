@@ -19,7 +19,7 @@ tenant.isActive、TENANT_DISABLED、開通租戶、停用租戶、租戶停用�
 
 ## 先讀
 - 功能現況：`docs/ref/features/platform/TENANTS.md`，共通機制（稽核、快取連鎖、資料模型）在 `docs/ref/features/platform/README.md`
-  - 注意：TENANTS.md「停用租戶多久生效」的表沒有列 Partner API 金鑰（AUTH-02）。進站訊息（含 WebChat）、排程群發與滿意度問卷已在 #410 修正並列入表中（HC-PLATFORM-TENANTS-01、04）。
+  - 注意：TENANTS.md「停用租戶多久生效」的表沒有列 Partner API 金鑰（AUTH-02）。
   - 注意：README「目前的限制」寫「沒有任何測試」已過時，見下方回歸清單。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-TENANTS.md`
 - 規格：`openspec/specs/tenant-provisioning/spec.md`、`openspec/specs/tenant-contract-dates/spec.md`、`openspec/specs/trial-data-purge/spec.md`；停用租戶的行為在 `openspec/specs/auth-session/spec.md`（「停用租戶的成員不能登入或換發 token」「停用租戶的長效憑證與既有連線失效」）與 `openspec/specs/inbound-message-processing/spec.md`（「停用租戶的進站事件直接丟棄」「停用租戶的網站聊天室入口回 404」）、`openspec/specs/marketing-scheduling/spec.md`（「The Scheduler Does Not Send Broadcasts Of A Disabled Tenant」）、`openspec/specs/csat-survey/spec.md`（「停用租戶不寄出滿意度問卷」）

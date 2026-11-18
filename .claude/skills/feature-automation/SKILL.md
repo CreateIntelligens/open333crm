@@ -46,13 +46,13 @@ automation、canvas 模組、packages/automation 契約、workers automation-act
 | 4 | 換觸發事件 | 「什麼時候檢查這條規則」下拉（`triggerEventOptions`）；`dispatched:false` 的事件標「（目前不會觸發）」 | — | **條件與動作直接清空、不詢問** | — |
 | 5 | 條件 | react-querybuilder（`ConditionBuilder`），欄位依事件由契約產生 | `qbToEngine()` 轉成 `{all|any:[{fact,operator,value}]}` | 依欄位型別轉值：只有數字欄位轉數字（見下方「前端實際送出的值」） | — |
 | 6 | 動作 | 「新增動作」（`ActionList`/`ActionEditor`）；素材從素材庫下拉、客服從 `/agents` 下拉 | 編輯器內部 `{type,payload}`，送出時轉 `{type,params}` | — | 素材下拉要 `marketing.view`，客服下拉要 `agent.view`，失敗退回文字框 |
-| 7 | 試試看 | 編輯頁下方（只對已儲存版本） | `POST /automation/rules/:id/test {facts}` → `testRule`，只評估條件、不執行 | 無 | `automation.view`（`8899e280` 修正 HC-AUTOMATION-04 之前只驗登入） |
+| 7 | 試試看 | 編輯頁下方（只對已儲存版本） | `POST /automation/rules/:id/test {facts}` → `testRule`，只評估條件、不執行 | 無 | `automation.view` |
 | 8 | 刪除 | 編輯頁「刪除規則」→ confirm | `DELETE /automation/rules/:id` → 軟刪 `enabled=false, isActive=false` | UI 無法復原 | `automation.manage` / 不隱藏 |
 | 9 | 關鍵字回覆 | `/dashboard/line/keyword-replies`「建立關鍵字回覆」：渠道 LINE/FB/THREADS、名稱、關鍵字（Enter 加入）、比對 any/all、素材或券 | `POST/PATCH /automation/rules`（`apps/web/src/hooks/useKeywordReplies.ts` 的 `buildRulePayload`），條件 `conversation.channelType equal <渠道>` | 沒送 `isActive`，建立即啟用 | 同 3 |
 | 10 | 加好友禮 | `/dashboard/line/follow-gift` | 同一組路由，`contact.followed` + `issue_coupon`；每租戶只能一條（409） | — | 沒權限時頁面顯示「無法載入加好友禮設定」 |
 | 11 | Canvas | **沒有前端** | `/api/v1/canvas` CRUD、`/api/v1/canvas/:id/activate`、`/api/v1/canvas/:id/trigger {contactId,vars}`、`/api/v1/canvas/:id/executions`、`/api/v1/canvas/:id/analytics` | — | `canvas.use`（**agent 系統角色預設就有**） |
 
-**有後端、沒有前端入口**：`GET /automation/logs`（自 `9255245` 起成功的執行沒有寫入；#362 起有動作失敗時 workers 寫一筆，AUDIT AUTO-02）；Canvas 全部；規則復原；`AutomationExecution` 表沒有任何程式讀寫。
+**有後端、沒有前端入口**：`GET /automation/logs`（自 `9255245` 起成功的執行沒有寫入；動作失敗時 workers 寫一筆，AUDIT AUTO-02）；Canvas 全部；規則復原；`AutomationExecution` 表沒有任何程式讀寫。
 
 ## 前端實際送出的值
 - 規則：`{name, description:'', trigger:{type, keywords?, match_mode?}, priority:number, isActive, stopOnMatch, conditions, actions:[{type, params}]}`。
@@ -106,7 +106,7 @@ automation、canvas 模組、packages/automation 契約、workers automation-act
 
 ## 回歸清單
 1. 建 `message.received` 規則（條件「訊息內容 包含 退貨」，動作貼標＋建立工單＋傳送通知＋傳送訊息）→ 用 `POST /api/v1/simulator/send-message` 送含「退貨」的訊息 → 標籤、工單、通知、外送訊息（或失敗紀錄）都出現。
-2. 條件值用純數字（例如「包含 8888」）重走 1，確認會命中，且送出的條件 `value` 是字串（#418 已修正）。
+2. 條件值用純數字（例如「包含 8888」）重走 1，確認會命中，且送出的條件 `value` 是字串。
 3. `case.created` 規則（指派、改優先級、改狀態、指定通知）→ 由 1 的建立工單觸發。改狀態為「處理中」時時間軸有「狀態：開啟 → 處理中（自動化規則「…」）」；改狀態為「已解決」時工單維持「開啟」、時間軸寫「沒有改狀態：不能從「開啟」直接改成「已解決」」（#469）。從「處理中」改成「已解決」的規則查 DB 有 `resolvedAt`、outbox 有 `case.resolved`；改回「處理中」的規則觸發後 `resolvedAt` 為 null（#417）。
 4. `contact.tagged` 規則 → 人工貼標觸發一次；自動化貼標不觸發；再貼別的標籤是否重觸發。
 5. 關鍵字回覆頁建 FB 規則 → FB 訊息觸發、LINE 訊息不觸發；WebChat 送不出（CHAN-02）。
@@ -121,7 +121,7 @@ automation、canvas 模組、packages/automation 契約、workers automation-act
 - 「有觸發但客人沒收到」：查該對話的外送訊息 `metadata.deliveryFailed` / `deliveryError`（憑證、WebChat 外掛、素材渠道不符、渠道停用）；對話已不存在時查 `automation_logs` 的 `errorMsg`（#362）。
 - 「同一則訊息回兩次」：一則訊息命中幾條關鍵字規則就回幾次；或關鍵字規則不能回覆而 AI 沒讓步（`keyword-yield.ts`）。
 - 「SLA 規則的貼標沒作用」：SLA 路徑沒傳 contactId（`apps/workers/src/handlers/sla.handler.ts` 的 `evaluateSlaAutomationRules`）。
-- 「規則改成已解決，客人沒收到滿意度調查」：#417 起 `update_case_status` 會寫 `resolvedAt`；仍沒收到時查工單有沒有關聯對話、租戶是否停用、`csatSentAt` 是否已寫入。
+- 「規則改成已解決，客人沒收到滿意度調查」：`update_case_status` 會寫 `resolvedAt`，所以先查工單有沒有關聯對話、租戶是否停用、`csatSentAt` 是否已寫入。
 - 「執行紀錄空白」：AUTO-02，成功的執行不寫；只有動作失敗時寫（#362）。
 - 「Canvas 流程跑完一步就失敗」：節點 `nextNodeId` 無法指到同一請求建立的節點；執行紀錄 `errorMessage` 會是 `Node … not found in flow`。
 - 「Canvas 手動觸發回 404／409」：觸發前檢查流程屬於本租戶而且是 `ACTIVE`（409 `FLOW_NOT_ACTIVE`），也檢查聯絡人屬於本租戶（404）。引擎在 commit 之後才開始執行。觸發回 202、execution 卻一直停在 `RUNNING` 時，查 API log 的 `[Canvas] 流程執行失敗`。

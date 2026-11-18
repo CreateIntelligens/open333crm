@@ -62,7 +62,7 @@ plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時
 ## 有後端沒前端
 - 新增方案、刪除方案：**沒有 API 也沒有 UI**，只能改 `packages/database/prisma/seed-data/plans.ts`（只在資料庫沒有該 slug 時建立）、寫 migration 或直接寫資料庫。
 - 改方案名稱、月費、停售（`name`、`priceMonthly`、`isActive`）：API 接受，`/admin/plans` 沒有欄位。停售本身沒有效果（PLAN-01）。
-- 租戶覆寫 `Tenant.limitOverrides`：沒有任何讀寫 UI，也沒有 API，目前沒有寫入端（2026-11-10 起核准加購不再寫，migration 已移除既有的 `monthlyTokens`）。
+- 租戶覆寫 `Tenant.limitOverrides`：沒有任何讀寫 UI，也沒有 API，目前沒有寫入端。
 - AI 月額度 = 基礎上限 + 本月（台灣時間）已核准的加購加總，只在 `plan-limits.service.ts` 的 `getEffectiveLimit()` 計算；加購只加當月（change make-token-topup-monthly）。
 - `billing.view` 權限碼：沒有任何路由或頁面使用（RBAC-01）。
 
@@ -105,9 +105,9 @@ plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時
 ## 常見 bug 從哪裡查
 - 「升級／換方案後還是 403」：先看 `getTenantPlanId` 的 60 秒行程快取（`apps/api/src/services/tenant-plan.cache.ts`）；直接改資料庫或多行程時要等 60 秒。Redis `perms:tenant:{roleId}:{planId}` 是第二層，`FLUSHDB` 清不到第一層。
 - 「角色頁明明有勾，成員卻 403」：方案天花板擋掉（PLAN-08）；看 403 的 `details.requiredPermission` 屬於哪個 feature，再查租戶方案的 `features` 與 `permissionOverrides.deny`。
-- 「渠道頁顯示沒有權限」：`GET /channels` 回 403。看 `details.requiredPermission`，再查角色有沒有 `channel.view`、方案 `features` 有沒有 `channels`。seed 的五個方案都含 `channels`；`trial`、`light` 原本沒有，issue #411 以 seed 與 migration `20261103120000_enable_channels_on_trial_light` 補上。seed 不會改回平台對方案的修改（issue #441 之後只建立不存在的方案）。
+- 「渠道頁顯示沒有權限」：`GET /channels` 回 403。看 `details.requiredPermission`，再查角色有沒有 `channel.view`、方案 `features` 有沒有 `channels`。seed 的五個方案都含 `channels`。seed 只建立不存在的方案，不會改回平台對方案的修改。
 - 「平台改了上限卻沒生效」：同時編輯兩張方案卡片時，先存的那張會重載資料，另一張輸入框顯示新值、送出的卻是舊值（HC-PLATFORM-PLANS-02）；也檢查租戶有沒有 `limitOverrides`（覆寫優先）。
 - 「方案人數上限擋不住」：看是不是從停用改回啟用的渠道（成員已檢查）；`maxTags` 本來就不擋。
 - 「AI 額度用完卻還能用」：該租戶是 BYOK（不計不擋），或 `monthlyTokens` 是 null；BYOK 解密失敗會退回平台金鑰開始計數（AI-01）。
-- 「升級後 AI 額度沒變」：先查租戶是否有 `limitOverrides.monthlyTokens`（應已由 migration 移除；有的話是有人直接改資料庫）。
+- 「升級後 AI 額度沒變」：先查租戶是否有 `limitOverrides.monthlyTokens`（正常流程不寫這個欄位，有的話是有人直接改資料庫）。
 - 「加購的額度下個月不見了」：正常，加購只計入核准當月（台灣時間）。

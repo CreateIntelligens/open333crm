@@ -19,7 +19,7 @@ token-quota 模組，或有人說「AI 亂回／不回」「AI 說轉接了但�
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/KNOWLEDGE.md`
-  - 追問次數達到上限、或追問的 LLM 呼叫失敗時，與自動轉真人共用 `handOffConversation()` 真的轉接（#419，HC-KNOWLEDGE-01 已修正）。
+  - 追問次數達到上限、或追問的 LLM 呼叫失敗時，與自動轉真人共用 `handOffConversation()` 真的轉接。
   - 注意：其中與 AUDIT LLM-04「Embedding 一律失敗」與 UAT 現況不符，UAT Demo 租戶靠 Compose 的 Ollama 正常產生向量。
 - 健檢結果與已知問題：`docs/ref/features/health/KNOWLEDGE.md`
 - 規格：`openspec/specs/km-ingestion/spec.md`（第一條「Multi-modal Ingestion via Markitdown」已與程式脫節；第二條「Automated Vectorization and Indexing」已由 change `migrate-embedding-tenant-ctx` 改成現況）、`openspec/specs/embedding-settings/spec.md`、`openspec/specs/chat-settings/spec.md`、`openspec/specs/knowledge-base-information-architecture/spec.md`、`openspec/specs/token-quota/spec.md`、`openspec/specs/usage-quota-alerts/spec.md`、`openspec/specs/ai-usage-recording/spec.md`、`openspec/specs/agentic-llm-orchestration/spec.md`、`openspec/specs/bot-handoff-config/spec.md`。**KB 自動回覆分流、型號守門、KB 回報、問答表拆分都沒有主規格**
@@ -44,7 +44,7 @@ token-quota 模組，或有人說「AI 亂回／不回」「AI 說轉接了但�
 | 10 | 客人回報（系統） | 客人點「👎 沒幫到我」 | 進站攔截 `inbound-postback-interceptors.ts` `handleKbFeedback` → `recordKbFeedbackFlow` | 寫 `KbArticleFeedback`，回「感謝您的回報」 | 無 |
 | 11 | AI 工具（收件匣、素材） | 收件匣 AI 建議/摘要、素材潤稿 | `/ai/suggest-reply`、`/ai/summarize`、`/ai/rewrite`、`/ai/privacy/status` | 計入月額度、寫 `AiUsage` | 只驗登入（PLAN-12）；建議與摘要檢查渠道可見範圍 |
 
-**有後端、沒有前端入口**：`POST /knowledge/:id/embed`、`GET /knowledge/embedding-status`、`GET /knowledge/models`（只有重建鈕）、`GET /knowledge/feedback/counts`（hook `useKbFeedbackCounts` 沒人用）、`/ai/classify`、`/ai/analyze-sentiment`、`/ai/agent/run`、`/ai/agent/runs/:id`、`POST /knowledge/partner-ingest`（給夥伴系統；成員的 JWT 依 `knowledge.admin` 判斷，2026-11-06 起，change `fix-partner-ingest-jwt-role`）。
+**有後端、沒有前端入口**：`POST /knowledge/:id/embed`、`GET /knowledge/embedding-status`、`GET /knowledge/models`（只有重建鈕）、`GET /knowledge/feedback/counts`（hook `useKbFeedbackCounts` 沒人用）、`/ai/classify`、`/ai/analyze-sentiment`、`/ai/agent/run`、`/ai/agent/runs/:id`、`POST /knowledge/partner-ingest`（給夥伴系統；成員的 JWT 依 `knowledge.admin` 判斷）。
 
 **前端實際送出的值**：文章 `category || '一般'`、`tags` 以逗號切開；JSON 匯入 `{articles: 陣列}`（外層不是陣列時前端擋下「JSON 最外層必須是陣列」）；滑桿 temperature 0–1、maxTokens 50–2000、topK 1–20、threshold 0–1、clarifyThreshold 0–1、clarifyMaxAttempts 0–5；Provider `ollama|gemini`；金鑰 `{apiKey: string|null}`。
 

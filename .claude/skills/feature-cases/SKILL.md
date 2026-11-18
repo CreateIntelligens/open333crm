@@ -85,7 +85,7 @@ CaseNote、case.created/assigned/escalated/resolved/closed 時使用。也在改
 - E2E：`apps/web/tests/e2e-uat/tenant-cases.spec.ts`、`apps/web/tests/e2e-uat/tenant-fields-cases-contacts-inbox.spec.ts`。
 
 ## 常見 bug 從哪裡查
-- 「工單自己變成已關閉」：先看 `case_events` 有沒有 `status_changed`。`payload.reason` 是 `csat_rated` 的是客人或客服評分後自動關閉（#444 起寫事件）。沒有事件的話是問卷逾時結案（`csat.scheduler.ts`）。重新解決時未評分的工單會清除 `csatSentAt`（`caseTransitionCsatFields()`，#339），不會再被上一輪的問卷結案。SLA 逾時只提高優先級，不結案。
+- 「工單自己變成已關閉」：先看 `case_events` 有沒有 `status_changed`。`payload.reason` 是 `csat_rated` 的是客人或客服評分後自動關閉。沒有事件的話是問卷逾時結案（`csat.scheduler.ts`）。重新解決時未評分的工單會清除 `csatSentAt`（`caseTransitionCsatFields()`，#339），不會再被上一輪的問卷結案。SLA 逾時只提高優先級，不結案。
 - 「被指派的人說打開是 404／列表看不到」：負責人沒有該渠道的授權。手動指派不檢查（HC-CASES-04），查 `agent_channel_accesses` 與團隊的 `channel_team_accesses`。
 - 「指派了卻沒收到通知」：建立時帶負責人不發 `case.assigned`（`case.flow.ts` 的 `afterCaseCreated`）；升級時改派也不發。只有 `/assign` 與自動指派會通知。
 - 「自動指派沒反應」：畫面送不出 `teamId`（HC-CASES-06）；有團隊時看候選條件（`role=AGENT`、啟用、渠道授權 `reply_only/full`），全部不符就只寫 log「No available agent」。輪流位置存在行程記憶體，重啟或多行程各自從頭。
