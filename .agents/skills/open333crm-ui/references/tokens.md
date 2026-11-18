@@ -11,7 +11,7 @@ CSS 變數存的是 HSL 三個數字（例 `210 71% 54%`），Tailwind 用 `hsl(
 |---|---|---|---|
 | Text/Primary | #37404C | `text-foreground` | 主要文字、標題 |
 | Text/Secondary | #5F6B7E（Figma 原色 #707E93，調深達 AA） | `text-muted-foreground` | 說明文字、表頭、次要資訊 |
-| Text/Tertiary | #6D6D6D | `text-tertiary-foreground` | 未選中選單、圖示、Outline 按鈕字 |
+| Text/Tertiary | #6D6D6D | `text-tertiary-foreground` | 圖示、Outline 按鈕字 |
 | Status/Neutral | #919191 | `text-status-neutral` | placeholder、停用文字 |
 
 ## 動作（藍）
@@ -19,7 +19,7 @@ CSS 變數存的是 HSL 三個數字（例 `210 71% 54%`），Tailwind 用 `hsl(
 | Figma 變數 | 色碼 | Tailwind class | 用途 |
 |---|---|---|---|
 | Action/Default | #2876C4（Figma 原色 #378ADD，調深達 AA） | `bg-primary` `text-primary` `border-primary` | 主要按鈕、連結、focus |
-| Action/Hover | #1F5FA0 | `bg-primary-hover` | 按鈕 hover、選單選中 |
+| Action/Hover | #1F5FA0 | `bg-primary-hover` | 按鈕 hover |
 | Background/Secondary | #EFF6FF | `bg-primary-subtle` | Secondary 按鈕底、Info 標籤底 |
 | Border/Info | #C4D2FF | `border-primary-border` | 藍色淡框 |
 | Action/Disabled | #C6CFDD | `bg-control-disabled` `border-control-disabled` | Switch 關、Checkbox 框、Outline 標籤框 |

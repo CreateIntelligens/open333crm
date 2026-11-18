@@ -16,11 +16,11 @@ The Web CRM SHALL use the redesign palette decided by the designer for its seman
 - **THEN** the border token is the Figma Border/Default `214 32% 91%` (`#E2E8F0`) and the dark-theme subtle tokens keep their values, even though their contrast is below the WCAG threshold
 
 ### Requirement: Chinese typography floor
-The Web CRM SHALL render UI copy with the Figma design-system type scale of 12, 14, 16, 18, 20, 24, 28 and 42px, with a minimum of 12px, while preserving a readable hierarchy for headings, body copy, labels, and metadata. The Web CRM SHALL NOT force a global minimum font size above the Figma scale.
+The Web CRM SHALL render UI copy with the type scale that the designer decided on 2026-11-05: about 90% of the Figma design-system scale, with the text utility classes at 12, 13, 14, 16, 18, 22 and 26px and a minimum of 12px. It SHALL preserve a readable hierarchy for headings, body copy, labels, and metadata, and SHALL NOT force a global minimum font size above this scale.
 
 #### Scenario: Small utility text
 - **WHEN** a Chinese label uses the smallest utility text class or inherits body typography
-- **THEN** the rendered font size is at least 12px and no global rule overrides the Figma type scale
+- **THEN** the rendered font size is at least 12px, the text utility classes use the designer's scale, and no global rule overrides it
 
 #### Scenario: Narrow responsive layout
 - **WHEN** the viewport narrows or browser text size increases

@@ -7,6 +7,8 @@
 
 - [x] 2.1 `design-system.test.ts` 測試名稱對齊 scenario（`Light theme primary action`、`Semantic status text`、`Documented contrast exceptions`、`Small utility text`、`Touch target`），並在 `Documented contrast exceptions` 檢查輸入框框線是 Figma Border/Default
 - [x] 2.2 `.agents/skills/open333crm-ui/references/tokens.md` 更新為實際色票
+- [x] 2.3 `Small utility text` 測試加上設計師 11/05 的字級刻度（12／13／14／16／18／22／26px），規格的字級改成同一組數字；變異驗證：把 `text-2xl` 改成 1.5rem，測試失敗
+- [x] 2.4 UI 設計系統改為強制規範：`SKILL.md` 的字級、按鈕與輸入框高度、選單選中樣式、檢查指令改成與程式一致；`AGENTS.md` 新增「Frontend UI」一節指向它；`.claude/skills/` 補上 `open333crm-ui` 連結，Claude Code 才讀得到
 
 ## 3. 驗證
 
@@ -14,4 +16,5 @@
 - [x] 3.2 `pnpm --filter @open333crm/web build`
 - [x] 3.3 `node scripts/validate-openspec.mjs adopt-redesign-design-tokens` 與 `--specs`
 - [x] 3.4 `CHANGELOG.md` 新增條目
-- [ ] 3.5 【需使用者同意】推送分支、開 PR；合併前通知設計師（PR #521 由本 PR 取代）
+- [x] 3.5 【需使用者同意】推送分支、開 PR（#539）
+- [ ] 3.6 【需使用者同意】合併前通知設計師（PR #521 由本 PR 取代）

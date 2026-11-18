@@ -81,9 +81,16 @@ describe('Web accessibility design system contract', () => {
     assert.match(css, /forced-colors:\s*active/);
   });
 
-  test('Small utility text：最小字級 12px，沒有全域強制的 13.5pt', () => {
+  test('Small utility text：最小字級 12px、字級依設計師 11/05 的刻度，沒有全域強制的 13.5pt', () => {
     const tailwind = readFileSync(resolve(process.cwd(), 'tailwind.config.ts'), 'utf8');
     assert.match(tailwind, /xs:\s*\["0\.75rem"/); // text-xs = 12px（Figma 最小字級）
+    // 設計師 11/05 決定的字級（約 Figma 的 90%）：sm 13、base 14、lg 16、xl 18、2xl 22、3xl 26px
+    const scale: Array<[string, string]> = [
+      ['sm', '0.8125rem'], ['base', '0.875rem'], ['lg', '1rem'], ['xl', '1.125rem'], ['"2xl"', '1.375rem'], ['"3xl"', '1.625rem'],
+    ];
+    for (const [cls, rem] of scale) {
+      assert.match(tailwind, new RegExp(`${cls}:\\s*\\["${rem.replace('.', '\\.')}"`), `text-${cls.replace(/"/g, '')} 應為 ${rem}`);
+    }
     assert.doesNotMatch(css, /font-size:\s*0\.84375rem/); // 舊規格的 13.5pt
   });
 

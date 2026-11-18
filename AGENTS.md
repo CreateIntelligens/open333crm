@@ -796,6 +796,23 @@ that no code registers. Thus a renamed or removed id does not stay in Redis.
   `packages/database/prisma/seed.ts` and `apps/api/src/modules/platform/platform.routes.ts` both
   import enums, and both pass the type check.
 
+## Frontend UI (apps/web)
+
+Each change to a screen in `apps/web` follows the UI design system in
+`.agents/skills/open333crm-ui/`. This includes a new page, a new component, a style change, a new
+menu item, a form and a list. Read `SKILL.md` of that skill before you write the UI.
+
+- **The skill is the rule, not a reference.** It defines the tokens (color, radius, spacing, type
+  scale), the shared components and their sizes, the shell and navigation (`RAIL` in
+  `components/layout/Sidebar.tsx`), the page header, when to use a page form or a dialog, and the
+  checks after a change.
+- Do not copy its facts into this file. Two copies diverge.
+- If the skill and the code disagree, the code is correct. Fix the skill in the same pull request.
+- Three places record the design tokens: the skill, the OpenSpec spec `web-accessibility-system`
+  and `apps/web/tests/unit/accessibility/design-system.test.ts`. When you change a token or a
+  control size, change all three.
+- Only the designer changes the design tokens, after a change in Figma.
+
 ## Conventions
 
 - **Do not reinvent existing code (MANDATORY)**: before you write a helper, a schema, a guard, a
@@ -958,7 +975,7 @@ These paths contain tool-specific instructions and skills. Project-wide rules be
 | Path | Contents |
 | ---- | -------- |
 | `.agent/instructions.md` | Generic agent runners: `.agent/workflows/`, `.agent/skills/` |
-| `.agents/skills/`, `.agents/workflows/` | OpenSpec skills and workflows, and the `postgres-rls-tenant-isolation` skill |
+| `.agents/skills/`, `.agents/workflows/` | OpenSpec skills and workflows, the `postgres-rls-tenant-isolation` skill, and the `open333crm-ui` skill (the UI design system, see [Frontend UI](#frontend-ui-appsweb)) |
 | `.codex/skills/` | Codex: OpenSpec skills and the `open333crm-cli` skill |
 | `openspec/config.yaml` | OpenSpec context and per-artifact rules |
 | `.claude/agents/` | Claude Code subagent definitions |

@@ -7,6 +7,8 @@ description: open333crm 前端（apps/web）的 UI 設計系統與版面規範�
 
 這份 skill 記錄 open333crm 前端改版後的 UI 規則，目的是讓任何人（或 AI）接手時，做出來的畫面跟 Figma 一致、不用每次重新推敲。
 
+**這是強制規範，不是參考。** `apps/web` 的每個畫面改動（新頁面、新元件、改樣式、加選單、做表單或列表）都要照這份做；`AGENTS.md` 的「Frontend UI」一節指向這裡。規範和程式不一致時，以程式為準，並在同一個 PR 修正規範。
+
 **設計來源以 Figma 為準**：檔案 `OPEN333．CRM`（file key `WJmEgRptkvoTFIBNWdHwpW`），第一頁「Design System」是元件與 token 的唯一來源。Figma 與舊的 Claude Design 稿不一致時，一律照 Figma。
 
 改畫面前先讀完這頁；需要細節時再看：
@@ -45,7 +47,19 @@ description: open333crm 前端（apps/web）的 UI 設計系統與版面規範�
 
 **間距刻度**：0、2、4、8、12、16、20、24、28、32、36、40、48、64（Tailwind `gap-1`=4、`gap-2`=8、`gap-3`=12、`gap-4`=16、`gap-5`=20、`gap-6`=24、`gap-7`=28、`gap-8`=32、`gap-12`=48）。不在刻度上的數字（例如 18、30）先回頭確認 Figma。
 
-**字級**：12 / 14 / 16 / 18 / 20 / 24 / 28 / 42；字型 Inter，等寬字 IBM Plex Mono（`font-mono`）。
+**字級**：設計師 11/05 決定把 Figma 字級縮成約 90%，最小 12px 不變。實際值（`tailwind.config.ts` 的 `fontSize`）：
+
+| Tailwind class | 實際字級 | Figma 原值 |
+|---|---|---|
+| `text-xs` | 12px | 12 |
+| `text-sm` | 13px | 14 |
+| `text-base` | 14px | 16 |
+| `text-lg` | 16px | 18 |
+| `text-xl` | 18px | 20 |
+| `text-2xl` | 22px | 24 |
+| `text-3xl` | 26px | 28 |
+
+畫面一律用上面的 class，不寫 `text-[15px]` 這類任意值。字型 Inter（中文落到 Noto Sans TC），等寬字 IBM Plex Mono（`font-mono`）。
 
 **顏色**：見 `references/tokens.md`。
 
@@ -89,7 +103,8 @@ description: open333crm 前端（apps/web）的 UI 設計系統與版面規範�
 新增選單項目：
 - 新大項：在 `RAIL` 加一筆 `{ id, label, href, perm?, icon, sections? }`，`icon` 用 `components/icons/figma-icons.tsx` 的 Figma 圖示
 - 新子頁：加在該大項的 `sections[].items`
-- `perm` 是權限碼。**前端隱藏只是不顯示，真正的權限由後端擋**，加了 `perm` 不代表安全
+- `perm` 是權限碼，大項和子頁（`sections[].items[]`）都可以各自設。**前端隱藏只是不顯示，真正的權限由後端擋**，加了 `perm` 不代表安全
+- 子頁全部被權限濾掉時，大項圖示自動隱藏；圖示連到的是第一個看得到的子頁。例：渠道底下「LINE」各項要 `richmenu.manage`、「Facebook／Instagram > 留言自動私訊」要 `comment_reply.view`，只有後者權限的人點「渠道」直接進留言自動私訊
 - 網址底下的頁面都算同一區時，用 `match`（例：渠道 `match: '/dashboard/line'`）
 
 **導覽行為（全域規則）：**
@@ -104,7 +119,7 @@ description: open333crm 前端（apps/web）的 UI 設計系統與版面規範�
 - 收起時，點有子頁的圖示會**從圖示欄右側彈出子選單**（不直接換頁），選了子頁就收起；點外面或按 Esc 也會收起
 - 切換點定義在 `Sidebar.tsx` 的 `SUBMENU_QUERY` 和 `SectionNav` 的 `lg:flex`，兩處要一起改
 
-選中樣式：圖示欄與子選單選中都是 `bg-primary-hover text-white`；未選中 `text-tertiary-foreground`。
+選中樣式：圖示欄與子選單選中都是 `bg-primary text-white`；未選中 `text-foreground/80`（子選單 `text-foreground`），滑過 `hover:bg-black/5`。
 
 ## 4. 頁面標題列（Topbar）
 
@@ -177,11 +192,11 @@ import { PageDialog, PageDialogContent, PageDialogHeader, PageDialogTitle, PageD
 | `ghost` | Ghost | 無框灰字 |
 | `destructive` / `ai` / `link` | （Figma 未定義） | 專案原有用途 |
 
-size：`lg` 44、`default` 40（16px 字）、`sm` 36、`xs` 32（14px 字）。`loading` 會顯示灰底轉圈。
+size（實際高度，Figma 尺寸縮一級，見 `button.tsx` 註解）：`lg` 40（`h-10`，Figma L 44）、`default` 36（`h-9`，Figma M 40）、`sm` 32（`h-8`，Figma S 36）、`xs` 28（`h-7`，Figma XS 32）。不再強制 44px 最小高度。`loading` 會顯示灰底轉圈。
 
 **Badge**（Figma `Tag`，高 22、`rounded-lg`）：Soft 用 `secondary`／`info`／`success`／`danger`／`warning`／`ai`；Solid 用 `default`／`destructive`／`solid-*`；Outline 用 `outline`／`outline-*`。
 
-**表單**：`Input`／`Textarea` 高 48、`rounded-lg`、focus 藍框、`aria-invalid` 紅框；`Select` 高 44、淺灰底、Figma 向下箭頭；`Checkbox` 16px 方框；`Switch`（44×24，可帶 `title`／`description`）。
+**表單**：`Input` 高 40（`h-10`）、`rounded-lg`、focus 藍框、`aria-invalid` 紅框；`Select` 高 40、淺灰底、Figma 向下箭頭；`Checkbox` 16px 方框；`Switch`（44×24，可帶 `title`／`description`）。
 
 **Tabs**：`variant="underline"`（Figma Tab / Underline）或預設 pill（Figma Segmented Control）。TabsTrigger 的 role 是 `tab`，測試要用 `getByRole('tab')`。
 
@@ -216,30 +231,24 @@ size：`lg` 44、`default` 40（16px 字）、`sm` 36、`xs` 32（14px 字）。
 
 ## 9. 改完之後的檢查
 
-本機的 Node 環境在 Docker 裡，指令要透過容器執行（在專案根目錄）：
+在專案根目錄執行（本機起環境的方式見 `AGENTS.md` 的 Quick Commands 與 Environment Gotchas）：
 
 ```bash
-DC="docker compose -f docker-compose.dev.yml"
+# 1. 型別檢查：0 個錯誤（11/18 合併後的基準）
+pnpm --filter @open333crm/web exec tsc --noEmit
 
-# 1. 型別檢查：錯誤數不能比改之前多（改版時基準是 18 個，都在本次改動以外）
-$DC exec web sh -c "cd apps/web && npx tsc --noEmit -p tsconfig.json"
+# 2. 前端單元測試
+pnpm --filter @open333crm/web test
 
-# 2. 單元測試
-$DC exec web sh -c "cd apps/web && npx vitest run --project unit"
-
-# 3. ESLint
-$DC exec web sh -c "cd apps/web && npx eslint src"
+# 3. 正式版建置
+pnpm --filter @open333crm/web build
 ```
 
-> ESLint 目前跑不起來：`apps/web/eslint.config.mjs` 引用了 `eslint-config-next`，但專案沒有安裝這個套件。需要工程師補上依賴後才能納入檢查，修好前請在 PR 說明註記「未跑 ESLint」。
+設計師的本機若用 Docker 跑 Node，把上面的指令包進 `docker compose -f docker-compose.dev.yml exec web sh -c "..."` 執行即可。
 
-**推 PR 前多做一次正式建置**（會用到前端的 `.next` 資料夾，所以先停掉開發伺服器）：
+> ESLint 目前跑不起來：`apps/web/eslint.config.mjs` 引用了 `eslint-config-next`，但專案沒有安裝這個套件。修好前請在 PR 說明註記「未跑 ESLint」。
 
-```bash
-$DC stop web
-$DC run --rm web sh -c "cd apps/web && pnpm build"
-$DC up -d web
-```
+**設計系統測試**：`apps/web/tests/unit/accessibility/design-system.test.ts` 會檢查主色、例外色、最小字級、按鈕高度。改 token 或元件尺寸時，同時更新這個測試和 OpenSpec 規格 `web-accessibility-system`，三者要一致。
 
 **Playwright**：專案的 Playwright 測試（`playwright.uat.config.ts`、`tests/e2e-uat/`）是**對 UAT 執行**的，會在共用環境操作真實資料，由維護它的人負責。前端設計工作**不要自己執行**。改了導覽、表單形式等會影響這些測試的結構時，在 PR 說明列出可能受影響的測試檔，請維護者更新。目前沒有本機用的 E2E 或截圖比對測試。
 
