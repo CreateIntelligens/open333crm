@@ -45,7 +45,7 @@ export function RichMenuPreview({
         LINE 官方帳號
       </div>
       {/* 聊天內容區 */}
-      <div className="h-[150px] bg-[#C9D3E0]" aria-hidden="true" />
+      <div className="h-[150px] bg-border" aria-hidden="true" />
 
       {/* 選單 */}
       <div className="relative bg-muted" style={{ width: containerWidth, height: containerHeight }}>
