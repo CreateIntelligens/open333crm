@@ -49,11 +49,13 @@ feature 組不使用開發資料庫。`apps/api/tests/setup/` 會做下列準備
 
 `apps/api/tests/manual/` 放對執行中的服務發請求的腳本。Vitest 不會執行這些腳本，需要手動執行。
 
+各種測試的寫法（mock、元件測試、資料隔離）見[撰寫測試](./TESTING.md)。
+
 ## CI
 
 目前沒有 CI workflow 執行建置、測試、lint 或租戶隔離檢查。`.github/workflows/` 只有 `deploy.yml`，這個 workflow 只負責部署。
 
-原本的 `ci.yml` 執行兩個租戶隔離靜態檢查與 RLS 隔離測試，之後有 commit 刪除了這個檔案。刪除經過見 `AGENTS.md` 的「CI gates」一節。
+原本的 `ci.yml` 以 `--strict` 執行兩個租戶隔離靜態檢查，也執行 RLS 隔離測試 `apps/api/tests/feature/rls-isolation.test.ts`。commit `4b384b7` 刪除了 `ci.yml`。之後 commit `323deeb` 只恢復了 `deploy.yml`，這個 workflow 不執行任何檢查。
 
 在 `ci.yml` 恢復之前，開發者必須在建立 Pull Request 前手動執行三個靜態檢查：
 
@@ -77,6 +79,37 @@ node scripts/check-workspace-esm.mjs --strict
 - `AGENTS.md` 是專案開發規則的單一真實來源。
 - Feature、Fix、架構變更及完成 OpenSpec change 時，必須更新 `CHANGELOG.md`。
 - `docs/ref/` 描述目前實作；`docs/` 中的編號文件可能包含早期規劃。
+
+### 封存 change
+
+以 `pnpm exec openspec archive` 或 `openspec-archive-change` skill 封存 change。不要手動把 change 移進 `archive/`，也不要手動把 spec 複製到 `openspec/specs/`。手動複製可能留下 CLI 讀不了的主規格格式。
+
+封存建立新的主規格時，CLI 把 `## Purpose` 寫成「TBD - created by archiving change …」。把這段改成這份規格的目的。下一節的驗證會拒絕這段文字。
+
+### 驗證規格
+
+`node scripts/validate-openspec.mjs --specs` 驗證所有主規格。`node scripts/validate-openspec.mjs <change-name>` 驗證一個 change。`main` 上的所有主規格都通過驗證。
+
+腳本執行 `pnpm exec openspec validate --strict`。加了 `--strict`，警告也會讓指令失敗。常見的警告是 `## Purpose` 少於 50 字元。
+
+腳本只忽略一種警告，而且只在主規格忽略：requirement 的文字超過 500 字元。許多主規格有這種 requirement，在拆開之前，`--strict` 一定會失敗。change 裡的這種警告不忽略，新的 requirement 太長時要拆開。
+
+### 移除整份主規格
+
+移除 `openspec/specs/<name>/` 之前，先確認這個能力是否還在規劃中：
+
+1. 還在規劃中：把主規格的 requirement 複製到該能力的 change，寫成 `ADDED` delta spec。
+2. 不在規劃中：只有下列情況可以移除主規格：
+   - 產品沒有主規格描述的能力。
+   - 另一份規格或文件已經涵蓋這個能力。
+   - 主規格記錄的是一次性的工作，不是系統持續維持的行為。
+
+不要手動刪除主規格的目錄。以一個 change 移除主規格，這個 change 包含：
+
+- 一份 delta spec，在 `## REMOVED Requirements` 下列出主規格的每個 requirement。
+- change 的 `.openspec.yaml` 寫 `retire_capabilities: true`。沒有這一行時，`pnpm exec openspec archive` 移除主規格的最後一個 requirement 時會失敗。
+
+封存這個 change 時，CLI 刪除主規格的目錄。在 change 的 `proposal.md` 寫出每份被移除主規格的原因。有規格或文件取代被移除的主規格時，寫出它的名稱。
 
 CI 與測試目前的缺口列在[實作落差與驗證紀錄](./AUDIT.md)。
 

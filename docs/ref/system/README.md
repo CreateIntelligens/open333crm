@@ -96,7 +96,8 @@ sequenceDiagram
 | [部署與執行環境](./DEPLOYMENT.md) | 三個 Compose 檔案有什麼差異？開發容器如何啟動？ |
 | [應用程式與共用套件](./COMPONENTS.md) | 每個 app 與 package 負責什麼？彼此如何相依？ |
 | [基礎設施與外部整合](./INFRASTRUCTURE.md) | PostgreSQL、Redis、MinIO、LLM 與渠道如何接線？ |
-| [開發與交付](./DELIVERY.md) | 專案如何建置、測試、執行 CI 及部署？ |
+| [開發與交付](./DELIVERY.md) | 專案如何建置、測試、執行 CI 及部署？怎麼封存 change、移除主規格？ |
+| [撰寫測試](./TESTING.md) | 單元測試怎麼替換相依？元件測試有什麼限制？feature 測試怎麼隔離資料？ |
 | [實作落差與驗證紀錄](./AUDIT.md) | 哪些實作與設定不一致？哪些問題已在執行時重現？ |
 | [實作落差複查紀錄](./AUDIT-REVIEWS.md) | 哪次複查發現哪些落差已修正？複查的範圍與方法是什麼？ |
 

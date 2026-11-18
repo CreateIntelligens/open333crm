@@ -16,6 +16,7 @@ tools: Bash, Read, Write, Edit, Glob, Grep
    - Step 3 的五條結構規則（route 不查 DB、service 收 executor、channel 走 plugin registry…）
    - Step 4 完成定義（`pnpm test`、tenant-scoping / prisma-admin 兩支檢查 `--strict`、CHANGELOG）
    - 多租戶兩層隔離、`AppError(message, code, statusCode)` 參數順序、CHANGELOG 日期格式 `## [YYYY-MM-DD]`
+   - `AGENTS.md` 指向的細節文件：寫測試之前讀 `docs/ref/system/TESTING.md`；改 `apps/api` 的 route、flow、service 或 job handler 之前讀 `docs/ref/modules/API-MODULE.md`
 2. 呼叫你的人會給你：問題清單檔、你負責的問題編號、分支名稱。
 
 ## 工作環境
