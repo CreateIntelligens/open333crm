@@ -19,7 +19,9 @@ const ROLE_LABEL: Record<string, string> = { ADMIN: 'Admin', SUPERVISOR: '客服
 function formatMinutes(min: number | null | undefined) {
   if (min == null) return null;
   if (min < 60) return { value: min.toFixed(1), unit: '分' };
-  return { value: `${Math.floor(min / 60)} 時 ${Math.round(min % 60)}`, unit: '分' };
+  // 先把總分鐘數四捨五入再拆時、分，避免 119.6 分變成「1 時 60 分」
+  const total = Math.round(min);
+  return { value: `${Math.floor(total / 60)} 時 ${total % 60}`, unit: '分' };
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -64,7 +66,7 @@ function TargetCard({ label, icon: Icon, value, unit, target, loading }: TargetC
       )}
       {target && !loading && value != null && (
         <div className="flex flex-col gap-1.5">
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`${label}達成率`} aria-valuenow={Math.round(target.achieve)} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`${label}達成率`} aria-valuenow={Math.min(100, Math.round(target.achieve))} aria-valuemin={0} aria-valuemax={100}>
             <div className={`h-full rounded-full ${target.ok ? 'bg-primary' : 'bg-destructive'}`} style={{ width: `${Math.min(100, target.achieve)}%` }} />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -119,6 +121,9 @@ export default function MyPerformancePage() {
       <Topbar title="我的績效" description={subtitle} />
       <div className="flex flex-1 flex-col gap-5 overflow-auto px-7 pb-7">
         {error && !data && <ReportError label="我的績效" onRetry={() => mutate()} />}
+
+        {/* 載入失敗又沒有資料時不顯示下面兩區：否則會出現「0 件」和綠色「目前沒有待處理事項」，看起來像真的沒事 */}
+        {!(error && !data) && (<>
 
         {/* 待處理提醒 */}
         <section aria-labelledby="h-alerts" className={CARD}>
@@ -209,6 +214,8 @@ export default function MyPerformancePage() {
             <TargetCard label="SLA 達成率" icon={CheckCircle2} value={sla != null ? sla.toFixed(1) : null} unit="%" target={slaTarget} loading={isLoading} />
           </div>
         </section>
+
+        </>)}
 
         {/* 本月摘要 */}
         {notes.length > 0 && (
