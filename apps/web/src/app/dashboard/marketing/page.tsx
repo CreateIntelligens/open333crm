@@ -164,7 +164,7 @@ function CampaignTab({ dialogOpen, setDialogOpen }: TabProps) {
                 role="row"
                 tabIndex={0}
                 onClick={open}
-                onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+                onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === 'Enter') open(); }}
                 className="grid cursor-pointer grid-cols-[minmax(0,1fr)_120px_120px_140px_80px] items-center gap-5 border-b border-border bg-background px-5 py-4 text-sm font-medium text-muted-foreground transition-colors last:border-b-0 hover:bg-shell focus-visible:bg-shell focus-visible:outline-none"
               >
                 <span role="cell" className="flex min-w-0 flex-col gap-0.5">
