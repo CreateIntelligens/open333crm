@@ -96,6 +96,6 @@ bull-board 的畫面仍顯示這些按鈕，按下後畫面顯示錯誤。讀取
 
 任一個網段格式錯誤時，API 記一行 error log，並把整份清單視為空清單。格式正確的網段是 `<IP 位址>/<十進位前綴>`，例如 `60.248.142.0/24`；`60.248.142.0/` 這類空白前綴也算格式錯誤。
 
-本機以 Docker 執行時，瀏覽器的連線經 Docker 網路的閘道進入容器，API 看到的來源 IP 是閘道的位址（例如 `172.18.0.1`），不是 `127.0.0.1`。`.env.api.example` 因此寫 `172.16.0.0/12`。在主機上直接執行 API（`pnpm --filter @open333crm/api dev`）時，來源 IP 是 `127.0.0.1` 或 `::1`，要在根目錄的 `.env` 設 `QUEUE_DASHBOARD_ALLOWED_CIDRS=127.0.0.1/32,::1/128`。
+本機以 Docker 執行時，瀏覽器的連線經 Docker 網路的閘道進入容器，API 看到的來源 IP 是閘道的位址（例如 `172.18.0.1`），不是 `127.0.0.1`。`.env.api.example` 因此寫 `172.16.0.0/12`。在主機上直接執行 API（`pnpm --filter @open333crm/api dev`）時，來源 IP 是 `127.0.0.1` 或 `::1`，要在根目錄的 `.env` 設 `QUEUE_DASHBOARD_ALLOWED_CIDRS=127.0.0.1/32,::1/128`。UAT 與正式環境的來源 IP 是 nginx 附加的使用者 IP，要設定公司網段。
 
-告警裡的監控連結以 `WEB_BASE_URL` 加上 `/api/v1/platform/queues` 組成。正式環境的網頁與 API 同網域，連結可以開；本機的 `WEB_BASE_URL` 是 Next.js 的 `http://localhost:3000`，連結會 404。UAT 與正式環境的來源 IP 是 nginx 附加的使用者 IP，要設定公司網段。
+告警裡的監控連結以 `WEB_BASE_URL` 加上 `/api/v1/platform/queues` 組成。正式環境的網頁與 API 同網域，連結可以開；本機的 `WEB_BASE_URL` 是 Next.js 的 `http://localhost:3000`，連結會 404。

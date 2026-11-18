@@ -90,7 +90,7 @@ LINE 把事件送到 `POST /api/v1/webhooks/line/:channelId`。程式在 `apps/a
 ## 送 LINE 訊息
 
 - **訊息格式。** `buildLineMessage()` 依訊息的 `contentType` 組成 LINE 的訊息物件：文字、快速回覆、Flex（滿意度問卷）、圖片、影片、檔案、音訊、位置、貼圖，以及素材的 `line_*` 版型。不認得的 `contentType` 不送出，回傳失敗。imagemap 素材的圖片由 `GET /line-imagemap/...`（`apps/api/src/modules/storage/line-imagemap.routes.ts`）依 LINE 要求的寬度提供。
-- **reply 與 push。** 收到訊息 30 秒內用 reply token 回覆，超過或 reply 失敗時改用 push。
+- **reply 與 push。** 系統在收到訊息後 30 秒內用 reply token 回覆；超過 30 秒，或 reply 失敗時，改用 push。
 - **上限。** LINE 一次最多送 5 則訊息、快速回覆最多 13 個按鈕；multicast 每批最多 500 人。
 
 ## LIFF 與 LINE Login
@@ -102,7 +102,7 @@ LINE 把事件送到 `POST /api/v1/webhooks/line/:channelId`。程式在 `apps/a
 | `liffId` | 短連結在 LINE 裡開啟時走 LIFF 頁取得點擊者的 LINE uid，見[短連結](./SHORTLINKS.md) |
 | `loginChannelId` | 優惠券票券夾以 LINE ID token 驗證顧客（`apps/api/src/modules/coupon/line-id-token.ts`） |
 
-同一個顧客在不同 LINE 官方帳號的 uid 要相同，這些官方帳號與 LIFF 的 Login channel 必須在 LINE 的同一個 provider。
+要讓同一個顧客在不同 LINE 官方帳號有相同的 uid，這些官方帳號與 LIFF 的 Login channel 必須在 LINE 的同一個 provider。
 
 ## 渠道憑證
 

@@ -68,7 +68,7 @@
 | `contact.created` 聯繫人建立 | 是 | `automation.worker.ts` |
 | `contact.tagged` 聯繫人加標籤 | 是 | `automation.worker.ts` |
 | `link.clicked` 短連結被點擊 | 是 | `automation.worker.ts` |
-| `contact.followed` 加入好友 | 是 | `automation.worker.ts`：處理 LINE 的 follow 事件（`message.received`、`contentType: follow`）時另外排入，帶回覆權杖，動作在期限內用回覆方式送出。「加好友禮」頁建立的就是這個事件的規則 |
+| `contact.followed` 加入好友 | 是 | `automation.worker.ts`：處理 LINE 的 follow 事件（`message.received`、`contentType: follow`）時，另外把這個事件排入佇列，並帶上回覆權杖。動作在權杖的期限內用回覆方式送出。「加好友禮」頁建立的就是這個事件的規則 |
 | `sla.*` 的 SLA 事件 | 是 | workers 的 `sla.handler.ts` 直接查規則並執行 |
 | `case.closed` 工單關閉 | 否 | 事件有發布，但沒有送進 queue |
 | `case.assigned` 工單指派 | 否 | 同上 |

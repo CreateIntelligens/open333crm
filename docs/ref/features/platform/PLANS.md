@@ -20,7 +20,7 @@
 
 **平台後台能改什麼。** `/admin/plans` 只編輯上表四個欄位：功能模組、數值上限、可建立的渠道類型與權限碼扣除。名稱、月費與停售（`isActive`）沒有畫面欄位，只能直接呼叫 `PATCH /platform/plans/:id`。系統沒有新增或刪除方案的端點，方案只由 seed 建立（見下方「seed 建立的五個方案」）。
 
-渠道類型的選項取自 `GET /platform/registry`，也就是 `ChannelType` 列舉的全部值，包含沒有渠道外掛、租戶建不出來的 `WHATSAPP` 與 `TELEGRAM`，見[平台設定](./SETTINGS.md)。
+渠道類型的選項取自 `GET /platform/registry`，也就是 `ChannelType` 列舉的全部值。選項因此包含 `WHATSAPP` 與 `TELEGRAM`：這兩種類型沒有渠道外掛，租戶建不出來。見[平台設定](./SETTINGS.md)。
 
 `slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。它只出現在平台後台的方案頁與排序，不會回傳給租戶端，系統也不產生帳單，見 `../../system/AUDIT.md` 的 PLAN-10。
 

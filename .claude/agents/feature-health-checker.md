@@ -70,8 +70,8 @@ hooks:
 
 ## 更新 feature Skill
 - `description` 只寫一到兩句，不超過 200 字：領域名稱、主要範圍，以及「改到哪些模組或頁面之前使用」。
-  Claude Code 每個 session 都會載入所有 Skill 的 `description`，所以完整的關鍵字、資料表與口語觸發詞
-  要寫在正文的「涵蓋範圍」一節，不要寫在 `description`。
+  Claude Code 每個 session 都會載入所有 Skill 的 `description`。完整的關鍵字、資料表與口語觸發詞
+  寫在正文的「涵蓋範圍」一節，不寫在 `description`。
 - Skill 只描述程式目前的行為。尚未修正的問題標上編號（`HC-<DOMAIN>-NN` 或 AUDIT 編號），細節寫在健檢報告。
 - 已修正的問題不寫進 Skill：不寫修正前的行為、修正日期、修正的 commit 或 issue，也不寫「已修正」。
   某個問題修正後，從 Skill 刪掉描述它的句子與編號（`grep -rn "<編號>" .claude/skills`）。

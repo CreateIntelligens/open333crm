@@ -91,7 +91,7 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 
 AI 月額度的月份一律是台灣月份（`taipeiMonthString()`）：Redis 計數器 key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，告警旗標是 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`，兩者都在台灣下個月 1 日 00:00 過期；告警站內通知與 email 的「本月（YYYY-MM）」也是台灣月份。舊的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}`（沒有 `:tpe`）不再被讀取，換版後計數器從資料庫以台灣月份重建，部署當下跨月的行為見 change `fix-platform-usage-trial-display` 的 design D3。
 
-額度用完時，每次呼叫 LLM 之前的檢查丟出 403 `PLAN_LIMIT_EXCEEDED`，不呼叫模型。各功能對這個錯誤的處理不同：
+系統在每次呼叫 LLM 之前檢查月額度。額度用完時，檢查丟出 403 `PLAN_LIMIT_EXCEEDED`，系統不呼叫模型。各功能對這個錯誤的處理不同：
 
 | 功能 | 額度用完時 |
 | --- | --- |
