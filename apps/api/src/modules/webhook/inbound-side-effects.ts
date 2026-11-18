@@ -290,6 +290,8 @@ export async function sendFirstContactGreeting(
   deliver: typeof deliverToChannel = deliverToChannel,
 ): Promise<void> {
   if (!ctx.isFirstContact) return;
+  // 留言自動私訊建立的聯絡人：顧客已收到（或應收到）留言私訊，第一次進站不再送招呼語（D17）
+  if (ctx.fromCommentReply) return;
 
   try {
     if (!ctx.conversation || !ctx.contactId) return;

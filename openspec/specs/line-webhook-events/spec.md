@@ -1,6 +1,8 @@
 ## Purpose
 定義 LINE Webhook 的處理：簽章驗證、30 秒內回應、解析所有 LINE 事件類型，以及收到媒體訊息時立即下載保存。
+
 ## Requirements
+
 ### Requirement: LINE Webhook signature verification
 The system SHALL verify every incoming LINE Webhook request using HMAC-SHA256 computed from `channelSecret` and the raw request body, compared against the `X-Line-Signature` header.
 
@@ -28,16 +30,26 @@ The system SHALL parse and route the following LINE event types:
 
 - `message` → `UniversalMessage` (text / image / video / audio / file / location / sticker)
 - `postback` → `UniversalMessage` with `type: 'postback'`
-- `follow` → Contact status update event (`channelStatus: 'active'`)
-- `unfollow` → Contact status update event (`channelStatus: 'blocked'`)
+- `follow` → inbound system event with `contentType` `follow`; the system clears `blockedAt` of the channel identity
+- `unfollow` → inbound system event with `contentType` `unfollow`; the system sets `blockedAt` of the channel identity to the processing time
+
+The system SHALL record the block state per channel identity and SHALL NOT change `Contact.isBlocked`, which only an agent sets.
 
 #### Scenario: Text message parsed
 - **WHEN** a `message` event with type `text` is received
 - **THEN** a `UniversalMessage` with `messageType: 'text'` and correct `content.text` is produced
 
 #### Scenario: Follow event updates contact
-- **WHEN** a `follow` event is received for a known contact
-- **THEN** `Contact.channelStatus` is updated to `'active'`
+- **WHEN** a `follow` event is received for a known channel identity whose `blockedAt` has a value
+- **THEN** `blockedAt` of that channel identity is `null`, and `Contact.isBlocked` does not change
+
+#### Scenario: Unfollow event records the block
+- **WHEN** an `unfollow` event is received for a known channel identity
+- **THEN** `blockedAt` of that channel identity has the processing time, the event is stored as an inbound message, and `Contact.isBlocked` does not change
+
+#### Scenario: Unfollow of another channel does not change this channel
+- **WHEN** a contact has identities on LINE channel A and LINE channel B, and an `unfollow` event for the uid arrives on channel A
+- **THEN** only the identity on channel A has `blockedAt`; the identity on channel B keeps `blockedAt` `null`
 
 ### Requirement: Parse LINE unsend, group and other events
 The system SHALL also parse and route the following LINE event types:
@@ -92,3 +104,10 @@ The system SHALL NOT download content larger than 25 MB, SHALL keep the stored M
 #### Scenario: File downloaded and stored
 - **WHEN** a Webhook `message` event of type `file` with `fileName`「報價單.pdf」arrives
 - **THEN** the message has `contentType` `file`, text「[檔案] 報價單.pdf」, `fileName` and `fileSize`, and the system stores the content with the extension `.pdf` as `application/octet-stream`
+
+### Requirement: Unfollow from an unknown user creates nothing
+When an `unfollow` event arrives for a uid that has no channel identity on that channel, the system SHALL NOT create a contact, a channel identity, a conversation or a message, and SHALL NOT send any message. This applies also when the uid belongs to a merged contact of another channel.
+
+#### Scenario: Unknown user blocks the official account
+- **WHEN** an `unfollow` event arrives for a uid that has no channel identity on the LINE channel
+- **THEN** the number of contacts and channel identities of the tenant does not change, no message is stored, and the system sends nothing to LINE

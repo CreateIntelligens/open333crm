@@ -5,6 +5,19 @@
 
 import { blockJsonToMjml, substituteMjmlVars, type BlockNode } from './mjml-renderer.js';
 
+function stripMjmlTags(input: string, prefix: string): string {
+  let result = '';
+  let cursor = 0;
+  while (true) {
+    const start = input.indexOf(prefix, cursor);
+    if (start === -1) return result + input.slice(cursor);
+    const end = input.indexOf('>', start + prefix.length);
+    if (end === -1) return result + input.slice(cursor);
+    result += input.slice(cursor, start);
+    cursor = end + 1;
+  }
+}
+
 /**
  * Compile MJML string to HTML.
  * Uses dynamic import to avoid bundling issues – install `mjml` in the api package.
@@ -21,10 +34,7 @@ export async function compileMjml(mjml: string): Promise<{ html: string; errors:
     if (!mjmlPkg) {
       // Fallback: strip MJML tags and return a basic HTML shell for environments
       // where mjml is not installed (e.g. test environment)
-      const stripped = mjml
-        .replace(/<mj-[^>]*>/g, '')
-        .replace(/<\/mj-[^>]*>/g, '')
-        .trim();
+      const stripped = stripMjmlTags(stripMjmlTags(mjml, '<mj-'), '</mj-').trim();
       return { html: `<html><body>${stripped}</body></html>`, errors: ['mjml package not found – using fallback'] };
     }
 

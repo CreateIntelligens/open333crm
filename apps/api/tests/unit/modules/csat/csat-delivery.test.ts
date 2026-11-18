@@ -12,6 +12,7 @@ import { afterEach, beforeEach, test, vi } from 'vitest';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
 import { disabledAiPrivacy, enabledAiPrivacy } from '../../../support/ai-privacy.js';
+import { csatFlowDeps } from '../../../support/csat-flow.js';
 
 const fb = vi.hoisted(() => ({ delivered: true }));
 
@@ -30,7 +31,7 @@ vi.mock('@open333crm/channel-plugins', async () => {
   };
 });
 
-const { sendCsatSurvey } = await import('#src/modules/csat/csat.service.js');
+const { sendCsatSurveyFlow } = await import('#src/modules/csat/csat.flow.js');
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 const CASE_ID = 'b0000000-0000-0000-0000-000000000001';
@@ -68,7 +69,7 @@ function createHarness(
   const db = {
     ...(opts.privacyEnabled ? enabledAiPrivacy : disabledAiPrivacy),
     case: {
-      findUnique: async () => ({
+      findFirst: async () => ({
         id: CASE_ID,
         tenantId: TENANT_ID,
         contactId: 'contact-1',
@@ -107,7 +108,7 @@ function createHarness(
         return {};
       },
     },
-    conversation: { update: async () => ({}) },
+    conversation: { updateMany: async () => ({ count: 1 }) },
   };
   return { db: db as unknown as TenantDb, io, emits, messageUpdates, caseEvents, caseUpdates, messagesCreated };
 }
@@ -115,7 +116,7 @@ function createHarness(
 test('LINE 客人收到的問卷是 Flex 訊息', async () => {
   const h = createHarness('LINE');
 
-  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), true);
+  assert.equal(await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID }), true);
 
   assert.equal(lineBodies.length, 1);
   const [message] = lineBodies[0].messages;
@@ -134,7 +135,7 @@ test('問卷送出失敗時客服看得到：LINE 拒收', async () => {
   lineStatus = 400;
   const h = createHarness('LINE');
 
-  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), true);
+  assert.equal(await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID }), true);
 
   assert.equal(h.messageUpdates.length, 1);
   assert.equal(h.messageUpdates[0].where.id, 'msg-csat');
@@ -156,7 +157,7 @@ test('問卷送出失敗時客服看得到：LINE 拒收', async () => {
 test('問卷送出失敗時客服看得到：找不到客人的 LINE 帳號', async () => {
   const h = createHarness('LINE', { identity: false });
 
-  await sendCsatSurvey(h.db, h.io, CASE_ID);
+  await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID });
 
   assert.equal(lineBodies.length, 0);
   assert.equal(h.messageUpdates[0]?.data.metadata.deliveryFailed, true);
@@ -168,7 +169,7 @@ test('問卷送出失敗時客服看得到：找不到客人的 LINE 帳號', as
 test('問卷送出失敗時客服看得到：其他渠道送不出', async () => {
   const h = createHarness('LINE', { channelActive: false });
 
-  await sendCsatSurvey(h.db, h.io, CASE_ID);
+  await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID });
 
   assert.equal(lineBodies.length, 0, '不呼叫渠道外掛送出');
   assert.equal(h.messageUpdates[0]?.data.metadata.deliveryFailed, true);
@@ -179,7 +180,7 @@ test('問卷送出失敗時客服看得到：其他渠道送不出', async () =>
 test('非 LINE 渠道的工單不寄問卷：不認領、不建立問卷訊息', async () => {
   const h = createHarness('FB');
 
-  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), false);
+  assert.equal(await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID }), false);
 
   assert.equal(h.messagesCreated.length, 0);
   assert.equal(lineBodies.length, 0);
@@ -188,7 +189,7 @@ test('非 LINE 渠道的工單不寄問卷：不認領、不建立問卷訊息',
 test('認領之前租戶被停用：不建立問卷訊息、不送給客人（PR #440 審查）', async () => {
   const h = createHarness('LINE', { tenantActive: false });
 
-  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), false);
+  assert.equal(await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID }), false);
 
   assert.equal(h.messagesCreated.length, 0);
   assert.equal(lineBodies.length, 0);
@@ -198,7 +199,7 @@ test('失敗紀錄只更新這個租戶的問卷訊息（PR #440 審查）', asy
   lineStatus = 400;
   const h = createHarness('LINE');
 
-  await sendCsatSurvey(h.db, h.io, CASE_ID);
+  await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID });
 
   assert.deepEqual(h.messageUpdates[0].where, { id: 'msg-csat', conversation: { tenantId: TENANT_ID } });
 });
@@ -219,7 +220,7 @@ test('去識別化服務無法使用時滿意度調查照常送出', async () =>
   }) as typeof fetch;
   const h = createHarness('LINE', { privacyEnabled: true });
 
-  assert.equal(await sendCsatSurvey(h.db, h.io, CASE_ID), true);
+  assert.equal(await sendCsatSurveyFlow(csatFlowDeps(h.db, h.io), { tenantId: TENANT_ID, caseId: CASE_ID }), true);
 
   assert.equal(deidRequests.length, 0, '沒有呼叫去識別化服務');
   assert.equal(h.messagesCreated.length, 1);

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod/v3';
 import { normalizeCsvUpload, parseFileToMarkdown, parseSpreadsheetToQaRows } from './file-parser.service.js';
 import { parseCmd, type PartnerAttachmentInput } from './partner-ingest.service.js';
@@ -92,6 +93,7 @@ export interface KnowledgeRouteOptions {
 }
 
 export default async function knowledgeRoutes(fastify: FastifyInstance, opts: KnowledgeRouteOptions = {}) {
+  await fastify.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute' });
   const deps: KnowledgeDeps = { prisma: fastify.prisma, effects: opts.effects ?? createKnowledgeEffects(fastify.prisma) };
   const view = { preHandler: [requirePermission('knowledge.view')] };
 

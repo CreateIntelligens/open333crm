@@ -32,8 +32,26 @@ import {
 } from './inbound-side-effects.js';
 import { forwardToDownstream, getDownstreamWebhookConfig } from './downstream-forwarder.js';
 import { claimForForward } from './downstream-loop-guard.js';
-import { recordRoutingWarning, routePlatformMessages, routeWebhookMessages } from './webhook-account-routing.js';
+import { recordRoutingWarning, routePlatformMessages, routeWebhookMessages, type RoutedGroup } from './webhook-account-routing.js';
 import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
+import { intakeCommentEvents } from '../comment-reply/comment-reply-intake.flow.js';
+import { recordMetaSignatureFailure } from './webhook-signature-failures.js';
+import { attachInboundCommentOrigin } from './inbound-comment-origin.js';
+import type { Redis } from 'ioredis';
+import type { ParsedCommentEvent } from '@open333crm/channel-plugins';
+import type { EventPublisher } from '../../events/outbox-publisher.js';
+
+/**
+ * webhook 背景處理需要的其他連線（change add-comment-keyword-private-reply）：
+ * - tenantPrisma：app_tenant 連線，留言收件與收件匣串接以租戶交易綁定租戶（RLS）；沒給時退回 webhook 的連線
+ * - redis：留言規則快取版本號、最後留言事件時間、驗簽失敗計數
+ */
+export interface WebhookProcessingDeps {
+  tenantPrisma?: PrismaClient;
+  redis?: Pick<Redis, 'get' | 'set' | 'incr' | 'expire'>;
+  /** outbox 的寫入與快路徑；預設寫 outbox 後送進 BullMQ（測試可替換成記錄用的實作） */
+  events?: EventPublisher;
+}
 
 // TODO(rls): 入站 webhook 為公開端點（無認證租戶），tenant 由 channel 反查得出，
 // 且下游 resolver / InboundMessageContext 皆以 PrismaClient 型別串接，故此路徑不套 RLS，維持 PrismaClient。
@@ -146,6 +164,7 @@ export async function processWebhookEvent(
   headers: Record<string, string>,
   /** 路由已在回應前驗簽時傳入，避免重複查詢與驗簽 */
   preverified?: VerifiedWebhook,
+  deps: WebhookProcessingDeps = {},
 ) {
   logger.info('[Webhook] Received', { channelId, channelType, bodyBytes: rawBody?.length ?? 0 });
 
@@ -159,6 +178,7 @@ export async function processWebhookEvent(
         case 'no_plugin':
           throw new Error(`No plugin for channel type: ${channelType}`);
         case 'invalid_signature':
+          if (channelType === CHANNEL_TYPE.FB || channelType === CHANNEL_TYPE.THREADS) await recordMetaSignatureFailure(deps.redis);
           throw new Error('Invalid webhook signature');
         // 租戶停用與類型不符是預期內情況（非錯誤）：route 早已回 200，安靜丟棄即可
         case 'tenant_disabled':
@@ -234,8 +254,22 @@ export async function processWebhookEvent(
       }
     }
     for (const parsed of group.messages) {
-      await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed);
+      await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed, { tenantPrisma: deps.tenantPrisma });
     }
+  }
+
+  // 7b. 留言（FB feed／IG comments）：在私訊之後處理，收件失敗不影響已落地的私訊
+  //     （change add-comment-keyword-private-reply design D3、§3.6）。分派規則與私訊相同。
+  const comments = parseComments(plugin, rawBody);
+  if (comments.length > 0) {
+    const commentRouting = await routeWebhookMessages(
+      prisma,
+      { id: channel.id, tenantId, channelType: channel.channelType, externalAccountId: channel.externalAccountId },
+      credentials,
+      secret,
+      comments,
+    );
+    await intakeRoutedComments(prisma, deps, plugin, commentRouting.groups);
   }
 
   // 8. Downstream "after" mode: CRM processing done, now forward a copy.
@@ -259,6 +293,7 @@ export async function processPlatformMetaWebhook(
   io: SocketIOServer,
   rawBody: Buffer,
   headers: Record<string, string>,
+  deps: WebhookProcessingDeps = {},
 ) {
   const cfg = getMetaAppConfig();
   if (!cfg) throw new Error('Platform Meta App is not configured');
@@ -278,6 +313,7 @@ export async function processPlatformMetaWebhook(
   if (!plugin) throw new Error(`No plugin for channel type: ${channelType}`);
   if (!plugin.verifySignature(rawBody, headers, cfg.appSecret)) {
     logger.warn('[Webhook:meta] Signature verification failed', { channelType });
+    await recordMetaSignatureFailure(deps.redis);
     throw new Error('Invalid webhook signature');
   }
 
@@ -285,7 +321,53 @@ export async function processPlatformMetaWebhook(
   const groups = await routePlatformMessages(prisma, channelType, parsed);
   for (const group of groups) {
     for (const message of group.messages) {
-      await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, message);
+      await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, message, { tenantPrisma: deps.tenantPrisma });
+    }
+  }
+
+  // 留言：私訊之後處理，與私訊同一套平台分派（change add-comment-keyword-private-reply）
+  const comments = parseComments(plugin, rawBody);
+  if (comments.length > 0) {
+    const commentGroups = await routePlatformMessages(prisma, channelType, comments);
+    await intakeRoutedComments(prisma, deps, plugin, commentGroups);
+  }
+}
+
+/** 外掛有留言擴充時解析留言事件；沒有擴充或解析不到回空陣列 */
+function parseComments(plugin: ChannelPlugin, rawBody: Buffer): ParsedCommentEvent[] {
+  const ext = plugin.extensions?.comments;
+  if (!ext || !rawBody) return [];
+  return ext.parseCommentEvents(rawBody);
+}
+
+/**
+ * 每個渠道群組交給留言收件 flow。單一渠道失敗只在該渠道記 comment_intake_failed 警示並寫 error log
+ * （不寫留言內容），不丟出：同一請求的私訊已經處理完，其他渠道的留言照常處理（spec「留言處理失敗不影響私訊」）。
+ */
+async function intakeRoutedComments(
+  prisma: PrismaClient,
+  deps: WebhookProcessingDeps,
+  plugin: ChannelPlugin,
+  groups: RoutedGroup<ParsedCommentEvent>[],
+): Promise<void> {
+  const platform = plugin.extensions?.comments?.capabilities.platform;
+  if (!platform) return;
+  for (const group of groups) {
+    try {
+      await intakeCommentEvents(
+        { prisma: deps.tenantPrisma ?? prisma, redis: deps.redis, events: deps.events },
+        { id: group.channel.id, tenantId: group.channel.tenantId, channelType: group.channel.channelType },
+        platform,
+        group.messages,
+      );
+    } catch (err) {
+      logger.error('[Webhook] 留言收件失敗', {
+        channelId: group.channel.id,
+        tenantId: group.channel.tenantId,
+        count: group.messages.length,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await recordRoutingWarning(prisma, group.channel, 'comment_intake_failed');
     }
   }
 }
@@ -361,6 +443,9 @@ export async function processInboundMessage(
   resolveInboundMediaAsync(ctx);
 
   await updateConversationAfterInboundMessage(ctx);
+
+  // 顧客回覆留言私訊：關聯觸發紀錄、補入系統訊息與私訊快照（D18）。失敗只記 log，不影響訊息落地與推播
+  await attachInboundCommentOrigin(ctx);
 
   // 加入好友：記錄加入時間與次數，判斷是不是第一次加入（design D28）；重新加入時清空封鎖時間
   await recordInboundFollow(ctx);

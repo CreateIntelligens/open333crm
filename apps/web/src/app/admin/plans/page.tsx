@@ -8,6 +8,9 @@ const LIMIT_KEYS: { key: string; label: string }[] = [
   { key: 'maxChannels', label: '渠道數' },
   { key: 'maxTags', label: '分眾標籤數' },
   { key: 'monthlyTokens', label: 'AI 月額度 token' },
+  // 留言自動私訊（change add-comment-keyword-private-reply design D23）：沒有這個鍵＝無上限
+  { key: 'maxCommentReplyRules', label: '留言規則數（啟用中）' },
+  { key: 'monthlyCommentReplies', label: '每月留言私訊數' },
 ];
 
 interface Plan {
@@ -124,7 +127,8 @@ export default function PlansPage() {
     try {
       await platformApi.patch(`/plans/${plan.id}`, {
         features: plan.features,
-        limits: plan.limits,
+        // 留空的上限明確送 null（無上限），讀回時鍵存在且為 null（spec「設定上限並讀回」）
+        limits: { ...plan.limits, ...Object.fromEntries(LIMIT_KEYS.map(({ key }) => [key, plan.limits[key] ?? null])) },
         allowedChannelTypes: plan.allowedChannelTypes,
         permissionOverrides: { deny: plan.permissionOverrides?.deny ?? [] },
       });
@@ -236,6 +240,7 @@ export default function PlansPage() {
                   <div key={key} style={{ fontSize: 13 }}>
                     <div style={{ color: '#66707f', marginBottom: 2 }}>{l}</div>
                     <input
+                      aria-label={`${plan.name} ${l}`}
                       defaultValue={plan.limits[key] ?? ''}
                       placeholder="無上限"
                       onChange={(e) => setLimit(plan.id, key, e.target.value)}

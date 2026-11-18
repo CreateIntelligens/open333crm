@@ -16,6 +16,7 @@ import {
 import { Queue } from 'bullmq';
 import { OPS_ALERT_QUEUE } from '../ops-alert/ops-alert.service.js';
 import { COUPON_BROADCAST_QUEUE } from '../marketing/broadcast-coupon.service.js';
+import { COMMENT_REPLY_QUEUE } from '../comment-reply/comment-reply.types.js';
 
 /** API 行程消費的佇列 */
 export const API_QUEUES: readonly string[] = [
@@ -28,6 +29,8 @@ export const API_QUEUES: readonly string[] = [
   'api-scheduler',
   OPS_ALERT_QUEUE,
   COUPON_BROADCAST_QUEUE,
+  // 留言自動私訊的送出（add-comment-keyword-private-reply design D1），消費者在 API 行程
+  COMMENT_REPLY_QUEUE,
 ];
 
 /** workers 行程消費的佇列 */

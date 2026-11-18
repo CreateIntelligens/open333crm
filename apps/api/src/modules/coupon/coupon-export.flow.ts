@@ -6,11 +6,11 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { notifyAgent } from '../../events/socket-push.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import { getCoupon } from './coupon.service.js';
 import { exportInstancesCsv } from './coupon-stats.service.js';
-import { countInstances, recordExportNotice, startBackgroundExport, type ExportNotice } from './coupon-export.service.js';
+import { countInstances, startBackgroundExport, type ExportNotice } from './coupon-export.service.js';
+import { createAndDispatch } from '../notification/notification-effects.js';
 
 export interface InstanceExportDeps {
   prisma: PrismaClient;
@@ -56,8 +56,6 @@ export async function exportInstancesFlow(
 }
 
 export async function notifyExportResult(deps: { prisma: PrismaClient; io: Server }, notice: ExportNotice): Promise<void> {
-  await inTenant(deps.prisma, notice.tenantId, async (scope) => {
-    const notification = await recordExportNotice(scope, notice);
-    if (notification) notifyAgent(scope, deps.io, notice.agentId, 'notification.new', notification);
-  });
+  const { tenantId, ...input } = notice;
+  await inTenant(deps.prisma, tenantId, (scope) => createAndDispatch(scope, deps.io, input));
 }

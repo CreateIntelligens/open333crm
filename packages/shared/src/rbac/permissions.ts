@@ -108,6 +108,12 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   { code: 'portal.view', group: '粉絲活動', feature: 'portal', label: '檢視粉絲活動', description: '活動、submissions、點數' },
   { code: 'portal.manage', group: '粉絲活動', feature: 'portal', label: '管理粉絲活動', description: '建/改/刪、publish/end、抽獎、點數調整', dependsOn: ['portal.view'] },
 
+  // ── 留言自動私訊（feature: comment_reply，add-comment-keyword-private-reply D20）──
+  // 素材下拉走本模組的 material-options（comment_reply.manage），不 implies marketing.view：
+  // marketing.view 會連帶開放群發、受眾等資料，且方案沒有 marketing feature 時會被天花板濾掉
+  { code: 'comment_reply.view', group: '留言自動私訊', feature: 'comment_reply', label: '檢視留言自動私訊', description: '規則列表、觸發紀錄、試算、前置條件' },
+  { code: 'comment_reply.manage', group: '留言自動私訊', feature: 'comment_reply', label: '管理留言自動私訊', description: '建/改/刪規則、排序、啟用、重試、選貼文', dependsOn: ['comment_reply.view'], implies: ['channel.view'] },
+
   // ── 系統設定（feature: core）──
   { code: 'settings.manage', group: '系統設定', feature: 'core', label: '系統設定', description: 'office-hours、tracking、embedding、chat、api-keys、cli-sessions' },
   { code: 'sla.manage', group: '系統設定', feature: 'core', label: 'SLA 政策', description: 'SLA CRUD' },

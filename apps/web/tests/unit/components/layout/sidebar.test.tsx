@@ -316,3 +316,21 @@ test('收合按鈕：未收合是 default，收合後是 pressed（Figma Sidebar
   fireEvent.click(pressed);
   assert.ok(!screen.getByRole('button', { name: '收合子選單' }).className.split(' ').includes('bg-primary'), '再展開回到 default');
 });
+
+test('留言自動私訊在渠道的子選單，只要 comment_reply.view（change add-comment-keyword-private-reply 11.8）', () => {
+  nav.pathname = '/dashboard/comment-replies';
+  auth.permissions = new Set(['comment_reply.view']);
+  render(<><Sidebar /><SectionNav /></>);
+  const icon = screen.getByRole('link', { name: '渠道' });
+  assert.equal(icon.getAttribute('href'), '/dashboard/comment-replies', '只有留言私訊權限時，點渠道直接進留言自動私訊');
+  const link = screen.getByRole('link', { name: '留言自動私訊' });
+  assert.equal(link.getAttribute('href'), '/dashboard/comment-replies');
+  assert.equal(visible('關鍵字回覆'), false, '對照組：沒有 richmenu.manage 時 LINE 頁面隱藏');
+
+  cleanup();
+  nav.pathname = '/dashboard/line/rich-menus';
+  auth.permissions = new Set(['richmenu.manage']);
+  render(<SectionNav />);
+  assert.equal(visible('關鍵字回覆'), true);
+  assert.equal(visible('留言自動私訊'), false, '沒有 comment_reply.view 時隱藏');
+});

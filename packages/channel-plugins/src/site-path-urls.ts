@@ -25,7 +25,9 @@ export function resolveSitePathUrls<T>(
   baseUrl: string,
   shouldResolve: (path: string) => boolean = () => true,
 ): T {
-  const base = baseUrl.replace(/\/+$/, '');
+  let end = baseUrl.length;
+  while (end > 0 && baseUrl[end - 1] === '/') end--;
+  const base = baseUrl.slice(0, end);
   const walk = (v: unknown, key: string): unknown => {
     if (typeof v === 'string') {
       return URL_KEY.test(key) && isSitePath(v) && shouldResolve(v) ? `${base}${v}` : v;

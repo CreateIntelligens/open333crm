@@ -68,13 +68,20 @@ const RAIL: RailItem[] = [
     ] }],
   },
   {
-    id: 'channels', label: '渠道', href: '/dashboard/line/rich-menus', match: '/dashboard/line', perm: 'richmenu.manage', icon: ChannelsIcon,
-    sections: [{ label: 'LINE', items: [
-      { id: 'line-rich-menus', label: 'Rich Menu', href: '/dashboard/line/rich-menus' },
-      { id: 'line-keywords', label: '關鍵字回覆', href: '/dashboard/line/keyword-replies' },
-      { id: 'line-follow-gift', label: '加好友禮', href: '/dashboard/line/follow-gift' },
-      { id: 'line-quick-replies', label: '快速回覆', href: '/dashboard/line/quick-replies' },
-    ] }],
+    // 權限放在子項目：LINE 頁要 richmenu.manage，留言自動私訊只要 comment_reply.view，
+    // 只有其中一種權限的人也看得到自己那一項（取自 main：add-comment-keyword-private-reply 11.8）。
+    id: 'channels', label: '渠道', href: '/dashboard/line/rich-menus', match: '/dashboard/line', icon: ChannelsIcon,
+    sections: [
+      { label: 'LINE', items: [
+        { id: 'line-rich-menus', label: 'Rich Menu', href: '/dashboard/line/rich-menus', perm: 'richmenu.manage' },
+        { id: 'line-keywords', label: '關鍵字回覆', href: '/dashboard/line/keyword-replies', perm: 'richmenu.manage' },
+        { id: 'line-follow-gift', label: '加好友禮', href: '/dashboard/line/follow-gift', perm: 'richmenu.manage' },
+        { id: 'line-quick-replies', label: '快速回覆', href: '/dashboard/line/quick-replies', perm: 'richmenu.manage' },
+      ] },
+      { label: 'Facebook／Instagram', items: [
+        { id: 'comment-replies', label: '留言自動私訊', href: '/dashboard/comment-replies', perm: 'comment_reply.view' },
+      ] },
+    ],
   },
   {
     id: 'portal', label: '粉絲活動', href: '/dashboard/portal', perm: 'portal.view', icon: PortalIcon,
@@ -144,7 +151,9 @@ function useVisibleRail() {
 /** 目前所在的區塊 */
 function useActiveItem(rail: RailItem[]) {
   const pathname = usePathname();
-  return rail.find((item) => under(pathname, item.match ?? item.href));
+  // 子頁不在 match 路徑底下時（例：渠道的留言自動私訊 /dashboard/comment-replies），也算在這一區
+  return rail.find((item) => under(pathname, item.match ?? item.href)
+    || item.sections?.some((g) => g.items.some((l) => under(pathname, l.href))));
 }
 
 /** 點圖示時要去的頁面：有子選單的區塊直接進第一個（有權限的）子頁，沒有子選單就是區塊本身 */

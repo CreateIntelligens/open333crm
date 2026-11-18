@@ -181,3 +181,15 @@ test('POST /channels：visibleAgentIds 不是 UUID → 400', async () => {
   assert.equal(res.statusCode, 400, res.body);
   assert.equal(routeState.state.channels.length, 0);
 });
+
+test('渠道更新與驗證限制同一來源的請求頻率', async () => {
+  for (const method of ['PATCH', 'POST'] as const) {
+    const url = method === 'PATCH' ? '/api/v1/channels/invalid' : '/api/v1/channels/invalid/verify';
+    for (let i = 0; i < 30; i++) {
+      const response = await app.inject({ method, url, payload: {} });
+      assert.notEqual(response.statusCode, 429);
+    }
+    const response = await app.inject({ method, url, payload: {} });
+    assert.equal(response.statusCode, 429);
+  }
+});

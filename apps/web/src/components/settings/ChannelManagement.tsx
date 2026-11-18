@@ -1,5 +1,6 @@
 'use client';
 
+import { safeMetaConnectReturnTo } from '@/lib/meta-connect-return';
 import React, { useState, useEffect } from 'react';
 import {
   Loader2,
@@ -74,11 +75,14 @@ export function ChannelManagement() {
   // Facebook 授權導回時帶 ?metaConnect=（選擇粉專）或 ?metaConnectError=（失敗原因）
   const [metaConnectId, setMetaConnectId] = useState<string | null>(null);
   const [metaConnectError, setMetaConnectError] = useState<string | null>(null);
+  // 從其他頁面（例如留言自動私訊）發起連結時，選完粉專後導回原頁
+  const [metaConnectReturnTo, setMetaConnectReturnTo] = useState<string | null>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('metaConnect');
     const error = params.get('metaConnectError');
     if (id) setMetaConnectId(id);
+    setMetaConnectReturnTo(safeMetaConnectReturnTo(params.get('returnTo')));
     if (error) setMetaConnectError(META_CONNECT_ERROR_TEXT[error] ?? 'Facebook 授權失敗，請稍後重試。');
     if (id || error) window.history.replaceState(null, '', window.location.pathname);
   }, []);
@@ -393,7 +397,15 @@ export function ChannelManagement() {
           </div>
         )}
         {metaConnectId && (
-          <MetaConnectDialog connectId={metaConnectId} onClose={() => setMetaConnectId(null)} onConnected={() => mutate()} />
+          <MetaConnectDialog
+            connectId={metaConnectId}
+            onClose={() => setMetaConnectId(null)}
+            onConnected={() => {
+              void mutate();
+              // 從其他頁（例：留言自動私訊）來連結時，連結完回原頁（取自 main）
+              if (metaConnectReturnTo) window.location.assign(metaConnectReturnTo);
+            }}
+          />
         )}
 
         {isLoading ? (

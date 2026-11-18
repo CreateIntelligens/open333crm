@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { ChannelLogo, channelTypeName } from '@/components/shared/ChannelLogo';
 import { AlertCircle, FileText, Star } from 'lucide-react';
 import type { ConversationRow } from '@/hooks/useConversations';
+import { CommentOriginBadge } from './CommentOrigin';
 
 interface ConversationListItemProps {
   conversation: ConversationRow;
@@ -128,8 +129,9 @@ export function ConversationListItem({
           <span className={cn('min-w-0 flex-1 truncate text-sm leading-5 text-foreground', unreadCount > 0 ? 'font-bold' : 'font-semibold')}>
             {contactName}
           </span>
+          <CommentOriginBadge origin={conversation.origin} />
           <span
-            className="shrink-0 whitespace-nowrap text-xs text-muted-foreground"
+            className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground"
             title={isValid(new Date(lastMessageTime)) ? format(new Date(lastMessageTime), 'yyyy/M/d HH:mm') : undefined}
           >
             {formatListTime(lastMessageTime)}

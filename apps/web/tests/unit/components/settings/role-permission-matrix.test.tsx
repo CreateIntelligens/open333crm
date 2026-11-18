@@ -443,3 +443,34 @@ describe('刪除使用中的角色', () => {
     assert.ok(alert.className.includes('text-destructive'), `class：${alert.className}`);
   });
 });
+
+describe('留言自動私訊的權限點（change add-comment-keyword-private-reply tasks 11.7、design D20）', () => {
+  test('權限矩陣出現「留言自動私訊」群組，勾選管理會一併開啟檢視', async () => {
+    // 取權限註冊表的真實定義，確認群組名稱、權限碼與前置權限和 design D20 一致
+    const { PERMISSIONS } = await import('@open333crm/shared');
+    const defs = PERMISSIONS.filter((p: { group: string }) => p.group === '留言自動私訊');
+    assert.deepEqual(defs.map((p: { code: string }) => p.code).sort(), ['comment_reply.manage', 'comment_reply.view']);
+    const manageDef = defs.find((p: { code: string }) => p.code === 'comment_reply.manage');
+    assert.deepEqual(manageDef?.dependsOn, ['comment_reply.view']);
+
+    const commentGroup = group(
+      '留言自動私訊',
+      defs.map((p: { code: string; label: string; dependsOn?: string[] }) => ({ code: p.code, label: p.label, dependsOn: p.dependsOn ?? [] })),
+    );
+    api.get.mockImplementation((url: string) => {
+      if (url === '/roles') return ok({ roles: [CUSTOM] });
+      if (url === '/roles/matrix') return ok({ groups: [...MATRIX, commentGroup] });
+      const m = url.match(/^\/roles\/([^/]+)\/permissions$/);
+      if (m) return (permsResponse = ok({ permissions: [] }));
+      return Promise.reject(new Error(`unexpected GET ${url}`));
+    });
+    render(<RolePermissionMatrix />);
+    await loaded('comment_reply.view');
+
+    assert.ok(groupHeader('留言自動私訊'));
+    click('comment_reply.manage');
+    assert.equal(checked('comment_reply.manage'), true);
+    assert.equal(checked('comment_reply.view'), true);
+    assert.ok(autoOnBadge('comment_reply.view'), '檢視應顯示「自動開啟」');
+  });
+});

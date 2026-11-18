@@ -40,6 +40,7 @@ const { handleDataExportJob, handleDataExportCleanup } = await import(
   '../../../../../workers/src/handlers/data-export.handler.js'
 );
 const { purgeAgentFlow } = await import('#src/modules/agent/agent.flow.js');
+const { createCommentReplyFixtures } = await import('../../../support/comment-reply-fixtures.js');
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -135,6 +136,8 @@ await owner.caseEvent.create({ data: { caseId: caseA.id, actorType: 'agent', eve
 await owner.caseTag.create({ data: { caseId: caseA.id, tagId: tagA.id } });
 await owner.contact.create({ data: { tenantId: tenantB.id, displayName: `${MARK}-客人B` } });
 
+const crFx = createCommentReplyFixtures(owner, MARK);
+
 /** 寫進真的 outbox，commit 後不送進 Redis */
 const outboxOnly: EventPublisher = { write: createOutboxPublisher(tenantDb).write, dispatch: async () => {} };
 
@@ -203,6 +206,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await Promise.all([exporterApp.close(), plainApp.close(), branchExporterApp.close()]);
+  await crFx.deleteCommentData([A, tenantB.id]);
   for (const tenantId of [A, tenantB.id]) {
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
     await owner.outbox.deleteMany({ where: { tenantId } });
@@ -387,7 +391,9 @@ test('匯出只含本租戶的資料', async () => {
   assert.deepEqual(kase.events.map((e) => e.eventType), ['created'], '工單含事件');
   assert.deepEqual(kase.tags.map((t) => t.tag.name), [`${MARK}-tag`], '工單含標籤');
   const manifest = JSON.parse(files.get('manifest.json')!);
-  assert.deepEqual(manifest.counts, { contacts: 1, conversations: 1, messages: 1, cases: 1 });
+  // manifest 另有留言自動私訊三類的筆數，由「匯出含留言自動私訊資料」檢查
+  const { contacts: c, conversations: cv, messages: m, cases: cs } = manifest.counts;
+  assert.deepEqual({ contacts: c, conversations: cv, messages: m, cases: cs }, { contacts: 1, conversations: 1, messages: 1, cases: 1 });
   assert.ok(files.has('csv/contacts.csv') && files.has('csv/messages.csv'));
 
   assert.equal(mocks.notify.mock.calls.length, 1);
@@ -469,4 +475,49 @@ test('清理過期的匯出', async () => {
   assert.equal(after.fileKey, null);
   const untouched = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: fresh.id } });
   assert.equal(untouched.status, 'completed', '未過期的不受影響');
+});
+
+test('匯出含留言自動私訊資料', async () => {
+  // 租戶 A：1 條規則、1 位留言者、3 筆紀錄；租戶 B 也有紀錄
+  const fbA = await crFx.fbChannel(A, { pageAccessToken: `${MARK}-page-token-a` });
+  const ruleA = await crFx.rule(A, fbA.id);
+  const authorA = await crFx.author(A, fbA.id, contactA.id, { psid: `${MARK}-psid-a` });
+  const logsA = [];
+  for (let i = 0; i < 3; i++) {
+    logsA.push(await crFx.log(ruleA, authorA, { sentContentSnapshot: { type: 'text', text: `${MARK}-快照原文` } }));
+  }
+  const fbB = await crFx.fbChannel(tenantB.id);
+  const ruleB = await crFx.rule(tenantB.id, fbB.id);
+  const contactB = await owner.contact.create({ data: { tenantId: tenantB.id, displayName: `${MARK}-留言者B` } });
+  const authorB = await crFx.author(tenantB.id, fbB.id, contactB.id);
+  const logB = await crFx.log(ruleB, authorB);
+
+  const req = await createRequest();
+  await runJob(req.id);
+  const stored = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: req.id } });
+  assert.equal(stored.status, 'completed', stored.error ?? '');
+  const files = readZip(mocks.upload.mock.calls[0][2]);
+  for (const name of ['comment_reply_rules', 'comment_reply_logs', 'comment_authors']) {
+    assert.ok(files.has(`json/${name}.json`) && files.has(`csv/${name}.csv`), `有 ${name} 的 JSON 與 CSV`);
+  }
+
+  const rules = JSON.parse(files.get('json/comment_reply_rules.json')!) as Array<{ id: string }>;
+  const logs = JSON.parse(files.get('json/comment_reply_logs.json')!) as Array<Record<string, unknown>>;
+  const authors = JSON.parse(files.get('json/comment_authors.json')!) as Array<{ id: string }>;
+  assert.deepEqual(rules.map((r) => r.id), [ruleA.id]);
+  assert.deepEqual(logs.map((l) => l.id).sort(), logsA.map((l) => l.id).sort());
+  assert.deepEqual(authors.map((a) => a.id), [authorA.id]);
+  const manifest = JSON.parse(files.get('manifest.json')!);
+  assert.equal(manifest.counts.commentReplyRules, 1);
+  assert.equal(manifest.counts.commentReplyLogs, 3);
+  assert.equal(manifest.counts.commentAuthors, 1);
+
+  // 只含租戶 A；不含送出內容快照的原文與渠道權杖
+  const all = [...files.values()].join('\n');
+  assert.ok(!all.includes(logB.id) && !all.includes(ruleB.id) && !all.includes(authorB.id), '沒有租戶 B 的資料');
+  assert.ok(logs.every((l) => !('sentContentSnapshot' in l)), '紀錄不含 sentContentSnapshot');
+  assert.ok(!all.includes(`${MARK}-快照原文`), '不含快照原文');
+  const channel = await owner.channel.findUniqueOrThrow({ where: { id: fbA.id } });
+  assert.ok(!all.includes(`${MARK}-page-token-a`) && !all.includes(channel.credentialsEncrypted), '不含渠道權杖');
+  assert.ok(!all.includes('credentialsEncrypted'), '不含憑證欄位');
 });

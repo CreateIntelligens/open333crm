@@ -5,6 +5,8 @@
  * 第一個測試重現 bug：同一個硬刪除工作執行兩次時，第二次把 completed 改成 failed。
  * 完成稽核與通知（change keep-completion-audit-for-purged-requester）：稽核在刪除交易內寫入、
  * 發起的成員已被永久刪除時記下快照不送通知、通知送不進佇列時工作不失敗。
+ * 留言自動私訊（change add-comment-keyword-private-reply，design D27）：匿名化清除留言者對應與觸發紀錄的個資、
+ * 硬刪除先刪紀錄再刪聯絡人（紀錄對留言者是 Restrict，假實作在刪聯絡人時檢查）。
  * 資料庫是記憶體裡的假實作：沒有特別處理的查詢回傳空結果；交易丟錯時還原請求、聯絡人與稽核。
  */
 import assert from 'node:assert/strict';
@@ -64,7 +66,40 @@ interface State {
   failAffectedWriteBack?: boolean;
   /** 寫完成稽核時丟錯 */
   failAuditCreate?: boolean;
+  commentAuthors: CommentAuthorRow[];
+  commentReplyLogs: CommentReplyLogRow[];
 }
+
+interface CommentAuthorRow {
+  id: string;
+  tenantId: string;
+  contactId: string;
+  externalUserId: string;
+  displayName: string | null;
+  username: string | null;
+  psid: string | null;
+}
+
+interface CommentReplyLogRow {
+  id: string;
+  tenantId: string;
+  commentAuthorId: string;
+  commentId: string;
+  status: string;
+  commenterId: string | null;
+  commenterName: string | null;
+  commenterUsername: string | null;
+  commentText: string | null;
+  recipientUid: string | null;
+  dedupeKey: string | null;
+  sentContentSnapshot: unknown;
+}
+
+type IdFilter = string | { in: string[] };
+const matchId = (value: string, filter: IdFilter | undefined) =>
+  filter === undefined || (typeof filter === 'string' ? value === filter : filter.in.includes(value));
+/** Prisma.DbNull 寫進 Json 欄位就是 SQL NULL */
+const dbValue = (v: unknown) => (v !== null && typeof v === 'object' && v.constructor?.name === 'DbNull' ? null : v);
 
 function matchesStatus(status: string, where: { status?: string | { in: string[] } }) {
   if (!where.status) return true;
@@ -129,6 +164,14 @@ function fakeDb(state: State) {
           return state.contact;
         },
         delete: async () => {
+          // comment_reply_logs.commentAuthorId 是 Restrict：聯絡人連帶刪留言者對應時，還有紀錄就失敗
+          const authorIds = state.commentAuthors.filter((a) => a.contactId === CONTACT).map((a) => a.id);
+          if (state.commentReplyLogs.some((l) => authorIds.includes(l.commentAuthorId))) {
+            throw new Error('violates foreign key constraint comment_reply_logs_commentAuthorId_tenantId_fkey');
+          }
+          const prevAuthors = [...state.commentAuthors];
+          state.commentAuthors = state.commentAuthors.filter((a) => a.contactId !== CONTACT);
+          record(() => (state.commentAuthors = prevAuthors));
           const prev = state.contact;
           record(() => (state.contact = prev));
           state.contact = null;
@@ -136,6 +179,56 @@ function fakeDb(state: State) {
         },
       },
       message: emptyModel({ findMany: async () => state.messages }),
+      commentAuthor: emptyModel({
+        findMany: async ({ where }: { where: { tenantId: string; contactId?: IdFilter; id?: IdFilter } }) =>
+          state.commentAuthors.filter(
+            (a) => a.tenantId === where.tenantId && matchId(a.contactId, where.contactId) && matchId(a.id, where.id),
+          ),
+        updateMany: async ({ where, data }: { where: { tenantId: string; id?: IdFilter }; data: Partial<CommentAuthorRow> }) => {
+          const rows = state.commentAuthors.filter((a) => a.tenantId === where.tenantId && matchId(a.id, where.id));
+          for (const row of rows) {
+            const prev = { ...row };
+            record(() => Object.assign(row, prev));
+            Object.assign(row, data);
+          }
+          return { count: rows.length };
+        },
+        deleteMany: async ({ where }: { where: { tenantId: string; id?: IdFilter; contactId?: IdFilter } }) => {
+          const hit = (a: CommentAuthorRow) =>
+            a.tenantId === where.tenantId && matchId(a.id, where.id) && matchId(a.contactId, where.contactId);
+          const ids = state.commentAuthors.filter(hit).map((a) => a.id);
+          if (state.commentReplyLogs.some((l) => ids.includes(l.commentAuthorId))) {
+            throw new Error('violates foreign key constraint comment_reply_logs_commentAuthorId_tenantId_fkey');
+          }
+          const prev = [...state.commentAuthors];
+          record(() => (state.commentAuthors = prev));
+          state.commentAuthors = state.commentAuthors.filter((a) => !hit(a));
+          return { count: ids.length };
+        },
+      }),
+      commentReplyLog: emptyModel({
+        count: async ({ where }: { where: { tenantId: string; commentAuthorId: IdFilter } }) =>
+          state.commentReplyLogs.filter((l) => l.tenantId === where.tenantId && matchId(l.commentAuthorId, where.commentAuthorId)).length,
+        updateMany: async ({ where, data }: { where: { tenantId: string; commentAuthorId: IdFilter }; data: Record<string, unknown> }) => {
+          const rows = state.commentReplyLogs.filter(
+            (l) => l.tenantId === where.tenantId && matchId(l.commentAuthorId, where.commentAuthorId),
+          );
+          for (const row of rows) {
+            const prev = { ...row };
+            record(() => Object.assign(row, prev));
+            for (const [k, v] of Object.entries(data)) (row as unknown as Record<string, unknown>)[k] = dbValue(v);
+          }
+          return { count: rows.length };
+        },
+        deleteMany: async ({ where }: { where: { tenantId: string; commentAuthorId: IdFilter } }) => {
+          const hit = (l: CommentReplyLogRow) => l.tenantId === where.tenantId && matchId(l.commentAuthorId, where.commentAuthorId);
+          const count = state.commentReplyLogs.filter(hit).length;
+          const prev = [...state.commentReplyLogs];
+          record(() => (state.commentReplyLogs = prev));
+          state.commentReplyLogs = state.commentReplyLogs.filter((l) => !hit(l));
+          return { count };
+        },
+      }),
       tenantAuditLog: {
         create: async ({ data }: { data: AuditRow }) => {
           if (state.failAuditCreate) throw new Error('audit write failed');
@@ -176,10 +269,15 @@ function fakeDb(state: State) {
     const models = makeModels(journal);
     return new Proxy(models, {
       get: (target, prop: string) => {
-        // 鎖對話的查詢回傳這位聯絡人的對話；其他 raw 查詢（頭像）回空結果
+        // 鎖對話的查詢回傳這位聯絡人的對話；鎖留言者對應的查詢回傳這位聯絡人的留言者；其他 raw 查詢（頭像）回空結果
         if (prop === '$queryRaw') {
-          return async (sql: TemplateStringsArray) =>
-            sql.join('?').includes('FROM conversations') && state.messages.length > 0 ? [{ id: CONVERSATION }] : [];
+          return async (sql: TemplateStringsArray) => {
+            const text = sql.join('?');
+            if (text.includes('FROM comment_authors')) {
+              return state.commentAuthors.filter((a) => a.contactId === CONTACT).map((a) => ({ id: a.id }));
+            }
+            return text.includes('FROM conversations') && state.messages.length > 0 ? [{ id: CONVERSATION }] : [];
+          };
         }
         if (prop === '$transaction') {
           return async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -212,7 +310,33 @@ function state(status: string, contact = true): State {
     auditPayloads: [],
     auditRows: [],
     messages: [],
+    commentAuthors: [],
+    commentReplyLogs: [],
   };
+}
+
+const AUTHOR = 'e1000000-0000-0000-0000-0000000000a1';
+
+/** 這位聯絡人有一位留言者對應與 2 筆個資欄位都有值的觸發紀錄 */
+function withCommentData(s: State): State {
+  s.commentAuthors = [
+    { id: AUTHOR, tenantId: TENANT, contactId: CONTACT, externalUserId: 'ASID_1', displayName: '王小明', username: 'ming', psid: 'PSID_1' },
+  ];
+  s.commentReplyLogs = [1, 2].map((n) => ({
+    id: `e2000000-0000-0000-0000-00000000000${n}`,
+    tenantId: TENANT,
+    commentAuthorId: AUTHOR,
+    commentId: `POST_1_${n}`,
+    status: 'SENT',
+    commenterId: 'ASID_1',
+    commenterName: '王小明',
+    commenterUsername: 'ming',
+    commentText: '我要優惠',
+    recipientUid: 'PSID_1',
+    dedupeKey: `rule:ASID_1`,
+    sentContentSnapshot: { text: '優惠資訊' },
+  }));
+  return s;
 }
 
 const redis = { publish: async () => 1 } as never;
@@ -367,4 +491,39 @@ test('完成通知送不進佇列時：工作不失敗，請求與稽核已經 c
 
   assert.equal(s.request.status, 'completed');
   assert.deepEqual(s.audits, ['data.erasure.complete']);
+});
+
+test('匿名化清除留言自動私訊的個資：留言者對應與紀錄的個資是 null，commentId 與狀態不變', async () => {
+  const s = withCommentData(state('pending'));
+  await handleDataErasureJob(job('anonymize'), fakeDb(s) as never, redis);
+
+  assert.equal(s.request.status, 'completed', s.request.error ?? '');
+  assert.deepEqual(s.commentAuthors, [
+    { id: AUTHOR, tenantId: TENANT, contactId: CONTACT, externalUserId: `erased:${AUTHOR}`, displayName: null, username: null, psid: null },
+  ]);
+  assert.equal(s.commentReplyLogs.length, 2);
+  for (const [i, log] of s.commentReplyLogs.entries()) {
+    assert.equal(log.commentId, `POST_1_${i + 1}`);
+    assert.equal(log.status, 'SENT');
+    for (const field of ['commenterId', 'commenterName', 'commenterUsername', 'commentText', 'recipientUid', 'dedupeKey', 'sentContentSnapshot'] as const) {
+      assert.equal(log[field], null, field);
+    }
+  }
+  const affected = s.request.affected as Record<string, number>;
+  assert.equal(affected.commentAuthors, 1);
+  assert.equal(affected.commentReplyLogs, 2);
+});
+
+test('硬刪除刪除留言自動私訊紀錄：先刪紀錄，聯絡人刪除成功，affected.commentReplyLogs 是 2', async () => {
+  const s = withCommentData(state('pending'));
+  // 刪除失敗時 handler 記下失敗再丟錯；這裡只看請求與資料的結果
+  await handleDataErasureJob(job('hard_delete'), fakeDb(s) as never, redis).catch(() => {});
+
+  assert.equal(s.request.status, 'completed', s.request.error ?? '');
+  assert.equal(s.contact, null);
+  assert.deepEqual(s.commentReplyLogs, []);
+  assert.deepEqual(s.commentAuthors, []);
+  const affected = s.request.affected as Record<string, number>;
+  assert.equal(affected.commentReplyLogs, 2);
+  assert.equal(affected.commentAuthors, 1);
 });

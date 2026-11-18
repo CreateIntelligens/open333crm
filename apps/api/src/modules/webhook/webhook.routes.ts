@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import {
   processPlatformMetaWebhook,
   processWebhookEvent,
@@ -11,8 +12,18 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { assertJsonPayloadWithinLimits } from '../../plugins/json-payload-guard.plugin.js';
+import { createInFlightTracker, WEBHOOK_DRAIN_TIMEOUT_MS } from './webhook-inflight.js';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
+  await fastify.register(rateLimit, { global: true, max: 6000, timeWindow: '1 minute' });
+  // 背景處理的進行中追蹤：關機時等它們完成（最多 10 秒），部署重啟不丟已回 200 的事件
+  // （change add-comment-keyword-private-reply design D3）
+  const inflight = createInFlightTracker();
+  fastify.addHook('onClose', async () => {
+    await inflight.drain(WEBHOOK_DRAIN_TIMEOUT_MS);
+  });
+  // 留言收件與收件匣串接用 app_tenant 連線（inTenant 綁租戶）；規則快取與監控計數用 Redis
+  const deps = { tenantPrisma: fastify.prisma, redis: fastify.redis };
   // TODO(rls): 本檔皆為公開（無 JWT）入站 webhook 端點，無認證租戶身分，
   // 無法用 request.tenantPrisma（會拋）；tenant 由 channelId 反查解析，
   // 故一律使用 fastify.prismaAdmin（未套 RLS）。
@@ -66,7 +77,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
         return reply.status(200).send({ success: true });
       }
 
-      processWebhookEvent(
+      inflight.track(processWebhookEvent(
         fastify.prismaAdmin,
         fastify.io,
         channelId,
@@ -74,7 +85,8 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
         rawBody,
         headers,
         verification.verified,
-      ).catch((err) => {
+        deps,
+      )).catch((err) => {
         logger.error('[Webhook] LINE processing failed', { channelId, error: err?.message ?? String(err), stack: err?.stack });
       });
 
@@ -109,7 +121,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
     if (!rawBody) return reply.status(400).send('Bad Request');
     const headers = request.headers as Record<string, string>;
     // 先回 200，非同步處理（避免 Meta 重試或自動停用 webhook）
-    processPlatformMetaWebhook(fastify.prismaAdmin, fastify.io, rawBody, headers).catch((err) => {
+    inflight.track(processPlatformMetaWebhook(fastify.prismaAdmin, fastify.io, rawBody, headers, deps)).catch((err) => {
       fastify.log.error({ err: err?.message ?? err }, 'Platform Meta webhook processing failed');
     });
     return reply.status(200).send('EVENT_RECEIVED');
@@ -177,14 +189,16 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
       // Respond 200 immediately - Facebook expects quick responses
       fastify.log.info({ channelId, hasRawBody: !!rawBody, bodyKeys: Object.keys(body).filter(k => k !== '__rawBody') }, 'FB webhook received, starting async processing');
-      processWebhookEvent(
+      inflight.track(processWebhookEvent(
         fastify.prismaAdmin,
         fastify.io,
         channelId,
         CHANNEL_TYPE.FB,
         rawBody,
         headers,
-      ).then(() => {
+        undefined,
+        deps,
+      )).then(() => {
         fastify.log.info({ channelId }, 'FB webhook processed successfully');
       }).catch((err) => {
         fastify.log.error({ err: err?.message ?? err, stack: err?.stack, channelId }, 'FB webhook processing failed');
@@ -251,14 +265,16 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
       // 立即回 200，非同步處理（避免 Meta 重試 / webhook 自動停用）
       fastify.log.info({ channelId, hasRawBody: !!rawBody }, 'IG webhook received, starting async processing');
-      processWebhookEvent(
+      inflight.track(processWebhookEvent(
         fastify.prismaAdmin,
         fastify.io,
         channelId,
         CHANNEL_TYPE.THREADS,
         rawBody,
         headers,
-      ).then(() => {
+        undefined,
+        deps,
+      )).then(() => {
         fastify.log.info({ channelId }, 'IG webhook processed successfully');
       }).catch((err) => {
         fastify.log.error({ err: err?.message ?? err, stack: err?.stack, channelId }, 'IG webhook processing failed');

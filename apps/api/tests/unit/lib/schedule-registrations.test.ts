@@ -82,7 +82,7 @@ test('canvas：每 60 秒，以 withoutOverlapping 防重疊，鎖最久 10 分�
 
 test('csat：發送與自動結案各一個排程，都是每 60 秒', () => {
   const { scheduler, defs } = fakeScheduler();
-  setupCsatScheduler(scheduler, prisma, io);
+  setupCsatScheduler(scheduler, { admin: prisma, prisma, io });
   assert.deepEqual(defs.map(shape), [
     { id: 'csat-send', every: 60_000, pattern: undefined, withoutOverlapping: undefined },
     { id: 'csat-auto-close', every: 60_000, pattern: undefined, withoutOverlapping: undefined },
@@ -104,7 +104,7 @@ test('inactivity-close：每 5 分鐘，不加鎖', () => {
 
 test('meta-token-health：每 6 小時，不加鎖', () => {
   const { scheduler, defs } = fakeScheduler();
-  setupMetaTokenHealthScheduler(scheduler, prisma, io);
+  setupMetaTokenHealthScheduler(scheduler, { admin: prisma, prisma, io });
   assert.deepEqual(defs.map(shape), [{ id: 'meta-token-health', every: 21_600_000, pattern: undefined, withoutOverlapping: undefined }]);
 });
 

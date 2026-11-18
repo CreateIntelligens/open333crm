@@ -3,7 +3,8 @@
  *
  * 流程：
  *   1. 標記請求 processing
- *   2. cursor 分頁逐表撈本租戶資料（Contact / Conversation / Message / Case 及附屬）
+ *   2. cursor 分頁逐表撈本租戶資料（Contact / Conversation / Message / Case 及附屬，以及留言自動私訊的
+ *      規則、觸發紀錄、留言者對應；觸發紀錄不含送出內容快照，design D27）
  *   3. 產 JSON（保關聯完整性）+ CSV（主表扁平化），打包成 zip
  *   4. 上傳 MinIO（key: export/{tenantId}/{requestId}.zip），更新 status=completed / fileKey / fileSizeBytes / expiresAt
  *   5. 失敗則 status=failed + error
@@ -108,7 +109,26 @@ async function collectTenantData(prisma: PrismaClient, tenantId: string) {
     }),
   );
 
-  return { contacts, conversations, messages, cases };
+  // 留言自動私訊（design D27）：只讀本表欄位，不 include 渠道（渠道列帶憑證與權杖）
+  const commentReplyRules = await fetchAllPaged((cursor) =>
+    prisma.commentReplyRule.findMany({ where: { tenantId }, orderBy: { id: 'asc' }, ...pageArgs(cursor) }),
+  );
+  const commentReplyLogs = (
+    await fetchAllPaged((cursor) =>
+      prisma.commentReplyLog.findMany({ where: { tenantId }, orderBy: { id: 'asc' }, ...pageArgs(cursor) }),
+    )
+  ).map(withoutSentSnapshot);
+  const commentAuthors = await fetchAllPaged((cursor) =>
+    prisma.commentAuthor.findMany({ where: { tenantId }, orderBy: { id: 'asc' }, ...pageArgs(cursor) }),
+  );
+
+  return { contacts, conversations, messages, cases, commentReplyRules, commentReplyLogs, commentAuthors };
+}
+
+/** 觸發紀錄不匯出送出內容快照的原文（design D27） */
+function withoutSentSnapshot<T extends { sentContentSnapshot?: unknown }>(log: T): Omit<T, 'sentContentSnapshot'> {
+  const { sentContentSnapshot: _omit, ...rest } = log;
+  return rest;
 }
 
 /** 主表扁平化欄位（給人看的 CSV，不含巢狀關聯）。 */
@@ -170,6 +190,9 @@ export async function handleDataExportJob(
         conversations: data.conversations.length,
         messages: data.messages.length,
         cases: data.cases.length,
+        commentReplyRules: data.commentReplyRules.length,
+        commentReplyLogs: data.commentReplyLogs.length,
+        commentAuthors: data.commentAuthors.length,
       },
     };
     zip.addFile('manifest.json', JSON.stringify(meta, null, 2));
@@ -179,12 +202,18 @@ export async function handleDataExportJob(
     zip.addFile('json/conversations.json', JSON.stringify(data.conversations, null, 2));
     zip.addFile('json/messages.json', JSON.stringify(data.messages, null, 2));
     zip.addFile('json/cases.json', JSON.stringify(data.cases, null, 2));
+    zip.addFile('json/comment_reply_rules.json', JSON.stringify(data.commentReplyRules, null, 2));
+    zip.addFile('json/comment_reply_logs.json', JSON.stringify(data.commentReplyLogs, null, 2));
+    zip.addFile('json/comment_authors.json', JSON.stringify(data.commentAuthors, null, 2));
 
     // CSV（主表扁平化，給人看）
     zip.addFile('csv/contacts.csv', toCsv(data.contacts.map(flattenContact)));
     zip.addFile('csv/conversations.csv', toCsv(data.conversations.map(flattenConversation)));
     zip.addFile('csv/messages.csv', toCsv(data.messages as Record<string, unknown>[]));
     zip.addFile('csv/cases.csv', toCsv(data.cases.map(flattenCase)));
+    zip.addFile('csv/comment_reply_rules.csv', toCsv(data.commentReplyRules as Record<string, unknown>[]));
+    zip.addFile('csv/comment_reply_logs.csv', toCsv(data.commentReplyLogs as Record<string, unknown>[]));
+    zip.addFile('csv/comment_authors.csv', toCsv(data.commentAuthors as Record<string, unknown>[]));
 
     const buffer = zip.build();
 

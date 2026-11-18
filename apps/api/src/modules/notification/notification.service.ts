@@ -1,6 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
-import type { Server as SocketIOServer } from 'socket.io';
 import { createNotificationForActiveAgent, logger, resolveImplied } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { loadPlanCeiling } from '../../services/permission.service.js';
@@ -8,8 +6,8 @@ import { getAccessibleChannelIds, isChannelAccessible } from '../../services/cha
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
 
-export interface CreateNotificationInput {
-  tenantId: string;
+/** 一則站內通知的內容。租戶由 TenantCtx 決定，不另外傳 */
+export interface NotificationInput {
   agentId: string;
   type: string;
   title: string;
@@ -18,36 +16,27 @@ export interface CreateNotificationInput {
 }
 
 /**
- * 寫入一則站內通知並推播給收件成員。
- * 收件成員已被永久刪除或已停用時不寫入、不推播，寫 info log 並回傳 null（#484）。
+ * 寫入一則站內通知，回傳寫入的通知。推播由 notification-effects.ts 的 createAndDispatch() 登記。
+ * 收件成員已被永久刪除或已停用時不寫入，寫 info log 並回傳 null（#484）。
+ * 條件寫入不會讓交易中止，可以在租戶交易內呼叫（createNotificationForActiveAgent 的說明）。
  */
-export async function createAndDispatch(
-  prisma: TenantDb,
-  io: SocketIOServer,
-  input: CreateNotificationInput,
-) {
-  const notification = await createNotificationForActiveAgent(prisma, input);
+export async function recordNotification(ctx: TenantCtx, input: NotificationInput) {
+  const notification = await createNotificationForActiveAgent(ctx.tx, { tenantId: ctx.tenantId, ...input });
   if (!notification) {
-    logger.info(`[Notification] 略過通知 ${input.type}：收件成員 ${input.agentId} 已不存在或已停用（tenant ${input.tenantId}）`);
-    return null;
+    logger.info(`[Notification] 略過通知 ${input.type}：收件成員 ${input.agentId} 已不存在或已停用（tenant ${ctx.tenantId}）`);
   }
-
-  // Emit to agent-specific room
-  io.to(`agent:${input.agentId}`).emit('notification.new', notification);
-
   return notification;
 }
 
 export async function listNotifications(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   agentId: string,
-  tenantId: string,
   filters: { isRead?: boolean },
   pagination: { page: number; limit: number },
 ) {
   const where: { agentId: string; tenantId: string; isRead?: boolean } = {
     agentId,
-    tenantId,
+    tenantId: ctx.tenantId,
   };
 
   if (filters.isRead !== undefined) {
@@ -55,58 +44,40 @@ export async function listNotifications(
   }
 
   const [notifications, total] = await Promise.all([
-    prisma.notification.findMany({
+    ctx.tx.notification.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       skip: (pagination.page - 1) * pagination.limit,
       take: pagination.limit,
     }),
-    prisma.notification.count({ where }),
+    ctx.tx.notification.count({ where }),
   ]);
 
   return { notifications, total };
 }
 
-export async function getUnreadCount(
-  prisma: TenantDb,
-  agentId: string,
-  tenantId: string,
-) {
-  const count = await prisma.notification.count({
-    where: { agentId, tenantId, isRead: false },
+export function getUnreadCount(ctx: TenantCtx, agentId: string): Promise<number> {
+  return ctx.tx.notification.count({
+    where: { agentId, tenantId: ctx.tenantId, isRead: false },
   });
-  return count;
 }
 
-export async function markAsRead(
-  prisma: TenantDb,
-  id: string,
-  agentId: string,
-  tenantId: string,
-) {
-  const notification = await prisma.notification.findFirst({
-    where: { id, agentId, tenantId },
-  });
-
-  if (!notification) {
-    throw new AppError(notFound('notification'), 'NOT_FOUND', 404);
-  }
-
-  const updated = await prisma.notification.update({
-    where: { id },
+/** 只改得到自己的通知：條件更新 0 筆時回 404（別人的通知、別的租戶的通知、不存在的 id） */
+export async function markAsRead(ctx: TenantCtx, id: string, agentId: string) {
+  const where = { id, agentId, tenantId: ctx.tenantId };
+  const { count } = await ctx.tx.notification.updateMany({
+    where,
     data: { isRead: true, readAt: new Date() },
   });
-
-  return updated;
+  if (count === 0) {
+    throw new AppError(notFound('notification'), 'NOT_FOUND', 404);
+  }
+  return ctx.tx.notification.findFirstOrThrow({ where });
 }
 
-export async function markAllAsRead(
-  prisma: TenantDb,
-  agentId: string,
-  tenantId: string,
-) {
-  const result = await prisma.notification.updateMany({
-    where: { agentId, tenantId, isRead: false },
+export async function markAllAsRead(ctx: TenantCtx, agentId: string): Promise<number> {
+  const result = await ctx.tx.notification.updateMany({
+    where: { agentId, tenantId: ctx.tenantId, isRead: false },
     data: { isRead: true, readAt: new Date() },
   });
 

@@ -141,6 +141,10 @@ export default function KeywordRepliesPage() {
                 <li>Facebook 與 Instagram 的顧客開啟票券時以 email 驗證身分</li>
               </ul>
             </div>
+            {/* 貼文留言另有功能（取自 main：add-comment-keyword-private-reply） */}
+            <p className="text-sm text-muted-foreground">
+              顧客在 Facebook、Instagram 貼文留言時要自動私訊，請到「<Link href="/dashboard/comment-replies" className="text-primary underline underline-offset-2 hover:text-primary-hover">留言自動私訊</Link>」設定。
+            </p>
           </div>
         </details>
 

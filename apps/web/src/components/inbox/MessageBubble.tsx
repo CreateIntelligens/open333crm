@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { AlertCircle, Bot, ExternalLink, FileText } from 'lucide-react';
 import { describeMessageMedia } from '@/lib/inbox/message-media';
 import { LinkifiedText } from '@/components/chatbox/LinkifiedText';
+import { CommentOriginNote, commentReplyMessageKind } from './CommentOrigin';
 
 /** 把 contentType 講成人話，用在送出失敗的提示裡（「這則影片沒有送出」）。 */
 function describeContentType(contentType: string): string {
@@ -66,7 +67,9 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message, contactName }: MessageBubbleProps) {
   const isInbound = message.direction.toLowerCase() === 'inbound';
-  const isSystem = message.contentType === 'system' || message.senderType === 'SYSTEM';
+  // 留言自動私訊補入的訊息（design D18）：系統說明另外處理；私訊快照以外送泡泡顯示，客服才看得出顧客在回什麼
+  const commentReplyKind = commentReplyMessageKind(message.metadata);
+  const isSystem = (message.contentType === 'system' || message.senderType === 'SYSTEM') && commentReplyKind !== 'snapshot';
   const isBot = message.senderType === 'BOT';
   const textContent = extractText(message.content);
 
@@ -87,6 +90,10 @@ export function MessageBubble({ message, contactName }: MessageBubbleProps) {
   // 送出失敗仍顯示訊息內容（客服要知道沒送到的是什麼），泡泡下方標示沒有送出與原因。
   // ⚠️ 失敗紀錄不走 system 分支：contentType 可能是 line_video 這種沒有 text 的型別，
   // 走 system 分支會顯示成一條空白灰底，等於沒講。
+  if (commentReplyKind === 'origin_note') {
+    return <CommentOriginNote text={textContent} logId={typeof metadata.logId === 'string' ? metadata.logId : null} />;
+  }
+
   if (isSystem && !deliveryFailed) {
     return (
       <div className="flex justify-center py-2">
@@ -142,7 +149,11 @@ export function MessageBubble({ message, contactName }: MessageBubbleProps) {
 
   const isLeft = isInbound || isBot;
   // 綁定、登記流程自動送出的訊息標示「系統自動發送」，不是 AI 回覆（取自 main）
-  const author = isIdentityNotice ? '系統自動發送' : isBot ? 'AI 助理' : !isInbound ? message.senderName : undefined;
+  // 留言自動私訊的私訊快照：系統依規則送出，不是客服或 AI 回覆（取自 main）
+  const author =
+    commentReplyKind === 'snapshot'
+      ? '留言自動私訊'
+      : isIdentityNotice ? '系統自動發送' : isBot ? 'AI 助理' : !isInbound ? message.senderName : undefined;
 
   return (
     <div className={cn('flex w-full gap-2.5 px-6 py-1.5', isLeft ? 'justify-start' : 'justify-end')}>

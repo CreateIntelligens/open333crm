@@ -137,6 +137,8 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 權限不足時回 403，`error.details.requiredPermission`（或 `requiredAnyOf`）記錄缺少的碼。新增權限碼後忘了執行 reconcile，就會出現這種 403，見[預設角色與新增權限碼](#預設角色與新增權限碼)。
 
+`requirePermission()` 被拒時，若角色本身有這個碼、只是方案天花板沒有（租戶有方案、方案的 `features` 不含該碼的功能模組），回 403 的 `error.details` 另帶 `reason: 'PLAN_FEATURE_NOT_INCLUDED'`，訊息改成「目前的方案未包含這項功能」（`isBlockedByPlanOnly()`，2026-11-14，change `add-comment-keyword-private-reply`）。前端與維運以此分辨「方案未包含」與「角色沒有權限」。判斷只在拒絕時多算一次不套天花板的角色權限；Partner API 金鑰、CLI token 與沒有方案的租戶不帶 `reason`。`requireAnyPermission()` 沒有這個欄位。
+
 舊的 `requireRole()`、`requireAdmin()`、`requireSupervisor()` 仍然匯出，但沒有任何路由使用。新路由一律用 `requirePermission()`。
 
 有效權限需要 `request.agent.roleId`，而只有 `authenticate` 會填這個欄位。各認證裝飾器填入哪些欄位，見[認證與憑證](./AUTHENTICATION.md#認證裝飾器)。
@@ -202,6 +204,8 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 `permissions.ts` 與 `default-roles.ts` 都在 `packages/shared/src/rbac/`。demo 資料的 Demo Tenant 由 `packages/database/prisma/seed.ts` 的 `seedDemoRoles()` 建立，也寫入同一份 `DEFAULT_ROLE_PERMISSIONS`。API 容器每次啟動都會執行 seed（`apps/api/docker-entrypoint.sh`），所以 Demo Tenant 的系統角色在每次部署後重設成預設值，對它做過的修改不會保留。
 
 **新增權限碼時，既有租戶的角色不會自動取得。** 連 `admin` 也不會，因為 `admin` 的「全部權限」是開通當下的全部。要讓既有租戶取得新的碼，必須手動執行 `scripts/reconcile-system-role-permissions.mjs`。這個腳本對每個租戶重新執行 `seedRolesForTenant()`，而 `seedRolesForTenant()` 先刪除系統角色的所有權限碼，再依預設值重建。租戶管理員對系統角色做過的修改會被覆蓋，見 `../system/AUDIT.md` 的 RBAC-05。只要補上新增的權限碼時，改用 `scripts/grant-new-role-permissions.mjs <權限碼...>`：它只把指定的碼補到預設有這些碼的系統角色，不刪除、不重建，租戶的修改會保留。兩支腳本執行後都要清除 Redis 的權限快取。
+
+留言自動私訊（feature `comment_reply`）的兩個權限碼是一例：`comment_reply.view`（檢視規則、觸發紀錄、試算、前置條件）與 `comment_reply.manage`（建／改／刪規則、排序、啟用、重試、選貼文；`dependsOn` view、`implies` `channel.view`）。預設 `admin`、`supervisor` 有兩者，`agent` 只有 view。素材下拉走模組自己的 `GET /comment-replies/material-options`（manage），不 `implies marketing.view`，方案沒有 `marketing` 時也能選素材。既有方案都不含 `comment_reply`，平台在 `/admin/plans` 勾選後才生效；部署後仍要執行 reconcile（或 `grant-new-role-permissions.mjs comment_reply.view comment_reply.manage`）並清除 `perms:*` 快取，既有租戶的系統角色才有這兩個碼。開關留言接收（`/comment-replies/channels/:id/subscribe-comments`）要的是 `channel.update` 加 `comment_reply.view`，不是 manage。
 
 新增一個權限碼的步驟：
 

@@ -52,6 +52,8 @@ const SUPERVISOR_CODES = [
   'billing.view',
   // 對話發補償券、查看補償紀錄（add-coupon-system design D14）
   'coupon.view', 'coupon.issue',
+  // 留言自動私訊（add-comment-keyword-private-reply Open Questions 2）
+  'comment_reply.view', 'comment_reply.manage',
 ];
 
 // agent 預設權限（= 現行 AGENT「登入即可」的能力）
@@ -67,6 +69,8 @@ const AGENT_CODES = [
   'agent.view',
   // 對話發補償券（add-coupon-system design D14）
   'coupon.view', 'coupon.issue',
+  // 收件匣「查看留言紀錄」連結（add-comment-keyword-private-reply Open Questions 2）
+  'comment_reply.view',
 ];
 
 /** system role slug → 預設權限碼陣列 */
