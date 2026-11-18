@@ -4,6 +4,36 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-13：自動化動作失敗寫入執行紀錄（AUTO-02 部分修正）
+
+issue #362，change `fix-automation-delivery-visibility`。以 workers 單元測試（記憶體假資料庫、走 `executeWorkerAutomationActions`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-02 | 部分修正：有動作失敗的執行寫入 `AutomationLog`；成功的執行、`runCount`、`lastRunAt` 仍不寫 | `apps/workers/tests/unit/lib/automation-delivery-failure-visibility.test.ts` |
+
+## 2026-11-13：一般群發改在背景發送（MKT-01）
+
+issue #362 的群發部分，change `fix-plain-broadcast-send-362`。以單元測試、元件測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_362bc`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| MKT-01 | 部分修正，狀態不變（內文補上「送出改成背景工作」） | 一般群發的立即發送回 202 並排入 `coupon-broadcast` job，`executeBroadcast()` 的 `queued` 模式只搶 `scheduled` 且時間已到的群發。`broadcast-plain-send.test.ts`（feature）「立即發送一般群發回 202 並在背景送出」修正前失敗在斷言上（回 200 與發送結果）；「發送失敗後 job 重試不重送」以 mutation 驗證（搶占條件也接受 `failed` 時失敗）。仍未處理：重試對逐人送出的群發全部重送、停在 `sending` 的一般群發不能重送 |
+| 排程器的 RLS 與重疊（未列入 `AUDIT.md`） | 已修正 | 排程器只以 `prismaAdmin` 查到期清單，發送以 `app_tenant` 連線綁定租戶執行；`executeBroadcast()` 讀廣播比對 `tenantId`；排程加上 `withoutOverlapping`。`broadcast-plain-send.test.ts`「排程器以租戶連線發送一般群發」修正前失敗（跨租戶連線讀寫了廣播、渠道、素材與收件紀錄） |
+| 一般群發的訊息額度與收件人原因（未列入 `AUDIT.md`） | 已修正 | 額度檢查與附券廣播共用 `broadcast-quota.ts`；收件人送不出寫 `skipReason = DELIVERY_FAILED`。mutation：拿掉額度檢查、原因寫 null 時對應的測試失敗 |
+
+## 2026-11-11：滿意度問卷與工單重新開啟（CASE-04、CASE-02、CASE-05、RBAC-03）
+
+issue #339，change `csat-reresolve-decisions-339`。依使用者 2026-11-11 在 issue 留言的 8 項決定修改。以單元測試、元件測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_339`）驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-04 | 已修正，從 `AUDIT.md` 移除（`resolvedAt` 的部分 #417 已修正） | 新增 `@open333crm/shared` 的 `caseTransitionCsatFields()`，API 的 `transitionCase()` 與 workers 的 `update_case_status` 共用：轉成 `RESOLVED` 且沒有評分時清除 `csatSentAt`、`csatRespondedAt`，已評分的保留。`csat-reresolve.test.ts`（feature）「重新解決的未評分工單不會被立即結案」修正前失敗在斷言上（`Expected: "RESOLVED"`、`Received: "CLOSED"`），走真的 `transitionCase()` 與問卷逾時結案排程；「重新解決的未評分工單再寄一份問卷」「已評分的工單不寄問卷」修正前也失敗。workers 的「自動化重新解決工單時同樣處理問卷」（unit）修正前失敗。「已評分的工單重新解決不再寄問卷」寫好就通過，mutation：拿掉 `caseTransitionCsatFields()` 的已評分判斷時失敗 |
+| CASE-02 | 依決定處理，從 `AUDIT.md` 移除 | 使用者決定非 LINE 渠道先不寄問卷（等需要時再做快速回覆按鈕）。渠道外掛新增 `buildCsatSurvey()`，只有 LINE 實作；問卷排程與 `sendCsatSurvey()` 依外掛能力判斷，csat 模組不再以 `channelType` 分支（`AGENTS.md` 結構規則 5）。不寄問卷的工單停在已解決、不逾時結案。`csat-channel-capability.test.ts`（feature）「非 LINE 渠道的工單不寄問卷」「非 LINE 工單不佔排程名額」修正前失敗；「非 LINE 渠道的工單停在已解決」寫好就通過（修正前寄文字問卷、`csatSentAt` 是當下，不會在同一次執行結案），以 mutation 驗證：問卷逾時結案的查詢改成看 `resolvedAt` 時失敗。報表的 CSAT 仍只有 LINE 的客人自評 |
+| CASE-05 | 部分修正，狀態不變 | 評分後關閉對話、評分來源寫進 `csatRatedBy`、評分改條件更新認領。`csat-rating.test.ts`（feature）「客人評分後對話關閉」「客服代評後對話關閉」「客人評分記錄來源」「客服代評記錄來源」「客人連點兩次評分只處理一次」修正前失敗。仍未處理：不經狀態機、客服代評也送感謝訊息給顧客 |
+| RBAC-03 的 `recordCsatScore()` 一列 | 已修正，從表中移除；RBAC-03 維持部分修正 | 低分通知改看有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`resolveCaseManagerRecipients()`）。`csat-rating.test.ts`「低分通知有工單指派權限的管理員與主管」「沒有工單指派權限的成員不收低分通知」「看不到渠道的成員不收低分通知」修正前失敗；「停用的成員不收低分通知」以 mutation 驗證（拿掉收件人查詢的 `isActive` 條件時失敗；寫入通知的 `createNotificationForActiveAgent()` 也會擋，所以測試另外直接斷言收件人名單）；「3 分不發低分通知」以 mutation 驗證（門檻改成 3 分時失敗） |
+| 並行評分 | 已修正（未列入 `AUDIT.md`） | `csat-rating.test.ts`「客人連點兩次評分只處理一次」讓兩條連線都讀到「還沒評分」之後才繼續，修正前兩次都回傳已記錄（`2 !== 1`），修正後只有一次，感謝訊息一則、`case.closed` 一次 |
+
 ## 2026-11-11：Canvas 等待節點喚醒（APP-09、RLS-01）
 
 issue #334，change `fix-canvas-wait-resume`。以單元測試與本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_334`）驗證，沒有連 UAT。UAT 的 `flow_executions` 是 0 筆，沒有資料要修補。

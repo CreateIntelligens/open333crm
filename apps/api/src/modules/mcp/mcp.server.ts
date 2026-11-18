@@ -669,7 +669,7 @@ export function createMcpServer(
           broadcastId,
         });
         try {
-          const result = await executeBroadcast(prisma, _io, broadcastId, agentVisibilityResolverOf(flowDeps));
+          const result = await executeBroadcast(prisma, _io, agent.tenantId, broadcastId, agentVisibilityResolverOf(flowDeps));
           await writeLineMcpAudit(prisma, {
             tenantId: agent.tenantId,
             agentId: agent.id,

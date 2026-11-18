@@ -39,7 +39,7 @@ description: >
 | 7 | 自動指派（輪流） | 建立時有 `teamId`、沒有 `assigneeId` | `assignment.service.ts` `autoAssignCase` → `getNextAgent` | 候選：團隊內 `role=AGENT`、啟用、直綁或團隊被授權工單渠道 `reply_only/full`；挑未結（OPEN/IN_PROGRESS/PENDING/ESCALATED）最少者，同數以行程記憶體輪流；寫 `auto_assigned`、`case.assigned`。**畫面的團隊下拉永遠是空的**（讀錯 `agent.team`，API 回 `teams[]`），所以目前只有 API、CLI 與自動化觸發得到 | — |
 | 8 | 升級 | 「升級」→ `EscalationModal`：原因必填、升級後優先級、改派、通知對象 | `POST /cases/:id/escalate {reason, note?, newPriority, assigneeId?, notifyTargets}` → `escalateCase` | 狀態 `ESCALATED`、改優先級、寫 `escalated`；outbox `case.escalated` → `resolveEscalationRecipients`。改派的新負責人不另外通知 | `case.escalate`；渠道 `full` |
 | 9 | 備註、標籤、時間軸 | 詳情右側「時間軸與備註」；「案件標籤」（`TagManager` targetType=CASE） | `POST /cases/:id/notes {content, isInternal}`；`POST/DELETE /cases/:id/tags`（`tag.flow.ts`）；時間軸由 `GET /cases/:id` 的 `events`+`notes` 合成 | 備註不送給客人，「內部」只是樣式；標籤 scope 必須是 CASE。備註失敗沒有提示，作者一律顯示「客服」 | `case.update`；渠道 `reply_only` 即可 |
-| 10 | CSAT 問卷與結案 | 系統排程；收件匣 `ChatWindow` 的問卷卡片（`CsatMessage`，客服也能點星星） | 排程 `csat.scheduler.ts`：`csat-send`（解決 5 分鐘後，`sendCsatSurvey` 先認領 `csatSentAt` 再寄）、`csat-auto-close`（寄出 72 小時沒回覆就結案並關閉所有關聯對話）；客人 postback `csat:<分數>:<工單 ID>` → 進站攔截器 → `recordCsatScore`；客服 `POST /cases/:id/csat` | `recordCsatScore` 寫分數、問卷訊息 `metadata.csatScore`／`csatRatedBy` 並再推 `message.new`（卡片唯讀，#444）、時間軸 `csat_rated`、送感謝訊息給顧客、2 分以下通知 `SUPERVISOR`、**不檢查狀態直接改 `CLOSED`**（寫 `status_changed`，`reason: 'csat_rated'`）、發 eventBus `case.closed`（最多一次） | 客服評分 `case.update`、渠道 `full` |
+| 10 | CSAT 問卷與結案 | 系統排程；收件匣 `ChatWindow` 的問卷卡片（`CsatMessage`，客服也能點星星） | 排程 `csat.scheduler.ts`：`csat-send`（解決 30 分鐘後，只寄外掛有 `buildCsatSurvey()` 的渠道＝LINE；`sendCsatSurvey` 先認領 `csatSentAt` 再寄；已評分的不寄，#339）、`csat-auto-close`（寄出 72 小時沒回覆就結案並關閉所有關聯對話）；客人 postback `csat:<分數>:<工單 ID>` → 進站攔截器 → `recordCsatScore`；客服 `POST /cases/:id/csat` | `recordCsatScore` 寫分數、問卷訊息 `metadata.csatScore`／`csatRatedBy` 並再推 `message.new`（卡片唯讀，#444）、時間軸 `csat_rated`、送感謝訊息給顧客、2 分以下通知 `SUPERVISOR`、**不檢查狀態直接改 `CLOSED`**（寫 `status_changed`，`reason: 'csat_rated'`）、發 eventBus `case.closed`（最多一次） | 客服評分 `case.update`、渠道 `full` |
 | 11 | 刪除 | 列表最右「操作」垃圾桶（`window.confirm`） | `DELETE /cases/:id` → `deleteCaseFlow` | 硬刪除；事件、備註、標籤一併刪，對話解除關聯；同交易寫 `case.delete` 稽核；推播 `case.deleted`（列表不監聽，靠 30 秒輪詢） | `case.delete`；渠道 `full` / 不隱藏，失敗只顯示「刪除工單失敗」 |
 | 12 | 連結既有工單（無 UI） | — | `POST /cases/:id/conversations/:conversationId/link` → `linkConversationToCase` | 寫 `conversation_linked`，補首次回應；**不檢查對話的聯絡人與渠道可見範圍** | `case.update`；只檢查工單的渠道 `full` |
 
@@ -74,18 +74,18 @@ description: >
 3. 狀態：OPEN → 指派（自動變處理中）→ 待處理 → 處理中 → 標記解決 → 關閉 → 重新開啟；每一步時間軸都有事件，`case.resolved`／`case.closed` 進 outbox；不合法的轉換 422 並列出可改的狀態。查 DB：解決後有 `resolvedAt`、關閉後保留、重新開啟後為 null；另一張直接關閉的 `resolvedAt` 為 null（#417）。
 4. 升級：勾兩個通知對象，Supervisor 與原負責人各收到一則，升級者自己不收；`notifyTargets: ["everyone"]` 400。
 5. 用 API 帶 `teamId` 建工單，確認輪流指派、沒有渠道授權的成員被排除。
-6. CSAT：解決後 5 分鐘對話出現問卷；以 SQL 把 `csatSentAt` 調到 72 小時前，確認排程結案並關閉對話；重開工單後不被結案。
+6. CSAT：LINE 工單解決後 30 分鐘對話出現問卷，網站聊天室／FB 工單不寄、停在已解決；以 SQL 把 `csatSentAt` 調到 72 小時前，確認排程結案並關閉對話；重開再解決後不被結案、30 分鐘後重寄一份；已評分的重開再解決不重寄（#339）。
    評分（客人 `csat:<分數>:<工單 ID>` 或客服點卡片星星）後：開著的收件匣不重新整理，問卷卡片變唯讀並顯示「客人評 N 分」／「客服代評 N 分」；客人的訊息顯示「我的評分：N 分」不是代碼；工單時間軸有評分與「（評分後自動關閉）」兩筆；詳情頁「滿意度」區塊顯示分數（#444）。
 7. 用只有 `case.view` 的自訂角色與只能看部分渠道的成員重走 1–4，確認 403、404 與按鈕狀態。
 - 自動測試：`pnpm --filter @open333crm/api test -- case csat assignment`；`pnpm --filter @open333crm/web test -- case escalation csat`；`pnpm --filter @open333crm/workers test -- create-case`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/case modules/csat`；權限表在 `apps/api/tests/feature/modules/route-permission-guards.test.ts`。
 - E2E：`apps/web/tests/e2e-uat/tenant-cases.spec.ts`、`apps/web/tests/e2e-uat/tenant-fields-cases-contacts-inbox.spec.ts`。
 
 ## 常見 bug 從哪裡查
-- 「工單自己變成已關閉」：先看 `case_events` 有沒有 `status_changed`。`payload.reason` 是 `csat_rated` 的是客人或客服評分後自動關閉（#444 起寫事件）。沒有事件的話是問卷逾時結案（`csat.scheduler.ts`，重開過的工單也會被結案，HC-CASES-02）。SLA 逾時只提高優先級，不結案。
+- 「工單自己變成已關閉」：先看 `case_events` 有沒有 `status_changed`。`payload.reason` 是 `csat_rated` 的是客人或客服評分後自動關閉（#444 起寫事件）。沒有事件的話是問卷逾時結案（`csat.scheduler.ts`）。重新解決時未評分的工單會清除 `csatSentAt`（`caseTransitionCsatFields()`，#339），不會再被上一輪的問卷結案。SLA 逾時只提高優先級，不結案。
 - 「被指派的人說打開是 404／列表看不到」：負責人沒有該渠道的授權。手動指派不檢查（HC-CASES-04），查 `agent_channel_accesses` 與團隊的 `channel_team_accesses`。
 - 「指派了卻沒收到通知」：建立時帶負責人不發 `case.assigned`（`case.flow.ts` 的 `afterCaseCreated`）；升級時改派也不發。只有 `/assign` 與自動指派會通知。
 - 「自動指派沒反應」：畫面送不出 `teamId`（HC-CASES-06）；有團隊時看候選條件（`role=AGENT`、啟用、渠道授權 `reply_only/full`），全部不符就只寫 log「No available agent」。輪流位置存在行程記憶體，重啟或多行程各自從頭。
-- 「客人沒收到滿意度調查」：工單要有關聯對話（列表頁建的工單沒有）；只有轉成 `RESOLVED` 才寄，直接關閉不寄；非 LINE 渠道客人回不了（CASE-02）。投遞失敗時問卷卡片顯示「這份問卷沒有送出」與原因（訊息 `metadata.deliveryFailed`／`deliveryError`），工單時間軸寫 `csat_send_failed`（#416）；`csatSentAt` 已寫入，不會重寄（重寄的產品決定見 #339）。
+- 「客人沒收到滿意度調查」：工單要有關聯對話（列表頁建的工單沒有）；只有轉成 `RESOLVED` 才寄，直接關閉不寄；非 LINE 渠道不寄問卷（#339 決定 7）。投遞失敗時問卷卡片顯示「這份問卷沒有送出」與原因（訊息 `metadata.deliveryFailed`／`deliveryError`），工單時間軸寫 `csat_send_failed`（#416）；`csatSentAt` 已寫入，不會重寄（重寄的產品決定見 #339）。
 - 「首次回應一直未達／已達」：後端看 `Case.firstResponseAt`（只在關聯對話的客服訊息寫入，SLA-05），詳情頁的「已達／未達」卻是用時間軸的第一個客服事件算（`apps/web/src/components/case/CaseDetail.tsx`，HC-CASES-11）。
 - 「統計卡數字跟列表對不上」：統計不套渠道可見範圍（RBAC-04）；「即將到期」統計 30 分鐘、倒數元件 120 分鐘（HC-CASES-15）；「今日解決」以 API 行程時區切日。
 - 「改分類被 400」：建立只收 `CASE_CATEGORIES`；舊工單更新時另收 `LEGACY_CASE_CATEGORIES`（`case.routes.ts`）。

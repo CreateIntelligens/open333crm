@@ -13,9 +13,9 @@ const calls = vi.hoisted(() => ({
 
 vi.mock('#src/lib/channel-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  deliverToChannelFromWorker: async (_p: unknown, _r: unknown, _reg: unknown, _c: string, payload: unknown) => {
+  sendToChannelFromWorker: async (_p: unknown, _r: unknown, _reg: unknown, _c: string, payload: unknown) => {
     calls.sent.push(payload);
-    return true;
+    return { ok: true, channelMsgId: null, sentAt: new Date() };
   },
 }));
 vi.mock('#src/lib/socket-bridge.js', async (importOriginal) => ({

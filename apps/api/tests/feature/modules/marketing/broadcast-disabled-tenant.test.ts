@@ -20,7 +20,7 @@ import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { setupBroadcastScheduler } from '#src/modules/marketing/broadcast.scheduler.js';
 import { createBroadcast } from '#src/modules/marketing/marketing.service.js';
-import { createCouponBroadcastJobRunner } from '#src/modules/marketing/broadcast-coupon.worker.js';
+import { createBroadcastJobRunner } from '#src/modules/marketing/broadcast-coupon.worker.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
 import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
@@ -188,7 +188,7 @@ describe('The Scheduler Does Not Send Broadcasts Of A Disabled Tenant', () => {
     const couponId = await coupon(`${MARK}券2`);
     const id = await dueBroadcast('佇列停用', { couponId });
     await disable();
-    const result = await createCouponBroadcastJobRunner({ prisma, adminPrisma: owner, redis, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, id);
+    const result = await createBroadcastJobRunner({ prisma, adminPrisma: owner, redis, store, webBaseUrl: WEB, visibilityOf: async () => ALL_CHANNELS })(T, id);
     const row = await owner.broadcast.findFirst({ where: { id } });
     assert.equal(row?.status, 'failed', JSON.stringify(result));
     assert.equal(row?.failureCode, 'TENANT_DISABLED');

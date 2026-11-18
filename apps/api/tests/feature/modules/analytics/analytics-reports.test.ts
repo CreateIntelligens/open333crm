@@ -293,6 +293,8 @@ const OVERVIEW_A = {
   avgResolutionMinutes: 150,
   csatAvg: 3.5,
   csatPositiveRate: 50,
+  // issue #339：客服代評的筆數，不計入平均
+  csatAgentRatedCount: 0,
 };
 
 test('總覽：只算本租戶，訊息與新工單依區間，未結工單不看區間', async () => {
@@ -396,6 +398,7 @@ test('CSAT 報表：依送出問卷的時間；回覆率、平均分數、滿意
     csatRate: 0.5,
     lowScoreCount: 1,
     lowScoreCases: [{ id: k2.id, title: '帳單錯誤', score: 2 }],
+    agentRatedCount: 0,
   });
 });
 

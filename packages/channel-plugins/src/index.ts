@@ -97,12 +97,25 @@ export interface ChannelPlugin {
     uploadFn: MediaUploadFn,
   ): Promise<{ url: string; storageKey: string } | null>;
 
+  /**
+   * 滿意度問卷的訊息（issue #339 決定 7）：只有客人能在這個渠道直接點選分數的外掛才實作，目前只有 LINE。
+   * csat 模組依有沒有這個方法決定寄不寄問卷，不比對 channelType（AGENTS.md 結構規則 5）；
+   * 沒有實作的渠道不寄問卷，工單停在已解決。
+   */
+  buildCsatSurvey?(input: CsatSurveyInput): OutboundPayload;
+
   /** Optional channel-specific capability extensions */
   readonly extensions?: {
     ui?: ChannelUiExtension;
     audience?: ChannelAudienceExtension;
     analytics?: ChannelAnalyticsExtension;
   };
+}
+
+/** 滿意度問卷的內容：問題與每個分數選項（點選後送回的 postback 與客人看到的文字） */
+export interface CsatSurveyInput {
+  question: string;
+  options: Array<{ label: string; postbackData: string; displayText: string }>;
 }
 
 // ── Plugin Extensions ─────────────────────────────────────────────

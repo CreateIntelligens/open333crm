@@ -317,4 +317,20 @@ describe('發券 API 的發放方式（design D31、D32）', () => {
     assert.equal(res.statusCode, 200, res.body);
     assert.equal(res.json().data.issued.length, 1, res.body);
   });
+
+  it('含點的自訂發放方式照常發券（#362 A1）', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/api/v1/coupons/${apiCouponId}/issue`, payload: { contactIds: [contactId], issuedVia: 'partner.sync' },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().data.issued.length, 1, res.body);
+    const instance = await owner.couponInstance.findFirst({ where: { couponId: apiCouponId, contactId, issuedVia: 'partner.sync' } });
+    assert.ok(instance, '應記下自訂的發放方式');
+  });
+
+  it('其他舊的觸發事件名稱仍回 400（#362 A1）', async () => {
+    for (const issuedVia of ['message.received', 'contact.tagged', 'sla.resolution.breached']) {
+      await expect400('POST', `/api/v1/coupons/${apiCouponId}/issue`, { contactIds: [contactId], issuedVia });
+    }
+  });
 });

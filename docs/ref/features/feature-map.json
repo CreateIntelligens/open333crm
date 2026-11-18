@@ -374,7 +374,7 @@
       "paths": [
         "apps/api/src/modules/notification/*",
         "apps/api/src/modules/trial/usage-alert-emails.ts",
-        "apps/api/src/modules/email/email.service.ts",
+        "apps/api/src/modules/email/*",
         "apps/workers/src/handlers/notification.handler.ts",
         "apps/workers/src/lib/notification-queue.ts",
         "packages/core/src/agent/agent-lookup.ts"
@@ -525,7 +525,6 @@
         "sla-policy-selection"
       ],
       "audit": [
-        "CASE-02",
         "RBAC-03",
         "RBAC-04",
         "SLA-04",
@@ -1013,7 +1012,6 @@
         "credential-encryption"
       ],
       "audit": [
-        "CASE-02",
         "HOOK-01",
         "PKG-06",
         "AI-01",
@@ -3228,7 +3226,7 @@
       "usedBy": [
         {
           "domain": "notifications",
-          "why": "event-notification、notification、usage-alert-email 佇列在監控清單與失敗告警內；通知經 outbox 送出"
+          "why": "event-notification、notification、usage-alert-email、email-dispatch 佇列在監控清單與失敗告警內；通知經 outbox 送出"
         },
         {
           "domain": "automation",

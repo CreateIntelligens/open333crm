@@ -1,4 +1,4 @@
-FROM node:26.13.0-bookworm-slim AS deps
+FROM node:26.13.1-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN pnpm --filter @open333crm/automation build
 RUN set -a && . ./.env.web && set +a && NODE_ENV=production pnpm --filter @open333crm/web build
 
 # ---- Runner ----
-FROM node:26.13.0-bookworm-slim AS runner
+FROM node:26.13.1-bookworm-slim AS runner
 
 WORKDIR /app
 

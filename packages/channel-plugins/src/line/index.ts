@@ -128,7 +128,7 @@ async function linePut(path: string, token: string, body: unknown): Promise<unkn
 // Build LINE outbound message objects
 // ─────────────────────────────────────────────────────────────────
 
-import { buildLineCarousel, buildLineImagemap, buildLineVideoWithEndCard } from './builders.js';
+import { buildLineCarousel, buildLineCsatSurvey, buildLineImagemap, buildLineVideoWithEndCard } from './builders.js';
 import { getMediaUrl } from '@open333crm/shared';
 
 /**
@@ -338,6 +338,8 @@ export class LinePlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.LINE;
   /** LINE 推送一次最多 5 則訊息 */
   readonly maxMessagesPerSend = 5;
+  /** 滿意度問卷：Flex 訊息加五個 postback 按鈕，客人直接點選分數（issue #339 決定 7） */
+  readonly buildCsatSurvey = buildLineCsatSurvey;
 
   // ─── Task 2.1: verifySignature ───────────────────────────────────
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {

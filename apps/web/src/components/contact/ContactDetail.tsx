@@ -26,6 +26,7 @@ interface ContactDetailProps {
       externalId: string;
       displayName?: string;
       channelName?: string;
+      blockedAt?: string | null;
     }>;
     tags?: Array<{
       id: string;

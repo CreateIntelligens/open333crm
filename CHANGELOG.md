@@ -2,15 +2,83 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-13]
+
+### Changed
+
+- **SMTP 郵件備援與自動分批限速**：可選擇在 SMTP 故障時切換至 Resend，以 Redis 協調跨實例並行上限、1 秒滑動視窗限速、即時系統信額度保留、冷卻時間與單一恢復探測；區分 SES `454 Maximum sending rate exceeded` 短暫節流（退避重試、不誤切 Resend），無法確認 SMTP 是否已收件時不跨供應商重寄。新增可調環境參數（`EMAIL_SMTP_MAX_CONCURRENCY`、`EMAIL_SMTP_RATE_PER_SEC`、`EMAIL_SMTP_BULK_RATE_PER_SEC`、`EMAIL_RESEND_MAX_CONCURRENCY`、`EMAIL_RESEND_RATE_PER_SEC`、`EMAIL_FAILOVER_COOLDOWN_MS`、`EMAIL_BATCH_SIZE`）與 `email-dispatch` 佇列（`enqueueEmailBatch` 自動分批錯峰與 Canvas 郵件排隊），支撐大量郵件平滑投遞。
+
+- **一般群發改在背景發送**（issue #362，change `fix-plain-broadcast-send-362`）：`POST /api/v1/marketing/broadcasts/:id/send` 對一般群發改回 202 `{ id, status: 'scheduled', scheduledAt }`，發送交給 `coupon-broadcast` 佇列在背景執行（原本在 HTTP 請求裡同步跑完整份名單，大名單會逾時、前端看到失敗但其實已部分送出）。發送時的錯誤（受眾為空、額度不足等）改寫在廣播的 `status`、`failureCode`、`failureReason`，不再回 400。已在發送中仍回 409，網站聊天室仍回 400。
+  - 發送前查訊息額度：與附券廣播共用 `broadcast-quota.ts`，依外掛有沒有 `getMessageQuota` 判斷；不足或查不到時整則不送（`LINE_QUOTA_INSUFFICIENT`、`LINE_QUOTA_CHECK_FAILED`）。
+  - 每位收件人的失敗原因：送不出的收件人寫 `skipReason = DELIVERY_FAILED`；行銷頁每一則已發送的廣播都有「發送結果」，看得到誰沒收到。
+  - 排程只以 `prismaAdmin` 查到期清單，發送改用綁定租戶的連線；加上 `withoutOverlapping`；`executeBroadcast()` 讀廣播比對 `tenantId`。
+- **聯絡人詳情顯示「已封鎖官方帳號」**（issue #362，change `fix-line-follow-unfollow-events`）：收到 LINE unfollow 時在渠道身分寫入 `blockedAt`，重新加好友時清空；聯絡人詳情該渠道顯示紅色徽章。只記錄，不排除：群發、自動化、招呼語照常發送。migration `20261113100000_add_channel_identity_blocked_at`（新增可為 NULL 的欄位，不回填）。
+
+### Fixed
+
+- **LINE 加好友、封鎖等系統事件與一般訊息分流**（issue #362，change `fix-line-follow-unfollow-events`）：
+  - 沒見過的使用者封鎖時，不再建立聯絡人與渠道身分，也不送首次招呼語。
+  - 加好友、封鎖、群組加入離開、收回訊息等系統事件不再觸發非營業時間的自動回覆。
+  - 加好友的首次招呼語改用該事件的 replyToken 回覆（不佔訊息額度），reply 失敗退回 push。
+  - Canvas「加好友」觸發原本永遠不成立（`normalizeCanvasEventType` 讀不存在的欄位）；改依 contentType 判斷，封鎖不觸發任何流程。
+- **自動化送出失敗看得到**（issue #362，change `fix-automation-delivery-visibility`）：
+  - workers 寫入送出失敗紀錄（`recordDeliveryFailure`、發券的 `recordFailureNotice`）時更新對話的 `lastMessageAt`，對話會浮到列表上方。
+  - 渠道已停用時，`sendToChannelFromWorker` 自己在對話寫失敗紀錄；`send_message`／`send_material` 依回傳值標記失敗，有動作失敗的執行寫入 `automation_logs`（`success: false`、`errorMsg`）。原本只寫 log。
+  - 規則的必要條件限定渠道時，「傳送素材」的素材渠道必須相同，否則回 400 `VALIDATION_ERROR`（原本只有前端擋）。
+  - LINE 關鍵字回覆頁存檔時保留第二個以後的同類動作（原本會被刪掉）；新加的素材排在第一個發券動作之前。
+- **優惠券**（issue #362，change `fix-coupon-issued-via-reserved-names`）：
+  - 發券 API 的 `issuedVia` 不再把所有含「.」的值當系統保留值：只保留系統寫過的舊觸發事件名稱，整合程式可以用 `partner.sync` 這類代碼，後台顯示「其他方式」。
+  - `confirmPendingInstance` 比對持有人（`contactId`），傳入的聯絡人不是持有人時不確認、不貼標。
+  - `voidPendingInstance` 歸還序號時限定 `status: 'ASSIGNED'` 與該券的 `couponId`。
+  - 領券連結改用複合外鍵 `(couponId, tenantId)`、`(channelId, tenantId)`，資料庫層擋下跨租戶的連結（migration `20261113110000_coupon_claim_links_tenant_fk`；既有資料不符時 migration 失敗並列出連結 id，不刪資料）。
+  - `broadcasts.couponId` 加外鍵，刪除草稿券時設為 NULL（migration `20261113120000_broadcast_coupon_fk`，先清掉指向不存在券的孤兒）。
+  - 公開領券頁連續重試時丟棄過期的回應；建立領券連結的對話框取消時清空欄位與錯誤。
+  - 附券廣播的名額預估還沒完成或失敗時，不能按「建立」，失敗時顯示原因與重試。
+
+## [2026-11-12]
+
+### 🛡️ Security & Runtime Upgrade (Node.js 26.13.1 & 24.22.3 Security Hardening)
+- **容器基底全面升級 Node.js 26 (`node:26.13.1-bookworm-slim`)**:
+  - `Dockerfile.dev`、`apps/web/Dockerfile`、`apps/api/Dockerfile`、`apps/workers/Dockerfile` 與 `.github/workflows/deploy.yml` 基底映像全面升級為 `node:26.13.1-bookworm-slim`。
+  - 根目錄 `package.json` 與 `apps/cli/package.json` 中的 `engines.node` 更新下限至 `>=24.22.3`。
+  - 完整防護 Node.js 官方 2026-11-11 安全公告修復之多項 High severity 安全性漏洞。
+
+### Changed
+
+- **開發與建置環境統一為 Node 26**（issue #515）：正式環境已經跑 `node:26.13.1`，但本機原本仍可用 Node 24，兩邊行為可能不一樣。
+  - 根目錄 `package.json` 的 `engines.node` 從 `>=24.22.3 <27` 改為 `>=26.13.1 <27`。`.npmrc` 有 `engine-strict=true`，本機 Node 低於 26.13.1 時 `pnpm install` 會被拒絕。
+  - 各 workspace 套件的 `@types/node` 原本混用 20／22／24／25，統一改為 `^26.6.6`。CLI（`apps/cli`）例外：它以 npm 套件發布、跑在使用者電腦上，engines 維持 `>=24.22.3`，`@types/node` 跟著用 `^24.19.0`，避免用到只有 Node 26 才有的 API。
+  - 新型別不允許把 `Buffer` 直接傳給 `Blob`，因此 `apps/api/src/modules/ai/agent/web-client.ts`（OCR 上傳）與 `packages/brain/src/services/MarkitdownService.ts` 改為先轉成 `Uint8Array`。執行行為不變。
+  - README 補充：Node 25 起不再內建 corepack，要先 `npm install -g corepack@latest && corepack enable`。
+
+### Fixed
+
+- **滿意度：工單重開後客人點舊問卷不再把工單結案**（issue #520）：`recordCsatScore()` 原本只檢查工單還沒評分、不看狀態，工單寄過問卷後被改回處理中，客人點舊的問卷卡片就會記分、把處理中的工單關掉並關閉對話，低分時還發通知；逾時結案後點舊問卷也會記分。現在客人評分只在工單狀態是「已解決」時記錄，讀取與條件更新都要求 `RESOLVED`；其他狀態不記分、不送感謝訊息、不改工單與對話。客服代評不受影響，任何狀態都可代評。
+- **fast-xml-parser 升到 5.12.0，處理 Dependabot 警示 #184**（GHSA-474x-hrwr-fgx4，遇到未結束的 stop-node 標籤時 CPU 用量呈平方成長）。它由 `@aws-sdk/client-s3` 帶入，用來解析 S3／MinIO 的回應。
+  - `pnpm.overrides` 原本把它鎖在 5.7.0（#355 為修上一個警示而鎖），Dependabot 改不了 overrides，因此自動更新工作一直失敗。
+  - 一併把 override `fast-xml-builder` 從 1.1.9 改為 1.3.1：fast-xml-parser 5.12.0 要求 `^1.3.1`，舊的 override 會強迫它搭配不相容的版本。
+  - 新增的間接相依 `is-unsafe`、`xml-naming` 與 fast-xml-parser 同一位維護者、同一個 GitHub 組織。
+
+
 ## [2026-11-11]
 
 ### Changed
+
+- **滿意度問卷依 issue #339 的 8 項決定調整**（change `csat-reresolve-decisions-339`）：
+  - 寄問卷延遲從寫死的 5 分鐘改成 30 分鐘（常數 `CSAT_SURVEY_DELAY_MINUTES`），租戶不能調整，也不能關閉問卷。
+  - **非 LINE 渠道不再寄問卷**。原本送純文字「回覆 csat:分數」，缺工單 ID，客人回覆不了（AUDIT CASE-02）。渠道外掛新增選用方法 `buildCsatSurvey()`，只有 LINE 實作（Flex 版型從 `csat.service.ts` 移到 `packages/channel-plugins/src/line/builders.ts`）；問卷排程與 `sendCsatSurvey()` 依外掛能力判斷，不比對 `channelType`。這些工單停在已解決，不逾時結案，由客服手動結案。
+  - **低分（1～2 分）只通知、不升級**，通知對象改成有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員，含管理員；不再看舊的角色列舉 `role`（AUDIT RBAC-03 的 `recordCsatScore()` 一列）。預設的客服角色也有 `case.assign`，看得到該渠道的客服也會收到。通知送不出時工單時間軸寫一筆 `csat_low_score_notify_failed`。
+  - **評分後關閉工單底下的對話**，與問卷逾時結案相同（客人評分與客服代評都是）。
+  - **客服代評保留並標記來源**：工單新增 `csatRatedBy`（`customer`／`agent`，migration `20261111100000_add_case_csat_rated_by` 以時間軸的 `csat_rated` 事件回填）。報表的 CSAT 平均、好評率、客服績效與 `/analytics/csat` 只算客人自評；總覽新增 `csatAgentRatedCount`、`/analytics/csat` 新增 `agentRatedCount`，報表頁 CSAT 分數卡顯示「客服代評 N 筆（不計入平均）」，工單詳情標示「客服代評」。
+  - 文件以 `docs/19_CSAT_FLOW.md` 為準並依決定改寫；`docs/04_CASE_MANAGEMENT.md` 的 CSAT 段落標成過時。
 
 - **AI 月額度無上限的租戶不能申請加購 token**（change `block-topup-request-when-unlimited`）：`POST /api/v1/plan-change` 送出 `token_topup` 時，租戶的 AI 月額度基礎上限是無上限就回 400 `TOPUP_UNLIMITED`，不建立申請。新增 `GET /api/v1/plan-change/topup-eligibility`，`/dashboard/plan` 依此停用「加購 Token」並說明「目前方案的 AI 額度已無上限，不需要加購」。以前這類申請送得出去，平台卻無法核准，還會卡住租戶的下一筆申請。
 - **知識庫自動回覆改成入口開交易**（#337 階段 4 第六批 6b-2，change `migrate-ai-kb-autoreply-tenant-ctx`）— 讀寫改在綁定租戶的短交易內（`app_tenant` 連線，受 RLS 約束），原本以 `prismaAdmin` 讀取。embedding 服務、LLM 與去識別化服務在交易外呼叫（新檔 `ai/kb-autoreply.flow.ts`）。寫入回覆時的遮罩沿用處理開始時讀到的遮罩政策，不再另外讀一次。送到渠道的 `deliverToChannel()` 屬於還沒搬的 `conversation`，仍用 `prismaAdmin`。關鍵字規則的讓步改由 automation worker 判斷一次，AI agent 與知識庫回覆共用這個結果，知識庫不再自己判斷。
 
 ### Fixed
 
+- **工單重新解決後一分鐘內被自動結案**（issue #339，AUDIT CASE-04，change `csat-reresolve-decisions-339`）：重開再解決時沒有清掉上一輪的 `csatSentAt`，問卷逾時結案排程只看 `csatSentAt`，上一輪寄出超過 72 小時的工單重新解決後一分鐘內就被結案、底下的對話也被關閉，客人收不到這次的問卷。新增 `@open333crm/shared` 的 `caseTransitionCsatFields()`，API 的 `transitionCase()` 與 workers 的 `update_case_status` 共用：轉成 `RESOLVED` 時沒有評分就清除 `csatSentAt` 與 `csatRespondedAt`，30 分鐘後重寄一份，逾時從重新寄出起算；已評分的保留分數，不再寄、不逾時結案。
+- **客人連點兩次評分會處理兩次**（issue #339）：`recordCsatScore()` 先在程式裡檢查 `csatScore` 是空值，再只用 id 更新，兩個請求同時到達時都通過，客人收到兩則感謝訊息、低分通知發兩次、`case.closed` 發兩次。改成以 `csatScore: null` 為條件的條件更新認領，沒寫入就不送感謝訊息、不發通知、不發 `case.closed`、不關對話。
 - **Canvas 流程過不了等待節點，喚醒也可能重複執行**（issue #334，change `fix-canvas-wait-resume`）：流程走到等待節點暫停後，`currentNodeId` 停在等待節點，喚醒時又從它開始，再執行同一個等待節點、再暫停，直到步數上限被標成 `FAILED`。現在喚醒時 `FlowRunner.run(id, { resumeFromWait: true })` 略過暫停的等待節點，從它的下一個節點繼續；等待節點是最後一個節點時流程完成。暫停時寫入的資料形狀不變，已經停在等待節點的舊資料喚醒後也從下一個節點繼續。`processResumeQueue()` 原本只以 id 把 execution 改成 `RUNNING`，`withoutOverlapping` 的鎖過期後兩期同時執行時會恢復兩次、訊息送兩次（AUDIT APP-09）；現在以 `prismaAdmin` 掃描，在 execution 所屬租戶的 `withTenant` 交易內以 `status = 'WAITING'` 與 `resumeAt` 已到期為條件認領，更新 0 筆時不恢復，也不再使用未綁租戶的 `prisma` singleton（RLS-01 的這一部分）。`setupCanvasScheduler()` 改收 `{ admin, prisma }`。目前沒有 Canvas 前端頁面，UAT 的 `flow_executions` 是 0 筆，修正前沒有影響到使用者。
 - **渠道的機器人設定與自動化動作參數沒有驗證型別**（issue #405 第一批，change `validate-bot-config-and-action-params`）：
   - `settings.botConfig` 原本只檢查 `maxBotReplies`。`handoffKeywords` 存了空字串 `['']` 時，`'任何文字'.includes('')` 恆為 true，**每則訊息都自動轉接真人**；存成字串 `"真人,客服"` 時逐字比對；含數字時整個 `message.received` 處理丟例外。`handoffPromptEnabled` 是字串 `"false"` 時被當成開啟。新增 `botConfigSchema`（`packages/automation/src/bot-config.ts`）定義 8 個欄位的型別與範圍：建立渠道，或更新渠道且送出的 `botConfig` 與已存的不同時，不合法回 400 `VALIDATION_ERROR`，`details.issues` 指出欄位。送出的 `botConfig` 與已存的相同時不檢查，Downstream Webhook 設定視窗把整包 `settings` 送回時，不會被舊資料擋下（`maxBotReplies` 的檢查也從路由移到這裡）。讀取一律經過 `getBotConfig()`，不合法的欄位改用預設值，不丟例外；`kb-autoreply` 與 webhook 原本各自轉型的讀法改用它。設定畫面送出的值（`handoffMessage` 可為空字串、`handoffKeywords` 可為空陣列）都照常通過。

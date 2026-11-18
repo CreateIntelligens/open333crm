@@ -24,6 +24,7 @@ import { COUPON_ISSUED_VIA, channelDisplayName, supportsProactivePush } from '@o
 import { countsTowardContactLimit, isCouponPastFixedEnd } from '@open333crm/core';
 import { channelIdWhereFilter, type AccessibleChannels, type AgentVisibilityResolver } from '../../services/channel-visibility.js';
 import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
+import { checkBroadcastQuota } from './broadcast-quota.js';
 
 // --- Broadcast channel ---
 
@@ -172,6 +173,11 @@ export async function getBroadcastChannelId(ctx: TenantCtx, id: string): Promise
     throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   }
   return broadcast.channelId;
+}
+
+/** 背景發送分派用：廣播有沒有附券；查不到回 null */
+export async function findBroadcastSendKind(ctx: TenantCtx, id: string): Promise<{ couponId: string | null } | null> {
+  return ctx.tx.broadcast.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { couponId: true } });
 }
 
 export async function getBroadcast(prisma: TenantDb, id: string, tenantId: string) {
@@ -470,6 +476,9 @@ const hasPlaceholder = (value: string) => /\{\{[a-zA-Z0-9_.]+\}\}/.test(value);
 
 const SENDABLE_STATUSES = ['draft', 'scheduled', 'failed'];
 
+/** 收件人送不出時的原因代碼（與附券廣播的 RecipientFailReason 相同，前端有中文標籤） */
+export const DELIVERY_FAILED_REASON = 'DELIVERY_FAILED';
+
 /** 非預期錯誤（不是 AppError）寫給後台看的原因：不外露內部錯誤內容（issue #287） */
 export const UNEXPECTED_FAILURE_REASON = '發送時發生系統錯誤，請稍後重新發送；若持續失敗請聯絡管理員';
 
@@ -487,18 +496,38 @@ export function alreadySendingError() {
   return new AppError('此廣播正在發送中或已開始發送，請勿重複發送，稍後重新整理查看結果', 'BROADCAST_ALREADY_SENDING', 409);
 }
 
+/** executeBroadcast() 的結果 */
+export interface BroadcastExecutionResult {
+  total: number;
+  success: number;
+  failed: number;
+  skipped: number;
+}
+
+export interface ExecuteBroadcastOptions {
+  /**
+   * 背景發送（佇列 job、排程器，change fix-plain-broadcast-send-362 design D2）：只搶「已排程且排程時間已到」的廣播，
+   * 搶不到回 null、不丟錯。發送失敗後廣播是 failed，job 重試搶不到，不會重送。
+   * 沒有設定時（MCP 工具）草稿、已排程、失敗都可以開始，搶不到回 409。
+   */
+  queued?: { now?: Date };
+}
+
 /**
- * Execute a broadcast: resolve audience, send personalized messages, update stats.
+ * 發送一則一般群發：解析受眾、查訊息額度、逐人或 multicast 送出、記錄收件人與結果。
+ * 讀廣播同時比對 id 與 tenantId（marketing-scheduling「排程器以綁定租戶的連線發送且兩期不重疊」）。
  */
 export async function executeBroadcast(
   prisma: TenantDb,
   io: SocketIOServer,
+  tenantId: string,
   broadcastId: string,
   /** 解析建立者的可見範圍（agentVisibilityResolver()）：分群條件依建立者判斷，見 resolveAudience() */
   visibilityOf: AgentVisibilityResolver,
-) {
+  options: ExecuteBroadcastOptions = {},
+): Promise<BroadcastExecutionResult | null> {
   const broadcast = await prisma.broadcast.findFirst({
-    where: { id: broadcastId },
+    where: { id: broadcastId, tenantId },
   });
   if (!broadcast) {
     throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
@@ -507,22 +536,33 @@ export async function executeBroadcast(
   if (broadcast.couponId) {
     throw new AppError('附券廣播由排程在背景發送，請重新整理後查看結果', 'COUPON_BROADCAST_QUEUED_ONLY', 409);
   }
-  // 只有草稿、已排程、失敗（重試）可以開始發送；發送中的廣播不可再發，避免重複群發
-  if (broadcast.status === 'sending') {
-    throw alreadySendingError();
-  }
-  if (!SENDABLE_STATUSES.includes(broadcast.status)) {
-    throw new AppError('此群發目前的狀態無法發送', 'INVALID_STATUS', 400);
-  }
+  const startedAt = new Date();
+  if (options.queued) {
+    // 背景發送：以單一條件更新搶占已排程、時間已到的廣播；job 與排程器只有一個搶得到
+    const claimed = await prisma.broadcast.updateMany({
+      where: { id: broadcastId, tenantId, status: 'scheduled', scheduledAt: { lte: options.queued.now ?? startedAt } },
+      // 開始發送時清掉上一次的失敗原因，重送成功後不留舊原因
+      data: { status: 'sending', sentAt: startedAt, failureReason: null, failureCode: null },
+    });
+    if (claimed.count === 0) return null;
+  } else {
+    // 只有草稿、已排程、失敗（重試）可以開始發送；發送中的廣播不可再發，避免重複群發
+    if (broadcast.status === 'sending') {
+      throw alreadySendingError();
+    }
+    if (!SENDABLE_STATUSES.includes(broadcast.status)) {
+      throw new AppError('此群發目前的狀態無法發送', 'INVALID_STATUS', 400);
+    }
 
-  // 以單一條件更新搶占 sending：兩個請求（重複按、或與排程器同時）只有一個搶得到
-  const claimed = await prisma.broadcast.updateMany({
-    where: { id: broadcastId, tenantId: broadcast.tenantId, status: { in: SENDABLE_STATUSES } },
-    // 開始發送時清掉上一次的失敗原因，重送成功後不留舊原因
-    data: { status: 'sending', sentAt: new Date(), failureReason: null },
-  });
-  if (claimed.count === 0) {
-    throw alreadySendingError();
+    // 以單一條件更新搶占 sending：兩個請求（重複按、或與排程器同時）只有一個搶得到
+    const claimed = await prisma.broadcast.updateMany({
+      where: { id: broadcastId, tenantId, status: { in: SENDABLE_STATUSES } },
+      // 開始發送時清掉上一次的失敗原因，重送成功後不留舊原因
+      data: { status: 'sending', sentAt: startedAt, failureReason: null, failureCode: null },
+    });
+    if (claimed.count === 0) {
+      throw alreadySendingError();
+    }
   }
 
   try {
@@ -651,6 +691,14 @@ export async function executeBroadcast(
       );
     }
 
+    // 訊息額度：剩餘額度小於這次要送的人數就整則不送（與附券廣播共用，broadcast-quota.ts）；
+    // 只有外掛提供額度查詢的渠道才檢查，不判斷渠道類型
+    const quota = await checkBroadcastQuota(plugin, credentials, identities.length, {
+      withCoupon: false,
+      log: { tenantId, broadcastId },
+    });
+    if (quota) throw new AppError(quota.reason, quota.code, 400);
+
     const extractedKeys = extractVariables(body);
     const needsPersonalization = extractedKeys.length > 0;
 
@@ -740,16 +788,24 @@ export async function executeBroadcast(
           failedCount += chunk.length;
         }
 
-        // 該批 recipient 記錄
+        // 該批 recipient 記錄：整批共用結果，失敗時原因為 DELIVERY_FAILED（與附券廣播同一個代碼）
+        const chunkResult = chunkDelivered
+          ? { deliveryStatus: 'sent', skipReason: null }
+          : { deliveryStatus: 'failed', skipReason: DELIVERY_FAILED_REASON };
         try {
           await prisma.broadcastRecipient.createMany({
             data: chunk.map((identity) => ({
               broadcastId,
               contactId: identity.contactId,
-              deliveryStatus: chunkDelivered ? 'sent' : 'failed',
+              ...chunkResult,
               sentAt: now,
             })),
             skipDuplicates: true,
+          });
+          // 重新發送：既有的收件紀錄依這次的結果更新
+          await prisma.broadcastRecipient.updateMany({
+            where: { broadcastId, contactId: { in: chunk.map((identity) => identity.contactId) } },
+            data: chunkResult,
           });
         } catch (err) {
           logger.warn(`[broadcast:${broadcastId}] recipient batch write failed (chunk ${i / MULTICAST_CHUNK + 1})`, { err });
@@ -789,18 +845,18 @@ export async function executeBroadcast(
           noteError(err);
         }
 
-        // Create recipient record for tracking replies & cases
+        // 收件紀錄（回覆與開案歸因用）：送不出時原因為 DELIVERY_FAILED；重新發送時依這次的結果更新
+        const result = delivered
+          ? { deliveryStatus: 'sent', skipReason: null }
+          : { deliveryStatus: 'failed', skipReason: DELIVERY_FAILED_REASON };
         try {
-          await prisma.broadcastRecipient.create({
-            data: {
-              broadcastId,
-              contactId: identity.contactId,
-              deliveryStatus: delivered ? 'sent' : 'failed',
-              sentAt: now,
-            },
+          await prisma.broadcastRecipient.upsert({
+            where: { broadcastId_contactId: { broadcastId, contactId: identity.contactId } },
+            create: { broadcastId, contactId: identity.contactId, ...result, sentAt: now },
+            update: { ...result, sentAt: now },
           });
-        } catch {
-          // Ignore duplicate (unique constraint on broadcastId+contactId)
+        } catch (err) {
+          logger.warn(`[broadcast:${broadcastId}] recipient write failed`, { err });
         }
       }
     }
@@ -836,9 +892,11 @@ export async function executeBroadcast(
   } catch (err) {
     // 排程發送沒有人看得到回應：原因要寫進資料庫，後台才看得到（issue #287）
     const failureReason = err instanceof AppError ? err.message.slice(0, FAILURE_REASON_MAX_LENGTH) : UNEXPECTED_FAILURE_REASON;
+    // failureCode 與附券廣播一致：AppError 的 code，其他錯誤 UNEXPECTED_ERROR
+    const failureCode = err instanceof AppError ? err.code : 'UNEXPECTED_ERROR';
     await prisma.broadcast.update({
       where: { id: broadcastId },
-      data: { status: 'failed', failureReason },
+      data: { status: 'failed', failureReason, failureCode },
     });
     throw err;
   }

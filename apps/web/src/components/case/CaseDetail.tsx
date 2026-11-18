@@ -75,6 +75,8 @@ interface CaseDetailProps {
     csatComment?: string | null;
     csatSentAt?: string | null;
     csatRespondedAt?: string | null;
+    /** 誰評的分：customer（客人）或 agent（客服代評）（issue #339） */
+    csatRatedBy?: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -372,6 +374,9 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate, section = '
                 </div>
                 <span className="font-medium text-foreground">{caseData.csatScore} 分</span>
                 <span className="text-muted-foreground">{csatScoreLabel(caseData.csatScore)}</span>
+                {caseData.csatRatedBy === 'agent' && (
+                  <span className="rounded bg-surface-hover px-1.5 py-0.5 text-xs text-muted-foreground">客服代評</span>
+                )}
               </div>
               {caseData.csatComment && (
                 <p className="text-muted-foreground">{caseData.csatComment}</p>

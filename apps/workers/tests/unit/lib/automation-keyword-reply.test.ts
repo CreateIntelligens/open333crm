@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { createCipheriv, randomBytes, scryptSync } from 'node:crypto';
 import type { ChannelPlugin, OutboundPayload } from '@open333crm/channel-plugins';
 import { executeWorkerAutomationActions } from '#src/lib/automation-actions';
@@ -150,7 +150,6 @@ test('reply failure falls back to push', testReplyFailureFallsBackToPush);
 
 // ── 自動化發券也在期限內以回覆方式送出（add-coupon-system A15 15.6、design D25）──
 
-import { vi } from 'vitest';
 import { COUPON_ID, RULE, TENANT, fakeCouponDb, fakeLinePlugin, fakeRedis } from '../support/fake-coupon-db.js';
 
 vi.mock('bullmq', async (importOriginal) => ({
@@ -168,6 +167,7 @@ async function issueCouponAt(receivedAt: string, trigger = 'keyword.matched') {
   const { redis } = fakeRedis();
   await executeWorkerAutomationActions(db as never, redis as never, [{ type: 'issue_coupon', params: { couponId: COUPON_ID } }], {
     tenantId: TENANT,
+    eventId: crypto.randomUUID(),
     ruleId: RULE.id,
     ruleName: RULE.name,
     conversationId: 'conv-1',

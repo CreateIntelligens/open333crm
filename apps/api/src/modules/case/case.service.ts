@@ -8,7 +8,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import type { Prisma } from '@prisma/client';
-import { caseTransitionTimestamps, type CaseStatus, type Priority } from '@open333crm/shared';
+import { caseTransitionCsatFields, caseTransitionTimestamps, type CaseStatus, type Priority } from '@open333crm/shared';
 import { addMinutes } from 'date-fns';
 import { validateTransition } from './case-state-machine.js';
 import { AppError } from '../../shared/utils/response.js';
@@ -490,9 +490,11 @@ export async function transitionCase(
   validateTransition(caseRecord.status as CaseStatus, toStatus);
 
   // resolvedAt／closedAt 依共用規則（issue #417）：直接關閉不算已解決，重開清除解決時間
+  // 問卷欄位依共用規則（issue #339）：重新解決的未評分工單清除上一輪的寄出時間，排程再寄一份
   const updateData: Prisma.CaseUpdateInput = {
     status: toStatus,
     ...caseTransitionTimestamps(caseRecord.status as CaseStatus, toStatus, new Date()),
+    ...caseTransitionCsatFields(caseRecord.status as CaseStatus, toStatus, caseRecord),
   };
 
   const updated = await prisma.case.update({

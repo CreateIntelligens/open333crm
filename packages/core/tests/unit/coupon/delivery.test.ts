@@ -9,13 +9,14 @@ import { confirmPendingInstance, voidPendingInstance } from '#src/coupon/deliver
 
 const T = 'a0000000-0000-4000-8000-000000000001';
 const INSTANCE = 'c0000000-0000-4000-8000-0000000000c1';
+const COUPON_OF_INSTANCE = 'c0000000-0000-4000-8000-0000000000a1';
 
 function voidTx(pending: boolean) {
   const calls: { raw: unknown[]; codeUpdate?: Record<string, any>; deleteWhere?: unknown } = { raw: [] };
   const tx = {
     $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
       calls.raw.push({ sql: strings.join('?'), values });
-      return pending ? [{ id: INSTANCE }] : [];
+      return pending ? [{ id: INSTANCE, couponId: COUPON_OF_INSTANCE }] : [];
     },
     couponCode: {
       updateMany: async (args: Record<string, any>) => {
@@ -41,8 +42,38 @@ describe('作廢發送中的券', () => {
     assert.match(raw.sql, /FOR UPDATE/);
     assert.match(raw.sql, /"deliveryPendingAt" IS NOT NULL/);
     assert.deepEqual(raw.values, [INSTANCE, T]);
-    assert.deepEqual(calls.codeUpdate, { where: { tenantId: T, instanceId: INSTANCE }, data: { status: 'AVAILABLE', instanceId: null } });
+    assert.deepEqual(calls.codeUpdate, {
+      where: { tenantId: T, couponId: COUPON_OF_INSTANCE, instanceId: INSTANCE, status: 'ASSIGNED' },
+      data: { status: 'AVAILABLE', instanceId: null },
+    });
     assert.deepEqual(calls.deleteWhere, { id: INSTANCE, tenantId: T, deliveryPendingAt: { not: null } });
+  });
+
+  it('只歸還這張券、這個序號包裡仍為已指派的序號（#362 D13）', async () => {
+    const COUPON = 'c0000000-0000-4000-8000-00000000c0a1';
+    const codes = [
+      { id: 'mine', tenantId: T, couponId: COUPON, instanceId: INSTANCE, status: 'ASSIGNED' },
+      // 同一個 instanceId 卻屬於別張券的序號包（資料錯置）：不能被放回別張券的庫存
+      { id: 'other-pool', tenantId: T, couponId: 'c0000000-0000-4000-8000-00000000c0b2', instanceId: INSTANCE, status: 'ASSIGNED' },
+      // 狀態已不是已指派（例如已被其他流程歸還）：不重複處理
+      { id: 'not-assigned', tenantId: T, couponId: COUPON, instanceId: INSTANCE, status: 'AVAILABLE' },
+    ];
+    const tx = {
+      $queryRaw: async () => [{ id: INSTANCE, couponId: COUPON }],
+      couponCode: {
+        updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          const rows = codes.filter((c) => Object.entries(where).every(([k, v]) => (c as Record<string, unknown>)[k] === v));
+          rows.forEach((r) => Object.assign(r, data));
+          return { count: rows.length };
+        },
+      },
+      couponInstance: { deleteMany: async () => ({ count: 1 }) },
+    };
+    assert.equal(await voidPendingInstance(tx as never, T, INSTANCE), true);
+    assert.deepEqual(
+      codes.map((c) => [c.id, c.status, c.instanceId]),
+      [['mine', 'AVAILABLE', null], ['other-pool', 'ASSIGNED', INSTANCE], ['not-assigned', 'AVAILABLE', INSTANCE]],
+    );
   });
 
   it('已確認發出的券（不在發送中）不刪除', async () => {
@@ -92,10 +123,33 @@ describe('確認發出', () => {
     const r = await confirmPendingInstance(tx, params('tag1'));
     assert.deepEqual(r, { confirmed: true, tag: { tagId: 'tag1', tagName: '已領券' } });
     assert.deepEqual(calls.confirmArgs, {
-      where: { id: INSTANCE, tenantId: T, deliveryPendingAt: { not: null } },
+      where: { id: INSTANCE, tenantId: T, contactId: 'contact1', deliveryPendingAt: { not: null } },
       data: { deliveryPendingAt: null },
     });
     assert.equal(calls.upsert?.create.contactId, 'contact1');
+  });
+
+  it('傳入的聯絡人不是這張券的持有人：視為沒有確認、不貼標（#362 D12）', async () => {
+    const instance = { id: INSTANCE, tenantId: T, contactId: 'contact1', deliveryPendingAt: new Date() as Date | null };
+    const upserts: unknown[] = [];
+    const tx = {
+      $executeRawUnsafe: async () => 0,
+      couponInstance: {
+        updateMany: async ({ where, data }: { where: Record<string, any>; data: Record<string, unknown> }) => {
+          const hit = where.id === instance.id && where.tenantId === instance.tenantId &&
+            (where.contactId === undefined || where.contactId === instance.contactId) &&
+            (where.deliveryPendingAt?.not !== null || instance.deliveryPendingAt !== null);
+          if (hit) Object.assign(instance, data);
+          return { count: hit ? 1 : 0 };
+        },
+      },
+      tag: { findFirst: async () => ({ id: 'tag1', name: '已領券' }) },
+      contactTag: { findUnique: async () => null, upsert: async (args: unknown) => { upserts.push(args); return {}; } },
+    };
+    const r = await confirmPendingInstance(tx as never, { ...params('tag1'), contactId: 'someone-else' });
+    assert.deepEqual(r, { confirmed: false });
+    assert.notEqual(instance.deliveryPendingAt, null, '券應維持發送中，交給排程作廢');
+    assert.deepEqual(upserts, [], '不可替別人貼領券標籤');
   });
 
   it('券在確認前已被作廢：不貼標，回報沒有確認', async () => {

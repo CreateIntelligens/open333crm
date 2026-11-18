@@ -158,14 +158,16 @@ export async function getOverviewStats(
   `;
   const times = timeRows[0] || { avg_first_response: null, avg_resolution: null };
 
-  // CSAT
+  // CSAT：平均與好評率只算客人自評，客服代評另計筆數（issue #339 決定 8）。
+  // 沒有來源的舊評分（csatRatedBy 是 NULL）視為客人自評，所以用 IS DISTINCT FROM，不用 <>（<> 會排除 NULL）
   const csatRows = await ctx.tx.$queryRaw<
-    { avg_score: number | null; total: bigint; positive: bigint }[]
+    { avg_score: number | null; total: bigint; positive: bigint; agent_rated: bigint }[]
   >`
     SELECT
-      AVG("csatScore")::float AS avg_score,
-      COUNT(*)::bigint AS total,
-      COUNT(*) FILTER (WHERE "csatScore" >= 4)::bigint AS positive
+      (AVG("csatScore") FILTER (WHERE "csatRatedBy" IS DISTINCT FROM 'agent'))::float AS avg_score,
+      COUNT(*) FILTER (WHERE "csatRatedBy" IS DISTINCT FROM 'agent')::bigint AS total,
+      COUNT(*) FILTER (WHERE "csatRatedBy" IS DISTINCT FROM 'agent' AND "csatScore" >= 4)::bigint AS positive,
+      COUNT(*) FILTER (WHERE "csatRatedBy" = 'agent')::bigint AS agent_rated
     FROM cases
     WHERE "tenantId" = ${ctx.tenantId}::uuid
       ${channelSql(accessible, '"channelId"')}
@@ -173,7 +175,7 @@ export async function getOverviewStats(
       AND "createdAt" >= ${from}
       AND "createdAt" <= ${to}
   `;
-  const csat = csatRows[0] || { avg_score: null, total: 0n, positive: 0n };
+  const csat = csatRows[0] || { avg_score: null, total: 0n, positive: 0n, agent_rated: 0n };
 
   return {
     totalMessages: Number(msg.total),
@@ -194,6 +196,8 @@ export async function getOverviewStats(
       Number(csat.total) > 0
         ? Math.round((Number(csat.positive) / Number(csat.total)) * 100)
         : null,
+    /** 期間內客服代評的工單數，不計入 csatAvg 與 csatPositiveRate */
+    csatAgentRatedCount: Number(csat.agent_rated),
   };
 }
 
@@ -426,7 +430,8 @@ export async function getAgentPerformance(
         FILTER (WHERE c."firstResponseAt" IS NOT NULL) AS avg_first_response,
       AVG(EXTRACT(EPOCH FROM (c."resolvedAt" - c."createdAt")) / 60)
         FILTER (WHERE c."resolvedAt" IS NOT NULL) AS avg_resolution,
-      (AVG(c."csatScore") FILTER (WHERE c."csatScore" IS NOT NULL))::float AS csat_avg,
+      -- 只算客人自評（issue #339 決定 8）：客服代評不算進客服自己的滿意度
+      (AVG(c."csatScore") FILTER (WHERE c."csatScore" IS NOT NULL AND c."csatRatedBy" IS DISTINCT FROM 'agent'))::float AS csat_avg,
       COUNT(c.id) FILTER (WHERE c."slaDueAt" IS NOT NULL AND c."resolvedAt" IS NOT NULL)::bigint AS sla_total,
       COUNT(c.id) FILTER (WHERE c."slaDueAt" IS NOT NULL AND c."resolvedAt" IS NOT NULL AND c."resolvedAt" <= c."slaDueAt")::bigint AS sla_achieved
     FROM agents a
@@ -709,13 +714,16 @@ export async function getCsatReport(ctx: TenantCtx, accessible: AccessibleChanne
       csatSentAt: true,
       csatRespondedAt: true,
       csatComment: true,
+      csatRatedBy: true,
       id: true,
       title: true,
     },
   });
 
   const totalSent = cases.length;
-  const responded = cases.filter((c) => c.csatScore !== null);
+  // 回覆、平均、滿意率與低分工單只算客人自評；沒有來源的舊評分視為客人自評（issue #339 決定 8）
+  const agentRatedCount = cases.filter((c) => c.csatScore !== null && c.csatRatedBy === 'agent').length;
+  const responded = cases.filter((c) => c.csatScore !== null && c.csatRatedBy !== 'agent');
   const responseRate = totalSent > 0 ? responded.length / totalSent : 0;
   const scores = responded.map((c) => c.csatScore!);
   const avgScore = scores.length > 0
@@ -735,6 +743,7 @@ export async function getCsatReport(ctx: TenantCtx, accessible: AccessibleChanne
     csatRate: Math.round(csatRate * 100) / 100,
     lowScoreCount: lowScoreCases.length,
     lowScoreCases: lowScoreCases.slice(0, 20),
+    agentRatedCount,
   };
 }
 

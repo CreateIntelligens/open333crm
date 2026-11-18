@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { EventBus , logger } from '@open333crm/core';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
-import { sendEmail } from '../email/email.service.js';
+import { sendEmail, type SendEmailInput } from '../email/email.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { emitToChannel } from '../../events/socket-push.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
@@ -31,10 +31,14 @@ interface CanvasActionPayload {
   params?: Record<string, unknown>;
 }
 
-export function setupCanvasWorker(prisma: PrismaClient, io: SocketIOServerLike) {
+export interface CanvasWorkerDeps {
+  enqueueEmail?: (input: SendEmailInput) => Promise<unknown>;
+}
+
+export function setupCanvasWorker(prisma: PrismaClient, io: SocketIOServerLike, deps?: CanvasWorkerDeps) {
   EventBus.subscribe((event) => {
     if (event.type === 'canvas.send_message') {
-      void handleCanvasSendMessage(prisma, io, event.tenantId, event.payload as CanvasSendMessagePayload);
+      void handleCanvasSendMessage(prisma, io, event.tenantId, event.payload as CanvasSendMessagePayload, deps);
     }
 
     if (event.type === 'canvas.action') {
@@ -50,6 +54,7 @@ export async function handleCanvasSendMessage(
   io: SocketIOServerLike,
   tenantId: string,
   payload: CanvasSendMessagePayload,
+  deps?: CanvasWorkerDeps,
 ) {
   const { contactId, channelType, templateId, text } = payload;
 
@@ -59,7 +64,7 @@ export async function handleCanvasSendMessage(
   }
 
   if (channelType.toLowerCase() === 'email') {
-    await handleEmailSend(prisma, tenantId, contactId, templateId, payload.vars);
+    await handleEmailSend(prisma, tenantId, contactId, templateId, payload.vars, deps);
     return;
   }
 
@@ -163,6 +168,7 @@ async function handleEmailSend(
   contactId: string,
   templateId?: string,
   vars?: Record<string, unknown>,
+  deps?: CanvasWorkerDeps,
 ) {
   if (!templateId) {
     logger.warn('[CanvasWorker] Email send skipped: missing templateId');
@@ -198,27 +204,30 @@ async function handleEmailSend(
     select: { name: true, description: true },
   });
 
+  let html: string;
   try {
-    const html = renderEmailHtml(
+    html = renderEmailHtml(
       (templateView.body as Array<Record<string, unknown>>) ?? [],
       flattenTemplateVars(vars),
     );
-    await sendEmail({
-      to: contact.email,
-      subject: template?.name ?? `Canvas Template ${templateId}`,
-      html,
-      text: template?.description ?? undefined,
-      metadata: {
-        tenantId,
-        contactId,
-        templateId,
-        templateViewId: templateView.id,
-        source: 'canvas-worker',
-      },
-    });
   } catch (err) {
     logger.error('[CanvasWorker] Failed to render email template:', err);
+    return;
   }
+  await (deps?.enqueueEmail ?? sendEmail)({
+    to: contact.email,
+    subject: template?.name ?? `Canvas Template ${templateId}`,
+    html,
+    text: template?.description ?? undefined,
+    priority: 'bulk',
+    metadata: {
+      tenantId,
+      contactId,
+      templateId,
+      templateViewId: templateView.id,
+      source: 'canvas-worker',
+    },
+  });
 }
 
 async function handleCanvasAction(

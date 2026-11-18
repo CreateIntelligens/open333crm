@@ -72,6 +72,9 @@ const material = await owner.material.create({
 const materialB = await owner.material.create({
   data: { tenantId: B, name: `${MARK}-他租戶素材`, channelType: 'LINE', contentType: 'text', body: { text: '您好' } },
 });
+const materialFb = await owner.material.create({
+  data: { tenantId: A, name: `${MARK}-FB素材`, channelType: 'fb', contentType: 'text', body: { text: '您好' } },
+});
 const couponOf = (tenantId: string, displayCode: string, createdById: string) =>
   owner.coupon.create({ data: { tenantId, name: `${MARK}-券`, displayCode, status: 'ACTIVE', createdById } });
 const coupon = await couponOf(A, `${MARK}-A`, MISSING);
@@ -201,6 +204,29 @@ describe('自動化規則', () => {
     const other = await call(appA, 'POST', rules, rule({ name: `${MARK}-他素材`, actions: [{ type: 'send_material', params: { materialId: materialB.id } }] }));
     assert.equal(other.status, 400);
     assert.equal(other.body.error!.message, '找不到要傳送的素材，或素材已停用');
+  });
+
+  // #362 D8：原本只有關鍵字回覆頁在前端擋，API 可以存「對話渠道等於 LINE」卻送 Facebook 素材的規則
+  test('傳送素材的渠道要與規則的渠道條件相同：不同回 400，相同可以存', async () => {
+    const keyword = (channel: string, materialId: string) => rule({
+      name: `${MARK}-渠道素材-${channel}`,
+      trigger: { type: 'keyword.matched', keywords: ['你好'], match_mode: 'any' },
+      conditions: { all: [{ fact: 'conversation.channelType', operator: 'equal', value: channel }] },
+      actions: [{ type: 'send_material', params: { materialId } }],
+    });
+    const mismatch = await call(appA, 'POST', rules, keyword('LINE', materialFb.id));
+    assert.equal(mismatch.status, 400, JSON.stringify(mismatch.body));
+    assert.equal(mismatch.body.error!.code, 'VALIDATION_ERROR');
+    assert.match(mismatch.body.error!.message, /Facebook/);
+    assert.equal(await owner.automationRule.count({ where: { tenantId: A, name: `${MARK}-渠道素材-LINE` } }), 0);
+
+    const ok = await create(appA, keyword('FB', materialFb.id));
+    const patched = await call(appA, 'PATCH', `${rules}/${ok.id}`, {
+      conditions: { all: [{ fact: 'conversation.channelType', operator: 'equal', value: 'LINE' }] },
+    });
+    assert.equal(patched.status, 400, '只改條件讓素材與渠道不符也要擋');
+    const row = await owner.automationRule.findUniqueOrThrow({ where: { id: ok.id } });
+    assert.deepEqual(row.conditions, { all: [{ fact: 'conversation.channelType', operator: 'equal', value: 'FB' }] });
   });
 
   // issue #469（AUDIT AUTO-12）：原本只檢查有填，API、CLI、MCP 可以存不存在的狀態，觸發時才失敗

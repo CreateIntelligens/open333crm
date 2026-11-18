@@ -25,6 +25,7 @@ test('LINE 素材遇到 IG 對話', async () => {
     },
     conversation: {
       findFirst: async () => ({ id: 'conv-1', tenantId: 'tenant-1', channel: { channelType: 'THREADS' } }),
+      updateMany: async () => ({ count: 1 }),
     },
     message: {
       create: async (args: { data: Record<string, any> }) => {

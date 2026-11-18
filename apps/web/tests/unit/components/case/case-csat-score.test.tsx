@@ -60,3 +60,54 @@ test('工單詳情頁顯示滿意度分數', () => {
   assert.match(block.textContent ?? '', /2 分/);
   assert.match(block.textContent ?? '', /不滿意/);
 });
+
+// issue #339 決定 8（csat-survey「工單記錄評分來源」）
+test('工單詳情標明客服代評', () => {
+  render(
+    <CaseDetail
+      onRefresh={vi.fn()}
+      caseData={{
+        id: 'c-1',
+        title: '冷氣不冷',
+        status: 'CLOSED',
+        priority: 'MEDIUM',
+        csatScore: 4,
+        csatRatedBy: 'agent',
+        csatRespondedAt: at,
+        createdAt: at,
+        updatedAt: at,
+      }}
+    />,
+  );
+
+  const block = screen.getByTestId('case-csat');
+  assert.match(block.textContent ?? '', /4 分/);
+  assert.match(block.textContent ?? '', /客服代評/);
+});
+
+test('客人自評的工單不標客服代評', () => {
+  render(
+    <CaseDetail
+      onRefresh={vi.fn()}
+      caseData={{ id: 'c-1', title: '冷氣不冷', status: 'CLOSED', priority: 'MEDIUM', csatScore: 4, csatRatedBy: 'customer', createdAt: at, updatedAt: at }}
+    />,
+  );
+
+  assert.doesNotMatch(screen.getByTestId('case-csat').textContent ?? '', /客服代評/);
+});
+
+// issue #339（csat-survey「低分只通知負責工單的成員」）：低分通知送不出時時間軸以中文說明
+test('時間軸以中文顯示低分通知沒有送出', () => {
+  render(
+    <CaseTimeline
+      caseId="c-1"
+      onRefresh={vi.fn()}
+      events={[
+        { id: 'e1', type: 'csat_low_score_notify_failed', eventType: 'csat_low_score_notify_failed', actorType: 'system', payload: { score: 2, reason: '低分通知沒有送出，請手動通知負責的成員' }, createdAt: at },
+      ]}
+    />,
+  );
+
+  assert.ok(screen.queryByText(/低分（2 分）通知沒有送出/) !== null, '顯示中文說明');
+  assert.ok(screen.queryByText('csat_low_score_notify_failed') === null, '不顯示英文代碼');
+});

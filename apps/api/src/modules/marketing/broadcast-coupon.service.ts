@@ -106,14 +106,30 @@ export async function queueCouponBroadcast(
    */
   actorId?: string,
 ) {
+  return queueBroadcast(ctx, broadcastId, now, actorId, { couponOnly: true });
+}
+
+/**
+ * 「立即發送」排入背景發送（附券廣播與一般群發共用；一般群發見 change fix-plain-broadcast-send-362）。
+ * 把廣播設為 scheduled、排程時間為現在，回傳立即執行的 job，由 flow 寫進同一個交易的 outbox。
+ * 一般群發只能從草稿、已排程、失敗排入：逐人送出的一般群發沒有進度紀錄，發送中的不能重新排入（AUDIT MKT-01）。
+ * 渠道不能主動推送時丟 400 CHANNEL_PUSH_NOT_SUPPORTED（一般群發由 flow 另外標為失敗）。
+ */
+export async function queueBroadcast(
+  ctx: TenantCtx,
+  broadcastId: string,
+  now: number = Date.now(),
+  actorId?: string,
+  opts: { couponOnly?: boolean } = {},
+) {
   const { tx, tenantId } = ctx;
   const broadcast = await tx.broadcast.findFirst({
     where: { id: broadcastId, tenantId },
     select: { id: true, status: true, couponId: true, channelId: true },
   });
   if (!broadcast) throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
-  if (!broadcast.couponId) throw new AppError('這則廣播沒有附券', 'INVALID_STATE', 400);
-  // 修正前建立的網站聊天室附券廣播：不排入發送（change reject-webchat-push-415）
+  if (opts.couponOnly && !broadcast.couponId) throw new AppError('這則廣播沒有附券', 'INVALID_STATE', 400);
+  // 修正前建立的網站聊天室廣播：不排入發送（change reject-webchat-push-415）
   const channel = await tx.channel.findFirst({ where: { id: broadcast.channelId, tenantId }, select: { channelType: true } });
   if (channel) assertChannelSupportsPush(channel.channelType);
   const scheduledAt = new Date(now);
@@ -123,7 +139,7 @@ export async function queueCouponBroadcast(
       tenantId,
       OR: [
         { status: { in: SENDABLE_STATUSES } },
-        { status: 'sending', updatedAt: { lt: new Date(now - STALE_SENDING_MS) } },
+        ...(broadcast.couponId ? [{ status: 'sending', updatedAt: { lt: new Date(now - STALE_SENDING_MS) } }] : []),
       ],
     },
     data: { status: 'scheduled', scheduledAt, failureReason: null, failureCode: null, ...(actorId ? { scheduledById: actorId } : {}) },
