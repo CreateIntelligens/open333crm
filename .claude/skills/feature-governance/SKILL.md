@@ -1,16 +1,20 @@
 ---
 name: feature-governance
 description: >
-  open333CRM「治理：稽核、匯出與資料刪除」功能顧問：租戶稽核紀錄（TenantAuditLog、recordTenantAudit、
-  writeTenantAudit、操作紀錄、誰做了什麼、登入紀錄）、資料匯出（GDPR 可攜權、匯出全部資料、zip、下載連結）、
-  資料刪除（被遺忘權、匿名化 anonymize、硬刪除 hard_delete、客人要求刪除個資、ERASE-*）、對外 Webhook 訂閱
-  （webhook-subscriptions、事件推送到外部網址）、試用資料清除對租戶的影響。這些功能沒有後台頁面，只有 API：
-  /api/v1/tenant/audit-logs、/api/v1/tenant/data-export、/api/v1/tenant/data-erasure、/api/v1/webhook-subscriptions。
-  當需求、bug 或新功能碰到 tenant-audit、data-export、data-erasure、webhook-subscriptions 模組時使用。
-  也在新增任何敏感操作（要不要寫稽核）、新增掛在 Contact 上的資料表（刪除要不要處理）、刪除成員、改合併邏輯前使用。
+  open333CRM「治理」功能顧問：租戶稽核、資料匯出、資料刪除、對外 Webhook 訂閱（只有 API）。改到 tenant-audit、data-export、data-erasure、webhook-subscriptions 模組，或新增敏感操作、新增掛在 Contact 上的資料表之前使用。
 ---
 
 # 治理：稽核、匯出與資料刪除
+
+## 涵蓋範圍
+
+open333CRM「治理：稽核、匯出與資料刪除」功能顧問：租戶稽核紀錄（TenantAuditLog、recordTenantAudit、
+writeTenantAudit、操作紀錄、誰做了什麼、登入紀錄）、資料匯出（GDPR 可攜權、匯出全部資料、zip、下載連結）、
+資料刪除（被遺忘權、匿名化 anonymize、硬刪除 hard_delete、客人要求刪除個資、ERASE-*）、對外 Webhook 訂閱
+（webhook-subscriptions、事件推送到外部網址）、試用資料清除對租戶的影響。這些功能沒有後台頁面，只有 API：
+/api/v1/tenant/audit-logs、/api/v1/tenant/data-export、/api/v1/tenant/data-erasure、/api/v1/webhook-subscriptions。
+當需求、bug 或新功能碰到 tenant-audit、data-export、data-erasure、webhook-subscriptions 模組時使用。
+也在新增任何敏感操作（要不要寫稽核）、新增掛在 Contact 上的資料表（刪除要不要處理）、刪除成員、改合併邏輯前使用。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/GOVERNANCE.md`

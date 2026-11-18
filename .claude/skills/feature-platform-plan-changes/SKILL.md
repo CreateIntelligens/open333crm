@@ -1,15 +1,19 @@
 ---
 name: feature-platform-plan-changes
 description: >
-  open333CRM「方案異動申請與審核」功能顧問：租戶在 /dashboard/plan（方案／帳務）送出升級方案或加購 AI token 申請，
-  平台在 /admin/plan-changes（升級申請）核准或駁回；核准後改 tenant.planId，或把加購量計入
-  核准當月（台灣時間）的 AI 月額度，並失效 Redis 權限交集快取與 getTenantPlanId 60 秒進程內快取。
-  當需求、bug 或新功能碰到「升級申請」「加購 token」「降級」「方案換不過去」「核准後權限沒生效」「申請卡在處理中」
-  「審核按了沒反應」、plan-change 模組（plan-change.service / plan-change.routes）、PlanChangeRequest 資料表時使用。
-  也在改方案 slug、方案 limits、試用轉正式、AI 月額度與額度告警前使用。
+  open333CRM「方案異動申請與審核」功能顧問：租戶申請升級方案或加購 AI token，平台在 /admin/plan-changes 核准或駁回。改到 plan-change 模組、PlanChangeRequest，或改方案 slug、方案 limits、AI 月額度之前使用。
 ---
 
 # 方案異動申請與審核
+
+## 涵蓋範圍
+
+open333CRM「方案異動申請與審核」功能顧問：租戶在 /dashboard/plan（方案／帳務）送出升級方案或加購 AI token 申請，
+平台在 /admin/plan-changes（升級申請）核准或駁回；核准後改 tenant.planId，或把加購量計入
+核准當月（台灣時間）的 AI 月額度，並失效 Redis 權限交集快取與 getTenantPlanId 60 秒進程內快取。
+當需求、bug 或新功能碰到「升級申請」「加購 token」「降級」「方案換不過去」「核准後權限沒生效」「申請卡在處理中」
+「審核按了沒反應」、plan-change 模組（plan-change.service / plan-change.routes）、PlanChangeRequest 資料表時使用。
+也在改方案 slug、方案 limits、試用轉正式、AI 月額度與額度告警前使用。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/PLAN-CHANGES.md`

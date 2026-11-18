@@ -1,16 +1,20 @@
 ---
 name: feature-cases
 description: >
-  open333CRM「工單」功能顧問：工單（案件、case、ticket）建立（列表頁「新增工單」、收件匣「建立工單」從對話開單）、
-  狀態轉換（開啟／處理中／待處理／已解決／已升級／已關閉、重新開啟、狀態機 VALID_CASE_TRANSITIONS）、
-  指派與自動指派（round-robin 輪流派案、團隊）、升級（escalate、通知對象）、備註與時間軸、工單標籤、
-  滿意度調查 CSAT（問卷排程、逾時自動結案、客人評分 postback、收件匣星星卡片）、工單與對話關聯、刪除工單。
-  當需求、bug 或新功能碰到 /dashboard/cases、case 模組、csat 模組、assignment.service、Case、CaseEvent、
-  CaseNote、case.created/assigned/escalated/resolved/closed 時使用。也在改 SLA 政策、渠道可見範圍、
-  收件匣聯絡人面板、自動化「建立工單／指派客服」動作、通知前使用，確認不破壞工單。
+  open333CRM「工單」功能顧問：建立、狀態轉換、指派與自動指派、升級、備註、CSAT 滿意度問卷。改到 case／csat 模組、/dashboard/cases，或改 SLA、渠道可見範圍、自動化的工單動作之前使用。
 ---
 
 # 工單
+
+## 涵蓋範圍
+
+open333CRM「工單」功能顧問：工單（案件、case、ticket）建立（列表頁「新增工單」、收件匣「建立工單」從對話開單）、
+狀態轉換（開啟／處理中／待處理／已解決／已升級／已關閉、重新開啟、狀態機 VALID_CASE_TRANSITIONS）、
+指派與自動指派（round-robin 輪流派案、團隊）、升級（escalate、通知對象）、備註與時間軸、工單標籤、
+滿意度調查 CSAT（問卷排程、逾時自動結案、客人評分 postback、收件匣星星卡片）、工單與對話關聯、刪除工單。
+當需求、bug 或新功能碰到 /dashboard/cases、case 模組、csat 模組、assignment.service、Case、CaseEvent、
+CaseNote、case.created/assigned/escalated/resolved/closed 時使用。也在改 SLA 政策、渠道可見範圍、
+收件匣聯絡人面板、自動化「建立工單／指派客服」動作、通知前使用，確認不破壞工單。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/CASES.md`

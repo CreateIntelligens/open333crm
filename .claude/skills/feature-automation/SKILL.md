@@ -1,17 +1,21 @@
 ---
 name: feature-automation
 description: >
-  open333CRM「自動化規則」功能顧問：規則列表與編輯器（觸發事件、條件、動作、執行順序、命中即停止）、
-  事件觸發（收到訊息 message.received、關鍵字命中 keyword.matched、新對話、工單建立/升級、
-  聯絡人建立 contact.created、聯絡人加標籤 contact.tagged、短連結被點擊 link.clicked、加入好友 contact.followed、SLA 事件）、
-  規則動作（傳送訊息、傳送素材、建立工單、改工單狀態/優先級、指派客服、貼標/移除標籤、通知、通知主管、發券）、
-  試跑「試試看這條規則」、執行紀錄、關鍵字回覆頁、加好友禮頁、Canvas 互動流程（/api/v1/canvas）。
-  當需求、bug 或新功能碰到 /dashboard/automation、/dashboard/line/keyword-replies、/dashboard/line/follow-gift、
-  automation、canvas 模組、packages/automation 契約、workers automation-actions、「規則沒觸發」「自動回覆沒送出」
-  「關鍵字沒反應」「AI 跟關鍵字一起回」時使用。也在改事件發布、標籤、工單狀態、素材、SLA 前使用。
+  open333CRM「自動化規則」功能顧問：觸發事件、條件、動作、試跑、執行紀錄、關鍵字回覆、加好友禮、Canvas。改到 automation／canvas 模組、packages/automation、workers 的 automation-actions，或改事件發布之前使用。
 ---
 
 # 自動化規則
+
+## 涵蓋範圍
+
+open333CRM「自動化規則」功能顧問：規則列表與編輯器（觸發事件、條件、動作、執行順序、命中即停止）、
+事件觸發（收到訊息 message.received、關鍵字命中 keyword.matched、新對話、工單建立/升級、
+聯絡人建立 contact.created、聯絡人加標籤 contact.tagged、短連結被點擊 link.clicked、加入好友 contact.followed、SLA 事件）、
+規則動作（傳送訊息、傳送素材、建立工單、改工單狀態/優先級、指派客服、貼標/移除標籤、通知、通知主管、發券）、
+試跑「試試看這條規則」、執行紀錄、關鍵字回覆頁、加好友禮頁、Canvas 互動流程（/api/v1/canvas）。
+當需求、bug 或新功能碰到 /dashboard/automation、/dashboard/line/keyword-replies、/dashboard/line/follow-gift、
+automation、canvas 模組、packages/automation 契約、workers automation-actions、「規則沒觸發」「自動回覆沒送出」
+「關鍵字沒反應」「AI 跟關鍵字一起回」時使用。也在改事件發布、標籤、工單狀態、素材、SLA 前使用。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/AUTOMATION.md`
@@ -42,7 +46,7 @@ description: >
 | 4 | 換觸發事件 | 「什麼時候檢查這條規則」下拉（`triggerEventOptions`）；`dispatched:false` 的事件標「（目前不會觸發）」 | — | **條件與動作直接清空、不詢問** | — |
 | 5 | 條件 | react-querybuilder（`ConditionBuilder`），欄位依事件由契約產生 | `qbToEngine()` 轉成 `{all|any:[{fact,operator,value}]}` | 依欄位型別轉值：只有數字欄位轉數字（見下方「前端實際送出的值」） | — |
 | 6 | 動作 | 「新增動作」（`ActionList`/`ActionEditor`）；素材從素材庫下拉、客服從 `/agents` 下拉 | 編輯器內部 `{type,payload}`，送出時轉 `{type,params}` | — | 素材下拉要 `marketing.view`，客服下拉要 `agent.view`，失敗退回文字框 |
-| 7 | 試試看 | 編輯頁下方（只對已儲存版本） | `POST /automation/rules/:id/test {facts}` → `testRule`，只評估條件、不執行 | 無 | **只驗登入**：沒有 `automation.view` 的人也能拿到規則的條件與動作（HC-AUTOMATION-04） |
+| 7 | 試試看 | 編輯頁下方（只對已儲存版本） | `POST /automation/rules/:id/test {facts}` → `testRule`，只評估條件、不執行 | 無 | `automation.view`（`8899e280` 修正 HC-AUTOMATION-04 之前只驗登入） |
 | 8 | 刪除 | 編輯頁「刪除規則」→ confirm | `DELETE /automation/rules/:id` → 軟刪 `enabled=false, isActive=false` | UI 無法復原 | `automation.manage` / 不隱藏 |
 | 9 | 關鍵字回覆 | `/dashboard/line/keyword-replies`「建立關鍵字回覆」：渠道 LINE/FB/THREADS、名稱、關鍵字（Enter 加入）、比對 any/all、素材或券 | `POST/PATCH /automation/rules`（`apps/web/src/hooks/useKeywordReplies.ts` 的 `buildRulePayload`），條件 `conversation.channelType equal <渠道>` | 沒送 `isActive`，建立即啟用 | 同 3 |
 | 10 | 加好友禮 | `/dashboard/line/follow-gift` | 同一組路由，`contact.followed` + `issue_coupon`；每租戶只能一條（409） | — | 沒權限時頁面顯示「無法載入加好友禮設定」 |

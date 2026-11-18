@@ -586,6 +586,10 @@ request:
 
       Also update each feature or module document under `docs/ref/` that describes the changed
       behavior.
+- [ ] If your change fixes an AUDIT item or a health-check item (`HC-<DOMAIN>-NN` in
+      `docs/ref/features/health/`), update each `.claude/skills/feature-<id>/SKILL.md` that
+      describes the bug as current behavior (`grep -rn "<ID>" .claude/skills`). An agent that
+      reads a stale skill copies the bug or reports it again.
 
 ## Multi-Tenancy: Two Enforcement Layers (Critical)
 

@@ -1,18 +1,22 @@
 ---
 name: feature-platform-trials
 description: >
-  open333CRM「試用申請與到期處理」功能顧問：公開試用申請頁 /trial（email、站台名稱，不收密碼；防枚舉 202、
-  gmail 別名正規化、速率限制）、驗證頁 /trial/verify（確認連結 → 設定密碼 → provisionTenant、trialEndsAt、冪等）、
-  平台後台 /admin/trial（試用租戶清單與狀態、延長試用、轉正式方案、復原已清除、申請記錄重寄與作廢、
-  試用政策設定 trial.enabled/durationDays/reminderDaysBefore/verifyTokenTtlHours/dataRetentionDays/planSlug）、
-  每小時試用排程（到期前提醒信、到期自動停用、保留期滿軟刪 purgedAt）、合約起訖日、試用相關 email。
-  當需求、bug 或新功能碰到 trial 模組、trial-admin.service、trial_signups、TrialSignup、trialEndsAt、
-  purgedAt、trialRemindersSent、試用到期、試用被停用、延長試用、轉正式、開放試用、收不到驗證信、
-  試用站台開通失敗、TRIAL_CLOSED、EMAIL_IN_USE、TRIAL_TOKEN_EXPIRED 時使用。
-  也在改 provisionTenant、方案升級審核、租戶停用、平台設定 KV、寄信服務前使用。
+  open333CRM「試用申請與到期處理」功能顧問：公開試用申請與驗證、/admin/trial、試用政策、到期提醒、停用與清除排程。改到 trial 模組、trial-admin.service、trial_signups，或改 provisionTenant、租戶停用、寄信服務之前使用。
 ---
 
 # 試用申請與到期處理
+
+## 涵蓋範圍
+
+open333CRM「試用申請與到期處理」功能顧問：公開試用申請頁 /trial（email、站台名稱，不收密碼；防枚舉 202、
+gmail 別名正規化、速率限制）、驗證頁 /trial/verify（確認連結 → 設定密碼 → provisionTenant、trialEndsAt、冪等）、
+平台後台 /admin/trial（試用租戶清單與狀態、延長試用、轉正式方案、復原已清除、申請記錄重寄與作廢、
+試用政策設定 trial.enabled/durationDays/reminderDaysBefore/verifyTokenTtlHours/dataRetentionDays/planSlug）、
+每小時試用排程（到期前提醒信、到期自動停用、保留期滿軟刪 purgedAt）、合約起訖日、試用相關 email。
+當需求、bug 或新功能碰到 trial 模組、trial-admin.service、trial_signups、TrialSignup、trialEndsAt、
+purgedAt、trialRemindersSent、試用到期、試用被停用、延長試用、轉正式、開放試用、收不到驗證信、
+試用站台開通失敗、TRIAL_CLOSED、EMAIL_IN_USE、TRIAL_TOKEN_EXPIRED 時使用。
+也在改 provisionTenant、方案升級審核、租戶停用、平台設定 KV、寄信服務前使用。
 
 ## 先讀
 - 功能現況：`docs/ref/features/platform/TRIALS.md`（生命週期、排程三步、清單狀態判定、每項操作改了什麼）；平台共通機制 `docs/ref/features/platform/README.md`

@@ -1,16 +1,20 @@
 ---
 name: feature-sla
 description: >
-  open333CRM「SLA 與營業時間」功能顧問：SLA 政策 CRUD（首次回應、解決時限、到期前預警、設為此優先級預設）、
-  工單套用政策與 SLA 倒數、sla:poll 排程掃描（首次回應／解決期限的預警與逾時、客戶枯等、逾時自動升級優先級）、
-  SLA 通知、SLA 事件觸發的自動化規則、報表裡的 SLA 達成率與違規表，以及營業時間對 SLA 計時的效果（目前沒有效果）。
-  當有人問「SLA 怎麼算」「為什麼半夜／假日也逾時」「為什麼工單一直被升級成緊急」「逾時沒通知」「SLA 規則貼標沒反應」
-  「改了政策舊工單有沒有變」，或需求、bug 碰到 /dashboard/settings/sla、/dashboard/settings/office-hours、
-  modules/sla、sla.handler.ts、packages/shared/src/sla、SlaPolicy、slaDueAt、firstResponseAt 時使用。
-  也在改工單優先級／狀態流程、工單建立、自動化動作、報表的 SLA 數字、通知前使用。
+  open333CRM「SLA 與營業時間」功能顧問：SLA 政策、工單套用政策與倒數、sla:poll 掃描的預警、逾時與自動升級、報表的 SLA 數字。改到 sla 模組、sla.handler.ts、SlaPolicy、slaDueAt，或改工單優先級與狀態流程之前使用。
 ---
 
 # SLA 與營業時間
+
+## 涵蓋範圍
+
+open333CRM「SLA 與營業時間」功能顧問：SLA 政策 CRUD（首次回應、解決時限、到期前預警、設為此優先級預設）、
+工單套用政策與 SLA 倒數、sla:poll 排程掃描（首次回應／解決期限的預警與逾時、客戶枯等、逾時自動升級優先級）、
+SLA 通知、SLA 事件觸發的自動化規則、報表裡的 SLA 達成率與違規表，以及營業時間對 SLA 計時的效果（目前沒有效果）。
+當有人問「SLA 怎麼算」「為什麼半夜／假日也逾時」「為什麼工單一直被升級成緊急」「逾時沒通知」「SLA 規則貼標沒反應」
+「改了政策舊工單有沒有變」，或需求、bug 碰到 /dashboard/settings/sla、/dashboard/settings/office-hours、
+modules/sla、sla.handler.ts、packages/shared/src/sla、SlaPolicy、slaDueAt、firstResponseAt 時使用。
+也在改工單優先級／狀態流程、工單建立、自動化動作、報表的 SLA 數字、通知前使用。
 
 ## 先讀
 - 功能現況：`docs/ref/features/SLA.md`

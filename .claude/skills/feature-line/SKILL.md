@@ -1,18 +1,22 @@
 ---
 name: feature-line
 description: >
-  open333CRM「LINE 專屬功能」功能顧問：LINE webhook 收訊（驗簽、事件解析、follow／unfollow／unsend／postback、
-  媒體下載、群組訊息、下游轉發 downstreamWebhook）、圖文選單 Rich Menu（草稿、發布、預設選單、綁定受眾、
-  /dashboard/line/rich-menus）、LINE 快速回覆預設組（/dashboard/line/quick-replies）、LINE 訊息格式
-  （buildLineMessage、Flex、imagemap 多尺寸圖端 /line-imagemap、safe reply 與 reply token）、LIFF 與
-  LINE Login（liffConfig、ID token 驗證）、頭像補存、postback 攔截（tag:、csat:、kb_feedback:、handoff_request）、
-  渠道憑證加解密 CREDENTIAL_ENCRYPTION_KEY。當需求、bug 或新功能碰到 line、rich-menu、quick-reply-preset、
-  channel-plugins/line、webhook/line、liff、line-imagemap、downstream-forwarder 時使用。
-  也在改 LINE 素材、群發、加好友禮、關鍵字回覆、滿意度調查、短連結 LIFF 前使用。
-  口語觸發：「LINE 收不到訊息」「圖文選單發布失敗」「LINE 滿意度沒回」「客人收回訊息」「LINE 重複訊息」「LIFF 設定」。
+  open333CRM「LINE 專屬功能」功能顧問：LINE webhook 收訊、圖文選單、快速回覆預設組、LINE 訊息格式、LIFF 與 LINE Login、postback 攔截。改到 line 模組、channel-plugins/line、webhook/line，或改 LINE 素材、群發、滿意度調查之前使用。
 ---
 
 # LINE 專屬功能
+
+## 涵蓋範圍
+
+open333CRM「LINE 專屬功能」功能顧問：LINE webhook 收訊（驗簽、事件解析、follow／unfollow／unsend／postback、
+媒體下載、群組訊息、下游轉發 downstreamWebhook）、圖文選單 Rich Menu（草稿、發布、預設選單、綁定受眾、
+/dashboard/line/rich-menus）、LINE 快速回覆預設組（/dashboard/line/quick-replies）、LINE 訊息格式
+（buildLineMessage、Flex、imagemap 多尺寸圖端 /line-imagemap、safe reply 與 reply token）、LIFF 與
+LINE Login（liffConfig、ID token 驗證）、頭像補存、postback 攔截（tag:、csat:、kb_feedback:、handoff_request）、
+渠道憑證加解密 CREDENTIAL_ENCRYPTION_KEY。當需求、bug 或新功能碰到 line、rich-menu、quick-reply-preset、
+channel-plugins/line、webhook/line、liff、line-imagemap、downstream-forwarder 時使用。
+也在改 LINE 素材、群發、加好友禮、關鍵字回覆、滿意度調查、短連結 LIFF 前使用。
+口語觸發：「LINE 收不到訊息」「圖文選單發布失敗」「LINE 滿意度沒回」「客人收回訊息」「LINE 重複訊息」「LIFF 設定」。
 
 ## 先讀
 - 功能現況：`docs/ref/features/tenant/LINE.md`（只寫了圖文選單與快速回覆；webhook、LIFF、Flex、憑證寫在本 Skill 與健檢報告）

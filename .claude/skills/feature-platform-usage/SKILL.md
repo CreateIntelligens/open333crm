@@ -1,15 +1,19 @@
 ---
 name: feature-platform-usage
 description: >
-  open333CRM「用量統計與 AI 成本」功能顧問：平台後台 /admin/usage 用量統計（總覽、租戶排行、單一租戶每日趨勢）、
-  AI 用量紀錄 ai_usages（AiUsage）、模型價目 model_pricings（ModelPricing）與成本計算、BYOK 自備金鑰成本歸屬、
-  AI 月額度（monthlyTokens、Redis 計數器 aiquota:*、PLAN_LIMIT_EXCEEDED）、用量告警 80%／100%（usage.quota.threshold、
-  站內通知＋email）、月額度每月重置（UTC 月份）。當需求、bug 或新功能碰到「AI 用量」「token 用完」「額度用完 AI 不回」
-  「用量告警沒收到」「成本算錯」「用量頁數字對不起來」「加價目」「新模型」「platform-usage.service」「token-quota.service」
-  「pricing.service」「recordLlmUsage」「llm.flow」時使用。也在新增任何會呼叫 LLM 的功能、改 AI 模型清單、改方案額度前使用。
+  open333CRM「用量統計與 AI 成本」功能顧問：/admin/usage、ai_usages 用量紀錄、模型價目與成本、AI 月額度與告警。改到 platform-usage.service、token-quota.service、pricing.service、recordLlmUsage、llm.flow，或新增呼叫 LLM 的功能之前使用。
 ---
 
 # 用量統計與 AI 成本
+
+## 涵蓋範圍
+
+open333CRM「用量統計與 AI 成本」功能顧問：平台後台 /admin/usage 用量統計（總覽、租戶排行、單一租戶每日趨勢）、
+AI 用量紀錄 ai_usages（AiUsage）、模型價目 model_pricings（ModelPricing）與成本計算、BYOK 自備金鑰成本歸屬、
+AI 月額度（monthlyTokens、Redis 計數器 aiquota:*、PLAN_LIMIT_EXCEEDED）、用量告警 80%／100%（usage.quota.threshold、
+站內通知＋email）、月額度每月重置（UTC 月份）。當需求、bug 或新功能碰到「AI 用量」「token 用完」「額度用完 AI 不回」
+「用量告警沒收到」「成本算錯」「用量頁數字對不起來」「加價目」「新模型」「platform-usage.service」「token-quota.service」
+「pricing.service」「recordLlmUsage」「llm.flow」時使用。也在新增任何會呼叫 LLM 的功能、改 AI 模型清單、改方案額度前使用。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/USAGE.md`

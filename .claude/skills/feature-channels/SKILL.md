@@ -1,19 +1,23 @@
 ---
 name: feature-channels
 description: >
-  open333CRM「渠道管理」功能顧問：新增、編輯、停用、刪除渠道（LINE、Facebook、Instagram 私訊 THREADS、
-  網站聊天室 WebChat）、設定精靈、用 Facebook 連結粉專（meta-connect）、憑證加密與遮罩、測試連線、
-  webhook 網址與 Webhook 公開網址、FB／IG 驗證權杖 verifyToken、Meta webhook 依粉專 ID 分派（externalAccountId、
-  webhookRouting 警示）、權杖失效通知與重新連結（tokenHealth、meta-token-health 排程）、誰看得到這個渠道
-  （AgentChannelAccess、ChannelTeamAccess、存取層級 read_only/reply_only/full、fail-closed、channel.view_all 總店）、
-  Bot 設定（botMode、maxBotReplies、轉接關鍵字、招呼語、LIFF ID）、網站聊天室嵌入碼與背景、
-  channel plugin registry（API 的 registerChannelPlugin 與 workers 的 createWorkerPluginRegistry 兩邊都要註冊）。
-  當需求、bug 或新功能碰到 channel、channels 模組、webhook 路由、meta-connect、/dashboard/settings/channels、
-  「渠道收不到訊息」「粉專訊息跑到別的租戶」「權杖失效」「分店看得到別店渠道」「新增一種渠道」時使用。
-  也在改收件匣送訊息、自動化送訊息、人員管理的可用渠道之前使用，確認不破壞渠道。
+  open333CRM「渠道管理」功能顧問：LINE／FB／IG／WebChat 渠道的設定、Meta 連結、webhook 分派、權杖失效、渠道可見範圍、channel plugin registry。改到 channel 模組、webhook 路由、/dashboard/settings/channels，或新增渠道類型之前使用。
 ---
 
 # 渠道管理
+
+## 涵蓋範圍
+
+open333CRM「渠道管理」功能顧問：新增、編輯、停用、刪除渠道（LINE、Facebook、Instagram 私訊 THREADS、
+網站聊天室 WebChat）、設定精靈、用 Facebook 連結粉專（meta-connect）、憑證加密與遮罩、測試連線、
+webhook 網址與 Webhook 公開網址、FB／IG 驗證權杖 verifyToken、Meta webhook 依粉專 ID 分派（externalAccountId、
+webhookRouting 警示）、權杖失效通知與重新連結（tokenHealth、meta-token-health 排程）、誰看得到這個渠道
+（AgentChannelAccess、ChannelTeamAccess、存取層級 read_only/reply_only/full、fail-closed、channel.view_all 總店）、
+Bot 設定（botMode、maxBotReplies、轉接關鍵字、招呼語、LIFF ID）、網站聊天室嵌入碼與背景、
+channel plugin registry（API 的 registerChannelPlugin 與 workers 的 createWorkerPluginRegistry 兩邊都要註冊）。
+當需求、bug 或新功能碰到 channel、channels 模組、webhook 路由、meta-connect、/dashboard/settings/channels、
+「渠道收不到訊息」「粉專訊息跑到別的租戶」「權杖失效」「分店看得到別店渠道」「新增一種渠道」時使用。
+也在改收件匣送訊息、自動化送訊息、人員管理的可用渠道之前使用，確認不破壞渠道。
 
 ## 先讀
 - 功能現況：`docs/ref/features/tenant/CHANNELS.md`

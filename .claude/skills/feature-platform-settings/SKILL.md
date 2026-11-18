@@ -1,17 +1,21 @@
 ---
 name: feature-platform-settings
 description: >
-  open333CRM「平台設定」功能顧問：平台全域 KV 設定 platform_settings（GET/PUT /api/v1/platform/settings/:key、
-  試用政策 trial.*、個資遮罩 ai.privacy.<tenantId> 也存在同一張表）、/admin/trial「政策設定」分頁、
-  權限註冊表 GET /platform/registry（/admin/plans 的功能清單與渠道白名單）、模型價目 model_pricings（ModelPricing，
-  只有 seed 會寫）、設定變更對所有租戶的影響、平台設定的稽核 setting.update、哪些「全域設定」其實是環境變數。
-  當有人說「改了試用天數沒生效」「政策設定存不進去／沒反應」「提醒信不寄了」「方案頁怎麼有 WhatsApp」
-  「新模型成本是 0」「平台設定要加一個開關」「AI key／寄信設定在哪裡改」「某租戶突然所有訊息 503」，
-  或要改 platform-setting.service、trial-policy.service、platform.routes.ts 的 /settings、/registry、
-  pricing.service、seedModelPricing 時使用。
+  open333CRM「平台設定」功能顧問：platform_settings 全域設定、試用政策、權限註冊表、模型價目 model_pricings。改到 platform-setting.service、trial-policy.service、platform.routes.ts 的 /settings 與 /registry、pricing.service 之前使用。
 ---
 
 # 平台設定（KV、權限註冊表、模型價目）
+
+## 涵蓋範圍
+
+open333CRM「平台設定」功能顧問：平台全域 KV 設定 platform_settings（GET/PUT /api/v1/platform/settings/:key、
+試用政策 trial.*、個資遮罩 ai.privacy.<tenantId> 也存在同一張表）、/admin/trial「政策設定」分頁、
+權限註冊表 GET /platform/registry（/admin/plans 的功能清單與渠道白名單）、模型價目 model_pricings（ModelPricing，
+只有 seed 會寫）、設定變更對所有租戶的影響、平台設定的稽核 setting.update、哪些「全域設定」其實是環境變數。
+當有人說「改了試用天數沒生效」「政策設定存不進去／沒反應」「提醒信不寄了」「方案頁怎麼有 WhatsApp」
+「新模型成本是 0」「平台設定要加一個開關」「AI key／寄信設定在哪裡改」「某租戶突然所有訊息 503」，
+或要改 platform-setting.service、trial-policy.service、platform.routes.ts 的 /settings、/registry、
+pricing.service、seedModelPricing 時使用。
 
 ## 先讀
 - 功能文件：`docs/ref/features/platform/SETTINGS.md`；平台後台共通機制（稽核、快取、資料模型）：`docs/ref/features/platform/README.md`

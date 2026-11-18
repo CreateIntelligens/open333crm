@@ -68,6 +68,13 @@ hooks:
 - 截圖存暫存目錄；報告只寫結論與重現步驟。
 - 本機做不到的（LINE / FB / IG 真機收發、外部 webhook），列為「待真機驗」，不要假裝通過。
 
+## 更新 feature Skill
+- `description` 只寫一到兩句，不超過 200 字：領域名稱、主要範圍，以及「改到哪些模組或頁面之前使用」。
+  Claude Code 每個 session 都會載入所有 Skill 的 `description`，所以完整的關鍵字、資料表與口語觸發詞
+  要寫在正文的「涵蓋範圍」一節，不要寫在 `description`。
+- Skill 描述程式目前的行為。健檢發現的問題標上編號（`HC-<DOMAIN>-NN` 或 AUDIT 編號），細節寫在健檢報告。
+- 健檢報告標示某個問題已修正時，把 Skill 中描述這個問題的句子改成修正後的行為（`grep -rn "<編號>" .claude/skills`）。
+
 ## 報告格式 `docs/ref/features/health/<DOMAIN>.md`
 
 ```

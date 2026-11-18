@@ -1,14 +1,18 @@
 ---
 name: feature-contacts
 description: >
-  open333CRM「聯絡人與標籤」功能顧問：聯絡人列表/搜尋/詳情、email 編輯與 EMAIL_IN_USE、標籤貼標與標籤管理、
-  聯絡人合併與解除合併（One ID、歸戶、跨渠道綁定代碼、email/手機登記 /bind/email、/bind/phone）、
-  合併建議、收訊建立聯絡人、LINE 頭像重抓。當需求、bug 或新功能碰到 contact、tag、identity-binding、
-  merge、ChannelIdentity、IdentityMap、/dashboard/contacts、/dashboard/settings/tags 時使用。
-  也在改群發分眾、優惠券登記、自動化貼標、短連結點擊貼標前使用，確認不破壞聯絡人。
+  open333CRM「聯絡人與標籤」功能顧問：聯絡人、標籤、合併與解除合併、跨渠道綁定。改到 contact／tag／identity-binding 模組、/dashboard/contacts，或改群發分眾、自動化貼標、短連結貼標之前使用。
 ---
 
 # 聯絡人與標籤
+
+## 涵蓋範圍
+
+open333CRM「聯絡人與標籤」功能顧問：聯絡人列表/搜尋/詳情、email 編輯與 EMAIL_IN_USE、標籤貼標與標籤管理、
+聯絡人合併與解除合併（One ID、歸戶、跨渠道綁定代碼、email/手機登記 /bind/email、/bind/phone）、
+合併建議、收訊建立聯絡人、LINE 頭像重抓。當需求、bug 或新功能碰到 contact、tag、identity-binding、
+merge、ChannelIdentity、IdentityMap、/dashboard/contacts、/dashboard/settings/tags 時使用。
+也在改群發分眾、優惠券登記、自動化貼標、短連結點擊貼標前使用，確認不破壞聯絡人。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/CONTACTS.md`

@@ -1,17 +1,21 @@
 ---
 name: feature-platform-plans
 description: >
-  open333CRM「方案與上限」功能顧問：平台後台方案設定 /admin/plans（功能勾選 features、細分權限 deny、
-  數值上限 maxAgents/maxChannels/maxTags/monthlyTokens、可用渠道類型 allowedChannelTypes）、
-  功能天花板（角色權限 ∩ 方案天花板、Redis perms:tenant 快取、getTenantPlanId 60 秒進程內快取）、
-  租戶覆寫 limitOverrides、各種上限硬擋 PLAN_LIMIT_EXCEEDED / CHANNEL_TYPE_NOT_ALLOWED、AI 月額度
-  （aiquota 計數器）、租戶端方案頁 /dashboard/plan。當需求或 bug 提到「方案」「升級後功能沒開」
-  「換方案後 403」「客服人數上限」「渠道數上限」「AI 額度用完」「停售方案」「試用方案能不能接 LINE」、
-  plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時使用。
-  也在新增權限碼或 feature、改 requirePermission、改建立成員/渠道/AI 呼叫流程前使用。
+  open333CRM「方案與上限」功能顧問：/admin/plans 的功能、上限與可用渠道類型，功能天花板與快取，上限硬擋。改到 plan.service、plan-limits.service、token-quota.service，或新增權限碼或 feature、改建立成員／渠道／AI 呼叫流程之前使用。
 ---
 
 # 方案與上限
+
+## 涵蓋範圍
+
+open333CRM「方案與上限」功能顧問：平台後台方案設定 /admin/plans（功能勾選 features、細分權限 deny、
+數值上限 maxAgents/maxChannels/maxTags/monthlyTokens、可用渠道類型 allowedChannelTypes）、
+功能天花板（角色權限 ∩ 方案天花板、Redis perms:tenant 快取、getTenantPlanId 60 秒進程內快取）、
+租戶覆寫 limitOverrides、各種上限硬擋 PLAN_LIMIT_EXCEEDED / CHANNEL_TYPE_NOT_ALLOWED、AI 月額度
+（aiquota 計數器）、租戶端方案頁 /dashboard/plan。當需求或 bug 提到「方案」「升級後功能沒開」
+「換方案後 403」「客服人數上限」「渠道數上限」「AI 額度用完」「停售方案」「試用方案能不能接 LINE」、
+plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時使用。
+也在新增權限碼或 feature、改 requirePermission、改建立成員/渠道/AI 呼叫流程前使用。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/PLANS.md`

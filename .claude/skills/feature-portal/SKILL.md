@@ -1,18 +1,22 @@
 ---
 name: feature-portal
 description: >
-  open333CRM「會員入口（Fan Portal）」功能顧問：粉絲活動（投票 POLL、表單 FORM、競猜 QUIZ）的建立、編輯、
-  發布、結束、封存與取消封存，提交紀錄與抽獎，會員積分（手動加點扣點、活動送點、餘額、交易紀錄），
-  粉絲端 API /api/v1/fan（fanToken、活動列表、送出、結果、我的積分），以及會員綁定 member-binding
-  （外部會員系統對接設定、顧客綁定會員編號）。當需求、bug 或新功能碰到 /dashboard/portal、
-  /dashboard/portal/activities、/dashboard/portal/submissions、/dashboard/portal/points、portal 模組、
-  points.service、portal-auth.service（signFanToken、signFanDeviceToken）、member-binding 模組、
-  PortalActivity、PointTransaction 時使用。也在改優惠券票券夾（顧客憑證）、聯絡人合併（點數轉移）、
-  資料刪除、portal.activity.submitted 自動化前使用。口語觸發：「粉絲活動」「積分」「點數」「抽獎」
-  「投票活動」「會員綁定」「顧客入口」「fan token」。
+  open333CRM「會員入口（Fan Portal）」功能顧問：粉絲活動（投票、表單、競猜）、提交與抽獎、會員積分、粉絲端 API、會員綁定。改到 portal、member-binding 模組、/dashboard/portal，或改顧客憑證、聯絡人合併、資料刪除之前使用。
 ---
 
 # 會員入口（Fan Portal）
+
+## 涵蓋範圍
+
+open333CRM「會員入口（Fan Portal）」功能顧問：粉絲活動（投票 POLL、表單 FORM、競猜 QUIZ）的建立、編輯、
+發布、結束、封存與取消封存，提交紀錄與抽獎，會員積分（手動加點扣點、活動送點、餘額、交易紀錄），
+粉絲端 API /api/v1/fan（fanToken、活動列表、送出、結果、我的積分），以及會員綁定 member-binding
+（外部會員系統對接設定、顧客綁定會員編號）。當需求、bug 或新功能碰到 /dashboard/portal、
+/dashboard/portal/activities、/dashboard/portal/submissions、/dashboard/portal/points、portal 模組、
+points.service、portal-auth.service（signFanToken、signFanDeviceToken）、member-binding 模組、
+PortalActivity、PointTransaction 時使用。也在改優惠券票券夾（顧客憑證）、聯絡人合併（點數轉移）、
+資料刪除、portal.activity.submitted 自動化前使用。口語觸發：「粉絲活動」「積分」「點數」「抽獎」
+「投票活動」「會員綁定」「顧客入口」「fan token」。
 
 ## 先讀
 - 功能現況：`docs/ref/features/tenant/PORTAL.md`

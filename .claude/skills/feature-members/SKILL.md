@@ -1,17 +1,21 @@
 ---
 name: feature-members
 description: >
-  open333CRM「成員、角色與權限」功能顧問：人員管理（新增成員、開帳號、初始密碼、改角色、重設密碼、
-  停用／重新啟用／永久刪除成員、已停用的人員、email 全域唯一、停用不釋放 email）、改自己的密碼、
-  角色與權限頁（自訂角色、權限矩陣、前置權限 dependsOn、隱含權限 implies、內建鎖定 adminLock、防自鎖 selfLock、
-  越權防護 ROLE_ESCALATION／PRIVILEGE_ESCALATION）、有效權限與方案天花板、權限快取（Redis perms:*、60 秒租戶方案快取）、
-  最後一位管理員保護、成員可用渠道（AgentChannelAccess 直綁）、團隊、登入與 Passkey。當需求、bug 或新功能碰到
-  /dashboard/settings/agents、/dashboard/settings/roles、/dashboard/settings/general、agent 模組、role 模組、auth 模組、
-  requirePermission、permission.service、permissions.ts 權限碼註冊表、Agent、Role、RolePermission 時使用。
-  也在新增權限碼、新增路由、改通知收件人或自動指派、改方案功能模組之前使用，確認不破壞權限。
+  open333CRM「成員、角色與權限」功能顧問：人員管理、自訂角色與權限矩陣、有效權限與方案天花板、權限快取、團隊。改到 agent／role／auth 模組、requirePermission、permissions.ts，或新增權限碼、新增路由之前使用。
 ---
 
 # 成員、角色與權限
+
+## 涵蓋範圍
+
+open333CRM「成員、角色與權限」功能顧問：人員管理（新增成員、開帳號、初始密碼、改角色、重設密碼、
+停用／重新啟用／永久刪除成員、已停用的人員、email 全域唯一、停用不釋放 email）、改自己的密碼、
+角色與權限頁（自訂角色、權限矩陣、前置權限 dependsOn、隱含權限 implies、內建鎖定 adminLock、防自鎖 selfLock、
+越權防護 ROLE_ESCALATION／PRIVILEGE_ESCALATION）、有效權限與方案天花板、權限快取（Redis perms:*、60 秒租戶方案快取）、
+最後一位管理員保護、成員可用渠道（AgentChannelAccess 直綁）、團隊、登入與 Passkey。當需求、bug 或新功能碰到
+/dashboard/settings/agents、/dashboard/settings/roles、/dashboard/settings/general、agent 模組、role 模組、auth 模組、
+requirePermission、permission.service、permissions.ts 權限碼註冊表、Agent、Role、RolePermission 時使用。
+也在新增權限碼、新增路由、改通知收件人或自動指派、改方案功能模組之前使用，確認不破壞權限。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/MEMBERS.md`

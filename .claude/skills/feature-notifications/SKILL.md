@@ -1,16 +1,20 @@
 ---
 name: feature-notifications
 description: >
-  open333CRM「通知」功能顧問：右上角鈴鐺、通知列表（全部/未讀/已讀）、標記已讀與全部已讀、
-  notification.new 即時推播、通知收件人怎麼算（新訊息通知誰、工單指派/升級通知誰、升級對話框的
-  「通知對象」notifyTargets、CSAT 低分、SLA、自動化「傳送通知」「通知主管」）、AI 用量 80%/100% 告警信、
-  FB/IG 權杖失效通知、系統信寄送模式（EMAIL_DELIVERY_MODE）。當需求、bug 或新功能碰到 notification、
-  Notification 表、createAndDispatch、enqueueNotification、usage.quota.threshold、/dashboard/notifications、
-  NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯頁」「通知偏好/靜音」時使用。
-  也在改工單指派/升級、收訊流程、成員停用、渠道可見範圍、自動化通知動作前使用，確認收件人沒有算錯。
+  open333CRM「通知」功能顧問：鈴鐺與通知列表、即時推播、通知收件人怎麼算、AI 用量告警信、系統信寄送。改到 notification 模組、/dashboard/notifications，或改工單指派／升級、收訊流程、自動化通知動作之前使用。
 ---
 
 # 通知
+
+## 涵蓋範圍
+
+open333CRM「通知」功能顧問：右上角鈴鐺、通知列表（全部/未讀/已讀）、標記已讀與全部已讀、
+notification.new 即時推播、通知收件人怎麼算（新訊息通知誰、工單指派/升級通知誰、升級對話框的
+「通知對象」notifyTargets、CSAT 低分、SLA、自動化「傳送通知」「通知主管」）、AI 用量 80%/100% 告警信、
+FB/IG 權杖失效通知、系統信寄送模式（EMAIL_DELIVERY_MODE）。當需求、bug 或新功能碰到 notification、
+Notification 表、createAndDispatch、enqueueNotification、usage.quota.threshold、/dashboard/notifications、
+NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯頁」「通知偏好/靜音」時使用。
+也在改工單指派/升級、收訊流程、成員停用、渠道可見範圍、自動化通知動作前使用，確認收件人沒有算錯。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/NOTIFICATIONS.md`

@@ -1,15 +1,19 @@
 ---
 name: feature-marketing
 description: >
-  open333CRM「行銷活動、素材與優惠券」功能顧問：行銷活動 campaign、群發 broadcast（排程、受眾、附券）、
-  受眾分群 segment、素材庫 material（LINE/FB 各版型、Flex、imagemap、影片、點擊貼標、版本）、
-  優惠券 coupon（建立/發布/暫停/結束、序號、領券連結 QR、批次發送、對話發券、關鍵字領券、加好友禮、
-  顧客開票券 LIFF/email 驗證碼、券夾、核銷、門市核銷台 /redeem）。當需求、bug 或新功能碰到
-  /dashboard/marketing、/coupon、/redeem、marketing、coupon、material、broadcast、segment 模組時使用。
-  也在改標籤、短連結、渠道外掛、LINE LIFF、自動化動作 send_material/issue_coupon 前使用。
+  open333CRM「行銷活動、素材與優惠券」功能顧問：群發、受眾分群、素材庫、優惠券與核銷。改到 marketing／coupon／material／broadcast／segment 模組、/dashboard/marketing、/coupon、/redeem，或改標籤、短連結之前使用。
 ---
 
 # 行銷活動、素材與優惠券
+
+## 涵蓋範圍
+
+open333CRM「行銷活動、素材與優惠券」功能顧問：行銷活動 campaign、群發 broadcast（排程、受眾、附券）、
+受眾分群 segment、素材庫 material（LINE/FB 各版型、Flex、imagemap、影片、點擊貼標、版本）、
+優惠券 coupon（建立/發布/暫停/結束、序號、領券連結 QR、批次發送、對話發券、關鍵字領券、加好友禮、
+顧客開票券 LIFF/email 驗證碼、券夾、核銷、門市核銷台 /redeem）。當需求、bug 或新功能碰到
+/dashboard/marketing、/coupon、/redeem、marketing、coupon、material、broadcast、segment 模組時使用。
+也在改標籤、短連結、渠道外掛、LINE LIFF、自動化動作 send_material/issue_coupon 前使用。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/MARKETING.md`

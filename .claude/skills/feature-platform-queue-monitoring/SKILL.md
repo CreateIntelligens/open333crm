@@ -1,16 +1,20 @@
 ---
 name: feature-platform-queue-monitoring
 description: >
-  open333CRM「佇列監控」功能顧問：平台後台側邊欄「佇列監控」開啟的 bull-board（/api/v1/platform/queues），
-  BullMQ 各佇列的等待/進行/失敗數、失敗原因與 stack、單筆重送與平台稽核、job 資料遮蔽、
-  QUEUE_DASHBOARD_ALLOWED_CIDRS 網段限制與監控 cookie、job 移到 failed set 時的 ops-alert 告警（Slack 或 log）、
-  workers 行程與 api-scheduler 排程的健康狀態、outbox 積壓與補送、side_effect_claims 重送不重複副作用。
-  當有人問「佇列監控打不開／回 403」「背景工作失敗看不到原因」「重送會不會重發訊息」「告警沒收到」
-  「workers 掛了怎麼知道」「outbox 卡住」，或改到 queue-monitoring、ops-alert、outbox、subscriber-workers、
-  job-scheduler、apps/workers 的 Worker 時使用。新增 BullMQ 佇列或排程前也要先讀。
+  open333CRM「佇列監控」功能顧問：bull-board、失敗 job 與重送、ops-alert 告警、workers 與排程的健康狀態、outbox 積壓。改到 queue-monitoring、ops-alert、outbox、job-scheduler、apps/workers 的 Worker，或新增 BullMQ 佇列或排程之前使用。
 ---
 
 # 佇列監控
+
+## 涵蓋範圍
+
+open333CRM「佇列監控」功能顧問：平台後台側邊欄「佇列監控」開啟的 bull-board（/api/v1/platform/queues），
+BullMQ 各佇列的等待/進行/失敗數、失敗原因與 stack、單筆重送與平台稽核、job 資料遮蔽、
+QUEUE_DASHBOARD_ALLOWED_CIDRS 網段限制與監控 cookie、job 移到 failed set 時的 ops-alert 告警（Slack 或 log）、
+workers 行程與 api-scheduler 排程的健康狀態、outbox 積壓與補送、side_effect_claims 重送不重複副作用。
+當有人問「佇列監控打不開／回 403」「背景工作失敗看不到原因」「重送會不會重發訊息」「告警沒收到」
+「workers 掛了怎麼知道」「outbox 卡住」，或改到 queue-monitoring、ops-alert、outbox、subscriber-workers、
+job-scheduler、apps/workers 的 Worker 時使用。新增 BullMQ 佇列或排程前也要先讀。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/QUEUE-MONITORING.md`

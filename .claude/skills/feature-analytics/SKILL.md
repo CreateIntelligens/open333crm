@@ -1,16 +1,20 @@
 ---
 name: feature-analytics
 description: >
-  open333CRM「數據分析與報表」功能顧問：報表總覽（概覽、案件報表、客服績效、渠道分析、優惠券成效分頁）、
-  日期區間（今天/7 天/30 天/90 天/自訂）、匯出 CSV、我的績效、後台首頁「營運概況」數字、
-  CLI `open333 stats` 與 `/cli/analytics/*`（scope `cli:analytics:read`）、每日彙總 DailyStat。
-  當需求、bug 或新功能碰到「報表數字不對」「趨勢圖沒有日期」「匯出亂碼/欄位跑掉」「SLA 達成率」「平均首次回應」
-  「CSAT 分數」「我的績效」「台灣時間切日」、/dashboard/analytics、/dashboard/analytics/my、analytics.service、
-  analytics.routes、cli.routes、analytics.view、analytics.export 時使用。
-  也在改工單狀態轉換（resolvedAt、firstResponseAt）、訊息或對話資料表、渠道類型、CSAT 欄位前使用，確認報表不會算錯。
+  open333CRM「數據分析與報表」功能顧問：報表各分頁、匯出 CSV、我的績效、CLI stats。改到 analytics 模組、/dashboard/analytics，或改工單的 resolvedAt／firstResponseAt、CSAT 欄位之前使用。
 ---
 
 # 數據分析與報表
+
+## 涵蓋範圍
+
+open333CRM「數據分析與報表」功能顧問：報表總覽（概覽、案件報表、客服績效、渠道分析、優惠券成效分頁）、
+日期區間（今天/7 天/30 天/90 天/自訂）、匯出 CSV、我的績效、後台首頁「營運概況」數字、
+CLI `open333 stats` 與 `/cli/analytics/*`（scope `cli:analytics:read`）、每日彙總 DailyStat。
+當需求、bug 或新功能碰到「報表數字不對」「趨勢圖沒有日期」「匯出亂碼/欄位跑掉」「SLA 達成率」「平均首次回應」
+「CSAT 分數」「我的績效」「台灣時間切日」、/dashboard/analytics、/dashboard/analytics/my、analytics.service、
+analytics.routes、cli.routes、analytics.view、analytics.export 時使用。
+也在改工單狀態轉換（resolvedAt、firstResponseAt）、訊息或對話資料表、渠道類型、CSAT 欄位前使用，確認報表不會算錯。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/ANALYTICS.md`
@@ -62,7 +66,7 @@ description: >
 改到本領域時，至少重走：
 1. 用 psql 對一段期間算訊息數、新工單、已解決、SLA 達成率，與 `GET /analytics/overview` 對照；同一段期間比較報表頁 KPI。另建三張工單：直接關閉、解決後重開、解決後關閉，只有第三張算入已解決（#417）。
 2. 在台灣時間凌晨 0–8 點建一筆訊息與工單，選那一天，確認趨勢圖落在正確的日期（目前會落到前一天，ANA-01）。
-3. 訊息趨勢圖 X 軸要有日期（目前 `date` 被蓋成 0，HC-ANALYTICS-01）。
+3. 訊息趨勢圖 X 軸要有日期（HC-ANALYTICS-01 修正以前，`date` 被蓋成 0）。
 4. 四個分頁各匯出一次：BOM、欄位數一致、聯絡人名稱含逗號或以 `=` 開頭時不會跑欄、該欄以 `'` 開頭不變公式；負數與數字欄位沒有 `'`（HC-ANALYTICS-04，#423 已修正，unit 測試 `export-csv-escaping.test.ts`）。
 5. 選反日期 → 後端 400；supervisor 看得到匯出、agent 只看得到「我的績效」、只有 `analytics.view` 的自訂角色看不到匯出。
 6. CLI：agent 帳號 `POST /auth/cli/login` 拿 token 打 `/cli/analytics/overview`（RBAC-02 修好後應 403）；`open333 stats --json`。

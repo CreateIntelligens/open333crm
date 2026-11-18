@@ -1,16 +1,20 @@
 ---
 name: feature-settings
 description: >
-  open333CRM「租戶設定」功能顧問：設定頁 /dashboard/settings/* 的存取與儲存，以及營業時間（非營業時間自動回覆、時區、假日）、
-  追蹤設定（GA4、Meta Pixel）、跨渠道綁定與 email／手機登記開關和關鍵字、WebTalk 協作、Partner API 金鑰、
-  CLI 連線與 MCP 唯讀權限、A2A 狀態頁、AI 設定（Chat、Embedding、自備 Gemini 金鑰）的儲存路由。
-  當需求、bug 或新功能碰到 settings 模組、settings.routes.ts、TenantSettings、settings.manage、office-hours、tracking、
-  identity-binding 設定、webtalk、api-keys、partner key、cli-sessions、CLI token、mcp、a2a，或使用者說
-  「營業時間存不了／頁面壞掉」、「下班自動回覆沒反應」、「設定頁看得到但打不開」、「金鑰／token 怎麼管」、「GA 沒收到」時使用。
-  也在改側欄權限、租戶稽核、短連結追蹤碼、聯絡人綁定流程、知識庫 AI 設定前使用，確認不破壞設定的讀寫。
+  open333CRM「租戶設定」功能顧問：/dashboard/settings/* 的存取與儲存、營業時間、追蹤碼、綁定設定、Partner API 金鑰、CLI 與 MCP、AI 設定的儲存。改到 settings 模組、TenantSettings、settings.manage，或改側欄權限之前使用。
 ---
 
 # 租戶設定
+
+## 涵蓋範圍
+
+open333CRM「租戶設定」功能顧問：設定頁 /dashboard/settings/* 的存取與儲存，以及營業時間（非營業時間自動回覆、時區、假日）、
+追蹤設定（GA4、Meta Pixel）、跨渠道綁定與 email／手機登記開關和關鍵字、WebTalk 協作、Partner API 金鑰、
+CLI 連線與 MCP 唯讀權限、A2A 狀態頁、AI 設定（Chat、Embedding、自備 Gemini 金鑰）的儲存路由。
+當需求、bug 或新功能碰到 settings 模組、settings.routes.ts、TenantSettings、settings.manage、office-hours、tracking、
+identity-binding 設定、webtalk、api-keys、partner key、cli-sessions、CLI token、mcp、a2a，或使用者說
+「營業時間存不了／頁面壞掉」、「下班自動回覆沒反應」、「設定頁看得到但打不開」、「金鑰／token 怎麼管」、「GA 沒收到」時使用。
+也在改側欄權限、租戶稽核、短連結追蹤碼、聯絡人綁定流程、知識庫 AI 設定前使用，確認不破壞設定的讀寫。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/SETTINGS.md`

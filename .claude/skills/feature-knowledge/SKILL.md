@@ -1,17 +1,21 @@
 ---
 name: feature-knowledge
 description: >
-  open333CRM「知識庫與 AI 回覆」功能顧問：知識庫文章 CRUD、發布封存、匯入（PDF/Word/Excel/CSV/Markdown/JSON，
-  CSV/Excel 自動拆問答直接發布、JSON 外層須純陣列）、向量化 embedding 與語義搜尋、機器人依知識庫自動回覆
-  （kb-autoreply、追問 clarify、轉真人）、型號守門 model guard 與型號白名單、「沒幫到我」KB 回報調教、
-  AI 設定頁（Embedding、Chat & Prompt、系統提示詞、自備 Gemini 金鑰 BYOK）、AI 月額度 monthlyTokens 與用量 AiUsage、
-  AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影響。當需求、bug 或新功能碰到 /dashboard/knowledge、
-  knowledge、embedding、ai、llm.service、llm.flow、kb-autoreply、kb-autoreply.flow、model-matcher、chat-settings、embedding-settings、
-  token-quota 模組，或有人說「AI 亂回／不回」「AI 說轉接了但沒人接」「匯入變亂碼」「搜不到文章」「型號查不到」時使用。
-  也在改渠道 botConfig、自動轉接、收件匣 AI 建議回覆、方案 token 額度前使用，確認不破壞 AI 回覆。
+  open333CRM「知識庫與 AI 回覆」功能顧問：文章與匯入、embedding 搜尋、機器人自動回覆、型號守門、AI 設定、AI 月額度。改到 knowledge／embedding／ai 模組、kb-autoreply、/dashboard/knowledge，或改 botConfig、方案 token 額度之前使用。
 ---
 
 # 知識庫與 AI 回覆
+
+## 涵蓋範圍
+
+open333CRM「知識庫與 AI 回覆」功能顧問：知識庫文章 CRUD、發布封存、匯入（PDF/Word/Excel/CSV/Markdown/JSON，
+CSV/Excel 自動拆問答直接發布、JSON 外層須純陣列）、向量化 embedding 與語義搜尋、機器人依知識庫自動回覆
+（kb-autoreply、追問 clarify、轉真人）、型號守門 model guard 與型號白名單、「沒幫到我」KB 回報調教、
+AI 設定頁（Embedding、Chat & Prompt、系統提示詞、自備 Gemini 金鑰 BYOK）、AI 月額度 monthlyTokens 與用量 AiUsage、
+AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影響。當需求、bug 或新功能碰到 /dashboard/knowledge、
+knowledge、embedding、ai、llm.service、llm.flow、kb-autoreply、kb-autoreply.flow、model-matcher、chat-settings、embedding-settings、
+token-quota 模組，或有人說「AI 亂回／不回」「AI 說轉接了但沒人接」「匯入變亂碼」「搜不到文章」「型號查不到」時使用。
+也在改渠道 botConfig、自動轉接、收件匣 AI 建議回覆、方案 token 額度前使用，確認不破壞 AI 回覆。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/KNOWLEDGE.md`

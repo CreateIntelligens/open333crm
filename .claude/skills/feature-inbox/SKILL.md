@@ -1,16 +1,20 @@
 ---
 name: feature-inbox
 description: >
-  open333CRM「收件匣與對話」功能顧問：對話列表、進行中／已關閉、搜尋與進階篩選、訊息收發（文字、快速回覆、
-  模板、個資遮罩、圖片）、接管對話與交回 Bot、指派負責人、改狀態與重新開啟、結案、對話標籤、
-  AI 建議回覆、socket 即時更新（message.new、conversation.updated）、渠道可見範圍與存取層級（CM-173、
-  read_only／reply_only／full）、轉真人（handoff_request、自動轉真人）、閒置自動關閉。
-  當需求、bug 或新功能碰到 /dashboard/inbox、conversation、message、socket、channel-visibility、
-  handoff、return-to-bot、botConfig、「客服看不到對話」「訊息沒即時出現」「指派沒反應」「機器人不回」時使用。
-  也在改渠道外掛送訊息、工單從對話建立、通知、自動化的 message.received 前使用，確認不破壞收件匣。
+  open333CRM「收件匣與對話」功能顧問：對話列表、訊息收發、接管與交回 Bot、指派、結案、AI 建議回覆、socket 即時更新、轉真人。改到 conversation／message 模組、/dashboard/inbox，或改渠道外掛送訊息之前使用。
 ---
 
 # 收件匣與對話
+
+## 涵蓋範圍
+
+open333CRM「收件匣與對話」功能顧問：對話列表、進行中／已關閉、搜尋與進階篩選、訊息收發（文字、快速回覆、
+模板、個資遮罩、圖片）、接管對話與交回 Bot、指派負責人、改狀態與重新開啟、結案、對話標籤、
+AI 建議回覆、socket 即時更新（message.new、conversation.updated）、渠道可見範圍與存取層級（CM-173、
+read_only／reply_only／full）、轉真人（handoff_request、自動轉真人）、閒置自動關閉。
+當需求、bug 或新功能碰到 /dashboard/inbox、conversation、message、socket、channel-visibility、
+handoff、return-to-bot、botConfig、「客服看不到對話」「訊息沒即時出現」「指派沒反應」「機器人不回」時使用。
+也在改渠道外掛送訊息、工單從對話建立、通知、自動化的 message.received 前使用，確認不破壞收件匣。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/INBOX.md`
