@@ -31,7 +31,7 @@ export function OaSwitcher({ value, onChange }: Props) {
   );
 
   if (isLoading) {
-    return <div className="h-10 w-[280px] animate-pulse rounded-lg bg-muted" aria-label="載入官方帳號中" />;
+    return <div className="h-10 w-full animate-pulse sm:w-[280px] rounded-lg bg-muted" aria-label="載入官方帳號中" />;
   }
 
   if (lineChannels.length === 0) {
@@ -43,11 +43,11 @@ export function OaSwitcher({ value, onChange }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex w-full items-center gap-3 sm:w-auto">
       <label htmlFor={selectId} className="whitespace-nowrap text-sm text-muted-foreground">官方帳號</label>
       <Select
         id={selectId}
-        className="w-[280px]"
+        className="min-w-0 flex-1 sm:w-[280px] sm:flex-none"
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
         options={[
