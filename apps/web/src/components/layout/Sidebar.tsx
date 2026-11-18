@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 // PanelLeftClose／PanelLeftOpen：Figma 圖示庫沒有收合圖示，先用 lucide 補
 import { AlertTriangle, CreditCard, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -178,21 +179,40 @@ function activeLinkId(groups: NavGroup[], pathname: string, sectionHref?: string
  * 圖示欄的文字提示：滑鼠移上去或鍵盤 Tab 聚焦時，在圖示右側顯示名稱。
  * 原本只有瀏覽器內建的 title（約 1 秒才出現、不能調樣式、鍵盤聚焦不會顯示）。
  * 依 WCAG 1.4.13：可按 Esc 關閉；提示只是視覺輔助，名稱已由 aria-label 提供，所以提示本身 aria-hidden。
+ *
+ * 提示用 portal 畫到 body、以 fixed 定位（issue #540）：圖示清單在矮視窗會上下捲動，
+ * 捲動容器會連水平方向一起裁切，提示若留在清單裡會被切掉。清單捲動時提示自動關閉。
  */
 function RailTooltip({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
+  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const show = (delay: number) => {
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setOpen(true), delay);
+    timer.current = setTimeout(() => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      if (rect) setPos({ top: rect.top + rect.height / 2, left: rect.right + 10 });
+    }, delay);
   };
   const hide = () => {
     if (timer.current) clearTimeout(timer.current);
-    setOpen(false);
+    setPos(null);
   };
   React.useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  // 開著時清單捲動或視窗縮放：位置會跑掉，直接關閉
+  React.useEffect(() => {
+    if (!pos) return;
+    const close = () => setPos(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [pos]);
   return (
     <div
+      ref={wrapperRef}
       className="relative"
       onMouseEnter={() => show(120)}
       onMouseLeave={hide}
@@ -202,15 +222,18 @@ function RailTooltip({ label, children }: { label: string; children: React.React
       onClick={hide}
     >
       {children}
-      {open && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-full top-1/2 z-50 ml-2.5 -translate-y-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[13px] font-medium leading-4 text-background shadow-dropdown"
-        >
-          <span className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-foreground" />
-          <span className="relative">{label}</span>
-        </span>
-      )}
+      {pos && typeof document !== 'undefined' &&
+        createPortal(
+          <span
+            aria-hidden="true"
+            style={{ top: pos.top, left: pos.left }}
+            className="pointer-events-none fixed z-[60] -translate-y-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[13px] font-medium leading-4 text-background shadow-dropdown"
+          >
+            <span className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-foreground" />
+            <span className="relative">{label}</span>
+          </span>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -367,7 +390,7 @@ export function Sidebar() {
     );
 
   return (
-    <nav aria-label="主要導覽" className="relative flex w-[66px] flex-none flex-col items-center bg-shell pt-3">
+    <nav aria-label="主要導覽" className="relative flex min-h-0 w-[66px] flex-none flex-col items-center bg-shell pt-3">
       {permissionsError && (
         <button
           type="button"
@@ -379,7 +402,11 @@ export function Sidebar() {
           <AlertTriangle className="h-5 w-5" />
         </button>
       )}
-      <ul className="flex flex-col items-center gap-3 py-1">
+      {/* 矮視窗（issue #540）：
+          1. 視窗高度 ≤ 760px（常見筆電）時圖示間距從 12 縮成 4，多數筆電不用捲動就能完整顯示
+          2. 再矮（例如 Windows 放大 125%）時圖示清單上下捲動，下方的收合與登出固定在底部，一定點得到 */}
+      <div className="min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin]">
+      <ul className="flex flex-col items-center gap-3 py-1 [@media(max-height:760px)]:gap-1">
         {rail.map((item) => {
           const isActive = item.id === active?.id || item.id === flyoutId;
           const collapsible = !wide && Boolean(item.sections?.length);
@@ -415,11 +442,11 @@ export function Sidebar() {
           );
         })}
       </ul>
+      </div>
       <div className="mt-6 h-px w-full bg-border" aria-hidden="true" />
-      <div className="flex-1" />
       {/* 只有寬螢幕、且目前這區有子選單時才需要收合按鈕 */}
       {wide && Boolean(active?.sections?.length) && (
-        <div className="mb-3">
+        <div className="mb-3 mt-3 flex-none">
           <RailTooltip label={collapsed ? '展開子選單' : '收合子選單'}>
             <button
               type="button"
@@ -440,7 +467,7 @@ export function Sidebar() {
           </RailTooltip>
         </div>
       )}
-      <div className="mb-6">
+      <div className="mb-6 flex-none">
         <RailTooltip label="登出">
           <button
             type="button"

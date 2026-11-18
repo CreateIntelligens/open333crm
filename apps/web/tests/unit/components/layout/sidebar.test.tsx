@@ -206,6 +206,20 @@ test('圖示欄滑鼠移上去顯示名稱提示，按 Esc 關閉（WCAG 1.4.13�
   assert.equal(screen.queryByText('報表', { selector: 'span.relative' }), null, '按 Esc 後提示關閉');
 });
 
+test('矮視窗：圖示清單可上下捲動，登出固定在底部；提示畫在 body 不被清單裁切（issue #540）', async () => {
+  auth.permissions = new Set(['analytics.view']);
+  render(<Sidebar />);
+  const link = screen.getByRole('link', { name: '報表' });
+  const scroller = link.closest('.overflow-y-auto') as HTMLElement | null;
+  assert.ok(scroller, '圖示清單包在可捲動的容器裡');
+  assert.ok(!scroller.contains(screen.getByRole('button', { name: '登出' })), '登出不在捲動區，一定點得到');
+
+  fireEvent.mouseEnter(link.parentElement as HTMLElement);
+  const tip = await screen.findByText('報表', { selector: 'span.relative' });
+  assert.ok(!scroller.contains(tip), '提示不在捲動容器內，不會被裁切');
+  assert.equal(tip.closest('nav'), null, '提示畫在 body，不在側欄裡');
+});
+
 // ─── 左下角收合子選單 ───────────────────────────────────────
 
 const mockNarrowScreen = () => {
