@@ -18,6 +18,8 @@
 | 重寄成員開通信 | `POST /tenants/:id/agents/:agentId/resend-welcome` | 信裡沒有密碼 |
 | 停用或啟用 | `PATCH /tenants/:id/active` | 只改 `isActive`，沒有任何防呆。啟用已過期的試用租戶，下一輪排程又會停用，見 `../../system/AUDIT.md` 的 TRIAL-04 |
 | 手動開通 | `POST /tenants` | 建租戶、角色與管理員帳號 |
+| 改合約起訖日 | `PATCH /tenants/:id/contract` | 入口是租戶列表的「合約」與租戶詳細頁。寫平台稽核 `tenant.contract.update` |
+| 復原已清除的試用租戶 | `PATCH /tenants/:id/restore` | 入口是 `/admin/trial` 的「復原」，見[試用管理](./TRIALS.md)。寫平台稽核 `tenant.trial.restore` |
 
 **沒有刪除租戶的途徑。** 停用只是把 `isActive` 設成 `false`；試用租戶的 `purgedAt` 也只是標記，業務資料一直留在資料庫裡。
 
@@ -75,6 +77,7 @@ email 的唯一檢查刻意放在交易外先做，讓衝突回 409 `CONFLICT`�
 | REST | 會 | 一個 access token 的有效期 |
 | Socket.IO 既有連線 | 不會 | 連線不中斷就一直有效 |
 | CLI token | 不會 | CLI session 自己的有效期 |
+| Partner API 金鑰 | 不會 | 金鑰自己的有效期，建立時不指定就永不過期。見 `../../system/AUDIT.md` 的 AUTH-02 |
 | 進站訊息（LINE、Facebook、Instagram、網站聊天室） | 會 | 立即。webhook 提早丟棄，`processInboundMessage()` 共用入口再擋一次；網站聊天室建立工作階段、送訊息與訪客 socket 回 404 |
 | 排程群發、附券群發的佇列 job | 會 | 立即。到期時不送出，群發標為 `failed`（`TENANT_DISABLED`） |
 | 滿意度問卷排程 | 會 | 立即。不處理停用租戶的工單 |

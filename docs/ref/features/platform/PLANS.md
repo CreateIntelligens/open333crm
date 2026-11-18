@@ -18,6 +18,10 @@
 | `allowedChannelTypes` | 可建立的渠道類型白名單 | 限制這個方案能建立哪些渠道類型。`channel.service.ts` 在建立渠道時檢查，不符合回 403 `CHANNEL_TYPE_NOT_ALLOWED` | 空陣列代表不限制 |
 | `permissionOverrides` | 權限碼扣除清單 | 從 `features` 算出的天花板再扣掉指定的權限碼，結構是 `{ deny: string[] }` | 空物件代表不扣除任何權限 |
 
+**平台後台能改什麼。** `/admin/plans` 只編輯上表四個欄位：功能模組、數值上限、可建立的渠道類型與權限碼扣除。名稱、月費與停售（`isActive`）沒有畫面欄位，只能直接呼叫 `PATCH /platform/plans/:id`。系統沒有新增或刪除方案的端點，方案只由 seed 建立（見下方「seed 建立的五個方案」）。
+
+渠道類型的選項取自 `GET /platform/registry`，也就是 `ChannelType` 列舉的全部值，包含沒有渠道外掛、租戶建不出來的 `WHATSAPP` 與 `TELEGRAM`，見[平台設定](./SETTINGS.md)。
+
 `slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。它只出現在平台後台的方案頁與排序，不會回傳給租戶端，系統也不產生帳單，見 `../../system/AUDIT.md` 的 PLAN-10。
 
 ## seed 建立的五個方案

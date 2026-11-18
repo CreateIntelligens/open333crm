@@ -75,7 +75,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 | `channelType` | 在指定渠道類型有身分 |
 | `createdAfter`、`createdBefore` | 聯絡人的建立時間 |
 
-沒有任何條件時，分群等於租戶的全部聯絡人。已封存（包含被合併）的聯絡人一律排除。
+沒有任何有效條件時，分群是 0 人（fail-closed，`segment.service.ts`），避免群發誤發給全部聯絡人。已封存（包含被合併）的聯絡人一律排除。
 
 `Segment.contactCount` 是建立或修改當下算出的人數，之後不會自動更新。實際發送時會重新計算。
 

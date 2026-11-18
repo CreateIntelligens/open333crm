@@ -121,6 +121,8 @@
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/SHORTLINKS.md`：「過期或停用的連結回 410」應改為「`GET /s/:slug` 回 404 失效頁，`/s/track` 回 410」；「自訂代碼與其他租戶重複時回伺服器錯誤」應改為「回 400，訊息是資料庫錯誤原文」（目前的限制表也要改）；核對日期 2026-09-30。
 - `packages/automation/src/contracts/events.ts:144-149` 的「可以依是哪一條連結決定要做什麼」：規則沒有連結條件（自動化健檢 HC-AUTOMATION-08 已記錄）。
 - `apps/web/tests/e2e-uat/WAVE6-FINDINGS.md:184-194` 記錄的公開轉址 404 已修好，該檔仍寫「未修」。

@@ -68,6 +68,7 @@
 | `contact.created` 聯繫人建立 | 是 | `automation.worker.ts` |
 | `contact.tagged` 聯繫人加標籤 | 是 | `automation.worker.ts` |
 | `link.clicked` 短連結被點擊 | 是 | `automation.worker.ts` |
+| `contact.followed` 加入好友 | 是 | `automation.worker.ts`：處理 LINE 的 follow 事件（`message.received`、`contentType: follow`）時另外排入，帶回覆權杖，動作在期限內用回覆方式送出。「加好友禮」頁建立的就是這個事件的規則 |
 | `sla.*` 的 SLA 事件 | 是 | workers 的 `sla.handler.ts` 直接查規則並執行 |
 | `case.closed` 工單關閉 | 否 | 事件有發布，但沒有送進 queue |
 | `case.assigned` 工單指派 | 否 | 同上 |
@@ -79,7 +80,7 @@
 
 ## 哪些動作會執行
 
-規則編輯器依契約提供動作，workers 都有實作：
+規則編輯器依契約提供動作（`issue_coupon` 除外），workers 都有實作：
 
 | 動作 | workers 有實作 | 做什麼 |
 | --- | --- | --- |
@@ -92,7 +93,8 @@
 | `notify` 傳送通知 | 是 | 選填「通知誰」（`agentId`）。依序通知：指定的客服（同租戶、啟用中）、工單負責人、對話負責客服；都沒有時通知所有 `ADMIN` 與 `SUPERVISOR` |
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
 | `create_case` 建立工單 | 是（#211） | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
-| `remove_tag` 移除標籤 | 是（2026-10-05） | 刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立標籤 |
+| `remove_tag` 移除標籤 | 是 | 刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立標籤 |
+| `issue_coupon` 發送優惠券 | 是 | 發一張優惠券給觸發的聯絡人並送到對話。編輯器不顯示這個動作（契約的 `editorHidden`），只在「關鍵字回覆」與「加好友禮」頁設定 |
 
 **已拿掉的動作。** `assign_bot`、`kb_auto_reply`、`llm_reply` 從未在 workers 實作，2026-10-05 從契約拿掉（issue #197）：機器人在負責的對話裡已會用知識庫與 AI 回覆，規則再觸發一次可能讓客人收到兩則回覆。契約以 `RETIRED_AUTOMATION_ACTIONS` 保留它們的中文名稱：新增或修改規則時，API 以「第 N 個動作「LLM 智能回覆」已停用，請刪除」拒絕，編輯頁列出「LLM 智能回覆（已停用）」。規則若還含這些動作，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。資料 migration `20261005100000_remove_retired_automation_actions` 在部署時清理既有規則：還有其他動作的規則移除這 3 種動作、繼續執行；只有這 3 種動作的規則停用，動作保留原樣。
 

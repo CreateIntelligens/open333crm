@@ -49,6 +49,11 @@
 | 重送一個 completed 的工作 | 403 |
 | 重送整個狀態、清除、清空、刪除佇列、暫停、提前執行、修改工作資料或排程、新增工作 | 403 |
 
+**監控畫面看不到的失敗。**
+
+- processor 接住錯誤、只寫 log 的工作，在畫面上是 completed，不進 failed set，也不發告警。例如 workers 的 `sla` 輪詢接住整輪掃描的錯誤後只寫 log：SLA 預警與逾時全部停止時，監控畫面仍然是綠的。見健檢 HC-PLATFORM-QUEUE-MONITORING-01。
+- outbox 積壓不在監控範圍。一直送不出的 outbox 列由 `outbox-relay` 每分鐘重送一次、每次寫一行 error log，但沒有畫面或告警；`outbox-relay` 這個工作本身照常 completed。見健檢 HC-PLATFORM-QUEUE-MONITORING-02。
+
 bull-board 的畫面仍顯示這些按鈕，按下後畫面顯示錯誤。讀取與寫入都只列出放行的操作，所以 bull-board 升級後新增的操作也會回 403。升級 bull-board 時，要重新核對讀取的放行清單（`operation-allowlist.ts` 的 `ALLOWED_READ_ROUTES`）。
 
 工作資料只顯示識別欄位：最上層的 `name`、`type`，以及任一層名稱為 `id` 或以 `Id` 結尾的欄位。其他欄位顯示為 `[已遮蔽]`，之後新增的欄位也一樣。排程範本的資料依同樣規則遮蔽。失敗原因與 stack 照常顯示，所以可能帶出對方伺服器回應的內容。
@@ -91,4 +96,6 @@ bull-board 的畫面仍顯示這些按鈕，按下後畫面顯示錯誤。讀取
 
 任一個網段格式錯誤時，API 記一行 error log，並把整份清單視為空清單。格式正確的網段是 `<IP 位址>/<十進位前綴>`，例如 `60.248.142.0/24`；`60.248.142.0/` 這類空白前綴也算格式錯誤。
 
-本機以 Docker 執行時，瀏覽器的連線經 Docker 網路的閘道進入容器，API 看到的來源 IP 是閘道的位址（例如 `172.18.0.1`），不是 `127.0.0.1`。`.env.api.example` 因此寫 `172.16.0.0/12`。UAT 與正式環境的來源 IP 是 nginx 附加的使用者 IP，要設定公司網段。
+本機以 Docker 執行時，瀏覽器的連線經 Docker 網路的閘道進入容器，API 看到的來源 IP 是閘道的位址（例如 `172.18.0.1`），不是 `127.0.0.1`。`.env.api.example` 因此寫 `172.16.0.0/12`。在主機上直接執行 API（`pnpm --filter @open333crm/api dev`）時，來源 IP 是 `127.0.0.1` 或 `::1`，要在根目錄的 `.env` 設 `QUEUE_DASHBOARD_ALLOWED_CIDRS=127.0.0.1/32,::1/128`。
+
+告警裡的監控連結以 `WEB_BASE_URL` 加上 `/api/v1/platform/queues` 組成。正式環境的網頁與 API 同網域，連結可以開；本機的 `WEB_BASE_URL` 是 Next.js 的 `http://localhost:3000`，連結會 404。UAT 與正式環境的來源 IP 是 nginx 附加的使用者 IP，要設定公司網段。

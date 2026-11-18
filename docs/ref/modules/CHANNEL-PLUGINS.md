@@ -25,7 +25,7 @@
 
 實際上外掛只涵蓋收發訊息的主幹。下列兩件事要先知道：
 
-1. **註冊表是每個行程各自一份。** API 行程以 `registerChannelPlugin()` 註冊所有外掛；workers 行程不用這個註冊表，自己建一個 `Map`，只放 LINE 與 Facebook。所以 workers 送不出 Instagram 私訊與網站聊天室的訊息，見 `../system/AUDIT.md` 的 CHAN-02。
+1. **註冊表是每個行程各自一份。** API 行程以 `registerChannelPlugin()` 註冊所有外掛；workers 行程不用這個註冊表，以 `apps/workers/src/lib/plugin-registry.ts` 的 `createWorkerPluginRegistry()` 自己建一個 `Map`，放 LINE、Facebook 與 Instagram 私訊，沒有網站聊天室。所以 workers 送不出網站聊天室的訊息，見 `../system/AUDIT.md` 的 CHAN-02。
 2. **很多渠道專屬的功能不在外掛裡。** 設定 webhook、驗證憑證、圖文選單、群發的 multicast 等，都在各模組內以 `channelType` 分支，直接呼叫渠道平台的 API。見[外掛之外的渠道專屬程式](#外掛之外的渠道專屬程式)。
 
 ## 外掛介面
@@ -52,7 +52,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `LINE` | `line/index.ts` 的 `linePlugin` | 有 | 有 | `/api/v1/webhooks/line/:channelId` | `x-line-signature`，以 `channelSecret` 計算 |
 | `FB` | `facebook/index.ts` 的 `fbPlugin` | 有 | 有 | `/api/v1/webhooks/fb/:channelId` | `x-hub-signature-256`，以 `appSecret` 計算 |
-| `THREADS` | `threads.ts` 的 `threadsPlugin` | 有 | **沒有** | `/api/v1/webhooks/threads/:channelId` | 同 FB |
+| `THREADS` | `threads.ts` 的 `threadsPlugin` | 有 | 有 | `/api/v1/webhooks/threads/:channelId` | 同 FB |
 | `WEBCHAT` | `webchat/index.ts` 的 `webchatPlugin` | 有 | **沒有** | 不走 webhook，由 `chatbox`、`webchat` 模組直接寫入 | 不驗證，一律回傳 `true` |
 | `TELEGRAM` | `TelegramPlugin` 類別 | 沒有 | 沒有 | 沒有 | — |
 | `WHATSAPP` | 沒有 | 沒有 | 沒有 | 沒有 | — |
@@ -158,6 +158,8 @@ FB／IG 的聯絡人現在有兩個建立入口，規則必須一致，改一邊
 | `marketing/marketing.service.ts` | LINE 且素材沒有變數時用 multicast |
 | `identity-binding/binding-links.ts` | 依渠道產生導流連結（LINE 的加好友與預填文字、FB 的 `m.me`、IG 的 `ig.me`）與顧客看到的帳號稱呼 |
 | `apps/workers/src/lib/channel-delivery.ts` | LINE 先用 reply token 回覆，失敗才 push |
+| `channel/meta-token-health.ts` | 檢查權杖：`THREADS` 呼叫 `graph.instagram.com`，`FB` 呼叫 `graph.facebook.com` |
+| `apps/api/src/scripts/backfill-channel-external-account-id.ts` | 回填 `externalAccountId`：`FB` 取粉專 ID 並檢查是粉專權杖，`THREADS` 取 `user_id` |
 
 檢查指令也會找到另外兩種程式，它們不算違規：
 

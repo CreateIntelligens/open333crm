@@ -119,6 +119,8 @@ Demo 租戶與其他代理的租戶沒有任何寫入。
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/platform/TENANTS.md`「停用租戶多久生效」的表只有 REST、Socket.IO、CLI 三列；AUDIT AUTH-02 已多列 Partner API 金鑰，且漏了 WebChat 進站（HC-01）與排程群發（HC-04）。
 - `docs/ref/features/platform/TENANTS.md`「平台能對租戶做什麼」的表沒有 `PATCH /tenants/:id/contract` 與 `PATCH /tenants/:id/restore`（只在 README 的限制表提到），也沒寫兩個前端入口（列表「合約」、`/admin/trial`「復原」）。
 - `docs/ref/features/platform/README.md`「目前的限制」寫「沒有任何測試，`apps/api/tests/` 沒有檔案涵蓋這個模組」已過時：現有 `tests/feature/modules/platform/` 3 檔、`tests/unit/modules/platform/` 7 檔，以及 trial 與 tenant-disabled-access 的 feature 測試。

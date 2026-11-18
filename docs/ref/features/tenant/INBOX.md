@@ -167,15 +167,17 @@
 
 ## 關閉對話
 
-對話會在下列情況關閉。`closeConversation()` 把來源記在 `Conversation.metadata.closeSource`：
+對話會在下列情況關閉。客服手動與閒置關閉經過 `closeConversation()`，它把來源記在 `Conversation.metadata.closeSource`：
 
 | 來源 | `closeSource` | 觸發 |
 | --- | --- | --- |
 | 客服手動 | `manual` | `POST /conversations/:id/close` |
 | 閒置 | `inactivity` | `setupInactivityCloseWorker()` 定期掃描 |
-| CSAT 逾時 | `csat` | 工單發出滿意度調查後逾時未回，CSAT 排程關閉工單時連帶關閉 |
+| CSAT 結案 | 不寫 | 滿意度問卷逾時、客人或客服評分後工單結案時，`closeConversationsForCase()` 連帶關閉工單的所有對話。這個函式只把狀態改成 `CLOSED`，不寫 `closeSource`、`closeReason` 與結案時間 |
 
 `closeConversation()` 是冪等的：已關閉的對話再關一次，直接回傳現況，不重複發布事件。
+
+**重新開啟。** 把已關閉的對話改回進行中時，系統不檢查同一個聯絡人在同一個渠道是不是已經有未關閉的對話，也不清除 `metadata` 裡的 `closeSource`、`closeReason`。對話關閉後客人再傳訊，系統會開一段新對話；這時再重新開啟舊對話，列表上就有兩段未關閉的對話，之後的訊息只進其中一段。見健檢 HC-INBOX-02。
 
 **閒置自動關閉。** 排程定期找出 `lastMessageAt` 早於時限、尚未關閉的對話，逐一關閉。時限讀 `TenantSettings.inactivityCloseHours`，值小於等於 0 代表停用。這個欄位沒有維護介面，見 `../../system/AUDIT.md` 的 CONV-01。閒置關閉不分狀態，`BOT_HANDLED` 的對話也會被關閉。
 

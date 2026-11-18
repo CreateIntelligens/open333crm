@@ -17,7 +17,10 @@
 | 核准 | `PATCH /platform/plan-change-requests/:id/approve` | 依型別執行動作，見下文 |
 | 駁回 | `PATCH /platform/plan-change-requests/:id/reject` | 只改狀態，不動租戶 |
 
-核准與駁回都只接受 `pending` 的申請，已處理過的回 400。兩者都會記下 `reviewedBy`、`reviewedAt` 與審核備註。
+核准與駁回都只接受 `pending` 的申請，已處理過的回 400。兩者都會記下 `reviewedBy`、`reviewedAt` 與審核備註。API 接受選填的 `note` 當審核備註，但 `/admin/plan-changes` 頁沒有備註欄位，從畫面審核的申請都沒有備註。
+
+- **一個租戶同時只能有一筆 `pending`，但只在應用程式檢查。** 送出時先查有沒有 `pending` 的申請，資料庫沒有對應的唯一限制。兩個請求同時送出時，可能都通過檢查，建立兩筆 `pending`。
+- **租戶不能撤回申請。** 沒有撤回或取消的端點；送出後只能等平台核准或駁回。
 
 ## 平台方怎麼知道有新申請
 

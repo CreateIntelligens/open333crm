@@ -163,6 +163,8 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 | `usage-alert-email` | 通知訂閱者 | `usage-alert-email.worker.ts` | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `api-scheduler` | `job-scheduler.ts` | 同一個檔案的 Worker | 不重試 | 完成 100 筆、失敗 50 筆 |
 | `ops-alert` | `ops-alert.service.ts` 的 `sendOpsAlert()` | `ops-alert.worker.ts` | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
+| `coupon-broadcast` | 立即發送的群發與附券廣播，經 outbox（`broadcast-coupon.flow.ts`） | `apps/api/src/index.ts` 以 `createCouponBroadcastProcessor()` 建立的 Worker | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
+| `comment-reply` | 留言自動私訊，webhook 收到命中關鍵字的留言時排入 | `createCommentReplyProcessor()` | 共 5 次，指數退避，基準 10 秒。只有網路錯誤會消耗次數，限流延後不消耗 | 完成 24 小時、失敗 7 天 |
 
 前 3 列的 Worker 每個同時處理多個 job，所以一個事件處理很久時，其他事件不用等。每個佇列的並行數見 `subscriber-workers.ts` 的 `WORKER_CONCURRENCY`。
 
@@ -224,6 +226,11 @@ workers 產生的業務事件（`create_case` 的 `case.created`、`add_tag` 的
 | `trial-lifecycle` | `setupTrialScheduler()` | `trial` | 每小時 | 試用到期的提醒、停用與軟刪 |
 | `meta-token-health` | `setupMetaTokenHealthScheduler()` | `channel` | 每 6 小時 | 檢查 FB、IG 渠道的權杖，失效時通知租戶管理員 |
 | `analytics-daily` | `setupAnalyticsScheduler()` | `analytics` | 每天 02:00（行程所在時區） | 把前一天的彙總寫入 `DailyStat`，每個啟用中的租戶一個交易，逐一處理 |
+| `coupon-stale-pending-issue` | `setupCouponScheduler()` | `coupon` | 每 60 秒 | 作廢卡在「發送中」超過 5 分鐘的優惠券 |
+| `comment-reply-recover` | `setupCommentReplySchedulers()` | `comment-reply` | 每 5 分鐘 | 重新排入卡住的留言私訊；留言超過 7 天的標成過期 |
+| `comment-reply-health` | `setupCommentReplySchedulers()` | `comment-reply` | 每 5 分鐘 | 檢查留言自動私訊的健康狀態，異常時發維運告警並通知租戶管理員 |
+| `comment-reply-retention` | `setupCommentReplySchedulers()` | `comment-reply` | 每小時 | 刪除超過保留天數的觸發紀錄 |
+| `contract-reminder` | `setupContractReminderScheduler()` | `platform` | 每小時 | 合約到期前寄提醒信給平台帳號 |
 | `outbox-cleanup` | `setupOutboxSchedulers()` | `outbox` | 每天 03:30（行程所在時區） | 刪除已送出超過 7 天的 outbox 與建立超過 30 天的認領紀錄 |
 
 `startA2ABridgeWorker()`（`settings`）也跑在 API 行程，但它是常駐輪詢 A2A Hub，不是排程，由 `A2A_BRIDGE_ENABLED` 控制。

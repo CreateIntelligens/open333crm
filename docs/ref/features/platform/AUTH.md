@@ -24,7 +24,7 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 | --- | --- |
 | 帳號不存在 | 仍對一個固定的假 bcrypt 雜湊跑一次 `verifyPassword()`，抹平回應時間差 |
 | 登入失敗 | 帳號不存在、帳號已停用、密碼錯誤，三種都回 401 `UNAUTHORIZED` |
-| 忘記密碼 | 無論 email 是否存在，一律回 202 與同一句訊息。只有存在且啟用中的帳號才真的產生 token 並寄信 |
+| 忘記密碼 | 無論 email 是否存在，一律回 202 與同一句訊息。只有存在且啟用中的帳號才真的產生 token 並寄信。忘記密碼頁（`apps/web/src/app/admin/forgot-password/page.tsx`）連網路錯誤或速率限制也顯示相同的成功畫面，所以使用者看不出請求是否真的送到 |
 
 ## 停用帳號多久生效
 
@@ -83,7 +83,7 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 | 碼 | HTTP | 情境 |
 | --- | --- | --- |
 | `PLATFORM_DISABLED` | 503 | 沒有設定 `PLATFORM_JWT_SECRET` |
-| `UNAUTHORIZED` | 401 | 登入失敗、token 無效或過期、改密碼時舊密碼錯誤 |
+| `UNAUTHORIZED` | 401 | 登入失敗、token 無效或過期、改密碼時舊密碼錯誤。平台後台的 axios 攔截器（`apps/web/src/app/admin/lib/platform-api.ts`）收到任何 401 都清除 token 並導回登入頁，所以改密碼時打錯舊密碼會被登出，而不是在表單上看到錯誤 |
 | `PLATFORM_USER_DISABLED` | 401 | token 有效，但帳號已被停用 |
 | `FORBIDDEN` | 403 | token 的 `role` 不是 `PLATFORM_SUPERUSER` |
 | `MUST_CHANGE_PASSWORD` | 403 | 還沒改掉臨時密碼 |

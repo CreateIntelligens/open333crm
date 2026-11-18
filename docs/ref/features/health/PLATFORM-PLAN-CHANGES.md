@@ -105,6 +105,8 @@
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/platform/PLAN-CHANGES.md` 的核對日期是 2026-09-23，內容與程式一致；但沒有提到：平台頁沒有審核備註欄位、核准失敗沒有畫面提示、併發送出可建立多筆 pending、租戶不能撤回。
 - `docs/ref/DATABASE-ERD.md:76` 把 `plan_change_requests` 寫成「方案升降級或加購 token 申請」，系統沒有降級型別，只有 `upgrade` 與 `token_topup`。
 - `apps/web/tests/e2e-uat/cross-plan-request.spec.ts` 期待的成功訊息仍帶 ✓（HC-14）。

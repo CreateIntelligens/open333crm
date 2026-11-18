@@ -155,3 +155,5 @@ commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNN
 | `schedule` 與 `event` 兩種 `triggerType` 沒有觸發來源 | Zod schema 接受這兩個值，但沒有程式會依它們啟動流程 |
 | 引擎與自動觸發不走租戶連線 | `flow-runner.ts` 與 `canvas.webhook.ts` 使用未綁租戶的 `prisma` singleton，引擎的查詢以主鍵定位且不帶 `tenantId`。喚醒的認領已走租戶交易。詳見 `../system/AUDIT.md` 的 RLS-01 |
 | `CONDITION` 沒有數值或日期比較 | 運算子只有 `eq`、`neq`、`contains`、`exists`，比較一律以字串進行 |
+| 用 API 串不起兩個以上的節點 | `nextNodeId` 必須是 UUID，但節點 ID 由資料庫在建立時產生，建立流程的請求無法指到同一個請求裡的其他節點。`PATCH /canvas/:id` 不收 `nodes`，建立後也不能補接線。執行時會在第一個節點之後失敗，紀錄寫 `Node … not found in flow`。見健檢 HC-AUTOMATION-06 |
+| 預設的客服角色也能操作畫布 | 系統的 agent 角色預設有 `canvas.use`（`packages/shared/src/rbac/default-roles.ts`），可以建立、啟用與觸發流程 |

@@ -120,6 +120,8 @@ UAT：只讀，未建立、未修改任何資料。
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/SETTINGS.md`：
   - 分頁表缺「跨渠道綁定」（`settings` 模組，需要 `settings.manage`）與「門市與核銷帳號」（`store.view`），也沒有說明跨渠道綁定設定。
   - 「稽核」一節的 `payload.section` 清單只有 `office-hours`、`tracking`、`chat`、`embedding`、`gemini-key`，缺 `identity-binding` 與 `webtalk`。

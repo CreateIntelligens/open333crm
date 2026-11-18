@@ -83,7 +83,7 @@
 
 ## 指派
 
-**手動指派**走 `POST /cases/:id/assign`，會寫 `assigned` 事件並發布 `case.assigned`，被指派的人收到通知。被指派的成員必須屬於同一個租戶，但不檢查是否已停用。
+**手動指派**走 `POST /cases/:id/assign`，會寫 `assigned` 事件並發布 `case.assigned`，被指派的人收到通知。`/assign` 與升級檢查被指派的成員屬於同一個租戶，但不檢查成員是否已停用，也不檢查成員看不看得到工單的渠道。建立工單與 `PATCH /cases/:id` 帶 `assigneeId` 時，不檢查成員屬於哪個租戶。
 
 **自動指派**由 `assignment.service.ts` 的 `autoAssignCase()` 執行。觸發條件是：建立工單時沒有指定負責人，但有指定團隊。
 
@@ -101,7 +101,7 @@
 
 ## 升級
 
-升級走 `POST /cases/:id/escalate`，需要填原因。可以同時指定新的優先級與新的負責人。沒指定優先級時，自動提高一級；已經是 `URGENT` 就維持不變。
+升級走 `POST /cases/:id/escalate`，原因與新的優先級（`newPriority`）都必填，可以同時指定新的負責人。`PATCH /cases/:id` 把狀態改成 `ESCALATED` 時沒有帶優先級，系統自動提高一級；已經是 `URGENT` 就維持不變。畫面的狀態下拉選「已升級」會打開升級視窗，不走這條路徑。
 
 升級會發布 `case.escalated`。誰收到通知由請求的 `notifyTargets` 決定（升級對話框的勾選），只接受下列值，其他值回 400：
 

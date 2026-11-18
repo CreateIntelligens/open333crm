@@ -147,6 +147,8 @@
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `openspec/specs/trial-application/spec.md`「驗證即開通」寫消耗 token 時「設為 null」。程式刻意保留雜湊、以 `status` 當消耗閘，讓重按能回冪等成功（`trial.service.ts:165-167`）。規格應改成描述目前的做法。
 - `openspec/specs/trial-application/spec.md`「一個 email 只能申請一次」寫 gmail 才移除 `+tag`，程式對所有網域都移除（HC-14）。兩邊要決定以哪個為準。
 - `docs/ref/features/platform/TRIALS.md` 的核對日期是 2026-09-23。內容與程式一致，但沒有寫出：同一 email 再送申請會覆寫密碼與站台名稱並繞過節流（HC-01、HC-02）、平台「作廢」可被申請人重送推翻（HC-13）、轉正式 API 不限試用租戶（HC-08）。

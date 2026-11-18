@@ -1,6 +1,6 @@
 # 通知
 
-通知是租戶後台右上角的鈴鐺與「通知」頁。系統在客人傳訊息、工單被指派或升級、SLA 快到期、CSAT 低分、AI 額度快用完時，通知相關的成員。通知只在後台內顯示；除了 AI 額度告警，都不寄信。
+通知是租戶後台右上角的鈴鐺與「通知」頁。系統在客人傳訊息、工單被指派或升級、SLA 快到期、CSAT 低分、AI 額度快用完時，通知相關的成員。通知在後台內顯示；AI 額度告警與 FB、IG 權杖失效另外寄 email 給管理員，其他通知不寄信。
 
 - **資料來源**：`apps/api/src/modules/notification/*`、`apps/workers/src/handlers/notification.handler.ts`、`apps/workers/src/handlers/sla.handler.ts`、`apps/api/src/modules/csat/csat.service.ts`
 - **核對日期**：2026-10-21
@@ -49,7 +49,10 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 | CSAT 兩分以下 | `csat_low_score` | 有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員，含管理員；不看舊的角色列舉（`resolveCaseManagerRecipients()`，#339）。預設的客服角色也有 `case.assign` | `recordCsatScore()` |
 | SLA 預警與逾時 | `sla_warning`、`sla_breached` | 見[服務水準協議](../SLA.md) | workers |
 | AI 額度達 80% 或 100% | `usage_quota_warning`、`usage_quota_critical` | 所有 `ADMIN`，另外寄 email | `usage.quota.threshold` |
-| 自動化規則的通知動作 | 依規則 | 工單負責人，或所有 `ADMIN` 與 `SUPERVISOR` | workers 的自動化動作 |
+| 自動化規則的通知動作（「傳送通知」「通知主管」） | `sla_rule` | 工單負責人，或所有 `ADMIN` 與 `SUPERVISOR`，見[自動化](./AUTOMATION.md#哪些動作會執行) | workers 的自動化動作 |
+| FB、IG 權杖失效 | `channel_token_invalid` | 該租戶所有啟用中的 `ADMIN`，另外寄 email。持續失效時每 3 天再提醒一次 | API 行程的 `meta-token-health.ts` 排程，以 `createAndDispatch()` 寫入，見[渠道管理](./CHANNELS.md) |
+| 資料匯出完成或失敗 | `data_export_ready`、`data_export_failed` | 發起匯出的成員 | workers 的 `data-export.handler.ts`，以 `enqueueNotification()` 寫入 |
+| 資料刪除完成 | `data_erasure_done` | 發起刪除請求的成員；發起人已被永久刪除時不送 | workers 的 `data-erasure.handler.ts` |
 
 收件人都以 `Agent.role` 這個舊的三級列舉判斷，不看「角色與權限」頁設定的細粒度角色，見 `../../system/AUDIT.md` 的 RBAC-03。
 
@@ -83,6 +86,6 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 | API 行程的 SLA 訂閱永遠不會觸發 | 詳見 `../../system/AUDIT.md` 的 APP-05 |
 | 未指派對話的訊息通知沒有彙整 | 每則訊息對每位主管各寫一筆通知 |
 | 通知沒有保留期限 | 資料持續累積 |
-| 除 AI 額度告警外不寄信 | 成員不在後台時收不到任何通知 |
+| 只有 AI 額度告警與權杖失效寄信 | 其他通知只在後台顯示，成員不在後台時收不到 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

@@ -92,9 +92,9 @@
 
 `action` 以「對象.動作」命名，例如 `tenant.provision`、`plan.update`、`plan_change.approve`、`setting.update`。三件事值得先知道：
 
-- **`payload` 的內容沒有統一規則。** 多數路由把請求的 body 原樣放進去，`setting.update` 只記鍵名不記值，停用與啟用則完全不帶 payload。稽核能回答「誰動了什麼」，不一定能回答「改成什麼」。
+- **`payload` 的內容沒有統一規則。** 多數路由把請求的 body 原樣放進去，`setting.update` 只記鍵名不記值，停用與啟用則完全不帶 payload。開通租戶（`tenant.provision`）只記 `name` 與 `planSlug`，不記管理員 email；改成員登入 email（`tenant.agent.email.update`）只記新的 email，不記舊值。稽核能回答「誰動了什麼」，不一定能回答「改成什麼」。
 - **`platformUserId` 可以是空的。** 試用排程寫的 `tenant.trial.expire` 與 `tenant.trial.purge` 沒有操作者，空值代表系統動作。
-- **沒有查詢介面。** 只有 `GET /platform-users/:id/audit-logs` 能查與某個平台帳號相關的紀錄（最多 200 筆），沒有依對象或時間查詢全部紀錄的端點。
+- **查詢介面只有兩個。** `GET /platform-users/:id/audit-logs` 查與某個平台帳號相關的紀錄（最多 200 筆），租戶詳細頁以 `GET /tenants/:id/audit-logs` 查與某個租戶相關的紀錄。沒有依時間查詢全部紀錄的端點。
 
 ## 資料模型
 
@@ -119,7 +119,7 @@
 | **方案的停售沒有生效** | `Plan.isActive` 沒有任何讀取端，設為停售之後仍可被指派給租戶。詳見 `../../system/AUDIT.md` 的 PLAN-01 |
 | **登入與密碼重設沒有稽核紀錄** | `POST /auth/login`、`/auth/forgot-password`、`/auth/reset-password` 與 `/trial-signups/:id/resend` 沒有呼叫 `writePlatformAudit()`，對應的服務內部也沒有寫。詳見 `../../system/AUDIT.md` 的 SEC-02 |
 | **rate-limit 綁在路由 scope 內** | `@fastify/rate-limit` 在整個 API 只註冊一次，而且註冊在 `platformRoutes()` 函式內部。拆分 `platform.routes.ts` 之前必讀 `../../system/AUDIT.md` 的 SEC-03 |
-| 沒有任何測試 | `apps/api/tests/` 沒有檔案涵蓋這個模組。所有路由與服務都沒有回歸保護，CI 也沒有執行測試，見 `../../system/AUDIT.md` 的 CI-01 |
+| 平台忘記密碼沒有測試 | 平台模組在 `apps/api/tests/unit/modules/platform/` 與 `apps/api/tests/feature/modules/platform/` 有測試，但 `platform-password-recovery.service.ts` 只被其他測試 mock，本身的邏輯沒有測試。CI 也沒有執行測試，見 `../../system/AUDIT.md` 的 CI-01 |
 | 路由檔沒有跟著領域拆 | `platform.routes.ts` 是 repo 中路由數最多的單一檔案，一個檔案服務下列所有領域。這是 `AGENTS.md` 模組結構規則 3 的已知例外 |
 | `GET /trial-signups` 直接查資料庫 | 這是 `platform.routes.ts` 唯一沒有委派給服務的路由，是規則 1 的已知例外 |
 | 合約與復原的歸屬與路由名稱不一致 | `PATCH /tenants/:id/contract` 與 `/tenants/:id/restore` 看起來屬於租戶管理，實作在 `trial-admin.service.ts` |

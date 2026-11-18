@@ -126,6 +126,8 @@
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/KNOWLEDGE.md`「機器人怎麼用知識庫回答」寫「追問次數達到 `clarifyMaxAttempts` 後轉真人」：程式只回一句轉接文字，不改對話狀態（HC-KNOWLEDGE-01）。
 - `docs/ref/features/tenant/KNOWLEDGE.md` 的「目前的限制」與 AUDIT LLM-04 寫 Embedding 在組織內一律失敗：UAT Demo 租戶目前正常。
 - `docs/ref/features/tenant/KNOWLEDGE.md`「匯入」沒寫 CSV/Excel 拆出的問答**直接發布**，也沒寫 CSV 要 UTF-8 BOM。（#421 已補上直接發布與 CSV 編碼的說明）

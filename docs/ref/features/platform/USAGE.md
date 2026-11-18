@@ -40,7 +40,7 @@
 | 查不到價目 | 0，並標記 `usageMissing` | `ModelPricing` 沒有這個 model 的價目，log 會留一則 warn |
 | provider 沒回傳用量 | 0，並標記 `usageMissing` | token 數也是 0，不是真實值 |
 
-BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Gemini 支援：租戶在自己的後台填入金鑰，密文存 `TenantSettings.geminiApiKeyEnc`。`resolveGeminiKey()` 依序找租戶自填的金鑰、平台代設的金鑰、全域 `GEMINI_API_KEY`，只有第一層回傳 `keySource = 'byok'`。BYOK 的呼叫由 Google 直接向租戶收費，平台不經手，所以 `costUsd` 記 0。
+BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Gemini 支援：租戶在自己的後台填入金鑰，密文存 `TenantSettings.geminiApiKeyEnc`。`resolveGeminiKey()` 先找租戶自填的金鑰，回傳 `keySource = 'byok'`；沒有或解密失敗時用全域的 `GEMINI_API_KEY`，回傳 `keySource = 'platform'`。BYOK 的呼叫由 Google 直接向租戶收費，平台不經手，所以 `costUsd` 記 0。
 
 租戶金鑰解密失敗時會靜默退回平台金鑰，連帶改變成本歸屬與額度計算，見 `../../system/AUDIT.md` 的 AI-01。
 
@@ -90,6 +90,17 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 | 來源 | 每次都查資料庫 | Redis 計數器，miss 時從資料庫回填 |
 
 AI 月額度的月份一律是台灣月份（`taipeiMonthString()`）：Redis 計數器 key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，告警旗標是 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`，兩者都在台灣下個月 1 日 00:00 過期；告警站內通知與 email 的「本月（YYYY-MM）」也是台灣月份。舊的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}`（沒有 `:tpe`）不再被讀取，換版後計數器從資料庫以台灣月份重建，部署當下跨月的行為見 change `fix-platform-usage-trial-display` 的 design D3。
+
+額度用完時，每次呼叫 LLM 之前的檢查丟出 403 `PLAN_LIMIT_EXCEEDED`，不呼叫模型。各功能對這個錯誤的處理不同：
+
+| 功能 | 額度用完時 |
+| --- | --- |
+| AI 潤稿、AI Agent | 回 403 `PLAN_LIMIT_EXCEEDED`，畫面顯示錯誤 |
+| AI 建議回覆 | 回 200，建議清單是空的 |
+| 對話摘要 | 回 200，摘要改用不呼叫模型的備援內容 |
+| 情緒分析 | 改用關鍵字判斷 |
+| 工單分類 | 改用關鍵字分類 |
+| 知識庫自動回覆 | 轉真人，原因是「AI 月額度已用完」，見[知識庫與 AI](../tenant/KNOWLEDGE.md) |
 
 BYOK 的呼叫出現在用量統計裡，但不計入額度，也不會被額度擋下。額度的判斷見 `apps/api/src/modules/trial/token-quota.service.ts`。計數器少算用量之後，當月不會校正，見 `../../system/AUDIT.md` 的 USAGE-03。
 

@@ -111,6 +111,8 @@ P0：無。
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件、手冊與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/PORTAL.md`：「粉絲端目前無法使用」「系統目前沒有簽發粉絲 token 的路徑」（第 21、46、91 行）已過時（HC-PORTAL-02）。「餘額是該聯絡人所有交易的總和」（第 71 行）不精確，實際取最新一筆的 `balance`（main 版已改寫）。
 - `docs/ref/system/AUDIT.md` PORTAL-01：「目前 `signFanToken()` 沒有呼叫端…實際上無法進入」已過時（main 版仍是這段）。
 - `docs/ref/system/AUDIT.md` PLAN-04 的路由覆蓋表：`portal` 寫「17 條中 8 條」。後台 `portal.routes.ts` 從 `723f6e14`（2026-08-25）起以 plugin hook 對每條路由要求 `portal.view`，14 條全部經過 `requirePermission`；另 6 條是粉絲端，不適用。方案關閉 `portal` 時後台路由應全部擋得住（本次未改方案實測）。
