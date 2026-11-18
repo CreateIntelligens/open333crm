@@ -389,8 +389,9 @@ export function Sidebar() {
         : 'text-foreground/80 hover:bg-black/5 hover:text-foreground [--icon-cutout:hsl(var(--shell))]',
     );
 
+  // 背景依 Figma Sidebar：由上往下 #F5F5F5（0～75%）漸變到 #E6E6E6（100%），暗色模式用對應的 token
   return (
-    <nav aria-label="主要導覽" className="relative flex min-h-0 w-[66px] flex-none flex-col items-center bg-shell pt-3">
+    <nav aria-label="主要導覽" className="relative flex min-h-0 w-[66px] flex-none flex-col items-center bg-shell bg-gradient-to-b from-shell from-75% to-shell-end pt-3">
       {permissionsError && (
         <button
           type="button"
@@ -443,7 +444,6 @@ export function Sidebar() {
         })}
       </ul>
       </div>
-      <div className="mt-6 h-px w-full bg-border" aria-hidden="true" />
       {/* 只有寬螢幕、且目前這區有子選單時才需要收合按鈕 */}
       {wide && Boolean(active?.sections?.length) && (
         <div className="mb-3 mt-3 flex-none">
