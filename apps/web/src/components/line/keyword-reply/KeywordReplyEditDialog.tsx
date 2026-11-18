@@ -4,6 +4,16 @@ import React, { useEffect, useState } from 'react';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Select } from '@/components/ui/select';
+import {
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogDescription,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 import { useMaterials } from '@/hooks/useMaterials';
 import { CouponSelectField } from '@/components/coupons/CouponSelectField';
 import { bodyHasCouponUrl, COUPON_URL_IN_RULE_MESSAGE } from '@/lib/marketing/coupon-url';
@@ -61,7 +71,6 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
     }
   }, [open, reply, defaultChannel]);
 
-  if (!open) return null;
 
   const handleAddKeyword = () => {
     const k = draftKeyword.trim();
@@ -119,61 +128,48 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
     if (materialId && materialId !== reply?.materialId) setMaterialId('');
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b px-5 py-3">
-          <div>
-            <h2 className="text-base font-semibold">
-              {reply ? '編輯關鍵字回覆' : '建立關鍵字回覆'}
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              顧客在所選渠道傳送的訊息出現指定關鍵字時，自動回覆對應素材，也可以同時發送優惠券
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+  const CONTENT_TYPE_LABEL: Record<string, string> = { text: '文字', image: '圖片', flex: 'Flex', carousel: '輪播', imagemap: '圖文', video: '影片' };
 
-        <div className="space-y-5 overflow-y-auto p-5">
+  // 依 Claude Design「關鍵字回覆」：改為下一頁式表單（原本是自製的跳出視窗，沒有焦點管理、欄位名稱也沒綁定輸入框）
+  return (
+    <PageDialog open={open} onOpenChange={(o) => { if (!o) onClose(); }} section="渠道" parent="關鍵字回覆">
+      <PageDialogContent>
+        <PageDialogHeader>
+          <PageDialogTitle>{reply ? '編輯關鍵字回覆' : '建立關鍵字回覆'}</PageDialogTitle>
+          <PageDialogDescription>顧客在所選渠道傳送的訊息出現指定關鍵字時，自動回覆對應素材，也可以同時發送優惠券</PageDialogDescription>
+        </PageDialogHeader>
+
+        <div className="flex flex-col gap-6">
+
           {reply?.channelIssue && (
-            <div role="alert" className="rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+            <div role="alert" className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-amber-800">
               <p>{CHANNEL_ISSUE_MESSAGE}</p>
-              <a href={`/dashboard/automation/${reply.id}`} className="mt-1 inline-block font-medium underline">
+              <a href={`/dashboard/automation/${reply.id}`} className="mt-1 inline-block font-medium underline underline-offset-2">
                 到自動化規則編輯
               </a>
             </div>
           )}
 
-          {/* 渠道（change add-fb-ig-keyword-coupon design D4） */}
-          <div>
+          {/* 渠道（change add-fb-ig-keyword-coupon design D4，取自 main） */}
+          <div className="flex flex-col gap-1.5">
             {channelLocked ? (
               <>
-                <div className="text-xs font-semibold text-muted-foreground">
-                  渠道：{keywordReplyChannelLabel(channel)}
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">渠道建立後不能更改；要換渠道請刪除後重新建立</p>
+                <span className="text-sm font-medium text-foreground">渠道：{keywordReplyChannelLabel(channel)}</span>
+                <p className="text-xs text-muted-foreground">渠道建立後不能更改；要換渠道請刪除後重新建立</p>
               </>
             ) : (
               <>
-                <label htmlFor="keyword-reply-channel" className="mb-1 block text-xs font-semibold text-muted-foreground">
-                  渠道
-                </label>
-                <select
+                <label htmlFor="keyword-reply-channel" className="text-sm font-medium text-foreground">渠道</label>
+                <Select
                   id="keyword-reply-channel"
                   value={channel}
                   onChange={(e) => handleChannelChange(e.target.value as KeywordReplyChannel)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {KEYWORD_REPLY_CHANNELS.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
+                  options={KEYWORD_REPLY_CHANNELS.map((c) => ({ value: c.value, label: c.label }))}
+                />
                 {reply && !reply.channel && !reply.channelIssue && (
-                  <p className="mt-1 text-[11px] text-warning">這條規則原本沒有限定渠道，儲存後只在所選渠道的對話觸發</p>
+                  <p className="text-xs text-warning">這條規則原本沒有限定渠道，儲存後只在所選渠道的對話觸發</p>
                 )}
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   規則只在這個渠道的對話觸發，對這個渠道的所有帳號生效（例如所有 LINE 官方帳號或所有粉專）
                 </p>
               </>
@@ -181,46 +177,34 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
           </div>
 
           {/* 規則名稱 */}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-              規則名稱 *
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="kr-name" className="text-sm font-medium text-foreground">
+              規則名稱<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
             </label>
             <Input
+              id="kr-name"
               value={name}
               onChange={(e) => setName(e.target.value.slice(0, 200))}
               placeholder="例：詢問營業時間、預約諮詢、產品 DM"
+              aria-required="true"
+              aria-describedby="kr-name-hint"
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">只給管理用，用戶不會看到</p>
+            <p id="kr-name-hint" className="text-xs text-muted-foreground">只給管理用，顧客不會看到</p>
           </div>
 
           {/* 關鍵字 */}
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-              關鍵字 *
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="kr-keyword" className="text-sm font-medium text-foreground">
+              關鍵字<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">至少 1 個</span>
             </label>
-            <div className="mb-2 flex flex-wrap items-center gap-1.5">
-              {keywords.map((k, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 rounded-full border border-primary-border bg-primary-subtle px-2.5 py-1 text-xs text-primary"
-                >
-                  {k}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveKeyword(idx)}
-                    className="text-primary hover:text-destructive"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <Input
+                id="kr-keyword"
                 value={draftKeyword}
                 onChange={(e) => setDraftKeyword(e.target.value)}
                 placeholder="輸入關鍵字後按 Enter 或點「加入」"
-                className="flex-1 h-8 text-xs"
+                className="flex-1"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -228,54 +212,54 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
                   }
                 }}
               />
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 px-2 text-xs"
-                onClick={handleAddKeyword}
-                disabled={!draftKeyword.trim()}
-              >
-                <Plus className="mr-1 h-3 w-3" />
+              <Button variant="outline" size="lg" onClick={handleAddKeyword} disabled={!draftKeyword.trim()}>
+                <Plus />
                 加入
               </Button>
             </div>
-
-            {/* match mode */}
-            {keywords.length > 1 && (
-              <div className="mt-3 space-y-1">
-                <div className="text-xs font-medium text-muted-foreground">比對方式</div>
-                <div className="flex gap-3 text-xs">
-                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={matchMode === 'any'}
-                      onChange={() => setMatchMode('any')}
-                    />
-                    任一關鍵字出現就觸發（OR）
-                  </label>
-                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={matchMode === 'all'}
-                      onChange={() => setMatchMode('all')}
-                    />
-                    所有關鍵字都要出現才觸發（AND）
-                  </label>
-                </div>
-              </div>
+            {keywords.length > 0 && (
+              <ul aria-label="已加入的關鍵字" className="flex flex-wrap items-center gap-1.5 pt-1">
+                {keywords.map((k, idx) => (
+                  <li key={idx} className="inline-flex max-w-[240px] items-center gap-1 rounded-full border border-primary-border bg-primary-subtle py-1 pl-3 pr-1.5 text-sm text-primary">
+                    <span className="truncate" title={k}>{k}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveKeyword(idx)}
+                      aria-label={`移除關鍵字「${k}」`}
+                      className="flex h-5 w-5 flex-none items-center justify-center rounded-full hover:bg-primary/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 
-          {/* 素材選擇 */}
-          <div>
-            <label htmlFor="keyword-reply-material" className="mb-1 block text-xs font-semibold text-muted-foreground">
-              回覆素材
-            </label>
+          {/* 比對方式：2 個以上關鍵字才出現 */}
+          {keywords.length > 1 && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1.5 text-sm font-medium text-foreground">比對方式</legend>
+              {([
+                ['any', '任一關鍵字符合就觸發'],
+                ['all', '全部關鍵字都出現才觸發'],
+              ] as const).map(([value, label]) => (
+                <label key={value} className="inline-flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                  <input type="radio" name="kr-match" checked={matchMode === value} onChange={() => setMatchMode(value)} className="h-4 w-4 accent-primary" />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
+          )}
+
+          {/* 回覆素材（素材改為選填，與優惠券至少選一個；取自 main） */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="keyword-reply-material" className="text-sm font-medium text-foreground">回覆素材</label>
             {originalMaterialIssue && (
-              <div role="alert" className="mb-2 rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+              <div role="alert" className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-amber-800">
                 <p>{materialIssueMessage(originalMaterialIssue)}</p>
                 {originalMaterialIssue.kind === 'other_channel' ? (
-                  <a href={`/dashboard/automation/${reply!.id}`} className="mt-1 inline-block font-medium underline">
+                  <a href={`/dashboard/automation/${reply!.id}`} className="mt-1 inline-block font-medium underline underline-offset-2">
                     到自動化規則編輯
                   </a>
                 ) : (
@@ -283,77 +267,64 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
                 )}
               </div>
             )}
-            <select
+            <Select
               id="keyword-reply-material"
               value={materialId}
               onChange={(e) => setMaterialId(e.target.value)}
               disabled={!channelInfo.materialChannelType && !materialId}
-              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">— 請選擇 —</option>
-              {/* 規則原本的素材不在這個渠道的清單時仍保留選項，才看得出原本選的是什麼 */}
-              {reply?.materialId && materialId === reply.materialId && !materials.some((m) => m.id === reply.materialId) && (
-                <option value={reply.materialId}>原本的素材（id: {reply.materialId.slice(0, 8)}…）</option>
-              )}
-              {materials.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}（{m.contentType}）
-                </option>
-              ))}
-            </select>
+              aria-describedby="kr-material-hint"
+              options={[
+                { value: '', label: '— 請選擇 —' },
+                // 規則原本的素材不在這個渠道的清單時仍保留選項，才看得出原本選的是什麼
+                ...(reply?.materialId && materialId === reply.materialId && !materials.some((m) => m.id === reply.materialId)
+                  ? [{ value: reply.materialId, label: `原本的素材（id: ${reply.materialId.slice(0, 8)}…）` }]
+                  : []),
+                ...materials.map((m) => ({ value: m.id, label: `${m.name}（${CONTENT_TYPE_LABEL[m.contentType] ?? m.contentType}）` })),
+              ]}
+            />
             {selectedMaterialHasCouponUrl && (
-              <p role="alert" className="mt-2 rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+              <p role="alert" className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-amber-800">
                 {COUPON_URL_IN_RULE_MESSAGE}
               </p>
             )}
-            {selectedMaterial && (
-              <div className="mt-2 rounded border border-border bg-muted px-3 py-2 text-xs">
-                <div className="font-medium">{selectedMaterial.name}</div>
-                <div className="text-muted-foreground">
-                  類型：{selectedMaterial.contentType}
-                  {selectedMaterial.category ? ` · 分類：${selectedMaterial.category}` : ''}
-                </div>
-                {selectedMaterial.variables && selectedMaterial.variables.length > 0 && (
-                  <div className="mt-1 text-warning">
-                    此素材含 {selectedMaterial.variables.length} 個變數（{selectedMaterial.variables.map((v) => v.key).join(', ')}），送出時代入客人的聯絡人資料；客人沒有這項資料時用素材的預設值，沒有預設值則留空
-                  </div>
-                )}
-              </div>
+            {selectedMaterial?.variables && selectedMaterial.variables.length > 0 && (
+              <p role="note" className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-amber-800">
+                此素材含 {selectedMaterial.variables.length} 個變數（{selectedMaterial.variables.map((v) => v.key).join('、')}），送出時代入客人的聯絡人資料；客人沒有這項資料時用素材的預設值，沒有預設值則留空
+              </p>
             )}
             {channelInfo.materialChannelType ? (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                素材在「行銷 → 素材庫」建立，這裡只列{channelInfo.label}渠道的素材。素材與優惠券至少要選一個
+              <p id="kr-material-hint" className="text-xs text-muted-foreground">
+                素材在「行銷 &gt; 素材庫」建立，這裡只列{channelInfo.label}渠道的素材。素材與優惠券至少要選一個
               </p>
             ) : (
-              <p className="mt-1 text-[11px] text-muted-foreground">{channelInfo.label} 目前沒有素材，只能發券</p>
+              <p id="kr-material-hint" className="text-xs text-muted-foreground">{channelInfo.label} 目前沒有素材，只能發券</p>
             )}
           </div>
 
-          {/* 優惠券（add-coupon-system design D25） */}
-          <div className="space-y-3">
+          {/* 優惠券（add-coupon-system design D25，取自 main） */}
+          <div className="flex flex-col gap-3">
             <CouponSelectField
               id="keyword-reply-coupon"
               label="同時發送優惠券"
               value={couponId}
               onChange={setCouponId}
             />
-            <p className="-mt-2 text-[11px] text-muted-foreground">
+            <p className="-mt-2 text-xs text-muted-foreground">
               只列進行中的券。每位顧客依券的每人上限領取，發出的券會出現在收件匣與券的序號明細
             </p>
             {couponId && (
-              <div>
-                <label htmlFor="keyword-reply-failure-text" className="mb-1 block text-xs font-semibold text-muted-foreground">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="keyword-reply-failure-text" className="text-sm font-medium text-foreground">
                   發不出時回覆顧客
                 </label>
-                <textarea
+                <Textarea
                   id="keyword-reply-failure-text"
                   value={failureText}
                   onChange={(e) => setFailureText(e.target.value.slice(0, 500))}
                   rows={2}
                   placeholder="例：您已經領過這張券囉"
-                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   選填。顧客已達領取上限、券已發完或暫停時送出這段文字；空白則不回覆。沒有發出的原因都會記在對話中
                 </p>
               </div>
@@ -361,19 +332,19 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
           </div>
 
           {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
+            <p role="alert" className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
               {error}
-            </div>
+            </p>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
-          <Button variant="outline" onClick={onClose} disabled={saving}>取消</Button>
-          <Button onClick={handleSave} disabled={saving}>
+        <PageDialogFooter>
+          <Button variant="outline" size="lg" onClick={onClose} disabled={saving}>取消</Button>
+          <Button size="lg" onClick={handleSave} disabled={saving} loading={saving}>
             {saving ? '儲存中…' : '儲存'}
           </Button>
-        </div>
-      </div>
-    </div>
+        </PageDialogFooter>
+      </PageDialogContent>
+    </PageDialog>
   );
 }

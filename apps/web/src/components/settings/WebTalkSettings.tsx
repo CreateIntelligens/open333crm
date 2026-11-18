@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import api from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { SettingsHeader } from './SettingsHeader';
 
 interface WebTalkSettingsData {
   enabled: boolean;
@@ -96,16 +97,14 @@ export function WebTalkSettings() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h2 className="mb-2 text-lg font-semibold">WebTalk 協作</h2>
-        <p className="text-sm text-muted-foreground">
-          WebTalk 是後台右下角的多人聊天工具列，讓同一個租戶的成員在後台即時討論。每個租戶有自己的房間，
-          其他租戶看不到你們的在線名單與訊息。設定變更後，成員重新整理頁面才會生效。
-        </p>
-      </div>
+    // 版面與其他設定子頁一致：共用標題區、寬 760
+    <div className="flex max-w-[760px] flex-col gap-5">
+      <SettingsHeader
+        title="WebTalk 協作"
+        description="WebTalk 是後台右下角的多人聊天工具列，讓同一個租戶的成員在後台即時討論。每個租戶有自己的房間，其他租戶看不到你們的在線名單與訊息。設定變更後，成員重新整理頁面才會生效。"
+      />
 
-      <label className="flex items-start gap-3 rounded-lg border p-4">
+      <label className="flex items-start gap-3 rounded-lg border border-border bg-background p-4">
         <Checkbox checked={enabled} onCheckedChange={(v) => setEnabled(v === true)} className="mt-0.5" />
         <span className="space-y-1">
           <span className="block text-sm font-medium">啟用 WebTalk</span>
@@ -115,7 +114,7 @@ export function WebTalkSettings() {
         </span>
       </label>
 
-      <label className="flex items-start gap-3 rounded-lg border p-4">
+      <label className="flex items-start gap-3 rounded-lg border border-border bg-background p-4">
         <Checkbox checked={aiEnabled} onCheckedChange={(v) => setAiEnabled(v === true)} className="mt-0.5" />
         <span className="space-y-1">
           <span className="block text-sm font-medium">啟用 AI 摘要</span>
@@ -126,7 +125,7 @@ export function WebTalkSettings() {
         </span>
       </label>
 
-      <div className="space-y-2 rounded-lg border p-4">
+      <div className="space-y-2 rounded-lg border border-border bg-background p-4">
         <p className="text-sm font-medium">房間代號</p>
         <p className="text-xs text-muted-foreground">
           知道房間代號的人都可以加入房間。成員離職或懷疑代號外流時，請重新產生房間代號。

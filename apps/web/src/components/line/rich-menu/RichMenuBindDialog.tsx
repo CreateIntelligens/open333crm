@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Users } from 'lucide-react';
+import { Select } from '@/components/ui/select';
 import { useSegments } from '@/hooks/useMarketing';
 import { bindRichMenuAudience } from '@/hooks/useRichMenus';
 
@@ -54,14 +54,12 @@ export function RichMenuBindDialog({ richMenuId, richMenuName, onClose }: Props)
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="h-4 w-4" />綁定受眾 · {richMenuName}
-          </DialogTitle>
+          <DialogTitle>綁定受眾 · {richMenuName}</DialogTitle>
         </DialogHeader>
 
         {result ? (
           <div className="space-y-4">
-            <p className="rounded-md bg-success-subtle px-3 py-2.5 text-sm text-success">{result}</p>
+            <p role="status" className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success">{result}</p>
             <div className="flex justify-end">
               <Button onClick={onClose}>完成</Button>
             </div>
@@ -71,29 +69,31 @@ export function RichMenuBindDialog({ richMenuId, richMenuName, onClose }: Props)
             <p className="text-sm text-muted-foreground">
               選一個受眾分群，這個圖文選單就只會顯示給該分群中有 LINE 身分的使用者（其他人維持原本的預設選單）。
             </p>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">受眾分群</label>
-              <select
+            <div className="space-y-1.5">
+              <label htmlFor="rich-menu-bind-segment" className="text-sm font-semibold text-foreground">
+                受眾分群<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+              </label>
+              <Select
+                id="rich-menu-bind-segment"
                 value={segmentId}
                 onChange={(e) => setSegmentId(e.target.value)}
-                className="w-full rounded-md border border-border bg-white px-2.5 py-2 text-sm text-foreground dark:bg-card"
-              >
-                <option value="">請選擇分群…</option>
-                {segments?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}{typeof s.count === 'number' ? `（${s.count} 人）` : ''}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: '請選擇分群…' },
+                  ...(segments ?? []).map((s) => ({
+                    value: s.id,
+                    label: `${s.name}${typeof s.count === 'number' ? `（${s.count.toLocaleString('zh-TW')} 人）` : ''}`,
+                  })),
+                ]}
+              />
               {(!segments || segments.length === 0) && (
-                <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+                <p className="text-xs text-muted-foreground">
                   尚無受眾分群，請先到「行銷 › 受眾分群」建立。
                 </p>
               )}
             </div>
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose}>取消</Button>
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            <div className="-mx-6 flex justify-end gap-3 border-t border-border px-6 pt-4">
+              <Button variant="subtle" onClick={onClose}>取消</Button>
               <Button onClick={handleBind} disabled={busy || !segmentId}>
                 {busy ? '綁定中…' : '綁定'}
               </Button>

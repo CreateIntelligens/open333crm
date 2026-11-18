@@ -3,19 +3,24 @@
 /**
  * Rich Menu 列表頁
  *
- * - 上方：OaSwitcher（多 LINE OA 切換）+ LineModuleTabs
- * - 中間：「+ 建立 Rich Menu」按鈕
- * - 下方：網格卡片或空狀態
+ * 版面依 Claude Design「Rich Menu 列表」：
+ * - 標題列：麵包屑（渠道 > Rich Menu）、標題、說明、右側「建立 Rich Menu」
+ * - 標題下方：官方帳號篩選（OaSwitcher）＋總數
+ * - 卡片網格：縮圖、名稱＋狀態、底部按鈕文字、區域數與日期、依狀態顯示操作與提示
+ * 功能與 API 呼叫維持原樣，只換外觀。
  */
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Copy, Trash2, Edit, MoreHorizontal, Send, Undo2, Users } from 'lucide-react';
+import { Copy, Trash2, MoreHorizontal, Send, Undo2, Users, LayoutGrid, ImageIcon, MessageSquare } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { AddIcon, EditIcon } from '@/components/icons/figma-icons';
 import { OaSwitcher } from '@/components/line/OaSwitcher';
 import { RichMenuBindDialog } from '@/components/line/rich-menu/RichMenuBindDialog';
+import { richMenuStatusInfo } from '@/components/line/rich-menu/status';
 import {
   useRichMenus,
   deleteRichMenu,
@@ -30,14 +35,7 @@ import {
   richMenuUnpublishConfirm,
 } from '@/lib/rich-menu-confirm';
 import { isRichMenuPublishInterrupted } from '@/lib/rich-menu-status';
-
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft: { label: '草稿', color: '#94a3b8' },
-  publishing: { label: '發布中', color: '#f59e0b' },
-  published: { label: '已發布', color: '#22c55e' },
-  error: { label: '發布失敗', color: '#ef4444' },
-};
-const INTERRUPTED_LABEL = { label: '發布中斷', color: '#ef4444' };
+import { EmptyState } from '@/components/shared/EmptyState';
 
 export default function RichMenusPage() {
   const router = useRouter();
@@ -46,6 +44,7 @@ export default function RichMenusPage() {
   const [channelId, setChannelId] = useState<string | null>(initialChannelId);
 
   const { richMenus, isLoading, mutate } = useRichMenus(channelId);
+  const goCreate = () => router.push(`/dashboard/line/rich-menus/new?channelId=${channelId}`);
 
   // OA 切換時同步 URL
   const handleOaChange = (newChannelId: string) => {
@@ -113,60 +112,70 @@ export default function RichMenusPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-muted">
-      <Topbar title="LINE 管理" />
+    <div className="flex h-full flex-col">
+      <Topbar title="Rich Menu" description="LINE 聊天視窗底部的固定選單。建立草稿後可直接發布到 LINE。">
+        {channelId && (
+          <Button size="lg" onClick={goCreate}>
+            <AddIcon />
+            建立 Rich Menu
+          </Button>
+        )}
+      </Topbar>
 
-      <div className="border-b bg-white px-6 py-3">
-        <OaSwitcher value={channelId} onChange={handleOaChange} />
-      </div>
-
-      <main className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-6xl space-y-5">
-          <header className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Rich Menu</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                LINE 聊天視窗底部的固定選單。建立草稿後可直接發布到 LINE。
-              </p>
-            </div>
-            {channelId && (
-              <Button
-                onClick={() => router.push(`/dashboard/line/rich-menus/new?channelId=${channelId}`)}
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                建立 Rich Menu
-              </Button>
-            )}
-          </header>
-
-          {!channelId && (
-            <div className="rounded-lg border border-dashed border-input bg-white py-16 text-center">
-              <div className="text-sm text-muted-foreground">請先選擇 LINE 官方帳號</div>
-            </div>
-          )}
-
-          {channelId && isLoading && (
-            <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>
-          )}
-
-          {channelId && !isLoading && richMenus.length === 0 && (
-            <div className="rounded-lg border border-dashed border-input bg-white py-16 text-center">
-              <div className="text-sm text-muted-foreground">尚未建立任何 Rich Menu</div>
-              <Button
-                className="mt-3"
-                onClick={() => router.push(`/dashboard/line/rich-menus/new?channelId=${channelId}`)}
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                建立第一個 Rich Menu
-              </Button>
-            </div>
-          )}
-
+      <div className="flex flex-1 flex-col gap-5 overflow-auto px-7 pb-7">
+        <div className="flex flex-wrap items-center gap-3">
+          <OaSwitcher value={channelId} onChange={handleOaChange} />
           {channelId && !isLoading && richMenus.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {richMenus.map((rm) => (
+            <span className="text-sm text-muted-foreground">共 {richMenus.length} 個</span>
+          )}
+        </div>
+
+        {!channelId && (
+          <div className="rounded-lg border border-border bg-muted">
+            <EmptyState
+              icon={<MessageSquare />}
+              title="請先選擇官方帳號"
+              description="Rich Menu 依官方帳號分開管理。從上方「官方帳號」選擇後，才會列出該帳號的選單。"
+            />
+          </div>
+        )}
+
+        {channelId && isLoading && (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="載入中">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="overflow-hidden rounded-lg border border-border bg-background">
+                <div className="h-[200px] animate-pulse bg-muted" />
+                <div className="space-y-3 p-4">
+                  <div className="h-5 w-2/3 animate-pulse rounded bg-muted" />
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+                  <div className="h-8 w-40 animate-pulse rounded bg-muted" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {channelId && !isLoading && richMenus.length === 0 && (
+          <div className="rounded-lg border border-border">
+            <EmptyState
+              icon={<LayoutGrid />}
+              title="尚未建立任何 Rich Menu"
+              description="Rich Menu 是 LINE 聊天室下方的圖文選單"
+              action={
+                <Button onClick={goCreate}>
+                  <AddIcon />
+                  建立第一個 Rich Menu
+                </Button>
+              }
+            />
+          </div>
+        )}
+
+        {channelId && !isLoading && richMenus.length > 0 && (
+          <ul className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {richMenus.map((rm) => (
+              <li key={rm.id}>
                 <RichMenuCard
-                  key={rm.id}
                   richMenu={rm}
                   onEdit={(id) => router.push(`/dashboard/line/rich-menus/${id}`)}
                   onDuplicate={handleDuplicate}
@@ -174,11 +183,11 @@ export default function RichMenusPage() {
                   onPublish={handlePublish}
                   onUnpublish={handleUnpublish}
                 />
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -198,96 +207,106 @@ function RichMenuCard({
   onPublish: (id: string) => void;
   onUnpublish: (id: string) => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [bindOpen, setBindOpen] = useState(false);
   const interrupted = isRichMenuPublishInterrupted(richMenu);
-  const statusInfo = interrupted
-    ? INTERRUPTED_LABEL
-    : STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
+  const status = richMenuStatusInfo(richMenu);
   const isPublished = richMenu.status === 'published';
+  const isPublishing = richMenu.status === 'publishing' && !interrupted;
   // 發布失敗或中斷的選單可以重新發布；還在發布中的選單要等它完成或中斷超過 5 分鐘
   const canPublish = richMenu.status === 'draft' || richMenu.status === 'error' || interrupted;
 
+  const hint = isPublishing
+    ? '正在發布到 LINE，請稍後重新整理'
+    : interrupted
+      ? '發布過程中斷，請重新發布'
+      : richMenu.status === 'error'
+        ? '上次發布失敗，可修正內容後重新發布'
+        : null;
+
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
-      {/* 縮圖：背景圖（高度比例壓縮，避免大選單把卡片撐爆） */}
-      <div className="relative aspect-[2500/843] w-full overflow-hidden bg-muted">
+    <article className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-background">
+      {/* 縮圖：背景圖完整顯示（大、小選單比例不同，用固定高度置中） */}
+      <div className="flex h-[200px] items-center justify-center border-b border-border bg-muted p-4">
         {richMenu.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={richMenu.imageUrl} alt={richMenu.name} className="h-full w-full object-cover" />
+          <img src={richMenu.imageUrl} alt={`${richMenu.name} 背景圖`} className="max-h-full max-w-full rounded object-contain" />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">無背景圖</div>
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-input text-sm text-muted-foreground">
+            <ImageIcon className="h-5 w-5" aria-hidden="true" />
+            無背景圖
+          </div>
         )}
       </div>
 
-      <div className="space-y-2 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-semibold text-foreground">{richMenu.name}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">{richMenu.chatBarText}</div>
-          </div>
-          <Badge color={statusInfo.color}>{statusInfo.label}</Badge>
+      <div className="flex flex-1 flex-col gap-1.5 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="min-w-0 flex-1 truncate text-base font-semibold leading-6 text-foreground" title={richMenu.name}>
+            {richMenu.name}
+          </h3>
+          <Badge variant={status.variant} className="mt-0.5">{status.label}</Badge>
         </div>
-
-        <div className="text-[11px] text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
+          底部按鈕：{richMenu.chatBarText}
+          {isPublished && richMenu.isDefault ? ' · 所有好友的預設選單' : ''}
+        </p>
+        <p className="text-sm tabular-nums text-muted-foreground">
           {richMenu.areas.length} 區域 · {new Date(richMenu.updatedAt).toISOString().slice(0, 10)}
-        </div>
+        </p>
 
-        <div className="flex items-center justify-end gap-1 pt-1">
-          {canPublish && (
-            <Button variant="default" size="sm" onClick={() => onPublish(richMenu.id)}>
-              <Send className="mr-1 h-3 w-3" />
-              發布
-            </Button>
-          )}
-          {isPublished && (
-            <Button variant="outline" size="sm" onClick={() => setBindOpen(true)}>
-              <Users className="mr-1 h-3 w-3" />
-              綁定受眾
-            </Button>
-          )}
-          {isPublished && (
-            <Button variant="outline" size="sm" onClick={() => onUnpublish(richMenu.id)}>
-              <Undo2 className="mr-1 h-3 w-3" />
-              取消發布
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onEdit(richMenu.id)}
-            disabled={isPublished}
-            title={isPublished ? '已發布需先取消發布才能編輯' : undefined}
-          >
-            <Edit className="mr-1 h-3 w-3" />
-            編輯
-          </Button>
-          <div className="relative">
-            <Button variant="ghost" size="sm" onClick={() => setMenuOpen((v) => !v)}>
-              <MoreHorizontal className="h-3 w-3" />
-            </Button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full z-10 mt-1 w-28 rounded-md border border-border bg-white py-1 shadow-md">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
-                  onClick={() => { setMenuOpen(false); onDuplicate(richMenu.id); }}
-                >
-                  <Copy className="h-3 w-3" />複製
-                </button>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-destructive hover:bg-destructive-subtle disabled:opacity-40 disabled:cursor-not-allowed"
-                  disabled={isPublished}
-                  title={isPublished ? '已發布需先取消發布才能刪除' : undefined}
-                  onClick={() => { setMenuOpen(false); onDelete(richMenu.id); }}
-                >
-                  <Trash2 className="h-3 w-3" />刪除
-                </button>
-              </div>
+        <div className="mt-auto flex items-center gap-2 pt-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {canPublish && (
+              <Button size="sm" onClick={() => onPublish(richMenu.id)}>
+                <Send aria-hidden="true" />
+                發布
+              </Button>
             )}
+            {isPublished && (
+              <Button variant="secondary" size="sm" onClick={() => setBindOpen(true)}>
+                <Users aria-hidden="true" />
+                綁定受眾
+              </Button>
+            )}
+            {isPublished && (
+              <Button variant="subtle" size="sm" onClick={() => onUnpublish(richMenu.id)}>
+                <Undo2 aria-hidden="true" />
+                取消發布
+              </Button>
+            )}
+            <Button
+              variant="subtle"
+              size="sm"
+              onClick={() => onEdit(richMenu.id)}
+              disabled={isPublished}
+              title={isPublished ? '已發布需先取消發布才能編輯' : undefined}
+            >
+              <EditIcon aria-hidden="true" />
+              編輯
+            </Button>
           </div>
+          <DropdownMenu
+            align="right"
+            trigger={
+              <span className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-tertiary-foreground hover:bg-shell">
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">更多操作</span>
+              </span>
+            }
+          >
+            <DropdownMenuItem onClick={() => onDuplicate(richMenu.id)}>
+              <Copy className="mr-2 h-4 w-4" aria-hidden="true" />複製
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              destructive
+              disabled={isPublished}
+              title={isPublished ? '已發布需先取消發布才能刪除' : undefined}
+              onClick={() => onDelete(richMenu.id)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />刪除
+            </DropdownMenuItem>
+          </DropdownMenu>
         </div>
+        {hint && <p className="pt-1 text-xs text-muted-foreground">{hint}</p>}
       </div>
 
       {bindOpen && (
@@ -297,6 +316,6 @@ function RichMenuCard({
           onClose={() => setBindOpen(false)}
         />
       )}
-    </div>
+    </article>
   );
 }

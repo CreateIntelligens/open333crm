@@ -7,9 +7,20 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // 字級依設計師 11/05 決定（約 90%，大字縮小、最小 12px 不變）；改回來刪掉 fontSize 這段即可
+      fontSize: {
+        xs: ["0.75rem", { lineHeight: "1rem" }],
+        sm: ["0.8125rem", { lineHeight: "1.25rem" }],
+        base: ["0.875rem", { lineHeight: "1.375rem" }],
+        lg: ["1rem", { lineHeight: "1.5rem" }],
+        xl: ["1.125rem", { lineHeight: "1.625rem" }],
+        "2xl": ["1.375rem", { lineHeight: "1.875rem" }],
+        "3xl": ["1.625rem", { lineHeight: "2.125rem" }],
+      },
       fontFamily: {
-        // 不依賴建置期 Google Font fetch；執行環境可用時優先使用 Noto Sans TC / Inter。
-        sans: ['Noto Sans TC', 'Inter', 'PingFang TC', 'Microsoft JhengHei', 'system-ui', 'sans-serif'],
+        // 不依賴建置期 Google Font fetch（main 94410ae2）。
+        // 設計：英數走 Inter（Figma），Inter 沒有中文字形，中文自動落到 Noto Sans TC。
+        sans: ['Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',
@@ -57,6 +68,18 @@ const config: Config = {
           DEFAULT: 'hsl(var(--accent))',
           foreground: 'hsl(var(--accent-foreground))',
         },
+        shell: {
+          DEFAULT: 'hsl(var(--shell))',
+          end: 'hsl(var(--shell-end))',
+        },
+        tertiary: {
+          foreground: 'hsl(var(--tertiary-foreground))',
+        },
+        'status-neutral': 'hsl(var(--neutral))', // 不覆蓋 Tailwind 內建 neutral 色階
+        robot: 'hsl(var(--robot))',
+        online: 'hsl(var(--online))',
+        'control-disabled': 'hsl(var(--control-disabled))',
+        'disabled-solid': 'hsl(var(--disabled-solid))',
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',

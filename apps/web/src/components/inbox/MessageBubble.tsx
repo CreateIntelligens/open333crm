@@ -3,7 +3,8 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { AlertCircle, Bot, ExternalLink, FileText, Settings2 } from 'lucide-react';
+import { Avatar } from '@/components/ui/avatar';
+import { AlertCircle, Bot, ExternalLink, FileText } from 'lucide-react';
 import { describeMessageMedia } from '@/lib/inbox/message-media';
 import { LinkifiedText } from '@/components/chatbox/LinkifiedText';
 import { CommentOriginNote, commentReplyMessageKind } from './CommentOrigin';
@@ -50,6 +51,8 @@ function extractText(content: string | { text?: string } | unknown): string {
 }
 
 interface MessageBubbleProps {
+  /** 對方的名字，用來顯示頭像縮寫（Claude Design：對方訊息左側有圓形頭像） */
+  contactName?: string;
   message: {
     id: string;
     direction: string;
@@ -62,7 +65,7 @@ interface MessageBubbleProps {
   };
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, contactName }: MessageBubbleProps) {
   const isInbound = message.direction.toLowerCase() === 'inbound';
   // 留言自動私訊補入的訊息（design D18）：系統說明另外處理；私訊快照以外送泡泡顯示，客服才看得出顧客在回什麼
   const commentReplyKind = commentReplyMessageKind(message.metadata);
@@ -101,23 +104,17 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
-  // Determine bubble color — 對齊 Figma「Chat / Bubble」
+  // 泡泡顏色依 Claude Design「收件匣 v4」：對方白底灰框（左上小圓角）、我方藍底白字（右上小圓角）。
+  // Figma「Chat / Bubble」的我方為淡藍底深字（bg-primary-subtle text-foreground），要改回時換掉最後一行即可
   const getBubbleClasses = () => {
-    if (isBot) {
-      // Bot：紫底 + 紫邊 (AI 回覆)
-      return 'rounded-tl-none border border-ai-border bg-ai-subtle text-foreground';
+    // Bot 回覆用淡紫底與紫邊，和客人訊息（白底灰框）區分（不只靠頭像與標籤）
+    if (isBot && !isInbound) {
+      return 'rounded-tl-[4px] border border-ai-border bg-ai-subtle text-foreground';
     }
-    if (isInbound) {
-      // 對方：白底左上直角
-      return 'rounded-tl-none border border-border bg-card text-foreground shadow-bubble';
+    if (isInbound || isBot) {
+      return 'rounded-tl-[4px] border border-border bg-background text-foreground';
     }
-    // 我方：淡藍底右上直角
-    return 'rounded-tr-none bg-primary-subtle text-foreground';
-  };
-
-  const getTimeClasses = () => {
-    if (isBot) return 'text-ai/70';
-    return 'text-muted-foreground';
+    return 'rounded-tr-[4px] bg-primary text-white';
   };
 
   // Confidence badge color — tokens 語意色
@@ -150,117 +147,93 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     return '中性';
   };
 
+  const isLeft = isInbound || isBot;
+  // 綁定、登記流程自動送出的訊息標示「系統自動發送」，不是 AI 回覆（取自 main）
+  // 留言自動私訊的私訊快照：系統依規則送出，不是客服或 AI 回覆（取自 main）
+  const author =
+    commentReplyKind === 'snapshot'
+      ? '留言自動私訊'
+      : isIdentityNotice ? '系統自動發送' : isBot ? 'AI 助理' : !isInbound ? message.senderName : undefined;
+
   return (
-    <div
-      className={cn('flex w-full gap-2 px-4 py-1', isInbound || isBot ? 'justify-start' : 'justify-end')}
-    >
-      <div className={cn('flex max-w-[70%] flex-col gap-1', isInbound || isBot ? 'items-start' : 'items-end')}>
-      <div
-        className={cn(
-          'max-w-full rounded-2xl px-4 py-2.5',
-          getBubbleClasses(),
-          deliveryFailed && 'border border-dashed border-destructive/50 opacity-80',
-        )}
-      >
-        {/* 系統訊息標示：綁定、登記流程自動送出，不是 AI 回覆 */}
-        {isIdentityNotice && (
-          <div className="mb-1 flex items-center gap-1">
-            <Settings2 className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] font-semibold text-muted-foreground">系統自動發送</span>
-          </div>
-        )}
+    <div className={cn('flex w-full gap-2.5 px-6 py-1.5', isLeft ? 'justify-start' : 'justify-end')}>
+      {/* 對方／AI 的頭像 */}
+      {isLeft && (
+        isBot ? (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ai-subtle text-ai" aria-hidden="true">
+            <Bot className="h-4 w-4" />
+          </span>
+        ) : (
+          <Avatar alt={contactName || message.senderName} size="sm" />
+        )
+      )}
 
-        {/* 留言自動私訊的私訊快照：系統依規則送出，不是客服或 AI 回覆 */}
-        {commentReplyKind === 'snapshot' && (
-          <div className="mb-1 flex items-center gap-1">
-            <Settings2 className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] font-semibold text-muted-foreground">留言自動私訊</span>
-          </div>
-        )}
+      <div className={cn('flex min-w-0 max-w-[70%] flex-col gap-1', isLeft ? 'items-start' : 'items-end')}>
+        {author && <span className="text-xs text-muted-foreground">{author}</span>}
 
-        {/* Bot label */}
-        {isBot && !isIdentityNotice && (
-          <div className="mb-1 flex items-center gap-1">
-            <Bot className="h-3 w-3 text-ai" />
-            <span className="text-[10px] font-semibold text-ai">Bot 回覆</span>
-          </div>
-        )}
+        <div
+          className={cn(
+            'max-w-full rounded-[14px] px-3.5 py-2.5 text-sm leading-5',
+            getBubbleClasses(),
+            deliveryFailed && 'border border-dashed border-destructive/50 opacity-80',
+          )}
+        >
+          {/* Content */}
+          {(() => {
+            const media = describeMessageMedia(message.contentType, message.content);
+            switch (media.kind) {
+              case 'image':
+                return (
+                    <a href={media.url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={media.url}
+                        alt="Image message"
+                        className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                      />
+                    </a>
+                );
+              case 'video':
+                return (
+                    <video src={media.url} controls className="max-w-full rounded-lg" style={{ maxHeight: '320px' }} />
+                );
+              case 'audio':
+                return <audio src={media.url} controls className="max-w-full" />;
+              case 'file':
+                return (
+                    <a
+                      href={media.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={media.fileName}
+                      className="flex items-center gap-2 text-sm underline-offset-2 hover:underline"
+                    >
+                      <FileText className="h-4 w-4 shrink-0" />
+                      <span className="break-all">{media.fileName}</span>
+                      {media.sizeLabel && <span className="shrink-0 text-xs opacity-70">{media.sizeLabel}</span>}
+                    </a>
+                );
+              default:
+                return (
+                    <>
+                      <LinkifiedText text={textContent} className="text-sm whitespace-pre-wrap break-words" />
+                      {/* 媒體下載失敗要看得到，否則客服以為還在下載 */}
+                      {media.error && <p className="mt-1 text-xs text-destructive">{media.error}</p>}
+                    </>
+                );
+            }
+          })()}
 
-        {/* Sender name for inbound */}
-        {message.senderName && isInbound && !isBot && (
-          <p className="mb-0.5 text-xs font-medium opacity-70">{message.senderName}</p>
-        )}
+        </div>
 
-        {/* Content */}
-        {(() => {
-          const media = describeMessageMedia(message.contentType, message.content);
-          switch (media.kind) {
-            case 'image':
-              return (
-                <a href={media.url} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={media.url}
-                    alt="Image message"
-                    className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                  />
-                </a>
-              );
-            case 'video':
-              return (
-                <video src={media.url} controls className="max-w-full rounded-lg" style={{ maxHeight: '320px' }} />
-              );
-            case 'audio':
-              return <audio src={media.url} controls className="max-w-full" />;
-            case 'file':
-              return (
-                <a
-                  href={media.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download={media.fileName}
-                  className="flex items-center gap-2 text-sm underline-offset-2 hover:underline"
-                >
-                  <FileText className="h-4 w-4 shrink-0" />
-                  <span className="break-all">{media.fileName}</span>
-                  {media.sizeLabel && <span className="shrink-0 text-xs opacity-70">{media.sizeLabel}</span>}
-                </a>
-              );
-            default:
-              return (
-                <>
-                  <LinkifiedText text={textContent} className="text-sm whitespace-pre-wrap break-words" />
-                  {/* 媒體下載失敗要看得到，否則客服以為還在下載 */}
-                  {media.error && <p className="mt-1 text-xs text-destructive">{media.error}</p>}
-                </>
-              );
-          }
-        })()}
-
-        {/* Bot extras: confidence + trigger type */}
-        {isBot && (confidence !== null || triggerType) && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {confidence !== null && (
-              <span className={cn('inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold', getConfidenceColor(confidence))}>
-                信心值 {Math.round(confidence * 100)}%
-              </span>
-            )}
-            {triggerType && (
-              <span className="inline-flex items-center rounded-md bg-ai-subtle px-1.5 py-0.5 text-[10px] font-medium text-ai">
-                {getTriggerLabel(triggerType)}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Knowledge base refs */}
+        {/* AI 回覆的參考來源 */}
         {isBot && knowledgeRefs && knowledgeRefs.length > 0 && (
-          <div className="mt-1.5 border-t border-ai-border pt-1.5">
-            <p className="text-[10px] text-ai/70 mb-0.5">參考來源：</p>
+          <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
+            <span>參考來源：</span>
             {knowledgeRefs.map((ref) => (
               <a
                 key={ref.id}
-                href={ref.url || '#'}
-                className="flex items-center gap-1 text-[10px] text-ai hover:underline"
+                href={ref.url && /^https?:\/\//i.test(ref.url) ? ref.url : undefined}
+                className="flex items-center gap-1 text-ai hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -271,25 +244,26 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Sentiment badge for inbound messages */}
-        {isInbound && !isBot && sentiment && (
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium', getSentimentColor(sentiment.sentiment))}>
+        {/* 時間在泡泡外（Claude Design）；情緒、信心值、觸發方式放在同一行，不擠在泡泡裡 */}
+        <div className={cn('flex flex-wrap items-center gap-1.5 text-[11px] leading-4 text-muted-foreground', !isLeft && 'justify-end')}>
+          <span className="tabular-nums">{format(new Date(message.createdAt), 'HH:mm')}</span>
+          {isBot && confidence !== null && (
+            <span className={cn('rounded px-1.5 py-px text-[10px] font-semibold', getConfidenceColor(confidence))}>
+              信心值 {Math.round(confidence * 100)}%
+            </span>
+          )}
+          {isBot && triggerType && (
+            <span className="rounded bg-ai-subtle px-1.5 py-px text-[10px] font-medium text-ai">{getTriggerLabel(triggerType)}</span>
+          )}
+          {isInbound && !isBot && sentiment && (
+            <span
+              className={cn('rounded-full px-1.5 py-px text-[10px] font-medium', getSentimentColor(sentiment.sentiment))}
+              title={sentiment.confidence != null ? `信心值 ${Math.round(sentiment.confidence * 100)}%` : undefined}
+            >
               {getSentimentLabel(sentiment.sentiment)}
             </span>
-            {sentiment.confidence != null && (
-              <span className="text-[10px] text-muted-foreground">
-                信心值 {Math.round(sentiment.confidence * 100)}%
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Timestamp */}
-        <p className={cn('mt-1 text-[10px]', getTimeClasses())}>
-          {format(new Date(message.createdAt), 'HH:mm')}
-        </p>
-      </div>
+          )}
+        </div>
 
       {deliveryFailed && (
         <div role="alert" className="flex max-w-full items-start gap-1 px-1 text-xs text-destructive">

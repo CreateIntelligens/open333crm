@@ -9,24 +9,29 @@ import {
   XCircle,
   Eye,
   RotateCcw,
+  Send,
+  Users,
 } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useChannels } from '@/hooks/useChannels';
 import { useCampaigns, useSegments, useBroadcasts } from '@/hooks/useMarketing';
 import { useMaterials, type Material } from '@/hooks/useMaterials';
 import { MaterialPreview } from '@/components/materials/MaterialPreview';
+import { AddIcon, MarketingIcon } from '@/components/icons/figma-icons';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
+// 發券結果是一次性顯示結果，維持跳出視窗（skill 第 5 節）
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { toLocalInputValue } from '@/lib/datetime-local';
 import {
@@ -46,6 +51,7 @@ import { COUPON_URL_NEEDS_COUPON_MESSAGE } from '@/lib/marketing/coupon-url';
 import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { usePermission } from '@/providers/AuthProvider';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 // 建立群發的額外權限（change require-broadcast-send-permissions）：沒有權限時欄位停用並說明，後端也會擋
 const SCHEDULE_NEEDS_BROADCAST = '排程發送需要「執行群發」權限。可以先存成草稿，再請有權限的成員發送';
@@ -72,17 +78,33 @@ const broadcastStatusMap: Record<string, { label: string; color: string }> = {
   cancelled: { label: '已取消', color: '#94a3b8' },
 };
 
+// 狀態顏色改用 Figma Tag 的 token（原本寫死色碼，暗色模式會壞）；依 Figma 微調
+const STATUS_VARIANT: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'warning'> = {
+  draft: 'secondary',
+  active: 'success',
+  scheduled: 'warning',
+  sending: 'info',
+  completed: 'info',
+  failed: 'danger',
+  cancelled: 'secondary',
+};
+
 function StatusBadge({ status, map }: { status: string; map: Record<string, { label: string; color: string }> }) {
-  const info = map[status] || { label: status, color: '#6b7280' };
-  return <Badge color={info.color}>{info.label}</Badge>;
+  const info = map[status] || { label: status, color: '' };
+  return <Badge variant={STATUS_VARIANT[status] ?? 'secondary'}>{info.label}</Badge>;
+}
+
+// 「新增」按鈕放在頁面標題列右側（依 Figma 7.1.1），所以表單的開關由外層頁面控制
+interface TabProps {
+  dialogOpen: boolean;
+  setDialogOpen: (open: boolean) => void;
 }
 
 // ─── Campaign Tab ──────────────────────────────────────────────────────────
 
-function CampaignTab() {
+function CampaignTab({ dialogOpen, setDialogOpen }: TabProps) {
   const router = useRouter();
   const { campaigns, isLoading, mutate } = useCampaigns();
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState({ name: '', description: '', startDate: '', endDate: '' });
   const [saving, setSaving] = useState(false);
 
@@ -117,66 +139,64 @@ function CampaignTab() {
   };
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">行銷活動</h3>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          新增活動
-        </Button>
-      </div>
-
+    <div>
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : campaigns.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無行銷活動</p>
+        <EmptyState icon={<MarketingIcon />} title="尚無行銷活動" description="點右上角「新增活動」建立第一個行銷活動" />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {campaigns.map((c) => (
-            <div
-              key={c.id}
-              className="cursor-pointer rounded-lg border p-4 transition hover:shadow-md"
-              onClick={() => router.push(`/dashboard/marketing/campaigns/${c.id}`)}
-            >
-              <div className="mb-2 flex items-center justify-between">
-                <h4 className="font-medium">{c.name}</h4>
-                <StatusBadge status={c.status} map={campaignStatusMap} />
-              </div>
-              {c.description && (
-                <p className="mb-2 text-sm text-muted-foreground line-clamp-2">{c.description}</p>
-              )}
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>
-                  {c._count?.broadcasts || 0} 次廣播
+        // Figma 7.1.1 是列表樣式（表格內容是佔位資料），欄位沿用原本卡片上的資訊；依 Figma 微調
+        <div role="table" aria-label="行銷活動" className="overflow-hidden rounded-lg border border-border">
+          <div role="row" className="grid grid-cols-[minmax(0,1fr)_120px_120px_140px_80px] items-center gap-5 border-b border-border bg-muted px-5 py-2 text-sm font-medium leading-7 text-muted-foreground">
+            <span role="columnheader">活動名稱</span>
+            <span role="columnheader">狀態</span>
+            <span role="columnheader">廣播次數</span>
+            <span role="columnheader">建立日期</span>
+            <span role="columnheader">操作</span>
+          </div>
+          {campaigns.map((c) => {
+            const open = () => router.push(`/dashboard/marketing/campaigns/${c.id}`);
+            return (
+              <div
+                key={c.id}
+                role="row"
+                tabIndex={0}
+                onClick={open}
+                onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === 'Enter') open(); }}
+                className="grid cursor-pointer grid-cols-[minmax(0,1fr)_120px_120px_140px_80px] items-center gap-5 border-b border-border bg-background px-5 py-4 text-sm font-medium text-muted-foreground transition-colors last:border-b-0 hover:bg-shell focus-visible:bg-shell focus-visible:outline-none"
+              >
+                <span role="cell" className="flex min-w-0 flex-col gap-0.5">
+                  <span className="truncate font-semibold text-foreground">{c.name}</span>
+                  {c.description && <span className="truncate text-xs font-normal">{c.description}</span>}
                 </span>
-                <span>{new Date(c.createdAt).toLocaleDateString('zh-TW')}</span>
+                <span role="cell"><StatusBadge status={c.status} map={campaignStatusMap} /></span>
+                <span role="cell" className="tabular-nums">{c._count?.broadcasts || 0} 次</span>
+                <span role="cell" className="tabular-nums">{new Date(c.createdAt).toLocaleDateString('zh-TW')}</span>
+                <span role="cell">
+                  {c.status === 'draft' && (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-destructive"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(c.id); }}
+                    >
+                      刪除
+                    </Button>
+                  )}
+                </span>
               </div>
-              {c.status === 'draft' && (
-                <div className="mt-2 flex justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(c.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新增行銷活動</DialogTitle>
-          </DialogHeader>
+      <PageDialog section="行銷" parent="行銷活動" open={dialogOpen} onOpenChange={setDialogOpen}>
+        <PageDialogContent>
+          <PageDialogHeader>
+            <PageDialogTitle>新增行銷活動</PageDialogTitle>
+          </PageDialogHeader>
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
@@ -213,7 +233,7 @@ function CampaignTab() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <PageDialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
@@ -221,9 +241,9 @@ function CampaignTab() {
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </PageDialogFooter>
+        </PageDialogContent>
+      </PageDialog>
     </div>
   );
 }
@@ -243,12 +263,11 @@ function isStaleCouponBroadcast(b: { couponId?: string | null; status: string; u
 }
 
 
-function BroadcastTab() {
+function BroadcastTab({ dialogOpen, setDialogOpen }: TabProps) {
   const { broadcasts, isLoading, mutate } = useBroadcasts();
   const { channels } = useChannels();
   const { campaigns } = useCampaigns();
   const { segments } = useSegments();
-  const [dialogOpen, setDialogOpen] = useState(false);
   // 排程欄位的最小值：對話框開啟時算一次（一分鐘後），不隨每次重繪往前移動
   const scheduleMin = useMemo(
     () => (dialogOpen ? toLocalInputValue(new Date(Date.now() + 60_000).toISOString()) : ''),
@@ -446,21 +465,13 @@ function BroadcastTab() {
   const targetTypeOptions = broadcastTargetOptions(selectedChannel?.channelType);
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">廣播歷史</h3>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          建立廣播
-        </Button>
-      </div>
-
+    <div>
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : broadcasts.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無廣播記錄</p>
+        <EmptyState icon={<Send />} title="尚無廣播記錄" description="建立廣播後，發送紀錄與結果會顯示在這裡" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -606,11 +617,11 @@ function BroadcastTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>建立廣播</DialogTitle>
-          </DialogHeader>
+      <PageDialog section="行銷" parent="廣播" open={dialogOpen} onOpenChange={setDialogOpen}>
+        <PageDialogContent className="max-w-xl">
+          <PageDialogHeader>
+            <PageDialogTitle>建立廣播</PageDialogTitle>
+          </PageDialogHeader>
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
@@ -819,7 +830,7 @@ function BroadcastTab() {
             // 建立按鈕停用的原因要看得到，不能只有灰掉的按鈕
             <p role="status" className="text-xs text-destructive">{sourceError}</p>
           )}
-          <DialogFooter>
+          <PageDialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
@@ -830,9 +841,9 @@ function BroadcastTab() {
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </PageDialogFooter>
+        </PageDialogContent>
+      </PageDialog>
 
       <Dialog open={resultId !== null} onOpenChange={(open) => !open && setResultId(null)}>
         <DialogContent className="max-w-xl">
@@ -853,9 +864,8 @@ function BroadcastTab() {
 
 // ─── Segment Tab ───────────────────────────────────────────────────────────
 
-function SegmentTab() {
+function SegmentTab({ dialogOpen, setDialogOpen }: TabProps) {
   const { segments, isLoading, mutate } = useSegments();
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -964,21 +974,13 @@ function SegmentTab() {
   ];
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">受眾分群</h3>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          新增分群
-        </Button>
-      </div>
-
+    <div>
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : segments.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無受眾分群</p>
+        <EmptyState icon={<Users />} title="尚無受眾分群" description="依標籤或條件建立分群，廣播時可直接選用" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1014,11 +1016,11 @@ function SegmentTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>新增受眾分群</DialogTitle>
-          </DialogHeader>
+      <PageDialog section="行銷" parent="受眾分群" open={dialogOpen} onOpenChange={setDialogOpen}>
+        <PageDialogContent className="max-w-xl">
+          <PageDialogHeader>
+            <PageDialogTitle>新增受眾分群</PageDialogTitle>
+          </PageDialogHeader>
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
@@ -1118,7 +1120,7 @@ function SegmentTab() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <PageDialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
@@ -1127,9 +1129,9 @@ function SegmentTab() {
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </PageDialogFooter>
+        </PageDialogContent>
+      </PageDialog>
     </div>
   );
 }
@@ -1138,6 +1140,12 @@ function SegmentTab() {
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 const VALID_TABS = ['campaigns', 'broadcasts', 'segments'];
+
+const TAB_META = {
+  campaigns: { action: '新增活動', description: '規劃行銷活動，集中管理活動底下的廣播與成效' },
+  broadcasts: { action: '建立廣播', description: '對聯絡人或分群發送訊息，查看每次廣播的發送狀態' },
+  segments: { action: '新增分群', description: '依標籤、渠道等條件建立受眾分群，給廣播使用' },
+} as const;
 
 export default function MarketingPage() {
   const pathname = usePathname();
@@ -1149,14 +1157,24 @@ export default function MarketingPage() {
     return t && VALID_TABS.includes(t) ? t : 'campaigns';
   })();
   const activeTab = initialTab;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  useEffect(() => { setDialogOpen(false); }, [activeTab]);
+  const meta = TAB_META[activeTab as keyof typeof TAB_META];
+  const tabProps = { dialogOpen, setDialogOpen };
 
   return (
     <div className="flex h-full flex-col">
-      <Topbar title="行銷" />
-      <div className="flex-1 overflow-auto">
-        {activeTab === 'campaigns' && <CampaignTab />}
-        {activeTab === 'broadcasts' && <BroadcastTab />}
-        {activeTab === 'segments' && <SegmentTab />}
+      {/* 依 Figma 7.1.1：說明文字與右上角主要按鈕。Figma 的說明是從人員管理頁複製來的佔位文字，這裡改成各分頁自己的說明（依 Figma 微調） */}
+      <Topbar title="行銷" description={meta.description}>
+        <Button size="lg" className="w-[140px]" onClick={() => setDialogOpen(true)}>
+          <AddIcon />
+          {meta.action}
+        </Button>
+      </Topbar>
+      <div className="flex-1 overflow-auto px-7 pb-7">
+        {activeTab === 'campaigns' && <CampaignTab {...tabProps} />}
+        {activeTab === 'broadcasts' && <BroadcastTab {...tabProps} />}
+        {activeTab === 'segments' && <SegmentTab {...tabProps} />}
       </div>
     </div>
   );

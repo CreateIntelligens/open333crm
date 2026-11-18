@@ -321,7 +321,7 @@ export default function AutomationRuleDetailPage() {
         </Link>
       </Topbar>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto px-7 pb-7">
         <div className="mx-auto max-w-3xl space-y-6">
           {/* ============ Summary ============ */}
           <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">

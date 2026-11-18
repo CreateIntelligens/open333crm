@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Send, Undo2 } from 'lucide-react';
+import { Send, Undo2, Info } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,13 +16,7 @@ import {
 
 import { richMenuPublishConfirm, richMenuUnpublishConfirm, RICH_MENU_DEFAULT_NOT_SET_NOTICE } from '@/lib/rich-menu-confirm';
 import { isRichMenuPublishInterrupted, isRichMenuPublishing } from '@/lib/rich-menu-status';
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft: { label: '草稿', color: '#94a3b8' },
-  publishing: { label: '發布中', color: '#f59e0b' },
-  published: { label: '已發布', color: '#22c55e' },
-  error: { label: '發布失敗', color: '#ef4444' },
-};
-const INTERRUPTED_LABEL = { label: '發布中斷', color: '#ef4444' };
+import { richMenuStatusInfo } from '@/components/line/rich-menu/status';
 
 export default function EditRichMenuPage() {
   const router = useRouter();
@@ -40,11 +34,7 @@ export default function EditRichMenuPage() {
   // 發布中斷：可以重新發布；狀態仍是發布中，API 不接受修改
   const interrupted = richMenu ? isRichMenuPublishInterrupted(richMenu) : false;
   const locked = isPublished || isPublishing || interrupted;
-  const statusInfo = !richMenu
-    ? null
-    : interrupted
-      ? INTERRUPTED_LABEL
-      : STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
+  const statusInfo = richMenu ? richMenuStatusInfo(richMenu) : null;
 
   useEffect(() => {
     if (!richMenu) return;
@@ -119,80 +109,86 @@ export default function EditRichMenuPage() {
     router.push(cid ? `/dashboard/line/rich-menus?channelId=${cid}` : '/dashboard/line/rich-menus');
   };
 
+  // 版面依 Claude Design「Rich Menu 編輯器」：標題列（麵包屑＋名稱）、狀態提示條、雙欄編輯器、
+  // 底部固定操作列（左：狀態，右：取消／儲存草稿／發布）。
   return (
-    <div className="flex h-screen flex-col bg-muted">
-      <Topbar title="LINE 管理" />
+    <div className="flex h-full flex-col">
+      <Topbar title={richMenu?.name || '編輯 Rich Menu'} />
 
-      <main className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-6xl space-y-5">
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" size="sm" onClick={backToList}>
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              回到列表
-            </Button>
-            {statusInfo && (
-              <Badge color={statusInfo.color}>{statusInfo.label}</Badge>
-            )}
-          </div>
-
+      <div className="flex-1 overflow-auto px-7 pb-7">
+        <div className="space-y-5">
           {isPublished && (
-            <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-sm text-warning">
-              此 Rich Menu 已發布到 LINE，不能直接修改。請先「取消發布」後再編輯。
-            </div>
+            <Notice>此 Rich Menu 已發布到 LINE，不能直接修改。請先「取消發布」後再編輯。</Notice>
           )}
-          {isPublishing && (
-            <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-sm text-warning">
-              此 Rich Menu 正在發布到 LINE，請稍後重新整理。
-            </div>
-          )}
-          {interrupted && (
-            <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-sm text-warning">
-              此 Rich Menu 的發布中斷了，請按「發布到 LINE」重新發布。
-            </div>
-          )}
+          {isPublishing && <Notice>此 Rich Menu 正在發布到 LINE，請稍後重新整理。</Notice>}
+          {interrupted && <Notice>此 Rich Menu 的發布中斷了，請按「發布到 LINE」重新發布。</Notice>}
 
-          {isLoading && <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>}
+          {isLoading && (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]" aria-busy="true" aria-label="載入中">
+              <div className="space-y-5">
+                {[0, 1, 2].map((i) => <div key={i} className="h-40 animate-pulse rounded-lg bg-muted" />)}
+              </div>
+              <div className="h-[520px] animate-pulse rounded-lg bg-muted" />
+            </div>
+          )}
 
           {!isLoading && !richMenu && (
-            <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
+            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive-subtle px-4 py-3 text-sm text-destructive">
               找不到此 Rich Menu，可能已被刪除。
             </div>
           )}
 
           {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
+            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive-subtle px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           )}
 
           {draft && (
-            <div className="space-y-4">
-              <fieldset disabled={locked} className={locked ? 'opacity-60' : ''}>
-                <RichMenuEditor draft={draft} onChange={setDraft} />
-              </fieldset>
-              <div className="sticky bottom-0 -mx-6 flex justify-end gap-2 border-t bg-white px-6 py-3">
-                <Button variant="outline" onClick={backToList}>取消</Button>
-                {!locked && (
-                  <Button variant="outline" onClick={handleSave} disabled={saving || busy}>
-                    {saving ? '儲存中…' : '儲存草稿'}
-                  </Button>
-                )}
-                {isPublishing ? null : !isPublished ? (
-                  <Button onClick={handlePublish} disabled={saving || busy}>
-                    <Send className="mr-1 h-4 w-4" />
-                    {busy ? '發布中…' : '發布到 LINE'}
-                  </Button>
-                ) : (
-                  <Button variant="outline" onClick={handleUnpublish} disabled={busy}>
-                    <Undo2 className="mr-1 h-4 w-4" />
-                    {busy ? '取消中…' : '取消發布'}
-                  </Button>
-                )}
-              </div>
-            </div>
+            <fieldset disabled={locked} className={locked ? 'opacity-70' : ''}>
+              <legend className="sr-only">Rich Menu 內容</legend>
+              <RichMenuEditor draft={draft} onChange={setDraft} />
+            </fieldset>
           )}
         </div>
-      </main>
+      </div>
+
+      {draft && (
+        <div className="flex flex-none flex-wrap items-center justify-between gap-3 border-t border-border bg-background px-7 py-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            狀態
+            {statusInfo && <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="subtle" onClick={backToList}>回到列表</Button>
+            {!locked && (
+              <Button variant="subtle" onClick={handleSave} disabled={saving || busy}>
+                {saving ? '儲存中…' : '儲存草稿'}
+              </Button>
+            )}
+            {isPublishing ? null : !isPublished ? (
+              <Button onClick={handlePublish} disabled={saving || busy}>
+                <Send aria-hidden="true" />
+                {busy ? '發布中…' : '發布到 LINE'}
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={handleUnpublish} disabled={busy}>
+                <Undo2 aria-hidden="true" />
+                {busy ? '取消中…' : '取消發布'}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <div role="status" className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-subtle px-4 py-3 text-sm text-warning">
+      <Info className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+      <span>{children}</span>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks, Ticket } from 'lucide-react';
+import { Ticket, Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
@@ -361,118 +361,126 @@ export function MessageInput({
           </div>
         )}
 
-        <div className="flex items-end gap-2">
-          {/* Attachment button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={() => fileInputRef.current?.click()}
-            title="附件"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_TYPES}
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-
-          {/* Template button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={onOpenTemplates}
-            title="模板"
-          >
-            <LayoutTemplate className="h-4 w-4" />
-          </Button>
-
-          {/* 發券（順序：附件、範本、發券）。停用時用 aria-disabled 保留焦點，滑過或聚焦能看到原因 */}
-          {onOpenCoupon && (
-            <span className="group relative shrink-0">
+        {/* 輸入區依 Claude Design「收件匣 v4」：外框包住輸入框與工具列，傳送按鈕在右側；依 Figma 微調 */}
+        <div className="flex items-end gap-2.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-[10px] border border-border bg-background px-3 py-2.5 transition-colors focus-within:border-primary">
+            <textarea
+              ref={textareaRef}
+              data-message-input
+              aria-label="訊息"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onInput={handleInput}
+              placeholder={placeholder}
+              disabled={isDisabled}
+              rows={1}
+              className="w-full resize-none bg-transparent text-sm leading-5 text-foreground placeholder:text-status-neutral focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ minHeight: '40px', maxHeight: '120px' }}
+            />
+            <div className="flex items-center gap-1">
+              {/* Attachment button */}
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-9 gap-1 px-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-                aria-disabled={couponDisabledReason ? true : undefined}
-                aria-describedby={couponDisabledReason ? 'coupon-issue-disabled-reason' : undefined}
-                onClick={() => {
-                  if (!couponDisabledReason) onOpenCoupon();
-                }}
+                size="icon-sm"
+                className="h-7 w-7"
+                disabled={isDisabled}
+                onClick={() => fileInputRef.current?.click()}
+                title="附件"
+                aria-label="附件"
               >
-                <Ticket className="h-4 w-4" />
-                <span className="text-xs">發券</span>
+                <Paperclip className="!size-4" />
               </Button>
-              {couponDisabledReason && (
-                <span
-                  id="coupon-issue-disabled-reason"
-                  role="tooltip"
-                  className="pointer-events-none invisible absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs text-background group-focus-within:visible group-hover:visible"
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_TYPES}
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+
+              {/* Template button */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-7 w-7"
+                disabled={isDisabled}
+                onClick={onOpenTemplates}
+                title="模板"
+                aria-label="模板"
+              >
+                <LayoutTemplate className="!size-4" />
+              </Button>
+
+              {/* Quick reply button (LINE only) */}
+              {supportsQuickReply && (
+                <Button
+                  variant={quickReplies.length > 0 ? 'secondary' : 'ghost'}
+                  size="icon-sm"
+                  className="h-7 w-7"
+                  disabled={isDisabled}
+                  onClick={() => setQuickReplyEditorOpen((v) => !v)}
+                  title="加快速回覆按鈕"
+                  aria-label="加快速回覆按鈕"
+                  aria-pressed={quickReplies.length > 0}
                 >
-                  {couponDisabledReason}
+                  <Zap className="!size-4" />
+                </Button>
+              )}
+
+              {/* 發券（取自 main）。停用時用 aria-disabled 保留焦點，滑過或聚焦能看到原因 */}
+              {onOpenCoupon && (
+                <span className="group relative shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="h-7 gap-1 px-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                    aria-disabled={couponDisabledReason ? true : undefined}
+                    aria-describedby={couponDisabledReason ? 'coupon-issue-disabled-reason' : undefined}
+                    onClick={() => {
+                      if (!couponDisabledReason) onOpenCoupon();
+                    }}
+                  >
+                    <Ticket className="!size-4" />
+                    發券
+                  </Button>
+                  {couponDisabledReason && (
+                    <span
+                      id="coupon-issue-disabled-reason"
+                      role="tooltip"
+                      className="pointer-events-none invisible absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs text-background group-focus-within:visible group-hover:visible"
+                    >
+                      {couponDisabledReason}
+                    </span>
+                  )}
                 </span>
               )}
-            </span>
-          )}
 
-          {/* Quick reply button (LINE only) */}
-          {supportsQuickReply && (
-            <Button
-              variant={quickReplies.length > 0 ? 'default' : 'ghost'}
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              disabled={isDisabled}
-              onClick={() => setQuickReplyEditorOpen((v) => !v)}
-              title="加快速回覆按鈕"
-            >
-              <Zap className="h-4 w-4" />
-            </Button>
-          )}
+              {/* 個資遮罩（取自 main）：平台開啟時才顯示，預設遮罩 */}
+              {privacyEnabled && (
+                <Button
+                  type="button"
+                  variant={privacyMode === 'mask' ? 'secondary' : 'subtle'}
+                  size="xs"
+                  className="h-7 px-2"
+                  disabled={isDisabled}
+                  onClick={() => setPrivacyMode((mode) => mode === 'mask' ? 'original' : 'mask')}
+                  title={privacyMode === 'mask' ? '目前會遮罩個資；點擊可保留原文' : '目前保留原文；點擊可遮罩個資'}
+                >
+                  {privacyMode === 'mask' ? '個資遮罩' : '保留原文'}
+                </Button>
+              )}
 
-          {privacyEnabled && (
-            <Button
-              type="button"
-              variant={privacyMode === 'mask' ? 'default' : 'outline'}
-              size="sm"
-              className="mb-0.5 shrink-0 text-xs"
-              disabled={isDisabled}
-              onClick={() => setPrivacyMode((mode) => mode === 'mask' ? 'original' : 'mask')}
-              title={privacyMode === 'mask' ? '目前會遮罩個資；點擊可保留原文' : '目前保留原文；點擊可遮罩個資'}
-            >
-              {privacyMode === 'mask' ? '個資遮罩' : '保留原文'}
-            </Button>
-          )}
-
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            data-message-input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder={placeholder}
-            disabled={isDisabled}
-            rows={1}
-            className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ minHeight: '40px', maxHeight: '120px' }}
-          />
+              <div className="flex-1" />
+              <span className="text-[11px] leading-[15px] text-muted-foreground tabular-nums">{message.length}</span>
+            </div>
+          </div>
 
           {/* Send button */}
-          <Button
-            onClick={handleSend}
-            disabled={!message.trim() || isDisabled}
-            size="icon"
-            className="shrink-0"
-            aria-label="送出訊息"
-          >
-            <Send className="h-4 w-4" />
+          {/* aria-label 沿用 main 的「送出訊息」（測試與輔助科技以此辨識）；畫面文字依設計稿 */}
+          <Button onClick={handleSend} disabled={!message.trim() || isDisabled} size="lg" className="shrink-0" aria-label="送出訊息">
+            <Send />
+            傳送
           </Button>
         </div>
         {sendError && (

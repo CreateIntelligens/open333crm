@@ -4,6 +4,7 @@
  *
  * 修正前說明寫「只在 bot 模式（BOT_HANDLED）觸發、客服接管後不回、每人每小時最多 3 次」，
  * 但 automation.worker.ts 的 checkKeywordTriggers() 不看對話狀態，也沒有任何次數限制。
+ * 本分支的說明改成可收合的 <details>（Claude Design），查詢的外層元素跟著改，測試目的不變。
  */
 import assert from 'node:assert/strict';
 import { afterEach, test, vi } from 'vitest';
@@ -32,7 +33,7 @@ afterEach(cleanup);
 
 test('說明不再宣稱只在 Bot 處理中觸發或有每小時次數上限', () => {
   render(<KeywordRepliesPage />);
-  const help = screen.getByText(/怎麼用/).closest('section')!.textContent ?? '';
+  const help = screen.getByText(/怎麼用/).closest('details')!.textContent ?? '';
   assert.doesNotMatch(help, /BOT_HANDLED|1 小時最多觸發 3 次|已被客服接管的對話不會自動回/);
   assert.match(help, /客服接手的對話也會/);
   assert.match(help, /沒有次數上限/);

@@ -22,7 +22,7 @@ const statusConfig: Record<string, { className: string; label: string }> = {
 };
 
 export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
-  // API 回傳大寫列舉（OPEN、IN_PROGRESS…），對照表的鍵是小寫，查詢前先轉小寫
+  // 後端狀態是大寫（OPEN、IN_PROGRESS），對照表是小寫：原本直接查會查不到，畫面顯示英文「OPEN」
   const config = statusConfig[status?.toLowerCase()] || {
     className: 'bg-muted text-muted-foreground',
     label: status,

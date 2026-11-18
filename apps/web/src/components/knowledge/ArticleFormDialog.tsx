@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
 
 /** 編輯對話框需要的文章欄位（`GET /knowledge/:id`） */
@@ -131,11 +131,11 @@ export function ArticleFormDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? '編輯文章' : '新增文章'}</DialogTitle>
-        </DialogHeader>
+    <PageDialog section="知識庫" parent="文章管理" open={open} onOpenChange={onOpenChange}>
+      <PageDialogContent className="max-w-2xl">
+        <PageDialogHeader>
+          <PageDialogTitle>{isEditing ? '編輯文章' : '新增文章'}</PageDialogTitle>
+        </PageDialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
@@ -283,7 +283,7 @@ export function ArticleFormDialog({
             )}
           </div>
 
-          <DialogFooter>
+          <PageDialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -302,9 +302,9 @@ export function ArticleFormDialog({
                 '儲存'
               )}
             </Button>
-          </DialogFooter>
+          </PageDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </PageDialogContent>
+    </PageDialog>
   );
 }

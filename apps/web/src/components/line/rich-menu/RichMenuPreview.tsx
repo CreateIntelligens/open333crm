@@ -3,11 +3,12 @@
 /**
  * Rich Menu 預覽元件
  *
- * 背景圖 + 區域熱區疊層（半透明邊框）+ 中央區域編號 badge。
- * hover 區域時高亮（emerald 半透明）。
+ * 版面依 Claude Design「即時預覽」：手機 LINE 聊天室外框，底部是背景圖＋區域格線與編號，
+ * 最下方是聊天室底部按鈕（chatBarText）。點格子會呼叫 onAreaClick，讓編輯器跳到對應區域。
  */
 
 import React, { useState } from 'react';
+import { ChevronLeft, ChevronUp, Keyboard } from 'lucide-react';
 import type { RichMenuArea } from '@/hooks/useRichMenus';
 
 interface Props {
@@ -16,55 +17,99 @@ interface Props {
   areas: RichMenuArea[];
   /** 容器目標寬度（px）；高度依比例計算 */
   containerWidth?: number;
+  /** 聊天室底部按鈕文字 */
+  chatBarText?: string;
+  /** 目前展開編輯中的區域（高亮） */
+  activeIndex?: number | null;
+  onAreaClick?: (index: number) => void;
 }
 
-export function RichMenuPreview({ imageUrl, size, areas, containerWidth = 360 }: Props) {
+export function RichMenuPreview({
+  imageUrl,
+  size,
+  areas,
+  containerWidth = 300,
+  chatBarText,
+  activeIndex = null,
+  onAreaClick,
+}: Props) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const scale = containerWidth / size.width;
   const containerHeight = size.height * scale;
 
   return (
-    <div
-      className="relative overflow-hidden rounded-md border border-input bg-muted"
-      style={{ width: containerWidth, height: containerHeight }}
-    >
-      {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imageUrl}
-          alt="Rich Menu 預覽"
-          className="h-full w-full object-cover"
-          draggable={false}
-        />
-      ) : (
-        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">尚未上傳背景圖</div>
-      )}
+    <div className="mx-auto w-fit overflow-hidden rounded-[28px] border-[6px] border-foreground bg-background">
+      {/* 聊天室頂部 */}
+      <div className="flex h-10 items-center gap-1.5 border-b border-border px-3 text-sm font-semibold text-foreground" aria-hidden="true">
+        <ChevronLeft className="h-4 w-4" />
+        LINE 官方帳號
+      </div>
+      {/* 聊天內容區 */}
+      <div className="h-[150px] bg-[#C9D3E0]" aria-hidden="true" />
 
-      {areas.map((area, idx) => {
-        const left = area.bounds.x * scale;
-        const top = area.bounds.y * scale;
-        const width = area.bounds.width * scale;
-        const height = area.bounds.height * scale;
-        const isHover = hoverIdx === idx;
-        return (
-          <div
-            key={idx}
-            onMouseEnter={() => setHoverIdx(idx)}
-            onMouseLeave={() => setHoverIdx(null)}
-            className={
-              'absolute flex items-center justify-center border-2 transition-colors ' +
-              (isHover
-                ? 'border-success bg-success/30'
-                : 'border-primary bg-primary/10')
-            }
-            style={{ left, top, width, height }}
-          >
-            <span className="rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white">
+      {/* 選單 */}
+      <div className="relative bg-muted" style={{ width: containerWidth, height: containerHeight }}>
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="Rich Menu 預覽" className="h-full w-full object-cover" draggable={false} />
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">尚未上傳背景圖</div>
+        )}
+
+        {areas.map((area, idx) => {
+          const active = activeIndex === idx || hoverIdx === idx;
+          const style = {
+            left: area.bounds.x * scale,
+            top: area.bounds.y * scale,
+            width: area.bounds.width * scale,
+            height: area.bounds.height * scale,
+          };
+          const className =
+            'absolute flex items-center justify-center border transition-colors ' +
+            (active ? 'border-2 border-primary bg-primary/20' : 'border-white/80 bg-white/10');
+          const badge = (
+            <span
+              className={
+                'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ' +
+                (active ? 'bg-primary text-white' : 'bg-background text-foreground')
+              }
+            >
               {idx + 1}
             </span>
-          </div>
-        );
-      })}
+          );
+          return onAreaClick ? (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onAreaClick(idx)}
+              onMouseEnter={() => setHoverIdx(idx)}
+              onMouseLeave={() => setHoverIdx(null)}
+              aria-label={`編輯區域 ${idx + 1}`}
+              className={className + ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring'}
+              style={style}
+            >
+              {badge}
+            </button>
+          ) : (
+            <div
+              key={idx}
+              onMouseEnter={() => setHoverIdx(idx)}
+              onMouseLeave={() => setHoverIdx(null)}
+              className={className}
+              style={style}
+            >
+              {badge}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 聊天室底部按鈕 */}
+      <div className="flex h-10 items-center justify-between border-t border-border px-3 text-muted-foreground" aria-hidden="true">
+        <Keyboard className="h-4 w-4" />
+        <span className="text-sm font-semibold text-foreground">{chatBarText || '選單'} ▾</span>
+        <ChevronUp className="h-4 w-4" />
+      </div>
     </div>
   );
 }
