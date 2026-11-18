@@ -98,7 +98,7 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
               role="row"
               tabIndex={0}
               onClick={open}
-              onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+              onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === 'Enter') open(); }}
               className={`grid ${cols} cursor-pointer items-center gap-3 border-b border-border bg-background px-5 py-3.5 text-sm transition-colors last:border-b-0 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none`}
             >
               <span role="cell" className="truncate font-mono text-xs text-muted-foreground" title={c.id}>{c.id.slice(0, 8)}</span>
