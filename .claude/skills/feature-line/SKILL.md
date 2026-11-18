@@ -58,7 +58,7 @@ channel-plugins/line、webhook/line、liff、line-imagemap、downstream-forwarde
 - `message`：text／image／video／audio／file／location／sticker；LINE 代管的媒體存 `contentId`，背景下載到物件儲存，失敗寫 `content.mediaError`（25 MB 上限）。
 - `postback`：存成 `contentType: 'postback'`、`content.text = postback.data`（收件匣直接顯示原始資料，例如 `tag:<uuid>`、`menu=main`）；`postback.params`（日期選擇器選的值）**丟掉**。
 - `follow`／`unfollow`／`join`／`leave`／`memberJoined`／`memberLeft`／`unsend`／`videoPlayComplete`／`accountLink`／`beacon`：都存成一則進站訊息，收件匣顯示「[不支援的訊息類型]」並加未讀數。`unsend` **不會**隱藏原訊息。
-  系統事件的分流在 `apps/api/src/modules/webhook/inbound-system-events.ts`（依 `contentType`，#362）：不觸發非營業時間自動回覆；Canvas 以自己的事件類型比對（unfollow 不觸發）；unfollow 遇到沒見過的 uid 整筆略過、不建聯絡人；unfollow 在 `ChannelIdentity.blockedAt` 記封鎖時間、follow 清空（只供顯示，發送路徑不排除）；加好友招呼語用 follow 的 replyToken（失敗退回 push）。
+  系統事件的分流在 `apps/api/src/modules/webhook/inbound-system-events.ts`（依 `contentType`）：不觸發非營業時間自動回覆；Canvas 以自己的事件類型比對（unfollow 不觸發）；unfollow 遇到沒見過的 uid 整筆略過、不建聯絡人；unfollow 在 `ChannelIdentity.blockedAt` 記封鎖時間、follow 清空（只供顯示，發送路徑不排除）；加好友招呼語用 follow 的 replyToken（失敗退回 push）。
 - 來源 `userId ?? groupId`：群組訊息掛在發話者的一對一對話；`join` 事件以 groupId 建一個聯絡人。`roomId` 不處理。
 - 去重只看 `message.id`（`channelMsgId`）。postback、follow 等沒有訊息 id 的事件，LINE 重送（`deliveryContext.isRedelivery`）會重複處理；`webhookEventId` 只有下游轉發的迴圈防護在用。
 
@@ -94,7 +94,7 @@ channel-plugins/line、webhook/line、liff、line-imagemap、downstream-forwarde
 3. image（LINE 代管）在假權杖下要出現 `mediaError`；`fileSize` 超過 25 MB 不下載。
 4. 圖文選單：建立 → 編輯 → 發布（假權杖會變「發布失敗」）→ 綁定受眾 → 取消發布；supervisor 可、agent 403。
 5. 快速回覆預設組：建立、重新整理讀回、刪除；agent 寫入 403。
-6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查（客人按分數後，收件匣卡片顯示「客人評 N 分」、客人訊息顯示「我的評分：N 分」，#444）、收回訊息、LIFF 開票券。
+6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查（客人按分數後，收件匣卡片顯示「客人評 N 分」、客人訊息顯示「我的評分：N 分」）、收回訊息、LIFF 開票券。
 - 自動測試：`pnpm --filter @open333crm/channel-plugins test`；`pnpm --filter @open333crm/api test -- rich-menu webhook-signature downstream-forwarder inbound-media tag-on-click line-id-token channel-credential-security line-imagemap`；`pnpm --filter @open333crm/workers test -- rich-menu-bind credentials`；`pnpm --filter @open333crm/web test -- rich-menu imagemap-url bot-config-form-line-login`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/webhook/ channel-liff-id coupon-line-login`。
 - E2E：`apps/web/tests/e2e-uat/tenant-line-materials.spec.ts`。
 

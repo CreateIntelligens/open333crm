@@ -81,7 +81,7 @@ plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時
 - 計數只算 `isActive: true` 的成員與渠道；把停用的資源改回啟用也要檢查上限（成員已做，渠道還沒做）。
 - AI 計數器 `aiquota:{tenantId}:{YYYY-MM}:tpe` 用台灣月份，只累加平台金鑰的成功呼叫；BYOK 不計不擋。
 - 新增權限碼或 feature：權限碼宣告在 `packages/shared/src/rbac/permissions.ts`，feature 在 `packages/core/src/rbac/features.ts`，平台頁自動出現。既有租戶的系統角色要跑 `scripts/grant-new-role-permissions.mjs`。
-- seed（API 容器每次啟動都跑）只建立不存在的方案，**不可以更新既有方案**，平台後台的修改要在部署後保留（issue #441，`tenant-plan` 規格「部署後保留平台修改」）。不要把 `seedPlans()` 改回 upsert 的 `update`。
+- seed（API 容器每次啟動都跑）只建立不存在的方案，**不可以更新既有方案**，平台後台的修改要在部署後保留（`tenant-plan` 規格「部署後保留平台修改」）。不要把 `seedPlans()` 改回 upsert 的 `update`。
 - 程式要改既有方案的內容時，寫一次性的資料 migration：以 `slug` 篩選、只改目標欄位、加「還沒改過」條件可重複執行、檔頭寫回滾 SQL，並同步更新 `SEED_PLANS`。範例 `20261103120000_enable_channels_on_trial_light`；細節見 `docs/ref/features/platform/PLANS.md`「seed 建立的五個方案」。
 - UI 不放 emoji 與 ✓（使用者要求）。
 

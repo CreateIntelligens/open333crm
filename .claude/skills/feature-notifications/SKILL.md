@@ -41,14 +41,14 @@ NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯�
 
 **通知從哪裡來（系統流程，沒有操作入口）**
 
-下表所有來源寫入前都會檢查收件成員：已被永久刪除或已停用的成員被略過（#484），工單指派、SLA 預警的負責人停用時沒有人收到。
+下表所有來源寫入前都會檢查收件成員：已被永久刪除或已停用的成員被略過，工單指派、SLA 預警的負責人停用時沒有人收到。
 
 | 來源 | 觸發 | 收件人 | 寫入路徑 | 類型 / clickUrl |
 | ---- | ---- | ------ | -------- | --------------- |
-| 客人傳訊息 | `message.received` | 對話有負責人、且負責人啟用中並看得到該渠道 → 只通知負責人；沒有負責人，或負責人已停用、看不到該渠道 → 看得到該渠道的啟用中 `ADMIN`、`SUPERVISOR`（#440，`getConversationRecipients()`） | `notification.worker.ts` → `notification` queue → workers | `new_message` / `/dashboard/inbox?conv=` |
+| 客人傳訊息 | `message.received` | 對話有負責人、且負責人啟用中並看得到該渠道 → 只通知負責人；沒有負責人，或負責人已停用、看不到該渠道 → 看得到該渠道的啟用中 `ADMIN`、`SUPERVISOR`（`getConversationRecipients()`） | `notification.worker.ts` → `notification` queue → workers | `new_message` / `/dashboard/inbox?conv=` |
 | 工單指派 | `case.assigned`（只有 `POST /cases/:id/assign` 與自動派案發布） | 被指派人 | 同上 | `case_assigned` / `/dashboard/cases/:id` |
 | 工單升級 | `case.escalated` | `resolveEscalationRecipients`：`notifyTargets` 含 `supervisor` → 所有 ADMIN+SUPERVISOR；含 `original_assignee` → 升級前負責人；沒帶 → 只有主管；`[]` → 沒人；升級的人自己一律排除。**升級時改派的新負責人不通知** | 同上 | `case_escalated` |
-| CSAT ≤ 2 分 | `recordCsatScoreFlow()` → `notifyCsatLowScoreFlow()` | 有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`resolveCaseManagerRecipients()`，#339；預設客服角色也有 `case.assign`） | API 行程以 `createAndDispatch` 在記分 commit 之後另開交易寫入（不經佇列、不重試） | `csat_low_score` / `/dashboard/cases?id=`（列表頁不讀 id） |
+| CSAT ≤ 2 分 | `recordCsatScoreFlow()` → `notifyCsatLowScoreFlow()` | 有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`resolveCaseManagerRecipients()`；預設客服角色也有 `case.assign`） | API 行程以 `createAndDispatch` 在記分 commit 之後另開交易寫入（不經佇列、不重試） | `csat_low_score` / `/dashboard/cases?id=`（列表頁不讀 id） |
 | SLA 預警／逾時 | workers `sla.handler.ts` | 負責人；逾時再加 ADMIN+SUPERVISOR | workers 直接 `enqueueNotification` | `sla_warning`、`sla_breached`、`first_response_*`、`customer_waiting_breached` |
 | 自動化「傳送通知」 | workers `automation-actions.ts` | 指定客服 → 工單負責人 → 對話負責人（都要啟用中）→ 都沒有時 ADMIN+SUPERVISOR | 同上 | `sla_rule` / 工單或對話 |
 | 自動化「通知主管」 | 同上 | ADMIN+SUPERVISOR | 同上 | `sla_rule` / 只有工單時才有連結 |
@@ -56,17 +56,17 @@ NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯�
 | FB/IG 權杖失效 | `meta-token-health.ts` 每 6 小時；持續失效每 3 天再提醒 | 所有 `ADMIN` | API 行程 `createAndDispatch` + `sendEmail` | `channel_token_invalid` / `/dashboard/settings/channels` |
 | 資料匯出／刪除完成 | workers `data-export.handler.ts`、`data-erasure.handler.ts` | 發起人 | `enqueueNotification` | `data_export_ready`、`data_export_failed`（連到不存在的頁面，EXPORT-01）、`data_erasure_done`（無連結） |
 
-**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 有訂閱：類型 `conversation_handoff`，收件人與 `message.received` 相同（`getConversationRecipients()`，#440）。
+**沒有發布端的訂閱**：`conversation.assigned`（CONV-02，指派對話不會通知）、`sla.warning`／`sla.breached` 在 API 行程（APP-05）。`conversation.handoff` 有訂閱：類型 `conversation_handoff`，收件人與 `message.received` 相同（`getConversationRecipients()`）。
 
 **有後端、沒有前端入口**：無。**前端有、後端沒有**：無。**兩邊都沒有**：通知偏好／靜音、刪除通知、保留期限、Web Push、工單事件寄信（`docs/20_NOTIFICATION.md` 的設計未實作）。
 
-**前端實際送出的值**：列表 `isRead` 只送 `'true'`/`'false'` 或不送，`page`、`limit` 10 或 20；升級對話框（`apps/web/src/components/case/EscalationModal.tsx`）的 `notifyTargets` 是 `['supervisor','original_assignee']` 的子集，兩個都不勾時送 `[]`。後端 Zod（`apps/api/src/modules/case/case.routes.ts`）另外接受 `'team'`，只接受、不通知任何人；#261 曾因前端送 `team`、後端不接受而 400，**收緊這個列舉前要先確認沒有呼叫端會送**。
+**前端實際送出的值**：列表 `isRead` 只送 `'true'`/`'false'` 或不送，`page`、`limit` 10 或 20；升級對話框（`apps/web/src/components/case/EscalationModal.tsx`）的 `notifyTargets` 是 `['supervisor','original_assignee']` 的子集，兩個都不勾時送 `[]`。後端 Zod（`apps/api/src/modules/case/case.routes.ts`）另外接受 `'team'`，只接受、不通知任何人。**收緊這個列舉前要先確認沒有呼叫端會送 `team`**，否則那個呼叫端會收到 400。
 
 ## 不可破壞的規則
 - 站內通知的寫入只在 workers（`apps/workers/src/handlers/notification.handler.ts`）；API 的 `notification.worker.ts` 只送 job（規格 `standalone-worker-runtime`「Notification Job Consumer」）。CSAT 低分、權杖失效、留言私訊健康告警、序號明細匯出是現存例外，都經過 `notification-effects.ts` 的 `createAndDispatch()`（交易內寫入、commit 之後推播）。不要再新增呼叫端。
 - 同一個事件不重複通知：job id 一律 `<事件 id>__<成員 id>`（自動化是 `<事件 id>__<規則 id>#<序號>__<成員 id>`）。新增收件人邏輯時沿用 `enqueueDispatch`，不要自己 `add` 沒有 jobId 的 job。
 - 推播失敗只記 log、job 照常完成；寫入失敗要丟錯讓 BullMQ 重試（3 次、指數退避 5 秒）。不要把寫入失敗吞掉。
-- 只寫給同租戶、仍啟用的成員：每個寫入 `notifications` 的地方都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入（workers `notification.handler.ts`、API 的 `recordNotification()`，`createAndDispatch()` 經過它），它是一條條件寫入，回 `null` 表示略過。不符合時寫 info log、不丟錯（永久刪除的成員會撞外鍵，丟錯只會重試三次再失敗）；重新啟用不補送（#484）。不要改回「先查再 `notification.create`」：查完到寫入之間成員可能被刪除；也不要 catch P2003，交易內接住後交易已中止（PR #489 審查）。新增寫入點要沿用同一個函式。
+- 只寫給同租戶、仍啟用的成員：每個寫入 `notifications` 的地方都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入（workers `notification.handler.ts`、API 的 `recordNotification()`，`createAndDispatch()` 經過它），它是一條條件寫入，回 `null` 表示略過。不符合時寫 info log、不丟錯（永久刪除的成員會撞外鍵，丟錯只會重試三次再失敗）；重新啟用不補送。不要改回「先查再 `notification.create`」：查完到寫入之間成員可能被刪除；也不要 catch P2003，交易內接住後交易已中止。新增寫入點要沿用同一個函式。
 - 用量告警不可阻擋 AI 回覆：每一步失敗只寫 log，回覆最多多等一個 Redis 指令的逾時（1 秒）；告警信一定經佇列，不在訂閱者內直接寄。
 - 告警信與權杖失效信的使用者輸入（租戶名稱、渠道名稱）要 HTML 轉義。
 - 收件人目前看 `Agent.role` 舊列舉（RBAC-03）。細粒度角色、渠道可見範圍都不影響誰收到。改成看權限時要一起處理：未指派新訊息、升級、SLA、自動化通知主管、用量告警、權杖失效六個地方（CSAT 低分看 `case.assign` 與渠道可見範圍，可沿用 `notification.service.ts` 的 `resolveCaseManagerRecipients()`）。
@@ -90,7 +90,7 @@ NotificationBell、「沒收到通知」「通知太多」「通知點了跳錯�
 - E2E：`apps/web/tests/e2e-uat/tenant-misc.spec.ts` 的 `@notifications`。
 
 ## 常見 bug 從哪裡查
-- 「主管說沒收到新訊息通知」：先看對話是否已指派（已指派只通知負責人；負責人已停用或看不到渠道時改通知主管，#440）；再看主管的 `Agent.role` 是不是 `SUPERVISOR`/`ADMIN`（自訂角色沿用原本的列舉，RBAC-03）。
+- 「主管說沒收到新訊息通知」：先看對話是否已指派（已指派只通知負責人；負責人已停用或看不到渠道時改通知主管）；再看主管的 `Agent.role` 是不是 `SUPERVISOR`/`ADMIN`（自訂角色沿用原本的列舉，RBAC-03）。
 - 「指派對話後對方沒收到通知」：設計上就沒有（CONV-02），不是佇列壞掉。
 - 「建立工單時選了負責人，對方沒收到」：只有 `/cases/:id/assign` 發 `case.assigned`；升級時改派也一樣不通知（HC-NOTIFICATIONS-03、04）。
 - 「通知點了找不到頁面」：查 `clickUrl` 是誰寫的（上表）。CSAT 到列表、資料匯出到不存在的頁面、權杖失效到渠道管理。
