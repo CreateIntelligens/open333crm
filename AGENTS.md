@@ -60,7 +60,7 @@ Some changes skip step 1 or step 2. This table tells which steps each type of ch
 | A new feature, or a change in behavior that users, API clients or other modules can see | Yes | Yes |
 | A bug fix that restores behavior an existing spec already describes | No | Yes. The first test reproduces the bug |
 | A refactor with no behavior change | No | No. The tests that cover the code must pass before and after the change. If no test covers the code, first add a test that passes on the current code |
-| A dependency update | No | No. Run `pnpm test`. Also run `pnpm test:feature` if the dependency is used for the database or Redis |
+| A dependency update | No | No. Run `pnpm test`. Also run `pnpm test:feature` if the database code or the Redis code uses the dependency |
 | A change to docs or OpenSpec files only | No. Exception: to remove a whole main spec, open a change (see Step 4) | No. Run each command that the change adds or changes. Make sure that each path and link in the change exists |
 | Specs and tests for behavior that the code already has | Yes | No. The tests pass when you write them. Verify each test with a mutation instead (see "When a test passes as soon as you write it") |
 
@@ -110,8 +110,8 @@ applies, write one sentence that says why.
 | ------------- | --------- |
 | adds a permission code | Give it a `feature` in `packages/shared/src/rbac/permissions.ts`. Guard its routes with `requirePermission()`. A route without the guard ignores the plan ceiling (AUDIT PLAN-04). |
 | adds a feature area that a plan can switch on or off | Add it to `packages/core/src/rbac/features.ts`. Decide which plans include it. Add it to existing plans with a one-time migration that only changes that field and can run again. The seed only creates missing plans, so a seed change does not reach existing plans. |
-| adds a resource that a plan should limit (a count or a quota) | Add the limit key to `plan-limits.service.ts`, an input to `LIMIT_KEYS` in `apps/web/src/app/admin/plans/page.tsx`, and a check where the resource is created. Do not add a limit that nothing checks: `maxTags` shows on the plan page and limits nothing (AUDIT PLAN-04). |
-| calls an AI model | Record the call with `recordLlmUsage()` in `apps/api/src/modules/ai/llm.flow.ts`, with an `AiFeature` value from `apps/api/src/modules/ai/llm.service.ts`. Check the monthly quota (`token-quota.service.ts`) and the tenant AI privacy policy (`ai-privacy.service.ts`). A new model needs a price in `model_pricings`, or its cost is recorded as 0 (AUDIT USAGE-02). |
+| adds a resource that a plan should limit (a count or a quota) | Add the limit key to `plan-limits.service.ts`, an input to `LIMIT_KEYS` in `apps/web/src/app/admin/plans/page.tsx`, and a check in the code that creates the resource. Do not add a limit that nothing checks: `maxTags` shows on the plan page and limits nothing (AUDIT PLAN-04). |
+| calls an AI model | Record the call with `recordLlmUsage()` in `apps/api/src/modules/ai/llm.flow.ts`, with an `AiFeature` value from `apps/api/src/modules/ai/llm.service.ts`. Check the monthly quota (`token-quota.service.ts`) and the tenant AI privacy policy (`ai-privacy.service.ts`). A new model needs a price in `model_pricings`. Without a price, the system records its cost as 0 (AUDIT USAGE-02). |
 | adds a channel type | Make sure the plan page can allow or block it (`allowedChannelTypes`). |
 | adds a tenant setting or state that the platform team must see or control | Add it to the platform API and pages. An example is the AI privacy switch on the tenant page. |
 | writes a new platform audit action | Add its label to the platform audit label table (`PLATFORM_AUDIT_ACTION_LABELS` in `apps/web/src/app/admin/lib/audit-log.ts`). The tenant detail page and the platform user detail page both read it. Otherwise they show the raw code. |
@@ -139,10 +139,10 @@ For a bug fix, the first test reproduces the bug.
 **How to write a test.** Before you write a test, read `docs/ref/system/TESTING.md`. It tells how
 to do these tasks:
 
-- inject a mock executor into a service (`tests/support/mock-tenant-ctx.ts`);
-- replace Redis in `apps/api` unit tests, and keep one `ioredis` version in the repo;
-- write a React component test in jsdom (`apps/web` only);
-- keep the data of a feature test separate from other tests.
+- inject a mock executor into a service (`tests/support/mock-tenant-ctx.ts`)
+- replace Redis in `apps/api` unit tests, and keep one `ioredis` version in the repo
+- write a React component test in jsdom (`apps/web` only)
+- keep the data of a feature test separate from other tests
 
 These rules apply to each test:
 
@@ -151,8 +151,8 @@ These rules apply to each test:
 - Test behavior, not source text. A test that asserts a string in a source file fails after a
   rename. Write it only for a guarantee that a behavior test cannot reach.
 - A mock does only what the real code can do. Before you make a mock throw an error, read the
-  real function. To test a failure, make the lowest boundary fail (the LLM call, the HTTP
-  request), and keep the real code between that boundary and the code under test.
+  real function. To test a failure, make the lowest boundary fail, for example the LLM call or
+  the HTTP request. Keep the real code between that boundary and the code under test.
 
 **When a test passes as soon as you write it.** A test for behavior that the code already has
 cannot fail first. Verify the test with a mutation:
@@ -252,19 +252,23 @@ A flow and a background job obey these rules:
   channel (`message.new`, `conversation.*`) uses `notifyChannel`.
 - Send events with `publishEvent` and BullMQ jobs with `enqueueJob`, from
   `apps/api/src/events/outbox-publisher.ts`. Do not call `io.emit`, `eventBus.publish` or
-  `queue.add()` directly. Events and jobs are sent at least once. Before a side effect that must
+  `queue.add()` directly. `publishEvent` and `enqueueJob` send events and jobs at least once. Before a side effect that must
   not repeat, claim it with `claimSideEffect()` from `@open333crm/core` or with a conditional update.
 - Clear a cache with `scope.afterCommit(label, fn)`, not inside the transaction.
 - Write a tenant audit row with `recordTenantAudit(scope, input)`. Do not call
   `writeTenantAudit()` inside a transaction.
-- In a job handler, do not catch an error only to write a log. Let an error before the claim
-  commits, or an error when you add the next job to a queue, go out of the handler, so that the
-  queue tries the job again.
+- In a job handler, do not catch an error only to write a log. Do not catch these two errors:
+  - an error that occurs before the claim commits
+  - an error that occurs when you add the next job to a queue
+
+  Let the handler throw them. The queue then tries the job again.
 - Do not catch a unique-constraint error (`P2002`) and then continue inside the transaction. Use
   `createOrFindExisting()` or `claimOne()` from `packages/core/src/db/db-invariants.ts`.
 
-Two kinds of functions do not take a `TenantCtx`: a service for platform-layer tables (it uses
-`prismaAdmin`), and a function that does not read the database, for example `sendOpsAlert()`.
+Two kinds of functions do not take a `TenantCtx`:
+
+- a service for platform-layer tables. It uses `prismaAdmin`.
+- a function that does not read the database, for example `sendOpsAlert()`.
 
 - **Why**: the service then knows its guarantees from its parameter type. Its queries have RLS,
   and its writes succeed or fail together. The service cannot start a side effect, so the timing of
@@ -272,9 +276,11 @@ Two kinds of functions do not take a `TenantCtx`: a service for platform-layer t
   decides these guarantees: `prismaAdmin` has no RLS, and `request.tenantPrisma` runs each query
   in a separate transaction. The "Prisma in shared packages" convention below is this rule for
   `packages/*`.
-- **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when a file gets more old forms
-  (`TenantDb`, `request.tenantPrisma`, a transaction in a service) or more references from a
-  service file to a Redis client or an LLM module. Also
+- **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when a file gets more of these:
+  - old forms: `TenantDb`, `request.tenantPrisma` or a transaction in a service
+  - references from a service file to a Redis client or an LLM module
+
+  Also run
   `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
 - **Existing exceptions**: most services still take `TenantDb`. Issue #337 moves them module by
   module. `scripts/check-tenant-ctx.baseline.json` records how many remain. When you change one of
@@ -292,8 +298,8 @@ to serve a second resource. `marketing` shows the target shape: `marketing.route
 - **Check**: `grep -cE "\.(get|post|put|patch|delete)(<[^>]*>)?\(\s*['\"]/" apps/api/src/modules/*/*.routes.ts | sort -t: -k2 -rn | head`
 - **Existing exceptions**: some route files break this rule. `platform/platform.routes.ts` breaks
   it the most. This file does not list them, because a split costs much work. Do not copy their
-  shape. Before you split `platform.routes.ts`, read SEC-03 in `docs/ref/system/AUDIT.md`. The
-  rate limit of that file is registered inside its route function.
+  shape. Before you split `platform.routes.ts`, read SEC-03 in `docs/ref/system/AUDIT.md`. That
+  file registers its rate limit inside its route function.
 
 #### 4. Cross-module calls go through the other module's service
 
@@ -320,8 +326,9 @@ Register the plugin in both processes:
 The workers map does not read the shared registry. Thus a plugin that only the API registers
 cannot send messages from automation rules.
 
-- **Why**: each branch on `channelType` is one more location where a new channel must be added
-  by hand. If a developer forgets one location, it fails and shows no error.
+- **Why**: each branch on `channelType` is one more location where a developer must add a new
+  channel by hand. If the developer forgets one location, the new channel fails at that location
+  and shows no error.
 - **Check**: `grep -rnE "channelType (===|!==)|case '(LINE|FB|THREADS|WEBCHAT)'" apps/api/src apps/workers/src`
 - **Existing exceptions**: many modules still branch on `channelType` or call the API of a
   channel directly. This file does not list them, because a move into plugins costs much work.
@@ -337,7 +344,7 @@ the result. The evaluation decides it.
 | Signal | What it can show | Structure to evaluate |
 | ------ | ---------------- | --------------------- |
 | The same rule or query is in two or more modules | The rule has no owner. A fix reaches one copy only | One shared function. Examples: `createOrFindExisting()` and `claimOne()` in `packages/core/src/db/db-invariants.ts` |
-| Two or more review comments on one pull request are about the same part of the code | The guarantee of that code is not defined | First write the guarantee in the spec, for example "at most once" or "at least once". Then evaluate the code again |
+| Two or more review comments on one pull request are about the same part of the code | Nobody defined the guarantee of that code | First write the guarantee in the spec, for example "at most once" or "at least once". Then evaluate the code again |
 | One change needs edits in many locations, and a missed location shows no error | The behavior has no single point of control | A registry or a shared function. Example: the channel plugin registry (structure rule 5) |
 
 To evaluate a structure, answer these questions in the proposal or the pull request:
@@ -386,15 +393,15 @@ No CI workflow runs these checks (see CI gates below). Run them yourself before 
 request:
 
 - [ ] `pnpm test` passes.
-- [ ] `node scripts/feature-impact.mjs` lists the areas that your change affects. You walked
-      through the regression list in the skill of each directly affected area. If you changed a
+- [ ] `node scripts/feature-impact.mjs` lists the areas that your change affects. You checked
+      each item of the regression list in the skill of each directly affected area. If you changed a
       path, table, event or dependency of an area, update `docs/ref/features/feature-map.json`,
       and `node scripts/feature-impact.mjs --check` passes.
 - [ ] `pnpm build` passes, if you changed a file in `packages/*`, a dependency, or a file that
       `apps/web` imports. Tests and `tsc` do not find a module that the browser bundle cannot
       load. Only the Next.js build finds it.
-- [ ] Each item of "Plan the platform layer in the same change" (Step 1) that applies is done in
-      this change, and `proposal.md` has its `## Platform layer` section. Do not leave the
+- [ ] This change does each item of "Plan the platform layer in the same change" (Step 1) that
+      applies. `proposal.md` has its `## Platform layer` section. Do not leave the
       platform part for a later change.
 - [ ] `pnpm test:feature` passes, if you changed the database, Redis, RLS or a feature test.
 - [ ] `node scripts/check-tenant-scoping.mjs --strict` and
@@ -404,7 +411,7 @@ request:
       `node scripts/check-tenant-ctx.mjs --update-baseline` and commit the baseline file.
 - [ ] If you changed `apps/api/src`, `apps/workers/src` or `packages/*/src`, the structure review
       found no new problem, or the pull request tells why a finding does not apply. In Claude
-      Code, run the `structure-reviewer` subagent. It runs the scripts above, and then checks the
+      Code, run the `structure-reviewer` subagent. It runs the scripts above. Then it checks the
       rules that no script can check, for example Socket events with channel data and errors in
       job handlers. In other tools, check the diff against structure rules 1–5 and
       `docs/ref/modules/API-MODULE.md` yourself.
@@ -425,12 +432,12 @@ request:
 - [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, add an
       entry to `docs/ref/system/AUDIT-REVIEWS.md` that names the fix (change or commit). Then do
       one of these:
-      - The item is fixed completely: remove its row and its section from `AUDIT.md`. Do not keep
+      - The change fixes the item completely: remove its row and its section from `AUDIT.md`. Do not keep
         it with the status "已修正". In the entry, write "已修正，從 `AUDIT.md` 移除". Remove or
         update each link to the item in other files (`grep -rn "<ID>"`), for example
         `docs/ref/features/feature-map.json` and the limit tables in `docs/ref/`.
-      - The item is fixed in part: keep it, set the status to "部分修正", and write in the item
-        which part is fixed and which part is not.
+      - The change fixes the item in part: keep the item and set its status to "部分修正". In
+        the item, write which part the change fixes and which part stays open.
 
       Also update each feature or module document under `docs/ref/` that describes the changed
       behavior.
@@ -498,7 +505,7 @@ Run them without `--strict` to get a report instead of a failure.
 There are two paths. Select the correct path.
 
 **Path A — Direct emit** (API process, inline): in a flow, call `notifyTenant`, `notifyChannel`
-or `notifyAgent` inside `inTenant()`. The event goes out after the commit. Use path A when all of
+or `notifyAgent` inside `inTenant()`. These functions send the event after the commit. Use path A when all of
 these conditions are true:
 
 - The event is the direct result of the current HTTP request.
@@ -562,7 +569,7 @@ lock for this. But the job can run more than one time, and two periods can overl
   merge, while no environment has applied your migration.
 - In application code, get the client from Fastify (`fastify.prisma`, `request.tenantPrisma`,
   `fastify.prismaAdmin`). See the table above. Do **not** construct your own `PrismaClient`. A
-  client that you construct goes around the RLS wiring.
+  client that you construct does not use the RLS wiring.
 
   These application files construct a client on purpose: `packages/database/src/client.ts`,
   `apps/api/src/plugins/prisma.plugin.ts` and `apps/workers/src/index.ts`. Scripts that run
@@ -584,22 +591,23 @@ lock for this. But the job can run more than one time, and two periods can overl
 ## Conventions
 
 - **Do not reinvent existing code (MANDATORY)**: before you write a helper, a schema, a guard, a
-  flow or a component, search the repo for code that already does the job, and use it. Extend the
+  flow or a component, search the repo for code that already does the job. Use that code. Extend the
   existing code if it does almost the job. Do not write a second version next to it.
   - **Why**: two versions of one rule diverge. A later fix reaches one version only, and the other
     version keeps the bug. Reviews in this repo have found new SSRF checks written next to
     `isBlockedUrl()`, and new handoff code written next to `handOffConversation()`.
-  - **How to search**: `grep -rn` for the function name, the error code and the Chinese message
-    text; read the skill of the feature area (`.claude/skills/feature-<id>/`); run
-    `node scripts/feature-impact.mjs --files <file>` to find the area that owns the code.
+  - **How to search**:
+    1. `grep -rn` for the function name, the error code and the Chinese message text.
+    2. Read the skill of the feature area (`.claude/skills/feature-<id>/`).
+    3. Run `node scripts/feature-impact.mjs --files <file>` to find the area that owns the code.
   - **Common helpers**: `isBlockedUrl()` (SSRF check, `apps/api/src/modules/webhook/downstream-forwarder.ts`),
     `handOffConversation()` (hand a conversation to an agent, `apps/api/src/modules/automation/handoff.flow.ts`),
     `claimSideEffect()` (`packages/core/src/outbox/claims.ts`), `createOrFindExisting()` and
     `claimOne()` (`packages/core/src/db/db-invariants.ts`), `paginationSchema`
     (`apps/api/src/shared/utils/pagination.ts`), `int4Schema`
     (`apps/api/src/shared/utils/numeric-bounds.ts`), `AppError` (`apps/api/src/shared/utils/response.ts`).
-  - If the existing code cannot be reused (for example, it breaks a structure rule), write in the
-    pull request why, and move the callers to the new code in the same change.
+  - Sometimes you cannot use the existing code, for example because it breaks a structure rule.
+    Then write the reason in the pull request. Move the callers to the new code in the same change.
 - **CHANGELOG Maintenance (MANDATORY)**: when you implement a feature (`feat`), a bug fix (`fix`)
   or an architecture change, you **MUST update `CHANGELOG.md`**. A pull request that changes only
   docs, OpenSpec files or tests does not need an entry. Write the entry under the latest release
@@ -689,9 +697,10 @@ lock for this. But the job can run more than one time, and two periods can overl
 - **The feature tests need the passwords of `app_tenant` and `app_admin`.** These roles belong to
   the whole PostgreSQL server, so the development database shares them. The global setup sets
   their passwords (`app_tenant_local`, `app_admin_local`) only when a role has no password yet. If
-  a role already has a different password, the setup stops before any test runs and tells you how
-  to fix it: give the current passwords in `TEST_APP_TENANT_PASSWORD` and
-  `TEST_APP_ADMIN_PASSWORD`, or change the role passwords.
+  a role already has a different password, the setup stops before any test runs. Its message tells
+  you how to fix the problem. Do one of these:
+  - Give the current passwords in `TEST_APP_TENANT_PASSWORD` and `TEST_APP_ADMIN_PASSWORD`.
+  - Change the role passwords.
 - **Next.js compiles `NEXT_PUBLIC_*` values into the browser bundle.** Do not set such a value to
   a Compose service name such as `api:3001`. The browser cannot resolve a Compose service name.
   Use `http://localhost:3001/api` locally.

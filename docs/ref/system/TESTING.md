@@ -1,6 +1,6 @@
 # 撰寫測試
 
-本文件說明各種測試的寫法：單元測試怎麼替換相依、為什麼單元測試連不到 Redis、元件測試的限制、feature 測試怎麼隔離資料，以及 mock 能做到什麼程度。測試的分組、指令與 feature 測試的環境準備，見[開發與交付](./DELIVERY.md#測試)。先寫測試再寫程式的流程、以 mutation 驗證測試、既有測試失敗時的處理，見 `AGENTS.md` 的 Step 2。
+本文件說明各種測試的寫法，問題清單見下一節。測試的分組、指令與 feature 測試的環境準備，見[開發與交付](./DELIVERY.md#測試)。先寫測試再寫程式的流程、以 mutation 驗證測試、既有測試失敗時的處理，見 `AGENTS.md` 的 Step 2。
 
 - **資料來源**：`apps/api/tests/setup/`、`apps/api/tests/support/`、`apps/api/tests/unit/`、`apps/api/tests/feature/`、`apps/web/tests/unit/`、`packages/automation/tests/unit/`
 - **核對日期**：2026-11-18
@@ -41,7 +41,7 @@ service 以參數接收 Prisma executor（`AGENTS.md` 結構規則 2），所以
 
 ## 斷言
 
-斷言用 `node:assert/strict`，多數既有測試都用這個模組。部分舊測試 import `node:assert`，它的 `assert.equal` 用 `==` 比較。不要照抄那些測試。
+斷言用 `node:assert/strict`，多數既有測試都用這個模組。部分舊測試 import `node:assert`。`node:assert` 的 `assert.equal` 用 `==` 比較。不要照抄那些測試。
 
 ## 元件測試
 
@@ -50,7 +50,7 @@ service 以參數接收 Prisma executor（`AGENTS.md` 結構規則 2），所以
 - 檔名用 `*.test.tsx`，第一行寫 `// @vitest-environment jsdom`。
 - 以 `vi.mock()` 替換 `#src/lib/api.js`。元件測試不送出 HTTP 請求。
 - 檢查元素不存在時，用 `assert.ok(element === null)`。不要把 DOM 節點傳給 `assert.equal()`：斷言失敗時，`node:assert` 會序列化整棵 jsdom 樹，測試 worker 會記憶體不足。
-- 被 mock 的 hook 每次渲染都要回傳同一個函式，與真實 provider 的 `useCallback` 相同。每次回傳新函式時，依賴這個函式的 effect 會無限重跑。
+- mock 的 hook 每次渲染都要回傳同一個函式，與真實 provider 的 `useCallback` 相同。每次回傳新函式時，依賴這個函式的 effect 會無限重跑。
 
 範例是 `apps/web/tests/unit/components/settings/role-permission-matrix.test.tsx`。
 

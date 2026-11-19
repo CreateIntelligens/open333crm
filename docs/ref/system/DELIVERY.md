@@ -98,7 +98,7 @@ node scripts/check-workspace-esm.mjs --strict
 
 移除 `openspec/specs/<name>/` 之前，先確認這個能力是否還在規劃中：
 
-1. 還在規劃中：把主規格的 requirement 複製到該能力的 change，寫成 `ADDED` delta spec。
+1. 這個能力還在規劃中：把主規格的 requirement 複製到規劃這個能力的 change，寫成 `ADDED` delta spec。
 2. 不在規劃中：只有下列情況可以移除主規格：
    - 產品沒有主規格描述的能力。
    - 另一份規格或文件已經涵蓋這個能力。
@@ -109,7 +109,7 @@ node scripts/check-workspace-esm.mjs --strict
 - 一份 delta spec，在 `## REMOVED Requirements` 下列出主規格的每個 requirement。
 - change 的 `.openspec.yaml` 寫 `retire_capabilities: true`。沒有這一行時，`pnpm exec openspec archive` 移除主規格的最後一個 requirement 時會失敗。
 
-封存這個 change 時，CLI 刪除主規格的目錄。在 change 的 `proposal.md` 寫出每份被移除主規格的原因。有規格或文件取代被移除的主規格時，寫出它的名稱。
+封存這個 change 時，CLI 刪除主規格的目錄。在 change 的 `proposal.md` 寫出移除每份主規格的原因。有規格或文件取代移除的主規格時，寫出該規格或文件的名稱。
 
 CI 與測試目前的缺口列在[實作落差與驗證紀錄](./AUDIT.md)。
 

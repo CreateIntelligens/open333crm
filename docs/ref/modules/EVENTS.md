@@ -321,8 +321,12 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 4. **workers 要推送即時事件**：帶渠道資料的用 `publishChannelSocketEvent()`（送到對話、渠道與總店房間，`socket:emit` 訊息帶 `rooms`）；其他用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：在寫入業務資料的交易內用 `writeOutbox()`，帶入租戶 ID；commit 之後呼叫 `dispatchOutboxRows()`。
 6. **不能重複的副作用**：執行前在交易內用 `claimSideEffect()` 認領，或以條件更新認領資料列。認領的交易失敗時丟錯讓 job 重試；認領之後的失敗只記 log。
-7. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時，每一期都只產生一筆 job；但 job 可能在行程被強制結束後重跑，所以都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。註冊步驟見[新增 API 行程內的排程](#新增-api-行程內的排程)。
-8. **新增 BullMQ `Worker`**：設定 `concurrency`。預設值是 1，Worker 一次只處理一個 job，一個慢的 job（例如 LLM 呼叫）會讓所有租戶的 job 一起等。訂閱者佇列的設定值見 `apps/api/src/events/subscriber-workers.ts`。
+7. **定期工作**：
+   - 工作需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊。`run` 要能承受重跑。
+   - 其他定期工作放在 workers，以 BullMQ 重複工作執行，並給固定的 `jobId`。
+
+   有多個行程時，兩種做法在每一期都只產生一筆 job。但行程被強制結束後，job 可能重跑，所以兩種做法都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。註冊步驟見[新增 API 行程內的排程](#新增-api-行程內的排程)。
+8. **新增 BullMQ `Worker`**：設定 `concurrency`。預設值是 1，Worker 一次只處理一個 job。一個慢的 job（例如 LLM 呼叫）會讓所有租戶的 job 一起等。訂閱者佇列的設定值見 `apps/api/src/events/subscriber-workers.ts`。
 
 新增事件之後，確認它同時有發布端與訂閱端。只有一邊的事件，不會產生任何錯誤或警告。
 

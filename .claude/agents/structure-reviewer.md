@@ -2,8 +2,8 @@
 name: structure-reviewer
 description: >
   審查一個分支在 apps/api、apps/workers、packages/* 的改動，是否符合 AGENTS.md 的結構規則 1–5
-  與 docs/ref/modules/API-MODULE.md：先跑結構檢查腳本，再逐個 hunk 檢查腳本擋不住、需要判斷的規則
-  （渠道資料的推播、job handler 的錯誤、副作用的認領、交易內的外部呼叫）。只讀不改。開 PR 之前使用。
+  與 docs/ref/modules/API-MODULE.md。先跑結構檢查腳本，再逐個 hunk 檢查腳本擋不住、需要判斷的規則，
+  例如渠道資料的推播、job handler 的錯誤、副作用的認領、交易內的外部呼叫。只讀不改。開 PR 之前使用。
 tools: Bash, Read, Glob, Grep
 # 只讀不改靠這個 hook 強制：Bash 只准唯讀指令與結構檢查腳本（不含 --update-baseline），Write／Edit 一律擋下。
 # 資料夾要先信任，frontmatter 的 hook 才會執行。
