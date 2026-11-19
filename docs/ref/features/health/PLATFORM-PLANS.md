@@ -3,6 +3,7 @@
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 已修正：HC-PLATFORM-PLANS-06 部分修正：租戶端 `/dashboard/plan` 的 `GET /plan-change` 回 403 時，頁面捕捉這個錯誤，並以紅底顯示原因。送出失敗的訊息改成紅底；記錄的目標方案顯示中文名稱。讀取失敗時，頁面仍顯示整張表單與「還沒有申請記錄」；目標方案清單仍寫死三個 slug，頁面仍看不出目前的方案。本報告其餘段落仍描述健檢當時的程式
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（web 3000 production build、API 3001、workers；資料庫 `open333crm_advisor`）／UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，以 `/auth/me` 確認，只讀 `/dashboard/plan`）
 - 本機測試資料（全部自建，未改 seed 方案與 Demo 租戶的方案）：

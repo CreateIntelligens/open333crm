@@ -3,6 +3,7 @@
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 已修正：HC-ANALYTICS-07。`getAgentPerformance()` 以 `a.id` 過濾客服，本期沒有工單的客服也回一列，所以「我的績效」的 `name`、`role` 不再是空字串。HC-ANALYTICS-05 部分修正：開始日晚於結束日時，日期框顯示「開始日期不能晚於結束日期」，不送出新的區間。「概覽」與「案件報表」分頁的查詢失敗時，各區塊顯示「載入失敗」與「重新載入」。「客服績效」與「渠道分析」分頁仍沒有錯誤狀態；403 也顯示「載入失敗，請稍後再試。」，看不出是沒有權限。本報告其餘段落仍描述健檢當時的程式
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build，瀏覽器時區設 `Asia/Taipei`）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只讀）
 - 規格：`docs/ref/features/feature-map.json` 的 `analytics`；功能文件 `docs/ref/features/tenant/ANALYTICS.md`；手冊 `apps/web/public/manual/ch13-analytics.html`

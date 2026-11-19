@@ -4,7 +4,7 @@
 - 程式版本：5c81102e
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
-- 已修正：HC-PLATFORM-TRIALS-01、02、04（#407，change `trial-set-password-after-verify`）。申請不再收密碼，點驗證連結後在驗證頁設定密碼才開通；本報告其餘段落仍描述健檢當時的程式
+- 已修正：HC-PLATFORM-TRIALS-01、02、04（#407，change `trial-set-password-after-verify`）。申請不再收密碼，點驗證連結後在驗證頁設定密碼才開通。HC-PLATFORM-TRIALS-06 部分修正：申請不再收密碼；API 先 trim 站台名稱再檢查長度，只有空白的站台名稱回 400。站台名稱超過 100 字、只有空白，或 API 回 429 時，畫面仍只顯示「申請失敗，請稍後再試。」；輸入框仍沒有 `maxLength`。HC-PLATFORM-TRIALS-11 部分修正：申請記錄的狀態以中文顯示（等待驗證、已開通、失敗／已作廢）。申請時間、寄信次數與開通的租戶仍不顯示，列表仍只取最近 100 筆。本報告其餘段落仍描述健檢當時的程式
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build，`EMAIL_DELIVERY_MODE=log`）。UAT 只做未登入的唯讀檢查，見[UAT 操作紀錄](#uat-操作紀錄)
 - 規格：`docs/ref/features/feature-map.json` 的 `platform-trials`；功能文件 `docs/ref/features/platform/TRIALS.md`
 - 相關報告：租戶管理 `docs/ref/features/health/PLATFORM-TENANTS.md`。合約起訖日、復原的 API 錯誤案例，以及「手動開通選試用方案卻不設 `trialEndsAt`」（HC-PLATFORM-TENANTS-05），都記在那份報告，這裡只引用
