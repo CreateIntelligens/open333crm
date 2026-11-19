@@ -8,7 +8,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test, vi } from 'vitest';
 import { fbPlugin, threadsPlugin, type ChannelCommentExtension } from '@open333crm/channel-plugins';
-import { buildReadiness, type ReadinessBase } from '#src/modules/comment-reply/comment-reply-channel.service.js';
+import type { ReadinessBase } from '#src/modules/comment-reply/comment-reply-channel.service.js';
+import { buildReadiness } from '#src/modules/comment-reply/comment-reply-meta.js';
 import { DEFAULT_COMMENT_REPLY_CAPABILITIES, type CommentReplyCapabilityFlags } from '#src/modules/comment-reply/comment-reply-platform-settings.js';
 
 const BASE_SCOPES = ['pages_show_list', 'pages_manage_metadata', 'pages_messaging'];

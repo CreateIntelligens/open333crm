@@ -15,18 +15,15 @@ import type { RequestActor } from '../../lib/request-actor.js';
 import { inTenant, type TenantCtx, type TenantScope } from '../../lib/tenant-ctx.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import type { CommentReplyViewer } from './comment-reply-access.js';
+import { commentSubscriptionFields, loadCommentChannel, loadReadinessBase, saveCommentSubscription } from './comment-reply-channel.service.js';
 import {
+  assertPostPickerCapability,
   buildReadiness,
-  commentSubscriptionFields,
   listRecentPostsMeta,
-  loadCommentChannel,
-  loadReadinessBase,
   readinessCacheKey,
   resolvePostUrlMeta,
-  assertPostPickerCapability,
-  saveCommentSubscription,
   subscribeCommentFieldsMeta,
-} from './comment-reply-channel.service.js';
+} from './comment-reply-meta.js';
 import { getLog, listLogs, markLogForRetry, summarizeLogs } from './comment-reply-log.service.js';
 import { readCommentReplyPlatformSettings } from './comment-reply-platform-settings.js';
 import { bumpCommentReplyRulesVersion } from './comment-reply-rule-cache.js';
