@@ -26,7 +26,7 @@ import {
 import { COMMENT_REPLY_FORBIDDEN_MATERIAL_TYPES } from './comment-reply-content.js';
 import { matchCommentRule } from './comment-reply-match.js';
 import { capabilityName, type CommentReplyPlatformSettings } from './comment-reply-platform-settings.js';
-import { parseRuleInput, type RuleInput, type RulePatch } from './comment-reply.schemas.js';
+import { parseRuleInput, parseStoredPostSnapshots, type RuleInput, type RulePatch, type StoredPostSnapshot } from './comment-reply.schemas.js';
 import type { CommentReplyMatchMode, CommentReplyPostScope, CommentReplyWarningCode } from './comment-reply.types.js';
 
 // ─── 回應形狀（design RuleView；前端 apps/web/src/lib/comment-reply/types.ts） ────────────
@@ -75,17 +75,10 @@ type RuleRow = Prisma.CommentReplyRuleGetPayload<{ include: typeof ruleInclude }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-interface StoredSnapshot {
-  postId: string;
-  permalink?: string | null;
-  thumbnailUrl?: string | null;
-  excerpt?: string | null;
-  publishedAt?: string | null;
-}
+type StoredSnapshot = StoredPostSnapshot;
 
 function snapshotsOf(rule: Pick<CommentReplyRule, 'postIds' | 'postSnapshots'>): StoredSnapshot[] {
-  const list = Array.isArray(rule.postSnapshots) ? (rule.postSnapshots as unknown as StoredSnapshot[]) : [];
-  const byId = new Map(list.filter((s) => s && typeof s.postId === 'string').map((s) => [s.postId, s]));
+  const byId = new Map(parseStoredPostSnapshots(rule.postSnapshots).map((s) => [s.postId, s]));
   return rule.postIds.map((postId) => byId.get(postId) ?? { postId });
 }
 

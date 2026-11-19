@@ -13,6 +13,8 @@ import {
   parseReorderInput,
   parseLogsQuery,
   parseRuleTestInput,
+  parseStoredPostSnapshots,
+  parseSentContentSnapshot,
 } from '#src/modules/comment-reply/comment-reply.schemas.js';
 
 const CHANNEL_ID = '0b9d2c3e-1f4a-4c5b-8d6e-7f8091a2b3c4';
@@ -182,4 +184,27 @@ test('紀錄查詢：日期用 z.coerce.date()、狀態可逗號分隔、limit �
   expectValidationError(() => parseLogsQuery({ status: 'NOPE' }), 'status');
   expectValidationError(() => parseLogsQuery({ limit: '101' }), 'limit');
   expectValidationError(() => parseLogsQuery({ q: 'a'.repeat(101) }), 'q');
+});
+
+// ─── 資料庫 JSON 欄位（#547 第 4 項） ─────────────────────────────────────
+
+test('postSnapshots：保留有效的快照，略過無效的元素', () => {
+  const valid = { postId: 'p1', permalink: 'https://fb.com/p1', thumbnailUrl: null, excerpt: '新品', publishedAt: '2026-11-01T00:00:00.000Z' };
+  assert.deepEqual(parseStoredPostSnapshots([valid, { postId: 'p2' }, null, 'x', { postId: '' }, { postId: 'p3', excerpt: 5 }]), [valid, { postId: 'p2' }]);
+});
+
+test('postSnapshots：不是陣列時回空陣列', () => {
+  assert.deepEqual(parseStoredPostSnapshots(null), []);
+  assert.deepEqual(parseStoredPostSnapshots({ postId: 'p1' }), []);
+});
+
+test('sentContentSnapshot：有效的 { contentType, content } 原樣回傳', () => {
+  const snapshot = { contentType: 'text', content: { text: '活動連結在這' } };
+  assert.deepEqual(parseSentContentSnapshot(snapshot), snapshot);
+});
+
+test('sentContentSnapshot：沒有值或形狀不對時回 null', () => {
+  for (const value of [null, undefined, 'broken', {}, { contentType: 'text' }, { contentType: '', content: {} }, { contentType: 'text', content: 'x' }]) {
+    assert.equal(parseSentContentSnapshot(value), null, JSON.stringify(value));
+  }
 });

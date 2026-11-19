@@ -363,3 +363,24 @@ describe('顧客回覆比寫結果先到', () => {
     void silentIo;
   });
 });
+
+describe('私訊快照無效時不補入空白訊息（#547 第 4 項）', () => {
+  test('快照不是 { contentType, content } 時只補入系統訊息', async () => {
+    const { fb, tenant } = await setupFb();
+    const psid = uid('PSID');
+    const log = await commentAndSend(fb, psid);
+    // 手動修改或舊格式的資料：快照不是物件
+    await owner.commentReplyLog.updateMany({ where: { id: log.id, tenantId: tenant.id }, data: { sentContentSnapshot: 'broken' } });
+    const identity = await owner.channelIdentity.findFirstOrThrow({ where: { channelId: fb.id, uid: psid } });
+    const conv = await owner.conversation.create({ data: { tenantId: tenant.id, channelId: fb.id, channelType: 'FB', contactId: identity.contactId } });
+
+    const result = await inTenant(tenantDb, tenant.id, (scope) =>
+      attachCommentOrigin(scope, { channelId: fb.id, uid: psid, conversationId: conv.id, repliedAt: new Date() }),
+    );
+
+    assert.deepEqual(result, { attached: true, logId: log.id });
+    const messages = await owner.message.findMany({ where: { conversationId: conv.id } });
+    const kinds = originMessages(messages).map((m) => (m.metadata as { kind?: string }).kind);
+    assert.deepEqual(kinds, ['origin_note']);
+  });
+});

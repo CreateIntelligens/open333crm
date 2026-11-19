@@ -5,7 +5,8 @@
  * 兩條路都靠「conversationId IS NULL 才更新」的條件更新，一筆紀錄只關聯一次：
  * 1. 找該渠道 recipientUid = 發送者、SENT、尚未關聯對話、30 天內送出的最新一筆紀錄
  * 2. 條件更新 conversationId、customerRepliedAt；0 列表示別的請求已處理
- * 3. 補入系統訊息（createdAt = sentAt − 1ms）與私訊快照（createdAt = sentAt，channelMsgId = 私訊的 message_id）；
+ * 3. 補入系統訊息（createdAt = sentAt − 1ms）與私訊快照（createdAt = sentAt，channelMsgId = 私訊的 message_id）。
+ *    快照無效時只補入系統訊息；
  *    快照以 skipDuplicates 寫入：Meta 送回的 echo 若已用同一個 message_id 落地，不重複也不讓交易失敗
  * 4. 對話的 originCommentReplyLogId 為空才寫入（保留第一個來源）
  * 補入的訊息不改 lastMessageAt、未讀數（顧客那則已更新；補入的時間早於顧客訊息，排序自然正確）。
@@ -14,6 +15,7 @@
  */
 import type { Prisma } from '@prisma/client';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { parseSentContentSnapshot } from './comment-reply.schemas.js';
 
 export const COMMENT_ORIGIN_SOURCE = 'comment_private_reply';
 /** 30 天前送出的私訊不再關聯（顧客很久以後才回覆，與留言無關的機率高） */
@@ -62,7 +64,7 @@ export async function attachCommentOrigin(ctx: TenantCtx, input: AttachCommentOr
   });
   if (claimed.count === 0) return { attached: false };
 
-  const snapshot = (log.sentContentSnapshot ?? {}) as { contentType?: unknown; content?: unknown };
+  const snapshot = parseSentContentSnapshot(log.sentContentSnapshot);
   const excerpt = log.commentText ? log.commentText.slice(0, COMMENT_EXCERPT_CHARS) : null;
   const note = excerpt
     ? `此對話來自貼文留言：顧客留言「${excerpt}」，系統依規則「${log.rule.name}」自動私訊。`
@@ -78,17 +80,20 @@ export async function attachCommentOrigin(ctx: TenantCtx, input: AttachCommentOr
       metadata: { source: COMMENT_ORIGIN_SOURCE, kind: 'origin_note', logId: log.id },
       createdAt: new Date(log.sentAt.getTime() - 1),
     },
-    {
+  ];
+  // 快照無效（手動修改、舊格式）時不補入私訊：沒有內容可顯示，空白的訊息只會讓客服誤會
+  if (snapshot) {
+    messages.push({
       conversationId: input.conversationId,
       direction: 'OUTBOUND',
       senderType: 'SYSTEM',
-      contentType: typeof snapshot.contentType === 'string' ? snapshot.contentType : 'text',
-      content: (snapshot.content ?? {}) as Prisma.InputJsonValue,
+      contentType: snapshot.contentType,
+      content: snapshot.content as Prisma.InputJsonValue,
       metadata: { source: COMMENT_ORIGIN_SOURCE, kind: 'private_reply', logId: log.id },
       channelMsgId: log.sentMessageId,
       createdAt: log.sentAt,
-    },
-  ];
+    });
+  }
   await tx.message.createMany({ data: messages, skipDuplicates: true });
 
   await tx.conversation.updateMany({

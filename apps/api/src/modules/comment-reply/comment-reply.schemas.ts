@@ -230,3 +230,41 @@ export function parseRuleTestInput(input: unknown): z.infer<typeof ruleTestSchem
 export function parseLogsQuery(input: unknown): LogsQuery {
   return parseWithField(logsQuerySchema, input);
 }
+
+// ─── 資料庫 JSON 欄位 ────────────────────────────────────────────────────
+// 從資料庫讀出的 JSON 欄位也以 schema 解析，不用 `as`：手動修改、舊格式或匿名化之後的值可能和型別不同。
+// 值無效時回傳不會造成傷害的預設值，不丟錯（讀取端是清單、詳情與收件匣，不應因一筆壞資料整頁失敗）。
+
+const nullableText = z.string().nullable().optional();
+
+/** 規則的貼文快照（comment_reply_rules.postSnapshots 的一個元素），只做顯示 */
+const storedPostSnapshotSchema = z.object({
+  postId: z.string().min(1),
+  permalink: nullableText,
+  thumbnailUrl: nullableText,
+  excerpt: nullableText,
+  publishedAt: nullableText,
+});
+export type StoredPostSnapshot = z.infer<typeof storedPostSnapshotSchema>;
+
+/** 解析 postSnapshots：不是陣列時回空陣列；無效的元素略過 */
+export function parseStoredPostSnapshots(value: unknown): StoredPostSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const parsed = storedPostSnapshotSchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/** 送出的私訊內容（comment_reply_logs.sentContentSnapshot）：外掛送出的 { contentType, content } */
+const sentContentSnapshotSchema = z.object({
+  contentType: z.string().min(1),
+  content: z.record(z.unknown()),
+});
+export type SentContentSnapshot = z.infer<typeof sentContentSnapshotSchema>;
+
+/** 解析 sentContentSnapshot：沒有值或無效時回 null */
+export function parseSentContentSnapshot(value: unknown): SentContentSnapshot | null {
+  const parsed = sentContentSnapshotSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
