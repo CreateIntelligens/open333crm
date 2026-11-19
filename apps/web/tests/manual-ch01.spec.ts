@@ -42,6 +42,11 @@ const PII_SCRIPT = `(() => {
       if (e.children.length) return;
       if (NAMES.includes((e.textContent || '').trim())) e.style.filter = 'blur(6px)';
     });
+    // 下拉選單選中的值是真實姓名（例如負責人）時也模糊
+    document.querySelectorAll('select').forEach(sel => {
+      const o = sel.selectedOptions && sel.selectedOptions[0];
+      if (o && NAMES.includes((o.textContent || '').trim())) sel.style.filter = 'blur(5px)';
+    });
     // 右欄「其他渠道的對話」預覽
     const h = [...document.querySelectorAll('h4')].find(x => (x.textContent||'').includes('其他渠道的對話'));
     if (h && h.parentElement) h.parentElement.querySelectorAll('p, span.block.truncate').forEach(p => p.style.filter = 'blur(5px)');
@@ -51,6 +56,10 @@ const PII_SCRIPT = `(() => {
       if (e && e !== document.body) e.style.display = 'none';
     });
   }
+  // DOM 一變就遮，不等下一輪計時器，避免新載入的姓名在模糊前被錄進影片
+  run();
+  const start = () => new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start);
   setInterval(run, 250);
 })();`;
 

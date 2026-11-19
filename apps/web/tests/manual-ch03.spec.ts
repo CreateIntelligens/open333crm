@@ -43,6 +43,10 @@ const PII_SCRIPT = `(() => {
       if (e && e !== document.body) e.style.display = 'none';
     });
   }
+  // DOM 一變就遮，不等下一輪計時器，避免新載入的姓名在模糊前被錄進影片
+  run();
+  const start = () => new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start);
   setInterval(run, 250);
 })();`;
 

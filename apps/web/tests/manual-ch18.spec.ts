@@ -39,6 +39,8 @@ const ID = {
   account: 'c0ffee00-0000-4000-8000-0000000000b1',
   link: 'c0ffee00-0000-4000-8000-0000000000c1',
   lineChannel: 'c0ffee00-0000-4000-8000-0000000000d1',
+  fbLink: 'c0ffee00-0000-4000-8000-0000000000c2',
+  fbChannel: 'c0ffee00-0000-4000-8000-0000000000d2',
 };
 
 const BASE_COUPON = {
@@ -107,6 +109,12 @@ const CLAIM_LINKS = [
     openCount: 36, claimCount: 21, createdAt: '2026-11-05T02:00:00.000Z',
     url: `${BASE_URL}/claim/DEMO2026`,
     channel: { id: ID.lineChannel, channelType: 'LINE', displayName: 'LINE OA', ready: true },
+  },
+  {
+    id: ID.fbLink, couponId: ID.autumn, name: '粉專置頂貼文', code: 'DEMOFB26', status: 'ACTIVE', startAt: null, endAt: null,
+    openCount: 18, claimCount: 9, createdAt: '2026-11-06T02:00:00.000Z',
+    url: `${BASE_URL}/claim/DEMOFB26`,
+    channel: { id: ID.fbChannel, channelType: 'FB', displayName: 'Open333test', ready: true },
   },
 ];
 
@@ -532,15 +540,16 @@ test('ch18-richmenu-claim 圖文選單領券按鈕', async ({ browser }) => {
 
 const UNBLUR_SAMPLES = `img[src*="material-samples"]{filter:none!important}`;
 const CLAIM_URL = `${BASE_URL}/claim/DEMO2026`;
+const FB_CLAIM_URL = `${BASE_URL}/claim/DEMOFB26`;
 
 /** 券詳情「領券連結」分頁：指出連結與複製按鈕 */
-async function showClaimLink(page: Page) {
+async function showClaimLink(page: Page, linkName = '門市海報') {
   await go(page, `/dashboard/marketing/coupons/${ID.autumn}`);
   await caption(page, '先在券詳情的「領券連結」分頁建立連結（見 11-5）', 1000);
   await tap(page, page.getByRole('tab', { name: '領券連結' }), 1500);
-  await page.getByRole('listitem', { name: '門市海報' }).waitFor();
+  await page.getByRole('listitem', { name: linkName }).waitFor();
   await caption(page, '渠道選要推播的那個渠道，按複製圖示複製網址', 2200);
-  await point(page, page.getByRole('listitem', { name: '門市海報' }), 1600);
+  await point(page, page.getByRole('listitem', { name: linkName }), 1600);
 }
 
 async function newMaterial(page: Page, platform: RegExp, type: RegExp) {
@@ -590,7 +599,8 @@ test('ch18-card-fb Facebook 商品輪播連到領券連結', async ({ browser })
   test.setTimeout(180_000);
   const r = await rec(browser, 'ch18-card-fb');
   const { page } = r;
-  await showClaimLink(page);
+  await caption(page, 'Facebook 要用渠道是 Facebook 的那條領券連結', 800);
+  await showClaimLink(page, '粉專置頂貼文');
   await newMaterial(page, /FB Messenger/, /商品輪播/);
   await caption(page, 'Facebook 選「商品輪播」，填素材名稱與卡片標題', 1000);
   await typeOver(page, page.getByPlaceholder('如：母親節新品推播'), '秋季感謝祭 FB 領券卡片');
@@ -602,7 +612,7 @@ test('ch18-card-fb Facebook 商品輪播連到領券連結', async ({ browser })
   await pick(page, btnType, /開啟網址/);
   await typeOver(page, btnRow.getByPlaceholder('按鈕文字'), '領取優惠券');
   // 「網址」要找按鈕這一列的，卡片上方還有一個圖片網址欄
-  await typeOver(page, btnRow.getByPlaceholder('網址', { exact: true }), CLAIM_URL);
+  await typeOver(page, btnRow.getByPlaceholder('網址', { exact: true }), FB_CLAIM_URL);
   await caption(page, '多餘的卡片按垃圾桶刪掉，填好按「存為素材」；示範到這裡不存檔', 2600);
   await point(page, page.getByRole('button', { name: '存為素材' }), 1200);
   await tap(page, page.getByRole('button', { name: '取消', exact: true }), 1000);
@@ -669,6 +679,11 @@ const INBOX_PII = `(() => {
       if (e.children.length) return;
       if (NAMES.includes((e.textContent || '').trim())) e.style.filter = 'blur(6px)';
     });
+    // 下拉選單選中的值是真實姓名（例如負責人）時也模糊
+    document.querySelectorAll('select').forEach(sel => {
+      const o = sel.selectedOptions && sel.selectedOptions[0];
+      if (o && NAMES.includes((o.textContent || '').trim())) sel.style.filter = 'blur(5px)';
+    });
     // 右欄「其他渠道的對話」預覽
     const h = [...document.querySelectorAll('h4')].find(x => (x.textContent||'').includes('其他渠道的對話'));
     if (h && h.parentElement) h.parentElement.querySelectorAll('p, span.block.truncate').forEach(p => p.style.filter = 'blur(5px)');
@@ -678,6 +693,10 @@ const INBOX_PII = `(() => {
       if (e && e !== document.body) e.style.display = 'none';
     });
   }
+  // DOM 一變就遮，不等下一輪計時器，避免新載入的姓名在模糊前被錄進影片
+  run();
+  const start = () => new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start);
   setInterval(run, 250);
 })();`;
 
