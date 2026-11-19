@@ -8,10 +8,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - 關鍵字回覆列表的優惠券名稱太長時溢出到「動作」欄、壓住「編輯」按鈕，改為在欄內截斷，滑鼠移上去看完整名稱。人員管理頁底部的說明把「角色與權限」改成與側欄一致的「角色權限」。
 - 工單列表刪除失敗、升級視窗送出失敗時，畫面一律顯示「刪除工單失敗」「升級失敗」，看不出原因（例如沒有權限）。原因是畫面讀 `response.data.message`，後端的訊息在 `error.message`。現在兩處改用 `getApiErrorMessage`，顯示後端的錯誤訊息（HC-CASES-16）。
+- 留言自動私訊：渠道的 `settings.commentReply.subscribedAt` 統一為第一次訂閱成功的時間。後台重新開啟留言接收、補訂閱腳本不再覆寫這個時間，和重新連結粉專一致（#547）。
+- 留言自動私訊：顧客回覆時串到收件匣，如果私訊快照無效（手動修改或舊格式的資料），只補入系統訊息，不再補入一則內容空白的私訊（#547）。
 
 ### Changed
 
 - 操作手冊依新版 UI 重拍截圖與操作影片，更新側欄路徑與按鈕名稱（粉絲活動章節等前端完成後再更新）；第 18 章優惠券改用只開表單、不送出的錄影腳本。
+- 留言自動私訊的結構整理（#547，行為不變）：`settings.commentReply` 的解析與寫入集中到 `comment-reply-settings.ts`；呼叫 Meta、使用 Redis 的函式從 `comment-reply-channel.service.ts` 移到 `comment-reply-meta.ts`；webhook 驗簽計數、平台健康頁與補訂閱腳本改經外掛的留言擴充判斷渠道，不再依 `channelType` 分支；規則的更新查詢帶上 `tenantId`。
 
 ## [2026-11-18]
 

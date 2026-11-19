@@ -26,6 +26,8 @@
 | 顧客回覆私訊時關聯對話 | `processInboundMessage()` → `apps/api/src/modules/webhook/inbound-comment-origin.ts` 的 `attachInboundCommentOrigin()` → `comment-reply-inbox.service.ts` 的 `attachCommentOrigin()` |
 | 補訂閱與停用留言欄位 | `apps/api/src/scripts/comment-reply-subscriptions.ts` |
 
+flow 在交易內呼叫 `*.service.ts` 讀寫資料庫。呼叫 Meta 或使用 Redis 快取的函式在 `comment-reply-meta.ts`，例如 readiness 的訂閱查詢、開關留言接收時的訂閱、最近貼文與網址解析。flow 在交易外呼叫這些函式。
+
 ## 規則
 
 - 一條規則屬於一個渠道，有關鍵字、比對方式（`any` 或 `all`）、選填的指定貼文、「每人一次」（`dedupePerCommenter`）、排序與啟用狀態。比對前以 NFKC 正規化，全形與半形視為相同（`comment-reply-match.ts` 的 `matchCommentRule()`）。
@@ -40,6 +42,15 @@
 ## 一則留言怎麼處理
 
 **訂閱欄位。** Meta 的 `POST subscribed_apps` 以整份清單取代粉專的訂閱欄位，少送一個私訊欄位，那個粉專的私訊就全部中斷。FB 的欄位一律由 `meta-connect.service.ts` 的 `subscribedFieldsFor()` 產生，IG 的欄位是 `comment-reply-channel.service.ts` 的 `IG_BASE_SUBSCRIBED_FIELDS` 加上 `IG_COMMENT_FIELD`。開關留言接收時一律送完整的欄位清單，並寫 `settings.commentReply.receiving`。
+
+**渠道的留言設定。** `settings.commentReply` 只經 `comment-reply-settings.ts` 讀寫。讀取用 `commentReplySettingsOf()`。訂閱成功之後，後台開關、連結粉專與補訂閱腳本都用 `nextCommentReplySettings()` 算出新的值。各子鍵的意思：
+
+| 子鍵 | 意思 | 寫入者 |
+| --- | --- | --- |
+| `receiving` | 是否開啟留言接收 | 後台開關、連結粉專、補訂閱腳本 |
+| `subscribedAt` | 第一次訂閱留言欄位成功的時間。之後重新連結、重新開啟都不覆寫 | 同上 |
+| `subscription` | 最後一次訂閱或檢查的結果（`status`、`fields`、`checkedAt`） | 同上，以及 `meta-token-health` 排程 |
+| `lastCommentEventAt` | 最後收到留言事件的時間 | `comment-reply-health` 排程 |
 
 **收件。** `comment-reply-intake.flow.ts` 檢查三層開關（見[三層開關](#三層開關)）、渠道與規則。留言命中規則時：
 
@@ -67,9 +78,15 @@
 
 收件的唯一鍵、認領的條件更新、`dedupeKey` 部分唯一索引三者一起避免重複私訊。`comment-reply-dedupe.test.ts` 與 `comment-reply-intake.test.ts` 有並行的案例。
 
-**顧客回覆私訊。** 顧客回覆時，`attachCommentOrigin()` 找同一個渠道、`recipientUid` 等於發送者、狀態 SENT、還沒關聯對話、30 天內送出的最新一筆紀錄，關聯紀錄與對話，並在對話補入「來自留言」的系統訊息與私訊快照。每筆紀錄只關聯一次。私訊進站建立聯絡人時，`inbound-contact-resolver.ts` 以 `findCommentAuthorContact()` 沿用留言者的聯絡人。
+**顧客回覆私訊。** 顧客回覆時，`attachCommentOrigin()` 找同一個渠道、`recipientUid` 等於發送者、狀態 SENT、還沒關聯對話、30 天內送出的最新一筆紀錄，關聯紀錄與對話，並在對話補入「來自留言」的系統訊息與私訊快照。每筆紀錄只關聯一次。私訊快照以 `comment-reply.schemas.ts` 的 `parseSentContentSnapshot()` 解析。快照無效時（例如手動修改的資料），只補入系統訊息。私訊進站建立聯絡人時，`inbound-contact-resolver.ts` 以 `findCommentAuthorContact()` 沿用留言者的聯絡人。
 
-**外掛差異。** 渠道之間的差異只經外掛的 `extensions.comments`，`comment-reply` 模組不比對 `channelType`。
+**外掛差異。** 渠道之間的差異只經外掛的 `extensions.comments`，`comment-reply` 模組不比對 `channelType`。`comment-reply-access.ts` 提供三個函式：
+
+- `commentExtensionOf()`：取得渠道的留言擴充。沒有擴充時，渠道不支援留言。
+- `commentChannelTypes()`：列出有留言擴充的渠道類型，依已註冊的外掛。
+- `commentAppModeOf()`：判斷渠道使用平台 Meta App 或自己的 App。
+
+webhook 的驗簽失敗計數、平台健康頁與補訂閱腳本也用這些函式。補訂閱腳本在 API 行程外執行，所以自己註冊外掛。
 
 **個資。** 留言內容、留言者名稱、PSID 都是個資。資料匯出（`apps/workers/src/handlers/data-export.handler.ts`）、資料刪除（`data-erasure.handler.ts`）與聯絡人合併（`contact-merge.service.ts`）涵蓋留言自動私訊的資料，例如 `comment_reply_rules`、`comment_reply_logs`、`comment_authors`。新增欄位時，這三處一起改。
 

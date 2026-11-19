@@ -585,6 +585,11 @@ lock for this. But the job can run more than one time, and two periods can overl
   `apps/api/src/plugins/prisma.plugin.ts` and `apps/workers/src/index.ts`. Scripts that run
   outside the application also construct their own client: `packages/database/prisma/seed.ts`,
   `packages/kb-ingest` and `apps/api/verify-quota.mts`. Feature tests do the same.
+
+  The one-time scripts in `apps/api/src/scripts/` also run outside the application. They scan
+  data of all tenants. They use the module-level `prisma` from `@open333crm/database`, and
+  `DATABASE_URL` must point to `crm` or `app_admin` (BYPASSRLS). Do not import these scripts from
+  application code. Do not copy this pattern into `apps/api/src/modules`.
 - `@open333crm/database` re-exports everything from `@prisma/client` (`export * from '@prisma/client'`).
   Thus, import types and enums from `@open333crm/database`, so that the code has one import source.
 - For `where` filters, use string literals, not enum imports. Most of the codebase uses string
