@@ -61,6 +61,8 @@ Gemini 的 `embedContent` 回應沒有 token 數。系統用輸入字數估算 `
 
 向量化 flow 的 `deps` 從 `{ prisma }` 改成 `LlmDeps`（`prisma`、`redis`、`events`）。呼叫端（`knowledge-effects.ts`、`knowledge.flow.ts`、`ai.flow.ts`、`kb-autoreply.flow.ts`）已經有這三項依賴，只是沒有傳下去。
 
+`readLlmInputs()` 讀金鑰與月額度上限的部分抽成 `readModelKeyInputs()`，AI 對話與向量化共用。`prepareLlmCall()` 檢查月額度的部分抽成 `assertMonthlyQuota()`。`recordLlmUsage()` 的參數型別放寬成 `tenantId`、`keySource`、`monthlyTokens` 三個欄位。
+
 額度已滿時的行為：
 - 背景向量化（匯入、修改文章）失敗。系統記 log，文章沒有向量。這和現在向量化失敗的處理相同。
 - AI 自動回覆的向量化失敗時，`kb-autoreply.flow.ts` 已經會轉真人，不另外改。
@@ -88,6 +90,16 @@ migration 補資料：`embedding` 不是空值、`embeddingModel` 是空值或�
 - 選 Gemini 時，隱藏網址欄位，模型固定顯示 `gemini-embedding-001`，並顯示說明：Gemini 會用到 AI 額度；沒有自備金鑰時使用平台金鑰。
 - 儲存後 `modelChanged` 是 true 時，沿用現有的提示，請使用者重新嵌入全部文章。
 
+### D7：修正向量欄位的維度（AUDIT DB-01）
+
+init migration 建立 `vector(1536)`，schema 與 UAT 是 `vector(1024)`。Gemini 必須指定 `outputDimensionality`，所以欄位維度要固定。
+
+migration 先以 `format_type(atttypid, atttypmod)` 讀 `km_articles.embedding` 的維度：
+- 已經是 `vector(1024)`：不做任何事。UAT 屬於這種情況，既有向量不受影響。
+- 其他維度：先清空 `embedding` 與 `embeddingModel`，再改成 `vector(1024)`。這些向量的維度和 1024 維的查詢不同，本來就無法比對。
+
+替代方案：Gemini 依資料庫欄位的實際維度輸出。不採用的原因：各環境的維度不同，同一份程式在不同環境產生不同維度的向量，問題會留下來。
+
 ## Risks / Trade-offs
 
 - [估算的 token 數不準] → 1 字算 1 token，估算偏高，平台不會少收。`gemini-embedding-001` 每 1M token 0.15 美元，誤差的金額很小。
@@ -97,7 +109,7 @@ migration 補資料：`embedding` 不是空值、`embeddingModel` 是空值或�
 
 ## Migration Plan
 
-1. migration：新增欄位（預設 `ollama`）、補空值的模型名稱、新增價格列。這三項都可以重複執行。
+1. migration：修正向量欄位維度（D7）、新增欄位（預設 `ollama`）、補空值的模型名稱、新增價格列。這四項都可以重複執行。
 2. 部署後，所有租戶仍用 Ollama，行為不變。
 3. 租戶在設定頁改成 Gemini，再按「重新嵌入全部」。
 

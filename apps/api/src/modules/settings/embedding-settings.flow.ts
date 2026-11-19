@@ -24,11 +24,10 @@ import {
 async function checkEmbeddingService(
   target: EmbeddingProbeTarget,
 ): Promise<{ health: OllamaHealth; models: OllamaModel[] }> {
-  const settings = target;
   const probe = await probeEmbeddingService(target);
   if (!probe.reachable) {
     return {
-      health: { ok: false, reachable: false, modelInstalled: false, currentModel: settings.model, error: probe.error },
+      health: { ok: false, reachable: false, modelInstalled: false, currentModel: target.model, error: probe.error },
       models: [],
     };
   }
@@ -38,8 +37,8 @@ async function checkEmbeddingService(
       ok: installed,
       reachable: true,
       modelInstalled: installed,
-      currentModel: settings.model,
-      error: installed ? undefined : modelNotInstalledError(settings.model, probe.models),
+      currentModel: target.model,
+      error: installed ? undefined : modelNotInstalledError(target.model, probe.models),
     },
     models: probe.models,
   };

@@ -18,7 +18,6 @@ import {
   readEmbeddingProbeTarget,
   type EmbeddingInputs,
 } from './embedding.service.js';
-import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
 import { assertMonthlyQuota, recordLlmUsage, type LlmDeps } from '../ai/llm.flow.js';
 
 /**

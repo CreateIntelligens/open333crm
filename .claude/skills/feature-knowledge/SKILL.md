@@ -57,9 +57,11 @@ AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影
 - 每則入站訊息最多一則機器人回覆。寫入要包在 `BotReplyGuard.persist()` 的交易裡，不要繞過。（機器人怎麼用知識庫回答）
 - 檢索只取 `status = 'PUBLISHED'` 的文章（規格 `km-ingestion`「Archived Articles Excluded」）。夥伴的 `DELETE` 是改成 `ARCHIVED`，網頁的刪除是硬刪除。（文章、匯入）
 - 向量化與刪除附件檔案都在 commit 之後開始，最多一次（`startEmbedAfterCommit()`、`removeFilesAfterCommit()`）。不要在交易內呼叫 `embedText()` 或物件儲存。（文章）
-- 向量化是「交易 → 交易外呼叫 Ollama → 交易」（`embedArticleFlow`）。寫入前比對 `prepareArticleText()` 組成的文字。不要改成比對 `updatedAt` 或狀態。（文章）
+- 向量化是「交易 → 交易外呼叫向量化服務 → 交易」（`embedArticleFlow`）。寫入前比對 `prepareArticleText()` 組成的文字。不要改成比對 `updatedAt` 或狀態。（文章）
 - 夥伴推送分三段（`ingestPartnerDocFlow`），交易 2 鎖住文章後用同一個 `decidePartnerWrite()` 重新判斷。保留「確定沒有寫入才刪檔案」的規則。（匯入）
-- 換 embedding 模型之前先決定向量維度（DB-01）。Embedding 只會呼叫 Ollama 格式的 `/api/embed`（LLM-04）。（文章、AI 設定）
+- 向量欄位是 1024 維。Ollama 的模型必須輸出 1024 維，Gemini 以 `outputDimensionality: 1024` 呼叫。（文章、AI 設定）
+- 搜尋與統計只比對 `embeddingModel` 等於目前模型的向量。寫入向量時一定要同時寫 `embeddingModel`，否則這篇文章搜不到。（文章、AI 設定）
+- Gemini 向量化一定經過 `embedWithUsage()`：先檢查月額度，呼叫後寫 `AiUsage`（`feature: 'embedding'`）。不要直接呼叫 `embedText()` 繞過它。（AI 設定、AI 月額度）
 - 只有 `keySource === 'platform'` 計入與檢查月額度，BYOK 不計不擋。（額度）
 - LLM 呼叫是「交易 1 → 交易外呼叫 LLM → 交易 2」（`llm.flow.ts`）。不要在交易內呼叫 `llm-client.ts` 或 `generateReply()`。一次請求呼叫多次 LLM 時，`prepareLlmCall()` 一次、`runLlmCall()` 多次。（額度）
 - 不要把 Agent（`runAgentReplyFlow()`）包進 `withTenant()` 或 `inTenant()`：交易 5 秒逾時，Agent 最長 120 秒。每次工具呼叫後先 commit 工具紀錄。（機器人怎麼用知識庫回答）
@@ -113,7 +115,7 @@ AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影
   - 轉接後對話應為 `AGENT_HANDLED`，有 `handoffReason` 與 `auto_handoff` 系統訊息。未指派的對話會通知看得到該渠道的主管與管理員（`conversation_handoff`）。
   - 仍是 `BOT_HANDLED` 時，查 job 是否失敗。轉接交易失敗時整則回覆不送出，由佇列重試。
 - 「AI 說型號查不到」：看訊息的 `metadata.modelGuard.unknownModel`；以 `GET /knowledge/models` 看白名單（白名單沒有該前綴就不會守門）；程式在 `apps/api/src/modules/ai/model-matcher.ts`。
-- 「文章發布了卻搜不到」：看 `hasEmbedding`、Embedding 頁的「未嵌入」數，用 `POST /knowledge/bulk-embed` 補。維度不符見 DB-01。
+- 「文章發布了卻搜不到」：看 `hasEmbedding`、Embedding 頁的「未嵌入」數，用 `POST /knowledge/bulk-embed` 補。剛換過向量化服務或模型時，舊向量不算數，要重新嵌入全部。Gemini 健康檢查失敗時，先確認 Chat & Prompt 頁有沒有自備金鑰，或平台有沒有設定 `GEMINI_API_KEY`。
 - 「匯入後中文亂碼」或「CSV 被拒：無法辨識文字編碼」：
   - CSV 由 `apps/api/src/modules/knowledge/file-parser.service.ts` 的 `decodeCsvText()` 解碼：UTF-8 去 BOM → 嚴格 UTF-8 → Big5。都不行或含 U+FFFD 就回 `CSV_ENCODING_UNREADABLE`。
   - GBK、Shift-JIS 等其他編碼不支援，請使用者另存成「CSV UTF-8」。

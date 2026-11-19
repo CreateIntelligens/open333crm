@@ -7,11 +7,12 @@
 ## What Changes
 
 - 「Embedding 設定」頁新增「向量化服務」選項：Ollama 或 Gemini。預設是 Ollama。既有租戶的行為不變。
-- 選 Gemini 時，系統用 `gemini-embedding-001` 模型，輸出 1024 維向量。資料庫的向量欄位不變。
+- 選 Gemini 時，系統用 `gemini-embedding-001` 模型，輸出 1024 維向量，與 schema 和 UAT 的向量欄位相同。
 - Gemini 的金鑰沿用 AI 對話的規則：先用租戶自備的金鑰（BYOK），沒有時用平台金鑰。
 - 健康檢查支援 Gemini：沒有金鑰或連不到時回 `ok: false`，並說明原因。
 - 語意搜尋只比對「目前模型」產生的向量。換服務或換模型後，舊向量不會混進搜尋結果。統計數字只計目前模型的向量，所以頁面會顯示要重新嵌入的篇數。
 - 一次性 migration：已有向量、但 `embeddingModel` 是空值的文章，補上該租戶目前的模型名稱。補完後，搜尋的過濾條件不會丟掉這些文章。
+- 修正 `km_articles.embedding` 的維度（AUDIT DB-01）：init migration 建立 1536 維，schema 與 UAT 是 1024 維。Gemini 必須指定輸出維度，所以 migration 把不是 1024 維的欄位清空後改成 1024 維；已經是 1024 維（UAT）時不做任何事。`long_term_memories.embedding` 沒有程式寫入，不在範圍內。
 
 ## Capabilities
 
@@ -38,6 +39,6 @@
 
 - API：`apps/api/src/modules/embedding/`（client、flow、service）、`apps/api/src/modules/settings/embedding-settings.*`、`apps/api/src/modules/ai/kb-autoreply.flow.ts`、`apps/api/src/modules/ai/llm.service.ts`（`AiFeature`）。
 - 呼叫向量化 flow 的地方要多傳 `redis` 與 `events`，用來檢查額度與記錄用量：`knowledge-effects.ts`、`knowledge.flow.ts`、`ai.flow.ts`。
-- 資料庫：`tenant_settings` 新增 `embeddingProvider` 欄位（預設 `ollama`）。補空值的模型名稱。新增價格列。
+- 資料庫：`km_articles.embedding` 對齊 1024 維（UAT 不變）。`tenant_settings` 新增 `embeddingProvider` 欄位（預設 `ollama`）。補空值的模型名稱。新增價格列。
 - 前端：`apps/web/src/components/knowledge/EmbeddingSettings.tsx`。
 - 不在範圍內：匯入時每篇文章同時向量化，會讓 Ollama 一次收到太多請求。這是另一個問題，另外開 issue。

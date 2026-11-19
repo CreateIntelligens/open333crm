@@ -32,7 +32,7 @@
 | 模組 | 負責什麼 |
 | --- | --- |
 | `knowledge` | 文章的 CRUD、發布與封存、檔案匯入、批次產生向量、語意搜尋、型號白名單、客人回報、夥伴系統匯入 |
-| `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由。`embedding-client.ts` 呼叫 Ollama，不碰資料庫；`embedding.flow.ts` 把向量化拆成「交易 → 交易外呼叫 Ollama → 交易」 |
+| `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由。`embedding-client.ts` 依租戶的向量化服務呼叫 Ollama 或 Gemini，不碰資料庫；`embedding.flow.ts` 把向量化拆成「交易 → 交易外呼叫向量化服務 → 交易」，Gemini 時另外檢查月額度並寫用量紀錄（`embedWithUsage()`） |
 | `ai` 的 `kb-autoreply.flow.ts`、`kb-autoreply.service.ts` | 機器人依知識庫回覆 |
 | `ai` 的 `agent/` | AI agent：可以呼叫工具（搜尋網頁、讀網頁、OCR、解析文件、查天氣、發布 Wiki）的多輪回覆 |
 | `ai` 的 `llm.flow.ts`、`llm.service.ts`、`llm-client.ts`、`providers/` | 呼叫 LLM。`llm.flow.ts` 把一次呼叫拆成「交易 1 讀設定、金鑰、遮罩政策與月額度上限 → 交易外檢查月額度並呼叫 LLM → 交易 2 寫用量紀錄」；`llm.service.ts` 是兩個交易內的查詢與提示詞的組裝；`llm-client.ts` 呼叫 provider，不碰資料庫。支援 Ollama 與 Gemini；組織不部署 Ollama，因此只能用 Gemini |
@@ -52,7 +52,7 @@
 | 單篇 | `GET /:id` | 每次讀取把 `viewCount` 加一（HC-KNOWLEDGE-13） |
 | 建立、修改、發布、封存、刪除 | `POST /`、`PATCH /:id`、`POST /:id/publish`、`POST /:id/archive`、`DELETE /:id` | `knowledge.flow.ts`。向量化與刪除附件檔案用 `knowledge-effects.ts` 的 `startEmbedAfterCommit()`、`removeFilesAfterCommit()`，在 commit 之後開始 |
 | 上傳檔案、批次匯入 | `POST /upload`、`POST /import` | 上傳的內容先經 `upload/upload-content-detector.ts` 偵測，再由 `file-parser.service.ts` 轉成 Markdown；兩者都呼叫 `importArticlesFlow`，每篇文章各自一個交易 |
-| 語意搜尋 | `POST /search` | `semanticSearchFlow`：交易內 `readEmbeddingInputs()` → 交易外 `embedText()` → 交易內 `searchSimilarArticles()` |
+| 語意搜尋 | `POST /search` | `semanticSearchFlow`：交易內 `readEmbeddingInputs()` → 交易外 `embedWithUsage()` → 交易內 `searchSimilarArticles()` |
 | 產生向量 | `POST /:id/embed`、`POST /bulk-embed`、`GET /embedding-status` | `embedding.flow.ts` 的 `embedArticleFlow`。`bulk-embed` 立刻回應，在背景重新向量化所有已發布的文章 |
 | 型號白名單 | `GET /models`、`POST /models/refresh` | `ai/model-registry.service.ts` |
 | 客人回報 | `GET /feedback`、`GET /feedback/counts`、`PATCH /feedback/:id/resolve` | 寫入在進站攔截器 `inbound-postback-interceptors.ts` 的 `handleKbFeedback()` → `recordKbFeedbackFlow` |
@@ -82,11 +82,11 @@
 
 建立文章、以及改了標題、內容或摘要時，系統在背景重新產生向量；發布時若還沒有向量，也會在背景補產生。這三個時機都在 commit 之後開始，最多一次，不等待結果，失敗只記 log。處理程序中途結束時，文章沒有向量，要重新向量化補上。`embedText()`（`embedding/embedding-client.ts`）與物件儲存都是外部呼叫，不在交易內呼叫。因此文章可能顯示為已發布，卻因為沒有向量而檢索不到。`GET /knowledge/embedding-status` 列出向量的狀態，`POST /knowledge/bulk-embed` 與 `POST /knowledge/:id/embed` 可以補產生。
 
-**向量化期間文章被修改時不寫入。** 系統讀文章時組成向量化的文字，呼叫 Ollama 之後鎖住文章、重組文字，文字沒變時才寫入向量。向量化的文字由 `embedding.service.ts` 的 `prepareArticleText()` 組成，比對也用它。發布、封存與瀏覽文章都不算修改：向量只取決於文字，檢索時才依狀態過濾。所以比對不看 `updatedAt` 與狀態，瀏覽次數會改 `updatedAt`，發布會改狀態。文章的向量化文字在這段期間被修改，或文章被刪除時，這次的向量不寫入，只記 warn log；改了內容的那次寫入會自己再產生向量。`POST /knowledge/:id/embed` 碰到這種情況回 409 `ARTICLE_CHANGED`。只改分類或標籤時不會重新產生向量，所以那篇文章保留舊向量，要手動重新向量化。
+**向量化期間文章被修改時不寫入。** 系統讀文章時組成向量化的文字，呼叫向量化服務之後鎖住文章、重組文字，文字沒變時才寫入向量。向量化的文字由 `embedding.service.ts` 的 `prepareArticleText()` 組成，比對也用它。發布、封存與瀏覽文章都不算修改：向量只取決於文字，檢索時才依狀態過濾。所以比對不看 `updatedAt` 與狀態，瀏覽次數會改 `updatedAt`，發布會改狀態。文章的向量化文字在這段期間被修改，或文章被刪除時，這次的向量不寫入，只記 warn log；改了內容的那次寫入會自己再產生向量。`POST /knowledge/:id/embed` 碰到這種情況回 409 `ARTICLE_CHANGED`。只改分類或標籤時不會重新產生向量，所以那篇文章保留舊向量，要手動重新向量化。
 
-向量的維度有已知落差：程式、schema 與 UAT 用 1024 維；由 migration 建立的資料庫（本機、feature 測試）是 1536 維，寫入會被拒絕，見 `../../system/AUDIT.md` 的 DB-01。換 embedding 模型之前，先決定維度。
+`km_articles.embedding` 是 1024 維，schema、migration 與 UAT 一致。Ollama 的模型必須輸出 1024 維；Gemini 以 `outputDimensionality: 1024` 呼叫。`long_term_memories.embedding` 仍是 1536 維，見 `../../system/AUDIT.md` 的 DB-01。
 
-檢索只取 `PUBLISHED`、而且有向量的文章。語意搜尋頁用 Embedding 設定的 `topK` 與 `threshold`。embedding 服務連不上時，語意搜尋回 500 `INTERNAL_ERROR`，畫面看不出是向量服務的問題（HC-KNOWLEDGE-08）。
+檢索只取 `PUBLISHED`、有向量，而且向量的 `embeddingModel` 等於租戶目前模型的文章。換向量化服務或模型之後，舊向量不進檢索結果，Embedding 頁的「已嵌入」也不計這些文章，要按「重新嵌入全部已發布文章」。語意搜尋頁用 Embedding 設定的 `topK` 與 `threshold`。embedding 服務連不上時，語意搜尋回 500 `INTERNAL_ERROR`，畫面看不出是向量服務的問題（HC-KNOWLEDGE-08）。
 
 ## 匯入
 
@@ -151,11 +151,13 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 | 設定 | 欄位 | 預設值的位置 |
 | --- | --- | --- |
 | Chat（Chat & Prompt 頁） | 供應商（Ollama 或 Gemini）、模型、位址、溫度、最大 token、系統提示詞、追問門檻與次數 | `chat-settings.service.ts` 的 `DEFAULT_CHAT_SETTINGS` |
-| Embedding（Embedding 頁） | 位址、模型、`topK`、`threshold` | `embedding-settings.service.ts` 的 `DEFAULT_EMBEDDING_SETTINGS` |
+| Embedding（Embedding 頁） | 向量化服務（Ollama 或 Gemini）、位址、模型、`topK`、`threshold` | `embedding-settings.service.ts` 的 `DEFAULT_EMBEDDING_SETTINGS` |
 
 兩頁都有健康檢查（`/settings/chat/health`、`/settings/embedding/health`），用來確認模型位址連得上。
 
-兩頁的預設值都指向 Ollama。Chat 可以把供應商改成 Gemini；Embedding 沒有供應商可選，只會呼叫 Ollama。見 `../../system/AUDIT.md` 的 LLM-01 與 LLM-04。
+兩頁的預設值都指向 Ollama，租戶可以各自改成 Gemini。見 `../../system/AUDIT.md` 的 LLM-01 與 LLM-04。
+
+**Gemini 向量化。** Embedding 的服務是 Gemini 時，模型固定是 `gemini-embedding-001`（其他模型回 400 `VALIDATION_ERROR`）。金鑰的規則與 Chat 相同：有自備金鑰時用自備金鑰，沒有時用平台金鑰（`readModelKeyInputs()`）。文章用 `taskType: RETRIEVAL_DOCUMENT`，搜尋與客人訊息用 `RETRIEVAL_QUERY`。送給 Gemini 的文字只取前 2000 字。每次呼叫寫一筆 `AiUsage`（`feature: 'embedding'`），Gemini 的回應沒有 token 數，`promptTokens` 以送出的字數估算。健康檢查在沒有金鑰時不送請求，直接回 `ok: false`。
 
 **自備金鑰（BYOK）。** 租戶可以在設定頁填入自己的 Gemini 金鑰（`PUT /settings/gemini-key`，body `{ apiKey: 字串或 null }`），金鑰加密後存在 `TenantSettings.geminiApiKeyEnc`。有自備金鑰時，AI 呼叫用租戶的金鑰，成本記 0，也不受月額度限制。解密失敗時會靜默改用平台金鑰，見 `../../system/AUDIT.md` 的 AI-01。
 
@@ -163,7 +165,7 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 
 ## 額度
 
-只有使用平台金鑰（`keySource === 'platform'`）時，系統才累加並檢查月額度（`monthlyTokens`）。每次成功的 AI 呼叫把 token 數累加到該租戶當月的計數器：Redis key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，月份依台灣時間；Redis 失敗時改用資料庫加總（`token-quota.service.ts`）。Ollama 的成本記 0，但同樣會累加。一般 AI 呼叫與 AI agent 都經由 `llm.flow.ts` 的 `prepareLlmCall()`，在呼叫前檢查月額度，超過就丟 403 `PLAN_LIMIT_EXCEEDED`，不呼叫 LLM。
+只有使用平台金鑰（`keySource === 'platform'`）時，系統才累加並檢查月額度（`monthlyTokens`）。每次成功的 AI 呼叫把 token 數累加到該租戶當月的計數器：Redis key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，月份依台灣時間；Redis 失敗時改用資料庫加總（`token-quota.service.ts`）。Ollama 的成本記 0，但同樣會累加。一般 AI 呼叫與 AI agent 都經由 `llm.flow.ts` 的 `prepareLlmCall()`，在呼叫前檢查月額度，超過就丟 403 `PLAN_LIMIT_EXCEEDED`，不呼叫 LLM。Gemini 向量化經由 `embedWithUsage()`，以同一個 `assertMonthlyQuota()` 檢查。Ollama 向量化不檢查月額度，也不寫用量紀錄。
 
 一次 LLM 呼叫分三段：交易 1 的 `readLlmInputs()` 讀 Chat 設定、金鑰、遮罩政策與月額度上限；交易外以 Redis 計數器檢查月額度，`llm-client.ts` 呼叫 provider；交易 2 的 `writeAiUsage()` 寫用量。一次請求要呼叫多次 LLM 時（例如建議回覆），呼叫一次 `prepareLlmCall()`，每次呼叫 `runLlmCall()`。
 

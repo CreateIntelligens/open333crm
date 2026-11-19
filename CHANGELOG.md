@@ -4,7 +4,17 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-19]
 
+### Added
+
+- **Embedding 可以改用 Gemini**（change `add-gemini-embedding-provider`）：Embedding 設定頁新增「向量化服務」，可選 Ollama 或 Gemini（`gemini-embedding-001`，1024 維），預設仍是 Ollama。Gemini 的金鑰沿用 Chat 的規則（自備金鑰優先，否則平台金鑰）；用平台金鑰時先檢查月額度，每次呼叫記一筆 `AiUsage`（`feature: embedding`）。健康檢查支援 Gemini，沒有金鑰時直接說明原因。新增 `gemini-embedding-001` 的價格。
+
+### Changed
+
+- 語意搜尋、知識庫自動回覆與 Embedding 頁的「已嵌入」統計，只比對目前模型產生的向量。換服務或模型之後，舊向量不再混進搜尋結果，要重新嵌入全部文章。migration 為既有向量補上模型名稱，所以既有租戶不受影響。
+
 ### Fixed
+
+- 由 migration 建立的資料庫，`km_articles.embedding` 是 1536 維，和 schema、UAT 的 1024 維不一致，本機寫不進 `bge-m3` 的向量。migration 改成 1024 維，已經是 1024 維的資料庫（UAT）不變（AUDIT DB-01 部分修正）。
 
 - 關鍵字回覆列表的優惠券名稱太長時溢出到「動作」欄、壓住「編輯」按鈕，改為在欄內截斷，滑鼠移上去看完整名稱。人員管理頁底部的說明把「角色與權限」改成與側欄一致的「角色權限」。
 - 工單列表刪除失敗、升級視窗送出失敗時，畫面一律顯示「刪除工單失敗」「升級失敗」，看不出原因（例如沒有權限）。原因是畫面讀 `response.data.message`，後端的訊息在 `error.message`。現在兩處改用 `getApiErrorMessage`，顯示後端的錯誤訊息（HC-CASES-16）。
