@@ -126,7 +126,7 @@
 
 ### 回收匿名化留下的媒體檔
 
-2026-11-09 之前完成的匿名化，留下客人傳來的圖片、影片與檔案在物件儲存的 `{tenantId}/media/{conversationId}/`，資料庫已經沒有指向這些檔案的訊息。一次性腳本 `scripts/recover-erased-media-orphans.mjs` 找出並刪除這些檔案，SQL 在 `scripts/sql/recover-erased-media-orphans.sql`。不需要 migration。
+2026-11-09 之前完成的匿名化，留下客人傳來的圖片、影片與檔案在物件儲存的 `{tenantId}/media/{conversationId}/`，資料庫已經沒有指向這些檔案的訊息。一次性腳本 `scripts/recover-erased-media-orphans.mjs` 找出並刪除這些檔案（#474），SQL 在 `scripts/sql/recover-erased-media-orphans.sql`。不需要 migration。
 
 **回收規則**
 
