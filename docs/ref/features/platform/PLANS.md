@@ -2,10 +2,37 @@
 
 方案定義租戶的功能範圍與數量上限。這一份說明各欄位控制什麼，以及有效上限怎麼算出來。
 
-- **資料來源**：`apps/api/src/modules/platform/plan.service.ts`、`plan-limits.service.ts`、`platform.routes.ts`
-- **核對日期**：2026-09-23
+- **資料來源**：`apps/api/src/modules/platform/plan.service.ts`、`plan-limits.service.ts`、`platform.routes.ts`、`apps/api/src/services/permission.service.ts`、`apps/api/src/services/tenant-plan.cache.ts`、`apps/web/src/app/admin/plans/page.tsx`
+- **核對日期**：2026-11-19
 
-這一份會反覆出現「天花板」。它指方案允許的權限上限，定義與公式見[平台後台](./README.md#用語天花板)。
+這一份會反覆出現「天花板」。它指方案允許的權限上限，定義與公式見[平台後台](./README.md#用語天花板)。權限怎麼計算見 `../../modules/PERMISSIONS.md`。
+
+## 程式的入口
+
+| 路由 | 函式 |
+| --- | --- |
+| `GET /api/v1/platform/plans` | `plan.service.ts` 的 `listPlans()`，依 `priceMonthly` 排序 |
+| `PATCH /api/v1/platform/plans/:id` | `updatePlan()`，路由再寫平台稽核 `plan.update` |
+| `GET /api/v1/platform/registry` | 回傳功能、權限碼與渠道類型，見[平台設定](./SETTINGS.md#權限註冊表) |
+
+三條路由都在 `apps/api/src/modules/platform/platform.routes.ts`，要求平台 superuser。租戶端的 `GET`、`POST /api/v1/plan-change` 屬於[方案異動審核](./PLAN-CHANGES.md)。
+
+## 上限在哪裡被擋
+
+| 上限 | 檢查點 | 失敗回應 |
+| --- | --- | --- |
+| 功能天花板 | `apps/api/src/guards/rbac.guard.ts` 的 `requirePermission()` → `permission.service.ts` 的 `getEffectiveTenantPermissions()` | 403 `FORBIDDEN`，帶 `details.requiredPermission`。回應分不出是角色沒給還是方案不含（PLAN-08） |
+| `maxAgents` | `apps/api/src/modules/agent/agent.service.ts`：建立成員與重新啟用成員之前，計算 `isActive` 的成員數 | 403 `PLAN_LIMIT_EXCEEDED`，`details {limitKey, current, max}` |
+| `maxChannels` | `apps/api/src/modules/channel/channel.service.ts` 的 `createChannel()`，計算 `isActive` 的渠道數 | 同上。重新啟用渠道時不檢查（PLAN-07） |
+| `allowedChannelTypes` | 同上 | 403 `CHANNEL_TYPE_NOT_ALLOWED`，`details {channelType, allowed}` |
+| `monthlyTokens` | `apps/api/src/modules/ai/llm.flow.ts` 的 `prepareLlmCall()`。`generateReply()` 與 AI Agent 都經過這裡，只檢查 `keySource=platform` 的呼叫 | 403 `PLAN_LIMIT_EXCEEDED`，`details.limitKey='monthlyTokens'` |
+| `maxTags` | 沒有檢查點 | 不擋（PLAN-04） |
+
+新路由沒有掛 `requirePermission()` 時，方案關不掉這條路由（PLAN-04）。新增上限時，失敗回應照 `PLAN_LIMIT_EXCEEDED` 的形狀：403，帶 `limitKey`、`current`、`max`，前端才能共用錯誤訊息。
+
+AI 月額度的計數器是 Redis 的 `aiquota:{tenantId}:{YYYY-MM}:tpe`（`apps/api/src/modules/trial/token-quota.service.ts`），月份用台灣時間，只累加平台金鑰（`keySource=platform`）的成功呼叫。租戶用自己的金鑰（BYOK）時不計數也不擋。BYOK 金鑰解密失敗時，呼叫退回平台金鑰，開始計數（AI-01）。
+
+新增權限碼時，在 `packages/shared/src/rbac/permissions.ts` 宣告；新增 feature 時，在 `packages/core/src/rbac/features.ts` 宣告。兩者都會自動出現在 `/admin/plans`。既有租戶的系統角色要執行 `scripts/grant-new-role-permissions.mjs` 才拿到新的權限碼。
 
 ## 每個欄位各控制什麼
 
@@ -64,6 +91,20 @@ API 容器每次啟動都跑 seed（`apps/api/docker-entrypoint.sh`）。平台�
 
 `features` 是唯一沒被驗值的欄位。寫進一個不存在的 feature slug 不會報錯，`permsForFeatures()` 找不到對應權限，那個 slug 等同沒寫。
 
+`updatePlanSchema` 另有這些過寬之處（HC-PLATFORM-PLANS-05）：
+
+- `limits` 是 `z.record()`，沒有 key 白名單。送出的 `limits` 會整份取代原值，所以送 `{}` 或只送錯字的 key 時，四項上限一起變成無上限。
+- `name` 可以是空字串。
+- `priceMonthly` 接受負數，小數被截成整數。
+- 空的 body `{}` 回 200，並寫一筆空的稽核。
+- `:id` 不是 UUID 時回 400 `DATABASE_ERROR`。
+
+方案沒有新增或刪除的 API 與畫面。要新增方案，只能改 `packages/database/prisma/seed-data/plans.ts`（只在資料庫沒有該 slug 時建立）、寫 migration 或直接寫資料庫。
+
+`Tenant.limitOverrides` 沒有讀寫的畫面，也沒有 API，程式裡沒有寫入端。
+
+權限碼 `billing.view`（檢視方案與用量）沒有任何路由或頁面使用（RBAC-01）。
+
 合法的 slug 定義在 `packages/core/src/rbac/features.ts` 的 `FEATURES`，每一筆帶 slug、顯示名稱、涵蓋範圍說明與是否為核心。那份定義是被指定的單一資料源，平台後台的方案頁透過 `GET /registry` 動態取得，不另外維護清單，見[平台設定與權限註冊表](./SETTINGS.md#權限註冊表)。
 
 ## 停售不會生效
@@ -112,6 +153,19 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 
 `limits` 與 `allowedChannelTypes` 不需要失效快取，因為兩者都不快取，每次都查資料庫。
 
+天花板的快取有兩層：
+
+| 層 | 位置 | 誰清除 |
+| --- | --- | --- |
+| 租戶 → `planId` | `tenant-plan.cache.ts` 的 `getTenantPlanId()`，60 秒行程內 `Map` | 改租戶 `planId` 的程式呼叫 `invalidateTenantPlan()`。只清得到目前的 API 行程 |
+| 角色權限 ∩ 方案天花板 | Redis `perms:tenant:{roleId}:{planId}` | `invalidatePlanPermissions()` 以 SCAN 刪除 `perms:tenant:*:{planId}` |
+
+改租戶的 `planId` 時，兩個函式都要呼叫。直接改資料庫的 `planId` 時，要等 60 秒或重啟 API；Redis 的 `FLUSHDB` 清不到第一層。API 有多個行程時，其他行程最多延遲 60 秒（PLAN-03）。
+
+換方案不刪 `RolePermission`。降級之後，超出新方案的權限只是被天花板擋住；升回原方案，權限自動恢復。
+
+平台稽核 `plan.update` 只記新值（PLAN-09）。
+
 操作者在按下儲存之前，看不到這次改動影響幾個租戶；事後也查不到改動前的值。詳見 `../../system/AUDIT.md` 的 PLAN-09。
 
 租戶端不會知道天花板變了。角色與權限頁顯示的是資料庫的授予紀錄，不套天花板，因此被方案擋掉的權限在那一頁仍然顯示為已勾選，詳見 `../../system/AUDIT.md` 的 PLAN-08。
@@ -119,5 +173,24 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 ## 加購只加當月
 
 AI 月額度的加購不寫 `limitOverrides`，只計入核准當月（台灣時間），下個月回到方案額度。換方案之後加購加在新方案的額度上。詳見[方案異動審核](./PLAN-CHANGES.md#加購只計入核准當月)。
+
+## 畫面怎麼呼叫 API
+
+平台後台 `/admin/plans`（`apps/web/src/app/admin/plans/page.tsx`）：
+
+| 操作 | API | 畫面上要知道的事 |
+| --- | --- | --- |
+| 側欄「方案與上限」 | `GET /platform/plans`；`GET /platform/registry` 取功能、權限碼與渠道類型 | 未登入時導回 `/admin/login` |
+| 卡片的「功能」勾選框 | `PATCH /platform/plans/:id` | `core` 停用，不可取消。下一個請求立即套用新天花板 |
+| 功能勾選後的「細分權限（N）」 | 同上，`permissionOverrides: { deny: [...] }` | 取消勾選某個權限碼，就是把它加進 `deny`。取消整個功能時，`deny` 清單保留但隱藏，重新打開功能後仍然生效 |
+| 「客服人數」「渠道數」「分眾標籤數」「AI 月額度 token」輸入框 | 同上，`limits` | 留空代表無上限。`maxTags` 沒有任何檢查點（PLAN-04） |
+| 「可用渠道類型」 | 同上，`allowedChannelTypes` | 全不勾代表不限制。只擋新建的渠道。選項含 `TELEGRAM` 與 `WHATSAPP`，勾了也建不出這兩種渠道：`createChannelSchema` 不接受 `TELEGRAM`，`WHATSAPP` 沒有渠道外掛（HC-PLATFORM-PLANS-08） |
+
+每次儲存都送完整的四欄（`features`、`limits`、`allowedChannelTypes`、`permissionOverrides`），不送 `name`、`priceMonthly`、`isActive`。儲存的已知問題：
+
+- 數值輸入以 `parseInt` 解析（HC-PLATFORM-PLANS-04）：`1.5` 存成 1，`12abc` 存成 12；`abc` 不更新該欄，但仍顯示「已更新」；`-3` 被後端擋下，畫面只顯示「儲存失敗」，而且失敗訊息與成功訊息一樣是綠底。空白或 `∞` 送 `null`。
+- 同時編輯兩張方案卡片時，先儲存的那張會重新載入全部方案。另一張的數值輸入框是非受控元件（`defaultValue`），仍顯示新值；再儲存那一張時，送出的卻是舊值，畫面仍顯示「已更新」（HC-PLATFORM-PLANS-02）。
+
+租戶端 `/dashboard/plan` 的操作見[方案異動審核](./PLAN-CHANGES.md#畫面怎麼呼叫-api)。這一頁不顯示目前方案、上限或用量（PLAN-10）。AI 額度告警的站內通知與 email 都以這一頁當「查看用量」的連結，但這一頁沒有用量；告警的收件人以舊的角色列舉 `role: 'ADMIN'` 決定，不看能開這一頁的 `settings.manage`（HC-PLATFORM-PLANS-07）。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。
