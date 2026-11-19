@@ -93,7 +93,7 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 - Facebook 自備 Meta App：開發、測試，或客戶堅持用自己的 App 時用。
 - Instagram 手動填權杖：Instagram 還沒有自助連結（`add-instagram-login-connect` 未開工），客戶手冊寫「聯繫客服」，由內部人員照這裡操作。
 
-**先確認平台 App 的權限。** 2026-11-19 以 Meta 開發者工具查詢平台 App（創造智能，671495162407854）：已上線（Live），`pages_messaging`、`pages_manage_metadata`、`pages_show_list` 有進階存取，所以任何粉專管理員都能用「用 Facebook 連結粉專」；Instagram 的權限（`instagram_business_basic`、`instagram_business_manage_messages` 等）都沒有核准。沒有進階存取時，Meta 只讓在 App 上有角色的帳號授權（標準存取）。所以協助客戶串 IG 前，要先讓客戶的 IG 帳號在使用的 App 上有角色，否則產生不了權杖或收不到私訊。
+**先確認平台 App 的權限。** 2026-11-19 以 Meta 開發者工具查詢平台 App（創造智能，671495162407854）：已上線（Live），`pages_messaging`、`pages_manage_metadata`、`pages_show_list` 有進階存取，所以任何粉專管理員都能用「用 Facebook 連結粉專」；Instagram 的權限（`instagram_business_basic`、`instagram_business_manage_messages` 等）都沒有核准。沒有進階存取時，App 只有標準存取：只有在 App 上有角色的帳號能授權，而且只確定收得到這些有角色的帳號的資料。所以用平台 App 串客戶的 IG，只能當測試，不能保證一般客人的私訊會進收件匣。正式替客戶串 IG，要用 Instagram 權限已取得進階存取的 App；平台 App 的 IG 權限過審（或 `add-instagram-login-connect` 上線）之前，不要對客戶承諾平台 App 的 IG 串接可以正式使用。
 
 ### Facebook：自備 Meta App
 
