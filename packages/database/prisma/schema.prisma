@@ -1234,6 +1234,8 @@ model TenantSettings {
   tenantId               String   @unique @db.Uuid
   timezone               String   @default("Asia/Taipei")
   officeHours            Json     @default("{}")
+  // 向量化服務：ollama | gemini（gemini 時模型固定 gemini-embedding-001）
+  embeddingProvider      String   @default("ollama")
   embeddingBaseUrl       String   @default("http://localhost:11434")
   embeddingModel         String   @default("bge-m3")
   embeddingTopK          Int      @default(5)

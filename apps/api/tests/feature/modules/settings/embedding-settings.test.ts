@@ -20,7 +20,7 @@ const owner = new PrismaClient();
 const tenantDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
 const MARK = `ci-embedding-settings-${Date.now()}`;
 const MISSING = '00000000-0000-4000-8000-000000000000';
-const DEFAULTS = { baseUrl: 'http://localhost:11434', model: 'bge-m3', topK: 5, threshold: 0.3 };
+const DEFAULTS = { provider: 'ollama', baseUrl: 'http://localhost:11434', model: 'bge-m3', topK: 5, threshold: 0.3 };
 
 const tenantIds: string[] = [];
 const apps: Array<{ close(): Promise<unknown> }> = [];
@@ -76,7 +76,10 @@ function storedRow(tenantId: string) {
   });
 }
 
-function saveRow(tenantId: string, data: { embeddingModel?: string; embeddingTopK?: number }) {
+function saveRow(
+  tenantId: string,
+  data: { embeddingModel?: string; embeddingTopK?: number; embeddingBaseUrl?: string; embeddingProvider?: string },
+) {
   return owner.tenantSettings.create({ data: { tenantId, ...data } });
 }
 
@@ -151,6 +154,29 @@ describe('修改向量化設定', () => {
     assert.equal(res.body.data.modelChanged, true);
     assert.equal(res.body.data.previousModel, 'bge-m3');
     assert.equal(res.body.data.settings.model, 'bge-m3-custom');
+  });
+
+  test('改成 Gemini', async () => {
+    const t = await makeTenant('put-gemini');
+    await saveRow(t, { embeddingModel: 'bge-m3', embeddingBaseUrl: 'http://ollama:11434' });
+    const res = await call(await buildApp(t), 'PUT', S, { provider: 'gemini', model: 'gemini-embedding-001' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.settings.provider, 'gemini');
+    assert.equal(res.body.data.settings.model, 'gemini-embedding-001');
+    assert.equal(res.body.data.modelChanged, true);
+    assert.equal(res.body.data.previousModel, 'bge-m3');
+    assert.equal(res.body.data.settings.baseUrl, 'http://ollama:11434', '服務網址保留原值');
+  });
+
+  test('Gemini 搭配不支援的模型', async () => {
+    const t = await makeTenant('put-gemini-bad-model');
+    await saveRow(t, { embeddingModel: 'bge-m3' });
+    const res = await call(await buildApp(t), 'PUT', S, { provider: 'gemini', model: 'bge-m3' });
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.equal(res.body.error?.code, 'VALIDATION_ERROR');
+    const row = await owner.tenantSettings.findUnique({ where: { tenantId: t }, select: { embeddingProvider: true } });
+    assert.equal(row?.embeddingProvider, 'ollama', '設定不變');
+    assert.equal(await owner.tenantAuditLog.count({ where: { tenantId: t } }), 0, '沒有稽核紀錄');
   });
 
   test('稽核寫入失敗時設定不變', async () => {

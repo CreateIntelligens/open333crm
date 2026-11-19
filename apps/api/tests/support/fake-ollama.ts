@@ -8,10 +8,9 @@ import { vi } from 'vitest';
 
 export const OLLAMA_BASE_URL = 'http://localhost:11434';
 /**
- * 假向量的維度：跟 migration 建立的 `km_articles.embedding` 欄位一樣（vector(1536)）。
- * schema.prisma 寫 1024，兩者不一致是已知問題（docs/ref/system/AUDIT.md DB-01）。DB-01 修正時改這裡。
+ * 假向量的維度：跟 `km_articles.embedding` 欄位一樣（vector(1024)，schema.prisma 與 migration 一致）。
  */
-export const VECTOR_DIM = 1536;
+export const VECTOR_DIM = 1024;
 
 /** 第一個元素是 `marker`、其餘是 0 的向量；以 `vectorMarker()` 從資料庫讀回的文字分辨是哪一個 */
 export function markedVector(marker: number): number[] {

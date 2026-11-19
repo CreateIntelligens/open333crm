@@ -6,6 +6,7 @@ import {
   getEmbeddingSettingsPageFlow,
   updateEmbeddingSettingsFlow,
 } from "./embedding-settings.flow.js";
+import { EMBEDDING_PROVIDERS } from "./embedding-settings.service.js";
 import { actorOf } from "../../lib/request-actor.js";
 import {
   checkChatHealthFlow,
@@ -182,6 +183,7 @@ const systemPromptSchema = z
   .max(MAX_SYSTEM_PROMPT_LENGTH, `提示詞不可超過 ${MAX_SYSTEM_PROMPT_LENGTH} 字`);
 
 const embeddingSettingsSchema = z.object({
+  provider: z.enum(EMBEDDING_PROVIDERS).optional(),
   // 後端會 fetch 這個位址（健康檢查／向量化）→ 不限 scheme 等於 SSRF 面
   baseUrl: httpUrlSchema.optional(),
   model: z.string().min(1).optional(),
