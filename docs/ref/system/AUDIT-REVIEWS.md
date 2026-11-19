@@ -12,6 +12,34 @@
 | --- | --- | --- |
 | HC-CASES-16 | 已修正。`apps/web/src/app/dashboard/cases/page.tsx` 的刪除與 `apps/web/src/components/case/EscalationModal.tsx` 的升級改用 `getApiErrorMessage`，讀後端的 `error.message` | `apps/web/tests/unit/app/cases/case-list-delete-error.test.tsx`「刪除被後端拒絕時，列表顯示後端的錯誤訊息」、`apps/web/tests/unit/components/case/escalation-modal.test.tsx`「升級被後端拒絕時，對話框顯示後端的錯誤訊息」。兩個測試在修正前都失敗在斷言上（畫面顯示「刪除工單失敗」、找不到後端的訊息） |
 
+## 2026-11-19：健檢項目的修正補記
+
+這筆紀錄補記程式裡已有、但健檢報告沒有記下的修正，本身不改程式。逐項讀目前的程式（`db94f20b`）核對健檢報告的問題列，沒有執行測試，也沒有連 UAT。修正與部分修正的項目已加到各健檢報告開頭的「已修正」行。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| HC-PLATFORM-TRIALS-06 | 部分修正：申請不再收密碼，只有空白的站台名稱回 400。超長站台名稱與 429 仍只顯示通用錯誤，輸入框沒有 `maxLength` | `apps/api/src/modules/trial/trial.routes.ts` 的申請 schema（`z.string().trim().min(1).max(100)`）；`apps/web/src/app/trial/page.tsx` 的 `submit()`。修正 commit：`1f4c10ac` |
+| HC-PLATFORM-TRIALS-11 | 部分修正：狀態以中文顯示。申請時間、寄信次數、開通的租戶仍不顯示，仍只取 100 筆 | `apps/web/src/app/admin/trial/page.tsx` 的 `SIGNUP_STATUS_META`；`platform.routes.ts` 的 `GET /trial-signups`（`take: 100`）。修正 commit：`98de5022` |
+| HC-PLATFORM-USAGE-05 | 已修正：月額度與每日趨勢都以台灣時間切月、切日 | `apps/api/src/modules/trial/token-quota.service.ts` 的 `monthKey()`、`monthStart()`；`apps/api/src/modules/platform/platform-usage.service.ts` 的 `getTenantUsageDetail()`（`AT TIME ZONE 'Asia/Taipei'`）。修正 commit：`98de5022` |
+| HC-PLATFORM-USAGE-09 | 已修正：每日趨勢補滿查詢期間的每一天，沒有用量的日子是 0 | `platform-usage.service.ts` 的 `fillTrendDays()`。修正 commit：`98de5022` |
+| HC-PLATFORM-USERS-06 | 部分修正：操作紀錄顯示操作者。payload 仍不顯示 | `apps/web/src/app/admin/lib/AuditLogTable.tsx` 的 `AuditLogTable()`（「操作者」欄）。修正 commit：`98de5022` |
+| HC-NOTIFICATIONS-10 | 已修正：非 UUID 的 id 回 400 `VALIDATION_ERROR` | `apps/api/src/modules/notification/notification.routes.ts` 的 `idParamsSchema`。修正 commit：`248010df` |
+| HC-PORTAL-11 | 已修正：非 UUID 的活動 id、聯絡人 id 回 400 `VALIDATION_ERROR`；聯絡人不存在時回 404 `CONTACT_NOT_FOUND` | `apps/api/src/modules/portal/portal.routes.ts` 的 `idParams`、`contactIdParams`；`points.service.ts` 的積分調整（`CONTACT_NOT_FOUND`）。修正 commit：`7bd3ebd0`、`8990b049` |
+| HC-PORTAL-10 | 部分修正：`count` 以 Zod 檢查。草稿與進行中的活動仍能抽獎，全部已中獎時視窗仍沒有提示 | `portal.routes.ts` 的 `drawBody`（`positiveInt4Schema`）；`portal.service.ts` 的抽獎查詢只篩 `isWinner: false`；`apps/web/src/components/portal/SubmissionsView.tsx` 的 `handleDraw()`。修正 commit：`7bd3ebd0` |
+| HC-PLATFORM-PLAN-CHANGES-03 | 部分修正：核准、駁回失敗時顯示錯誤訊息。初始載入 `load()` 仍沒有錯誤處理 | `apps/web/src/app/admin/plan-changes/page.tsx` 的 `act()`、`load()`。修正 commit：`c4ee63be` |
+| HC-PLATFORM-PLAN-CHANGES-10 | 部分修正：錯誤改紅底、讀取失敗顯示原因、記錄有申請時間與中文方案名稱。讀取失敗時仍顯示表單與「還沒有申請記錄」，備註沒有字數提示 | `apps/web/src/app/dashboard/plan/page.tsx` 的 `load()`、`Notice`、`PLAN_LABEL`、`formatTime()`。修正 commit：`8e592102` |
+| HC-PLATFORM-PLANS-06 | 部分修正：403 不再是未處理的 rejection，送出失敗改紅底，記錄顯示中文方案名稱。目標方案仍寫死，仍看不出目前的方案 | 同上的 `apps/web/src/app/dashboard/plan/page.tsx`（`PLANS` 仍寫死三個 slug）。修正 commit：`8e592102` |
+| HC-ANALYTICS-07 | 已修正：本期沒有工單的客服也回一列 | `apps/api/src/modules/analytics/analytics.service.ts` 的 `getAgentPerformance()`（`agentFilter` 改過濾 `a.id`）。修正 commit：`d152956d` |
+| HC-ANALYTICS-05 | 部分修正：日期框擋下反向區間，概覽與案件報表顯示「載入失敗」。客服績效與渠道分析仍沒有錯誤狀態，403 看不出是沒有權限 | `apps/web/src/components/analytics/DateRangePicker.tsx` 的 `handleDate()`；`ReportState.tsx` 的 `ReportError()`；`apps/web/src/app/dashboard/analytics/page.tsx`。修正 commit：`8e592102` |
+| HC-CHANNELS-15 | 部分修正：路由要求 `channel.view`。渠道沒有 `publicKey` 時 GET 仍寫入一把新的 | `apps/api/src/modules/channel/channel.routes.ts` 的 `GET /:id/embed-code`；`webchat-embed.service.ts` 的 `generateEmbedCode()`（呼叫 `ensureChannelPublicKey()`）。修正 commit：`cb37d602` |
+| HC-CHANNELS-09 | 部分修正：403 顯示沒有權限，不顯示「沒有渠道」。側欄的「渠道管理」仍不依 `channel.view` 隱藏 | `apps/web/src/components/settings/ChannelManagement.tsx` 的 `describeChannelListError()`；`apps/web/src/components/layout/Sidebar.tsx` 的 `settings-channels`（沒有 `perm`）。修正 commit：`6a4ce453` |
+| HC-CHANNELS-02 | 部分修正：新增渠道、設定精靈、Facebook 連結、「套用」依權限顯示。卡片上的操作仍不依權限隱藏。RBAC-11 的渠道管理列已記錄同樣的現況，狀態不變 | `ChannelManagement.tsx` 的 `canCreateChannels`、`canSetWebhookBaseUrl`。修正 commit：`cb37d602`、`6a4ce453` |
+| HC-INBOX-06 | 已修正：`BOT_HANDLED` 的狀態下拉顯示「機器人處理中」 | `apps/web/src/components/inbox/ChatWindow.tsx` 的狀態 `<select>`。修正 commit：`8e592102` |
+| HC-INBOX-19 | 未修正，不記入健檢報告：篩選 chip 仍顯示渠道代碼；篩選、下拉與表頭的狀態名稱仍不一致 | `apps/web/src/components/inbox/FilterChips.tsx`（渠道 chip 直接顯示 `c`，`AGENT_HANDLED` 是「等待客服」）；`ChatWindow.tsx` 的 `statusLabel`（`AGENT_HANDLED` 是「客服處理中」） |
+| HC-GOVERNANCE-11 | 部分修正：日期輸出 ISO 字串，文字加公式防護。檔案仍沒有 UTF-8 BOM | `apps/workers/src/lib/simple-zip.ts` 的 `toCsv()`；`packages/shared/src/utils/csv.ts` 的 `csvCell()`。修正 commit：`00c0b675` |
+| HC-KNOWLEDGE-09 | 已修正：`page=0` 與超過 100 的 `limit` 回 400，非 UUID 的文章 id 回 400 `VALIDATION_ERROR` | `apps/api/src/modules/knowledge/knowledge.routes.ts` 的 `listQuerySchema`、`articleParamsSchema`。修正 commit：`3f449317` |
+| APP-11 | 狀態不變。「平台：方案異動審核」一列改成只列初始載入 | 見上方 HC-PLATFORM-PLAN-CHANGES-03 |
+
 ## 2026-11-18：依功能健檢的「文件過時之處」更正敘述
 
 只改文件，不改程式。逐項讀程式核對各健檢報告（`docs/ref/features/health/`）的「文件過時之處」，沒有連 UAT。各項目的狀態都不變。

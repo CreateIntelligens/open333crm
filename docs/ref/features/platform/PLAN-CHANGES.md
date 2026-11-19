@@ -3,7 +3,20 @@
 租戶提出升級或加購申請，平台在此審核。
 
 - **資料來源**：`apps/api/src/modules/platform/plan-change.service.ts`、`apps/api/src/modules/platform/plan-limits.service.ts`、`apps/web/src/app/admin/plan-changes/page.tsx`、`apps/api/src/modules/platform/plan-change.flow.ts`、`apps/web/src/app/dashboard/plan/page.tsx`、`apps/web/src/app/admin/layout.tsx`
-- **核對日期**：2026-11-10
+- **核對日期**：2026-11-19
+
+## 程式的入口
+
+| 路由 | 檔案與守門 | 函式 |
+| --- | --- | --- |
+| `GET /api/v1/plan-change` | `apps/api/src/modules/platform/plan-change.routes.ts`。檔案放在 platform 目錄，但用租戶的 `authenticate`，再要求 `settings.manage` | `listTenantPlanChangeRequests()` |
+| `GET /api/v1/plan-change/topup-eligibility` | 同上 | `getTopupEligibility()` |
+| `POST /api/v1/plan-change` | 同上 | `plan-change.flow.ts` 的 `submitPlanChangeRequest()` → `createPlanChangeRequest()`，之後在背景呼叫 `notifyPlatformOfPlanChange()` |
+| `GET /api/v1/platform/plan-change-requests` | `apps/api/src/modules/platform/platform.routes.ts`，守門是 `authenticatePlatformSuperuser` + `blockIfMustChangePassword` | `listPendingRequests()` |
+| `PATCH /api/v1/platform/plan-change-requests/:id/approve` | 同上 | `approveRequest()`，路由再以 `writePlatformAudit` 寫 `plan_change.approve` |
+| `PATCH /api/v1/platform/plan-change-requests/:id/reject` | 同上 | `rejectRequest()`，路由再寫 `plan_change.reject` |
+
+業務邏輯都在 `apps/api/src/modules/platform/plan-change.service.ts`。前端是 `apps/web/src/app/dashboard/plan/page.tsx` 與 `apps/web/src/app/admin/plan-changes/page.tsx`。
 
 ## 一筆申請的流程
 
@@ -17,10 +30,30 @@
 | 核准 | `PATCH /platform/plan-change-requests/:id/approve` | 依型別執行動作，見下文 |
 | 駁回 | `PATCH /platform/plan-change-requests/:id/reject` | 只改狀態，不動租戶 |
 
-核准與駁回都只接受 `pending` 的申請，已處理過的回 400。兩者都會記下 `reviewedBy`、`reviewedAt` 與審核備註。API 接受選填的 `note` 當審核備註，但 `/admin/plan-changes` 頁沒有備註欄位，從畫面審核的申請都沒有備註。
+核准與駁回都只接受 `pending` 的申請，已處理過的回 400，不存在的 id 回 404。兩者都會記下 `reviewedBy`、`reviewedAt` 與審核備註。API 接受選填的 `note` 當審核備註，但 `/admin/plan-changes` 頁沒有備註欄位，從畫面審核的申請都沒有備註（HC-PLATFORM-PLAN-CHANGES-04）。
 
-- **一個租戶同時只能有一筆 `pending`，但只在應用程式檢查。** 送出時先查有沒有 `pending` 的申請，資料庫沒有對應的唯一限制。兩個請求同時送出時，兩個請求可能都通過檢查，系統因此建立兩筆 `pending`。
-- **租戶不能撤回申請。** 系統沒有撤回或取消的端點。租戶送出申請後，只能等平台核准或駁回。
+- **一個租戶同時只能有一筆 `pending`，但只在應用程式檢查（HC-PLATFORM-PLAN-CHANGES-02）。** 送出時先以 `findFirst` 查有沒有 `pending` 的申請，再 `create`，資料庫沒有對應的唯一限制。兩個請求同時送出時，兩個請求可能都通過檢查，系統因此建立兩筆 `pending`。
+- **升級的核准與駁回不是原子操作（HC-PLATFORM-PLAN-CHANGES-01）。** `upgrade` 的核准與 `rejectRequest()` 都是「讀狀態 → 改租戶 → 無條件寫狀態」，不在交易內，也不是條件更新。同一筆申請同時核准與駁回時，兩個都回 200，平台稽核同時記下 `plan_change.approve` 與 `plan_change.reject`。加購的核准是條件更新，見[加購只計入核准當月](#加購只計入核准當月)。
+- **租戶不能撤回申請，申請也不會逾期（HC-PLATFORM-PLAN-CHANGES-06）。** 系統沒有撤回或取消的端點。租戶送出申請後，只能等平台核准或駁回；平台不處理時，這筆申請一直擋住新申請。
+
+### 送出時檢查什麼
+
+| 欄位 | 後端的規則 |
+| --- | --- |
+| `type` | `upgrade` 或 `token_topup`（Zod `z.enum`），其他值回 400 `VALIDATION_ERROR` |
+| `targetPlanSlug` | 方案不存在回 404。目標是試用方案時回 400，見下表。其他方案都接受，包括停售的方案、平台內部的自訂方案與目前的方案（HC-PLATFORM-PLAN-CHANGES-08） |
+| `topupTokens` | `z.number().int().positive()`。填 0 或負數時，錯誤訊息是「不可小於 0」，與實際規則「必須大於 0」不一致（HC-PLATFORM-PLAN-CHANGES-09）。資料庫欄位是 `Int`，超過 2,147,483,647 回 500（HC-PLATFORM-PLAN-CHANGES-07） |
+| `note` | `z.string().max(500)` |
+
+試用方案的檢查（`assertNotTrialPlan()`，`apps/api/src/modules/platform/trial-admin.service.ts`）只看**目標**方案，不看租戶目前是不是試用：
+
+| 情況 | 建立申請（`POST /plan-change`） | 平台核准（`/approve`） |
+| --- | --- | --- |
+| 目標是試用方案（slug 等於試用政策的 `trial.planSlug`），不論目前方案 | 400 `BAD_REQUEST`「不能轉成試用方案」 | 再檢查一次，同樣回 400。申請建立之後，平台可能改了試用政策的 slug |
+| 目前是試用租戶，目標是付費方案 | 允許，建一筆 `pending` | 改 `planId`，並套用 `TRIAL_EXIT_DATA`（`trialEndsAt: null`、`purgedAt: null`、`isActive: true`）脫離試用 |
+| 目前不是試用，目標是付費方案 | 允許 | 只改 `planId` |
+
+「目前是試用」以 `tenant.trialEndsAt != null` 判斷，不看目前方案的 slug。核准試用租戶的 `upgrade` 必須脫離試用，否則到期排程會停用已付費的租戶。
 
 ## 平台方怎麼知道有新申請
 
@@ -35,9 +68,27 @@
 | `upgrade` | 改 `tenant.planId`。試用租戶同時脫離試用，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用)。新方案的 AI 月額度較高時，清除本月的額度告警旗標 | 權限天花板快取、租戶方案快取 |
 | `token_topup` | 只把申請改成 `approved`（條件更新，只更新仍是 `pending` 的申請），不改租戶。加購量計入核准當月的 AI 月額度，並清除本月的額度告警旗標 | AI 額度計數器 |
 
-`upgrade` 只是換方案，**沒有任何「比較貴」的檢查**。目標方案是更便宜或功能更少的方案時，核准一樣會照做。唯一的例外是試用方案（試用政策 `trial.planSlug` 指定的方案）：建立與核准申請都回 400，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用)。系統也沒有 `downgrade` 型別，租戶要降級只能請平台直接改，見[租戶管理](./TENANTS.md#改方案的連帶效果)。
+核准升級後，兩層快取都要失效：
 
-核准之後租戶不會收到通知。沒有寄信，也沒有站內通知，租戶要自己回 `/dashboard/plan` 才看得到狀態。
+- Redis 的權限交集快取。key 含 `roleId` 與 `planId`（`permission.service.ts` 的 `tenantCacheKey()`），核准時以 `invalidatePlanPermissions(新 planId)` 清除。
+- `apps/api/src/services/tenant-plan.cache.ts` 的 `getTenantPlanId()` 60 秒行程內快取（`Map`），核准時以 `invalidateTenantPlan()` 清除。這個函式只清得到處理核准請求的 API 行程。API 有多個行程時，其他行程最長 60 秒仍用舊方案判斷權限天花板（HC-PLATFORM-PLAN-CHANGES-13）。在本機直接改資料庫的 `planId` 之後，要等 60 秒或呼叫 `invalidateTenantPlan()`；Redis 的 `FLUSHDB` 清不到這層。
+
+其他換方案的入口（`platform-tenant.service.ts` 的 `updateTenant()`、`trial-admin.service.ts` 的 `convertToPaid()`）也清這兩層快取。
+
+`upgrade` 只是換方案，**沒有任何「比較貴」的檢查**（HC-PLATFORM-PLAN-CHANGES-05）。目標方案是更便宜或功能更少的方案時，核准一樣會照做，平台頁也不提示這是降級。唯一的例外是試用方案（試用政策 `trial.planSlug` 指定的方案）：建立與核准申請都回 400，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用)。系統也沒有 `downgrade` 型別，租戶要降級只能請平台直接改，見[租戶管理](./TENANTS.md#改方案的連帶效果)。
+
+核准或駁回之後，租戶不會收到通知（HC-PLATFORM-PLAN-CHANGES-04）。沒有寄信，也沒有站內通知，租戶要自己回 `/dashboard/plan` 才看得到狀態。租戶頁送出後的提示卻寫「審核結果會以站內通知與 Email 通知管理員」，與實際行為不符。租戶頁也不顯示 `reviewNote`。
+
+平台稽核的內容（HC-PLATFORM-PLAN-CHANGES-11）：
+
+- `plan_change.approve` 的 `targetId` 是申請 id，payload 只有 `type` 與 `trialExited`，沒有租戶 id、前後方案與加購量。
+- `plan_change.reject` 沒有 payload。
+- 送出申請與審核結果都不寫租戶稽核。
+
+改方案的 slug 或刪除方案時：
+
+- 租戶頁的目標方案寫死 `standard`、`professional`、`enterprise`。平台頁的 `PLAN_LABEL` 另外多一個 `light`，其他方案顯示 slug。
+- 已送出的申請在核准時，因為目標方案不存在而回 404。
 
 ## 加購只計入核准當月
 
@@ -63,7 +114,7 @@
 
 核准加購時一律清除本月的額度告警旗標與用量計數器。旗標到月底才過期，不清除的話，用量跨越新上限的 80%、100% 時，系統不會再通知。
 
-換方案也會清除，但只在 AI 月額度提高時（比較換方案前後的基礎上限，`plan-limits.service.ts` 的 `monthlyTokensRaisedByPlanChange()`）：核准升級、平台改租戶方案（`updateTenant()`）、試用轉付費（`convertToPaid()`），以及平台調高方案的 `limits.monthlyTokens`（`updatePlan()`，只清沒有覆寫 `monthlyTokens` 的租戶）。上限不變或降低時保留旗標。修正紀錄（原 PLAN-13）見 `../../system/AUDIT-REVIEWS.md`。
+換方案也會清除，但只在 AI 月額度提高時（比較換方案前後的基礎上限，`plan-limits.service.ts` 的 `monthlyTokensRaisedByPlanChange()`）：核准升級、平台改租戶方案（`updateTenant()`）、試用轉付費（`convertToPaid()`），以及平台調高方案的 `limits.monthlyTokens`（`updatePlan()`，只清沒有覆寫 `monthlyTokens` 的租戶）。上限不變或降低時保留旗標。
 
 申請仍不記金額，系統沒有計費，見 `../../system/AUDIT.md` 的 PLAN-10。
 
@@ -76,5 +127,27 @@
 `reviewedBy` 存的是 `platformUserId`，但不是外鍵，要顯示審核者的姓名必須自己查 `platform_users`。
 
 稽核反查也不實用，平台稽核只能依平台帳號查，不能依租戶或 `action` 查，詳見 `../../system/AUDIT.md` 的 PLAN-11。
+
+平台待審列表的畫面不顯示申請時間與租戶是否在試用中，審核者看不出申請放了多久、是不是試用轉正式（HC-PLATFORM-PLAN-CHANGES-12）。
+
+## 畫面怎麼呼叫 API
+
+| 畫面與操作 | API | 畫面上要知道的事 |
+| --- | --- | --- |
+| 租戶側欄「分析與管理 → 方案／帳務」→ `/dashboard/plan` 的申請記錄 | `GET /plan-change`；`GET /plan-change/topup-eligibility` | 側欄依 `settings.manage` 隱藏。沒有權限的成員直接開網址時，讀取回 403，頁面顯示錯誤訊息，表單仍然顯示。記錄顯示申請時間、方案名稱與狀態「處理中／已核准／已駁回」，不顯示 `reviewNote` |
+| 「升級方案」→ 目標方案下拉 → 備註 → 「送出申請」 | `POST /plan-change {type:'upgrade', targetPlanSlug, note?}` | 下拉寫死標準版、專業版、企業版，不看目前方案。有處理中的申請時，頁面隱藏表單並顯示提示。錯誤以 `getApiErrorMessage` 顯示 |
+| 「加購 Token」→ `+20 萬`、`+50 萬`、`+100 萬` → 「送出申請」 | `POST /plan-change {type:'token_topup', topupTokens, note?}` | `topup-eligibility` 回 `allowed: false` 時，「加購 Token」停用 |
+| 平台側欄「升級申請」→ `/admin/plan-changes` | `GET /platform/plan-change-requests` | 只列 `pending`。加購申請下方顯示「本月已加購」與「本月上限」 |
+| 列上的「核准」、「駁回」→ `window.confirm` | `PATCH /platform/plan-change-requests/:id/approve`、`/reject` | 不送 body，所以沒有審核備註。失敗時顯示後端的錯誤訊息。AI 月額度無上限的租戶，加購申請的「核准」按鈕停用 |
+
+前後端都沒有的功能：租戶撤回申請、申請逾期、平台查已處理的申請（PLAN-11）、審核結果通知租戶、`downgrade` 型別。
+
+前端送出的值：
+
+- `type`：`upgrade` 或 `token_topup`。
+- `targetPlanSlug`：`standard`、`professional`、`enterprise`。後端另外接受任何存在而且不是試用的 slug。
+- `topupTokens`：`200000`、`500000`、`1000000`。
+- `note`：textarea 沒有字數限制，後端上限 500 字。
+- 平台審核的 body：後端接受 `{ note?: string }`，沒有長度限制；畫面不送 body。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

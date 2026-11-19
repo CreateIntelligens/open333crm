@@ -4,6 +4,7 @@
 - 程式版本：5c81102e（本機 API、web 與自動測試都是這個版本）。`origin/main`（0a49a1dc）在當天 09:16–11:54 另有 10 個 portal 修正 commit，UAT 已部署；每個問題另標「main 狀態」
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
 - 已修正：HC-PORTAL-01（#424，change `fix-portal-edit-keeps-content`，AUDIT PORTAL-03 已移除）。編輯對話框以 `GET /portal/activities/:id` 帶入完整活動（含選項、正確答案與表單欄位），載入中顯示「正在載入活動內容」，載入失敗顯示原因與「重新載入」，兩種情況都不能儲存；`updateActivity()` 沒帶 `options`／`fields` 時不動，投票與競猜送空的 `options`、表單送空的 `fields` 時回 400，不刪除既有內容。UAT 尚未重測
+- 已修正：HC-PORTAL-11。活動 id 與聯絡人 id 以 Zod 檢查是 UUID，非 UUID 回 400 `VALIDATION_ERROR`（例如「活動識別格式不正確」）。後台調整積分前先確認聯絡人屬於本租戶，聯絡人不存在時回 404 `CONTACT_NOT_FOUND`。HC-PORTAL-10 部分修正：抽獎的 `count` 以 Zod 檢查是正整數，`"abc"`、`0` 回 400 `VALIDATION_ERROR`。草稿與進行中的活動仍能抽獎；所有提交都已中獎時，視窗仍沒有提示。本報告其餘段落仍描述健檢當時的程式
 - 後續修正（不在本報告的問題清單）：#447，change `fix-portal-publish-requires-content`。發布前檢查投票、競猜至少一個選項，表單至少一個欄位，不符合時回 400 並維持草稿；建立草稿不變。UAT 尚未重測
 - 後續修正（不在本報告的問題清單）：#471，change `fix-portal-quiz-requires-correct-answer`。發布競猜前要求至少一個正確答案，沒有時回 400「競猜活動至少要有一個正確答案」並維持草稿；建立與編輯草稿不檢查，投票不受影響，開獎仍不看分數。全選即滿分（PORTAL-04、HC-PORTAL-06）不在這次範圍。UAT 尚未重測
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認）

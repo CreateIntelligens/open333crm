@@ -3,7 +3,7 @@
 收件匣是客服的主畫面。左欄是對話清單，右欄是訊息與聯絡人資料。客服在這裡回覆客人、把對話從機器人手上接過來、指派給同事、關閉對話，或把對話開成工單。
 
 - **資料來源**：`apps/api/src/modules/conversation/*`、`apps/api/src/modules/ai/ai.routes.ts`、`apps/api/src/modules/ai/ai.service.ts`、`apps/api/src/modules/automation/automation.worker.ts`、`apps/api/src/modules/automation/bot-reply-guard.ts`、`packages/automation/src/bot-config.ts`、`apps/api/src/modules/webhook/inbound-postback-interceptors.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/web/src/components/inbox/*`
-- **核對日期**：2026-11-04
+- **核對日期**：2026-11-19
 
 ## 負責的模組
 
@@ -15,6 +15,32 @@
 | `ai` | 客服手動觸發的輔助功能 |
 | `socket` | Socket 房間授權，決定客服收得到哪些對話的即時事件 |
 
+## 程式的入口
+
+對話的路由在 `conversation.routes.ts`，前綴是 `/api/v1/conversations`。AI 輔助的路由在 `ai.routes.ts`，前綴是 `/api/v1/ai`。下表的路徑省略前綴。
+
+| 操作 | 端點 | flow 或 service 函式 |
+| --- | --- | --- |
+| 列表 | `GET /` | `conversation.service.ts` 的 `listConversations()`。路由以 `resolveChannelVisibility()` 算出可見渠道，傳進 `accessibleChannels`。呼叫端一定要傳這個參數，漏傳時編譯失敗，這是刻意的設計 |
+| 單筆、訊息 | `GET /:id`、`GET /:id/messages` | `getConversation()`；`conversation.flow.ts` 的 `getMessagesFlow` → `getMessages()` |
+| 標為已讀 | `POST /:id/read` | `markConversationRead()`，推播 `conversation.updated` |
+| 送文字 | `POST /:id/messages` | `sendMessage()` |
+| 送圖片、影片 | `POST /:id/send-image`、`POST /:id/send-video` | 路由內的 `handleSendMedia()` 上傳到物件儲存，再呼叫 `sendMessage()` |
+| 改負責人、狀態 | `PATCH /:id` | `updateConversation()`；狀態改成 `CLOSED` 時呼叫 `closeConversation()` |
+| 關閉 | `POST /:id/close` | `closeConversation()` |
+| 客服接手 | `POST /:id/handoff` | `handoffConversation()` |
+| 交回 Bot | `POST /:id/return-to-bot` | `returnConversationToBot()` |
+| 貼標、移除標籤 | `POST /:id/tags`、`DELETE /:id/tags/:tagId` | `tag.flow.ts` 的 `addTagToTargetFlow`、`removeTagFromTargetFlow` |
+| 正在輸入 | `POST /:id/typing` | 路由直接發 `typing.start`、`typing.stop` 到 `conversation:<對話 ID>` 房間 |
+| 從對話建立工單 | `POST /:id/case` | 見[工單](./CASES.md#程式的入口) |
+| 閒置自動關閉 | 排程 `inactivity-close`，每 5 分鐘 | `inactivity-close.worker.ts` 的 `setupInactivityCloseWorker()` → `closeConversation()`（來源 `inactivity`） |
+| 機器人回覆、自動轉真人 | `event-automation` 佇列的 `message.received` | `automation.worker.ts`，見[機器人什麼時候回覆](#機器人什麼時候回覆) |
+| 客人要求轉真人 | 進站管線 | `inbound-postback-interceptors.ts` 的 `handleHandoffRequest()` |
+
+每條對話路由先以 `requirePermission('inbox.*')` 檢查權限碼，再呼叫 `assertConversationChannelVisible(request, id, level)` 檢查渠道層級。層級沒有指定時，預設是 `reply_only`。各路由的權限碼與層級見[權限](#權限)與[誰看得到哪些對話](#誰看得到哪些對話)。
+
+即時事件：`apps/api/src/plugins/socket.plugin.ts` 在連線時把成員加入 `tenant:<租戶 ID>`、`agent:<成員 ID>` 與可見渠道的渠道房間（`modules/socket/socket-channel-rooms.ts`）。房間名稱由 `apps/api/src/events/socket-push.ts` 決定，訂閱授權在 `modules/socket/socket-room-authorization.ts`。
+
 ## 對話的一生
 
 一個聯絡人在一個渠道上，同時最多只有一個尚未關閉的對話。客人傳訊息時，`resolveInboundConversation()` 先找這個對話；找不到才建立新的。因此對話關閉後，客人再傳訊息會開啟一個新對話，不會重新打開舊的。
@@ -25,7 +51,7 @@
 | --- | --- | --- |
 | `BOT_HANDLED` | 機器人 | 新對話的預設狀態 |
 | `AGENT_HANDLED` | 客服 | 渠道的 `botMode` 是 `off` 時直接以這個狀態建立；或經由[轉真人](#轉真人)的任一種方式 |
-| `ACTIVE` | 客服，機器人不回覆 | 客服在收件匣把狀態選成「進行中」，或按下重新開啟。系統流程不會寫入這個值 |
+| `ACTIVE` | 客服，機器人不回覆 | 客服在收件匣把狀態選成「等待客服」，或按下重新開啟。系統流程不會寫入這個值 |
 | `CLOSED` | 無 | 見[關閉對話](#關閉對話) |
 
 機器人只處理 `BOT_HANDLED` 的對話。其他三種狀態下，機器人不回覆，也不檢查自動轉真人。
@@ -43,7 +69,7 @@
 | `offlineGreeting` | 營業時間外的自動回覆，優先於營業時間設定的訊息 |
 | `handoffPromptEnabled`、`handoffPromptStyle`、`handoffButtonLabel` | 機器人回答後，要不要附上「轉接客服」的提示，以及用按鈕還是文字 |
 
-每個欄位的型別與範圍定義在 `botConfigSchema`（同一個檔案，issue #405）：
+每個欄位的型別與範圍定義在 `botConfigSchema`（同一個檔案，#405）：
 
 - **寫入**：建立渠道時檢查；更新渠道時，送出的 `botConfig` 與已存的不同才檢查（`channel/bot-config-settings.ts`），不合法回 400 `VALIDATION_ERROR`。`handoffKeywords` 每個元素必須是不空白的字串，`handoffPromptEnabled` 必須是布林，`handoffButtonLabel` 最多 20 字。
 - **讀取**：一律經過 `getBotConfig()`，不合法的欄位改用預設值，不丟例外。`handoffKeywords` 只使用不空白的字串（空字串會讓每則訊息都轉真人），`handoffMessage` 空白時用預設轉接訊息。
@@ -80,7 +106,7 @@
 | 進站訊息未遮罩 | 去識別化服務無法使用，進站訊息沒有遮罩副本，而這則訊息原本會交給 AI agent 或知識庫自動回覆 | `automation.worker.ts` 呼叫 `handOffAfterAiFailure()`（固定原因） | 不指派 |
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
-每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求、自動轉真人與 AI 回覆失敗送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人、知識庫追問用完與 AI 回覆失敗會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派、且負責客服仍啟用並看得到該渠道時通知負責的客服；沒有指派，或負責客服已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。
+每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客服接手只推播 `conversation.updated`，不發布 `conversation.handoff`，所以不送「轉接真人」通知。客人要求、自動轉真人與 AI 回覆失敗送的是渠道設定的 `handoffMessage`；知識庫追問用完送的是固定的「…已為您轉接客服人員，請稍候。」；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求、自動轉真人、知識庫追問用完與 AI 回覆失敗會發布 `conversation.handoff` 事件，通知訂閱者據此送出「轉接真人」站內通知：對話已指派、且負責客服仍啟用並看得到該渠道時通知負責的客服；沒有指派，或負責客服已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。
 
 自動轉真人與知識庫追問用完共用 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`）：以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理，才寫系統訊息、發出 `conversation.handoff`（經 outbox），commit 之後推播 `conversation.updated` 與系統訊息到渠道房間，再送出轉接訊息。所以同一則訊息處理兩次、或兩次處理同時進行時，只轉接一次。摘要與系統訊息的遮罩在交易之前完成。知識庫追問用完時，轉接與「已為您轉接」回覆寫在同一個交易；轉接的條件不成立時，這則回覆不寫入也不送出。
 
@@ -98,7 +124,7 @@
 
 客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 
-客人在對話已經是 `AGENT_HANDLED` 時再按轉接按鈕，系統只重送 `handoffMessage`，不改任何狀態。
+客人在對話已經是 `AGENT_HANDLED` 時再按轉接按鈕，系統只重送 `handoffMessage`，不改任何狀態。對話是 `ACTIVE` 時，系統只寫 log，不回覆客人。客人傳文字 `handoff_request` 也算要求轉真人。
 
 ## 交回 Bot
 
@@ -137,16 +163,17 @@
 2. 更新對話的最後訊息時間，並把未讀數歸零。
 3. 推送 `message.new`，收件匣即時顯示這則訊息。
 4. 透過渠道外掛送給客人。WebChat 另外推送到訪客的 widget。
-5. 發布 `message.sent` 事件。
+5. 對話有關聯工單時，寫入工單的首次回應時間（`markCaseFirstResponse()`）。
+6. 發布 `message.sent` 事件。
 
 要知道的事：
 
-- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。系統寄的滿意度問卷用同樣的欄位，問卷卡片（`CsatMessage`）下方顯示「這份問卷沒有送出」與原因（見 `CASES.md`）。 記錄評分後，問卷訊息的 `metadata.csatScore`／`csatRatedBy` 有值，系統再推一次 `message.new`，問卷卡片改成唯讀並顯示「客人評 N 分」或「客服代評 N 分」；客人的評分訊息顯示「我的評分：N 分」，不顯示 `csat:` 代碼。
+- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。送出失敗時只寫 log 不夠：客服看不到失敗，會以為按鈕沒反應。送出的過程與失敗原因寫在 API log 的 `[ChannelDelivery]`。系統寄的滿意度問卷用同樣的欄位，問卷卡片（`CsatMessage`）下方顯示「這份問卷沒有送出」與原因（見 `CASES.md`）。 記錄評分後，問卷訊息的 `metadata.csatScore`／`csatRatedBy` 有值，系統再推一次 `message.new`，問卷卡片改成唯讀並顯示「客人評 N 分」或「客服代評 N 分」；客人的評分訊息顯示「我的評分：N 分」，不顯示 `csat:` 代碼。
 - **客服回覆不會改變對話狀態。** 對話是 `BOT_HANDLED` 時客服直接回覆，機器人仍會繼續回應客人的下一則訊息。要讓機器人停下來，必須先接手。
 - **客服回覆不會指派對話。** 回覆的人不會自動成為負責人。
 - **客服回覆在 LINE 上用 push。** `sendMessage()` 沒有帶 reply token，LINE 外掛以 push 送出，會計入 LINE 官方帳號的訊息額度。機器人的回覆則在 reply token 有效期間內優先用 reply，由 `selectSafeLineStrategy()` 判斷。
 - **收到的媒體怎麼顯示。** 訊息泡泡顯示圖片、影片、語音播放器與檔案下載連結（檔名與大小），只採用瀏覽器打得開的網址（`apps/web/src/lib/inbox/message-media.ts`）。媒體還沒下載完成時顯示文字，例如「[語音]」「[檔案] 報價單.pdf」；下載失敗時在文字下方顯示原因（`content.mediaError`），例如「檔案超過 25 MB，未下載」。收到 `message.new` 後重新抓訊息，500 ms 內的多個事件合併，間隔結束後補抓一次，下載完成的通知不會被丟掉。
-- **媒體有類型與大小限制。** 圖片限 PNG 與 JPEG，影片限 MP4 與 QuickTime，上限寫在 `conversation.routes.ts` 的 `SEND_IMAGE_CONFIG` 與 `SEND_VIDEO_CONFIG`。只支援 LINE、Facebook 與 WebChat，其他渠道回 501。
+- **媒體有類型與大小限制。** 圖片限 PNG 與 JPEG，影片限 MP4 與 QuickTime，上限寫在 `conversation.routes.ts` 的 `SEND_IMAGE_CONFIG` 與 `SEND_VIDEO_CONFIG`。只支援 LINE、Facebook 與 WebChat，其他渠道回 501，訊息是英文（HC-INBOX-12）。媒體的渠道白名單（`allowedChannelTypes`）與 `sendMessage()` 裡的 WebChat 分支是依 `channelType` 分支的既有例外。
 - **文字內容會先驗證。** `validateOutboundMessage()` 擋掉空內容與不合法的 `contentType`，避免送一則空訊息給客人。
 
 ## 指派與狀態
@@ -158,12 +185,13 @@
 | 動作 | 專用端點 | `PATCH /conversations/:id` |
 | --- | --- | --- |
 | 關閉 | `POST /:id/close`：記錄關閉原因、來源與操作者，發布 `conversation.closed` | `status` 改成 `CLOSED` 時同樣經 `closeConversation()`，記錄來源 `manual`、時間與操作者並發布事件；PATCH 沒有原因欄位，`closeReason` 為 null |
-| 接手 | `POST /:id/handoff`：送出轉接訊息，寫系統訊息，指派給接手的人 | 狀態選單沒有 `BOT_HANDLED` → `AGENT_HANDLED` 以外的副作用 |
-| 指派 | 無 | 只改 `assignedToId`，不發布事件，不通知被指派的人 |
+| 接手 | `POST /:id/handoff`：送出轉接訊息，寫系統訊息，指派給接手的人 | 把狀態改成 `AGENT_HANDLED` 時只改欄位，不送轉接訊息、不寫系統訊息、不指派 |
+| 交回 Bot | `POST /:id/return-to-bot`：檢查 `botMode`、歸零回覆次數、寫系統訊息 | API 接受 `status: BOT_HANDLED`，跳過這些檢查與副作用（HC-INBOX-11）。畫面不送這個值 |
+| 指派 | 無 | 只改 `assignedToId`，不發布事件，不通知被指派的人。不檢查被指派的成員是否啟用、看不看得到該渠道（HC-INBOX-03） |
 
 `conversation.assigned` 事件在 API 行程沒有發布端。通知模組雖然訂閱了這個事件，被指派的客服實際上不會收到通知。詳見 `../../system/AUDIT.md` 的 CONV-02。
 
-狀態選單的標籤與值不一致：「已處理」送出的值是 `AGENT_HANDLED`，意思是「由客服處理中」，不是「處理完畢」。
+狀態選單有「等待客服」（`ACTIVE`）、「客服處理中」（`AGENT_HANDLED`）與「已關閉」。對話是 `BOT_HANDLED` 時，選單另外顯示「機器人處理中」，只用來顯示目前的值。
 
 ## 關閉對話
 
@@ -171,15 +199,15 @@
 
 | 來源 | `closeSource` | 觸發 |
 | --- | --- | --- |
-| 客服手動 | `manual` | `POST /conversations/:id/close` |
+| 客服手動 | `manual` | `POST /conversations/:id/close`。`metadata` 另外寫 `closeReason`、`closedAt` 與 `closedById` |
 | 閒置 | `inactivity` | `setupInactivityCloseWorker()` 定期掃描 |
 | CSAT 結案 | 不寫 | 滿意度問卷逾時、客人或客服評分後工單結案時，`closeConversationsForCase()` 連帶關閉工單的所有對話。這個函式只把狀態改成 `CLOSED`，不寫 `closeSource`、`closeReason` 與結案時間 |
 
 `closeConversation()` 是冪等的：已關閉的對話再關一次，直接回傳現況，不重複發布事件。
 
-**重新開啟。** 把已關閉的對話改回進行中時，系統不檢查同一個聯絡人在同一個渠道是不是已經有未關閉的對話，也不清除 `metadata` 裡的 `closeSource`、`closeReason`。對話關閉後客人再傳訊，系統會開一段新對話。客服這時再重新開啟舊對話，列表上就有兩段未關閉的對話，之後的訊息只進其中一段。見健檢 HC-INBOX-02。
+**重新開啟。** 已關閉的對話上方有「重新開啟對話」，送出 `PATCH /conversations/:id`、`{ status: 'ACTIVE' }`。把已關閉的對話改回進行中時，系統不檢查同一個聯絡人在同一個渠道是不是已經有未關閉的對話，也不清除 `metadata` 裡的 `closeSource`、`closeReason`。對話關閉後客人再傳訊，系統會開一段新對話。客服這時再重新開啟舊對話，列表上就有兩段未關閉的對話，之後的訊息只進其中一段（HC-INBOX-02）。
 
-**閒置自動關閉。** 排程定期找出 `lastMessageAt` 早於時限、尚未關閉的對話，逐一關閉。時限讀 `TenantSettings.inactivityCloseHours`，值小於等於 0 代表停用。這個欄位沒有維護介面，見 `../../system/AUDIT.md` 的 CONV-01。閒置關閉不分狀態，`BOT_HANDLED` 的對話也會被關閉。
+**閒置自動關閉。** 排程每 5 分鐘找出 `lastMessageAt` 早於時限、尚未關閉的對話，逐一關閉。時限讀 `TenantSettings.inactivityCloseHours`，值小於等於 0 代表停用。這個欄位沒有維護介面，見 `../../system/AUDIT.md` 的 CONV-01。閒置關閉不分狀態，`BOT_HANDLED` 的對話也會被關閉。
 
 ## 誰看得到哪些對話
 
@@ -197,11 +225,11 @@
 | `reply_only` | 回覆、送媒體、貼標、送出正在輸入的提示 |
 | `full` | 改狀態、指派、關閉、接手、開工單 |
 
-渠道看不見時回 404，看得見但層級不足時回 403。看不見時不回 403，是為了不透露其他分店的對話是否存在。
+渠道看不見時回 404，看得見但層級不足時回 403 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`，訊息是英文「Forbidden: channel access level insufficient（需 full，實為 reply_only）」（`channel-visibility.ts`，HC-INBOX-04）。看不見時不回 403，是為了不透露其他分店的對話是否存在。
 
 **即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
 
-成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權與方案異動後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。成員停用或刪除時，系統斷開他的連線。轉接真人的系統訊息也走渠道房間。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
+成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權與方案異動後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。成員停用或刪除時，系統斷開他的連線。重新計算失敗時，API log 有「重新計算渠道房間失敗」，成員重新整理（重新連線）之後恢復。新增會改變渠道授權的入口時，要呼叫 `resyncChannelRooms()` 或 `fastify.syncSocketChannelRooms()`。轉接真人的系統訊息也走渠道房間。帶訊息或對話資料的推播一律走渠道房間：API 用 `notifyChannel()` 或 `emitToChannel()`，workers 用 `publishChannelSocketEvent()`，經 Redis `socket:emit` 由 `socket.plugin.ts` 轉發。前端只靠渠道房間收事件，不訂閱 `conversation:` 房間。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
 
 `assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 
@@ -240,6 +268,46 @@
 | 送出文字、圖片、影片，以及「輸入中」狀態 | `inbox.reply` |
 | 修改對話（指派、狀態）、貼標與移除標籤、關閉、轉真人 | `inbox.manage` |
 | 從對話建立工單 | `inbox.view` 與 `case.create`；同時指派負責人或團隊時另需 `case.assign` |
+
+收件匣的按鈕不依權限碼與渠道層級隱藏，成員按下才收到 403（HC-INBOX-04）。
+
+## 畫面怎麼呼叫 API
+
+| 畫面與操作 | API | 畫面上要知道的事 |
+| --- | --- | --- |
+| `/dashboard/inbox` 左欄的列表、分頁籤、搜尋、進階篩選（`ConversationList.tsx`、`FilterDrawer.tsx`） | `GET /conversations?status&channelType&assigneeId&unread&search&closedAfter&page&limit=50` | 見[對話清單、篩選與搜尋](#對話清單篩選與搜尋) |
+| 點列表的一列 | `GET /conversations/:id`、`GET /conversations/:id/messages?limit=50&order=desc`、`POST /conversations/:id/read` | 從網址 `?conv=<對話 ID>` 直接開啟（通知的連結、重新整理）時不標已讀（HC-INBOX-09）。讀不到對話（404）時，中間顯示「選擇對話」，沒有說明原因（HC-INBOX-17） |
+| 輸入框（`MessageInput.tsx`）按 Enter：文字、快速回覆、模板、採用 AI 建議、個資遮罩 | `POST /conversations/:id/messages`，body `{ contentType: 'text', content: { text, quickReplies? }, privacyMode? }` | 對話是 `BOT_HANDLED` 或已關閉時，輸入框鎖住。快速回覆只在 LINE 對話顯示 |
+| 輸入框的迴紋針：送圖片 | `POST /conversations/:id/send-image`（multipart） | 前端只收 PNG、JPEG，20 MB 以內。前端也讓 Instagram 對話送圖，後端回 501（HC-INBOX-12） |
+| 「Bot 自動處理中」橫幅的「接管對話」 | `POST /conversations/:id/handoff`，body `{}` | 指派給自己。`HandoffModal`（指定接手人、自訂轉接訊息）在頁面上永遠不會開啟（HC-INBOX-15） |
+| 表頭的「交回 Bot」（`ReturnToBotButton`，`AGENT_HANDLED`、`ACTIVE` 才顯示） | `POST /conversations/:id/return-to-bot` | 回 400 時，按鈕旁顯示原因 |
+| 表頭的負責人下拉 | `PATCH /conversations/:id`，body `{ assignedToId: <成員 ID> 或 null }` | 選項是 `GET /agents` 的全部成員 |
+| 表頭的狀態下拉 | `PATCH /conversations/:id`，body `{ status }`；選「已關閉」改開結案視窗 | 見[指派與狀態](#指派與狀態) |
+| 表頭的「結案」 | `POST /conversations/:id/close`，body `{ reason? }` | 原因最多 1000 字，空白時不送。原因寫入後，沒有畫面顯示（HC-INBOX-18） |
+| 已關閉對話的「重新開啟對話」 | `PATCH /conversations/:id`，body `{ status: 'ACTIVE' }` | 見[關閉對話](#關閉對話) |
+| 右欄的「對話標籤」（`TagManager`，`targetType` 是 `CONVERSATION`） | `POST /conversations/:id/tags`，body `{ tagId }`；`DELETE /conversations/:id/tags/:tagId` | 重複貼同一個標籤回 201 |
+| 右欄的「建立工單」（`CaseCreateModal`） | `POST /cases/from-conversation/:conversationId` | 對話已有工單時，按鈕仍然顯示，送出後回 409「這則對話已建立過案件」（HC-INBOX-16） |
+| 表頭的燈泡（`AiSuggestPanel.tsx`） | `POST /ai/suggest-reply`，body `{ conversationId }` | 「採用」以 `ai-adopt` 事件把建議帶進輸入框。失敗時一律顯示「無法取得建議」，不顯示 API 的錯誤（HC-INBOX-13） |
+| 即時更新（`SocketProvider`、`useConversations`、`useMessages`） | 監聽 `message.new`、`conversation.updated` | 見[誰看得到哪些對話](#誰看得到哪些對話) |
+
+下列 API 沒有畫面入口：
+
+- `POST /conversations/:id/send-video`。
+- `POST /conversations/:id/typing`。前端不呼叫這個端點；`TypingIndicator` 也收不到事件，因為事件只發到前端沒有訂閱的 `conversation:` 房間（HC-INBOX-14）。
+- `POST /conversations/:id/case`。功能與 `POST /cases/from-conversation/:conversationId` 相同，前端只用後者（HC-INBOX-15）。
+- 列表的 `assigneeId=<其他成員的 ID>`。
+- `PATCH /conversations/:id` 的 `status: BOT_HANDLED`。
+
+前端送出的值：
+
+- 狀態篩選：`ACTIVE`、`BOT_HANDLED`、`AGENT_HANDLED`、`CLOSED` 以逗號串接，或 `!CLOSED`。
+- `channelType`：`GET /channels` 回傳的渠道類型。
+- `assigneeId`：只送自己的 ID 或 `unassigned`。
+- `unread`：只送 `true`。後端以 `z.coerce.boolean` 解析，`unread=false` 也被當成 `true`（HC-INBOX-10）。
+- `search`：搜尋框去頭尾空白後的文字，後端上限 100 字。
+- `closedAfter`：ISO 字串，今天往前 7、30 或 90 天。
+- 狀態下拉：只送 `ACTIVE`、`AGENT_HANDLED`。
+- 結案：`{ reason? }`。接管：`{}`。訊息：`contentType: 'text'`。
 
 ## 目前的限制
 

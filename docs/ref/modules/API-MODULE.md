@@ -85,7 +85,7 @@ flow 把工作拆成三段：交易、外部呼叫、交易。拆開之前，先
 - 由哪段程式重做這一段；
 - 這一段的保證。
 
-change `outbox-event-delivery` 的 `design.md` 第 14 節有這樣的表。
+`openspec/changes/archive/2026-10-22-outbox-event-delivery/design.md` 第 14 節有這樣的表。
 
 ## Redis 連線
 

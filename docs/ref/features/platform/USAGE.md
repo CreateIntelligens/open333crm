@@ -2,8 +2,25 @@
 
 跨租戶與單一租戶的 AI 用量與成本統計。
 
-- **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`、`llm.flow.ts`
-- **核對日期**：2026-11-10
+- **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`、`llm.flow.ts`、`apps/api/src/modules/trial/token-quota.service.ts`、`apps/web/src/app/admin/usage/page.tsx`
+- **核對日期**：2026-11-19
+
+## 程式的入口
+
+| 入口 | 函式 |
+| --- | --- |
+| `GET /api/v1/platform/usage/overview` | `platform-usage.service.ts` 的 `getUsageOverview()` |
+| `GET /api/v1/platform/usage/tenants` | `getTenantUsageRanking()` |
+| `GET /api/v1/platform/usage/tenants/:tenantId` | `getTenantUsageDetail()` |
+| 呼叫 LLM 之前檢查月額度 | `apps/api/src/modules/ai/llm.flow.ts` 的 `prepareLlmCall()` → `token-quota.service.ts` 的 `isMonthlyTokenExceeded()` |
+| 呼叫 LLM | `runLlmCall()`；一次完成檢查、呼叫與記帳的是 `generateReply()` |
+| 記帳、累加計數器、告警 | `recordLlmUsage()` → `llm.service.ts` 的 `writeAiUsage()`、`incrMonthlyTokens()`、`claimCrossedThresholds()` |
+| 查價與算成本 | `pricing.service.ts` 的 `getPricing()`、`calcCostUsd()` |
+| 告警的通知與信件 | `apps/api/src/modules/notification/notification.worker.ts`、`usage-alert-email.worker.ts` |
+
+`/platform/usage/*` 的路由在 `platform.routes.ts`，只接受平台 token，租戶 token 回 401。
+
+新增任何呼叫 LLM 的程式，都要經過 `llm.flow.ts`：`generateReply()`，或 `prepareLlmCall()` 加上 `runLlmCall()`、`recordLlmUsage()`，並在 `llm.service.ts` 的 `AiFeature` 加上新的來源標記。繞過 `llm.flow.ts` 的呼叫不記帳、不計額度，也不會被額度擋下。
 
 ## 每個端點回傳什麼
 
@@ -14,6 +31,8 @@
 | `GET /usage/overview` | 全系統的 token、成本、呼叫數，加上各 provider 的佔比與有用量的租戶數 | 無 |
 | `GET /usage/tenants` | 各租戶排行，依 token 由多到少 | 只取前 50 名 |
 | `GET /usage/tenants/:tenantId` | 單一租戶的每日趨勢與各 feature 分佈 | 每日趨勢用 `$queryRaw` 依台灣日期分組（Prisma 的 `groupBy` 不能截斷日期），再補齊期間內每一天，見下方「每日趨勢的分日」 |
+
+`from`、`to` 以 `z.coerce.date()` 解析，不檢查 `from` 早於 `to`：`from` 晚於 `to` 時回全 0。`:tenantId` 不檢查是不是 UUID，亂碼回 400 `DATABASE_ERROR`（HC-PLATFORM-USAGE-10）。全部呼叫都失敗的租戶不出現在排行（HC-PLATFORM-USAGE-07）。
 
 ### 每日趨勢的分日
 
@@ -48,6 +67,22 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 
 因此「總 AI Token」與「總成本」兩張卡的母體不同，而介面只在成本那張標了「不含 BYOK」，見 `../../system/AUDIT.md` 的 USAGE-01。
 
+## AI 呼叫怎麼記帳
+
+每次 AI 呼叫，`recordLlmUsage()` 依序做下列事情，全部完成之後才把回覆交給呼叫端：
+
+1. 在一個租戶交易內寫一筆 `ai_usages`（`writeAiUsage()`）。成功而且不是 BYOK 的呼叫，以寫入當下的價目算成本。寫入失敗時只寫 log，不補寫，計數器也不累加。
+2. commit 之後，累加 Redis 計數器（`incrMonthlyTokens()`）。計數器只累加成功、而且 `keySource = 'platform'` 的呼叫。
+3. 累加之後跨越 80% 或 100% 時，以 `SET NX` 寫入告警旗標（`claimCrossedThresholds()`），寫入成功的門檻才在另一個交易把 `usage.quota.threshold` 寫進 outbox。outbox 寫入失敗只寫 log；旗標已經寫入，這個月不再發這個門檻的告警（主規格 `usage-quota-alerts`）。
+
+每一步失敗都只寫 log，不讓 AI 回覆失敗。token-quota 的 Redis 由呼叫端傳入，API 行程用 `fastify.redis`。`USAGE_QUOTA_ALERTS_ENABLED=0` 時不發告警。
+
+`notification.worker.ts` 收到 `usage.quota.threshold` 之後，對該租戶每位 `role=ADMIN` 而且啟用的成員發站內通知 `usage_quota_warning` 或 `usage_quota_critical`（連到 `/dashboard/plan`），並經 `usage-alert-email` 佇列寄一封信。收件人看舊的角色列舉，不看權限：有 `settings.manage` 的 supervisor 能開 `/dashboard/plan`，卻收不到告警（HC-PLATFORM-USAGE-08）。
+
+`/dashboard/plan` 只有升級與加購的申請表和申請紀錄，不顯示目前方案、本月已用量與上限。系統也沒有任何 API 回傳「本月已用／有效上限」，租戶端與平台端都沒有（HC-PLATFORM-USAGE-02）。要知道用量，只能查 Redis 計數器或 `ai_usages`。
+
+`ai_usages` 的 `usageMissing`、`keySource` 與失敗的筆數沒有任何查詢端。
+
 ## 成本怎麼算出來的
 
 成本在寫入 `AiUsage` 的當下就算好，之後不再重算。**改價不回溯歷史帳**，價目表調整只影響之後的呼叫。
@@ -73,7 +108,8 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 
 `ModelPricing` 以 `(model, effectiveFrom)` 版本化，查價取 `effectiveFrom <= now` 的最新一列。但是：
 
-- **平台後台沒有任何路由或頁面能編輯它。** 整個 repo 只有 `packages/database/prisma/seed.ts` 會寫入，調價要改 seed 或直接改資料庫。
+- **平台後台沒有任何路由或頁面能編輯它。** 整個 repo 只有 `packages/database/prisma/seed.ts` 的 `seedModelPricing()` 會寫入，調價要改 seed 或直接改資料庫。seed 以 `update: {}` 寫入，改價要新增一列較新的 `effectiveFrom`，見[平台設定](./SETTINGS.md#模型價目)。
+- **新增模型要同時加價目。** 在模型下拉清單（`apps/api/src/modules/ai/providers/gemini.provider.ts` 的 `CURATED_CHAT_MODELS`）加模型時，也要在 `seedModelPricing()` 加價目。下拉清單的模型多於價目表，用平台金鑰呼叫缺價的模型，成本永久是 0（HC-PLATFORM-USAGE-01）。
 - 查價結果在 API 行程內快取 10 分鐘，**查無價目的結果也一起快取**。直接改資料庫之後，最久要等 10 分鐘才會套用到新的呼叫，而且 `clearPricingCache()` 沒有對外的端點可以呼叫。多個 API 行程時，每個行程各自快取。
 - seed 在 API 容器每次啟動時都會執行，改 seed 的價目再部署就會寫入，但這是改程式碼，不是平台方能自己做的調價。正式環境的 seed 只寫方案、價目與系統範本這類共用資料，不建 Demo 帳號（`seed-data/demo-accounts.ts`）。
 
@@ -87,21 +123,42 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 | --- | --- | --- |
 | 條件 | `success` | `success` 且 `keySource = 'platform'` |
 | 區間 | 呼叫端指定，預設台灣今天往前 29 天的 00:00 起 | 當月，台灣時間 1 日 00:00 起算 |
-| 來源 | 每次都查資料庫 | Redis 計數器，miss 時從資料庫回填 |
+| 來源 | 每次都查資料庫 | Redis 計數器，miss 時從資料庫回填（`readMonthlyTokensFromDb()`，條件與左欄的「條件」列相同） |
+| 上限 | — | 有效的 `monthlyTokens`：`tenants.limitOverrides.monthlyTokens ?? plans.limits.monthlyTokens`，加上本月已核准的加購（`plan-limits.service.ts`） |
 
-AI 月額度的月份一律是台灣月份（`taipeiMonthString()`）：Redis 計數器 key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，告警旗標是 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`，兩者都在台灣下個月 1 日 00:00 過期；告警站內通知與 email 的「本月（YYYY-MM）」也是台灣月份。舊的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}`（沒有 `:tpe`）不再被讀取，換版後計數器從資料庫以台灣月份重建，部署當下跨月的行為見 change `fix-platform-usage-trial-display` 的 design D3。
+計數器與回填必須用同一組條件。兩邊的母體不一致，額度的判斷就會錯。
 
-系統在每次呼叫 LLM 之前檢查月額度。額度用完時，檢查丟出 403 `PLAN_LIMIT_EXCEEDED`，系統不呼叫模型。各功能對這個錯誤的處理不同：
+AI 月額度的月份一律是台灣月份（`taipeiMonthString()`）：Redis 計數器 key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，告警旗標是 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`，兩者都在台灣下個月 1 日 00:00 過期；告警站內通知與 email 的「本月（YYYY-MM）」也是台灣月份。系統不讀取沒有 `:tpe` 的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}`（主規格 `token-quota`）。月份的計算在 `token-quota.service.ts` 的 `monthKey()` 與 `monthStart()`。
+
+告警旗標到台灣下個月 1 日才過期。會提高月額度的操作都要清除旗標，讓提高之後能再次告警：
+
+- 核准加購：一律清除，並清除計數器（`clearTokenQuotaCache()`、`clearQuotaAlertFlags()`）。計數器清除之後，下一次讀取從 `ai_usages` 回填。
+- 核准升級、平台改租戶方案、試用轉正式、改方案的 `limits.monthlyTokens`：只在上限提高時清除（`monthlyTokensRaisedByPlanChange()`）。
+
+新增會提高月額度的入口，也要照這個規則清除旗標。
+
+`apps/api/verify-quota.mts` 會清除 Demo 租戶的計數器並累加假的用量。不要在共用環境或 UAT 執行。
+
+系統在每次呼叫 LLM 之前檢查月額度：計數器大於或等於有效的 `monthlyTokens` 時，檢查丟出 403 `PLAN_LIMIT_EXCEEDED`，`details.limitKey` 是 `monthlyTokens`，系統不呼叫模型，也不寫 `ai_usages`。這個檢查只對平台金鑰的呼叫生效；BYOK 與無上限的租戶不擋。provider 是 Ollama 的呼叫也計入額度，也會被擋。各功能對這個錯誤的處理不同：
 
 | 功能 | 額度用完時 |
 | --- | --- |
 | AI 潤稿、AI Agent | 回 403 `PLAN_LIMIT_EXCEEDED`，畫面顯示錯誤 |
-| AI 建議回覆 | 回 200，建議清單是空的 |
-| 對話摘要 | 回 200，摘要改用不呼叫模型的備援內容 |
+| AI 建議回覆 | 回 200。每篇搜尋到的知識庫文章改用文章原文當作建議，不告訴使用者額度已用完 |
+| 對話摘要 | 回 200。摘要改用一段固定的範本文字，內容與對話無關。自動轉真人時，這段文字會以「Bot 對話摘要」寫進對話的系統訊息（HC-PLATFORM-USAGE-04） |
 | 情緒分析 | 改用關鍵字判斷 |
 | 工單分類 | 改用關鍵字分類 |
 | 知識庫自動回覆 | 轉真人，原因是「AI 月額度已用完」，見[知識庫與 AI](../tenant/KNOWLEDGE.md) |
 
 BYOK 的呼叫出現在用量統計裡，但不計入額度，也不會被額度擋下。額度的判斷見 `apps/api/src/modules/trial/token-quota.service.ts`。計數器少算用量之後，當月不會校正，見 `../../system/AUDIT.md` 的 USAGE-03。
+
+## 畫面怎麼呼叫 API
+
+| 畫面與操作 | API | 畫面上要知道的事 |
+| --- | --- | --- |
+| `/admin/usage` 的「近 7／30／90 天」按鈕 | `GET /usage/overview`、`GET /usage/tenants`，帶 `from`、`to` | 區間由 `apps/web/src/app/admin/lib/usage-range.ts` 的 `usageRange()` 計算。切換天數時收起租戶鑽取 |
+| 點排行的一列 → 租戶鑽取 | `GET /usage/tenants/:tenantId` | 每日趨勢與各 feature 分佈 |
+| 上面任何一個請求失敗 | — | 請求都沒有 `catch`，畫面不顯示錯誤：總覽卡消失，排行顯示「此區間尚無用量資料」，鑽取的列變色但不出現趨勢（HC-PLATFORM-USAGE-03） |
+| 告警信「查看用量與方案」、站內通知 → `/dashboard/plan` | `GET /plan-change` | 頁面不顯示用量與上限（HC-PLATFORM-USAGE-02） |
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

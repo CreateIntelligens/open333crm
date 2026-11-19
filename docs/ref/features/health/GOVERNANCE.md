@@ -3,6 +3,7 @@
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 已修正：HC-GOVERNANCE-11 部分修正：匯出 CSV 的每一欄經過 `@open333crm/shared` 的 `csvRow()`。日期輸出 ISO 字串，不再多包一層引號；以 `=`、`+`、`-`、`@` 開頭的文字前面加 `'`。檔案仍沒有 UTF-8 BOM。本報告其餘段落仍描述健檢當時的程式
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只讀）
 - 範圍：`docs/ref/features/feature-map.json` 的 `governance`；功能文件 `docs/ref/features/tenant/GOVERNANCE.md`。MCP、API 金鑰與 CLI token 的流程歸「設定」領域（`docs/ref/features/health/SETTINGS.md`），本報告只看它們有沒有寫稽核
