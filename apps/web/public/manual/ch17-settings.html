@@ -45,7 +45,7 @@
 
     <section class="doc" id="p1">
       <h2><span class="idx">1</span> 這頁能做什麼</h2>
-      <p>這一章的功能都在左側選單「分析與管理 → 設定」底下，每個子頁一節。除了「標籤管理」大家都能用之外，其他頁預設只有管理員和主管能修改。沒有權限的人可能還是看得到選單，但打開會是空白，按儲存會失敗。</p>
+      <p>這一章的功能都在左側選單「設定」底下，每個子頁一節。除了「標籤管理」大家都能用之外，其他頁預設只有管理員和主管能修改。沒有權限的人可能還是看得到選單，但打開會是空白，按儲存會失敗。</p>
       <div class="quick">
         <a href="#p2"><b>標籤管理</b>建立聯絡人、對話、工單、素材用的分類標籤</a>
         <a href="#p3"><b>SLA 政策</b>規定多快要回覆、多快要解決</a>
@@ -68,8 +68,8 @@
         <figcaption><span class="tag">影片</span>依範圍篩選標籤、填寫新增標籤對話框（約 24 秒，示範最後按取消）</figcaption>
       </figure>
       <figure class="shot">
-        <img src="uploads/shots/ch17-tags.png" alt="標籤管理頁：上方依範圍篩選，下方標籤卡片，每張卡片右側有編輯與刪除圖示" loading="lazy">
-        <figcaption>標籤管理：上方依範圍篩選；每張卡片右邊的鉛筆是編輯，紅色垃圾桶是刪除。</figcaption>
+        <img src="uploads/shots/ch17-tags.png" alt="標籤管理頁：上方依範圍篩選，下方標籤列表，每列右側有編輯與刪除圖示" loading="lazy">
+        <figcaption>標籤管理：上方依範圍篩選；每列右邊的鉛筆是編輯，紅色垃圾桶是刪除。</figcaption>
       </figure>
       <h3>新增標籤</h3>
       <ol class="steps">
@@ -95,9 +95,9 @@
       </table>
       <ul>
         <li>同一個範圍裡不能有兩個同名標籤；不同範圍可以同名（例如聯絡人和案件都有「客訴」）。</li>
-        <li>編輯：按卡片右邊的鉛筆，可以改名稱、顏色、說明。素材標籤改名後，所有素材上的標籤也會一起改。</li>
+        <li>編輯：按那列右邊的鉛筆，可以改名稱、顏色、說明。素材標籤改名後，所有素材上的標籤也會一起改。</li>
       </ul>
-      <div class="warn"><span>⚠️</span><div><b>刪除標籤會從所有地方一起拿掉</b>，包含已經貼在聯絡人、對話、工單和素材上的，無法復原。預設連客服都能刪除標籤，如果擔心被誤刪，請管理員到「角色與權限」收回客服的「管理標籤」權限。</div></div>
+      <div class="warn"><span>⚠️</span><div><b>刪除標籤會從所有地方一起拿掉</b>，包含已經貼在聯絡人、對話、工單和素材上的，無法復原。預設連客服都能刪除標籤，如果擔心被誤刪，請管理員到「角色權限」收回客服的「管理標籤」權限。</div></div>
       <div class="info"><span>ℹ️</span><div>編輯時把「說明」整段刪掉再儲存，舊的說明目前會留著。想改說明時，請直接改成新的文字。</div></div>
       <!-- KNOWN-ISSUE: 把說明清空後儲存，舊說明仍會保留 -->
     </section>
@@ -255,7 +255,7 @@
 
     <section class="doc" id="p7">
       <h2><span class="idx">7</span> API 金鑰</h2>
-      <p>這頁給<b>需要串接合作廠商的管理員</b>使用。頁面標題是「Partner API 金鑰」，產生的金鑰只有一個用途：讓合作廠商的系統把文件自動推送到你們的知識庫（知識庫見「<a href="ch06-knowledge.html">06 · 知識庫</a>」）。一般客服不需要碰這頁。</p>
+      <p>這頁給<b>需要串接合作廠商的管理員</b>使用。頁面標題是「API 金鑰」，產生的金鑰只有一個用途：讓合作廠商的系統把文件自動推送到你們的知識庫（知識庫見「<a href="ch06-knowledge.html">06 · 知識庫</a>」）。一般客服不需要碰這頁。</p>
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch17-apikey-add.png" alt="建立 API 金鑰對話框：名稱與過期時間" loading="lazy">
         <figcaption>建立 API 金鑰：填名稱、選過期時間。</figcaption>
@@ -276,7 +276,7 @@
 
     <section class="doc" id="p8">
       <h2><span class="idx">8</span> CLI 連線</h2>
-      <p>這頁給<b>會用 AI 助理或指令列工具的技術人員</b>使用。頁面標題是「CLI / LLM 連線」，在這裡產生的 Token 可以讓 Claude、ChatGPT 這類 AI 工具用你的身分查詢系統資料（預設只能讀、不能改）。一般客服不需要碰這頁。</p>
+      <p>這頁給<b>會用 AI 助理或指令列工具的技術人員</b>使用。頁面標題是「CLI 連線」，在這裡產生的 Token 可以讓 Claude、ChatGPT 這類 AI 工具用你的身分查詢系統資料（預設只能讀、不能改）。一般客服不需要碰這頁。</p>
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch17-cli-add.png" alt="產生 CLI Token 對話框：名稱、過期時間、授予 MCP 唯讀權限" loading="lazy">
         <figcaption>產生 CLI Token：填名稱、選過期時間，需要時勾選 MCP 唯讀權限。</figcaption>
@@ -296,7 +296,7 @@
 
     <section class="doc" id="p9">
       <h2><span class="idx">9</span> A2A</h2>
-      <p>位置在「設定 → 整合 → A2A」，只有管理員和主管看得到。這頁顯示系統和外部 AI 代理之間的連線資訊，<b>全部是唯讀</b>，由系統維運人員在伺服器上設定，你不需要也無法在這裡修改。如果有人請你確認 A2A 狀態，看「目前狀態」那一欄就可以。</p>
+      <p>位置在「設定 → A2A」，只有管理員和主管看得到。這頁顯示系統和外部 AI 代理之間的連線資訊，<b>全部是唯讀</b>，由系統維運人員在伺服器上設定，你不需要也無法在這裡修改。如果有人請你確認 A2A 狀態，看「目前狀態」那一欄就可以。</p>
       <!-- KNOWN-ISSUE: A2A 是整個系統的設定卻對每個租戶顯示，「目前狀態」與「Tenant 綁定」不一定反映實際情況 -->
     </section>
 

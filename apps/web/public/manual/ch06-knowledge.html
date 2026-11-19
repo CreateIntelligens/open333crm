@@ -45,15 +45,15 @@
 <section class="doc" id="p1">
       <h2><span class="idx">1</span> 這頁能做什麼</h2>
       <p>知識庫是 AI 客服的「參考書」。客人發問時，AI 會先到知識庫裡找最相關的文章，再照文章內容回答。文章寫得越清楚、越完整，AI 就答得越準；知識庫裡沒有的，AI 不會亂編，而是請客人轉給真人。</p>
-      <p>從左側選單「自動化與知識 → 知識庫」進入，底下有「文章管理」「語義搜尋」「回報調教」三頁。</p>
+      <p>從左側選單「知識庫」進入，底下有「文章管理」「語義搜尋」「回報調教」三頁。</p>
       <p>請先記住這條路，文章要走完才會被 AI 用到：</p>
       <div class="flow">
         <div class="flow-step"><div class="fn">STEP 1</div><div class="ft">寫文章</div><div class="fd">新增或匯入，存檔後是「草稿」</div></div>
         <div class="flow-step"><div class="fn">STEP 2</div><div class="ft">發布</div><div class="fd">狀態變成「已發布」</div></div>
-        <div class="flow-step"><div class="fn">STEP 3</div><div class="ft">AI 讀進去</div><div class="fd">標題前出現綠色小圖示</div></div>
+        <div class="flow-step"><div class="fn">STEP 3</div><div class="ft">AI 讀進去</div><div class="fd">標題下方出現綠色「已向量化」</div></div>
         <div class="flow-step"><div class="fn">STEP 4</div><div class="ft">AI 客服引用</div><div class="fd">客人問到時拿來回答</div></div>
       </div>
-      <div class="warn"><span>⚠️</span><div><b>只有「已發布」而且標題前有綠色小圖示的文章，AI 客服才會用。</b>草稿和已封存的文章，AI 完全看不到。寫完記得發布。</div></div>
+      <div class="warn"><span>⚠️</span><div><b>只有「已發布」而且標題下方有綠色「已向量化」的文章，AI 客服才會用。</b>草稿和已封存的文章，AI 完全看不到。寫完記得發布。</div></div>
       <div class="quick">
         <a href="#p2"><b>文章列表</b>找文章、看狀態、看 AI 讀進去沒</a>
         <a href="#p3"><b>新增與編輯</b>寫一篇新的問答</a>
@@ -73,10 +73,10 @@
         <video controls preload="none" playsinline poster="uploads/videos/ch06-articles.jpg">
           <source src="uploads/videos/ch06-articles.mp4" type="video/mp4">
         </video>
-        <figcaption><span class="tag">影片</span>切換狀態分頁、認識綠色小圖示和右邊的操作按鈕（約 25 秒）</figcaption>
+        <figcaption><span class="tag">影片</span>切換狀態分頁、認識綠色「已向量化」和右邊的操作按鈕（約 25 秒）</figcaption>
       </figure>
       <ol class="steps">
-        <li>在「搜尋文章...」輸入關鍵字，會比對標題、摘要、內容和標籤。</li>
+        <li>在「搜尋文章」輸入關鍵字，會比對標題、摘要、內容和標籤。</li>
         <li>用「全部分類」「全部來源」下拉縮小範圍。來源是「手動建立」或合作夥伴系統匯入的名稱。</li>
         <li>點上方「全部／草稿／已發布／已封存」切換狀態。</li>
         <li>點某篇文章的標籤，可以只看有這個標籤的文章；再點上方的標籤小方塊就能取消。</li>
@@ -90,7 +90,7 @@
       <table>
         <thead><tr><th>欄位</th><th>說明</th></tr></thead>
         <tbody>
-          <tr><td>標題</td><td>文章標題，下面一行是摘要。<b>標題前的綠色小圖示</b>代表 AI 已經讀進這篇（滑鼠移上去會顯示「已向量化」）</td></tr>
+          <tr><td>標題</td><td>文章標題，下面一行是摘要。<b>標題下方的綠色「已向量化」</b>代表 AI 已經讀進這篇</td></tr>
           <tr><td>分類</td><td>你自己訂的分類，例如「常見問題」「保固」</td></tr>
           <tr><td>狀態</td><td>草稿、已發布、已封存，意思見下表</td></tr>
           <tr><td>標籤</td><td>方便分類和篩選的小標記</td></tr>
@@ -100,15 +100,15 @@
         </tbody>
       </table>
       <figure class="shot">
-        <img src="uploads/shots/ch06-article-row.png" alt="單篇文章列：標題前綠色小圖示、已發布狀態、右側編輯封存刪除按鈕" loading="lazy">
-        <figcaption>一篇已生效的文章：標題前有綠色小圖示、狀態是「已發布」。</figcaption>
+        <img src="uploads/shots/ch06-article-row.png" alt="單篇文章列：標題下方綠色「已向量化」、已發布狀態、右側編輯封存刪除按鈕" loading="lazy">
+        <figcaption>一篇已生效的文章：標題下方有綠色「已向量化」、狀態是「已發布」。</figcaption>
       </figure>
       <h3>三種狀態</h3>
       <table>
         <thead><tr><th>狀態</th><th>意思</th><th>AI 客服會用嗎</th></tr></thead>
         <tbody>
           <tr><td>草稿</td><td>剛建立、還在寫</td><td>不會</td></tr>
-          <tr><td>已發布</td><td>正式上線</td><td>會（要有綠色小圖示）</td></tr>
+          <tr><td>已發布</td><td>正式上線</td><td>會（要有綠色「已向量化」）</td></tr>
           <tr><td>已封存</td><td>暫時下架、先收起來</td><td>不會</td></tr>
         </tbody>
       </table>
@@ -150,7 +150,7 @@
         <ul>
           <li>「預覽」目前只顯示純文字，不會把粗體、清單等格式排出來，看起來和輸入的一樣是正常的。</li>
           <li>超過字數上限不會即時提醒，按儲存時才會出現「儲存失敗，請檢查輸入資料」。看到這句，先檢查標題、摘要是不是太長。</li>
-          <li>只改分類或標籤，AI 不需要重讀；改了標題、摘要或內容，系統會自動讓 AI 重讀，綠色小圖示可能會晚幾秒才出現。</li>
+          <li>只改分類或標籤，AI 不需要重讀；改了標題、摘要或內容，系統會自動讓 AI 重讀，「已向量化」可能會晚幾秒才出現。</li>
           <li>從合作夥伴系統匯入的文章，對話框上方會多一塊「合作方匯入」資訊，這類文章通常由對方系統更新，不需要手動改。</li>
         </ul>
       </div></div>
@@ -166,9 +166,9 @@
         <li>在列表找到要上線的文章（可以先點「草稿」分頁）。</li>
         <li>按那一列的地球圖示（滑鼠移上去會顯示「發布」）。</li>
         <li>狀態徽章會從「草稿」變成「已發布」。畫面不會跳成功提示，看徽章變了就是成功。</li>
-        <li>過幾秒，標題前出現綠色小圖示，就代表 AI 客服已經可以用這篇了。</li>
+        <li>過幾秒，標題下方出現綠色「已向量化」，就代表 AI 客服已經可以用這篇了。</li>
       </ol>
-      <div class="info"><span>ℹ️</span><div>發布後過了一兩分鐘、重新整理頁面，綠色小圖示還是沒出現，代表 AI 沒讀成功。請管理員到「AI 設定 → Embedding」檢查服務狀態，並按「重新嵌入全部已發布文章」補做（見<a href="ch07-ai-settings.html">第 07 章</a>）。</div></div>
+      <div class="info"><span>ℹ️</span><div>發布後過了一兩分鐘、重新整理頁面，「已向量化」還是沒出現，代表 AI 沒讀成功。請管理員到「AI 設定 → Embedding」檢查服務狀態，並按「重新嵌入全部已發布文章」補做（見<a href="ch07-ai-settings.html">第 07 章</a>）。</div></div>
       <h3>封存：暫時下架</h3>
       <p>活動結束、資訊暫時不適用時，按箱子圖示（「封存」）。文章會留著，但 AI 不會再用。想再上線時，按地球圖示重新發布即可。</p>
       <h3>刪除：永久移除</h3>
@@ -253,7 +253,7 @@
         <li>左側選單點「知識庫 → 語義搜尋」。</li>
         <li>在搜尋框輸入客人可能的問法，用口語就好，例如「冰箱不冷怎麼辦」。</li>
         <li>按 Enter 或「搜尋」。</li>
-        <li>看結果：每張卡片是一篇文章，右上角的「xx.x% 匹配」越高，代表越接近客人的問題。</li>
+        <li>看結果：每一列是一篇文章，右邊「匹配度」欄的「xx.x% 匹配」越高，代表越接近客人的問題。</li>
       </ol>
       <figure class="shot">
         <img src="uploads/shots/ch06-search.png" alt="語義搜尋結果：多張文章卡片，右上角顯示匹配百分比" loading="lazy">
