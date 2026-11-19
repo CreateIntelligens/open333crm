@@ -26,7 +26,7 @@
 
 1. **權限碼**：角色被授予哪些權限碼，再扣掉方案不允許的部分。路由以 `requirePermission()` 檢查。
 2. **渠道可見範圍**：同一個租戶內，成員看得到哪些渠道，以及在每個渠道能做到哪個層級。收件匣與工單的路由以 `assert*ChannelVisible()` 檢查。
-3. **舊的角色列舉 `role`**：`ADMIN`、`SUPERVISOR`、`AGENT`。不用來擋請求，但工單自動指派、通知收件人等業務規則依它決定對象，見 `../system/AUDIT.md` 的 RBAC-03。CSAT 低分通知已改依權限：有效權限含 `case.assign`、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`，#339）。
+3. **舊的角色列舉 `role`**：`ADMIN`、`SUPERVISOR`、`AGENT`。不用來擋請求，但工單自動指派、通知收件人等業務規則依它決定對象，見 `../system/AUDIT.md` 的 RBAC-03。CSAT 低分通知依權限：有效權限含 `case.assign`、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`）。
 
 三者各自獨立。有 `inbox.reply` 權限碼、但渠道層級只有 `read_only` 的成員，回覆會被擋下；反過來，渠道層級是 `full`，也不會因此多出任何權限碼。**一條路由掛了哪幾種檢查，由路由自己決定**；對話與工單的路由兩種都檢查，知識庫的讀取路由兩種都沒有，見 `../system/AUDIT.md` 的 RBAC-01。
 
@@ -156,7 +156,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 綁給成員所屬的團隊（`ChannelTeamAccess`） | 綁定時指定 |
 | 渠道沒有綁定這個成員（包括完全沒有綁定的渠道） | 看不到 |
 
-2026-10-05 之前，完全沒有綁定的渠道所有成員都看得到（`full`）。這個相容分支已移除（change `channel-visibility-fail-closed`），當時既有的這類渠道由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。之後新增的渠道與成員，在建立時指定可見範圍。
+2026-10-05 之前建立、完全沒有綁定的渠道，已由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。之後新增的渠道與成員，在建立時指定可見範圍。
 
 層級由低到高是 `read_only`、`reply_only`、`full`。停用的渠道一律看不到。收件匣的每個操作需要哪個層級，見[收件匣與對話](../features/tenant/INBOX.md#誰看得到哪些對話)。
 

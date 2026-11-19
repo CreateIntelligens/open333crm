@@ -26,11 +26,11 @@
 
 ## seed 建立的五個方案
 
-`packages/database/prisma/seed-data/plans.ts` 定義 `trial`、`light`、`standard`、`professional`、`enterprise` 五個方案。`seedPlans()` 只建立資料庫還沒有的方案（`upsert` 的 `update` 是空物件，與 `seedModelPricing()` 相同寫法），已存在的方案不更新。五個方案的 `features` 都含 `channels`，所以每個方案的租戶都能檢視與建立渠道。`trial`、`light` 原本不含 `channels`，issue #411 補上，既有資料由 migration `20261103120000_enable_channels_on_trial_light` 更新。
+`packages/database/prisma/seed-data/plans.ts` 定義 `trial`、`light`、`standard`、`professional`、`enterprise` 五個方案。`seedPlans()` 只建立資料庫還沒有的方案（`upsert` 的 `update` 是空物件，與 `seedModelPricing()` 相同寫法），已存在的方案不更新。五個方案的 `features` 都含 `channels`，所以每個方案的租戶都能檢視與建立渠道。
 
 seed 方案的 `limits` 沒有 `maxChannels`（渠道數無上限），`allowedChannelTypes` 也不寫入（預設 `[]`，不限制類型），見 AUDIT PLAN-07。
 
-API 容器每次啟動都跑 seed（`apps/api/docker-entrypoint.sh`）。平台後台對方案的修改（`name`、`features`、`limits`、`priceMonthly`、`allowedChannelTypes`、`permissionOverrides`、`isActive`）在部署或重啟後保留。issue #441 之前，seed 以 upsert 寫入，每次部署把前四個欄位寫回 `plans.ts` 的值。
+API 容器每次啟動都跑 seed（`apps/api/docker-entrypoint.sh`）。平台後台對方案的修改（`name`、`features`、`limits`、`priceMonthly`、`allowedChannelTypes`、`permissionOverrides`、`isActive`）在部署或重啟後保留。
 
 **程式要改既有方案的內容時**，只改 `plans.ts` 不會影響既有環境（它只用在新建的資料庫）。另寫一支一次性的資料 migration：
 
@@ -108,7 +108,7 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 
 `updatePlan()` 寫入後，若 `features` 或 `permissionOverrides` 有變動，就呼叫 `invalidatePlanPermissions()` 清掉該方案所有租戶的天花板交集快取。下一個請求即用新的天花板重算。沒有灰度，也沒有延遲。
 
-`limits.monthlyTokens` 提高時，該方案下沒有覆寫 `monthlyTokens` 的租戶，本月的額度告警旗標會被清除，用量跨越新上限的 80%、100% 時會再次通知（原 PLAN-13，2026-11-10 修正）。
+`limits.monthlyTokens` 提高時，該方案下沒有覆寫 `monthlyTokens` 的租戶，本月的額度告警旗標會被清除，用量跨越新上限的 80%、100% 時會再次通知。
 
 `limits` 與 `allowedChannelTypes` 不需要失效快取，因為兩者都不快取，每次都查資料庫。
 
@@ -118,6 +118,6 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 
 ## 加購只加當月
 
-AI 月額度的加購不寫 `limitOverrides`，只計入核准當月（台灣時間），下個月回到方案額度。換方案之後加購加在新方案的額度上。詳見[方案異動審核](./PLAN-CHANGES.md#加購只計入核准當月)。2026-11-10 以前加購寫進 `limitOverrides.monthlyTokens` 的值已由 migration 移除（PLAN-02、PLAN-05）。
+AI 月額度的加購不寫 `limitOverrides`，只計入核准當月（台灣時間），下個月回到方案額度。換方案之後加購加在新方案的額度上。詳見[方案異動審核](./PLAN-CHANGES.md#加購只計入核准當月)。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

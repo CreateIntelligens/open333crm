@@ -115,8 +115,6 @@ commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNN
 2. 每筆在所屬租戶的 `withTenant` 交易內認領：`updateMany` 的條件是 `id`、`tenantId`、`status = 'WAITING'`、`resumeAt` 已到期，改成 `RUNNING` 並清空 `resumeAt`。更新 0 筆代表另一次喚醒已經認領，這一筆略過。兩次喚醒同時認領同一筆時，PostgreSQL 讓後到的等前一個 commit 再重新判斷條件，所以只有一次成功。
 3. 認領 commit 之後呼叫 `FlowRunner.run(id, { resumeFromWait: true })`，不等流程執行完。`FlowRunner` 寫一筆 `wait_resumed` 紀錄，略過 `currentNodeId` 指向的等待節點，從它的 `nextNodeId` 繼續；等待節點沒有下一個節點時流程直接完成。
 
-2026-11-11 以前，喚醒會從 `currentNodeId` 重新執行同一個等待節點，流程永遠停在等待節點，直到 `stepCount` 達到上限被標成 `FAILED`。修正前停在等待節點的資料與修正後的形狀相同，喚醒後一樣從下一個節點繼續，不需要修補。
-
 `packages/core/src/canvas/scheduler.ts` 的 `scheduleWaitNode()` 會先嘗試送出 BullMQ 的延遲工作，但佇列名稱 `flow:resume` 含冒號，BullMQ 建立佇列時直接拋出錯誤，每次都退回輪詢並寫一筆 warning；這個佇列也沒有消費者。見 `../system/AUDIT.md` 的 APP-07。
 
 輪詢器跑在 API 行程內，不在 `apps/workers`。
@@ -139,7 +137,7 @@ commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNN
 | `packages/core/src/canvas/smart-window.ts` | 安靜時段順延 |
 | `packages/core/src/canvas/types.ts` | `FlowContext`、`FlowNode` 等共用型別 |
 
-`/api/v1/identity`（人工審核聯絡人合併建議）原本也寫在 `canvas.routes.ts`，現在在 `apps/api/src/modules/contact/merge-suggestion.routes.ts`。它與 Canvas 無關。
+`/api/v1/identity`（人工審核聯絡人合併建議）在 `apps/api/src/modules/contact/merge-suggestion.routes.ts`，與 Canvas 無關。
 
 ### 權限
 

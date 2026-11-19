@@ -30,12 +30,12 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 
 系統信可選擇啟用 SMTP 至 Resend 備援：`EMAIL_DELIVERY_MODE=smtp`、`EMAIL_SMTP_FAILOVER=true`，並設定 `RESEND_API_KEY` 與 Resend 已驗證的 `EMAIL_FALLBACK_FROM`。Redis 以滑動 1 秒視窗協調跨實例並行數與每秒速率上限（預設 SMTP 並行 3、總速率 10/秒、批次速率 8/秒，保留即時系統信額度；Resend 並行 5、速率 2/秒；可透過環境變數調整），SMTP 故障後冷卻 60 秒（`EMAIL_FAILOVER_COOLDOWN_MS`）再由單一請求探測恢復。遇到 SES `454 Maximum sending rate exceeded` 節流會釋放租約並延遲重試，不誤開 Resend 電路；送出後若無法確認是否已收件，不以 Resend 重寄該封信。大量郵件與 Canvas 郵件走 `email-dispatch` 佇列（依 `EMAIL_BATCH_SIZE` 自動分批錯峰投遞，遇限流自動延後重排）。
 
-**收件成員已被永久刪除或已停用時不寫入。** 每個寫入通知的地方（workers 的通知工作、API 的 `createAndDispatch()`）都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入：一條條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`），只有收件成員同租戶、還在、仍啟用時才寫入。查完才被永久刪除的競爭也不會撞外鍵；在交易內也不會讓交易中止。成員不存在或 `isActive` 為 `false` 時，這則通知被略過：不寫入、不推送，寫一行 info log，工作正常完成，不重試。成員重新啟用後，停用期間略過的通知不會補送（issue #484）。
+**收件成員已被永久刪除或已停用時不寫入。** 每個寫入通知的地方（workers 的通知工作、API 的 `createAndDispatch()`）都用 `packages/core` 的 `createNotificationForActiveAgent()` 寫入：一條條件寫入（`INSERT … SELECT … FROM agents … FOR KEY SHARE`），只有收件成員同租戶、還在、仍啟用時才寫入。查完才被永久刪除的競爭也不會撞外鍵；在交易內也不會讓交易中止。成員不存在或 `isActive` 為 `false` 時，這則通知被略過：不寫入、不推送，寫一行 info log，工作正常完成，不重試。成員重新啟用後，停用期間略過的通知不會補送。
 
 下列來源不經過上面的流程：
 
 - **API 行程直接寫入的通知**：FB／IG 權杖失效、留言私訊健康告警、序號明細背景匯出都呼叫 `notification/notification-effects.ts` 的 `createAndDispatch()`。它在綁定租戶的交易內寫入（`app_tenant` 連線），commit 之後才推播到 `tenant:<租戶 id>:agent:<成員 id>`；交易 rollback 時通知與推播都作廢（#337）。
-- **CSAT 低分**：`csat.flow.ts` 的 `notifyCsatLowScoreFlow()` 在記分 commit 之後另開一個交易，呼叫 `createAndDispatch()` 寫入並在 commit 之後推播。送不出時，這個交易 rollback，再另開交易在工單時間軸寫一筆 `csat_low_score_notify_failed`，分數不受影響（#339、change `migrate-csat-tenant-ctx`）。
+- **CSAT 低分**：`csat.flow.ts` 的 `notifyCsatLowScoreFlow()` 在記分 commit 之後另開一個交易，呼叫 `createAndDispatch()` 寫入並在 commit 之後推播。送不出時，這個交易 rollback，再另開交易在工單時間軸寫一筆 `csat_low_score_notify_failed`，分數不受影響。
 - **SLA 預警與逾時**：workers 的 `sla.handler.ts` 自己送進 queue，見[服務水準協議](../SLA.md)。
 
 ## 哪些事件通知誰
@@ -46,7 +46,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 | 機器人轉接真人（客人要求、自動轉真人、知識庫追問用完） | `conversation_handoff` | 對話已指派、且負責人仍啟用並看得到該渠道時只通知負責人；未指派，或負責人已停用、看不到該渠道時，通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`（持有 `channel.view_all` 或被授權該渠道）。內容含聯絡人名稱與轉接原因 | `conversation.handoff` |
 | 工單被指派 | `case_assigned` | 被指派的成員 | `case.assigned` |
 | 工單升級 | `case_escalated` | 依升級對話框的勾選：所有 `ADMIN` 與 `SUPERVISOR`、升級前的負責人，見[工單](./CASES.md#升級) | `case.escalated` |
-| CSAT 兩分以下 | `csat_low_score` | 有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員，含管理員；不看舊的角色列舉（`resolveCaseManagerRecipients()`，#339）。預設的客服角色也有 `case.assign` | `recordCsatScore()` |
+| CSAT 兩分以下 | `csat_low_score` | 有效權限（角色權限 ∩ 方案天花板）含 `case.assign`、啟用中、看得到工單渠道的成員，含管理員；不看舊的角色列舉（`resolveCaseManagerRecipients()`）。預設的客服角色也有 `case.assign` | `recordCsatScore()` |
 | SLA 預警與逾時 | `sla_warning`、`sla_breached` | 見[服務水準協議](../SLA.md) | workers |
 | AI 額度達 80% 或 100% | `usage_quota_warning`、`usage_quota_critical` | 所有 `ADMIN`，另外寄 email | `usage.quota.threshold` |
 | 自動化規則的通知動作（「傳送通知」「通知主管」） | `sla_rule` | 工單負責人，或所有 `ADMIN` 與 `SUPERVISOR`，見[自動化](./AUTOMATION.md#哪些動作會執行) | workers 的自動化動作 |
@@ -61,7 +61,7 @@ AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理�
 - **未指派對話的每一則訊息都通知全部主管。** 機器人負責的對話也一樣。客人連傳十則，每位看得到該渠道的 `ADMIN` 與 `SUPERVISOR` 各收到十筆通知。
 - **指派對話不會通知。** 通知模組訂閱了 `conversation.assigned`，但 API 行程沒有任何地方發布這個事件，見 `../../system/AUDIT.md` 的 CONV-02。
 - **建立工單時直接指定負責人不會通知。** 只有 `POST /cases/:id/assign` 發布 `case.assigned`，見[工單](./CASES.md#指派)。
-- **負責人已停用時，工單指派與 SLA 預警沒有人收到。** 這兩種通知的收件人是負責人本人，收件人計算不會改發主管；寫入前的檢查略過停用的負責人。對話的新訊息與轉接通知不受影響，負責人停用時改通知主管（#440）。見 `../../system/AUDIT.md` 的 CONV-06。
+- **負責人已停用時，工單指派與 SLA 預警沒有人收到。** 這兩種通知的收件人是負責人本人，收件人計算不會改發主管；寫入前的檢查略過停用的負責人。對話的新訊息與轉接通知不受影響，負責人停用時改通知主管。見 `../../system/AUDIT.md` 的 CONV-06。
 - **SLA 的兩個訂閱者不會觸發。** 通知模組也訂閱了 `sla.warning` 與 `sla.breached`，但這兩個事件在 API 行程沒有發布端，SLA 通知實際由 workers 直接送出，見 `../../system/AUDIT.md` 的 APP-05。
 
 ## 讀取與保留

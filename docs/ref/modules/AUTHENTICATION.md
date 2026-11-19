@@ -38,7 +38,7 @@
 | 平台 JWT | 平台帳號 | `POST /platform/auth/login` | JWT，以 `PLATFORM_JWT_SECRET` 簽發，註冊在 `platform` namespace | `authenticatePlatformSuperuser` | `PLATFORM_JWT_EXPIRES_IN` |
 | CLI token | 成員（CLI、MCP） | `POST /auth/cli/login`，或在設定頁 `POST /settings/cli-sessions` | `cli_` 開頭的隨機字元。`CliSession` 存雜湊值與 scope | `authenticateCliSession`、`authenticateJwtOrCliSession` | 預設 30 天，見 `cli-session.service.ts` 的 `DEFAULT_EXPIRES_DAYS` |
 | Partner API 金鑰 | 外部夥伴系統 | 設定頁 `POST /settings/api-keys` | `pk_` 開頭的隨機字元。`PartnerApiKey` 存雜湊值 | `authenticateJwtOrPartnerKey` | 建立時指定；不指定就不會過期 |
-| 粉絲 token | LINE 粉絲 | 目前沒有。原本的 `POST /fan/auth` 已在 `481452a` 刪除，`signFanToken()` 沒有呼叫端 | JWT，以 `JWT_SECRET` 簽發，`sub` 為 `'fan'` | `portal-public.routes.ts` 的 `authenticateFan()` | 24 小時，寫死在 `signFanToken()` |
+| 粉絲 token | LINE 粉絲 | 目前沒有。`signFanToken()` 沒有呼叫端 | JWT，以 `JWT_SECRET` 簽發，`sub` 為 `'fan'` | `portal-public.routes.ts` 的 `authenticateFan()` | 24 小時，寫死在 `signFanToken()` |
 | MCP 確認 token | MCP 客戶端 | 呼叫 LINE 發送或群發工具、但沒帶確認 token 時，工具回傳預覽與這個 token | JWT，以 `JWT_SECRET` 簽發 | `verifyLineMcpConfirmation()`，比對操作種類、租戶、成員與 CLI session | 5 分鐘 |
 | Chatbox session 與 claim token | 網站訪客 | `POST /chatbox/sessions` 建立 session，`POST /chatbox/sessions/verify` 取得 claim token | session ID 是加密字串；`ChatboxSession` 存 session，claim token 的 HMAC 存在 Redis | `chatboxSessionVerifier`，REST 與 `/visitor` socket 共用 | `CHATBOX_SESSION_TTL_MINUTES`，程式上限 3 天 |
 | 試用驗證 token | 試用申請者 | 送出試用申請後寄到信箱 | 隨機字元。`TrialSignup` 存 SHA-256 | `GET /trial/verify` | 試用政策的 `verifyTokenTtlHours` |
@@ -61,7 +61,7 @@ Passkey 不是另一種 token。Passkey 驗證成功後，系統發出的是一�
 | `authenticateJwtOrPartnerKey` | `pk_` 開頭走金鑰，其他走 JWT | 金鑰分支是建立者的 ID | 金鑰的租戶 | 金鑰分支固定為 `SUPERVISOR` | JWT 分支是 token 的 `roleId`；金鑰分支不填 | 金鑰分支有 `isPartnerKey`、`apiKeyId` | `POST /knowledge/partner-ingest` |
 | `authenticatePlatformSuperuser` | 平台 JWT | 寫入 `request.platformUser`，不寫 `request.agent` | | | | | `/api/v1/platform/*` |
 
-「JWT 或其他憑證」的裝飾器與 `authenticate` 的 JWT 分支都呼叫 `attachAgentFromAccessToken()`，填入相同的欄位。這三份程式原本各寫一份，只有 `authenticate` 帶 `roleId`（AUTH-06，2026-11-06 修正，見 `../system/AUDIT-REVIEWS.md`）。
+「JWT 或其他憑證」的裝飾器與 `authenticate` 的 JWT 分支都呼叫 `attachAgentFromAccessToken()`，填入相同的欄位。
 
 驗證之後，下列程式讀這些欄位：
 
@@ -171,7 +171,7 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 
 1. **租戶後台的路由用 `fastify.authenticate`，再掛 `requirePermission()`。** 只有 `authenticate` 會填 `roleId`，權限檢查才算得出權限集合。
 2. **不要把 `authenticateJwtOrCliSession` 與 `requirePermission()` 放在同一條路由。** CLI 分支會被 `requirePermission()` 直接放行，JWT 分支會因為沒有 `roleId` 而一律 403。同一條路由，CLI 失效開放，網頁失效關閉。CLI 路由改用 `hasCliScope()` 檢查 scope。
-3. **要讓 Partner API 金鑰呼叫新路由，就把權限碼加進 `rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED`。** 沒有列入的權限碼，金鑰一律 403。路由本身也要改用 `authenticateJwtOrPartnerKey`。決定一條路由用哪個認證裝飾器時，依比對到的路由（`request.routeOptions.url`）判斷，不要用 `request.url`：`request.url` 含查詢字串與路徑參數，呼叫端可以控制它的內容。`knowledge.routes.ts` 曾用 `request.url.includes('/partner-ingest')` 判斷，金鑰只要在網址加上這段字串，就能進入其他沒有掛權限碼的知識庫路由（issue #394）。
+3. **要讓 Partner API 金鑰呼叫新路由，就把權限碼加進 `rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED`。** 沒有列入的權限碼，金鑰一律 403。路由本身也要改用 `authenticateJwtOrPartnerKey`。決定一條路由用哪個認證裝飾器時，依比對到的路由（`request.routeOptions.url`）判斷，不要用 `request.url`：`request.url` 含查詢字串與路徑參數，呼叫端可以控制它的內容。`knowledge.routes.ts` 曾用 `request.url.includes('/partner-ingest')` 判斷，金鑰只要在網址加上這段字串，就能進入其他沒有掛權限碼的知識庫路由。
 4. **公開端點的租戶與身分，要從驗證過的憑證推導。** 不要接受呼叫端在 body 或 query 指定 `tenantId`、`contactId` 或渠道身分。`/auth/line/authorize` 沒有遵守這條規則，見下一節。已刪除的 `/fan/auth` 也是因為違反這條規則而刪除。
 5. **確認新路由有沒有速率限制。** 速率限制外掛由各模組自己註冊，沒有全站設定。`auth`、`trial`、`platform` 以 `global: false` 註冊，只有個別設定 `config.rateLimit` 的路由受限。`chatbox`、`webchat` 對模組內每條路由套用同一個上限。其他模組沒有註冊外掛，在這些模組設定 `config.rateLimit` 不會生效，也不會報錯。見 `../system/AUDIT.md` 的 SEC-03。
 

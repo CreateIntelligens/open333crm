@@ -38,7 +38,7 @@
 | `sendMessage()` | 是 | `conversation.service.ts`、workers 的 `channel-delivery.ts`、`canvas.worker.ts`、`csat.service.ts`、行銷群發等 | 送出一則訊息，回傳渠道的訊息 ID |
 | `setWebhook()` | 否 | 沒有呼叫端 | 在渠道平台設定 webhook 網址。LINE 的自動設定改由 `line-webhook-setup.service.ts` 直接呼叫 LINE API |
 | `resolveInboundMedia()` | 否 | `inbound-side-effects.ts` 的 `resolveInboundMediaAsync()` | 訊息寫入後，非同步下載渠道上的媒體並存到自己的儲存空間，儲存後的網址寫入 `content.url` 與 `content.mediaUrl`。LINE 下載圖片、影片、語音與檔案：待下載以 `contentId` 表示；上限 25 MB；只保留圖片（不含 SVG）、影片、語音的 MIME，其他存成 `application/octet-stream`；檔案保留副檔名；`contentProvider` 為 `external` 時直接用對方的網址、不下載。失敗時外掛拋出中文原因，寫進 `content.mediaError` 並推送給收件匣 |
-| `buildCsatSurvey()` | 否 | `csat.service.ts` 的 `sendCsatSurvey()`、`csatSurveyChannelTypes()` | 組滿意度問卷的訊息。只有客人能在渠道上直接點選分數的外掛實作，目前只有 LINE（Flex 訊息、五個 postback 按鈕）。沒有實作的渠道不寄問卷（#339）。LINE 外掛把它設成實例屬性，workers 的 registry 用同一個物件，能力相同 |
+| `buildCsatSurvey()` | 否 | `csat.service.ts` 的 `sendCsatSurvey()`、`csatSurveyChannelTypes()` | 組滿意度問卷的訊息。只有客人能在渠道上直接點選分數的外掛實作，目前只有 LINE（Flex 訊息、五個 postback 按鈕）。沒有實作的渠道不寄問卷。LINE 外掛把它設成實例屬性，workers 的 registry 用同一個物件，能力相同 |
 | `extensions.ui` | 否 | workers 的 `rich-menu-bind.handler.ts` | 圖文選單的綁定與解除 |
 | `extensions.analytics` | 否 | `mcp.server.ts` | 查詢 LINE 的訊息額度 |
 | `extensions.audience` | 否 | 沒有呼叫端 | 分眾名單 |
@@ -60,7 +60,7 @@
 各渠道要注意的地方：
 
 - **`THREADS` 其實是 Instagram 私訊。** 外掛呼叫的是 `graph.instagram.com`，憑證格式與 Facebook 相同。名稱沿用早期的規劃。代號維持不改，但畫面、匯出檔與給使用者看的錯誤訊息不顯示代號：一律經 `@open333crm/shared` 的 `channelDisplayName()` 顯示 Instagram（`FB` 顯示 Facebook、`WEBCHAT` 顯示網站聊天室）。
-- **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。群發與發券沒有這一步，所以群發、附券廣播與批次發券只接受 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`（LINE、FB、THREADS），網站聊天室回 400 `CHANNEL_PUSH_NOT_SUPPORTED`（issue #415）。`sendMessage()` 沒有改成回失敗：收件匣回覆與 `deliverToChannel()` 呼叫它之後才推訪客房間，回失敗會讓這兩條路徑把已送達的訊息標為失敗或不推送。
+- **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。群發與發券沒有這一步，所以群發、附券廣播與批次發券只接受 `@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`（LINE、FB、THREADS），網站聊天室回 400 `CHANNEL_PUSH_NOT_SUPPORTED`。`sendMessage()` 沒有改成回失敗：收件匣回覆與 `deliverToChannel()` 呼叫它之後才推訪客房間，回失敗會讓這兩條路徑把已送達的訊息標為失敗或不推送。
 - **`TELEGRAM` 只有 `telegram.ts` 的類別**，沒有匯出實例，也沒有註冊，見 APP-02。
 - **`WHATSAPP` 可以建立渠道**，但沒有外掛也沒有路由，見 APP-02。
 
@@ -77,7 +77,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 5. 渠道設定了下游轉發時，把原始內容轉發出去，見[渠道管理](../features/tenant/CHANNELS.md#webhook)。
 6. 呼叫外掛的 `parseWebhook()`，對每一則訊息執行 `processInboundMessage()`。建立新聯絡人時呼叫 `getProfile()`；訊息寫入後，若外掛有 `resolveInboundMedia()`，就在背景下載媒體。
 
-`processInboundMessage()` 是所有渠道（含網站聊天室）共用的入口。它先查租戶是否啟用，停用（含試用到期）時丟棄事件、不建立任何資料（issue #410）。webhook 在步驟 1 已經提早丟棄，這裡另外擋住網站聊天室與其他直接呼叫的路徑。網站聊天室在更前面的入口就擋下：建立工作階段與驗證工作階段（送訊息、bootstrap、訪客 socket）在租戶停用時比照渠道停用回 404。
+`processInboundMessage()` 是所有渠道（含網站聊天室）共用的入口。它先查租戶是否啟用，停用（含試用到期）時丟棄事件、不建立任何資料。webhook 在步驟 1 已經提早丟棄，這裡另外擋住網站聊天室與其他直接呼叫的路徑。網站聊天室在更前面的入口就擋下：建立工作階段與驗證工作階段（送訊息、bootstrap、訪客 socket）在租戶停用時比照渠道停用回 404。
 
 ## 送出
 
@@ -86,7 +86,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 客服回覆（`conversation.service.ts` 的 `sendMessage()`、送媒體） | API | `getChannelPlugin()` | LINE 選擇 reply 或 push；WEBCHAT 另外推送到訪客的 socket 房間 |
 | 自動化與關鍵字回覆的 `send_message`、`send_material` | workers | workers 自己的 `Map` | LINE 選擇 reply 或 push |
 | Canvas 的 `MESSAGE` 節點 | API（`canvas.worker.ts`） | `getChannelPlugin()` | `email` 改走寄信 |
-| 滿意度調查 | API（`csat.service.ts`） | `getChannelPlugin()` | 沒有分支：外掛的 `buildCsatSurvey()` 決定版型，沒有實作的渠道不寄（#339） |
+| 滿意度調查 | API（`csat.service.ts`） | `getChannelPlugin()` | 沒有分支：外掛的 `buildCsatSurvey()` 決定版型，沒有實作的渠道不寄 |
 | 行銷群發、附券廣播、批次發券 | API（`marketing.service.ts`、`broadcast-coupon.flow.ts`） | `getChannelPlugin()` | LINE 在訊息不含個人化變數時改用 multicast，一次送給多人；只接受能主動推送的渠道，網站聊天室回 400 |
 
 **LINE 的 reply 與 push。** LINE 的 reply 不計入訊息額度，但 reply token 只在收到訊息後短時間內有效。`packages/shared/src/safe-reply.ts` 的 `selectSafeLineStrategy()` 決定用哪一種：帶著 reply token、而且收到訊息未滿 `LINE_REPLY_SAFE_WINDOW_MS` 時用 reply，否則用 push。API 與 workers 共用這個函式，但 reply 失敗後改用 push 的處理各寫一份。

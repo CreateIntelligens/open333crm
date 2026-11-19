@@ -41,9 +41,9 @@
 
 編輯、刪除與每一種狀態轉換，都先鎖住活動列，再檢查狀態。兩個操作同時進行時，後一個等前一個 commit 之後才檢查。例如發布還沒 commit 時開始編輯，編輯會在發布 commit 之後被拒（service 丟 409 `INVALID_ACTIVITY_STATUS`，後台路由目前包成 400 `BAD_REQUEST`，見健檢 HC-PORTAL-08），不會換掉已發布活動的選項。
 
-編輯草稿時，`PATCH /activities/:id` 沒帶 `options` 或 `fields` 就不動那一部分；有帶就整批取代。投票與競猜送空的 `options`、表單送空的 `fields` 回 400，不刪除既有內容（#424）。後台的編輯對話框打開時以 `GET /activities/:id` 取完整活動帶入選項與欄位，載入完成前與載入失敗時不能儲存。
+編輯草稿時，`PATCH /activities/:id` 沒帶 `options` 或 `fields` 就不動那一部分；有帶就整批取代。投票與競猜送空的 `options`、表單送空的 `fields` 回 400，不刪除既有內容。後台的編輯對話框打開時以 `GET /activities/:id` 取完整活動帶入選項與欄位，載入完成前與載入失敗時不能儲存。
 
-建立草稿時可以沒有選項或欄位，草稿可以分次補內容。發布時才檢查：投票與競猜至少一個選項、表單至少一個欄位，不符合時 `POST /activities/:id/publish` 回 400，訊息為「投票與競猜活動至少要有一個選項」或「表單活動至少要有一個欄位」，活動維持草稿（#447）。編輯與發布用同一個檢查（`assertActivityAnswerable()`）。競猜另外要求至少一個選項標為正確答案，沒有時回 400「競猜活動至少要有一個正確答案」，活動維持草稿（#471）。正確答案只在發布時檢查，建立與編輯草稿時可以還沒勾；投票不要求正確答案。後台按「發布」失敗時以 alert 顯示這段訊息，活動表單的競猜選項區也提示「發布前至少勾選一個正確答案」。開獎不看分數，仍從全部未中獎的作答隨機抽出。
+建立草稿時可以沒有選項或欄位，草稿可以分次補內容。發布時才檢查：投票與競猜至少一個選項、表單至少一個欄位，不符合時 `POST /activities/:id/publish` 回 400，訊息為「投票與競猜活動至少要有一個選項」或「表單活動至少要有一個欄位」，活動維持草稿。編輯與發布用同一個檢查（`assertActivityAnswerable()`）。競猜另外要求至少一個選項標為正確答案，沒有時回 400「競猜活動至少要有一個正確答案」，活動維持草稿。正確答案只在發布時檢查，建立與編輯草稿時可以還沒勾；投票不要求正確答案。後台按「發布」失敗時以 alert 顯示這段訊息，活動表單的競猜選項區也提示「發布前至少勾選一個正確答案」。開獎不看分數，仍從全部未中獎的作答隨機抽出。
 
 活動可以設定開始與結束時間。粉絲提交時，系統檢查活動是否已發布、是否已開始、是否已結束。時間到了狀態不會自動變成 `ENDED`，只是提交會被擋下。
 
@@ -53,7 +53,7 @@
 2. 以 token 瀏覽活動（`GET /fan/activities`）並提交（`POST /fan/activities/:id/submit`）。
 3. 查看結果（`/fan/activities/:id/result`）、自己參加過的活動（`/fan/me/activities`）與積分（`/fan/me/points`）。
 
-粉絲端的每個查詢都以 token 裡的 `tenantId` 與 `contactId` 過濾，因此只看得到自己租戶的活動與自己的紀錄。這組路由的 flow 以 `fan.tenantId` 開交易，查詢走 RLS，查詢條件漏帶 `tenantId` 時仍有 RLS 兜底（2026-10-06 之前使用 `prismaAdmin`，租戶隔離完全靠查詢條件，積分餘額就漏帶了 `tenantId`）。結果端點會回傳測驗的正確答案，詳情端點不看活動的開始與結束時間，見 `../../system/AUDIT.md` 的 PORTAL-01。
+粉絲端的每個查詢都以 token 裡的 `tenantId` 與 `contactId` 過濾，因此只看得到自己租戶的活動與自己的紀錄。這組路由的 flow 以 `fan.tenantId` 開交易，查詢走 RLS，查詢條件漏帶 `tenantId` 時仍有 RLS 兜底。結果端點會回傳測驗的正確答案，詳情端點不看活動的開始與結束時間，見 `../../system/AUDIT.md` 的 PORTAL-01。
 
 **粉絲 token 不能通過客服認證。** 粉絲 token 與客服的 JWT 用同一把 `JWT_SECRET` 簽發，但驗證端會檢查用途：客服端的 `authenticate` 與 socket 只接受 `typ` 為 `access` 的 token（`apps/api/src/lib/agent-token.ts`），粉絲端的 `verifyFanToken()` 只接受 `sub` 為 `fan` 的 token。新增簽發入口時，要從驗證過的憑證（例如 LINE LIFF 的 ID token）推導出聯絡人，不可接受呼叫端指定的 `contactId`。
 

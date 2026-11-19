@@ -75,7 +75,7 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 2. 其他渠道以相同的渠道類型與帳號 ID 認領：交給該渠道，但兩個渠道必須是同一個 Meta App，否則丟棄。
 3. 沒有渠道認領，而且網址渠道還沒有 `externalAccountId`：照舊交給網址渠道，並在 `settings.webhookRouting` 記警示。
 4. 沒有渠道認領，而且網址渠道已有不同的 `externalAccountId`：丟棄事件，並記警示。
-| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`，需 `channel.update` 與 `channel.view_all`（總店；#408）。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
+| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`，需 `channel.update` 與 `channel.view_all`（總店）。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
 | `POST /channels/:id/verify` | 以目前的憑證呼叫渠道平台，確認憑證有效 |
 | `GET /channels/:id/status` | 渠道的連線狀態。Facebook 會另外檢查 token 是否過期。需要 `channel.view`，看不到的渠道回 404。只讀不寫，「最後驗證」只由 `verify` 更新；渠道管理頁只對啟用中的 FB 渠道呼叫 |
 
@@ -108,7 +108,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 
 | 端點 | 作用 |
 | --- | --- |
-| `GET /channels/:id/embed-code` | 產生嵌入碼（`channel.view`，#408 起） |
+| `GET /channels/:id/embed-code` | 產生嵌入碼（`channel.view`） |
 | `POST /channels/:id/chatbox-link` | 產生給指定網域使用的聊天連結 |
 | `PATCH /channels/:id/chatbox-theme`、`POST /channels/:id/chatbox-theme/background` | 聊天視窗的外觀與背景圖 |
 
@@ -126,7 +126,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 | `GET /channels/teams/:teamId/channels` | 某團隊能看的渠道 |
 | `GET /channels/assignable`、`GET /channels/teams` | 授權畫面的選項 |
 
-沒有授權給任何團隊或成員的渠道，只有持有 `channel.view_all` 的成員（總店）看得到。所以新增渠道時就要決定誰看得到：表單與精靈列出所有啟用中的成員，預設全選。2026-10-05 之前，沒有授權的渠道所有成員都看得到；當時既有的這類渠道已由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。可見範圍怎麼套用在收件匣與工單，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。
+沒有授權給任何團隊或成員的渠道，只有持有 `channel.view_all` 的成員（總店）看得到。所以新增渠道時就要決定誰看得到：表單與精靈列出所有啟用中的成員，預設全選。2026-10-05 之前建立、沒有授權的渠道，已由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。可見範圍怎麼套用在收件匣與工單，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。
 
 ## 停用與刪除
 
@@ -164,6 +164,6 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
 
-## 單筆渠道路由的可見範圍（#408）
+## 單筆渠道路由的可見範圍
 
 每條帶渠道 ID 的路由（`/:id` GET／PATCH／DELETE、`/verify`、`/liff-test`、`/setup-webhook`、`/status`、`/embed-code`、`/chatbox-link`、`/binding-handle`、`/chatbox-theme`、`/chatbox-theme/background`）都先以 `assertChannelVisible()` 檢查：看不到（含不存在、已停用）回 404。`channel.view` 的讀取要 `read_only`；`channel.update`／`channel.delete` 的管理操作要 `full`，不足回 403 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`。總店（`channel.view_all`）不受限制。渠道與團隊的指派路由只看 `channel.assign_team`（全租戶指派權），不看操作者的可見範圍。主規格：`channel-scoped-visibility`「單筆渠道路由的可見範圍」。

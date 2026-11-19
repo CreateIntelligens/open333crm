@@ -38,7 +38,7 @@
 | 停用 | `POST /agents/:id/deactivate` | `isActive` 設為 `false`。帳號保留，email 仍被佔用 |
 | 查詢停用的成員 | `GET /agents/inactive` | 列出本租戶停用的成員，要 `agent.deactivate` |
 | 重新啟用 | `POST /agents/:id/reactivate` | `isActive` 改回 `true`，角色維持停用前。要 `agent.deactivate`，並套用方案的客服人數上限 |
-| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值。稽核與資料匯出、刪除請求的操作者欄位也改成空值，刪除前先把名稱與 email 存進快照欄位（issue #414，見[稽核](GOVERNANCE.md#租戶稽核日誌)） |
+| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值。稽核與資料匯出、刪除請求的操作者欄位也改成空值，刪除前先把名稱與 email 存進快照欄位（見[稽核](GOVERNANCE.md#租戶稽核日誌)） |
 
 兩個動作都不能套用在租戶內最後一位啟用中的管理員（422 `LAST_ADMIN_PROTECTED`），避免租戶沒有人能管理；把最後一位管理員改成不含 `role.manage` 的角色也一樣。「管理員」依權限判斷：角色的有效權限含 `role.manage`（標記 `selfLock` 的權限碼）就算，不看舊的角色列舉 `role`。永久刪除不要求先停用。
 
@@ -169,7 +169,7 @@ schema 的註解說明這是過渡期的雙寫。建立成員時，`role` 由呼
 | email 區分大小寫，和建立時的大小寫不同就無法登入 | 詳見 `../../system/AUDIT.md` 的 AUTH-10 |
 | 知道 email 就能讓成員無法以密碼登入 | 詳見 `../../system/AUDIT.md` 的 SEC-06 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
-| 業務規則看舊的角色列舉 | 自動指派、通知收件人、試用到期信。「最後一位管理員」的保護已改依權限判斷。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
+| 業務規則看舊的角色列舉 | 自動指派、通知收件人、試用到期信。「最後一位管理員」的保護依權限判斷。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | **reconcile 腳本覆蓋系統角色的修改** | 詳見 `../../system/AUDIT.md` 的 RBAC-05 |
 | 角色頁顯示的權限不套方案天花板 | 詳見 `../../system/AUDIT.md` 的 PLAN-08 |
 | 停用成員不會中斷登入中的 token 與 socket | access token 有效到過期，socket 直到斷線。各憑證的生效時間見[認證與憑證](../../modules/AUTHENTICATION.md#停用與撤銷什麼時候生效) |

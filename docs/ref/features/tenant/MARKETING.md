@@ -85,7 +85,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 建立群發時要選一個渠道、一個素材與一種發送對象。帶了 `scheduledAt` 就建立為 `scheduled`，否則為 `draft`。`scheduledAt` 必須是晚於現在的時間，排到過去回 400：排程器取「時間已到」的群發執行，排到過去等於立即發送。表單的排程欄位也只能選一分鐘後以後的時間。這個檢查在 `createBroadcast()`，MCP 建立群發也會套用。沒有附券、而素材含 `{{coupon.url}}` 時也回 400（`MATERIAL_NEEDS_COUPON`）：一般廣播不會代入，顧客會看到原字。只在建立時檢查，已建立的群發發送時不擋。附上的券是固定效期且已過到期日時，建立回 400（`INVALID_COUPON`）；建立後才到期的附券廣播在發送時標為失敗（`failureCode` `COUPON_EXPIRED`），不建立券。固定效期到期後券的狀態仍是進行中，所有發券入口都以 `isCouponPastFixedEnd`（`@open333crm/core`）另外擋下。
 
-**只能用能主動推送的渠道。** 群發、附券廣播與券詳情的批次發券只能用 LINE、Facebook（內部代號 `FB`）或 Instagram（內部代號 `THREADS`）渠道（`@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`）。網站聊天室的外掛 `sendMessage()` 只寫 log 就回成功，訪客房間的推送只有收件匣回覆路徑會做，所以群發與發券送不到訪客。建立（含 MCP 與批次發券）與送出（`/send`）回 400 `CHANNEL_PUSH_NOT_SUPPORTED`；修正前建立的網站聊天室群發被排程或 `coupon-broadcast` job 執行時標為 `failed`，寫入 `failureReason`（附券廣播另寫 `failureCode`），不呼叫渠道、不發券。群發頁與券詳情「發送給…」的渠道選單只列這些渠道（change `reject-webchat-push-415`，issue #415，AUDIT CHAN-02 的群發與發券部分）。
+**只能用能主動推送的渠道。** 群發、附券廣播與券詳情的批次發券只能用 LINE、Facebook（內部代號 `FB`）或 Instagram（內部代號 `THREADS`）渠道（`@open333crm/shared` 的 `PROACTIVE_PUSH_CHANNEL_TYPES`）。網站聊天室的外掛 `sendMessage()` 只寫 log 就回成功，訪客房間的推送只有收件匣回覆路徑會做，所以群發與發券送不到訪客。建立（含 MCP 與批次發券）與送出（`/send`）回 400 `CHANNEL_PUSH_NOT_SUPPORTED`。資料庫裡既有的網站聊天室群發，被排程或 `coupon-broadcast` job 執行時標為 `failed`，寫入 `failureReason`（附券廣播另寫 `failureCode`），不呼叫渠道、不發券。群發頁與券詳情「發送給…」的渠道選單只列這些渠道（AUDIT CHAN-02 的群發與發券部分）。
 
 | 動作 | 端點 | 權限 |
 | --- | --- | --- |
@@ -94,11 +94,11 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 | 取消 | `POST /marketing/broadcasts/:id/cancel` | `marketing.broadcast` |
 | 預估人數 | `POST /marketing/broadcasts/audience-preview` | `marketing.view`；帶 `couponId` 另要 `coupon.view` |
 
-缺少額外的權限時回 403，`error.details.requiredPermission` 是缺少的那個權限碼，訊息說明是排程或附券需要的權限（change `require-broadcast-send-permissions`，issue #409 MKT-02、MKT-03）。建立群發的表單在沒有 `marketing.broadcast` 時停用排程欄位、沒有 `coupon.issue` 時停用附券欄位，並說明原因。
+缺少額外的權限時回 403，`error.details.requiredPermission` 是缺少的那個權限碼，訊息說明是排程或附券需要的權限。建立群發的表單在沒有 `marketing.broadcast` 時停用排程欄位、沒有 `coupon.issue` 時停用附券欄位，並說明原因。
 
 預估人數用和發送相同的受眾解析與訊息視窗，回傳 `{ matched, reachable, messagingWindowHours }`，不建立群發。建立群發的表單選好渠道與受眾後顯示這兩個數字。排程群發在執行時重新計算，人數可能和建立時不同。
 
-排程的群發由 `broadcast.scheduler.ts` 在 API 行程每 60 秒檢查一次（`withoutOverlapping`，上一期沒結束時下一期不開始），時間到了就執行。排程器只以 `prismaAdmin` 跨租戶查到期清單（`id`、`tenantId`）與計算有效權限；每一則交給與 `coupon-broadcast` 佇列 job 相同的執行函式（`createBroadcastJobRunner()`），發送以 `app_tenant` 連線綁定廣播的租戶執行（附券廣播每一步一個 `inTenant()`，一般群發用 `tenantScopedClient()`，每個查詢各自 `withTenant()`）。送出前以「排定送出的成員」當下的有效權限（角色權限 ∩ 方案天花板）重新檢查：`broadcasts.scheduledById` 記錄這個人，建立排程時是建立者，「立即發送」（附券與一般群發）與券詳情批次發券是按下的人；舊資料為 null 時看建立者。一般群發要 `marketing.broadcast`，群發頁的附券群發要 `marketing.broadcast` 與 `coupon.issue`，批次發券只要 `coupon.issue`。成員已不存在、已停用，或少了需要的權限時不送出，群發標為 `failed`，`failureCode` 為 `SCHEDULED_SENDER_NOT_FOUND`、`SCHEDULED_SENDER_INACTIVE` 或 `SCHEDULED_SENDER_FORBIDDEN`，`failureReason` 寫明成員與缺少的權限，列表看得到；有權限的成員可以按「重新發送」。檢查在 `broadcast-send-authority.ts`。權限檢查之前先檢查租戶：租戶停用（含試用到期）時不送出，群發標為 `failed`，`failureCode` 為 `TENANT_DISABLED`，不保留 `scheduled`，避免重新啟用後突然送出過期內容；`coupon-broadcast` 佇列 job（附券與一般群發）也檢查（`broadcast-tenant-active.ts`，issue #410）。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
+排程的群發由 `broadcast.scheduler.ts` 在 API 行程每 60 秒檢查一次（`withoutOverlapping`，上一期沒結束時下一期不開始），時間到了就執行。排程器只以 `prismaAdmin` 跨租戶查到期清單（`id`、`tenantId`）與計算有效權限；每一則交給與 `coupon-broadcast` 佇列 job 相同的執行函式（`createBroadcastJobRunner()`），發送以 `app_tenant` 連線綁定廣播的租戶執行（附券廣播每一步一個 `inTenant()`，一般群發用 `tenantScopedClient()`，每個查詢各自 `withTenant()`）。送出前以「排定送出的成員」當下的有效權限（角色權限 ∩ 方案天花板）重新檢查：`broadcasts.scheduledById` 記錄這個人，建立排程時是建立者，「立即發送」（附券與一般群發）與券詳情批次發券是按下的人；舊資料為 null 時看建立者。一般群發要 `marketing.broadcast`，群發頁的附券群發要 `marketing.broadcast` 與 `coupon.issue`，批次發券只要 `coupon.issue`。成員已不存在、已停用，或少了需要的權限時不送出，群發標為 `failed`，`failureCode` 為 `SCHEDULED_SENDER_NOT_FOUND`、`SCHEDULED_SENDER_INACTIVE` 或 `SCHEDULED_SENDER_FORBIDDEN`，`failureReason` 寫明成員與缺少的權限，列表看得到；有權限的成員可以按「重新發送」。檢查在 `broadcast-send-authority.ts`。權限檢查之前先檢查租戶：租戶停用（含試用到期）時不送出，群發標為 `failed`，`failureCode` 為 `TENANT_DISABLED`，不保留 `scheduled`，避免重新啟用後突然送出過期內容；`coupon-broadcast` 佇列 job（附券與一般群發）也檢查（`broadcast-tenant-active.ts`）。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
 
 ### 發送時做什麼
 
@@ -141,7 +141,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 兩者都只看群發送出後的一段時間內，時間窗是 `broadcast.tracking.ts` 的 `TRACKING_WINDOW_HOURS`。
 
-行銷活動的成效由 `campaign.service.ts` 在讀取時彙總底下所有群發與收件紀錄，不另外儲存。活動的狀態與起訖日期由使用者手動設定，系統不會依日期自動切換狀態。建立與修改時，結束日不可早於開始日（同一天可以），修改只改其中一個時以另一個既有值比對；不符時回 400 並指出 `endDate`。只改狀態或名稱時不檢查，修正前建立的起訖相反活動仍能啟動、完成或取消。
+行銷活動的成效由 `campaign.service.ts` 在讀取時彙總底下所有群發與收件紀錄，不另外儲存。活動的狀態與起訖日期由使用者手動設定，系統不會依日期自動切換狀態。建立與修改時，結束日不可早於開始日（同一天可以），修改只改其中一個時以另一個既有值比對；不符時回 400 並指出 `endDate`。只改狀態或名稱時不檢查，所以資料庫裡既有的起訖相反活動仍能啟動、完成或取消。
 
 點擊成效來自短連結，見[短連結](./SHORTLINKS.md)。
 
@@ -168,7 +168,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 | 限制 | 說明 |
 | --- | --- |
 | **群發失敗後重試，逐人送出的群發會重送給已送達的人** | 詳見 `../../system/AUDIT.md` 的 MKT-01 |
-| 一般群發停在 `sending` 不能重送 | 群發已改在背景執行，請求不會逾時；但行程在送出途中結束時，一般群發的狀態停在 `sending`（沒有逐人進度，不能判斷誰已送達），這筆群發只能用 API 取消，不能重送 |
+| 一般群發停在 `sending` 不能重送 | 群發在背景執行，請求不會逾時；但行程在送出途中結束時，一般群發的狀態停在 `sending`（沒有逐人進度，不能判斷誰已送達），這筆群發只能用 API 取消，不能重送 |
 | 分群的人數不會自動更新 | `contactCount` 只在建立與修改時計算 |
 | `isBlocked` 不影響發送 | 詳見 `../../system/AUDIT.md` 的 DB-04 |
 

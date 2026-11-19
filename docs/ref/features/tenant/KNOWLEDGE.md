@@ -19,11 +19,11 @@
 - Agent 每輪送往模型的訊息、工具結果與巢狀工具參數的文字值。保留角色、工具名稱、呼叫 ID 與非文字參數。OCR／文件擷取結果在進入後續模型時亦套用。
 - 向量化（`embedding-client.ts` 的 `embedText()`）的文字輸入，涵蓋客戶查詢及新產生的知識庫向量。既有向量保留，啟用可能影響檢索排序。
 
-傳輸憑證不會送給去識別化服務。2md 回傳的 mapping、CSV 與隱私分數會被丟棄；此功能只消費遮罩文字，並不提供還原。每批處理最多並行 4 個請求，每次嘗試 6 秒逾時；逾時、連線或 DNS 錯誤、5xx 時等 300 毫秒重試一次（4xx、格式不符、回應過大不重試，issue #466），每段文字最多 100,000 字元、每個回應最多 1 MiB，不跟隨重新導向，也不使用跨租戶或跨作業的文字快取。
+傳輸憑證不會送給去識別化服務。2md 回傳的 mapping、CSV 與隱私分數會被丟棄；此功能只消費遮罩文字，並不提供還原。每批處理最多並行 4 個請求，每次嘗試 6 秒逾時；逾時、連線或 DNS 錯誤、5xx 時等 300 毫秒重試一次（4xx、格式不符、回應過大不重試），每段文字最多 100,000 字元、每個回應最多 1 MiB，不跟隨重新導向，也不使用跨租戶或跨作業的文字快取。
 
 政策讀取失敗或資料損壞回 `AI_PRIVACY_POLICY_UNAVAILABLE`；去識別化處理失敗回 `AI_DEIDENTIFICATION_UNAVAILABLE`。兩者皆停止該次模型派送。若 Agent 已建立執行紀錄，工具 trace 或最終輸出的遮罩失敗會將紀錄標為 `FAILED`，只寫入固定停止原因，不保存未處理文字。Agent 的既有安全回覆／KB fallback 維持各自的錯誤處理，後續每個模型入口仍須通過相同政策，原文不作為繞過政策的 fallback。
 
-**進站訊息在去識別化服務無法使用時照常保存（issue #466）。** 重試後仍無法遮罩的進站訊息存原文，`metadata.privacy` 記 `{ mode: 'inbound_unmasked', reason }`，沒有遮罩副本；`reason` 是 `timeout`、`network`、`upstream_5xx`、`upstream_rejected`、`invalid_response` 或 `too_large`。這種訊息不交給模型：`message.received` 帶 `privacyUnmasked: true`，原本會跑 AI agent 或知識庫自動回覆時改轉真人（見[收件匣的轉真人](./INBOX.md#轉真人)），情緒分析只用關鍵字；`readModelMessageContent()`、`toAiHistory()` 與工單自動分類略過它，之後的 AI 回覆、建議回覆與摘要都讀不到原文。降級時發維運告警（合併鍵 `deidentification-unavailable`）。服務恢復後不補做遮罩。程式固定、不含顧客輸入的系統文字（按鈕轉接、綁定失敗提示、滿意度調查與評分回覆、預設轉接訊息、AI 失敗轉接）不呼叫 2md，遮罩副本就是原文（`system_fixed`）。
+**進站訊息在去識別化服務無法使用時照常保存。** 重試後仍無法遮罩的進站訊息存原文，`metadata.privacy` 記 `{ mode: 'inbound_unmasked', reason }`，沒有遮罩副本；`reason` 是 `timeout`、`network`、`upstream_5xx`、`upstream_rejected`、`invalid_response` 或 `too_large`。這種訊息不交給模型：`message.received` 帶 `privacyUnmasked: true`，原本會跑 AI agent 或知識庫自動回覆時改轉真人（見[收件匣的轉真人](./INBOX.md#轉真人)），情緒分析只用關鍵字；`readModelMessageContent()`、`toAiHistory()` 與工單自動分類略過它，之後的 AI 回覆、建議回覆與摘要都讀不到原文。降級時發維運告警（合併鍵 `deidentification-unavailable`）。服務恢復後不補做遮罩。程式固定、不含顧客輸入的系統文字（按鈕轉接、綁定失敗提示、滿意度調查與評分回覆、預設轉接訊息、AI 失敗轉接）不呼叫 2md，遮罩副本就是原文（`system_fixed`）。
 
 原始客服訊息、明確選擇保留原文的素材與媒體檔依既有保存規則保留。本功能處理新寫入的訊息文字、素材正文與模型輸入；影像像素、既有資料的回溯處理及資料刪除使用各自流程。規則遮罩可能漏判或誤判，與完整匿名化的效果有所區別。
 
@@ -68,7 +68,7 @@
 | 批次匯入 | `POST /knowledge/import` | 一次送多篇文章。JSON 內容上限高於全域：最多 50,000 篇、陣列元素與物件欄位合計 500,000（change `limit-request-array-size`），超過回 400 `PAYLOAD_*` |
 | 夥伴系統推送 | `POST /knowledge/partner-ingest` | 見下方 |
 
-**CSV 的文字編碼。** `decodeCsvText()` 先解碼再交給試算表解析（#421）：開頭有 UTF-8 BOM 時去掉 BOM 以 UTF-8 解；沒有 BOM 時先以嚴格 UTF-8 解（Google 試算表、Numbers、程式匯出），失敗再試 Big5（台灣版 Excel 的「CSV（逗號分隔）」）。兩種都解不出，或解出的文字含替代字元 U+FFFD 時，這個檔案一篇都不寫入，結果標成失敗，`code` 是 `CSV_ENCODING_UNREADABLE`，原因請使用者另存成「CSV UTF-8」；同批其他檔案照常匯入。xlsx 依 zip 檔頭辨識，不經過這段解碼。
+**CSV 的文字編碼。** `decodeCsvText()` 先解碼再交給試算表解析：開頭有 UTF-8 BOM 時去掉 BOM 以 UTF-8 解；沒有 BOM 時先以嚴格 UTF-8 解（Google 試算表、Numbers、程式匯出），失敗再試 Big5（台灣版 Excel 的「CSV（逗號分隔）」）。兩種都解不出，或解出的文字含替代字元 U+FFFD 時，這個檔案一篇都不寫入，結果標成失敗，`code` 是 `CSV_ENCODING_UNREADABLE`，原因請使用者另存成「CSV UTF-8」；同批其他檔案照常匯入。xlsx 依 zip 檔頭辨識，不經過這段解碼。
 
 **夥伴系統推送。** 外部系統以 `pk_` 開頭的長效 API 金鑰逐篇推送文件。金鑰在「設定 → API 金鑰」建立。行為由 `partner-ingest.service.ts` 決定：
 
@@ -85,7 +85,7 @@
 3. **讀取對話紀錄**。取最近的訊息作為上下文，讓追問不會重複已經回答過的內容。
 4. **檢索**。產生訊息的向量，找出相似度達到門檻的前幾篇文章。篇數與門檻是 Embedding 設定的 `topK` 與 `threshold`。
 5. **型號守門**。客人提到的型號不在型號白名單、相似度又低於 0.85 時，不硬答，改列出相近型號請客人確認。型號白名單從已發布文章的**標題**抽出，快取 10 分鐘；`POST /knowledge/models/refresh` 可以立即重建。
-   - 型號是英文前綴加 `-` 與英數，例如 `TAC-11P`、`TAC-06L-MCW`，不分大小寫（`tac-11p` 視同 `TAC-11P`）。`Wi-Fi`、`e-mail`、`T-shirt`、`USB-C`、`Type-C`、`HDMI-2`、`CD-R`、`DVD-R` 這類常見英文詞不論大小寫都不算型號，文章標題裡的也不會進白名單（#420）。
+   - 型號是英文前綴加 `-` 與英數，例如 `TAC-11P`、`TAC-06L-MCW`，不分大小寫（`tac-11p` 視同 `TAC-11P`）。`Wi-Fi`、`e-mail`、`T-shirt`、`USB-C`、`Type-C`、`HDMI-2`、`CD-R`、`DVD-R` 這類常見英文詞不論大小寫都不算型號，文章標題裡的也不會進白名單。
    - 只攔截前綴出現在白名單的型號：知識庫沒有型號文章（白名單空）時不守門；訂單編號 `AB-12345` 這類前綴不在白名單的編號也不攔截。
    - 守門回覆和追問共用追問次數；次數已達 `clarifyMaxAttempts` 時不再引導型號，改回「已為您轉接客服人員」並轉真人。
 6. **決定回覆方式**：
@@ -98,7 +98,7 @@
 
 `0.80` 是 `kb-autoreply.service.ts` 裡的常數；`clarifyThreshold` 與 `clarifyMaxAttempts` 是 Chat 設定的欄位。追問次數記在對話的 `metadata`，型號守門的回覆也算一次，成功回答一次就歸零。
 
-追問次數用完，或追問的 LLM 呼叫失敗（包含月額度用完的 `PLAN_LIMIT_EXCEEDED`）時，機器人回「不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。」，並在同一個交易真的轉真人：對話改成 `AGENT_HANDLED`、`handoffReason` 寫原因（追問次數已達上限、AI 月額度已用完、AI 回覆失敗）、寫一則系統訊息、發出 `conversation.handoff`（客服收到「轉接真人」通知），追問次數歸零。轉接用的是與自動轉真人相同的 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`），見[收件匣的轉真人](./INBOX.md#轉真人)。之後客人的訊息不再由知識庫或 agent 回覆；命中關鍵字規則的訊息照樣由關鍵字規則回覆。命中關鍵字規則的訊息本來就由關鍵字規則處理，不算追問，也不會觸發這個轉接（issue #419）。
+追問次數用完，或追問的 LLM 呼叫失敗（包含月額度用完的 `PLAN_LIMIT_EXCEEDED`）時，機器人回「不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。」，並在同一個交易真的轉真人：對話改成 `AGENT_HANDLED`、`handoffReason` 寫原因（追問次數已達上限、AI 月額度已用完、AI 回覆失敗）、寫一則系統訊息、發出 `conversation.handoff`（客服收到「轉接真人」通知），追問次數歸零。轉接用的是與自動轉真人相同的 `handOffConversation()`（`apps/api/src/modules/automation/handoff.flow.ts`），見[收件匣的轉真人](./INBOX.md#轉真人)。之後客人的訊息不再由知識庫或 agent 回覆；命中關鍵字規則的訊息照樣由關鍵字規則回覆。命中關鍵字規則的訊息本來就由關鍵字規則處理，不算追問，也不會觸發這個轉接。
 
 依文章回答的訊息會附上「👎 沒幫到我」快速回覆按鈕；追問與型號守門的回覆沒有這個按鈕。客人按下後，進站攔截器把回饋記到 `KbArticleFeedback`，並回一則感謝訊息。管理員在「知識庫 → 回報調教」查看各文章的回報，並標記為已處理。
 

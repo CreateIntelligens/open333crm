@@ -75,7 +75,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 | 步驟 | 函式 | 做什麼 | 涉及的模組 |
 | --- | --- | --- | --- |
-| 1 | `resolveInboundContact()` | 依渠道身分（`ChannelIdentity`）找出聯絡人；找不到再查 `IdentityMap`；都沒有就建立。封鎖（`unfollow`）事件查不到渠道身分時，在這一步之前整筆略過，不建聯絡人（#362） | `contact` |
+| 1 | `resolveInboundContact()` | 依渠道身分（`ChannelIdentity`）找出聯絡人；找不到再查 `IdentityMap`；都沒有就建立。封鎖（`unfollow`）事件查不到渠道身分時，在這一步之前整筆略過，不建聯絡人 | `contact` |
 | 2 | `resolveInboundConversation()` | 找出該聯絡人在該渠道尚未關閉的對話，找不到就建立。新對話的初始狀態看渠道的機器人設定：`botMode` 是 `off` 時為 `AGENT_HANDLED`，其他值為 `BOT_HANDLED` | `conversation` |
 | 3 | `findDuplicateInboundMessage()`、`createInboundMessage()` | 排除渠道重送的重複訊息，然後寫入訊息 | `conversation` |
 | 4 | `updateConversationAfterInboundMessage()` | 更新對話的最後訊息時間與未讀數 | `conversation` |
