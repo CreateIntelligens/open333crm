@@ -12,28 +12,40 @@ import {
 } from './manual-video-helpers';
 import { shot, shotPage } from './manual-helpers';
 
-/** 個資遮蔽：顧客訊息泡泡、非訪客的姓名與預覽、其他渠道對話內容；隱藏右下浮動工具 */
+/**
+ * 個資遮蔽（新版 UI：左欄 div.w-80.border-r、右欄 div.w-80.border-l）：
+ * 顧客訊息泡泡、非訪客的姓名／預覽／頭像縮寫、表頭與右欄姓名、聯絡方式、其他渠道對話內容；隱藏右下浮動工具
+ */
 const PII_SCRIPT = `(() => {
   const css = \`
-    div.rounded-2xl.bg-card.shadow-bubble{filter:blur(6px)!important}
+    [data-testid="chat-messages"] div.bg-background[class*="rounded-tl-"]{filter:blur(6px)!important}
     [data-testid="other-channel-message"]{filter:blur(5px)!important}
+    div.inline-flex.rounded-full.overflow-hidden{filter:blur(6px)!important}
+    div.w-80.border-l dd:not(.flex){filter:blur(5px)!important}
   \`;
+  const NAMES = ['Daniel', 'D', 'YD', '劉柏毅', '楊丹尼', 'Yang Daniel'];
   function run(){
     if (!document.getElementById('pii-style') && document.head) {
       const s = document.createElement('style'); s.id = 'pii-style'; s.textContent = css; document.head.appendChild(s);
     }
-    // 列表：不是匿名訪客的項目整筆模糊姓名與預覽
-    document.querySelectorAll('div.w-80 button').forEach(b => {
-      const t = b.textContent || '';
-      if (t.length > 12 && !t.includes('Chatbox Visitor') && !t.includes('套用篩選')) {
-        b.querySelectorAll('span, p').forEach(e => { if (!/^(LINE|Bot|\\d+)$/.test((e.textContent||'').trim())) e.style.filter = 'blur(5px)'; });
-      }
+    // 左欄列表：不是匿名訪客的項目，模糊姓名與最後訊息
+    document.querySelectorAll('div.w-80.border-r button').forEach(b => {
+      if (!b.querySelector('p')) return;
+      if ((b.textContent || '').includes('Chatbox Visitor')) return;
+      b.querySelectorAll('span.truncate.text-sm, p').forEach(e => { e.style.filter = 'blur(5px)'; });
     });
-    // 表頭與右欄姓名
-    document.querySelectorAll('h1,h2,h3,h4,p,span').forEach(e => {
+    // 聊天表頭姓名、右欄姓名
+    document.querySelectorAll('h3.text-xl, div.w-80.border-l h3').forEach(e => {
+      if (!(e.textContent || '').includes('Chatbox Visitor')) e.style.filter = 'blur(6px)';
+    });
+    document.querySelectorAll('h1,h2,h3,h4,p,span,div').forEach(e => {
       if (e.children.length) return;
-      const t = (e.textContent || '').trim();
-      if (t === 'Daniel' || t === 'D' || t === '劉柏毅') e.style.filter = 'blur(6px)';
+      if (NAMES.includes((e.textContent || '').trim())) e.style.filter = 'blur(6px)';
+    });
+    // 下拉選單選中的值是真實姓名（例如負責人）時也模糊
+    document.querySelectorAll('select').forEach(sel => {
+      const o = sel.selectedOptions && sel.selectedOptions[0];
+      if (o && NAMES.includes((o.textContent || '').trim())) sel.style.filter = 'blur(5px)';
     });
     // 右欄「其他渠道的對話」預覽
     const h = [...document.querySelectorAll('h4')].find(x => (x.textContent||'').includes('其他渠道的對話'));
@@ -44,8 +56,17 @@ const PII_SCRIPT = `(() => {
       if (e && e !== document.body) e.style.display = 'none';
     });
   }
+  // DOM 一變就遮，不等下一輪計時器，避免新載入的姓名在模糊前被錄進影片
+  run();
+  const start = () => new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start);
   setInterval(run, 250);
 })();`;
+
+/** 左欄對話列表、右欄聯絡人面板、聊天表頭 */
+const LIST = (page: Page) => page.locator('div.w-80.border-r');
+const PANEL = (page: Page) => page.locator('div.w-80.border-l');
+const HEADER = (page: Page) => page.locator('h3.text-xl').locator('xpath=ancestor::div[contains(@class,"border-b")][1]');
 
 async function protect(context: BrowserContext, page: Page) {
   await context.addInitScript(PII_SCRIPT);
@@ -73,14 +94,14 @@ async function findLineConversation(page: Page): Promise<string> {
   };
   page.on('response', h);
   await go(page, '/dashboard/inbox');
-  await page.locator('div.w-80').getByRole('button', { name: '已關閉', exact: true }).click();
+  await LIST(page).getByRole('tab', { name: '已關閉' }).click();
   for (let i = 0; i < 20 && !id; i++) await page.waitForTimeout(500);
   page.off('response', h);
   if (!id) throw new Error('找不到 LINE 對話');
   return id;
 }
 
-const botItem = (page: Page) => page.locator('div.w-80 button:has-text("Chatbox Visitor"):has-text("Bot")').first();
+const botItem = (page: Page) => LIST(page).locator('button').filter({ hasText: 'Chatbox Visitor' }).filter({ hasText: '機器人處理中' }).first();
 
 test('ch01-list 對話列表與篩選', async ({ browser }) => {
   const rec = await startRecording(browser, 'ch01-list');
@@ -88,21 +109,21 @@ test('ch01-list 對話列表與篩選', async ({ browser }) => {
   await protect(rec.context, page);
   await go(page, '/dashboard/inbox');
   await caption(page, '左邊是所有對話的列表');
-  await point(page, page.locator('div.w-80'), 1200);
+  await point(page, LIST(page), 1200);
   await caption(page, '上方切換「進行中」與「已關閉」', 1700);
-  await tap(page, page.locator('div.w-80').getByRole('button', { name: '已關閉', exact: true }));
+  await tap(page, LIST(page).getByRole('tab', { name: '已關閉' }));
   await caption(page, '已關閉可選要看最近幾天', 1700);
-  await point(page, page.locator('div.w-80 select').first(), 1600);
-  await tap(page, page.locator('div.w-80').getByRole('button', { name: '進行中', exact: true }));
-  await caption(page, '再細分：全部、未讀、我的', 1700);
-  await tap(page, page.locator('div.w-80').getByRole('button', { name: '未讀', exact: true }));
-  await tap(page, page.locator('div.w-80').getByRole('button', { name: '全部', exact: true }));
-  await caption(page, '搜尋框可找聯絡人名稱或訊息', 1700);
-  await typeIn(page, page.getByPlaceholder('搜尋對話...'), '7c9efe');
+  await point(page, page.getByLabel('關閉時間範圍'), 1600);
+  await tap(page, LIST(page).getByRole('tab', { name: '進行中' }));
+  await caption(page, '快速篩選：全部、未讀、我的', 1700);
+  await tap(page, LIST(page).getByRole('button', { name: /^未讀/ }));
+  await tap(page, LIST(page).getByRole('button', { name: /^全部/ }));
+  await caption(page, '搜尋框可找聯繫人名稱或訊息', 1700);
+  await typeIn(page, page.getByPlaceholder('搜尋對話、聯繫人'), '7c9efe');
   await page.waitForTimeout(1200);
-  await page.getByPlaceholder('搜尋對話...').fill('');
-  await caption(page, '右邊的按鈕打開「進階篩選」', 1700);
-  await tap(page, page.locator('div.w-80 button:has(svg.lucide-sliders-horizontal)'));
+  await page.getByPlaceholder('搜尋對話、聯繫人').fill('');
+  await caption(page, '標題右邊的按鈕打開「進階篩選」', 1700);
+  await tap(page, LIST(page).getByRole('button', { name: '進階篩選' }));
   await caption(page, '依狀態、渠道、指派對象篩選', 1700);
   await tap(page, page.locator('label').filter({ hasText: 'Bot 處理中' }), 600);
   await tap(page, page.getByRole('button', { name: '套用篩選' }), 1200);
@@ -120,18 +141,18 @@ test('ch01-open 打開對話與聯絡人面板', async ({ browser }) => {
   const id = await findLineConversation(page);
   await go(page, `/dashboard/inbox?conv=${id}`);
   await caption(page, '點一筆對話，中間顯示訊息', 1700);
-  await point(page, page.locator('h3.truncate.font-semibold').locator('xpath=ancestor::div[contains(@class,"border-b")][1]'), 1600);
-  await caption(page, '表頭：渠道、狀態與負責客服', 2000);
-  await caption(page, '紫色泡泡是 Bot 自動回覆的內容', 1700);
-  await point(page, page.getByText('Bot 回覆').last().locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]'), 1800);
+  await point(page, HEADER(page), 1600);
+  await caption(page, '表頭：渠道、狀態與負責人', 2000);
+  await caption(page, '標示「AI 助理」的紫色泡泡是 Bot 自動回覆', 1700);
+  await point(page, page.locator('[data-testid="chat-messages"] div.bg-ai-subtle[class*="rounded-tl-"]').last(), 1800);
   await caption(page, '右邊是這位顧客的資料', 1700);
-  await point(page, page.locator('div.w-72.shrink-0'), 1600);
+  await point(page, PANEL(page), 1600);
   await caption(page, '同一位顧客在其他渠道的對話也看得到', 1700);
   await point(page, page.locator('h4', { hasText: '其他渠道的對話' }).locator('..'), 1800);
   await caption(page, '點一筆可展開最近的訊息', 1700);
   await tap(page, page.locator('h4', { hasText: '其他渠道的對話' }).locator('..').locator('button').first(), 1800);
-  await caption(page, '「查看完整資料」到聯絡人頁', 1700);
-  await point(page, page.getByRole('button', { name: '查看完整資料' }).or(page.getByRole('link', { name: '查看完整資料' })), 1800);
+  await caption(page, '「查看聯繫人詳情」到聯絡人頁', 1700);
+  await point(page, page.getByRole('link', { name: /查看聯繫人詳情/ }), 1800);
   await stopRecording(rec);
   poster('ch01-open', 2);
 });
@@ -176,7 +197,7 @@ test('ch01-reply 回覆與快速回覆', async ({ browser }) => {
   await tap(page, page.getByRole('button', { name: '加入', exact: true }), 1000);
   await caption(page, '顧客在 LINE 點一下就能回覆', 2200);
   await caption(page, '示範到這裡，不送出', 1200);
-  await page.locator('button:has(svg.lucide-x)').filter({ hasText: '' }).first().click().catch(() => {});
+  await page.locator('button[title="移除"]').first().click().catch(() => {});
   await box.fill('');
   await stopRecording(rec);
   poster('ch01-reply', 3);
@@ -191,7 +212,7 @@ test('ch01-template 插入模板', async ({ browser }) => {
   await go(page, `/dashboard/inbox?conv=${id}`);
   await caption(page, '常用的話可以用模板，不用每次重打', 1700);
   await tap(page, page.locator('button[title="模板"]'), 1200);
-  await caption(page, '上方分類可以切換', 1700);
+  await caption(page, '分類分頁可以切換', 1700);
   await point(page, page.getByPlaceholder('搜尋模板...').locator('xpath=following::div[1]'), 1500);
   await caption(page, '也可以直接搜尋', 1700);
   await typeIn(page, page.getByPlaceholder('搜尋模板...'), '問卷');
@@ -211,8 +232,8 @@ test('ch01-close 結案對話框', async ({ browser }) => {
   await botItem(page).click();
   await page.waitForTimeout(2500);
   await caption(page, '問題處理完，就把對話結案', 2200);
-  await caption(page, '問題處理完，按右上角「結案」', 1700);
-  await tap(page, page.getByRole('button', { name: '結案' }), 1200);
+  await caption(page, '問題處理完，按右上角「結束對話」', 1700);
+  await tap(page, page.getByRole('button', { name: '結束對話' }), 1200);
   await caption(page, '可以寫下結案原因（選填）', 1700);
   await typeIn(page, page.getByPlaceholder(/問題已解決/), '範例：問題已解決');
   await point(page, page.getByRole('button', { name: '確認結案' }), 1500);
@@ -229,8 +250,8 @@ test('ch01-case 從對話建立工單', async ({ browser }) => {
   await go(page, '/dashboard/inbox');
   await botItem(page).click();
   await page.waitForTimeout(2500);
-  await caption(page, '需要後續追蹤，就從對話開工單', 1700);
-  await tap(page, page.getByRole('button', { name: '建立工單' }), 1500);
+  await caption(page, '需要後續追蹤，就從右欄「快速操作」開工單', 1700);
+  await tap(page, PANEL(page).getByRole('button', { name: '建立工單' }), 1500);
   await caption(page, '聯絡人與來源對話會自動帶入', 1700);
   await point(page, page.getByText('來源對話').locator('..'), 1600);
   await typeIn(page, page.getByPlaceholder('案件標題...'), '範例：詢問電鍋保固');
@@ -256,10 +277,10 @@ test('ch01 截圖', async ({ browser }) => {
   await go(page, `/dashboard/inbox?conv=${id}`);
   await page.waitForTimeout(1500);
   await shotPage(page, 'ch01-overview');
-  await shot(page, page.locator('h3.truncate.font-semibold').locator('xpath=ancestor::div[contains(@class,"border-b")][1]'), 'ch01-header');
-  await shot(page, page.locator('div.w-72.shrink-0'), 'ch01-contact-panel');
+  await shot(page, HEADER(page), 'ch01-header');
+  await shot(page, PANEL(page), 'ch01-contact-panel');
   await go(page, '/dashboard/inbox');
-  await page.locator('div.w-80 button:has(svg.lucide-sliders-horizontal)').click();
+  await LIST(page).getByRole('button', { name: '進階篩選' }).click();
   await page.waitForTimeout(800);
   await shot(page, page.locator('h3:text("進階篩選")').locator('xpath=ancestor::div[contains(@class,"fixed")][1]'), 'ch01-filter');
   await page.keyboard.press('Escape');
@@ -267,7 +288,7 @@ test('ch01 截圖', async ({ browser }) => {
   await botItem(page).click();
   await page.waitForTimeout(2500);
   await shot(page, page.getByText('Bot 自動處理中').locator('xpath=ancestor::div[1]/..'), 'ch01-bot-banner');
-  await page.getByRole('button', { name: '結案' }).click();
+  await page.getByRole('button', { name: '結束對話' }).click();
   await page.waitForTimeout(800);
   await shot(page, page.getByRole('dialog'), 'ch01-close-dialog');
 });

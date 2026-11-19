@@ -4,12 +4,16 @@
  *   不按：刪除、儲存、套用、測試連線、用 Facebook 連結粉專、建立並驗證、指派團隊的新增/撤銷、產生連結。
  * ⚠️ Webhook 網址、粉專 ID、Verify Token、嵌入碼、WebChat 連結、成員姓名一律在畫面上遮掉。
  * 寫入保險會擋下所有非 GET 的 API 請求，本章沒有放行任何 POST。
+ *
+ * 新版 UI：渠道從卡片改成列表的一列；圖示按鈕有 aria-label（Bot 設定、下游 Webhook 轉發、編輯渠道、刪除渠道）；
+ * 新增／編輯／Bot 設定改成佔滿內容區的 PageDialog（role=dialog）。
  */
 import { test, Page, Locator } from '@playwright/test';
 import {
   startRecording, stopRecording, poster, caption, point, tap, typeIn, go, newShotPage,
 } from './manual-video-helpers';
-import { shot } from './manual-helpers';
+import { shot, sanitize, SHOTS_DIR } from './manual-helpers';
+import * as path from 'path';
 
 /** 遮蔽渠道相關機密：網址、帳號 ID、Verify Token、嵌入碼、成員姓名 */
 const MASK = `(() => {
@@ -18,6 +22,8 @@ const MASK = `(() => {
     'input[readonly]{filter:blur(5px)!important}',
     'label.cursor-pointer span.truncate{filter:blur(5px)!important}',
     'input[placeholder*="1660"]{filter:blur(5px)!important}',
+    'input[aria-label="Webhook 公開網址"]{filter:blur(5px)!important}',
+    'p.font-mono,span.font-mono,code{filter:blur(5px)!important}',
   ].join('');
   const rules = [
     [/https?:\\/\\/[^\\s"'<>]*(webhooks|chatbox|ngrok)[^\\s"'<>]*/g, 'https://••••••（網址已遮蔽）'],
@@ -49,21 +55,145 @@ async function mask(page: Page) {
   await page.context().addInitScript(MASK);
 }
 
-/** 依顯示名稱找渠道卡片 */
+/** 依顯示名稱找渠道列（同時含名稱與「編輯渠道」按鈕的最內層 div） */
 function card(page: Page, name: string): Locator {
-  return page.locator('div.rounded-xl').filter({ has: page.getByText(name, { exact: true }) }).last();
+  return page.locator('div')
+    .filter({ has: page.getByText(name, { exact: true }) })
+    .filter({ has: page.getByRole('button', { name: '編輯渠道' }) })
+    .last();
+}
+
+/** 表單比視窗高：暫時拉高視窗，讓 PageDialog 一次拍完整張表單 */
+async function tall(page: Page, height = 1900) {
+  await page.setViewportSize({ width: 1440, height });
+  await page.waitForTimeout(500);
+}
+/** PageDialog 佔滿內容區，只拍裡面的表單本體，避免下方大片空白 */
+function body(dialog: Locator): Locator {
+  return dialog.locator(':scope > div').first();
+}
+async function normal(page: Page) {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(300);
 }
 
 const PATH = '/dashboard/settings/channels';
+
+/**
+ * UAT 目前沒有權杖失效的渠道，又不能真的弄壞渠道：把 GET /channels 的回應裡
+ * 第一個啟用中的 FB／IG 渠道標成 tokenHealth.status = 'invalid'（只影響這個瀏覽器分頁，不動正式資料）。
+ * 前端 ChannelAccountRouting 依 settings.tokenHealth.status === 'invalid' 顯示紅框。
+ */
+async function fakeExpiredToken(page: Page) {
+  await page.route('**/api/v1/channels', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const res = await route.fetch();
+    const json = await res.json();
+    const list = Array.isArray(json?.data) ? json.data : [];
+    const target = list.find((c: any) => c.isActive && c.channelType === 'THREADS')
+      ?? list.find((c: any) => c.isActive && c.channelType === 'FB');
+    if (target) {
+      target.settings = {
+        ...(target.settings ?? {}),
+        tokenHealth: { status: 'invalid', checkedAt: new Date().toISOString() },
+      };
+    }
+    return route.fulfill({ response: res, json });
+  });
+}
+
+/**
+ * LINE OA 在 UAT 沒有存好完整的 LIFF 設定，「測試 LIFF 設定」按鈕是停用的。為了示範設定好的樣子，
+ * 把 GET /channels 回應裡 LINE OA 的 settings.liffConfig／liffTest 換成示範值（截圖時欄位一律模糊；只影響這個分頁）。
+ */
+async function fakeLiffConfig(page: Page) {
+  await page.route('**/api/v1/channels', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const res = await route.fetch();
+    const json = await res.json();
+    const list = Array.isArray(json?.data) ? json.data : [];
+    const line = list.find((c: any) => c.displayName === 'LINE OA');
+    if (line) {
+      const liffConfig = { liffId: '1660000000-AbCdEfGh', loginChannelId: '1660000001' };
+      const verifiedAt = new Date(Date.now() - 2 * 86400_000).toISOString();
+      line.settings = { ...(line.settings ?? {}), liffConfig, liffTest: { ...liffConfig, verifiedAt } };
+    }
+    return route.fulfill({ response: res, json });
+  });
+}
+
+/** 有權杖失效紅框的那一列 */
+function expiredRow(page: Page): Locator {
+  return page.locator('div')
+    .filter({ has: page.getByText('存取權杖已失效，目前收不到也無法回覆訊息') })
+    .filter({ has: page.getByRole('button', { name: '編輯渠道' }) })
+    .last();
+}
+
+/**
+ * 「測試 LIFF 設定」要送 POST /channels/:id/liff-test 在正式環境建立測試紀錄，寫入保險會擋下且不可放行。
+ * 為了示範按下後的畫面，照 LiffTestPanel 的 JSX（同樣的 class 與文字）把 QR code 區塊與「等待手機的測試結果」
+ * 插進面板裡；QR 是示範圖樣、連結是遮蔽過的假網址，不送任何請求。
+ */
+const LIFF_TEST_DEMO = `(panel) => {
+  const n = 25, cell = 6, pad = 12, size = n * cell + pad * 2;
+  let rects = '';
+  const finder = (x, y) => {
+    rects += '<rect x="' + (pad + x * cell) + '" y="' + (pad + y * cell) + '" width="' + 7 * cell + '" height="' + 7 * cell + '" fill="#000"/>';
+    rects += '<rect x="' + (pad + (x + 1) * cell) + '" y="' + (pad + (y + 1) * cell) + '" width="' + 5 * cell + '" height="' + 5 * cell + '" fill="#fff"/>';
+    rects += '<rect x="' + (pad + (x + 2) * cell) + '" y="' + (pad + (y + 2) * cell) + '" width="' + 3 * cell + '" height="' + 3 * cell + '" fill="#000"/>';
+  };
+  let seed = 7;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const inFinder = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+    if (!inFinder && rnd() > 0.5) rects += '<rect x="' + (pad + x * cell) + '" y="' + (pad + y * cell) + '" width="' + cell + '" height="' + cell + '" fill="#000"/>';
+  }
+  finder(0, 0); finder(n - 7, 0); finder(0, n - 7);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '"><rect width="100%" height="100%" fill="#fff"/>' + rects + '</svg>';
+  const qr = 'data:image/svg+xml;base64,' + btoa(svg);
+  panel.querySelectorAll('[data-liff-demo]').forEach((el) => el.remove());
+  const wrap = document.createElement('div');
+  wrap.setAttribute('data-liff-demo', '');
+  wrap.innerHTML =
+    '<div class="mt-3 flex flex-wrap gap-3">' +
+      '<img src="' + qr + '" alt="LIFF 測試連結 QR code" class="h-32 w-32 rounded border bg-white" />' +
+      '<div class="min-w-0 flex-1 space-y-1.5">' +
+        '<p>用手機 LINE 掃描 QR code，或在手機的 LINE 開啟下方連結。測試連結 10 分鐘內有效，結果會同時顯示在手機和這裡。</p>' +
+        '<a href="#" class="block break-all text-primary underline">https://liff.line.me/••••••（網址已遮蔽）</a>' +
+        '<p class="text-muted-foreground">請用已經加官方帳號好友的 LINE 帳號測試。</p>' +
+      '</div>' +
+    '</div>' +
+    '<p class="mt-2 flex items-center gap-1 text-muted-foreground">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3 w-3 animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 等待手機的測試結果…' +
+    '</p>';
+  panel.appendChild(wrap);
+}`;
+
+/** Bot 設定視窗裡的 LIFF 區塊：從「LIFF App ID」欄位到「測試 LIFF 設定」面板 */
+async function liffClip(page: Page, dialog: Locator) {
+  const top = await dialog.getByText('LIFF App ID（短連結身份收集）').locator('xpath=..').boundingBox();
+  const panel = await liffPanel(dialog).boundingBox();
+  if (!top || !panel) return null;
+  const x = top.x - 16;
+  const y = top.y - 16;
+  return { x, y, width: top.width + 32, height: panel.y + panel.height - y + 16 };
+}
+function liffPanel(dialog: Locator): Locator {
+  return dialog.locator('div.rounded-md.border').filter({ has: dialog.page().getByRole('button', { name: '測試 LIFF 設定' }) }).last();
+}
+
 
 test('ch15-overview 渠道管理總覽', async ({ browser }) => {
   const rec = await startRecording(browser, 'ch15-overview');
   const { page } = rec;
   await mask(page);
+  await fakeExpiredToken(page);
   await go(page, PATH);
-  await caption(page, '設定 > 渠道管理，每張卡片是一個渠道');
+  await caption(page, '設定 > 渠道管理，列表的每一列是一個渠道');
   await point(page, card(page, 'LINE OA'), 1800);
-  await caption(page, '右上可以新增渠道，或用設定精靈一步步來', 1200);
+  await page.getByRole('heading', { name: '渠道管理' }).scrollIntoViewIfNeeded();
+  await caption(page, '右邊可以新增渠道，或用設定精靈一步步來', 1200);
   await point(page, page.getByRole('button', { name: '設定精靈' }), 1200);
   await point(page, page.getByRole('button', { name: '新增渠道' }), 1200);
   const c = card(page, 'LINE OA');
@@ -71,17 +201,21 @@ test('ch15-overview 渠道管理總覽', async ({ browser }) => {
   await point(page, c.getByRole('button', { name: '停用', exact: true }), 1600);
   await caption(page, '「測試連線」檢查帳號金鑰是否還有效', 1200);
   await point(page, c.getByRole('button', { name: '測試連線' }), 1600);
-  await caption(page, '機器人圖示是 Bot 設定', 1000);
-  await point(page, c.getByTitle('Bot 設定'), 1400);
+  await caption(page, '第一個圖示是 Bot 設定', 1000);
+  await point(page, c.getByRole('button', { name: 'Bot 設定' }), 1400);
   await caption(page, '鉛筆是編輯，紅色垃圾桶是刪除', 1000);
-  await point(page, c.locator('button').nth(-2), 1200);
-  await point(page, c.locator('button').last(), 1400);
-  await caption(page, '權杖失效時，卡片會出現紅框提醒', 1000);
-  await point(page, page.getByText('存取權杖已失效，目前收不到也無法回覆訊息').first(), 2400);
-  await page.mouse.wheel(0, -2000);
+  await point(page, c.getByRole('button', { name: '編輯渠道' }), 1200);
+  await point(page, c.getByRole('button', { name: '刪除渠道' }), 1400);
+  // UAT 沒有權杖失效的渠道：fakeExpiredToken 把一個 IG／FB 渠道在這個分頁裡標成失效來示範紅框
+  const expired = page.getByText('存取權杖已失效，目前收不到也無法回覆訊息');
+  await expired.first().scrollIntoViewIfNeeded();
+  await caption(page, '權杖失效時，渠道下方會出現紅色提醒，告訴你怎麼修', 1000);
+  await point(page, expired.first().locator('xpath=../..'), 2800);
+  // 新版內容區是內層捲動容器，滑鼠滾輪不一定捲得動，直接捲到標題
+  await page.getByRole('heading', { name: 'Webhook 公開網址' }).scrollIntoViewIfNeeded();
   await page.waitForTimeout(600);
   await caption(page, '最上方的「Webhook 公開網址」一般不用改，填錯所有渠道都收不到訊息', 1800);
-  await point(page, page.getByText('Webhook 公開網址').first(), 2400);
+  await point(page, page.getByRole('heading', { name: 'Webhook 公開網址' }), 2400);
   await stopRecording(rec);
   poster('ch15-overview', 2);
 });
@@ -98,7 +232,7 @@ test('ch15-add 新增渠道', async ({ browser }) => {
   await point(page, dialog.locator('select').first(), 1200);
   await typeIn(page, dialog.getByPlaceholder('例：我的 LINE 官方帳號'), '範例：門市 LINE 官方帳號');
   await caption(page, 'LINE 要填兩組金鑰，不知道去哪拿就按這裡', 1200);
-  await tap(page, dialog.getByText('欄位說明：這些值要去哪裡取得？'), 1500);
+  await tap(page, dialog.getByRole('button', { name: '這些值要去哪裡取得？' }), 1500);
   const guide = page.getByRole('dialog').filter({ hasText: 'LINE 渠道欄位說明' });
   await caption(page, '說明會一步步告訴你去 LINE 後台哪裡複製', 2600);
   await guide.locator('.overflow-y-auto').first().evaluate((el) => el.scrollBy({ top: 300, behavior: 'smooth' })).catch(() => {});
@@ -148,8 +282,8 @@ test('ch15-edit 編輯渠道與可見範圍', async ({ browser }) => {
   const { page } = rec;
   await mask(page);
   await go(page, PATH);
-  await caption(page, '要換金鑰或改名字，按卡片上的鉛筆');
-  await tap(page, card(page, 'LINE OA').locator('button').nth(-2), 1800);
+  await caption(page, '要換金鑰或改名字，按渠道右邊的鉛筆');
+  await tap(page, card(page, 'LINE OA').getByRole('button', { name: '編輯渠道' }), 1800);
   const dialog = page.getByRole('dialog').filter({ hasText: '編輯渠道' });
   await caption(page, '金鑰欄留空就是不更換', 1000);
   await point(page, dialog.getByPlaceholder('留空表示不更新').first(), 1800);
@@ -168,8 +302,8 @@ test('ch15-bot Bot 設定', async ({ browser }) => {
   const { page } = rec;
   await mask(page);
   await go(page, PATH);
-  await caption(page, '按卡片上的機器人圖示，打開 Bot 設定');
-  await tap(page, card(page, 'LINE OA').getByTitle('Bot 設定'), 1500);
+  await caption(page, '按渠道右邊的「Bot 設定」圖示');
+  await tap(page, card(page, 'LINE OA').getByRole('button', { name: 'Bot 設定' }), 1500);
   const dialog = page.getByRole('dialog').filter({ hasText: 'Bot 設定' });
   await caption(page, 'Bot 模式決定客戶來訊時誰先回', 1000);
   await point(page, dialog.locator('select').first(), 2000);
@@ -200,7 +334,7 @@ test('ch15-webchat 嵌入碼與背景', async ({ browser }) => {
   await go(page, PATH);
   const c = card(page, '官網即時客服');
   await c.scrollIntoViewIfNeeded();
-  await caption(page, '網站聊天（WebChat）卡片有三個專屬按鈕');
+  await caption(page, '網站聊天（WebChat）渠道有三個專屬按鈕');
   await point(page, c.getByRole('button', { name: '取得嵌入碼' }), 1000);
   await tap(page, c.getByRole('button', { name: '取得嵌入碼' }), 1500);
   await caption(page, '把這段程式碼交給網站管理員，貼到網頁裡', 2600);
@@ -224,45 +358,85 @@ test('ch15 截圖', async ({ browser }) => {
   await page.waitForTimeout(1500);
   await shot(page, page.locator('main'), 'ch15-overview');
   await shot(page, card(page, 'LINE OA'), 'ch15-card-line');
-  await shot(page, card(page, 'IG333'), 'ch15-token-expired');
-  await shot(page, page.locator('div.rounded-xl').filter({ hasText: 'Webhook 公開網址' }).first(), 'ch15-webhook-base');
+  await shot(page, page.getByRole('heading', { name: 'Webhook 公開網址' }).locator('xpath=../../..'), 'ch15-webhook-base');
 
   // 新增渠道：LINE / FB / IG / WebChat
   await page.getByRole('button', { name: '新增渠道' }).first().click();
   await page.waitForTimeout(1500);
   const dialog = page.getByRole('dialog').filter({ hasText: '新增渠道' });
   await dialog.getByPlaceholder('例：我的 LINE 官方帳號').fill('範例：門市 LINE 官方帳號');
-  await shot(page, dialog, 'ch15-add-line');
+  await tall(page);
+  await shot(page, body(dialog), 'ch15-add-line');
   await dialog.locator('select').first().selectOption('FB');
   await page.waitForTimeout(600);
   await dialog.locator('input').nth(0).fill('範例：品牌粉絲專頁');
-  await shot(page, dialog, 'ch15-add-fb');
+  await shot(page, body(dialog), 'ch15-add-fb');
   await dialog.locator('select').first().selectOption('THREADS');
   await page.waitForTimeout(600);
   await dialog.locator('input').nth(0).fill('範例：品牌 Instagram');
-  await shot(page, dialog, 'ch15-add-ig');
+  await shot(page, body(dialog), 'ch15-add-ig');
   await dialog.locator('select').first().selectOption('WEBCHAT');
   await page.waitForTimeout(600);
   await dialog.locator('input').nth(0).fill('範例：官網即時客服');
-  await shot(page, dialog, 'ch15-add-webchat');
+  await shot(page, body(dialog), 'ch15-add-webchat');
+  await normal(page);
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(800);
 
   // 編輯渠道
-  await card(page, 'LINE OA').locator('button').nth(-2).click();
+  await card(page, 'LINE OA').getByRole('button', { name: '編輯渠道' }).click();
   await page.waitForTimeout(2000);
   const edit = page.getByRole('dialog').filter({ hasText: '編輯渠道' });
-  await shot(page, edit, 'ch15-edit-line');
+  await tall(page);
+  await shot(page, body(edit), 'ch15-edit-line');
+  await normal(page);
   await edit.getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(800);
 
   // Bot 設定
-  await card(page, 'LINE OA').getByTitle('Bot 設定').click();
+  await card(page, 'LINE OA').getByRole('button', { name: 'Bot 設定' }).click();
   await page.waitForTimeout(1500);
   const bot = page.getByRole('dialog').filter({ hasText: 'Bot 設定' });
-  await shot(page, bot, 'ch15-bot');
+  await shot(page, body(bot), 'ch15-bot');
   await bot.getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(800);
 
   // 網站聊天室嵌入碼
   await card(page, '官網即時客服').getByRole('button', { name: '取得嵌入碼' }).click();
   await page.waitForTimeout(1500);
   await shot(page, page.getByRole('dialog').filter({ hasText: '網站聊天室嵌入碼' }), 'ch15-embed');
+});
+
+test('ch15-token-expired 權杖失效紅框（攔截 GET 示範）', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await mask(page);
+  await fakeExpiredToken(page);
+  await go(page, PATH);
+  await page.waitForTimeout(1500);
+  await shot(page, expiredRow(page), 'ch15-token-expired');
+});
+
+test('ch15-liff LIFF 欄位與測試 QR（不儲存、不送測試）', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await mask(page);
+  await fakeLiffConfig(page);
+  await go(page, PATH);
+  await page.waitForTimeout(1500);
+  await card(page, 'LINE OA').getByRole('button', { name: 'Bot 設定' }).click();
+  await page.waitForTimeout(1500);
+  const bot = page.getByRole('dialog').filter({ hasText: 'Bot 設定' });
+  await tall(page, 2400);
+  await liffPanel(bot).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600);
+  await sanitize(page);
+  const c1 = await liffClip(page, bot);
+  if (!c1) throw new Error('找不到 LIFF 區塊');
+  await page.screenshot({ path: path.join(SHOTS_DIR, 'ch15-liff-fields.png'), clip: c1 });
+  console.log('✓ ch15-liff-fields.png');
+
+  await liffPanel(bot).evaluate(eval(LIFF_TEST_DEMO));
+  await page.waitForTimeout(600);
+  await shot(page, liffPanel(bot), 'ch15-liff-test-qr');
+  await normal(page);
+  await bot.getByRole('button', { name: '取消', exact: true }).click();
 });

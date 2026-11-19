@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>短連結 · open333CRM 操作手冊</title>
 <script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-<link rel="stylesheet" href="design-system.css?v=5">
+<link rel="stylesheet" href="design-system.css?v=6">
 </head>
 <body>
 
@@ -35,7 +35,7 @@
   <main class="manual-main">
     <section class="hero">
       <div class="inner">
-        <div class="eyebrow">CHAPTER 12 · 行銷與渠道</div>
+        <div class="eyebrow">CHAPTER 12 · 渠道與活動</div>
         <h1>短連結</h1>
         <p>把長網址縮成好分享、可追蹤的短網址，加上 UTM、點擊自動貼標、到期時間，還能產生 QR Code、查看點擊成效。</p>
       </div>
@@ -43,7 +43,7 @@
 
     <section class="doc" id="p1">
       <h2><span class="idx">1</span> 這頁能做什麼</h2>
-      <p>短連結會把長網址變成 <code>/s/代碼</code> 這樣的短網址。它不只是變短：每次有人點，系統都會記下點了幾次、是不是同一個人，還能在客戶點擊時自動幫他貼上標籤，之後就能針對「點過這個連結的人」做行銷。側欄「行銷與渠道 &gt; 短連結」底下有兩個選單：<b>連結管理</b>、<b>統計分析</b>。</p>
+      <p>短連結會把長網址變成 <code>/s/代碼</code> 這樣的短網址。它不只是變短：每次有人點，系統都會記下點了幾次、是不是同一個人，還能在客戶點擊時自動幫他貼上標籤，之後就能針對「點過這個連結的人」做行銷。側欄「短連結」底下有兩個選單：<b>連結管理</b>、<b>統計分析</b>。</p>
       <div class="quick">
         <a href="#p2"><b>連結管理</b>看所有短連結與點擊數</a>
         <a href="#p3"><b>建立短連結</b>縮網址、加 UTM、自動貼標</a>
@@ -83,10 +83,10 @@
       <table>
         <thead><tr><th>圖示</th><th>名稱</th><th>做什麼</th></tr></thead>
         <tbody>
-          <tr><td>兩張重疊的方塊</td><td>複製 URL</td><td>把完整短網址複製起來，圖示變綠色就是複製好了</td></tr>
+          <tr><td>兩張重疊的方塊</td><td>複製短網址</td><td>把完整短網址複製起來，圖示變綠色就是複製好了</td></tr>
           <tr><td>方格 QR 圖案</td><td>QR Code</td><td>打開 QR Code 視窗（第 5 節）</td></tr>
           <tr><td>斜上箭頭 ↗</td><td>編輯</td><td>修改這個連結。它長得像「開新視窗」，但其實是編輯</td></tr>
-          <tr><td>紅色 ×</td><td>刪除</td><td>永久刪除（第 6 節）</td></tr>
+          <tr><td>紅色垃圾桶</td><td>刪除</td><td>永久刪除（第 6 節）</td></tr>
         </tbody>
       </table>
       <div class="warn"><span>⚠️</span><div><b>標題欄寫著「素材連結（廣播自動建立）」的連結，請盡量不要編輯或刪除。</b>發廣播時，系統會把訊息裡的網址自動換成短連結來統計點擊。這些連結已經在客戶的聊天室裡了，改了目標網址，客戶會被帶到別的地方；刪掉的話，客戶點了只會看到「連結已失效」。編輯或刪除這類連結時，系統也會先跳出提醒。</div></div>
@@ -100,14 +100,14 @@
         <video controls preload="none" playsinline poster="uploads/videos/ch12-create.jpg">
           <source src="uploads/videos/ch12-create.mp4" type="video/mp4">
         </video>
-        <figcaption><span class="tag">影片</span>填目標網址、標題、自訂代碼和 UTM，看看自動貼標、到期、LINE 渠道和社群預覽在哪裡（約 37 秒）</figcaption>
+        <figcaption><span class="tag">影片</span>填目標網址、標題、自訂代碼和 UTM，看看自動貼標、到期、LINE 渠道和社群預覽在哪裡（約 39 秒）</figcaption>
       </figure>
       <ol class="steps">
         <li>側欄點「短連結 &gt; 連結管理」，按右上角「建立連結」。</li>
         <li>在「目標 URL」貼上原始網址（要以 <code>https://</code> 或 <code>http://</code> 開頭）。</li>
         <li>填「標題」，例如「週年慶活動頁」，之後在列表比較好找。</li>
         <li>想要好記的網址，就在「自訂 Slug」填英文或數字，例如 <code>anniv2026</code>；留空系統會自動產生。</li>
-        <li>需要時展開「UTM 參數」，或設定「點擊時自動貼標」、「到期時間」、「LINE 渠道」、「社群預覽」。</li>
+        <li>需要時展開「UTM 參數」，或設定「點擊時自動貼標」、「到期時間」、「LINE 渠道」、「社群預覽設定」。</li>
         <li>按「建立」。新連結會出現在列表最上面。</li>
       </ol>
       <figure class="shot shot-narrow">
@@ -124,7 +124,7 @@
           <tr><td>點擊時自動貼標</td><td>選一個標籤，系統<b>認得出點擊的是哪位客戶</b>時，就會幫他貼上。認不出的點擊不會貼</td></tr>
           <tr><td>到期時間</td><td>過了這個時間，連結就會失效，點了會看到「連結已失效」頁面</td></tr>
           <tr><td>LINE 渠道（LIFF 收集身份）</td><td>選一個 LINE 官方帳號後，客戶在 LINE 裡點連結時，系統能認出他是誰，自動貼標和「唯一點擊」才會準</td></tr>
-          <tr><td>社群預覽（OG）</td><td>把短連結貼到 LINE、Facebook 時跳出來的預覽卡標題、描述、圖片。三格都留空，系統會自動抓原始網頁的預覽</td></tr>
+          <tr><td>社群預覽設定（OG）</td><td>把短連結貼到 LINE、Facebook 時跳出來的預覽卡標題、描述、圖片。三格都留空，系統會自動抓原始網頁的預覽</td></tr>
         </tbody>
       </table>
       <!-- KNOWN-ISSUE: 選了 LINE 渠道但該渠道沒設 LIFF App ID 時會靜默退回一般模式。 -->
@@ -133,7 +133,7 @@
       <ol class="steps">
         <li>在列表按該列的「編輯」（↗ 圖示），改完按「儲存」。</li>
       </ol>
-      <div class="warn"><span>⚠️</span><div><b>改「目標 URL」會影響已經發出去的連結。</b>客戶手上的短網址不變，但點了之後會被帶到新的網址。編輯廣播自動建立的素材連結時，對話框上方會出現黃色提醒。</div></div>
+      <div class="warn"><span>⚠️</span><div><b>改「目標 URL」會影響已經發出去的連結。</b>客戶手上的短網址不變，但點了之後會被帶到新的網址。編輯廣播自動建立的素材連結時，頁面上方會出現黃色提醒。</div></div>
       <div class="info"><span>ℹ️</span><div>編輯時可以把標題、UTM、社群預覽清空，或把自動貼標改回「不貼標」，按「儲存」後就會拿掉舊的值。</div></div>
     </section>
 
@@ -175,7 +175,7 @@
         <thead><tr><th>做法</th><th>結果</th><th>適合</th></tr></thead>
         <tbody>
           <tr><td>「編輯」把「到期時間」設成現在或過去的時間</td><td>連結失效，點了會看到失效頁面；<b>點擊紀錄都保留</b></td><td>大部分情況，建議用這個</td></tr>
-          <tr><td>按「刪除」（紅色 ×）</td><td>連結和它的所有點擊統計一起<b>永久刪除</b>，無法復原</td><td>確定是建錯、完全用不到的連結</td></tr>
+          <tr><td>按「刪除」（紅色垃圾桶）</td><td>連結和它的所有點擊統計一起<b>永久刪除</b>，無法復原</td><td>確定是建錯、完全用不到的連結</td></tr>
         </tbody>
       </table>
       <div class="warn"><span>⚠️</span><div>刪除前會跳出「確定刪除此短連結？」，按確定就救不回來了。如果是廣播自動建立的素材連結，提醒會說明已發出的訊息會失效、點擊紀錄也會一併刪除，請盡量不要刪（見第 2 節）。</div></div>

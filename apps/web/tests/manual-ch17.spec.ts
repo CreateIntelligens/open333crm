@@ -17,7 +17,7 @@ async function scrub(page: Page) {
         const t = (el.textContent || '').trim();
         if (/^Daniel$|david|tatung|大同/i.test(t)) (el as HTMLElement).style.filter = 'blur(6px)';
         if (t.startsWith('[E2E]')) {
-          const box = (el.closest('tr, li, .grid > div') || el.closest('div.rounded-lg.border')) as HTMLElement | null;
+          const box = (el.closest('tr, li, [role="row"], .grid > div, div.border-b') || el.closest('div.rounded-lg.border')) as HTMLElement | null;
           if (box) box.style.display = 'none';
         }
       }
@@ -35,15 +35,36 @@ async function captionLeft(page: Page) {
   await page.addStyleTag({ content: '#mv-cap{left:24px!important;transform:none!important;max-width:300px!important}' });
 }
 
+
+/** 內容比視窗高時（內層捲動容器），暫時把視窗拉高到放得下全部內容，避免截圖切掉最下面的按鈕 */
+async function fitTall(page: Page) {
+  const extra = await page.evaluate(() => {
+    const els = [document.documentElement, ...Array.from(document.querySelectorAll('main, main *'))] as HTMLElement[];
+    let max = 0;
+    for (const el of els) {
+      const oy = getComputedStyle(el).overflowY;
+      if (el !== document.documentElement && oy !== 'auto' && oy !== 'scroll') continue;
+      max = Math.max(max, el.scrollHeight - el.clientHeight);
+    }
+    return max;
+  });
+  const vp = page.viewportSize() ?? { width: 1440, height: 900 };
+  if (extra > 0) {
+    await page.setViewportSize({ width: vp.width, height: vp.height + extra + 32 });
+    await page.waitForTimeout(500);
+  }
+  return vp;
+}
+
 test('ch17-tags 新增標籤', async ({ browser }) => {
   const rec = await startRecording(browser, 'ch17-tags');
   const { page } = rec;
   await go(page, '/dashboard/settings/tags');
   await scrub(page);
   await caption(page, '標籤管理列出所有分類標籤');
-  await caption(page, '上方可依適用範圍篩選', 800);
-  await tap(page, page.getByRole('button', { name: /^案件 \d+$/ }));
-  await tap(page, page.getByRole('button', { name: /^全部 \d+$/ }));
+  await caption(page, '上方分頁可依適用範圍篩選', 800);
+  await tap(page, page.getByRole('tab', { name: /^案件\s*\d+$/ }));
+  await tap(page, page.getByRole('tab', { name: /^全部\s*\d+$/ }));
   await caption(page, '按「新增標籤」建立新的', 800);
   await tap(page, page.getByRole('button', { name: '新增標籤' }));
   await captionLeft(page);
@@ -150,6 +171,7 @@ test('ch17 截圖', async ({ browser }) => {
   await page.waitForTimeout(1000);
   await shot(page, page.getByRole('dialog'), 'ch17-tag-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(1500);
 
   await go(page, '/dashboard/settings/sla');
   await shot(page, page.locator('main'), 'ch17-sla');
@@ -157,12 +179,7 @@ test('ch17 截圖', async ({ browser }) => {
   await page.waitForTimeout(1000);
   await shot(page, page.getByRole('dialog'), 'ch17-sla-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
-
-  // 只在畫面上打開開關讓區塊顯示，不按儲存
-  await go(page, '/dashboard/settings/office-hours');
-  await page.getByRole('switch').first().click();
-  await page.waitForTimeout(800);
-  await shot(page, page.locator('main'), 'ch17-office-hours');
+  await page.waitForTimeout(1500);
 
   await go(page, '/dashboard/settings/tracking');
   await shot(page, page.locator('main'), 'ch17-tracking');
@@ -175,10 +192,21 @@ test('ch17 截圖', async ({ browser }) => {
   await page.waitForTimeout(1000);
   await shot(page, page.getByRole('dialog'), 'ch17-apikey-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(1500);
 
   await go(page, '/dashboard/settings/cli-sessions');
   await page.getByRole('button', { name: '產生 Token' }).first().click();
   await page.waitForTimeout(1000);
   await shot(page, page.getByRole('dialog'), 'ch17-cli-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+});
+
+test('ch17-office-hours 截圖（拍到「儲存設定」按鈕）', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  // 只在畫面上打開開關讓區塊顯示，不按儲存
+  await go(page, '/dashboard/settings/office-hours');
+  await page.getByRole('switch').first().click();
+  await page.waitForTimeout(800);
+  await fitTall(page);
+  await shot(page, page.locator('main'), 'ch17-office-hours');
 });

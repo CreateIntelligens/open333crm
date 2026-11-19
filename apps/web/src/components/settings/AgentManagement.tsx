@@ -871,7 +871,7 @@ export function AgentManagement() {
         <p><strong>Admin</strong>：完整設定權限，可新增任何角色</p>
         <p><strong>Supervisor</strong>：可查看所有對話/案件，可新增 Agent 與 Supervisor</p>
         <p><strong>Agent</strong>：只能看自己負責的對話/案件</p>
-        <p className="mt-1">自訂角色可於「角色與權限」設定，並於此指派給成員。</p>
+        <p className="mt-1">自訂角色可於「角色權限」設定，並於此指派給成員。</p>
       </div>
 
       {/* Dialogs */}

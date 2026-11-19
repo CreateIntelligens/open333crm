@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>自動化 · open333CRM 操作手冊</title>
 <script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-<link rel="stylesheet" href="design-system.css?v=5">
+<link rel="stylesheet" href="design-system.css?v=6">
 </head>
 <body>
 
@@ -37,7 +37,7 @@
   <main class="manual-main">
     <section class="hero">
       <div class="inner">
-        <div class="eyebrow">CHAPTER 05 · 自動化與知識</div>
+        <div class="eyebrow">CHAPTER 05 · 自動化與知識庫</div>
         <h1>自動化</h1>
         <p>把每天重複做的事交給系統：客人提到退貨就自動開工單、問營業時間就自動回覆、VIP 的工單快逾期就通知主管。</p>
       </div>
@@ -65,26 +65,26 @@
 
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> 規則列表</h2>
-      <p>側欄點「自動化與知識 → 自動化」，會列出所有規則。</p>
+      <p>側欄點「自動化」，會列出所有規則。</p>
       <figure class="shot">
         <img src="uploads/shots/ch05-list.png" alt="自動化規則列表：搜尋、狀態篩選、規則摘要、檢查時機、執行順序、啟用開關" loading="lazy">
-        <figcaption>規則列表（這裡篩選了「啟用中」）。每條規則下面有一句話摘要，紅色「規則不會執行」代表這條規則設定有問題。</figcaption>
+        <figcaption>規則列表（這裡篩選了「啟用中」）。「概述」欄是一句話摘要，紅色「規則不會執行」代表這條規則設定有問題。</figcaption>
       </figure>
       <ol class="steps">
         <li>用「搜尋規則名稱」找規則，用右邊的下拉選「全部狀態」「啟用中」「已停用」。</li>
-        <li>滑鼠移到規則的摘要上，可以看到完整摘要與說明。</li>
+        <li>滑鼠移到「概述」上，可以看到完整摘要與說明。</li>
         <li>點「啟用」欄的開關，就能直接啟用或停用，不用進編輯頁。</li>
         <li>點任一列進入編輯。</li>
       </ol>
       <table>
         <thead><tr><th>欄位或標記</th><th>意思</th></tr></thead>
         <tbody>
-          <tr><td>規則</td><td>名稱，以及一句話說明這條規則在做什麼</td></tr>
-          <tr><td>檢查時機</td><td>規則在什麼時候被檢查（見第 4 節）</td></tr>
-          <tr><td>執行順序</td><td>同一個時機有好幾條規則時，<b>數字越大越先檢查</b></td></tr>
+          <tr><td>名稱</td><td>規則名稱，下面的灰色小標是檢查時機：規則在什麼時候被檢查（見第 4 節）</td></tr>
+          <tr><td>概述</td><td>一句話說明這條規則在做什麼</td></tr>
+          <tr><td>優先級</td><td>就是編輯頁的「執行順序」。同一個時機有好幾條規則時，<b>數字越大越先檢查</b></td></tr>
           <tr><td>啟用</td><td>開關打開（藍色）才會執行</td></tr>
           <tr><td><span class="tag red">規則不會執行</span></td><td>規則裡有系統不認得的時機或動作，整條會被跳過，也不能被啟用。滑鼠移上去會說明原因，請進去修正</td></tr>
-          <tr><td><span class="tag gray">執行後停止</span></td><td>這條規則執行後，不再檢查後面的規則</td></tr>
+          <tr><td>命中後停止</td><td>顯示「是」代表這條規則執行後，不再檢查後面的規則</td></tr>
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>帶有「規則不會執行」標記的規則<b>不能被啟用</b>：打開開關時會跳出訊息說明原因（例如用了系統不認得的時機或動作）。請先進編輯頁把問題修好，再回來啟用。停用則隨時都可以。</div></div>
