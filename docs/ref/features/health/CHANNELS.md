@@ -3,6 +3,7 @@
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 已修正：HC-CHANNELS-15 部分修正：`GET /channels/:id/embed-code` 要求 `channel.view` 與該渠道的 `read_only` 存取層級。渠道沒有 `publicKey` 時，這個 GET 仍會寫入一把新的。HC-CHANNELS-09 部分修正：`GET /channels` 回 403 時，頁面顯示「你沒有權限檢視渠道」，不顯示「沒有渠道」；成員沒有 `channel.create` 時，頁面不顯示「新增渠道」。側欄的「渠道管理」仍不依 `channel.view` 隱藏。HC-CHANNELS-02 部分修正：「新增渠道」「設定精靈」與 Facebook 連結只對有 `channel.create` 的成員顯示；公開網址的「套用」只對同時有 `channel.view_all` 與 `channel.update` 的成員顯示。卡片上的停用、測試連線、Bot 設定、下游轉發、編輯、刪除仍不依權限隱藏。本報告其餘段落仍描述健檢當時的程式
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，唯讀）
 - 規格：`docs/ref/features/feature-map.json` 的 `channels`；功能文件 `docs/ref/features/tenant/CHANNELS.md`、`docs/ref/modules/CHANNEL-PLUGINS.md`

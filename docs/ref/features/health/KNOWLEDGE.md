@@ -8,6 +8,7 @@
 - 已修正：HC-KNOWLEDGE-02（#420，change `fix-kb-model-guard-420`）。型號偵測排除常見英文詞（`Wi-Fi`、`e-mail`、`T-shirt` 等，不分大小寫）；守門只攔截前綴出現在白名單的型號，白名單空時不守門，訂單編號這類前綴不在白名單的編號不攔截；守門回覆計入追問次數，用完時與追問用完相同轉接真人。`tenant/KNOWLEDGE.md` 已同步。HC-KNOWLEDGE-06（`modelGuard` 殘留在 metadata）未處理
 - 已修正：HC-KNOWLEDGE-03（#421，change `fix-kb-csv-encoding-421`）。CSV 匯入前先自行解碼：有 UTF-8 BOM 去掉後以 UTF-8 解，沒有 BOM 先以嚴格 UTF-8 解、失敗再試 Big5；都解不出或含 U+FFFD 時該檔一篇都不寫入，匯入結果顯示中文原因（`CSV_ENCODING_UNREADABLE`，建議另存成「CSV UTF-8」）。依使用者決定（2026-11-04），問答表拆出的文章仍直接發布
 - 已修正（部分）：知識庫 embedding 失敗、agent 也沒回覆時客人收不到任何回覆（issue #445，change `handoff-on-ai-reply-failure-445`）。現在轉真人，原因寫「AI 暫時無法回覆（…）」；`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆，記為 KB-06
+- 已修正：HC-KNOWLEDGE-09。文章列表以 `paginationSchema` 檢查 `page`、`limit`：`page=0` 回 400 `VALIDATION_ERROR`，`limit` 上限 100。非 UUID 的文章 id 也回 400 `VALIDATION_ERROR`
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認，只做唯讀 API 查詢）
 - 規格：`docs/ref/features/feature-map.json` 的 `knowledge`；功能文件 `docs/ref/features/tenant/KNOWLEDGE.md`
 

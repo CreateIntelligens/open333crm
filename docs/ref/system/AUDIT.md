@@ -2328,7 +2328,7 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 | 行銷素材 | 複製、刪除；刪除確認寫「可在後台復原」，但沒有復原介面 | HC-MARKETING-07 |
 | 平台：租戶列表 | 停用、啟用、初始載入 | HC-PLATFORM-TENANTS-03 |
 | 平台：試用管理 | 延長、轉正式、復原、重寄、作廢、初始載入（例如以為已延長，客戶隔天仍被停用）。「政策設定」的 `saveSetting` 見 TRIAL-02 | HC-PLATFORM-TRIALS-03 |
-| 平台：方案異動審核 | 核准、駁回、初始載入（例如 400 `TOPUP_UNLIMITED`） | HC-PLATFORM-PLAN-CHANGES-03 |
+| 平台：方案異動審核 | 初始載入（核准、駁回失敗時已顯示錯誤訊息，例如 400 `TOPUP_UNLIMITED`） | HC-PLATFORM-PLAN-CHANGES-03 |
 | 平台：用量 | 總覽、排行、租戶鑽取；失敗時顯示「此區間尚無用量資料」，平台方會以為真的沒有用量 | HC-PLATFORM-USAGE-03 |
 
 使用者看不到的失敗會被當成「沒有反應」。修正時每個操作都要顯示錯誤訊息，讀取失敗與「沒有資料」要分開顯示。
