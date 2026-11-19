@@ -7,6 +7,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - 關鍵字回覆列表的優惠券名稱太長時溢出到「動作」欄、壓住「編輯」按鈕，改為在欄內截斷，滑鼠移上去看完整名稱。人員管理頁底部的說明把「角色與權限」改成與側欄一致的「角色權限」。
+- 工單列表刪除失敗、升級視窗送出失敗時，畫面一律顯示「刪除工單失敗」「升級失敗」，看不出原因（例如沒有權限）。原因是畫面讀 `response.data.message`，後端的訊息在 `error.message`。現在兩處改用 `getApiErrorMessage`，顯示後端的錯誤訊息（HC-CASES-16）。
 
 ### Changed
 
