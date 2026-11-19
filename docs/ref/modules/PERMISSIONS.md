@@ -137,7 +137,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 權限不足時回 403，`error.details.requiredPermission`（或 `requiredAnyOf`）記錄缺少的碼。新增權限碼後忘了執行 reconcile，就會出現這種 403，見[預設角色與新增權限碼](#預設角色與新增權限碼)。
 
-`requirePermission()` 被拒時，若角色本身有這個碼、只是方案天花板沒有（租戶有方案、方案的 `features` 不含該碼的功能模組），回 403 的 `error.details` 另帶 `reason: 'PLAN_FEATURE_NOT_INCLUDED'`，訊息改成「目前的方案未包含這項功能」（`isBlockedByPlanOnly()`，2026-11-14，change `add-comment-keyword-private-reply`）。前端與維運以此分辨「方案未包含」與「角色沒有權限」。判斷只在拒絕時多算一次不套天花板的角色權限；Partner API 金鑰、CLI token 與沒有方案的租戶不帶 `reason`。`requireAnyPermission()` 沒有這個欄位。
+`requirePermission()` 被拒時，若角色本身有這個碼、只是方案天花板沒有（租戶有方案、方案的 `features` 不含該碼的功能模組），回 403 的 `error.details` 另帶 `reason: 'PLAN_FEATURE_NOT_INCLUDED'`，訊息改成「目前的方案未包含這項功能」（`isBlockedByPlanOnly()`）。前端與維運以此分辨「方案未包含」與「角色沒有權限」。判斷只在拒絕時多算一次不套天花板的角色權限；Partner API 金鑰、CLI token 與沒有方案的租戶不帶 `reason`。`requireAnyPermission()` 沒有這個欄位。
 
 舊的 `requireRole()`、`requireAdmin()`、`requireSupervisor()` 仍然匯出，但沒有任何路由使用。新路由一律用 `requirePermission()`。
 

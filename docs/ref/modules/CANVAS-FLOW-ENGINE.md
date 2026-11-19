@@ -92,7 +92,7 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 
 commit 之後、開始執行之前處理程序結束時，execution 停在 `RUNNING`。輪詢器只恢復 `WAITING`，所以沒有程式會再執行它。
 
-`createFlowExecution()` 與 `startFlowAfterCommit()` 寫成自動觸發之後也能用的函式。自動觸發改走租戶交易時，改用這兩個函式（change `migrate-canvas-tenant-ctx` design D6）。
+`createFlowExecution()` 與 `startFlowAfterCommit()` 寫成自動觸發之後也能用的函式。自動觸發改走租戶交易時，改用這兩個函式（設計見 `openspec/changes/archive/2026-11-06-migrate-canvas-tenant-ctx/design.md` 的 D6）。
 
 ### 推進
 

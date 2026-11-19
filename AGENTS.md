@@ -429,6 +429,11 @@ request:
 
       The three items above have details in `docs/ref/system/DELIVERY.md` (OpenSpec section):
       the archive, when you can remove a main spec, and which warnings the validation ignores.
+- [ ] `node scripts/check-doc-history.mjs --strict` passes, if you changed `AGENTS.md`,
+      `docs/ref/features/`, `docs/ref/modules/` or a feature skill. These files describe only the
+      current code. The script rejects closed issue numbers, change names, commit hashes and
+      sentences about old behavior. Put the history in `docs/ref/system/AUDIT-REVIEWS.md` and the
+      commit message. An open issue can stay: list it in `scripts/check-doc-history.allow.json`.
 - [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, add an
       entry to `docs/ref/system/AUDIT-REVIEWS.md` that names the fix (change or commit). Then do
       one of these:

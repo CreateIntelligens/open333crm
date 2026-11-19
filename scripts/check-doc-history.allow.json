@@ -1,0 +1,4 @@
+{
+  "note": "文件可以引用的 issue：都還開著，代表還沒完成的工作。issue 關閉後，從這裡移除，並更新引用它的文件。以 node scripts/check-doc-history.mjs --check-github 確認。",
+  "openIssues": [217, 318, 337, 405, 457, 474]
+}

@@ -107,7 +107,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 
 ## 留言擴充
 
-留言關鍵字自動私訊（change `add-comment-keyword-private-reply`）的渠道差異都在 `extensions.comments`（`ChannelCommentExtension`，`packages/channel-plugins/src/index.ts`）。`comment-reply` 模組不比對 `channelType`，只問「這個外掛有沒有留言擴充」與 `capabilities`（`platform: 'fb' | 'ig'`、可用的私訊內容類型、是否支援公開回覆）。目前 `fbPlugin` 與 `threadsPlugin` 實作；LINE、WebChat 沒有，所以規則 API 選 LINE 渠道回 400 `CHANNEL_NOT_SUPPORTED`。
+留言關鍵字自動私訊的渠道差異都在 `extensions.comments`（`ChannelCommentExtension`，`packages/channel-plugins/src/index.ts`）。`comment-reply` 模組不比對 `channelType`，只問「這個外掛有沒有留言擴充」與 `capabilities`（`platform: 'fb' | 'ig'`、可用的私訊內容類型、是否支援公開回覆）。目前 `fbPlugin` 與 `threadsPlugin` 實作；LINE、WebChat 沒有，所以規則 API 選 LINE 渠道回 400 `CHANNEL_NOT_SUPPORTED`。
 
 | 方法 | 呼叫端 | 作用 |
 | --- | --- | --- |
