@@ -615,8 +615,9 @@ lock for this. But the job can run more than one time, and two periods can overl
     Then write the reason in the pull request. Move the callers to the new code in the same change.
 - **CHANGELOG Maintenance (MANDATORY)**: when you implement a feature (`feat`), a bug fix (`fix`)
   or an architecture change, you **MUST update `CHANGELOG.md`**. A pull request that changes only
-  docs, OpenSpec files or tests does not need an entry. Write the entry under the latest release
-  section, in a category such as `Added`, `Changed` or `Fixed`. Do not submit a code change
+  docs, OpenSpec files or tests does not need an entry. Write the entry in the section for the
+  current date. If `CHANGELOG.md` has no section for the current date yet, add it above the
+  latest section. Put the entry in a category such as `Added`, `Changed` or `Fixed`. Do not submit a code change
   without an entry in `CHANGELOG.md`.
 - **CHANGELOG Date Format (CRITICAL / MANDATORY)**: each new or updated release section **MUST**
   use the date-only heading format `## [YYYY-MM-DD]`. **Never create or restore `## [Unreleased]`**.
@@ -713,9 +714,10 @@ lock for this. But the job can run more than one time, and two periods can overl
   not set, `/api/v1/platform/auth/login` returns 503 `PLATFORM_DISABLED`.
 - **Web dev needs a sync first**: the `dev` script of `pnpm --filter @open333crm/web dev` runs
   `sync:widget` and `sync:playcaptcha` automatically.
-- **A new git worktree has no `node_modules` and no built packages.** Run `pnpm install`, then
-  `pnpm --filter @open333crm/shared build` and `pnpm --filter @open333crm/automation build`.
-  Without the builds, `apps/web` tests fail at import, not at an assertion.
+- **A new git worktree has no `node_modules`, no built packages and no Prisma client.** Run
+  `pnpm install`, `pnpm db:generate`, `pnpm --filter @open333crm/shared build` and
+  `pnpm --filter @open333crm/automation build`. Without these steps, tests fail at import, not
+  at an assertion.
 - **Docker on macOS**: `export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"`
 
 ## Monorepo Layout
