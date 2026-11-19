@@ -216,7 +216,8 @@ const TIDY = `(() => {
   // 寫入保險擋下「人數預覽」POST 後出現的網路錯誤，是錄影環境造成的，不是真實畫面，藏起來
   const blocked = /網路連線異常|無法確認優惠券名額/;
   const fix = () => {
-    document.querySelectorAll('option').forEach((o) => { if (bad.test(o.textContent || '')) o.remove(); });
+    // 只藏不刪：刪掉 React 管理的 <option>，之後選項更新時 React removeChild 會整頁出錯
+    document.querySelectorAll('option').forEach((o) => { if (bad.test(o.textContent || '')) { o.hidden = true; o.disabled = true; } });
     document.querySelectorAll('tr,[role=row],label').forEach((tr) => { if (bad.test(tr.textContent || '')) tr.style.display = 'none'; });
     document.querySelectorAll('p,div').forEach((el) => {
       if (el.children.length <= 2 && blocked.test(el.textContent || '') && (el.textContent || '').length < 120) el.style.display = 'none';
@@ -523,6 +524,116 @@ test('ch18-richmenu-claim 圖文選單領券按鈕', async ({ browser }) => {
   await caption(page, '按「儲存草稿」，確認無誤後才「發布」；示範到這裡不存檔', 2800);
   await point(page, page.getByRole('button', { name: '儲存草稿' }), 1400);
   await finish(r, 3);
+});
+
+// ─── 卡片素材＋領券連結、Facebook 關鍵字發券（新版 UI 重錄，只開表單不存檔）───
+
+const UNBLUR_SAMPLES = `img[src*="material-samples"]{filter:none!important}`;
+const CLAIM_URL = `${BASE_URL}/claim/DEMO2026`;
+
+/** 券詳情「領券連結」分頁：指出連結與複製按鈕 */
+async function showClaimLink(page: Page) {
+  await go(page, `/dashboard/marketing/coupons/${ID.autumn}`);
+  await caption(page, '先在券詳情的「領券連結」分頁建立連結（見 11-5）', 1000);
+  await tap(page, page.getByRole('tab', { name: '領券連結' }), 1500);
+  await page.getByRole('listitem', { name: '門市海報' }).waitFor();
+  await caption(page, '渠道選要推播的那個渠道，按複製圖示複製網址', 2200);
+  await point(page, page.getByRole('listitem', { name: '門市海報' }), 1600);
+}
+
+async function newMaterial(page: Page, platform: RegExp, type: RegExp) {
+  await go(page, '/dashboard/marketing/materials');
+  await caption(page, '到「素材庫」，按「從版型建立新素材」', 1000);
+  await tap(page, page.getByRole('button', { name: '從版型建立新素材' }), 1800);
+  await tap(page, page.getByRole('button', { name: platform }).first(), 1200);
+  await tap(page, page.getByRole('button', { name: type }).first(), 1800);
+  await page.addStyleTag({ content: UNBLUR_SAMPLES });
+}
+
+async function broadcastWithoutCoupon(page: Page, channel: RegExp) {
+  const dlg = await openBroadcastForm(page);
+  await typeIn(page, page.getByRole('textbox', { name: '廣播名稱' }), '秋季感謝祭 領券卡片');
+  await pick(page, dlg.locator('select').first(), channel);
+  await caption(page, '素材選剛做好的卡片素材，「附上優惠券」維持「不附券」', 2600);
+  await point(page, dlg.getByLabel('附上優惠券（選填）'), 1200);
+  await caption(page, '建立後到列表按「立即發送」；示範到這裡，按「取消」', 2400);
+  await point(page, page.getByRole('button', { name: '建立', exact: true }), 1200);
+  await tap(page, page.getByRole('button', { name: '取消', exact: true }), 1000);
+}
+
+test('ch18-card-line LINE 卡片素材連到領券連結', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const r = await rec(browser, 'ch18-card-line');
+  const { page } = r;
+  await showClaimLink(page);
+  await newMaterial(page, /LINE 官方帳號訊息/, /卡片訊息/);
+  await caption(page, 'LINE 選「卡片訊息」，填素材名稱與標題、說明', 1000);
+  await typeOver(page, page.getByPlaceholder('如：母親節新品推播'), '秋季感謝祭 領券卡片');
+  await typeOver(page, page.getByPlaceholder('輸入標題'), '秋季感謝祭 NT$50 折價券');
+  await typeOver(page, page.getByPlaceholder('輸入文字說明'), '點下方按鈕領取，限量 500 張');
+  await caption(page, '「動作 1」類型選「網址連結」', 1000);
+  const action = page.getByPlaceholder('輸入動作標籤').first().locator('xpath=ancestor::div[contains(@class,"rounded-md")][1]');
+  await typeOver(page, page.getByPlaceholder('輸入動作標籤').first(), '領取優惠券');
+  await pick(page, action.locator('select').first(), /網址連結/);
+  await caption(page, '網址貼上 LINE 的領券連結', 1000);
+  await typeOver(page, action.getByPlaceholder(/^https:/), CLAIM_URL);
+  await caption(page, '填好按「存為素材」；示範到這裡不存檔', 2200);
+  await point(page, page.getByRole('button', { name: '存為素材' }), 1200);
+  await tap(page, page.getByRole('button', { name: '取消', exact: true }), 1000);
+  await broadcastWithoutCoupon(page, /LINE OA/);
+  await finish(r, 3);
+});
+
+test('ch18-card-fb Facebook 商品輪播連到領券連結', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const r = await rec(browser, 'ch18-card-fb');
+  const { page } = r;
+  await showClaimLink(page);
+  await newMaterial(page, /FB Messenger/, /商品輪播/);
+  await caption(page, 'Facebook 選「商品輪播」，填素材名稱與卡片標題', 1000);
+  await typeOver(page, page.getByPlaceholder('如：母親節新品推播'), '秋季感謝祭 FB 領券卡片');
+  await typeOver(page, page.getByPlaceholder('商品標題').first(), '秋季感謝祭 NT$50 折價券');
+  await typeOver(page, page.getByPlaceholder('副標題（選填）').first(), '點下方按鈕領取，限量 500 張');
+  await caption(page, '按鈕選「開啟網址」，網址貼上 Facebook 的領券連結', 1200);
+  const btnType = page.getByLabel('第 1 顆按鈕的類型').first();
+  const btnRow = btnType.locator('xpath=..');
+  await pick(page, btnType, /開啟網址/);
+  await typeOver(page, btnRow.getByPlaceholder('按鈕文字'), '領取優惠券');
+  // 「網址」要找按鈕這一列的，卡片上方還有一個圖片網址欄
+  await typeOver(page, btnRow.getByPlaceholder('網址', { exact: true }), CLAIM_URL);
+  await caption(page, '多餘的卡片按垃圾桶刪掉，填好按「存為素材」；示範到這裡不存檔', 2600);
+  await point(page, page.getByRole('button', { name: '存為素材' }), 1200);
+  await tap(page, page.getByRole('button', { name: '取消', exact: true }), 1000);
+  await broadcastWithoutCoupon(page, /Open333test/);
+  await finish(r, 3);
+});
+
+test('ch18-keyword-fb Facebook 關鍵字發券', async ({ browser }) => {
+  test.setTimeout(150_000);
+  // 這支用 UAT 示範租戶的真實示範資料（券「示範：秋季折價券」），不套 mockDemo
+  const r = await startRecording(browser, 'ch18-keyword-fb');
+  await r.context.addInitScript(TIDY);
+  const { page } = r;
+  await go(page, '/dashboard/line/keyword-replies');
+  await caption(page, '「渠道 → 關鍵字回覆」，上方可以依渠道篩選', 1000);
+  await tap(page, page.getByRole('button', { name: 'Facebook', exact: true }), 1600);
+  await caption(page, '按「建立關鍵字回覆」', 800);
+  await tap(page, page.getByRole('button', { name: '建立關鍵字回覆' }), 1500);
+  const dlg = page.getByRole('dialog', { name: '關鍵字回覆表單' });
+  await caption(page, '渠道選「Facebook」，規則只在 Facebook 的對話觸發', 1200);
+  await pick(page, dlg.getByLabel('渠道', { exact: true }), /Facebook/);
+  await typeIn(page, dlg.getByLabel('規則名稱'), '粉專領券');
+  await typeIn(page, dlg.getByLabel(/^關鍵字/), '粉專優惠');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(800);
+  await caption(page, '素材只列出 Facebook 的素材；只發券時可以不選', 2000);
+  await point(page, dlg.getByLabel('回覆素材'), 1200);
+  await caption(page, '「同時發送優惠券」選一張進行中的券', 1000);
+  await pick(page, dlg.getByLabel('同時發送優惠券'), /示範：秋季折價券/);
+  await caption(page, '按「儲存」就完成了；示範到這裡，按「取消」', 2400);
+  await point(page, dlg.getByRole('button', { name: '儲存' }), 1400);
+  await tap(page, dlg.getByRole('button', { name: '取消' }), 1000);
+  await finish(r);
 });
 
 // ─── 截圖 ─────────────────────────────────────────────────────────────────────
