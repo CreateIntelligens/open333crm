@@ -13,7 +13,7 @@ import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import settingsRoutes from '#src/modules/settings/settings.routes.js';
 import knowledgeRoutes from '#src/modules/knowledge/knowledge.routes.js';
-import { fakeOllama } from '#tests/support/fake-ollama.js';
+import { fakeOllama, markedVector } from '#tests/support/fake-ollama.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -91,6 +91,7 @@ afterAll(async () => {
   ollama.restore();
   await Promise.all(apps.map((app) => app.close()));
   for (const tenantId of tenantIds) {
+    await owner.kmArticle.deleteMany({ where: { tenantId } });
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
     await owner.tenantSettings.deleteMany({ where: { tenantId } });
     await owner.agent.deleteMany({ where: { tenantId } });
@@ -187,6 +188,26 @@ describe('修改向量化設定', () => {
     assert.equal(res.status, 400, JSON.stringify(res.body));
     assert.equal(res.body.error?.code, 'DATABASE_ERROR');
     assert.equal((await storedRow(t))?.embeddingTopK, 3, '設定沒有寫入');
+  });
+});
+
+describe('搜尋只比對目前模型的向量', () => {
+  test('換服務後統計顯示要重新嵌入', async () => {
+    const t = await makeTenant('stats-model');
+    await saveRow(t, { embeddingProvider: 'gemini', embeddingModel: 'gemini-embedding-001' });
+    for (const label of ['a', 'b']) {
+      const a = await owner.kmArticle.create({
+        data: { tenantId: t, title: `${MARK}-${label}`, content: 'x', summary: '', category: '一般', tags: [], status: 'PUBLISHED', createdById: MISSING },
+      });
+      await owner.$executeRawUnsafe(
+        `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = 'bge-m3' WHERE id = $2::uuid`,
+        `[${markedVector(1).join(',')}]`,
+        a.id,
+      );
+    }
+    const res = await call(await buildApp(t), 'GET', S);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.deepEqual(res.body.data.stats, { total: 2, embedded: 0, missing: 2 });
   });
 });
 

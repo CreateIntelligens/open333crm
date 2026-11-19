@@ -128,7 +128,11 @@ export async function listPublishedArticleIds(ctx: TenantCtx): Promise<string[]>
 
 // ─── 相似度搜尋 ─────────────────────────────────────────────────────────────
 
-/** 依向量找本租戶已發布、相似度達門檻的文章。`topK`、`threshold` 由呼叫端從設定帶入（design D5） */
+/**
+ * 依向量找本租戶已發布、相似度達門檻的文章。`model`、`topK`、`threshold` 由呼叫端從設定帶入。
+ * 只比對 `model` 產生的向量：不同模型的向量維度相同，但相似度沒有意義
+ * （spec embedding-settings「搜尋只比對目前模型的向量」）。
+ */
 export async function searchSimilarArticles(
   ctx: TenantCtx,
   queryEmbedding: number[],
@@ -141,6 +145,7 @@ export async function searchSimilarArticles(
      WHERE "tenantId" = $2::uuid
        AND status = 'PUBLISHED'
        AND embedding IS NOT NULL
+       AND "embeddingModel" = $5
        AND 1 - (embedding <=> $1::vector) >= $3
      ORDER BY similarity DESC
      LIMIT $4`,
@@ -148,5 +153,6 @@ export async function searchSimilarArticles(
     ctx.tenantId,
     options.threshold,
     options.topK,
+    options.model,
   );
 }

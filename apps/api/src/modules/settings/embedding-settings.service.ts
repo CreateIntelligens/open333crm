@@ -130,15 +130,18 @@ export async function updateEmbeddingSettings(
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
+/** 已向量化只計目前模型的向量：換服務或模型後，舊向量算成要重新向量化 */
 export async function getEmbeddingStats(ctx: TenantCtx): Promise<EmbeddingStats> {
+  const { model } = await getEmbeddingSettings(ctx);
   const total = await ctx.tx.kmArticle.count({
     where: { tenantId: ctx.tenantId, status: 'PUBLISHED' },
   });
 
   const embeddedRows = await ctx.tx.$queryRawUnsafe<{ count: bigint }[]>(
     `SELECT COUNT(*)::bigint AS count FROM km_articles
-     WHERE "tenantId" = $1::uuid AND status = 'PUBLISHED' AND embedding IS NOT NULL`,
+     WHERE "tenantId" = $1::uuid AND status = 'PUBLISHED' AND embedding IS NOT NULL AND "embeddingModel" = $2`,
     ctx.tenantId,
+    model,
   );
   const embedded = Number(embeddedRows[0]?.count ?? 0);
 
