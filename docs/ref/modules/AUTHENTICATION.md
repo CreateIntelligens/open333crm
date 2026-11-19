@@ -114,7 +114,7 @@ Socket.IO 的每個 namespace 各自認證：
 
 客服的 socket 在 handshake 驗證 token，並拒絕已停用或已不存在的成員。連線建立之後不重新驗證 token：成員被停用或永久刪除時，重新計算房間會斷開他的連線；租戶停用時不會主動斷線。`subscribe` 的授權每次從資料庫讀成員目前的角色，不用 token 裡的 `roleId`。
 
-`message.new`、`conversation.*` 只送到渠道房間，不送到 `tenant:<tenantId>`（issue #427）。渠道房間在 handshake 驗證時算好；成員的可用渠道、角色或角色權限、渠道與渠道團隊授權、租戶的方案或方案設定改變，以及成員停用與永久刪除時，`fastify.syncSocketChannelRooms()` 重新計算已連線 socket 的房間。`tenant:<tenantId>` 仍收到工單與聯絡人合併的事件，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
+`message.new`、`conversation.*` 只送到渠道房間，不送到 `tenant:<tenantId>`。渠道房間在 handshake 驗證時算好；成員的可用渠道、角色或角色權限、渠道與渠道團隊授權、租戶的方案或方案設定改變，以及成員停用與永久刪除時，`fastify.syncSocketChannelRooms()` 重新計算已連線 socket 的房間。`tenant:<tenantId>` 仍收到工單與聯絡人合併的事件，不經過渠道可見範圍的檢查，見 `../system/AUDIT.md` 的 RBAC-04。
 
 ## 停用與撤銷什麼時候生效
 

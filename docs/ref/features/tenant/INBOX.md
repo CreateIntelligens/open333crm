@@ -86,7 +86,7 @@
 
 轉接之後，關鍵字規則照樣回覆（workers 執行關鍵字規則時不看對話狀態），知識庫自動回覆與 agent 只回覆 `BOT_HANDLED` 的對話。
 
-**AI 回覆失敗時轉真人（issue #445）。** 客人的文字訊息沒有得到 AI agent 的回覆，知識庫回覆又因錯誤失敗時，客人原本收不到任何訊息，對話停在 `BOT_HANDLED`。現在改為轉真人，客服在收件匣看到轉接原因，也收到「轉接真人」通知：
+**AI 回覆失敗時轉真人。** 客人的文字訊息沒有得到 AI agent 的回覆，知識庫回覆又因錯誤失敗時，客人原本收不到任何訊息，對話停在 `BOT_HANDLED`。現在改為轉真人，客服在收件匣看到轉接原因，也收到「轉接真人」通知：
 
 - `handoffReason` 與系統訊息寫「AI 暫時無法回覆（去識別化服務無法使用）」「（個資保護設定無法讀取）」「（AI 月額度已用完）」或「（AI 服務發生錯誤）」，不寫錯誤內容。系統訊息的 `metadata.source` 是 `ai_reply_failed`。
 - 系統訊息是固定文字，不呼叫去識別化服務；租戶開啟遮罩時，遮罩副本就是原文（`privacy.mode` 為 `system_fixed`）。不寫對話摘要。
@@ -199,7 +199,7 @@
 
 渠道看不見時回 404，看得見但層級不足時回 403。看不見時不回 403，是為了不透露其他分店的對話是否存在。
 
-**即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間（issue #427）：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
+**即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
 
 成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權與方案異動後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。成員停用或刪除時，系統斷開他的連線。轉接真人的系統訊息也走渠道房間。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
 

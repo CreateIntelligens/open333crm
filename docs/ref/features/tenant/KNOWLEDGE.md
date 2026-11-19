@@ -102,7 +102,7 @@
 
 依文章回答的訊息會附上「👎 沒幫到我」快速回覆按鈕；追問與型號守門的回覆沒有這個按鈕。客人按下後，進站攔截器把回饋記到 `KbArticleFeedback`，並回一則感謝訊息。管理員在「知識庫 → 回報調教」查看各文章的回報，並標記為已處理。
 
-**知識庫回覆因錯誤失敗時轉真人。** 產生訊息向量失敗（去識別化服務、embedding 服務故障），或讀設定、檢索、寫入前的遮罩丟出錯誤，而 AI agent 也沒有回覆時，`attemptKbAutoReplyFlow()` 回傳 `failed`，系統轉真人，原因寫「AI 暫時無法回覆（…）」（issue #445，見[收件匣的轉真人](./INBOX.md#轉真人)）。結果分三種：`replied`（已回覆，含 LLM 失敗時的備援內容）、`skipped`（正常不回覆：停用、對話不是 `BOT_HANDLED`、`botMode`、已有回覆、產生回覆期間客服接手；命中關鍵字規則時 worker 不呼叫知識庫）與 `failed`。
+**知識庫回覆因錯誤失敗時轉真人。** 產生訊息向量失敗（去識別化服務、embedding 服務故障），或讀設定、檢索、寫入前的遮罩丟出錯誤，而 AI agent 也沒有回覆時，`attemptKbAutoReplyFlow()` 回傳 `failed`，系統轉真人，原因寫「AI 暫時無法回覆（…）」（見[收件匣的轉真人](./INBOX.md#轉真人)）。結果分三種：`replied`（已回覆，含 LLM 失敗時的備援內容）、`skipped`（正常不回覆：停用、對話不是 `BOT_HANDLED`、`botMode`、已有回覆、產生回覆期間客服接手；命中關鍵字規則時 worker 不呼叫知識庫）與 `failed`。
 
 **交易與外部呼叫。** 知識庫回覆的讀寫都在綁定租戶的短交易內，受 RLS 約束；embedding 服務、LLM 與去識別化服務在交易外呼叫。寫入回覆時，系統在同一個交易內以條件更新確認對話仍是 `BOT_HANDLED`：產生回覆期間客服接手時，不寫入、也不送出這則回覆，結果是 `skipped`（`already_handled`）。追問次數在寫入的交易內讀最新的值再合併（change `migrate-ai-kb-autoreply-tenant-ctx`）。
 

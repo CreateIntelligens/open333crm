@@ -278,7 +278,7 @@ Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取�
 各排程避免重複處理的方法：
 
 - `outbox-relay` 重跑時，以 job id 去重。
-- 其他排程靠資料庫的條件更新。例如群發以條件更新把狀態改成 `sending`，`canvas-resume` 以條件更新把 `WAITING` 改成 `RUNNING`（#334）。
+- 其他排程靠資料庫的條件更新。例如群發以條件更新把狀態改成 `sending`，`canvas-resume` 以條件更新把 `WAITING` 改成 `RUNNING`。
 
 ### 新增 API 行程內的排程
 
