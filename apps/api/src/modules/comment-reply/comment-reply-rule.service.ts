@@ -419,8 +419,8 @@ export async function updateRule(
   if (patch.content !== undefined) await validateContent(ctx, ext, merged);
   if (merged.isActive && !rule.isActive) await assertActiveRuleCapacity(ctx);
 
-  await ctx.tx.commentReplyRule.update({
-    where: { id: rule.id },
+  await ctx.tx.commentReplyRule.updateMany({
+    where: { id: rule.id, tenantId: ctx.tenantId },
     data: { ...ruleData(merged, posts), updatedById: viewer.agentId },
   });
   return { view: await reloadView(ctx, viewer, channels, rule.id), channelId: rule.channelId, changedFields: Object.keys(patch) };
@@ -432,7 +432,7 @@ export async function setRuleActive(ctx: TenantCtx, viewer: CommentReplyViewer, 
   const rule = await loadEditableRule(ctx, viewer, channels, id);
   if (isActive && !rule.isActive) await assertActiveRuleCapacity(ctx);
   if (rule.isActive !== isActive) {
-    await ctx.tx.commentReplyRule.update({ where: { id: rule.id }, data: { isActive, updatedById: viewer.agentId } });
+    await ctx.tx.commentReplyRule.updateMany({ where: { id: rule.id, tenantId: ctx.tenantId }, data: { isActive, updatedById: viewer.agentId } });
   }
   return { view: await reloadView(ctx, viewer, channels, rule.id), channelId: rule.channelId };
 }
@@ -441,7 +441,7 @@ export async function setRuleActive(ctx: TenantCtx, viewer: CommentReplyViewer, 
 export async function deleteRule(ctx: TenantCtx, viewer: CommentReplyViewer, id: string): Promise<{ id: string; name: string; channelId: string }> {
   const channels = await resolveViewerChannels(ctx, viewer);
   const rule = await loadEditableRule(ctx, viewer, channels, id);
-  await ctx.tx.commentReplyRule.update({ where: { id: rule.id }, data: { deletedAt: new Date(), updatedById: viewer.agentId } });
+  await ctx.tx.commentReplyRule.updateMany({ where: { id: rule.id, tenantId: ctx.tenantId }, data: { deletedAt: new Date(), updatedById: viewer.agentId } });
   return { id: rule.id, name: rule.name, channelId: rule.channelId };
 }
 
@@ -468,7 +468,7 @@ export async function reorderRules(ctx: TenantCtx, viewer: CommentReplyViewer, i
   const ordered = all.map((r) => (editableIds.has(r.id) ? queue.shift()! : r.id));
   for (let i = 0; i < ordered.length; i++) {
     const current = all.find((r) => r.id === ordered[i])!;
-    if (current.priority !== i) await ctx.tx.commentReplyRule.update({ where: { id: ordered[i] }, data: { priority: i } });
+    if (current.priority !== i) await ctx.tx.commentReplyRule.updateMany({ where: { id: ordered[i], tenantId: ctx.tenantId }, data: { priority: i } });
   }
   return { channelIds: [...new Set(editable.map((r) => r.channelId))] };
 }
