@@ -2,20 +2,22 @@
  * 手冊第 18 章「優惠券」後台畫面的截圖與影片（新版 UI）。
  *
  * ⚠️ UAT 就是正式環境：只開表單、填示範文字、用框線指出送出按鈕，然後按「取消」或離開；
- *   不建立、不儲存、不發布、不發送。guardWrites（startRecording／newShotPage 內建）擋下所有非 GET 請求，
- *   本章沒有放行任何 POST。
+ *   不建立、不儲存、不發布、不發送。guardWrites（startRecording／newShotPage 內建）擋下所有非 GET 請求。
+ *   唯一例外是「ch18 截圖：帳號已建立與核銷台」：使用者授權建立門市「示範：信義門市」與一個核銷帳號
+ *   （已存在就沿用、重設密碼），以及核銷台登入；查券、核銷、今日紀錄都在瀏覽器端回覆示範資料。
  *
  * 示範資料：錄製用的示範帳戶（admin@open333crm.dev）只有一張已結束的券、沒有門市，
  *   所以優惠券與門市相關的 GET 回應改由本檔的示範資料（名稱都標「示範」）在瀏覽器端回覆，
  *   不寫入伺服器。只攔 GET；其他方法一律交回 guardWrites 處理。
  *
- * 保留舊檔、不在這裡重拍的項目：顧客手機畫面、LINE／FB 聊天室、需要門市帳號登入後的核銷台畫面、
- *   「帳號已建立」（要真的建立帳號才看得到）、收件匣對話發券（示範帳戶沒有由真人接手的對話，接管是寫入）。
+ * 保留舊檔、不在這裡重拍的項目：顧客手機畫面、LINE／FB 聊天室、
+ *   收件匣對話發券（示範帳戶沒有由真人接手的對話，接管是寫入）。
  *
  * 跑法：npx playwright test --config=playwright.shots.config.ts tests/manual-ch18.spec.ts
  */
 import { test, Page, Locator, BrowserContext, Browser } from '@playwright/test';
 import * as path from 'path';
+import { randomInt } from 'crypto';
 import {
   startRecording, stopRecording, poster, caption, point, tap, typeIn, go, newShotPage, guardWrites, Recorder,
 } from './manual-video-helpers';
@@ -636,6 +638,138 @@ test('ch18-keyword-fb Facebook 關鍵字發券', async ({ browser }) => {
   await finish(r);
 });
 
+// ─── 收件匣發券（對象是使用者本人 Daniel，2026-11-19 使用者同意真的發券）────────────
+
+/** demo 站 Daniel 的對話：LINE OA（錄影前先用 API 重新開啟）、Facebook Open333test */
+const DANIEL_LINE_CONV = 'fe6d7425-49a6-400c-a8b5-2895273892ac';
+const DANIEL_FB_CONV = '138e8ea6-279f-4411-bdb1-850a21ab3339';
+const INBOX_PII = `(() => {
+  const css = \`
+    [data-testid="chat-messages"] div.bg-background[class*="rounded-tl-"]{filter:blur(6px)!important}
+    [data-testid="other-channel-message"]{filter:blur(5px)!important}
+    div.inline-flex.rounded-full.overflow-hidden{filter:blur(6px)!important}
+    div.w-80.border-l dd:not(.flex){filter:blur(5px)!important}
+  \`;
+  const NAMES = ['Daniel', 'D', 'YD', '劉柏毅', '楊丹尼', 'Yang Daniel'];
+  function run(){
+    if (!document.getElementById('pii-style') && document.head) {
+      const s = document.createElement('style'); s.id = 'pii-style'; s.textContent = css; document.head.appendChild(s);
+    }
+    // 左欄列表：不是匿名訪客的項目，模糊姓名與最後訊息
+    document.querySelectorAll('div.w-80.border-r button').forEach(b => {
+      if (!b.querySelector('p')) return;
+      if ((b.textContent || '').includes('Chatbox Visitor')) return;
+      b.querySelectorAll('span.truncate.text-sm, p').forEach(e => { e.style.filter = 'blur(5px)'; });
+    });
+    // 聊天表頭姓名、右欄姓名
+    document.querySelectorAll('h3.text-xl, div.w-80.border-l h3').forEach(e => {
+      if (!(e.textContent || '').includes('Chatbox Visitor')) e.style.filter = 'blur(6px)';
+    });
+    document.querySelectorAll('h1,h2,h3,h4,p,span,div').forEach(e => {
+      if (e.children.length) return;
+      if (NAMES.includes((e.textContent || '').trim())) e.style.filter = 'blur(6px)';
+    });
+    // 右欄「其他渠道的對話」預覽
+    const h = [...document.querySelectorAll('h4')].find(x => (x.textContent||'').includes('其他渠道的對話'));
+    if (h && h.parentElement) h.parentElement.querySelectorAll('p, span.block.truncate').forEach(p => p.style.filter = 'blur(5px)');
+    // 浮動工具列（非本系統元件）
+    document.querySelectorAll('[title="聊天室"],[title="網頁摘要與對話"],[title="切換主題"]').forEach(b => {
+      let e = b; for (let i = 0; i < 8 && e && e.parentElement && e.parentElement !== document.body; i++) e = e.parentElement;
+      if (e && e !== document.body) e.style.display = 'none';
+    });
+  }
+  setInterval(run, 250);
+})();`;
+
+async function openInboxConv(browser: Browser, name: string, convId: string, allow: RegExp[]) {
+  const r = await startRecording(browser, name, { allowPost: allow });
+  await r.context.addInitScript(INBOX_PII);
+  await r.context.addInitScript(TIDY);
+  await go(r.page, `/dashboard/inbox?conv=${convId}`);
+  await r.page.waitForTimeout(1500);
+  return r;
+}
+
+test('ch18-issue 收件匣發券（LINE）', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const r = await openInboxConv(browser, 'ch18-issue', DANIEL_LINE_CONV, [
+    new RegExp(`/conversations/${DANIEL_LINE_CONV}(/handoff)?$`),
+    new RegExp(`/coupon-issue/conversations/${DANIEL_LINE_CONV}`),
+  ]);
+  const { page } = r;
+  await caption(page, '在收件匣打開顧客的 LINE 對話', 1500);
+  const reopen = page.getByRole('button', { name: '重新開啟對話' });
+  if (await reopen.isVisible().catch(() => false)) {
+    await caption(page, '已結束的對話不能發券，先按「重新開啟對話」', 1000);
+    await tap(page, reopen, 2000);
+  }
+  const takeover = page.getByRole('button', { name: '接管對話' }).first();
+  if (await takeover.isVisible().catch(() => false)) {
+    await caption(page, '機器人處理中的對話要先「接管對話」才能發券', 1000);
+    await tap(page, takeover, 2000);
+  }
+  await caption(page, '按輸入框下方的「發券」', 1000);
+  await tap(page, page.getByRole('button', { name: '發券', exact: true }), 1800);
+  const dlg = page.getByRole('dialog').last();
+  await caption(page, '收件匣只能發「客服補償」用途的券，選一張', 1600);
+  await tap(page, dlg.getByRole('listitem').filter({ hasText: '示範：客服補償 NT$100 折價券' }).getByRole('button', { name: '選擇' }), 1600);
+  await caption(page, '確認券名與顧客，發送後無法撤回', 2000);
+  await caption(page, '按「確認發送」，顧客會在 LINE 收到券', 1000);
+  await tap(page, dlg.getByRole('button', { name: '確認發送' }), 3500);
+  await caption(page, '對話裡會出現這張券的卡片', 2600);
+  await finish(r, 3);
+});
+
+test('ch18-issue-fb 收件匣發券（Facebook）', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const r = await openInboxConv(browser, 'ch18-issue-fb', DANIEL_FB_CONV, [
+    new RegExp(`/conversations/${DANIEL_FB_CONV}/handoff$`),
+  ]);
+  const { page } = r;
+  await caption(page, 'Facebook 對話一樣可以發券', 1500);
+  const takeover = page.getByRole('button', { name: '接管對話' }).first();
+  if (await takeover.isVisible().catch(() => false)) {
+    await caption(page, '先「接管對話」', 800);
+    await tap(page, takeover, 2000);
+  }
+  await tap(page, page.getByRole('button', { name: '發券', exact: true }), 1800);
+  const dlg = page.getByRole('dialog').last();
+  await caption(page, 'Facebook 只能發給 24 小時內傳過訊息的顧客', 1200);
+  await point(page, dlg.getByRole('alert').first(), 2000);
+  await caption(page, '超過期限時會直接提醒，不能發送；請等顧客再傳訊息', 2600);
+  await tap(page, dlg.getByRole('button', { name: '取消' }).first(), 1000);
+  await finish(r, 2);
+});
+
+test('ch18-follow-gift-full 加好友禮設定與發放來源', async ({ browser }) => {
+  test.setTimeout(150_000);
+  const r = await rec(browser, 'ch18-follow-gift-full');
+  const { page } = r;
+  // demo 站沒有啟用加好友禮（真的啟用會發券給新加好友的真實用戶），攔 GET 回一條已啟用的示範設定
+  const RULE_ID = 'c0ffee00-0000-4000-8000-0000000000e1';
+  const rule = {
+    id: RULE_ID, name: '加好友禮', trigger: { type: 'contact.followed' }, isActive: true, createdAt: '2026-11-01T02:00:00.000Z',
+    conditions: { all: [{ fact: 'follow.isFirst', operator: 'equal', value: true }, { fact: 'conversation.channelType', operator: 'equal', value: 'LINE' }] },
+    actions: [{ type: 'issue_coupon', params: { couponId: ID.welcome, failureText: '新朋友禮已經發完了，歡迎關注下一波活動' } }],
+  };
+  const ok = (data: unknown, meta?: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data, ...(meta ? { meta } : {}) }) });
+  await page.route(/\/api\/v1\/automation\/rules\?.*trigger=contact\.followed/, (route) =>
+    route.request().method() !== 'GET' ? route.fallback() : route.fulfill(ok([rule], { total: 1, page: 1, limit: 100, totalPages: 1 })));
+  await page.route(new RegExp(`/api/v1/automation/rules/${RULE_ID}$`), (route) =>
+    route.request().method() !== 'GET' ? route.fallback() : route.fulfill(ok(rule)));
+  await go(page, '/dashboard/line/follow-gift');
+  await caption(page, '「渠道 → 加好友禮」：已啟用，查看目前送出的券', 2200);
+  await point(page, page.getByLabel('加好友時發送的優惠券'), 1600);
+  await caption(page, '券發不出時回覆這段文字；每個 LINE 帳號只有一條加好友禮', 2400);
+  await go(page, `/dashboard/marketing/coupons/${ID.autumn}`);
+  await caption(page, '到這張券的詳情頁，看「序號明細」', 1600);
+  const row = page.getByRole('row').filter({ hasText: '加好友禮' }).first();
+  await row.waitFor();
+  await caption(page, '發放來源顯示「加好友禮／加好友」，就是加好友時自動送出的券', 2800);
+  await point(page, row, 2000);
+  await finish(r, 2);
+});
+
 // ─── 截圖 ─────────────────────────────────────────────────────────────────────
 
 test('ch18 截圖：門市', async ({ browser }) => {
@@ -677,5 +811,201 @@ test('ch18 截圖：核銷台登入', async ({ browser }) => {
   await page.waitForTimeout(800);
   await page.screenshot({ path: path.join(SHOTS_DIR, 'ch18-console-login.png') });
   console.log('✓ ch18-console-login.png');
+  await context.close();
+});
+
+// ─── 帳號已建立＋核銷台（使用者授權的兩項真實寫入）────────────────────────────
+//
+// 使用者只授權在 UAT 示範租戶寫入兩件事：
+//   1. 建立門市「示範：信義門市」（已存在就沿用）。
+//   2. 在這間門市建立一個核銷帳號（已存在就沿用；需要密碼時用「重設密碼」取得新密碼）。
+// 密碼在本測試中隨機產生、只留在記憶體，登入核銷台用完即丟，不寫進任何檔案或 log。
+// 核銷台的查券、確認核銷、今日紀錄全部用 page.route 在瀏覽器端回覆示範資料，不送到伺服器；
+// 只有核銷台登入（POST /store-console/login，登入不是寫入）放行到伺服器。
+
+const DEMO_STORE = '示範：信義門市';
+const DEMO_USERNAMES = ['demo-xinyi', 'demo-xinyi-01', 'demo-xinyi-02'];
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+/** 12 字隨機密碼（同後台「產生隨機密碼」的字元集，不含 0、O、1、l、I） */
+function randomPassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  return Array.from({ length: 12 }, () => chars[randomInt(chars.length)]).join('');
+}
+
+type RealStore = { id: string; name: string; accounts: { id: string; username: string }[] };
+
+async function readStores(page: Page): Promise<RealStore[]> {
+  const res = page.waitForResponse((r) => /\/api\/v1\/stores(\?|$)/.test(r.url()) && r.request().method() === 'GET');
+  await go(page, '/dashboard/settings/stores');
+  return ((await (await res).json()).data ?? []) as RealStore[];
+}
+
+const DEMO_STORE_COUPON = {
+  instanceId: 'c0ffee00-0000-4000-8000-000000000501',
+  code: 'AUTUMN-DEMO01',
+  name: '示範：秋季折價券',
+  couponType: 'DISCOUNT_AMOUNT', discountAmount: 50, discountPercent: null, minSpend: null, percentCap: null,
+  giftName: null, giftQty: null, exchangeItem: null, exchangeValueCap: null,
+  redeemMode: 'STAFF_SCAN', validityMode: 'AFTER_CLAIM',
+  startAt: '2026-11-10T02:00:00.000Z', endAt: null, expiresAt: '2026-12-10T15:59:59.000Z',
+  // 核銷台收到的顧客名本來就是後端遮蔽過的
+  customerName: '示範顧客 A',
+};
+
+/** 核銷台的查券／核銷／今日紀錄全部在瀏覽器端回覆示範資料（必須在 guardWrites 之後註冊才會先處理） */
+async function mockStoreConsole(context: BrowserContext) {
+  let redeemedAt: string | null = null;
+  const today = () => {
+    const items = redeemedAt ? [{ ...DEMO_STORE_COUPON, redeemedAt }] : [];
+    return {
+      items,
+      summary: { count: items.length, discountTotal: items.length * 50, giftCount: 0, exchangeCount: 0 },
+      date: '2026-11-18T16:00:00.000Z',
+    };
+  };
+  await context.route('**/api/v1/store-console/lookup**', (route) =>
+    route.fulfill(json({ result: 'OK', coupon: DEMO_STORE_COUPON })));
+  await context.route('**/api/v1/store-console/redeem', (route) => {
+    // 不送到伺服器：直接回覆核銷成功的示範結果
+    redeemedAt = '2026-11-19T06:42:00.000Z';
+    return route.fulfill(json({ ok: true, redeemedAt, storeName: DEMO_STORE, coupon: DEMO_STORE_COUPON }));
+  });
+  await context.route('**/api/v1/store-console/today', (route) => route.fulfill(json(today())));
+}
+
+test('ch18 截圖：帳號已建立與核銷台', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const page = await newShotPage(browser, {
+    allowPost: [
+      /\/api\/v1\/stores$/, // 1. 建立門市（只在不存在時才按）
+      new RegExp(`/api/v1/stores/${UUID}/accounts$`), // 2. 建立核銷帳號
+      new RegExp(`/api/v1/stores/accounts/${UUID}/reset-password$`), // 2'. 帳號已存在時重設密碼
+    ],
+  });
+
+  // 1. 門市：不存在才建立
+  let stores = await readStores(page);
+  let store = stores.find((s) => s.name === DEMO_STORE);
+  if (!store) {
+    await page.getByRole('button', { name: '新增門市' }).click();
+    await page.getByLabel('門市名稱').fill(DEMO_STORE);
+    const created = page.waitForResponse((r) => /\/api\/v1\/stores$/.test(r.url()) && r.request().method() === 'POST');
+    await page.getByRole('dialog').getByRole('button', { name: '新增門市' }).click();
+    if (!(await created).ok()) throw new Error('建立門市失敗');
+    stores = await readStores(page);
+    store = stores.find((s) => s.name === DEMO_STORE);
+    if (!store) throw new Error('建立後仍找不到門市');
+    console.log(`已建立門市 ${DEMO_STORE}`);
+  } else {
+    console.log(`沿用既有門市 ${DEMO_STORE}`);
+  }
+  const card = page.getByTestId('store-card').filter({ hasText: DEMO_STORE });
+  await card.waitFor();
+
+  const password = randomPassword();
+  let username: string;
+  // 截圖時把密碼糊掉（只糊密碼那一列的值）
+  const blurPassword = () => page.evaluate(() => {
+    // 對話框是原生 <dialog>，沒有 role 屬性，所以直接找所有 dt
+    document.querySelectorAll('dt').forEach((dt) => {
+      if (dt.textContent?.trim() === '密碼') {
+        const dd = dt.parentElement?.querySelector('dd') as HTMLElement | null;
+        if (dd) dd.style.filter = 'blur(7px)';
+      }
+    });
+  });
+
+  if (store.accounts.length === 0) {
+    // 2. 建立核銷帳號，順便拍「帳號已建立」
+    let created = false;
+    username = DEMO_USERNAMES[0];
+    for (const name of DEMO_USERNAMES) {
+      username = name;
+      const dialogOpen = await page.getByRole('dialog').isVisible().catch(() => false);
+      if (!dialogOpen) await card.getByRole('button', { name: '新增帳號' }).click();
+      const dlg = page.getByRole('dialog');
+      await dlg.getByLabel('帳號名稱').fill(name);
+      await dlg.getByLabel('密碼', { exact: true }).fill(password);
+      const res = page.waitForResponse((r) => /\/accounts$/.test(r.url()) && r.request().method() === 'POST');
+      await dlg.getByRole('button', { name: '建立帳號' }).click();
+      const status = (await res).status();
+      if (status === 409) { console.log(`帳號名稱 ${name} 已被使用，換下一個`); continue; }
+      if (status >= 400) throw new Error(`建立帳號失敗 ${status}`);
+      created = true;
+      break;
+    }
+    if (!created) throw new Error('候選帳號名稱都已被使用');
+    const dlg = page.getByRole('dialog');
+    await dlg.getByRole('heading', { name: '帳號已建立' }).waitFor();
+    await blurPassword();
+    await snap(page, dlg, 'ch18-store-created');
+    await dlg.getByRole('button', { name: '我已交給店長，關閉' }).click();
+    console.log(`已建立核銷帳號 ${username}`);
+  } else {
+    // 帳號已存在：重設密碼取得新密碼
+    username = store.accounts[0].username;
+    await card.getByRole('button', { name: `${username} 帳號操作` }).click();
+    await page.getByRole('menuitem', { name: '重設密碼' }).click();
+    const dlg = page.getByRole('dialog');
+    await dlg.getByLabel('新密碼', { exact: true }).fill(password);
+    await dlg.getByLabel('再輸入一次新密碼', { exact: true }).fill(password);
+    const res = page.waitForResponse((r) => /reset-password$/.test(r.url()) && r.request().method() === 'POST');
+    await dlg.getByRole('button', { name: '重設密碼', exact: true }).click();
+    if (!(await res).ok()) throw new Error('重設密碼失敗');
+    await dlg.getByRole('button', { name: '我已交給店長，關閉' }).click();
+    console.log(`沿用核銷帳號 ${username}，已重設密碼`);
+
+    // 重拍「帳號已建立」：建立帳號的 POST 在瀏覽器端回覆示範結果，不送到伺服器；畫面上的密碼是假的，照樣模糊
+    await page.route(new RegExp(`/api/v1/stores/${UUID}/accounts$`), (route) => route.fulfill(json({
+      id: 'c0ffee00-0000-4000-8000-0000000000b9', storeId: store!.id, username, canRedeem: true, isActive: true,
+      lockedUntil: null, lastLoginAt: null, createdAt: new Date().toISOString(),
+    })));
+    await card.getByRole('button', { name: '新增帳號' }).click();
+    const form = page.getByRole('dialog');
+    await form.getByLabel('帳號名稱').fill(username);
+    await form.getByLabel('密碼', { exact: true }).fill(randomPassword());
+    await form.getByRole('button', { name: '建立帳號' }).click();
+    await form.getByRole('heading', { name: '帳號已建立' }).waitFor();
+    await blurPassword();
+    await snap(page, form, 'ch18-store-created');
+    await form.getByRole('button', { name: '我已交給店長，關閉' }).click();
+  }
+  await page.context().close();
+
+  // 3. 核銷台（手機尺寸）：只放行登入，其他寫入擋下或在瀏覽器端回覆示範資料
+  const context = await browser.newContext({
+    viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true,
+  });
+  await guardWrites(context, [/\/api\/v1\/store-console\/login$/]);
+  await mockStoreConsole(context);
+  const m = await context.newPage();
+  const shotFull = async (name: string) => {
+    await m.waitForTimeout(700);
+    await m.screenshot({ path: path.join(SHOTS_DIR, `${name}.png`), fullPage: true });
+    console.log(`✓ ${name}.png`);
+  };
+  await m.goto(`${BASE_URL}/redeem`, { waitUntil: 'networkidle' });
+  await m.getByLabel('門市帳號').fill(username);
+  await m.getByLabel('密碼', { exact: true }).fill(password);
+  await m.getByRole('button', { name: '登入', exact: true }).click();
+  await m.getByRole('tab', { name: '手動核銷' }).click();
+  await m.getByLabel('輸入券上的序號').fill('AUTUMN-DEMO01');
+  await shotFull('ch18-console-manual');
+
+  await m.getByRole('button', { name: '查詢', exact: true }).click();
+  await m.getByRole('button', { name: '確認核銷' }).waitFor();
+  await shotFull('ch18-console-confirm');
+
+  await m.getByRole('button', { name: '確認核銷' }).click();
+  await m.getByText('核銷完成').first().waitFor();
+  await shotFull('ch18-console-done');
+
+  await m.getByRole('button', { name: '下一位' }).click();
+  await m.getByRole('button', { name: /^紀錄/ }).click();
+  await m.getByText('今日 1 筆').waitFor();
+  await m.getByRole('button', { name: /示範：秋季折價券/ }).click();
+  await m.getByText('核銷門市').waitFor();
+  await shotFull('ch18-console-records');
   await context.close();
 });

@@ -3,11 +3,12 @@
  * ⚠️ UAT 即正式環境：只開表單、打示範文字、按取消；所有寫入請求都被 guardWrites 擋下。
  * 詳情頁的下拉選了就會存檔，所以影片只框出、不改值。
  */
-import { test, Page, BrowserContext } from '@playwright/test';
+import { test, Page, BrowserContext, Locator } from '@playwright/test';
+import * as path from 'path';
 import {
   startRecording, stopRecording, poster, go, caption, point, tap, typeIn, newShotPage,
 } from './manual-video-helpers';
-import { shot, shotPage } from './manual-helpers';
+import { shot, shotPage, sanitize, SHOTS_DIR } from './manual-helpers';
 
 /**
  * 遮蔽真實姓名（新版 UI 的列表是 role=table 的 div 格線，不是 <table>）：
@@ -221,8 +222,93 @@ test('ch02 截圖', async ({ browser }) => {
   await page.waitForTimeout(800);
   await shot(page, page.getByRole('dialog'), 'ch02-escalate');
   await page.getByRole('dialog').getByRole('button', { name: '取消' }).click();
+});
+
+/**
+ * 「建立工單」是整頁表單（PageDialog），表單本體只有 620px 寬，右半邊是空白。
+ * 只拍表單欄（同 ch08 的 shotForm）；表單比視窗高時先把視窗拉高，一次拍完整張表單。
+ */
+async function shotForm(p: Page, d: Locator, name: string) {
+  const form = d.locator('div.max-w-\\[620px\\]').first();
+  if (!(await form.count())) { console.log(`✗ ${name}：找不到表單`); return; }
+  const h = await form.evaluate((el) => el.getBoundingClientRect().bottom + 40);
+  const vp = p.viewportSize()!;
+  if (h > vp.height) await p.setViewportSize({ width: vp.width, height: Math.ceil(h) });
+  await d.evaluate((el) => { el.scrollTop = 0; });
+  await p.waitForTimeout(500);
+  await sanitize(p);
+  const box = await form.boundingBox();
+  if (!box) { console.log(`✗ ${name}：找不到表單`); return; }
+  await p.screenshot({
+    path: path.join(SHOTS_DIR, `${name}.png`),
+    clip: { x: Math.max(0, box.x - 16), y: Math.max(0, box.y - 8), width: box.width + 32, height: box.height + 16 },
+  });
+  console.log(`✓ ${name}.png`);
+  await p.setViewportSize(vp);
+}
+
+test('ch02 建立工單表單', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await protect(page.context(), page);
   await go(page, '/dashboard/cases');
   await page.getByRole('button', { name: '建立工單' }).click();
-  await page.waitForTimeout(800);
-  await shot(page, page.getByRole('dialog'), 'ch02-create-dialog');
+  await page.waitForTimeout(1200);
+  const d = page.getByRole('dialog');
+  await shotForm(page, d, 'ch02-create-dialog');
+  await d.getByRole('button', { name: '取消' }).click();
+  await page.waitForTimeout(1200); // PageDialog 關閉時會延後 history.back()
+});
+
+/**
+ * 滿意度示範資料：UAT 示範租戶沒有帶客服代評的工單，攔截工單詳情的 GET 回應補上示範分數與時間軸事件。
+ * 只改 GET 的回應，其他方法一律 fallback（寫入請求仍由 guardWrites 擋下）。
+ */
+const CASE_DETAIL_URL = /\/api\/v1\/cases\/[0-9a-f-]{36}(\?.*)?$/;
+
+function demoCsatCase(data: Record<string, any>) {
+  const base = new Date();
+  base.setDate(base.getDate() - 1);
+  base.setHours(10, 0, 0, 0);
+  const at = (min: number) => new Date(base.getTime() + min * 60000).toISOString();
+  const agent = { id: '00000000-0000-0000-0000-0000000000a1', name: '示範客服' };
+  const ev = (id: number, eventType: string, min: number, payload: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    id: `00000000-0000-0000-0000-00000000c0${String(id).padStart(2, '0')}`,
+    caseId: data.id, eventType, type: eventType, payload, createdAt: at(min), actorType: 'system', actor: null, ...extra,
+  });
+  return {
+    ...data,
+    title: '範例：訂單配送詢問',
+    status: 'CLOSED',
+    contact: data.contact ? { ...data.contact, displayName: '示範顧客 A', name: '示範顧客 A', email: null, phone: null } : data.contact,
+    csatScore: 2,
+    csatComment: null,
+    csatSentAt: at(150),
+    csatRespondedAt: at(185),
+    csatRatedBy: 'agent',
+    notes: [],
+    events: [
+      ev(1, 'created', 0, { title: '範例：訂單配送詢問' }),
+      ev(2, 'assigned', 5, { assigneeName: '示範客服' }, { actorType: 'agent', actor: agent }),
+      ev(3, 'status_changed', 6, { from: 'OPEN', to: 'IN_PROGRESS' }, { actorType: 'agent', actor: agent }),
+      ev(4, 'status_changed', 120, { from: 'IN_PROGRESS', to: 'RESOLVED' }, { actorType: 'agent', actor: agent }),
+      ev(5, 'csat_rated', 185, { score: 2, source: 'agent' }, { actorType: 'agent', actor: agent }),
+      ev(6, 'csat_low_score_notify_failed', 185.5, { score: 2 }),
+      ev(7, 'status_changed', 186, { from: 'RESOLVED', to: 'CLOSED', reason: 'csat_rated' }),
+    ],
+  };
+}
+
+test('ch02 滿意度截圖', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await protect(page.context(), page);
+  await page.route(CASE_DETAIL_URL, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const res = await route.fetch();
+    const body = await res.json().catch(() => null);
+    if (!body?.data) return route.fulfill({ response: res });
+    return route.fulfill({ response: res, json: { ...body, data: demoCsatCase(body.data) } });
+  });
+  await openCase(page);
+  await shot(page, page.getByTestId('case-csat'), 'ch02-csat-agent');
+  await shot(page, timelineCard(page), 'ch02-timeline-csat');
 });

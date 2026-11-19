@@ -12,7 +12,8 @@ import { test, Page, Locator } from '@playwright/test';
 import {
   startRecording, stopRecording, poster, caption, point, tap, typeIn, go, newShotPage,
 } from './manual-video-helpers';
-import { shot } from './manual-helpers';
+import { shot, sanitize, SHOTS_DIR } from './manual-helpers';
+import * as path from 'path';
 
 /** 遮蔽渠道相關機密：網址、帳號 ID、Verify Token、嵌入碼、成員姓名 */
 const MASK = `(() => {
@@ -78,10 +79,116 @@ async function normal(page: Page) {
 
 const PATH = '/dashboard/settings/channels';
 
+/**
+ * UAT 目前沒有權杖失效的渠道，又不能真的弄壞渠道：把 GET /channels 的回應裡
+ * 第一個啟用中的 FB／IG 渠道標成 tokenHealth.status = 'invalid'（只影響這個瀏覽器分頁，不動正式資料）。
+ * 前端 ChannelAccountRouting 依 settings.tokenHealth.status === 'invalid' 顯示紅框。
+ */
+async function fakeExpiredToken(page: Page) {
+  await page.route('**/api/v1/channels', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const res = await route.fetch();
+    const json = await res.json();
+    const list = Array.isArray(json?.data) ? json.data : [];
+    const target = list.find((c: any) => c.isActive && c.channelType === 'THREADS')
+      ?? list.find((c: any) => c.isActive && c.channelType === 'FB');
+    if (target) {
+      target.settings = {
+        ...(target.settings ?? {}),
+        tokenHealth: { status: 'invalid', checkedAt: new Date().toISOString() },
+      };
+    }
+    return route.fulfill({ response: res, json });
+  });
+}
+
+/**
+ * LINE OA 在 UAT 沒有存好完整的 LIFF 設定，「測試 LIFF 設定」按鈕是停用的。為了示範設定好的樣子，
+ * 把 GET /channels 回應裡 LINE OA 的 settings.liffConfig／liffTest 換成示範值（截圖時欄位一律模糊；只影響這個分頁）。
+ */
+async function fakeLiffConfig(page: Page) {
+  await page.route('**/api/v1/channels', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const res = await route.fetch();
+    const json = await res.json();
+    const list = Array.isArray(json?.data) ? json.data : [];
+    const line = list.find((c: any) => c.displayName === 'LINE OA');
+    if (line) {
+      const liffConfig = { liffId: '1660000000-AbCdEfGh', loginChannelId: '1660000001' };
+      const verifiedAt = new Date(Date.now() - 2 * 86400_000).toISOString();
+      line.settings = { ...(line.settings ?? {}), liffConfig, liffTest: { ...liffConfig, verifiedAt } };
+    }
+    return route.fulfill({ response: res, json });
+  });
+}
+
+/** 有權杖失效紅框的那一列 */
+function expiredRow(page: Page): Locator {
+  return page.locator('div')
+    .filter({ has: page.getByText('存取權杖已失效，目前收不到也無法回覆訊息') })
+    .filter({ has: page.getByRole('button', { name: '編輯渠道' }) })
+    .last();
+}
+
+/**
+ * 「測試 LIFF 設定」要送 POST /channels/:id/liff-test 在正式環境建立測試紀錄，寫入保險會擋下且不可放行。
+ * 為了示範按下後的畫面，照 LiffTestPanel 的 JSX（同樣的 class 與文字）把 QR code 區塊與「等待手機的測試結果」
+ * 插進面板裡；QR 是示範圖樣、連結是遮蔽過的假網址，不送任何請求。
+ */
+const LIFF_TEST_DEMO = `(panel) => {
+  const n = 25, cell = 6, pad = 12, size = n * cell + pad * 2;
+  let rects = '';
+  const finder = (x, y) => {
+    rects += '<rect x="' + (pad + x * cell) + '" y="' + (pad + y * cell) + '" width="' + 7 * cell + '" height="' + 7 * cell + '" fill="#000"/>';
+    rects += '<rect x="' + (pad + (x + 1) * cell) + '" y="' + (pad + (y + 1) * cell) + '" width="' + 5 * cell + '" height="' + 5 * cell + '" fill="#fff"/>';
+    rects += '<rect x="' + (pad + (x + 2) * cell) + '" y="' + (pad + (y + 2) * cell) + '" width="' + 3 * cell + '" height="' + 3 * cell + '" fill="#000"/>';
+  };
+  let seed = 7;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const inFinder = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+    if (!inFinder && rnd() > 0.5) rects += '<rect x="' + (pad + x * cell) + '" y="' + (pad + y * cell) + '" width="' + cell + '" height="' + cell + '" fill="#000"/>';
+  }
+  finder(0, 0); finder(n - 7, 0); finder(0, n - 7);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '"><rect width="100%" height="100%" fill="#fff"/>' + rects + '</svg>';
+  const qr = 'data:image/svg+xml;base64,' + btoa(svg);
+  panel.querySelectorAll('[data-liff-demo]').forEach((el) => el.remove());
+  const wrap = document.createElement('div');
+  wrap.setAttribute('data-liff-demo', '');
+  wrap.innerHTML =
+    '<div class="mt-3 flex flex-wrap gap-3">' +
+      '<img src="' + qr + '" alt="LIFF 測試連結 QR code" class="h-32 w-32 rounded border bg-white" />' +
+      '<div class="min-w-0 flex-1 space-y-1.5">' +
+        '<p>用手機 LINE 掃描 QR code，或在手機的 LINE 開啟下方連結。測試連結 10 分鐘內有效，結果會同時顯示在手機和這裡。</p>' +
+        '<a href="#" class="block break-all text-primary underline">https://liff.line.me/••••••（網址已遮蔽）</a>' +
+        '<p class="text-muted-foreground">請用已經加官方帳號好友的 LINE 帳號測試。</p>' +
+      '</div>' +
+    '</div>' +
+    '<p class="mt-2 flex items-center gap-1 text-muted-foreground">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3 w-3 animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 等待手機的測試結果…' +
+    '</p>';
+  panel.appendChild(wrap);
+}`;
+
+/** Bot 設定視窗裡的 LIFF 區塊：從「LIFF App ID」欄位到「測試 LIFF 設定」面板 */
+async function liffClip(page: Page, dialog: Locator) {
+  const top = await dialog.getByText('LIFF App ID（短連結身份收集）').locator('xpath=..').boundingBox();
+  const panel = await liffPanel(dialog).boundingBox();
+  if (!top || !panel) return null;
+  const x = top.x - 16;
+  const y = top.y - 16;
+  return { x, y, width: top.width + 32, height: panel.y + panel.height - y + 16 };
+}
+function liffPanel(dialog: Locator): Locator {
+  return dialog.locator('div.rounded-md.border').filter({ has: dialog.page().getByRole('button', { name: '測試 LIFF 設定' }) }).last();
+}
+
+
 test('ch15-overview 渠道管理總覽', async ({ browser }) => {
   const rec = await startRecording(browser, 'ch15-overview');
   const { page } = rec;
   await mask(page);
+  await fakeExpiredToken(page);
   await go(page, PATH);
   await caption(page, '設定 > 渠道管理，列表的每一列是一個渠道');
   await point(page, card(page, 'LINE OA'), 1800);
@@ -99,12 +206,11 @@ test('ch15-overview 渠道管理總覽', async ({ browser }) => {
   await caption(page, '鉛筆是編輯，紅色垃圾桶是刪除', 1000);
   await point(page, c.getByRole('button', { name: '編輯渠道' }), 1200);
   await point(page, c.getByRole('button', { name: '刪除渠道' }), 1400);
-  // 目前 UAT 沒有權杖失效的渠道（原本的 IG333 已不在）；有的時候才示範
+  // UAT 沒有權杖失效的渠道：fakeExpiredToken 把一個 IG／FB 渠道在這個分頁裡標成失效來示範紅框
   const expired = page.getByText('存取權杖已失效，目前收不到也無法回覆訊息');
-  if (await expired.count()) {
-    await caption(page, '權杖失效時，渠道下方會出現紅色提醒', 1000);
-    await point(page, expired.first(), 2400);
-  }
+  await expired.first().scrollIntoViewIfNeeded();
+  await caption(page, '權杖失效時，渠道下方會出現紅色提醒，告訴你怎麼修', 1000);
+  await point(page, expired.first().locator('xpath=../..'), 2800);
   // 新版內容區是內層捲動容器，滑鼠滾輪不一定捲得動，直接捲到標題
   await page.getByRole('heading', { name: 'Webhook 公開網址' }).scrollIntoViewIfNeeded();
   await page.waitForTimeout(600);
@@ -252,10 +358,6 @@ test('ch15 截圖', async ({ browser }) => {
   await page.waitForTimeout(1500);
   await shot(page, page.locator('main'), 'ch15-overview');
   await shot(page, card(page, 'LINE OA'), 'ch15-card-line');
-  // 權杖失效的渠道目前不存在（IG333 已不在）：拍不到就保留舊檔，不硬拍
-  if (await page.getByText('存取權杖已失效，目前收不到也無法回覆訊息').count()) {
-    await shot(page, page.locator('div').filter({ has: page.getByText('存取權杖已失效，目前收不到也無法回覆訊息') }).filter({ has: page.getByRole('button', { name: '編輯渠道' }) }).last(), 'ch15-token-expired');
-  }
   await shot(page, page.getByRole('heading', { name: 'Webhook 公開網址' }).locator('xpath=../../..'), 'ch15-webhook-base');
 
   // 新增渠道：LINE / FB / IG / WebChat
@@ -303,4 +405,38 @@ test('ch15 截圖', async ({ browser }) => {
   await card(page, '官網即時客服').getByRole('button', { name: '取得嵌入碼' }).click();
   await page.waitForTimeout(1500);
   await shot(page, page.getByRole('dialog').filter({ hasText: '網站聊天室嵌入碼' }), 'ch15-embed');
+});
+
+test('ch15-token-expired 權杖失效紅框（攔截 GET 示範）', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await mask(page);
+  await fakeExpiredToken(page);
+  await go(page, PATH);
+  await page.waitForTimeout(1500);
+  await shot(page, expiredRow(page), 'ch15-token-expired');
+});
+
+test('ch15-liff LIFF 欄位與測試 QR（不儲存、不送測試）', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await mask(page);
+  await fakeLiffConfig(page);
+  await go(page, PATH);
+  await page.waitForTimeout(1500);
+  await card(page, 'LINE OA').getByRole('button', { name: 'Bot 設定' }).click();
+  await page.waitForTimeout(1500);
+  const bot = page.getByRole('dialog').filter({ hasText: 'Bot 設定' });
+  await tall(page, 2400);
+  await liffPanel(bot).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600);
+  await sanitize(page);
+  const c1 = await liffClip(page, bot);
+  if (!c1) throw new Error('找不到 LIFF 區塊');
+  await page.screenshot({ path: path.join(SHOTS_DIR, 'ch15-liff-fields.png'), clip: c1 });
+  console.log('✓ ch15-liff-fields.png');
+
+  await liffPanel(bot).evaluate(eval(LIFF_TEST_DEMO));
+  await page.waitForTimeout(600);
+  await shot(page, liffPanel(bot), 'ch15-liff-test-qr');
+  await normal(page);
+  await bot.getByRole('button', { name: '取消', exact: true }).click();
 });

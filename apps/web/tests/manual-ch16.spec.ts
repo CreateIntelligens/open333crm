@@ -29,6 +29,27 @@ async function scrub(page: Page) {
   });
 }
 
+
+/** 內容比視窗高時（內層捲動容器），暫時把視窗拉高到放得下全部內容，避免截圖切掉最下面的按鈕 */
+async function fitTall(page: Page) {
+  const extra = await page.evaluate(() => {
+    const els = [document.documentElement, ...Array.from(document.querySelectorAll('main, main *'))] as HTMLElement[];
+    let max = 0;
+    for (const el of els) {
+      const oy = getComputedStyle(el).overflowY;
+      if (el !== document.documentElement && oy !== 'auto' && oy !== 'scroll') continue;
+      max = Math.max(max, el.scrollHeight - el.clientHeight);
+    }
+    return max;
+  });
+  const vp = page.viewportSize() ?? { width: 1440, height: 900 };
+  if (extra > 0) {
+    await page.setViewportSize({ width: vp.width, height: vp.height + extra + 32 });
+    await page.waitForTimeout(500);
+  }
+  return vp;
+}
+
 test('ch16-agent-add 新增人員', async ({ browser }) => {
   const rec = await startRecording(browser, 'ch16-agent-add');
   const { page } = rec;
@@ -169,10 +190,14 @@ test('ch16 截圖', async ({ browser }) => {
   await page.waitForTimeout(1500);
   await shot(page, page.locator('main'), 'ch16-roles');
 
-  await go(page, '/dashboard/settings/general');
-  await shot(page, page.locator('main'), 'ch16-general');
-
   await go(page, '/dashboard/settings/passkeys');
   await scrub(page);
   await shot(page, page.locator('main'), 'ch16-passkeys');
+});
+
+test('ch16-general 截圖（拍到「更新密碼」按鈕）', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await go(page, '/dashboard/settings/general');
+  await fitTall(page);
+  await shot(page, page.locator('main'), 'ch16-general');
 });

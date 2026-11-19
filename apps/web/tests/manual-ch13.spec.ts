@@ -63,10 +63,22 @@ test('ch13 截圖', async ({ browser }) => {
   await go(page, '/dashboard/analytics');
   await page.waitForTimeout(1500);
   await shotPage(page, 'ch13-overview');
-  // CSAT 卡的「客服代評 N 筆」只有期間內有代評才出現，拉長到 90 天比較拍得到
+  // CSAT 卡的「客服代評 N 筆」只有期間內有代評才出現；UAT 示範租戶沒有代評，
+  // 攔截概覽的 GET 回應補上示範數字（只改 GET，其他方法 fallback，寫入仍由 guardWrites 擋下）
+  const OVERVIEW = '**/api/v1/analytics/overview**';
+  await page.route(OVERVIEW, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const res = await route.fetch();
+    const body = await res.json().catch(() => null);
+    if (!body || typeof body !== 'object') return route.fulfill({ response: res });
+    const patch = (d: any) => ({ ...d, csatAvg: d.csatAvg ?? 4.5, csatAgentRatedCount: d.csatAgentRatedCount || 1 });
+    const json = body.data && typeof body.data === 'object' ? { ...body, data: patch(body.data) } : patch(body);
+    return route.fulfill({ response: res, json });
+  });
   await page.getByRole('radio', { name: '90 天' }).click();
   await page.waitForTimeout(2500);
   await shot(page, page.getByRole('region', { name: '關鍵指標' }), 'ch13-kpi-csat');
+  await page.unroute(OVERVIEW);
   await page.getByRole('radio', { name: '30 天' }).click();
   await page.waitForTimeout(2000);
   await page.getByRole('tab', { name: '案件報表' }).click();

@@ -448,6 +448,8 @@ test('shots', async ({ browser }) => {
       if (cells.length > 1 && !(cells[1].textContent || '').trim()) (r as HTMLElement).style.display = 'none';
     });
   });
+  // 套用 #546 的修正（券名稱在欄內截斷）；部署後這段樣式不影響畫面，可以移除
+  await p.addStyleTag({ content: '[aria-label="關鍵字回覆規則"] [role=row] > [role=cell]:nth-child(6) > span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' });
   await shot(p, p.getByRole('table', { name: '關鍵字回覆規則' }), 'ch10-keyword-list');
   await p.setViewportSize({ width: 1440, height: 900 });
   await p.getByRole('button', { name: '建立關鍵字回覆' }).click();
