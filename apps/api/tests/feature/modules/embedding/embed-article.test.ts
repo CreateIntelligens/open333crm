@@ -9,13 +9,14 @@ import assert from 'node:assert/strict';
 import { afterAll, beforeEach, describe, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createKnowledgeEffects } from '#src/modules/knowledge/knowledge-effects.js';
+import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { createKnowledgeFixture } from '../knowledge/knowledge-test-app.js';
 import { fakeOllama, markedVector, vectorMarker } from '#tests/support/fake-ollama.js';
 
 const fx = await createKnowledgeFixture('embed-article');
 const tenantDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
 const ollama = fakeOllama();
-const { embed } = createKnowledgeEffects(tenantDb);
+const { embed } = createKnowledgeEffects({ prisma: tenantDb, redis: fx.redis, events: createOutboxPublisher(tenantDb) });
 
 afterAll(async () => {
   ollama.restore();

@@ -12,7 +12,7 @@ import type {
   ToolTurnResult,
 } from './types.js';
 
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const TIMEOUT_MS = 120_000;
 
 // Curated whitelist — only models that make sense for CRM customer-service chat.

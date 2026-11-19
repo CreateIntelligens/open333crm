@@ -7,7 +7,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { inTenant } from '../../lib/tenant-ctx.js';
-import { embedText, modelNotInstalledError, probeEmbeddingService } from './embedding-client.js';
+import { GEMINI_EMBED_MAX_CHARS, embedText, modelNotInstalledError, probeEmbeddingService, type EmbeddingTarget } from './embedding-client.js';
 import {
   listPublishedArticleIds,
   readArticleForEmbedding,
@@ -15,8 +15,55 @@ import {
   searchSimilarArticles,
   writeArticleEmbedding,
   type ArticleSearchResult,
+  type EmbeddingInputs,
 } from './embedding.service.js';
 import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
+import { assertMonthlyQuota, recordLlmUsage, type LlmDeps } from '../ai/llm.flow.js';
+
+/**
+ * 向量化 flow 的依賴。Gemini 向量化要檢查月額度、寫用量紀錄，所以和 LLM 呼叫用同一組依賴。
+ * - prisma：inTenant() 的基礎連線（app_tenant）。
+ * - redis：月額度計數器。
+ * - events：用量跨過門檻時寫 outbox。
+ */
+export type EmbeddingDeps = LlmDeps;
+
+/**
+ * 交易外向量化一段文字（spec embedding-settings「Gemini 向量化」「Gemini 向量化記錄用量並檢查月額度」）。
+ *
+ * - Ollama：直接呼叫，不檢查月額度、不寫用量。
+ * - Gemini：先檢查月額度（平台金鑰才檢查），呼叫後寫一筆 `feature: 'embedding'` 的用量。
+ *   Gemini 的回應沒有 token 數，以送出的字數估算（中文 1 字約 1 token，估算偏高，不會少算）。
+ */
+export async function embedWithUsage(
+  deps: EmbeddingDeps,
+  tenantId: string,
+  inputs: EmbeddingInputs,
+  text: string,
+  purpose: EmbeddingTarget['purpose'],
+): Promise<number[]> {
+  const { settings, policy, apiKey, keySource, monthlyTokens } = inputs;
+  const target: EmbeddingTarget = { ...settings, apiKey, purpose };
+  if (settings.provider !== 'gemini') return embedText(target, policy, text);
+
+  const account = { tenantId, keySource, monthlyTokens };
+  await assertMonthlyQuota(deps, account);
+  const usageBase = { provider: 'gemini', model: settings.model, meta: { feature: 'embedding' as const } };
+  let vector: number[];
+  try {
+    vector = await embedText(target, policy, text);
+  } catch (err) {
+    await recordLlmUsage(deps, account, { ...usageBase, success: false, errorCode: (err as Error).message?.slice(0, 200) });
+    throw err;
+  }
+  const promptTokens = Math.min(text.length, GEMINI_EMBED_MAX_CHARS);
+  await recordLlmUsage(deps, account, {
+    ...usageBase,
+    usage: { promptTokens, cachedTokens: 0, candidatesTokens: 0, thoughtsTokens: 0 },
+    success: true,
+  });
+  return vector;
+}
 
 export type EmbedArticleResult = 'written' | 'skipped' | 'not_found';
 
@@ -28,7 +75,7 @@ export type EmbedArticleResult = 'written' | 'skipped' | 'not_found';
  *   （spec km-ingestion「向量化期間文章被修改時不寫入向量」）。較新的寫入會自己開始向量化。
  */
 export async function embedArticleFlow(
-  deps: { prisma: PrismaClient },
+  deps: EmbeddingDeps,
   tenantId: string,
   articleId: string,
 ): Promise<EmbedArticleResult> {
@@ -36,12 +83,13 @@ export async function embedArticleFlow(
   const read = await inTenant(deps.prisma, tenantId, async (scope) => {
     const text = await readArticleForEmbedding(scope, articleId);
     if (text === null) return null;
-    return { text, ...(await readEmbeddingInputs(scope)) };
+    return { text, inputs: await readEmbeddingInputs(scope) };
   });
   if (!read) return 'not_found';
 
-  const { text, settings, policy } = read;
-  const vector = await embedText(settings, policy, text);
+  const { text, inputs } = read;
+  const { settings } = inputs;
+  const vector = await embedWithUsage(deps, tenantId, inputs, text, 'document');
 
   const written = await inTenant(deps.prisma, tenantId, (scope) =>
     writeArticleEmbedding(scope, articleId, { vector, model: settings.model, sourceText: text }),
@@ -58,7 +106,7 @@ export async function embedArticleFlow(
  * 每篇各自讀設定與政策：處理期間設定被修改時，之後的文章用新的設定。
  */
 export async function reembedPublishedArticlesFlow(
-  deps: { prisma: PrismaClient },
+  deps: EmbeddingDeps,
   tenantId: string,
 ): Promise<{ total: number; succeeded: number; skipped: number; failed: number }> {
   const ids = await inTenant(deps.prisma, tenantId, (scope) => listPublishedArticleIds(scope));
@@ -80,15 +128,17 @@ export async function reembedPublishedArticlesFlow(
 
 /** 交易內讀設定與政策 → 交易外向量化查詢文字 → 交易內搜尋。沒給 `topK`、`threshold` 時用租戶的設定 */
 export async function searchArticlesByTextFlow(
-  deps: { prisma: PrismaClient },
+  deps: EmbeddingDeps,
   tenantId: string,
   query: string,
   options: { topK?: number; threshold?: number } = {},
 ): Promise<ArticleSearchResult[]> {
-  const { settings, policy } = await inTenant(deps.prisma, tenantId, (scope) => readEmbeddingInputs(scope));
-  const vector = await embedText(settings, policy, query);
+  const inputs = await inTenant(deps.prisma, tenantId, (scope) => readEmbeddingInputs(scope));
+  const { settings } = inputs;
+  const vector = await embedWithUsage(deps, tenantId, inputs, query, 'query');
   return inTenant(deps.prisma, tenantId, (scope) =>
     searchSimilarArticles(scope, vector, {
+      model: settings.model,
       topK: options.topK ?? settings.topK,
       threshold: options.threshold ?? settings.threshold,
     }),

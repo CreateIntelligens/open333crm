@@ -14,7 +14,7 @@ import { getConfig } from '../../config/env.js';
 import { inTenant } from '../../lib/tenant-ctx.js';
 import { notifyChannel } from '../../events/socket-push.js';
 import type { EventPublisher } from '../../events/outbox-publisher.js';
-import { embedText } from '../embedding/embedding-client.js';
+import { embedWithUsage } from '../embedding/embedding.flow.js';
 import { CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
 import { generateReply, type LlmDeps } from './llm.flow.js';
 import { prepareStoredMessageContent } from './deidentification.service.js';
@@ -86,7 +86,7 @@ export async function attemptKbAutoReplyFlow(deps: KbAutoReplyDeps, input: KbAut
   // 2. 交易外：向量化客人的訊息。沒有向量就無法檢索，也無法回覆：回 failed，由呼叫端轉接真人（issue #445）
   let embedding: number[];
   try {
-    embedding = await embedText(context.embeddingSettings, context.policy, messageText);
+    embedding = await embedWithUsage(deps.llm, tenantId, context.embeddingInputs, messageText, 'query');
   } catch (err) {
     logger.error('[KbAutoReply] Failed to generate embedding:', err);
     return { status: 'failed', error: err };

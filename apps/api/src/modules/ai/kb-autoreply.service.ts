@@ -21,7 +21,12 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { readEmbeddingInputs, searchSimilarArticles, type ArticleSearchResult } from '../embedding/embedding.service.js';
+import {
+  readEmbeddingInputs,
+  searchSimilarArticles,
+  type ArticleSearchResult,
+  type EmbeddingInputs,
+} from '../embedding/embedding.service.js';
 import type { EmbeddingSettings } from '../settings/embedding-settings.service.js';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { getChatSettings, type ChatSettings } from '../settings/chat-settings.service.js';
@@ -142,6 +147,8 @@ export interface KbReplyContext {
   history: HistoryMessage[];
   otherChannelContext: string;
   embeddingSettings: EmbeddingSettings;
+  /** 向量化客人訊息用：設定、政策、金鑰與月額度上限 */
+  embeddingInputs: EmbeddingInputs;
   /** 遮罩政策：向量化、遮罩回覆都用這一份（design D4） */
   policy: AiPrivacyPolicy;
   /** 處理開始時的追問次數（追問與型號守門共用） */
@@ -177,8 +184,9 @@ export async function readKbReplyContext(
   const history = await loadKbHistory(ctx, conversationId);
   // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
   const otherChannelContext = await loadOtherChannelContext(ctx, conversationId);
-  // 一次處理只讀一次向量化設定與遮罩政策（change migrate-embedding-tenant-ctx，design D5）
-  const { settings: embeddingSettings, policy } = await readEmbeddingInputs(ctx);
+  // 一次處理只讀一次向量化設定、遮罩政策、金鑰與月額度上限（change add-gemini-embedding-provider）
+  const embeddingInputs = await readEmbeddingInputs(ctx);
+  const { settings: embeddingSettings, policy } = embeddingInputs;
 
   const convMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
   return {
@@ -188,6 +196,7 @@ export async function readKbReplyContext(
     history,
     otherChannelContext,
     embeddingSettings,
+    embeddingInputs,
     policy,
     prevAttempts: Number(convMeta.clarifyAttempts ?? 0),
   };
@@ -207,6 +216,7 @@ export async function searchKbArticles(
   input: { conversationId: string; messageText: string; embedding: number[]; settings: EmbeddingSettings },
 ): Promise<KbSearchResult> {
   const results = await searchSimilarArticles(ctx, input.embedding, {
+    model: input.settings.model,
     topK: input.settings.topK,
     threshold: input.settings.threshold,
   });

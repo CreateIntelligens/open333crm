@@ -6,7 +6,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { flowOf, inTenant } from '../../lib/tenant-ctx.js';
-import { reembedPublishedArticlesFlow, searchArticlesByTextFlow } from '../embedding/embedding.flow.js';
+import { reembedPublishedArticlesFlow, searchArticlesByTextFlow, type EmbeddingDeps } from '../embedding/embedding.flow.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { getKnownModelKeys, refreshModelKeys } from '../ai/model-registry.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
@@ -44,8 +44,8 @@ import {
   type RecordFeedbackInput,
 } from './kb-feedback.service.js';
 
-export interface KnowledgeDeps {
-  prisma: PrismaClient;
+/** prisma、redis、events 給 Gemini 向量化檢查月額度與寫用量（change add-gemini-embedding-provider） */
+export interface KnowledgeDeps extends EmbeddingDeps {
   effects: KnowledgeEffects;
 }
 
@@ -158,7 +158,7 @@ export async function embedArticleNowFlow(deps: KnowledgeDeps, tenantId: string,
 }
 
 /** 重新向量化所有已發布文章：回傳篇數，向量化在背景進行、不等結果（行為同搬遷前） */
-export async function bulkEmbedFlow(deps: { prisma: PrismaClient }, tenantId: string): Promise<number> {
+export async function bulkEmbedFlow(deps: EmbeddingDeps, tenantId: string): Promise<number> {
   const total = await inTenant(deps.prisma, tenantId, (scope) => countPublishedArticles(scope));
   reembedPublishedArticlesFlow(deps, tenantId).catch((err: unknown) => {
     logger.error('[Knowledge] Background bulk re-embed failed', err);
@@ -167,7 +167,7 @@ export async function bulkEmbedFlow(deps: { prisma: PrismaClient }, tenantId: st
 }
 
 export function semanticSearchFlow(
-  deps: { prisma: PrismaClient },
+  deps: EmbeddingDeps,
   tenantId: string,
   query: string,
   options: { topK?: number; threshold?: number },

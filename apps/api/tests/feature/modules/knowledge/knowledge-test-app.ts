@@ -8,12 +8,14 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import multipart from '@fastify/multipart';
 import cookie from '@fastify/cookie';
 import { PrismaClient } from '@prisma/client';
+import { createRedisClient } from '@open333crm/core';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import authPlugin from '#src/plugins/auth.plugin.js';
 import knowledgeRoutes from '#src/modules/knowledge/knowledge.routes.js';
 import { createKnowledgeEffects, type KnowledgeEffects, type UploadFile } from '#src/modules/knowledge/knowledge-effects.js';
+import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 
 loadEnvConfig();
 
@@ -55,6 +57,9 @@ export function recordingEffects() {
 export async function createKnowledgeFixture(name: string) {
   const owner = new PrismaClient();
   const tenantDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
+  // Gemini 向量化的月額度計數器與用量紀錄要用 Redis 與 outbox
+  const redis = createRedisClient(process.env.REDIS_URL!, 'command');
+  const llm = { prisma: tenantDb, redis, events: createOutboxPublisher(tenantDb) };
   const mark = `ci-knowledge-${name}-${Date.now()}`;
   const A = (await owner.tenant.create({ data: { name: `${mark}-a` } })).id;
   const B = (await owner.tenant.create({ data: { name: `${mark}-b` } })).id;
@@ -89,12 +94,13 @@ export async function createKnowledgeFixture(name: string) {
     const recording = recordingEffects();
     const rec = recording.rec;
     // realEffects：用實際的向量化實作，搭配 tests/support/fake-ollama.ts 換掉向量化服務
-    const effects = opts.realEffects ? createKnowledgeEffects(tenantDb) : recording.effects;
+    const effects = opts.realEffects ? createKnowledgeEffects(llm) : recording.effects;
     const app = Fastify();
     await app.register(multipart);
     await app.register(errorHandlerPlugin);
     app.decorate('prisma', tenantDb);
     app.decorate('prismaAdmin', owner);
+    app.decorate('redis', redis);
     if (opts.realAuth) {
       await app.register(cookie);
       await app.register(authPlugin);
@@ -138,16 +144,18 @@ export async function createKnowledgeFixture(name: string) {
     await Promise.all(apps.map((app) => app.close()));
     for (const tenantId of [A, B]) {
       await owner.kbArticleFeedback.deleteMany({ where: { tenantId } });
+      await owner.aiUsage.deleteMany({ where: { tenantId } });
+      await owner.outbox.deleteMany({ where: { tenantId } });
       await owner.kmArticle.deleteMany({ where: { tenantId } });
       await owner.tenantSettings.deleteMany({ where: { tenantId } });
       await owner.agent.deleteMany({ where: { tenantId } });
       await owner.role.deleteMany({ where: { tenantId } });
       await owner.tenant.delete({ where: { id: tenantId } });
     }
-    await Promise.all([owner.$disconnect(), tenantDb.$disconnect()]);
+    await Promise.all([owner.$disconnect(), tenantDb.$disconnect(), redis.quit()]);
   }
 
-  return { owner, mark, A, B, buildApp, articleOf, feedbackOf, cleanup };
+  return { owner, redis, mark, A, B, buildApp, articleOf, feedbackOf, cleanup };
 }
 
 type App = Awaited<ReturnType<Awaited<ReturnType<typeof createKnowledgeFixture>>['buildApp']>>['app'];

@@ -7,6 +7,7 @@
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { getEmbeddingSettings, type EmbeddingSettings } from '../settings/embedding-settings.service.js';
 import { readAiPrivacyPolicy, type AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import { readModelKeyInputs, type ModelKeyInputs } from '../ai/llm.service.js';
 
 export interface ArticleSearchResult {
   id: string;
@@ -20,13 +21,23 @@ export interface ArticleSearchResult {
 
 // ─── 向量化的輸入 ───────────────────────────────────────────────────────────
 
-/** 向量化前要讀的設定與遮罩政策。一次處理只讀一次 */
-export async function readEmbeddingInputs(
-  ctx: TenantCtx,
-): Promise<{ settings: EmbeddingSettings; policy: AiPrivacyPolicy }> {
+/**
+ * 向量化前要讀的設定、遮罩政策、金鑰與月額度上限。一次處理只讀一次。
+ * Ollama 不需要金鑰，也不計月額度：`keySource` 是 platform，`monthlyTokens` 是 null。
+ */
+export interface EmbeddingInputs extends ModelKeyInputs {
+  settings: EmbeddingSettings;
+  policy: AiPrivacyPolicy;
+}
+
+export async function readEmbeddingInputs(ctx: TenantCtx): Promise<EmbeddingInputs> {
   const settings = await getEmbeddingSettings(ctx);
   const policy = await readAiPrivacyPolicy(ctx.tx, ctx.tenantId);
-  return { settings, policy };
+  const keyInputs: ModelKeyInputs =
+    settings.provider === 'gemini'
+      ? await readModelKeyInputs(ctx, 'gemini')
+      : { apiKey: undefined, keySource: 'platform', monthlyTokens: null };
+  return { settings, policy, ...keyInputs };
 }
 
 export function prepareArticleText(article: {
@@ -121,7 +132,7 @@ export async function listPublishedArticleIds(ctx: TenantCtx): Promise<string[]>
 export async function searchSimilarArticles(
   ctx: TenantCtx,
   queryEmbedding: number[],
-  options: { topK: number; threshold: number },
+  options: { model: string; topK: number; threshold: number },
 ): Promise<ArticleSearchResult[]> {
   return ctx.tx.$queryRawUnsafe<ArticleSearchResult[]>(
     `SELECT id, title, summary, content, category, tags,
