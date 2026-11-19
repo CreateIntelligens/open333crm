@@ -3,7 +3,7 @@
 對話記錄「客人說了什麼」，工單追蹤「這件事處理完了沒」。客服把需要追蹤的問題開成工單，指派負責人，依狀態推進到解決；解決後系統發出滿意度調查，客人評分後結案。
 
 - **資料來源**：`apps/api/src/modules/case/*`、`apps/api/src/modules/csat/*`、`packages/shared/src/constants/case-transitions.ts`、`packages/shared/src/constants/case-categories.ts`、`apps/web/src/components/case/*`、`apps/web/src/app/dashboard/cases/*`
-- **核對日期**：2026-11-11
+- **核對日期**：2026-11-19
 
 ## 負責的模組
 
@@ -13,12 +13,28 @@
 | `csat` | 發送滿意度調查、記錄分數、逾時自動結案。沒有路由，由排程、進站攔截器與 `case.routes.ts` 呼叫 |
 | `sla` | SLA 政策的 CRUD。工單的期限計算、預警與逾時處置，見[服務水準協議](../SLA.md) |
 
+## 程式的入口
+
+工單的路由在 `case.routes.ts`，前綴是 `/api/v1/cases`。從對話開單的 `POST /api/v1/conversations/:id/case` 在 `conversation.routes.ts`。CSAT 沒有自己的路由，`POST /cases/:id/csat` 在 `case.routes.ts`。
+
+| 操作 | flow 或 service 函式 |
+| --- | --- |
+| 列表、統計 | `case.service.ts` 的 `listCases()`、`getCaseStats()` |
+| 建立 | `case.flow.ts` 的 `createCaseFlow()` → `createCase()` → `createCaseRecord()` |
+| 從對話建立 | `createCaseFromConversation()`，同一個交易寫入 `conversation.caseId` |
+| 改欄位 | `updateCaseFlow()` → `updateCase()` |
+| 改狀態 | `transitionCaseFlow()`；升級走 `escalateCase()` |
+| 指派 | `assignCase()`；自動指派是 `assignment.service.ts` 的 `autoAssignCase()` |
+| 刪除 | `deleteCaseFlow()` |
+| 連結對話 | `linkConversationToCase()`，寫 `conversation_linked` 事件，並以對話裡的客服訊息補上首次回應時間 |
+| 工單標籤 | `tag.flow.ts` |
+
 ## 工單從哪裡來
 
 | 來源 | 端點或位置 | 連結對話 |
 | --- | --- | --- |
 | 在收件匣從對話開工單 | `POST /conversations/:id/case`（`POST /cases/from-conversation/:conversationId` 行為相同） | 自動連結該對話 |
-| 在工單頁直接建立 | `POST /cases` | 不連結，之後可用 `POST /cases/:id/conversations/:conversationId/link` 連結 |
+| 在工單頁直接建立 | `POST /cases` | 不連結，之後可用 `POST /cases/:id/conversations/:conversationId/link` 連結。這個端點只檢查工單的渠道層級是 `full`，不檢查對話的聯絡人，也不檢查成員看不看得到對話的渠道 |
 
 從對話開工單時，`createCaseFromConversation()` 在同一個交易內建立工單並連結對話。一個對話只能連結一個工單，已經連結的對話不能再開工單，也不能再連結到別的工單。一個工單可以連結多個對話。
 
@@ -37,7 +53,7 @@
 
 ## 狀態
 
-合法的轉換定義在 `packages/shared` 的 `VALID_CASE_TRANSITIONS`。API 以 `case-state-machine.ts` 的 `validateTransition()` 檢查，前端 `CaseDetail.tsx` 另有一份相同的表用來產生下拉選項。
+合法的轉換定義在 `packages/shared` 的 `VALID_CASE_TRANSITIONS`。API 以 `case-state-machine.ts` 的 `validateTransition()` 檢查。詳情頁 `CaseDetail.tsx` 讀同一份表，產生頂部按鈕與狀態下拉選項。新增改狀態的路徑要經過 `transitionCase()` 或 `escalateCase()`，否則不寫時間軸、不發布事件。
 
 | 目前狀態 | 可以轉成 |
 | --- | --- |
@@ -85,7 +101,7 @@
 
 **手動指派**走 `POST /cases/:id/assign`，會寫 `assigned` 事件並發布 `case.assigned`，被指派的人收到通知。`/assign` 與升級檢查被指派的成員屬於同一個租戶，但不檢查成員是否已停用，也不檢查成員看不看得到工單的渠道。建立工單與 `PATCH /cases/:id` 帶 `assigneeId` 時，不檢查成員屬於哪個租戶。
 
-**自動指派**由 `assignment.service.ts` 的 `autoAssignCase()` 執行。觸發條件是：建立工單時沒有指定負責人，但有指定團隊。
+**自動指派**由 `assignment.service.ts` 的 `autoAssignCase()` 執行，寫 `auto_assigned` 事件並發布 `case.assigned`。觸發條件是：建立工單時沒有指定負責人，但有指定團隊。
 
 自動指派在建立工單的交易 commit 之後另開一個交易執行，在回應送出之前完成。指派失敗時只寫 log，工單照樣建立。建立工單的回應是指派之前的工單，所以負責人是空的，狀態是 `OPEN`；畫面由指派之後的 `case.updated` 推播更新。
 
@@ -101,7 +117,7 @@
 
 ## 升級
 
-升級走 `POST /cases/:id/escalate`，原因與新的優先級（`newPriority`）都必填，可以同時指定新的負責人。`PATCH /cases/:id` 把狀態改成 `ESCALATED` 時沒有帶優先級，系統自動提高一級；已經是 `URGENT` 就維持不變。畫面的狀態下拉選「已升級」會打開升級視窗，不走這條路徑。
+升級走 `POST /cases/:id/escalate`，原因與新的優先級（`newPriority`）都必填，可以同時指定新的負責人。`PATCH /cases/:id` 把狀態改成 `ESCALATED` 時沒有帶優先級，系統自動提高一級；已經是 `URGENT` 就維持不變。畫面的狀態下拉選「已升級」會打開升級視窗，不走這條路徑。升級時改派的新負責人不會收到通知。
 
 升級會發布 `case.escalated`。誰收到通知由請求的 `notifyTargets` 決定（升級對話框的勾選），只接受下列值，其他值回 400：
 
@@ -141,7 +157,7 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 `csat.scheduler.ts` 的 `setupCsatScheduler()` 在 API 行程定期執行下列工作：
 
-1. **寄送滿意度問卷**（排程 id `csat-send`）。工單轉成 `RESOLVED` 30 分鐘後（`CSAT_SURVEY_DELAY_MINUTES`），對工單連結、而且渠道外掛實作 `buildCsatSurvey()` 的對話寄出滿意度問卷（目前只有 LINE）。沒有這種對話的工單不寄，停在已解決，也不會被逾時結案，由客服手動結案。這是刻意的設計。已有評分的工單不寄。租戶停用（含試用到期）時不處理該租戶的工單；重新啟用後，解決時間已過的工單仍會寄出。
+1. **寄送滿意度問卷**（排程 id `csat-send`）。工單轉成 `RESOLVED` 30 分鐘後（`CSAT_SURVEY_DELAY_MINUTES`），對工單連結、而且渠道外掛實作 `buildCsatSurvey()` 的對話寄出滿意度問卷（目前只有 LINE）。工單有多個對話時，問卷寄到 `conversations[0]`，這個順序沒有排序。沒有這種對話的工單不寄，停在已解決，也不會被逾時結案，由客服手動結案。這是刻意的設計。已有評分的工單不寄。租戶停用（含試用到期）時不處理該租戶的工單；重新啟用後，解決時間已過的工單仍會寄出。
 2. **問卷逾時結案**（排程 id `csat-auto-close`）。問卷寄出後超過時限仍沒有回覆，把工單轉成 `CLOSED`、發布 `case.closed`，並關閉該工單所有尚未關閉的對話。這個結案不寫時間軸事件。
 
 延遲與時限是 `csat.scheduler.ts` 開頭的常數，租戶不能調整。
@@ -151,7 +167,7 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 - 寄送滿意度問卷：`sendCsatSurveyFlow()` 在同一個交易內寫入 `csatSentAt` 並建立問卷訊息。寫入 `csatSentAt` 的條件是工單仍是 `RESOLVED`、還沒有 `csatSentAt`、還沒有評分、租戶啟用中。沒寫入就不建立問卷訊息、不送到渠道。問卷訊息寫入失敗時，`csatSentAt` 一起 rollback，下一期重試。交易 commit 之後，才在交易外送到渠道。每次解決因此最多寄一份。
 - 問卷逾時結案：改成 `CLOSED` 的那次更新，條件是工單仍是 `RESOLVED`、還沒有 `csatRespondedAt`。這次更新與 `case.closed`（寫進 outbox）在同一個交易內 commit。沒寫入就不發事件、不關閉對話。排程讀取之後客服重開工單，或客人回覆評分，工單都不會被蓋回 `CLOSED`。
 
-問卷送到渠道是「最多一次」：交易 commit 之後，送出失敗或行程中途結束，這張工單都不會再處理，問卷少寄一份。寧可少寄，不重複寄。問卷逾時結案的 `case.closed` 經 outbox 至少送出一次；commit 之後才關閉工單底下的對話，關閉失敗只記 log（change `migrate-csat-tenant-ctx`）。
+問卷送到渠道是「最多一次」：交易 commit 之後，送出失敗或行程中途結束，這張工單都不會再處理，問卷少寄一份。寧可少寄，不重複寄。問卷逾時結案的 `case.closed` 經 outbox 至少送出一次；commit 之後才關閉工單底下的對話，關閉失敗只記 log。
 
 問卷送不到客人時（渠道停用、找不到客人在該渠道的帳號、渠道拒收或送出出錯），系統留下客服看得到的紀錄，不自動重寄，`csatSentAt` 保留：
 
@@ -162,9 +178,9 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 問卷的版型由渠道外掛的 `buildCsatSurvey()` 產生，csat 模組不比對 `channelType`。LINE 是 Flex Message，五個分數按鈕；其他渠道沒有實作，不寄問卷。
 
-客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScoreFlow()` 記錄，並回一則感謝訊息。每張工單只記第一次評分：寫入分數的更新帶 `csatScore: null` 條件，客人連點兩次時只有一次寫入，感謝訊息、低分通知與 `case.closed` 都只有一次。客服也可以用 `POST /cases/:id/csat` 代評。評分後工單改成 `CLOSED`，並關閉工單底下的對話，與問卷逾時結案相同。
+客人點選分數後，按鈕送出 `csat:<分數>:<工單 ID>`，由進站管線的 CSAT 攔截器交給 `recordCsatScoreFlow()` 記錄，並回一則感謝訊息。每張工單只記第一次評分：寫入分數的更新帶 `csatScore: null` 條件，客人連點兩次時只有一次寫入，感謝訊息、低分通知與 `case.closed` 都只有一次。客服也可以用 `POST /cases/:id/csat` 代評。評分後工單改成 `CLOSED`，並關閉工單底下的對話，與問卷逾時結案相同。這次結案不檢查工單目前的狀態，也不經過 `transitionCase()`：`recordCsatScoreFlow()` 自己寫 `csat_rated` 與 `status_changed`（HC-CASES-01）。
 
-分數、問卷卡片的分數、時間軸、感謝訊息、工單結案與 `case.closed`（寫進 outbox）在同一個交易內寫入，一起 commit 或一起 rollback。任何一筆寫入失敗時，這次評分不留下任何東西，客人可以再點一次，客服可以再按一次（change `migrate-csat-tenant-ctx`）。commit 之後，系統才推送收件匣、把感謝訊息送到渠道、發低分通知、關閉對話。
+分數、問卷卡片的分數、時間軸、感謝訊息、工單結案與 `case.closed`（寫進 outbox）在同一個交易內寫入，一起 commit 或一起 rollback。任何一筆寫入失敗時，這次評分不留下任何東西，客人可以再點一次，客服可以再按一次。commit 之後，系統才推送收件匣、把感謝訊息送到渠道、發低分通知、關閉對話。
 
 1～2 分只發站內通知 `csat_low_score`，不升級工單。收件人是有效權限含 `case.assign`、啟用中、看得到工單渠道的成員（`notification.service.ts` 的 `resolveCaseManagerRecipients()`），不看舊的角色列舉。預設的客服角色也有 `case.assign`。低分通知在記分 commit 之後另開一個交易寫入。通知送不出時，這個交易 rollback，系統再另開交易在工單時間軸寫一筆 `csat_low_score_notify_failed`，分數不受影響。
 
@@ -197,6 +213,8 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 | 升級（`/escalate`，或修改時把狀態改成 `ESCALATED`） | `case.escalate` |
 | 刪除 | `case.delete` |
 
+新增權限碼之後，既有租戶的系統角色不會自動拿到這個權限碼。
+
 ## 誰看得到哪些工單
 
 工單依它的 `channelId` 套用渠道可見範圍，規則與收件匣相同，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。各操作要求的層級：
@@ -208,6 +226,36 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 | `full` | 建立工單（含從對話建立）、改欄位、改狀態、指派、升級、連結對話、記錄 CSAT、刪除 |
 
 建立工單時，看不到指定的渠道或對話所屬的渠道，回 404。`GET /cases/stats` 沒有套用可見範圍，統計的是全租戶的工單。見 `../../system/AUDIT.md` 的 RBAC-04。
+
+## 畫面怎麼呼叫 API
+
+| 畫面與操作 | API | 畫面上要知道的事 |
+| --- | --- | --- |
+| 工單列表 `/dashboard/cases`：狀態分頁、負責人、優先級、分類與 SLA 篩選 | `GET /cases`（每頁 20 筆）；統計卡與分頁計數 `GET /cases/stats` | 搜尋框只在前端過濾目前這一頁。`slaStatus=normal` 不加任何條件 |
+| 列表的「新增工單」（`CaseCreateModal`，不帶對話） | `POST /cases` | 先搜尋聯絡人（`GET /contacts?q&limit=10`）。渠道只列出聯絡人有身分、成員看得到的渠道。標題與分類必填。聯絡人在該渠道沒有身分時回 400 `CONTACT_NOT_ON_CHANNEL`。沒有權限的成員也看得到這個按鈕 |
+| 收件匣聯絡人面板（`ContactInfoPanel`）的「建立工單」（`CaseCreateModal`，帶對話） | `POST /cases/from-conversation/:conversationId` | 對話已有工單時，按鈕仍然顯示，送出後回 409「這則對話已建立過案件」 |
+| 詳情頁 `/dashboard/cases/[caseId]`：點標題、優先級、分類、團隊下拉 | `PATCH /cases/:id` | 只改欄位時推播 `case.updated`。改負責人或取消指派（`assigneeId: null`）不通知。團隊下拉永遠是空的：畫面讀 `agent.team`，API 回的是 `teams[]`（HC-CASES-06）。所以只有 API、CLI 與自動化觸發得到自動指派 |
+| 詳情頁的頂部按鈕與狀態下拉 | `POST /cases/:id/{resolve,close,reopen,escalate}`；下拉走 `PATCH /cases/:id` 帶 `status` | 見[改狀態的路徑](#改狀態的路徑) |
+| 詳情頁的「負責人」下拉 | `POST /cases/:id/assign` | 下拉列出全部成員（`GET /agents`），不排除停用的成員，也不排除看不到渠道的成員。指派失敗時畫面沒有提示 |
+| 升級視窗 `EscalationModal` | `POST /cases/:id/escalate` | 原因必填。通知對象只送 `supervisor`、`original_assignee` |
+| 詳情頁右側的「時間軸與備註」、「案件標籤」（`TagManager`） | `POST /cases/:id/notes`；`POST`、`DELETE /cases/:id/tags` | 時間軸由 `GET /cases/:id` 的 `events` 與 `notes` 合成。標籤的 scope 必須是 `CASE`。新增備註失敗時畫面沒有提示。備註的作者一律顯示「客服」 |
+| 收件匣 `ChatWindow` 裡的問卷卡片（`CsatMessage`） | 客服代評走 `POST /cases/:id/csat` | 客服也能點卡片的分數 |
+| 列表最右的垃圾桶 | `DELETE /cases/:id` | 先以 `window.confirm` 確認。列表不監聽 `case.deleted`，靠 30 秒輪詢更新。失敗時只顯示「刪除工單失敗」 |
+
+下列 API 沒有畫面入口：
+
+- 連結對話到既有工單：`POST /cases/:id/conversations/:conversationId/link`。
+- 修改 `description`。
+- `GET /cases/categories`。前端改用 `@open333crm/shared` 的 `CASE_CATEGORIES`。
+- `GET /cases/:id/events`。
+- `GET /cases?sortBy=priority` 與 `sortBy=createdAt`。
+
+前端送出的值：
+
+- 優先級：`LOW`、`MEDIUM`、`HIGH`、`URGENT`。
+- 狀態：`OPEN`、`IN_PROGRESS`、`PENDING`、`RESOLVED`、`ESCALATED`、`CLOSED`。列表篩選也送大寫，後端另外接受小寫。
+- 分類：`CASE_CATEGORIES` 的值。詳情頁的「未分類」送空字串。
+- CSAT 分數：1 到 5 的整數。
 
 ## 目前的限制
 
