@@ -114,7 +114,7 @@
 
 核准加購時一律清除本月的額度告警旗標與用量計數器。旗標到月底才過期，不清除的話，用量跨越新上限的 80%、100% 時，系統不會再通知。
 
-換方案也會清除，但只在 AI 月額度提高時（比較換方案前後的基礎上限，`plan-limits.service.ts` 的 `monthlyTokensRaisedByPlanChange()`）：核准升級、平台改租戶方案（`updateTenant()`）、試用轉付費（`convertToPaid()`），以及平台調高方案的 `limits.monthlyTokens`（`updatePlan()`，只清沒有覆寫 `monthlyTokens` 的租戶）。上限不變或降低時保留旗標。修正紀錄（原 PLAN-13）見 `../../system/AUDIT-REVIEWS.md`。
+換方案也會清除，但只在 AI 月額度提高時（比較換方案前後的基礎上限，`plan-limits.service.ts` 的 `monthlyTokensRaisedByPlanChange()`）：核准升級、平台改租戶方案（`updateTenant()`）、試用轉付費（`convertToPaid()`），以及平台調高方案的 `limits.monthlyTokens`（`updatePlan()`，只清沒有覆寫 `monthlyTokens` 的租戶）。上限不變或降低時保留旗標。
 
 申請仍不記金額，系統沒有計費，見 `../../system/AUDIT.md` 的 PLAN-10。
 
