@@ -1,5 +1,5 @@
 /**
- * 手冊 ch08「附券廣播」、ch09「在素材放優惠券」、ch18 11-3 的截圖與錄影（change improve-coupon-url-insert-ux）。
+ * 手冊 ch08「附券廣播」、ch09「在素材放優惠券」、（ch18 的影片改由 manual-ch18.spec.ts 錄製）（change improve-coupon-url-insert-ux）。
  *
  * ⚠️ 正式環境：只開表單、填示範文字、按「取消」。素材不存檔、廣播不建立也不發送。
  *   guardWrites 擋下所有寫入請求；唯一放行的 POST 是 /marketing/broadcasts/audience-preview（只預估人數，不建立群發）。
@@ -16,8 +16,8 @@ const AUDIENCE_PREVIEW = [/\/api\/v1\/marketing\/broadcasts\/audience-preview$/]
 // UAT 示範資料（錄製手冊專用）；資料改名或刪除後要換成新的名稱
 // 新 UI 渠道選項是「名稱（LINE）」，第一個 LINE 渠道是「第二個line串接」；附券示範素材在「LINE OA」
 const LINE_CHANNEL = /^LINE OA（LINE）/;
-const COUPON_MATERIAL = /驗收廣播A（含券連結）/;
-const BROADCAST_COUPON = /\[驗收\] 廣播券A/;
+const COUPON_MATERIAL = /示範：秋季回饋附券通知/;
+const BROADCAST_COUPON = /示範：秋季折價券/;
 
 /** 原生 <dialog> 在 top layer，字幕與框線要搬進 dialog 才不會被遮罩壓暗 */
 const DIALOG_LAYER_FIX = `(() => {
@@ -109,8 +109,48 @@ test('ch09 截圖：FB 類型、券連結按鈕、領券連結清單', async ({ 
   await page.context().close();
 });
 
+/**
+ * 發券結果要有一則已發送的附券廣播。正式環境不能真的發送（會發給真實顧客），
+ * 所以在列表最前面插一則示範廣播，並回覆它的結果與收件人；只攔 GET，寫入照樣被 guardWrites 擋下。
+ */
+const DEMO_BROADCAST_ID = '00000000-0000-4000-8000-00000000b001';
+async function mockCouponBroadcastResult(page: Page) {
+  const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  let template: Record<string, unknown> = {};
+  await page.route(/\/api\/v1\/marketing\/broadcasts\?/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const res = await route.fetch();
+    const body = await res.json();
+    const rows = (body.data ?? []) as Record<string, unknown>[];
+    template = rows[0] ?? {};
+    const demo = {
+      ...template, id: DEMO_BROADCAST_ID, name: '示範：秋季回饋 附券廣播', status: 'completed', couponId: 'demo-coupon',
+      couponIssuedCount: 86, successCount: 86, failedCount: 1, skippedCount: 7, failureCode: null, failureReason: null,
+      scheduledAt: null, sentAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+    };
+    await route.fulfill(json({ ...body, data: [demo, ...rows] }));
+  });
+  await page.route(new RegExp(`/api/v1/marketing/broadcasts/${DEMO_BROADCAST_ID}(\\?.*)?$`), (route) =>
+    route.request().method() !== 'GET' ? route.fallback() : route.fulfill(json({ success: true, data: {
+      id: DEMO_BROADCAST_ID, status: 'completed', couponId: 'demo-coupon', successCount: 86, failedCount: 1, skippedCount: 7,
+      couponSummary: { issued: 86, pending: 0, skipped: { PER_CONTACT_LIMIT_REACHED: 5, NO_CHANNEL_IDENTITY: 2 }, failed: { DELIVERY_FAILED: 1 } },
+    } })));
+  await page.route(new RegExp(`/api/v1/marketing/broadcasts/${DEMO_BROADCAST_ID}/recipients`), (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const failed = new URL(route.request().url()).searchParams.get('status') === 'failed';
+    const rows = failed
+      ? [{ contactId: 'demo-f1', displayName: '示範顧客 A', deliveryStatus: 'failed', reason: 'DELIVERY_FAILED' }]
+      : [
+          ...['B', 'C', 'D', 'E', 'F'].map((n) => ({ contactId: `demo-s${n}`, displayName: `示範顧客 ${n}`, deliveryStatus: 'skipped', reason: 'PER_CONTACT_LIMIT_REACHED' })),
+          ...['G', 'H'].map((n) => ({ contactId: `demo-s${n}`, displayName: `示範顧客 ${n}`, deliveryStatus: 'skipped', reason: 'NO_CHANNEL_IDENTITY' })),
+        ];
+    return route.fulfill(json({ success: true, data: rows, meta: { total: rows.length } }));
+  });
+}
+
 test('ch08 截圖：附上優惠券、發券結果', async ({ browser }) => {
   const page = await newShotPage(browser, { allowPost: AUDIENCE_PREVIEW });
+  await mockCouponBroadcastResult(page);
   await go(page, '/dashboard/marketing/broadcasts');
   await page.getByRole('button', { name: '建立廣播' }).first().click();
   await page.waitForTimeout(1200);
@@ -125,7 +165,7 @@ test('ch08 截圖：附上優惠券、發券結果', async ({ browser }) => {
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await page.waitForTimeout(800);
 
-  // 正式環境不建立廣播，發券結果要靠 UAT 上已發送過的附券廣播；找不到就讓測試失敗，免得手冊留著舊圖
+  // 示範廣播（mockCouponBroadcastResult）在列表第一列
   const result = page.getByRole('button', { name: '查看發券結果' }).first();
   if (!(await result.count())) throw new Error('列表上沒有附券廣播可看發券結果');
   await result.click();
@@ -165,31 +205,4 @@ test('ch09 影片：在素材放優惠券', async ({ browser }) => {
   await finish(r, 3);
 });
 
-test('ch18 影片：附券廣播（素材有顧客專屬券連結）', async ({ browser }) => {
-  const r = await rec(browser, 'ch18-broadcast-url', AUDIENCE_PREVIEW);
-  const { page } = r;
-  await go(page, '/dashboard/marketing/broadcasts');
-  await caption(page, '廣播頁按「建立廣播」', 1200);
-  await tap(page, page.getByRole('button', { name: '建立廣播' }).first(), 1200);
-  const dialog = page.getByRole('dialog');
-  await typeIn(page, dialog.getByPlaceholder('廣播名稱'), '秋季回饋 附券廣播');
-  await caption(page, '選渠道與放了「顧客專屬券連結」的素材', 1000);
-  await pick(page, selectWith(page, '請選擇渠道'), LINE_CHANNEL);
-  await pick(page, selectWith(page, '請選擇素材'), COUPON_MATERIAL);
-  await caption(page, '還沒附券時，對話框提醒並停用「建立」', 1000);
-  await point(page, dialog.getByRole('button', { name: '建立' }), 2400);
-  await caption(page, '在「附上優惠券」選一張進行中的行銷券', 1000);
-  await pick(page, selectWith(page, '不附券'), BROADCAST_COUPON);
-  await caption(page, '下方顯示剩餘名額；每位收件人會拿到自己的券連結', 1200);
-  await point(page, page.locator('#broadcast-coupon').locator('xpath=ancestor::div[1]'), 2600);
-  await caption(page, '選好受眾後按「建立」，再到列表按「立即發送」', 2800);
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(800);
-
-  const result = page.getByRole('button', { name: '查看發券結果' }).first();
-  if (!(await result.count())) throw new Error('列表上沒有附券廣播可看發券結果');
-  await caption(page, '發送後，按列表上的「發券結果」看每個人有沒有收到', 1200);
-  await tap(page, result, 1500);
-  await caption(page, '有失敗或跳過的人時，這裡會列出原因', 2800);
-  await finish(r, 4);
-});
+// ch18-broadcast-url 改由 manual-ch18.spec.ts 錄製（新版 UI 重寫）

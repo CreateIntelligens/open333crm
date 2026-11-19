@@ -441,6 +441,13 @@ test('shots', async ({ browser }) => {
   // 表格比內容區寬（右側「編輯／刪除」會被橫向捲軸切掉），暫時把視窗拉寬
   await p.setViewportSize({ width: 1600, height: 900 });
   await p.waitForTimeout(600);
+  // 藏掉沒有名稱的測試規則（UAT 既有測試資料，不是示範用）
+  await p.evaluate(() => {
+    document.querySelectorAll('[role=table][aria-label="關鍵字回覆規則"] [role=row]').forEach((r) => {
+      const cells = r.querySelectorAll('[role=cell]');
+      if (cells.length > 1 && !(cells[1].textContent || '').trim()) (r as HTMLElement).style.display = 'none';
+    });
+  });
   await shot(p, p.getByRole('table', { name: '關鍵字回覆規則' }), 'ch10-keyword-list');
   await p.setViewportSize({ width: 1440, height: 900 });
   await p.getByRole('button', { name: '建立關鍵字回覆' }).click();
@@ -473,7 +480,7 @@ test('shots', async ({ browser }) => {
  * 2. 建一則名為「會員日優惠通知」的廣播：LINE 渠道、targetType 'tags' 指向該標籤、
  *    scheduledAt 設在一兩分鐘後（POST /marketing/broadcasts）。
  * 3. 等排程執行，狀態變成 failed、原因為「所選標籤下沒有可在此渠道發送的對象。」（受眾為空，不會發出訊息）。
- * 拍完到後台取消這則廣播、刪除該標籤。
+ * UAT 示範租戶已建好（2026-11-19，標籤「示範：會員日（無成員）」），保留不刪，之後重拍可直接用。
  * 找不到符合的失敗廣播時，這個測試直接失敗並說明缺什麼，不會拍出錯的畫面。
  */
 test('ch08-broadcast-failed', async ({ browser }) => {
