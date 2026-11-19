@@ -21,12 +21,12 @@ import {
   channelIdFilter,
   channelLevel,
   commentExtensionOf,
-  commentReplySettingsOf,
   resolveViewerChannels,
   tokenStatusOf,
   type CommentReplyViewer,
 } from './comment-reply-access.js';
 import { capabilityName, type CommentReplyPlatformSettings } from './comment-reply-platform-settings.js';
+import { commentReplySettingsOf, nextCommentReplySettings } from './comment-reply-settings.js';
 
 /** IG 開啟留言接收時的欄位（Instagram Login 的 me/subscribed_apps）；關閉時只留 messages */
 export const IG_BASE_SUBSCRIBED_FIELDS: readonly string[] = ['messages'];
@@ -317,7 +317,7 @@ export async function subscribeCommentFieldsMeta(channel: CommentChannelHandle, 
   }
 }
 
-/** 訂閱成功後寫入渠道 settings.commentReply（保留其他子鍵，例如 lastCommentEventAt） */
+/** 訂閱成功後寫入渠道 settings.commentReply（形狀與規則見 comment-reply-settings.ts） */
 export async function saveCommentSubscription(
   ctx: TenantCtx,
   channel: CommentChannelHandle,
@@ -325,14 +325,8 @@ export async function saveCommentSubscription(
   fields: string[],
   now: Date = new Date(),
 ): Promise<void> {
-  const at = now.toISOString();
   await patchChannelSettings(ctx.tx, channel.id, ctx.tenantId, {
-    commentReply: {
-      ...channel.settingsCommentReply,
-      receiving,
-      ...(receiving ? { subscribedAt: at } : {}),
-      subscription: { status: receiving ? 'ok' : 'disabled', fields, checkedAt: at },
-    },
+    commentReply: nextCommentReplySettings({ commentReply: channel.settingsCommentReply }, receiving, fields, now),
   });
 }
 

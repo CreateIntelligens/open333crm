@@ -83,29 +83,6 @@ function obj(v: unknown): Record<string, any> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : {};
 }
 
-/** 渠道 settings.commentReply（design D19） */
-export function commentReplySettingsOf(settings: unknown): {
-  receiving: boolean;
-  subscription: { status: string | null; fields: string[]; checkedAt: string | null } | null;
-  lastCommentEventAt: string | null;
-  raw: Record<string, any>;
-} {
-  const cr = obj(obj(settings).commentReply);
-  const sub = cr.subscription ? obj(cr.subscription) : null;
-  return {
-    receiving: cr.receiving === true,
-    subscription: sub
-      ? {
-          status: typeof sub.status === 'string' ? sub.status : null,
-          fields: Array.isArray(sub.fields) ? sub.fields.map(String) : [],
-          checkedAt: typeof sub.checkedAt === 'string' ? sub.checkedAt : null,
-        }
-      : null,
-    lastCommentEventAt: typeof cr.lastCommentEventAt === 'string' ? cr.lastCommentEventAt : null,
-    raw: cr,
-  };
-}
-
 /** 權杖狀態（meta-token-health 寫入的 settings.tokenHealth.status） */
 export function tokenStatusOf(settings: unknown): string | null {
   const s = obj(obj(settings).tokenHealth).status;

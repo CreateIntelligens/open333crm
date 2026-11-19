@@ -18,7 +18,6 @@ import {
   channelIdFilter,
   channelLevel,
   commentExtensionOf,
-  commentReplySettingsOf,
   resolveViewerChannels,
   type CommentReplyViewer,
   type ViewerChannels,
@@ -26,6 +25,7 @@ import {
 import { COMMENT_REPLY_FORBIDDEN_MATERIAL_TYPES } from './comment-reply-content.js';
 import { matchCommentRule } from './comment-reply-match.js';
 import { capabilityName, type CommentReplyPlatformSettings } from './comment-reply-platform-settings.js';
+import { commentReplySettingsOf } from './comment-reply-settings.js';
 import { parseRuleInput, parseStoredPostSnapshots, type RuleInput, type RulePatch, type StoredPostSnapshot } from './comment-reply.schemas.js';
 import type { CommentReplyMatchMode, CommentReplyPostScope, CommentReplyWarningCode } from './comment-reply.types.js';
 

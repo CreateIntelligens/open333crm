@@ -23,9 +23,10 @@
  */
 import { prisma } from '@open333crm/database';
 import { fbPlugin, threadsPlugin, type ChannelPlugin } from '@open333crm/channel-plugins';
-import { decryptCredentials } from '../modules/channel/channel.service.js';
+import { decryptCredentials, patchChannelSettings } from '../modules/channel/channel.service.js';
 import { getMetaAppConfig, subscribedFieldsFor } from '../modules/meta-connect/meta-connect.service.js';
 import { IG_BASE_SUBSCRIBED_FIELDS, IG_COMMENT_FIELD } from '../modules/comment-reply/comment-reply-channel.service.js';
+import { commentReplySettingsOf, nextCommentReplySettings } from '../modules/comment-reply/comment-reply-settings.js';
 
 // 跨租戶掃描（平台維運腳本）：DATABASE_URL 需指向 owner／app_admin（BYPASSRLS）
 const prismaAdmin = prisma;
@@ -92,7 +93,7 @@ async function main() {
       const credentials = decryptCredentials(ch.credentialsEncrypted);
       const token = String(credentials.pageAccessToken ?? '');
       const settings = (ch.settings ?? {}) as Record<string, any>;
-      const receiving = mode === 'enable' ? true : mode === 'disable' ? false : settings.commentReply?.receiving === true;
+      const receiving = mode === 'enable' ? true : mode === 'disable' ? false : commentReplySettingsOf(settings).receiving;
       const fields = commentReplySubscriptionFields(ch.channelType, settings, receiving);
       const before = await currentFields(ch.channelType, ch.externalAccountId!, token);
       console.log(`${label}\n  目前：${before ? before.join(',') : '（查不到）'}\n  送出：${fields.join(',')}`);
@@ -105,12 +106,8 @@ async function main() {
         fields,
         ...(platformApp ? { appSecret: platformApp.appSecret } : {}),
       });
-      const now = new Date().toISOString();
-      const commentReply = { ...(settings.commentReply ?? {}), receiving, ...(receiving ? { subscribedAt: now } : {}) };
-      await prismaAdmin.channel.updateMany({
-        where: { id: ch.id, tenantId: ch.tenantId },
-        data: { settings: { ...settings, commentReply } },
-      });
+      // 只取代 settings.commentReply（jsonb 合併），不覆寫這段期間其他程式寫入的子鍵
+      await patchChannelSettings(prismaAdmin, ch.id, ch.tenantId, { commentReply: nextCommentReplySettings(settings, receiving, fields) });
       const after = await currentFields(ch.channelType, ch.externalAccountId!, token);
       console.log(`  寫入後：${after ? after.join(',') : '（查不到）'}`);
       ok += 1;

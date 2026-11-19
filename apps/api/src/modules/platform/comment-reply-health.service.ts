@@ -8,7 +8,8 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import { decryptCredentials } from '../channel/channel.service.js';
-import { appModeOf } from '../comment-reply/comment-reply-access.js';
+import { appModeOf, tokenStatusOf } from '../comment-reply/comment-reply-access.js';
+import { commentReplySettingsOf } from '../comment-reply/comment-reply-settings.js';
 
 export type QueueCounts = Record<string, number>;
 
@@ -43,10 +44,6 @@ export interface CommentReplyHealth {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-function obj(v: unknown): Record<string, any> {
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : {};
-}
 
 /** 平台模式（平台 Meta App 連結）或自備 App／IG 手動權杖 */
 export function channelAppMode(credentialsEncrypted: string | null): 'platform' | 'own_app' {
@@ -139,9 +136,7 @@ export async function getCommentReplyHealth(
       oldestPendingAt: oldest?.createdAt.toISOString() ?? null,
     },
     channels: channels.map((c) => {
-      const settings = obj(c.settings);
-      const cr = obj(settings.commentReply);
-      const sub = obj(cr.subscription);
+      const cr = commentReplySettingsOf(c.settings);
       return {
         tenantId: c.tenantId,
         tenantName: c.tenant?.name ?? null,
@@ -149,9 +144,9 @@ export async function getCommentReplyHealth(
         channelType: c.channelType,
         displayName: c.displayName,
         appMode: c.channelType === 'FB' ? channelAppMode(c.credentialsEncrypted) : 'own_app',
-        subscription: { status: typeof sub.status === 'string' ? sub.status : null, checkedAt: typeof sub.checkedAt === 'string' ? sub.checkedAt : null },
-        tokenStatus: typeof obj(settings.tokenHealth).status === 'string' ? obj(settings.tokenHealth).status : null,
-        lastCommentEventAt: typeof cr.lastCommentEventAt === 'string' ? cr.lastCommentEventAt : null,
+        subscription: { status: cr.subscription?.status ?? null, checkedAt: cr.subscription?.checkedAt ?? null },
+        tokenStatus: tokenStatusOf(c.settings),
+        lastCommentEventAt: cr.lastCommentEventAt,
         activeRules: rules.find((r) => r.channelId === c.id)?._count._all ?? 0,
         sent24h: countOf(c.id, ['SENT']),
         failed24h: countOf(c.id, ['FAILED']),
