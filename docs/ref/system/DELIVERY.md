@@ -6,7 +6,7 @@
 
 `pnpm-workspace.yaml` 納入 `packages/*` 與 `apps/*`。Turborepo 定義 `build`、`dev`、`lint`、`test`、`test:feature`、`db:generate`、`db:migrate`、`db:seed`。
 
-`build` 使用 `dependsOn: ["^build"]`，因此先建置被相依的 package，再建置 app。
+`build` 使用 `dependsOn: ["^build"]`，因此先建置 app 相依的 package，再建置 app。
 
 常用指令：
 
@@ -65,13 +65,19 @@ node scripts/check-prisma-admin-usage.mjs --strict
 node scripts/check-workspace-esm.mjs --strict
 ```
 
-前兩支檢查租戶隔離。第三支檢查 workspace 的 ESM 設定：套件少了 `"type": "module"` 會被編成 CJS，轉出式 re-export 在執行時變成 `undefined`，而且編譯不會報錯。規則見 `AGENTS.md` 的「Conventions」一節。
+前兩支檢查租戶隔離。第三支檢查 workspace 的 ESM 設定。套件少了 `"type": "module"` 時，建置把套件編成 CJS。這時轉出式 re-export 在執行時變成 `undefined`，而且編譯不會報錯。規則見 `AGENTS.md` 的「Conventions」一節。
 
 ## 部署
 
-`.github/workflows/deploy.yml` 將程式碼 rsync 到 UAT，確認環境檔存在，清理 Docker build cache，重新建置並啟動容器，最後驗證部署結果。
+`.github/workflows/deploy.yml` 依序執行下列步驟：
 
-同一時間只跑一個部署（`concurrency: deploy-uat`）。每次部署 checkout 觸發它的 commit，所以接連合併多個 PR 時，排隊中的部署只保留最新一個，較舊的會自動取消；進行中的部署不中斷，避免做到一半留下半套版本。
+1. 將程式碼 rsync 到 UAT。
+2. 確認環境檔存在。
+3. 清理 Docker build cache。
+4. 重新建置並啟動容器。
+5. 驗證部署結果。
+
+同一時間只跑一個部署（`concurrency: deploy-uat`）。每次部署 checkout 觸發這次部署的 commit。所以接連合併多個 PR 時，排隊中的部署只保留最新一個，較舊的排隊部署自動取消。進行中的部署不中斷，避免做到一半留下半套版本。
 
 ## OpenSpec 與文件
 
@@ -92,7 +98,7 @@ node scripts/check-workspace-esm.mjs --strict
 
 腳本執行 `pnpm exec openspec validate --strict`。加了 `--strict`，警告也會讓指令失敗。常見的警告是 `## Purpose` 少於 50 字元。
 
-腳本只忽略一種警告，而且只在主規格忽略：requirement 的文字超過 500 字元。許多主規格有這種 requirement，在拆開之前，`--strict` 一定會失敗。change 裡的這種警告不忽略，新的 requirement 太長時要拆開。
+腳本只忽略一種警告，而且只在主規格忽略：requirement 的文字超過 500 字元。原因是許多主規格有這種 requirement，拆開之前 `--strict` 一定會失敗。change 裡的這種警告不忽略，所以新的 requirement 太長時要拆開。
 
 ### 移除整份主規格
 
