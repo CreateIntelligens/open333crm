@@ -627,6 +627,21 @@ lock for this. But the job can run more than one time, and two periods can overl
 - **Multi-tenancy**: see the two-layer section above. Both layers are mandatory.
 - **Soft-delete**: set `isActive: false`. Do not use a hard DELETE (agents, channels and similar).
 - **Commits**: use Conventional Commits (`feat:`, `fix:`, `chore:` and similar).
+- **Writing rules for documents (MANDATORY)**: when you write or change text in this repo, apply
+  the writing skill for its language before you finish. Apply it also when you change only some
+  sentences of a document.
+
+  | Language | Skill to read and apply |
+  | -------- | ----------------------- |
+  | Traditional Chinese | `.agents/skills/simplified-technical-chinese/SKILL.md` |
+  | English | `.agents/skills/asd-ste100/SKILL.md` |
+
+  - These rules apply to documents under `docs/`, `AGENTS.md`, `CLAUDE.md`, OpenSpec files,
+    `.claude/skills/` and `.claude/agents/`, `CHANGELOG.md` entries, code comments, commit
+    messages, pull request descriptions and code review comments.
+  - These rules do not apply to text that users of the product see, for example UI strings.
+  - **Why**: agents and developers read these documents and act on each sentence. A sentence
+    with no subject, or with two meanings, causes wrong work that nobody can ask about later.
 - **Authorization**: guard a route with `requirePermission('<code>')` from
   `apps/api/src/guards/rbac.guard.ts`. `packages/shared/src/rbac/permissions.ts` registers the
   codes. `docs/ref/modules/PERMISSIONS.md` explains how the system calculates effective
