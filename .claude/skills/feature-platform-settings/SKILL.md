@@ -1,17 +1,21 @@
 ---
 name: feature-platform-settings
 description: >
-  open333CRM「平台設定」功能顧問：平台全域 KV 設定 platform_settings（GET/PUT /api/v1/platform/settings/:key、
-  試用政策 trial.*、個資遮罩 ai.privacy.<tenantId> 也存在同一張表）、/admin/trial「政策設定」分頁、
-  權限註冊表 GET /platform/registry（/admin/plans 的功能清單與渠道白名單）、模型價目 model_pricings（ModelPricing，
-  只有 seed 會寫）、設定變更對所有租戶的影響、平台設定的稽核 setting.update、哪些「全域設定」其實是環境變數。
-  當有人說「改了試用天數沒生效」「政策設定存不進去／沒反應」「提醒信不寄了」「方案頁怎麼有 WhatsApp」
-  「新模型成本是 0」「平台設定要加一個開關」「AI key／寄信設定在哪裡改」「某租戶突然所有訊息 503」，
-  或要改 platform-setting.service、trial-policy.service、platform.routes.ts 的 /settings、/registry、
-  pricing.service、seedModelPricing 時使用。
+  open333CRM「平台設定」功能顧問：platform_settings 全域設定、試用政策、權限註冊表、模型價目 model_pricings。改到 platform-setting.service、trial-policy.service、platform.routes.ts 的 /settings 與 /registry、pricing.service 之前使用。
 ---
 
 # 平台設定（KV、權限註冊表、模型價目）
+
+## 涵蓋範圍
+
+open333CRM「平台設定」功能顧問：平台全域 KV 設定 platform_settings（GET/PUT /api/v1/platform/settings/:key、
+試用政策 trial.*、個資遮罩 ai.privacy.<tenantId> 也存在同一張表）、/admin/trial「政策設定」分頁、
+權限註冊表 GET /platform/registry（/admin/plans 的功能清單與渠道白名單）、模型價目 model_pricings（ModelPricing，
+只有 seed 會寫）、設定變更對所有租戶的影響、平台設定的稽核 setting.update、哪些「全域設定」其實是環境變數。
+當有人說「改了試用天數沒生效」「政策設定存不進去／沒反應」「提醒信不寄了」「方案頁怎麼有 WhatsApp」
+「新模型成本是 0」「平台設定要加一個開關」「AI key／寄信設定在哪裡改」「某租戶突然所有訊息 503」，
+或要改 platform-setting.service、trial-policy.service、platform.routes.ts 的 /settings、/registry、
+pricing.service、seedModelPricing 時使用。
 
 ## 先讀
 - 功能文件：`docs/ref/features/platform/SETTINGS.md`；平台後台共通機制（稽核、快取、資料模型）：`docs/ref/features/platform/README.md`
@@ -56,7 +60,7 @@ description: >
 - `ai.privacy.<tenantId>` 的值必須是嚴格的 `{enabled:boolean}`（`.strict()`），否則該租戶所有訊息寫入回 503 `AI_PRIVACY_POLICY_UNAVAILABLE`。只能透過專用路由寫；在 TRIAL-02 的「殼層」做出來之前，不要用通用 `PUT /settings/:key` 碰 `ai.` 開頭的鍵。
 - 讀取端各自做型別檢查，不符就靜默退回預設值（`getTrialPolicy()`），或直接拋錯（`readAiPrivacyPolicy()`）。新增設定鍵時要決定是哪一種，並在寫入端驗證。
 - 稽核：主規格 `platform-auth` 規定 `setting.update` 的 payload **不可**含設定值（`platform-audit-routes.test.ts` 有測）。TRIAL-02 的修正方向寫「稽核 `{before, after}`」，兩者衝突，改之前先決定並同步規格。
-- 這張表存的是明文 JSON，`GET` 原樣回傳，`app_tenant` 連線只能讀、不能寫（#412 起，migration `20261103110000_revoke_app_tenant_platform_tables`），但仍讀得到所有鍵，包含其他租戶的 `ai.privacy.*`（HC-PLATFORM-SETTINGS-02）。**不要把密碼、API key 放進 `platform_settings`**；需要密鑰就用環境變數，或比照 BYOK 以 `CREDENTIAL_ENCRYPTION_KEY` 加密。
+- 這張表存的是明文 JSON，`GET` 原樣回傳，`app_tenant` 連線只能讀、不能寫（migration `20261103110000_revoke_app_tenant_platform_tables`），但仍讀得到所有鍵，包含其他租戶的 `ai.privacy.*`（HC-PLATFORM-SETTINGS-02）。**不要把密碼、API key 放進 `platform_settings`**；需要密鑰就用環境變數，或比照 BYOK 以 `CREDENTIAL_ENCRYPTION_KEY` 加密。
 - 價目改動只能新增一列新的 `effectiveFrom`，不可修改既有列（主規格 `model-pricing`）。成本在寫入 `AiUsage` 當下算定，不會重算；補價目之前用掉的呼叫成本永久是 0。
 - `/registry` 是功能與渠道選項的單一來源；在 `ChannelType` enum 加值會立刻出現在方案頁，不論有沒有註冊渠道外掛。
 - 平台路由的 rate-limit 與 guard 都在 `platform.routes.ts` 的函式內註冊，把 `/settings` 拆到新檔要一起帶走（SEC-03）。

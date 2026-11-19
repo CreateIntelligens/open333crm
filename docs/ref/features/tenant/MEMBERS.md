@@ -38,7 +38,7 @@
 | 停用 | `POST /agents/:id/deactivate` | `isActive` 設為 `false`。帳號保留，email 仍被佔用 |
 | 查詢停用的成員 | `GET /agents/inactive` | 列出本租戶停用的成員，要 `agent.deactivate` |
 | 重新啟用 | `POST /agents/:id/reactivate` | `isActive` 改回 `true`，角色維持停用前。要 `agent.deactivate`，並套用方案的客服人數上限 |
-| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值。稽核與資料匯出、刪除請求的操作者欄位也改成空值，刪除前先把名稱與 email 存進快照欄位（issue #414，見[稽核](GOVERNANCE.md#租戶稽核日誌)） |
+| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值。稽核與資料匯出、刪除請求的操作者欄位也改成空值，刪除前先把名稱與 email 存進快照欄位（見[稽核](GOVERNANCE.md#租戶稽核日誌)） |
 
 兩個動作都不能套用在租戶內最後一位啟用中的管理員（422 `LAST_ADMIN_PROTECTED`），避免租戶沒有人能管理；把最後一位管理員改成不含 `role.manage` 的角色也一樣。「管理員」依權限判斷：角色的有效權限含 `role.manage`（標記 `selfLock` 的權限碼）就算，不看舊的角色列舉 `role`。永久刪除不要求先停用。
 
@@ -75,7 +75,7 @@
 | `role` | 舊的三級列舉：`ADMIN`、`SUPERVISOR`、`AGENT` | 工單自動指派、通知收件人、自動化的「通知主管」、試用到期通知 |
 | `roleId` | 指向細粒度的 `Role` | 路由的權限檢查、渠道可見範圍、角色與權限頁 |
 
-schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個欄位一起更新；指派自訂角色時，`role` 沿用成員原本的值。因此同屬一個自訂角色的兩個成員，可能一個收到所有主管通知、另一個會被自動指派工單，而介面上看不出差別。見 `../../system/AUDIT.md` 的 RBAC-03。
+schema 的註解說明這是過渡期的雙寫。建立成員時，`role` 由呼叫端送出（必填），`roleId` 選填；有 `roleId` 時權限以它為準，`role` 仍照呼叫端送的值寫入。指派系統角色時，兩個欄位一起更新；指派自訂角色時，`role` 沿用成員原本的值。因此同屬一個自訂角色的兩個成員，可能一個收到所有主管通知、另一個會被自動指派工單，而介面上看不出差別。見 `../../system/AUDIT.md` 的 RBAC-03。
 
 ### 系統角色與自訂角色
 
@@ -115,7 +115,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 | 授權 | 設定位置 | 端點 |
 | --- | --- | --- |
-| 直接授權給成員 | 人員管理頁 | `GET`、`PUT /agents/:id/channels`，需要 `channel.assign_team` |
+| 直接授權給成員 | 人員管理頁 | `GET`、`PUT /agents/:id/channels`，需要 `channel.assign_team`。`PUT` 以送出的渠道清單整批取代，層級一律寫 `full`，不能指定 `reply_only` 或 `read_only` |
 | 授權給團隊 | 渠道管理頁 | 見[渠道管理](./CHANNELS.md#誰看得到這個渠道) |
 
 **團隊沒有建立的途徑。** API、前端與種子資料都沒有建立團隊或加入成員的功能。渠道管理頁只能從既有的團隊中選擇，而正常情況下沒有任何團隊。依團隊授權渠道與依團隊自動指派工單，因此都只能直接改資料庫才用得起來。見 `../../system/AUDIT.md` 的 TEAM-01。
@@ -169,7 +169,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | email 區分大小寫，和建立時的大小寫不同就無法登入 | 詳見 `../../system/AUDIT.md` 的 AUTH-10 |
 | 知道 email 就能讓成員無法以密碼登入 | 詳見 `../../system/AUDIT.md` 的 SEC-06 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
-| 業務規則看舊的角色列舉 | 自動指派、通知收件人、試用到期信。「最後一位管理員」的保護已改依權限判斷。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
+| 業務規則看舊的角色列舉 | 自動指派、通知收件人、試用到期信。「最後一位管理員」的保護依權限判斷。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | **reconcile 腳本覆蓋系統角色的修改** | 詳見 `../../system/AUDIT.md` 的 RBAC-05 |
 | 角色頁顯示的權限不套方案天花板 | 詳見 `../../system/AUDIT.md` 的 PLAN-08 |
 | 停用成員不會中斷登入中的 token 與 socket | access token 有效到過期，socket 直到斷線。各憑證的生效時間見[認證與憑證](../../modules/AUTHENTICATION.md#停用與撤銷什麼時候生效) |

@@ -1,6 +1,8 @@
 # 事件與背景工作
 
-本文件說明模組之間不直接呼叫時，靠哪些通道傳遞：業務事件怎麼發布與訂閱、事件怎麼保證送達、哪些工作送到 `apps/workers` 執行、workers 怎麼把結果送回 API 與前端，以及 API 行程內有哪些定期排程。每個背景工作屬於哪個模組，見[模組總覽](./OVERVIEW.md#背景工作的歸屬)；選擇直接推送或走佇列的規則，見 [AGENTS.md 的 Socket 事件路由一節](../../../AGENTS.md#architecture-socket-event-routing-critical)。
+模組之間不直接呼叫時，靠事件、佇列與排程傳遞。本文件說明這些通道，問題清單見下一節。
+
+每個背景工作屬於哪個模組，見[模組總覽](./OVERVIEW.md#背景工作的歸屬)。選擇直接推送或走佇列的規則，見 [AGENTS.md 的 Socket 事件路由一節](../../../AGENTS.md#architecture-socket-event-routing-critical)。
 
 - **資料來源**：`apps/api/src/events/`、`apps/api/src/lib/tenant-ctx.ts`、`apps/api/src/plugins/socket.plugin.ts`、`apps/api/src/modules/*/*.worker.ts`、`apps/api/src/modules/*/*.scheduler.ts`、`apps/api/src/modules/webhook-subscriptions/webhook-dispatcher.ts`、`apps/api/src/index.ts`、`apps/workers/src/index.ts`、`apps/workers/src/lib/socket-bridge.ts`、`apps/workers/src/lib/notification-queue.ts`、`packages/core/src/outbox/`、`packages/core/src/event-bus/event-bus.ts`、`packages/core/src/canvas/*`
 - **核對日期**：2026-10-21
@@ -16,6 +18,7 @@
 | 有哪些佇列？誰消費？完成的工作會保留多久？ | [BullMQ 佇列](#bullmq-佇列) |
 | workers 怎麼推送即時事件、怎麼發出業務事件？ | [從 workers 回到 API](#從-workers-回到-api) |
 | API 行程內有哪些定期排程？ | [API 行程內的排程](#api-行程內的排程) |
+| 怎麼新增一個 API 行程內的排程？ | [新增 API 行程內的排程](#新增-api-行程內的排程) |
 | 工作失敗時會重試嗎？API 重啟時會遺失什麼？ | [失敗與重試](#失敗與重試) |
 | 怎麼查看失敗的工作？誰會收到告警？ | [監控與告警](#監控與告警) |
 | 可以同時跑多個 API 行程嗎？ | [只能跑一個 API 行程](#只能跑一個-api-行程) |
@@ -28,7 +31,7 @@
 
 業務事件有三個訂閱者：通知、自動化與對外 Webhook。每個訂閱者有自己的 BullMQ 佇列，Worker 在 API 行程內。事件有兩種發出方式：
 
-- **`publishEvent(scope, publisher, …)`**（flow 或背景工作，在 `inTenant()` 的交易內；`apps/api/src/events/outbox-publisher.ts`）：事件寫進 `outbox` 資料表，與業務資料一起 commit；commit 之後送進訂閱者佇列。行程在送出之前結束時，補送排程會補送。保證是**至少一次**。
+- **`publishEvent(scope, publisher, …)`**（`apps/api/src/events/outbox-publisher.ts`）：flow 或背景工作在 `inTenant()` 的交易內呼叫。事件寫進 `outbox` 資料表，與業務資料一起 commit。commit 之後，事件送進訂閱者佇列。行程在送出之前結束時，補送排程會補送。保證是**至少一次**。
 - **`eventBus.publish()`**（還沒搬遷的舊程式）：直接送進訂閱者佇列，不寫 outbox。行程在送出之前結束時，事件遺失。保證是**最多一次**。
 
 因為事件可能送兩次，訂閱者與 workers 的規則動作都要承受重複。對客人發訊息等不能重複的副作用，執行前先寫一筆認領紀錄（`side_effect_claims`）。
@@ -38,19 +41,22 @@
 | 通道 | 實作 | 方向 | 會不會持久化 |
 | --- | --- | --- | --- |
 | outbox | `outbox` 資料表，`packages/core/src/outbox/` | API 或 workers 的交易，到訂閱者佇列 | 會。資料列與業務資料一起 commit，送出後保留 7 天 |
-| 訂閱者佇列 | BullMQ：`event-notification`、`event-automation`、`event-webhook` | 到 API 行程的訂閱者 Worker | 會。job 存在 Redis，直到被處理 |
+| 訂閱者佇列 | BullMQ：`event-notification`、`event-automation`、`event-webhook` | 到 API 行程的訂閱者 Worker | 會。job 存在 Redis，直到 Worker 處理完 |
 | eventBus | `apps/api/src/events/event-bus.ts` | API 行程內，直接送進訂閱者佇列 | 不會。送進佇列之前行程結束時，事件遺失 |
 | `crm:events` | `packages/core` 的 `EventBus`，Redis pub/sub | 發布者到所有訂閱的行程。目前只有 Canvas 使用 | 不會。發布當下沒有訂閱者就遺失 |
 | 其他 BullMQ 佇列 | Redis | API 行程到 workers；workers 也會送工作給自己 | 會 |
 | `socket:emit` | Redis pub/sub | workers 到 API 行程，再推給前端 | 不會 |
 
-另外還有兩種定期工作：API 行程內以 BullMQ Job Scheduler 觸發的排程，以及 workers 行程以 BullMQ 重複工作執行的排程。
+另外還有兩種定期工作：
 
-名稱容易誤導的地方：API 裡的 `setupNotificationWorker()`、`setupAutomationWorker()` 雖然叫 worker，實際上回傳訂閱者佇列的處理函式，由 `apps/api/src/events/subscriber-workers.ts` 建立的 Worker 呼叫。見 `../system/AUDIT.md` 的 APP-04。
+- API 行程內的排程，由 BullMQ Job Scheduler 觸發。
+- workers 行程的排程，以 BullMQ 重複工作執行。
+
+注意名稱：API 裡的 `setupNotificationWorker()`、`setupAutomationWorker()` 雖然叫 worker，實際上回傳訂閱者佇列的處理函式。`apps/api/src/events/subscriber-workers.ts` 建立的 Worker 呼叫這些處理函式。見 `../system/AUDIT.md` 的 APP-04。
 
 ## 業務事件
 
-事件名稱列在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES`，`apps/api/src/events/event-bus.ts` 的 `AppEventName` 由它而來。
+事件名稱列在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES`，`apps/api/src/events/event-bus.ts` 的 `AppEventName` 由 `APP_EVENT_NAMES` 產生。
 
 ```ts
 // 交易內：寫 outbox，至少一次
@@ -71,7 +77,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 
 各訂閱者訂閱哪些事件，列在 `packages/core/src/outbox/queues.ts` 的 `EVENT_SUBSCRIBERS`。對外事件清單是同一個目錄的 `EXTERNAL_EVENT_NAMES`，第一版等於所有事件名稱，見 `../system/AUDIT.md` 的 HOOK-01。
 
-各事件的發布端與訂閱端（2026-10-21 的快照；對外 Webhook 收到清單內的所有事件，下表不重複列出）：
+下表是各事件的發布端與訂閱端，為 2026-10-21 的快照。對外 Webhook 收到清單內的所有事件，所以下表不列出對外 Webhook：
 
 | 事件 | 發布端 | 訂閱端 |
 | --- | --- | --- |
@@ -98,7 +104,9 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `link.clicked` | `shortlink/shortlink.flow.ts` 的 `trackClickFlow()`（outbox） | 自動化 |
 | `usage.quota.threshold` | `ai/llm.flow.ts` 的 `recordLlmUsage()`（outbox） | 通知 |
 
-標「outbox」的發布端已經是至少一次，其他發布端仍用 `eventBus.publish()`。「無」發布端的事件，訂閱者永遠不會執行；自動化規則若以這些事件觸發，也永遠不會生效，見 `../system/AUDIT.md` 的 AUTO-05。
+標「outbox」的發布端已經是至少一次。其他發布端仍用 `eventBus.publish()`。
+
+發布端是「無」的事件，訂閱者永遠不會執行。以這些事件觸發的自動化規則也永遠不會生效，見 `../system/AUDIT.md` 的 AUTO-05。
 
 ## 送達保證：outbox 與認領
 
@@ -110,22 +118,27 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 4. 快路徑與補送同時送出時，BullMQ 以 job id 擋住重複的 job。訂閱者佇列保留完成的 job 24 小時、失敗的 job 7 天，這段時間內同一個事件 id 不會再建立 job。
 5. `outbox-cleanup` 排程每天刪除已送出超過 7 天的資料列。未送出的資料列不刪。
 
-`enqueueJob(scope, publisher, queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項丟錯。`jobId`、`deduplication`、`debounce`、`repeat` 這類選項會讓 BullMQ 不建立這個 job，或不用 outbox id 當 job id。送出時，佇列回傳的 job id 不等於 outbox id，這一列就不標記已送出，留給補送排程。
+`enqueueJob(scope, publisher, queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項丟錯。`jobId`、`deduplication`、`debounce`、`repeat` 這類選項會讓 BullMQ 不建立這個 job，或不用 outbox id 當 job id。送出時，如果佇列回傳的 job id 不等於 outbox id，系統不把這一列標記為已送出，留給補送排程處理。
 
 ### 副作用的認領紀錄
 
 不能重複的副作用，執行前在交易內寫一筆 `side_effect_claims`。唯一鍵是 `(kind, sourceId, subKey)`，撞到唯一鍵時認領失敗，副作用不執行。寫入用 `INSERT … ON CONFLICT DO NOTHING`，所以認領失敗不會讓交易失效。認領紀錄保存 30 天，由 `outbox-cleanup` 刪除。
 
-去重有期限：以 job id 去重，只在佇列保留這個 job 的期間有效（完成的 job 保留 24 小時）；以認領紀錄去重，只在 30 天內有效。超過期限之後同一個事件再送一次，沒有認領的處理會再做一次。
+去重有期限：
+
+- 以 job id 去重：只在佇列保留這個 job 的期間有效。完成的 job 保留 24 小時。
+- 以認領紀錄去重：只在 30 天內有效。
+
+超過期限之後，同一個事件再送一次時，沒有認領的處理會再做一次。
 
 | kind | sourceId | subKey | 保護的副作用 |
 | --- | --- | --- | --- |
-| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接與 AI 回覆失敗轉接（#445）的轉接訊息：每則入站訊息最多一則機器人回覆 |
+| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接與 AI 回覆失敗轉接的轉接訊息：每則入站訊息最多一則機器人回覆 |
 | `automation_action` | 觸發事件 id | `<規則 id>#<動作序號>` | workers 的每個規則動作。SLA 排程沒有事件 id，不認領 |
 | `sentiment` | 入站訊息 id | 空字串 | 情緒分析的結果與 `sentiment.negative` |
 | `keyword_matched` | 入站訊息 id | 規則 id | 給對外 Webhook 的 `keyword.matched` |
 
-系統呼叫 LLM 之前，先查這則訊息有沒有認領紀錄。已有紀錄時，系統不呼叫 LLM。這個檢查只為了省費用；兩次處理同時通過檢查時，交易內的認領仍只讓一次成功。
+系統呼叫 LLM 之前，先查這則訊息有沒有認領紀錄。已有紀錄時，系統不呼叫 LLM。這個檢查只為了省費用。兩次處理同時通過檢查時，交易內的認領仍只讓一次成功。
 
 認領成功之後，送出失敗或行程中斷時，認領紀錄不還原。所以這些副作用是最多一次：寧可少送一則，也不重複送。
 
@@ -134,13 +147,25 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 - 認領、寫入結果或寫入 outbox 的交易失敗。沒有 commit 就沒有認領紀錄，也沒有 outbox，只有佇列的重試能補做。API 的機器人回覆以 `ClaimTransactionError`（`bot-reply-guard.ts`）標示這種失敗。降級用的 catch（例如「agent 失敗改由 KB 回覆」）遇到這個錯誤時，會往外丟，不會吞掉。
 - 把下一步的 job 送進佇列失敗，例如規則評估、站內通知、告警信。
 
-刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時改用關鍵字判斷，照舊只記 log。agent 沒有回覆、KB 回覆又因錯誤失敗時，不再只記 log：`handOffAfterAiFailure()` 以 `bot_reply` 認領並轉接真人，轉接的交易失敗時往外丟，由佇列重試（#445）。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
+刻意的降級不算失敗，照舊只記 log。降級有三種：
+
+- LLM 失敗時，改由 KB 回覆。
+- KB 找不到答案。
+- 情緒分析的 LLM 失敗時，改用關鍵字判斷。
+
+agent 沒有回覆、KB 回覆又因錯誤失敗時，系統不只記 log：
+
+1. `handOffAfterAiFailure()` 以 `bot_reply` 認領，並轉接真人。轉接的交易失敗時，錯誤往外丟，由佇列重試。
+2. `message.received` 的每個步驟都會執行。處理結束時，系統再丟出失敗步驟的錯誤。
+3. 重試時，已完成的步驟都已認領，所以會略過。
+
+轉接失敗時，這次不做 AI 回覆。原因是 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
 
 對話轉接以條件更新認領對話（`BOT_HANDLED` 改成 `AGENT_HANDLED`），不另外寫認領紀錄。
 
 ## Canvas 的事件
 
-Canvas 的流程引擎在 `packages/core`，無法 import API 的 eventBus，因此另有一套事件通道：`packages/core/src/event-bus/event-bus.ts` 的 `EventBus`。它以 Redis pub/sub 的 `crm:events` 頻道傳遞，**與 API 的 eventBus 是兩個不相通的系統**，事件名稱欄位也不同（`type` 而不是 `name`）。這個通道沒有改走 outbox，保證仍是最多一次。
+Canvas 的流程引擎在 `packages/core`，無法 import API 的 eventBus，因此另有一套事件通道：`packages/core/src/event-bus/event-bus.ts` 的 `EventBus`。`EventBus` 以 Redis pub/sub 的 `crm:events` 頻道傳遞。**`EventBus` 與 API 的 eventBus 是兩個不相通的系統**，事件名稱的欄位也不同：`EventBus` 用 `type`，不用 `name`。這個通道沒有改走 outbox，保證仍是最多一次。
 
 | 事件 | 發布端 | 訂閱端 |
 | --- | --- | --- |
@@ -148,9 +173,9 @@ Canvas 的流程引擎在 `packages/core`，無法 import API 的 eventBus，因
 | `canvas.action` | `FlowRunner` 的 `ACTION` 節點 | 同上，目前只處理 `add_tag` |
 | `flow.completed` | `FlowRunner` 流程結束時 | 無 |
 
-`packages/core` 裡另有 `InboxService` 也發布到這個頻道，但它在 `apps/*` 沒有呼叫端，見 `../system/AUDIT.md` 的 PKG-05。
+`packages/core` 裡另有 `InboxService` 也發布到這個頻道，但 `apps/*` 沒有呼叫 `InboxService`，見 `../system/AUDIT.md` 的 PKG-05。
 
-Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個 API 行程在跑，每則 `canvas.send_message` 就會被發送幾次，見[只能跑一個 API 行程](#只能跑一個-api-行程)。
+Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此每則 `canvas.send_message` 的發送次數，等於正在執行的 API 行程數，見[只能跑一個 API 行程](#只能跑一個-api-行程)。
 
 ## BullMQ 佇列
 
@@ -163,6 +188,8 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 | `usage-alert-email` | 通知訂閱者 | `usage-alert-email.worker.ts` | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `api-scheduler` | `job-scheduler.ts` | 同一個檔案的 Worker | 不重試 | 完成 100 筆、失敗 50 筆 |
 | `ops-alert` | `ops-alert.service.ts` 的 `sendOpsAlert()` | `ops-alert.worker.ts` | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
+| `coupon-broadcast` | 立即發送的群發與附券廣播，經 outbox（`broadcast-coupon.flow.ts`） | `apps/api/src/index.ts` 以 `createCouponBroadcastProcessor()` 建立的 Worker | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
+| `comment-reply` | 留言自動私訊，webhook 收到命中關鍵字的留言時排入 | `createCommentReplyProcessor()` | 共 5 次，指數退避，基準 10 秒。只有網路錯誤會消耗次數，限流延後不消耗 | 完成 24 小時、失敗 7 天 |
 
 前 3 列的 Worker 每個同時處理多個 job，所以一個事件處理很久時，其他事件不用等。每個佇列的並行數見 `subscriber-workers.ts` 的 `WORKER_CONCURRENCY`。
 
@@ -182,7 +209,7 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 
 以事件 id 當 job id 的佇列，保留期限就是去重的期限，所以以時間計算，不以筆數計算。
 
-重複工作列在 `apps/workers/src/lib/repeating-jobs.ts`。已排定的重複工作會延續註冊時的選項，所以 workers 每次啟動時，先刪除這 4 個佇列既有的重複工作，再以目前的選項重新註冊。刪除與重新註冊之間 workers 停止時，那一期會少執行一次，下次啟動時恢復。
+重複工作列在 `apps/workers/src/lib/repeating-jobs.ts`。已排定的重複工作會沿用註冊時的選項。所以 workers 每次啟動時，先刪除這 4 個佇列既有的重複工作，再以目前的選項重新註冊。workers 在刪除與重新註冊之間停止時，那一期會少執行一次。workers 下次啟動時恢復。
 
 `data-export`、`data-erasure` 的 worker 開頭以條件更新認領 `pending` 或 `processing` 的請求。`processing` 代表上一次執行中途結束，worker 重新處理；已結束的請求直接略過。
 
@@ -193,7 +220,7 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 | `flow:resume` | `packages/core/src/canvas/scheduler.ts` 的 `scheduleWaitNode()` | 佇列名稱含冒號，BullMQ 建立佇列時直接拋出錯誤，所以從未成功送出；Canvas 實際靠資料庫輪詢喚醒。見 APP-07 |
 | `broadcast` | 舊版的 workers | 已不再使用。workers 啟動時清掉殘留的重複工作 |
 
-workers 以 `DATABASE_URL_ADMIN` 連線資料庫，這是 BYPASSRLS 的連線，因為一個 worker 要處理所有租戶的工作。租戶隔離由各 handler 的查詢條件負責；寫入 outbox 與認領紀錄時，明確帶入租戶 ID。
+workers 以 `DATABASE_URL_ADMIN` 連線資料庫。這是 BYPASSRLS 的連線，因為一個 worker 要處理所有租戶的工作。租戶隔離由各 handler 的查詢條件負責。寫入 outbox 與認領紀錄時，handler 明確帶入租戶 ID。
 
 ## 從 workers 回到 API
 
@@ -203,11 +230,11 @@ workers 行程沒有 socket 連線。即時事件透過 Redis 轉給 API 行程�
 | --- | --- | --- | --- |
 | `publishSocketEvent()`（`apps/workers/src/lib/socket-bridge.ts`） | `socket:emit` | `socket.plugin.ts`，轉成 `io.to(room).emit()` | 通知、渠道送達狀態、自動化與 SLA 造成的工單更新。可以指定 `namespace` |
 
-workers 產生的業務事件（`create_case` 的 `case.created`、`add_tag` 的 `contact.tagged`、關鍵字規則的 `keyword.matched`）在寫入業務資料的同一個交易寫進 outbox，commit 之後以快路徑送進訂閱者佇列。API 沒有在執行時，job 留在佇列，或資料列留在 outbox，等 API 啟動後處理。
+workers 產生的業務事件有 `create_case` 的 `case.created`、`add_tag` 的 `contact.tagged`、關鍵字規則的 `keyword.matched`。這些事件在寫入業務資料的同一個交易寫進 outbox。commit 之後，快路徑把事件送進訂閱者佇列。API 沒有在執行時，job 留在佇列，或資料列留在 outbox，等 API 啟動後處理。
 
 自動化可以連鎖：規則 A 在 workers 貼標，產生 `contact.tagged`，再觸發規則 B。自動化訂閱者略過 `source` 是 `automation` 的 `contact.tagged`，避免無限迴圈。
 
-舊的 `domain:event` 頻道已移除，所以 API 與 workers 要一起部署：只部署 API 時，舊 workers 發到 `domain:event` 的事件沒有人接收。
+舊的 `domain:event` 頻道已移除。所以 API 與 workers 要一起部署：只部署 API 時，舊 workers 發到 `domain:event` 的事件沒有人接收。
 
 ## API 行程內的排程
 
@@ -224,19 +251,55 @@ workers 產生的業務事件（`create_case` 的 `case.created`、`add_tag` 的
 | `trial-lifecycle` | `setupTrialScheduler()` | `trial` | 每小時 | 試用到期的提醒、停用與軟刪 |
 | `meta-token-health` | `setupMetaTokenHealthScheduler()` | `channel` | 每 6 小時 | 檢查 FB、IG 渠道的權杖，失效時通知租戶管理員 |
 | `analytics-daily` | `setupAnalyticsScheduler()` | `analytics` | 每天 02:00（行程所在時區） | 把前一天的彙總寫入 `DailyStat`，每個啟用中的租戶一個交易，逐一處理 |
+| `coupon-stale-pending-issue` | `setupCouponScheduler()` | `coupon` | 每 60 秒 | 作廢卡在「發送中」超過 5 分鐘的優惠券 |
+| `comment-reply-recover` | `setupCommentReplySchedulers()` | `comment-reply` | 每 5 分鐘 | 重新排入卡住的留言私訊；留言超過 7 天的標成過期 |
+| `comment-reply-health` | `setupCommentReplySchedulers()` | `comment-reply` | 每 5 分鐘 | 檢查留言自動私訊的健康狀態，異常時發維運告警並通知租戶管理員 |
+| `comment-reply-retention` | `setupCommentReplySchedulers()` | `comment-reply` | 每小時 | 刪除超過保留天數的觸發紀錄 |
+| `contract-reminder` | `setupContractReminderScheduler()` | `platform` | 每小時 | 合約到期前寄提醒信給平台帳號 |
 | `outbox-cleanup` | `setupOutboxSchedulers()` | `outbox` | 每天 03:30（行程所在時區） | 刪除已送出超過 7 天的 outbox 與建立超過 30 天的認領紀錄 |
 
-`startA2ABridgeWorker()`（`settings`）也跑在 API 行程，但它是常駐輪詢 A2A Hub，不是排程，由 `A2A_BRIDGE_ENABLED` 控制。
+`startA2ABridgeWorker()`（`settings`）也跑在 API 行程。`startA2ABridgeWorker()` 常駐輪詢 A2A Hub，不是排程。`A2A_BRIDGE_ENABLED` 控制是否啟動。
 
 Job Scheduler 的行為：
 
 - 排程的定義存在 Redis。不論有幾個 API 行程，每一期只產生一筆 job。正常情況下，這筆 job 由一個行程執行一次。
-- 同一筆 job 可能執行不只一次：執行中的行程被強制結束時，BullMQ 會重新執行這筆 job（見下一項）。所以 `run` 要承受重跑：寄信、發通知或改狀態之前，先以條件更新認領這一筆資料，重跑時就不會重複處理。
+- 同一筆 job 可能執行不只一次。執行中的行程被強制結束時，BullMQ 會重新執行這筆 job（見下一項）。所以 `run` 要承受重跑：寄信、發通知或改狀態之前，先以條件更新認領這一筆資料。重跑時就不會重複處理。
 - 第一次註冊時，每隔固定時間的排程立刻執行一次；每天固定時間的排程等到下一個時間點。之後 API 重啟時再註冊，下次執行時間不變，所以重啟不會觸發額外的執行。
 - Redis 斷線期間，排程停止執行。Redis 恢復後，到期的那一期補跑一次，更早錯過的期數不補。
-- 部署時，API 收到 SIGTERM 後等執行中的 job 跑完；Docker 等 10 秒後強制結束。被強制結束的 job，由新的行程重新執行。用 BullMQ 的預設設定（`lockDuration` 30 秒、`stalledInterval` 30 秒）實測，約 60 秒後重新執行；改了這兩個設定，時間也會不同。
+- 部署時，API 收到 SIGTERM 後等執行中的 job 跑完。Docker 等 10 秒後強制結束 API。被強制結束的 job，由新的行程重新執行。以 BullMQ 的預設設定（`lockDuration` 30 秒、`stalledInterval` 30 秒）實測，job 約 60 秒後重新執行。改了這兩個設定，時間也會不同。
 
-Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取走這一期的 job 時就產生下一期，所以一期跑得比週期久時，下一期可能在這一期跑完前開始。可能跑得比週期久的排程，註冊時設定 `withoutOverlapping`，目前有 `canvas-resume`、`trial-lifecycle` 與 `outbox-relay` 設定。`withoutOverlapping` 只在鎖有效期間防止兩期重疊：job 結束時釋放鎖；行程停掉或執行超過存活時間時，鎖到期失效，下一期就能開始。它也不防止被強制結束的 job 重跑，所以設定了鎖的排程，`run` 仍要以條件更新認領資料。`outbox-relay` 重跑時，以 job id 去重。其他排程避免重複處理，靠的是資料庫的條件更新，例如群發以條件更新把狀態改成 `sending`，`canvas-resume` 以條件更新把 `WAITING` 改成 `RUNNING`（#334）。
+Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取走這一期的 job 時就產生下一期。所以一期跑得比週期久時，下一期可能在這一期跑完前開始。
+
+可能跑得比週期久的排程，註冊時設定 `withoutOverlapping`。目前 `canvas-resume`、`trial-lifecycle` 與 `outbox-relay` 有設定。`withoutOverlapping` 的限制：
+
+- 鎖只在有效期間防止兩期重疊。job 結束時釋放鎖。行程停掉或執行超過存活時間時，鎖到期失效，下一期就能開始。
+- 鎖不防止被強制結束的 job 重跑。所以設定了鎖的排程，`run` 仍要以條件更新認領資料。
+
+各排程避免重複處理的方法：
+
+- `outbox-relay` 重跑時，以 job id 去重。
+- 其他排程靠資料庫的條件更新。例如群發以條件更新把狀態改成 `sending`，`canvas-resume` 以條件更新把 `WAITING` 改成 `RUNNING`。
+
+### 新增 API 行程內的排程
+
+只有需要 API 行程的定期工作（例如要用 `fastify.io`）才放在 API 行程，其他定期工作放在 `apps/workers`。
+
+1. 在模組的 scheduler 檔案以 `registerSchedule()` 註冊：
+
+   ```ts
+   export function setupXxxScheduler(scheduler: JobScheduler, prisma: PrismaClient) {
+     scheduler.registerSchedule({ id: 'xxx', every: 60_000, run: () => runXxx(prisma) });
+   }
+   ```
+
+2. 在 `apps/api/src/index.ts` 呼叫 `setupXxxScheduler(jobScheduler, ...)`。這個呼叫要在 `jobScheduler.start()` 之前。
+
+註冊的選項：
+
+- 頻率用 `every`（毫秒）或 `pattern`（cron），兩者只能給一個。
+- cron 使用 API 行程的時區。容器沒有設定 `TZ`，所以時區是 UTC。
+- 一期可能跑得比週期久時，設定 `withoutOverlapping: { expiresInMs }`。`expiresInMs` 設成這個工作最長的執行時間，不是週期。工作跑超過 `expiresInMs` 時，鎖也會到期，下一期可能在這一期跑完前開始。
+- 排程 id 同時是 job 名稱與鎖的鍵。`start()` 會刪除 Redis 中沒有程式註冊的排程，所以改名或移除的 id 不會留在 Redis。
 
 ## 失敗與重試
 
@@ -259,7 +322,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 ### 監控與告警
 
-平台管理員從平台後台的「佇列監控」開啟 bull-board，看兩個行程所有佇列的工作與失敗原因，並可以重送單一個 failed 的工作。存取限制與操作範圍見 [佇列監控](../features/platform/QUEUE-MONITORING.md)。
+平台管理員從平台後台的「佇列監控」開啟 bull-board。bull-board 列出兩個行程所有佇列的工作與失敗原因，平台管理員可以重送單一個 failed 的工作。存取限制與操作範圍見 [佇列監控](../features/platform/QUEUE-MONITORING.md)。
 
 任何佇列（`ops-alert` 除外）的工作移到 failed set 時，API 以 `sendOpsAlert()` 發出一則告警，合併鍵是 `queue-failed:<佇列名稱>`：
 
@@ -269,7 +332,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 - 設定 `OPS_ALERT_SLACK_WEBHOOK_URL` 時送到 Slack，否則只寫 log。`ops-alert` 自己的工作重試用完時只寫 log。
 - 監聽用 `QueueEvents`，從最新的事件開始讀。API 停機期間移到 failed set 的工作不會告警，但會在 failed set 保留 7 天。
 
-重送之後，3 個訂閱者佇列與 `automation` 的工作回傳值列出被認領擋下而沒有再執行的副作用（`skippedClaims`），包括呼叫 LLM 之前先查到認領紀錄而跳過的機器人回覆與情緒分析，見[副作用的認領紀錄](#副作用的認領紀錄)。沒有副作用被跳過時，回傳值是空的。
+3 個訂閱者佇列與 `automation` 的工作重送之後，工作的回傳值列出 `skippedClaims`：因為已有認領紀錄而沒有再執行的副作用。`skippedClaims` 也包括呼叫 LLM 之前先查到認領紀錄而跳過的機器人回覆與情緒分析，見[副作用的認領紀錄](#副作用的認領紀錄)。沒有跳過任何副作用時，回傳值是空的。
 
 ## 只能跑一個 API 行程
 
@@ -286,15 +349,20 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 ## 新增事件或背景工作時
 
-1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()`、`notifyChannel()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。帶渠道的訊息或對話資料的推播用 `notifyChannel()`，只送給看得到該渠道的成員；`notifyTenant()` 不可帶這類內容（issue #427）。還沒搬到 `inTenant()` 的舊入口用 `emitToChannel()`。
+1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()`、`notifyChannel()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。帶渠道的訊息或對話資料的推播用 `notifyChannel()`，只送給看得到該渠道的成員；`notifyTenant()` 不可帶這類內容。還沒搬到 `inTenant()` 的舊入口用 `emitToChannel()`。
 2. **其他模組要跟著做事**：flow 在交易內用 `publishEvent()`。先在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES` 加上名稱，再在 `queues.ts` 的 `EVENT_SUBSCRIBERS` 決定哪些訂閱者收到。訂閱者要承受同一個事件處理兩次。
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：flow 在交易內用 `enqueueJob()`，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。job 可能送兩次，handler 要承受重複。
 4. **workers 要推送即時事件**：帶渠道資料的用 `publishChannelSocketEvent()`（送到對話、渠道與總店房間，`socket:emit` 訊息帶 `rooms`）；其他用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：在寫入業務資料的交易內用 `writeOutbox()`，帶入租戶 ID；commit 之後呼叫 `dispatchOutboxRows()`。
 6. **不能重複的副作用**：執行前在交易內用 `claimSideEffect()` 認領，或以條件更新認領資料列。認領的交易失敗時丟錯讓 job 重試；認領之後的失敗只記 log。
-7. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時，每一期都只產生一筆 job；但 job 可能在行程被強制結束後重跑，所以都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
+7. **定期工作**：
+   - 工作需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊。`run` 要能承受重跑。
+   - 其他定期工作放在 workers，以 BullMQ 重複工作執行，並給固定的 `jobId`。
 
-新增事件之後，確認它同時有發布端與訂閱端。只有一邊的事件，不會產生任何錯誤或警告。
+   有多個行程時，兩種做法在每一期都只產生一筆 job。但行程被強制結束後，job 可能重跑，所以兩種做法都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。註冊步驟見[新增 API 行程內的排程](#新增-api-行程內的排程)。
+8. **新增 BullMQ `Worker`**：設定 `concurrency`。預設值是 1，Worker 一次只處理一個 job。一個慢的 job（例如 LLM 呼叫）會讓所有租戶的 job 一起等。訂閱者佇列的設定值見 `apps/api/src/events/subscriber-workers.ts`。
+
+新增事件之後，確認這個事件同時有發布端與訂閱端。只有一邊的事件，不會產生任何錯誤或警告。
 
 ## 目前的限制
 

@@ -29,6 +29,8 @@
 
 錯誤的值造成的具體結果與修正方向，見 `../../system/AUDIT.md` 的 TRIAL-02。
 
+個資遮罩的開關是 `ai.privacy.<tenantId>`，每個租戶一個鍵，值是 `{ enabled }`（`apps/api/src/modules/platform/ai-privacy.service.ts`）。維護介面是租戶詳細頁的個資遮罩開關，寫入時記平台稽核 `tenant.ai_privacy.update`。進站訊息的寫入路徑（`apps/api/src/modules/webhook/inbound-message-writer.ts` 等）每則訊息都讀這個鍵，決定送進模型前是否遮罩。
+
 留言自動私訊的 5 個鍵是 `commentReply.capabilities`、`commentReply.testPhase`、`commentReply.emergencyStop`、`commentReply.rateLimits`、`commentReply.logRetentionDays`，維護介面是 `/admin/comment-reply`。路由以 `parseCommentReplySettingValue()`（`apps/api/src/modules/comment-reply/comment-reply-platform-settings.ts`）驗證型別與範圍，不合法回 400、不寫入；值、預設與生效方式見[留言自動私訊的平台控制](./COMMENT-REPLY.md#5-個平台設定鍵)。
 
 ## 權限註冊表
@@ -45,6 +47,6 @@
 - 在 `packages/core/src/rbac/features.ts` 加一個 feature，或在 `permissions.ts` 加一個權限碼，方案設定頁就會多出對應的選項。
 - 在 schema 加一個 `ChannelType`，渠道白名單的選項就會自己出現。
 
-這是「單一真實來源」的作法：權限與渠道類型只定義一次，平台後台跟著長出來。前端因此不會出現「程式已經支援、但方案頁選不到」的落差。
+這是「單一真實來源」的作法：權限與渠道類型只定義一次，平台後台跟著長出來。前端因此不會出現「程式已經支援、但方案頁選不到」的落差。反方向的落差仍然存在：渠道類型直接列出 `ChannelType` 列舉的全部值，沒有對照已註冊的渠道外掛。方案頁因此選得到 `WHATSAPP` 與 `TELEGRAM`，但這兩種類型沒有外掛，租戶建不出來。見健檢 HC-PLATFORM-SETTINGS-06。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

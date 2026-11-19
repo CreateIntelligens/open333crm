@@ -1,22 +1,24 @@
 ---
 name: feature-platform-tenants
 description: >
-  open333CRM「平台後台：租戶管理」功能顧問：租戶列表、租戶詳細頁（資料量統計、基本資料、改方案）、
-  手動開通租戶與開通信（loginUrl、信裡沒有密碼）、重寄開通信、改成員登入 Email、停用/啟用租戶
-  （停用後擋登入、擋 refresh、丟棄進站訊息）、合約起訖日、試用資料清除（purgedAt）與復原、
-  個資遮罩開關，以及這些操作寫的平台稽核 platform_audit_logs。當需求、bug 或新功能碰到
-  /admin/tenants、/admin/tenants/[id]、platform-tenant.service、provisionTenant、setTenantActive、
-  tenant.isActive、TENANT_DISABLED、開通租戶、停用租戶、租戶停用多久生效、改成員 email、重寄開通信、
-  合約日期、復原已清除租戶時使用。也在改試用開通、方案指派、租戶登入、webhook 進站、群發排程前使用，
-  確認停用租戶的行為沒被破壞。
+  open333CRM「平台後台：租戶管理」功能顧問：租戶列表與詳細頁、手動開通、停用與啟用、合約日期、試用資料清除與復原。改到 /admin/tenants、platform-tenant.service、provisionTenant、setTenantActive，或改 webhook 進站、群發排程之前使用。
 ---
 
 # 平台後台：租戶管理
 
+## 涵蓋範圍
+
+open333CRM「平台後台：租戶管理」功能顧問：租戶列表、租戶詳細頁（資料量統計、基本資料、改方案）、
+手動開通租戶與開通信（loginUrl、信裡沒有密碼）、重寄開通信、改成員登入 Email、停用/啟用租戶
+（停用後擋登入、擋 refresh、丟棄進站訊息）、合約起訖日、試用資料清除（purgedAt）與復原、
+個資遮罩開關，以及這些操作寫的平台稽核 platform_audit_logs。當需求、bug 或新功能碰到
+/admin/tenants、/admin/tenants/[id]、platform-tenant.service、provisionTenant、setTenantActive、
+tenant.isActive、TENANT_DISABLED、開通租戶、停用租戶、租戶停用多久生效、改成員 email、重寄開通信、
+合約日期、復原已清除租戶時使用。也在改試用開通、方案指派、租戶登入、webhook 進站、群發排程前使用，
+確認停用租戶的行為沒被破壞。
+
 ## 先讀
 - 功能現況：`docs/ref/features/platform/TENANTS.md`，共通機制（稽核、快取連鎖、資料模型）在 `docs/ref/features/platform/README.md`
-  - 注意：TENANTS.md「停用租戶多久生效」的表沒有列 Partner API 金鑰（AUTH-02）。進站訊息（含 WebChat）、排程群發與滿意度問卷已在 #410 修正並列入表中（HC-PLATFORM-TENANTS-01、04）。
-  - 注意：README「目前的限制」寫「沒有任何測試」已過時，見下方回歸清單。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-TENANTS.md`
 - 規格：`openspec/specs/tenant-provisioning/spec.md`、`openspec/specs/tenant-contract-dates/spec.md`、`openspec/specs/trial-data-purge/spec.md`；停用租戶的行為在 `openspec/specs/auth-session/spec.md`（「停用租戶的成員不能登入或換發 token」「停用租戶的長效憑證與既有連線失效」）與 `openspec/specs/inbound-message-processing/spec.md`（「停用租戶的進站事件直接丟棄」「停用租戶的網站聊天室入口回 404」）、`openspec/specs/marketing-scheduling/spec.md`（「The Scheduler Does Not Send Broadcasts Of A Disabled Tenant」）、`openspec/specs/csat-survey/spec.md`（「停用租戶不寄出滿意度問卷」）
 - 影響分析：`node scripts/feature-impact.mjs --domain platform-tenants`

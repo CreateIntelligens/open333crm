@@ -18,7 +18,7 @@
 | 合約到期前提醒（只寄信，不停用） | `apps/api` 的每小時排程 `contract-reminder.scheduler.ts` | 啟用中、合約迄日未過的租戶，寄給所有啟用中的平台帳號 |
 | 重寄驗證信、作廢申請 | 平台人員在 `/admin/trial` | 指定的單一筆申請 |
 
-**合約到期提醒**（change `add-contract-expiry-reminder`，issue #494）：剩餘天數是迄日的日期減台灣今天的日期。檔位存平台設定
+**合約到期提醒**：剩餘天數是迄日的日期減台灣今天的日期。檔位存平台設定
 `contract.reminderDaysBefore`（預設 `[30, 7, 1]`），在 `/admin/tenants` 的「合約到期提醒」設定卡修改，按「儲存」才送出。
 寫入時前端與 API 都驗證：1 到 365 的整數組成的非空陣列，去重、由大到小；不合法回 400 `VALIDATION_ERROR`，不改存預設值。排程挑「大於或等於剩餘天數」的最小檔位，未寄過才寄，並把較大的檔位一起記入 `tenants.contractRemindersSent`，
 晚設定的合約不會連收多封。平台人員修改迄日時清空 `contractRemindersSent`。`/admin/tenants` 列表標示「已過期」與
@@ -44,14 +44,14 @@
 
 ## 申請與驗證
 
-申請時不收密碼。管理員密碼只能由打開驗證信連結的人設定，所以知道別人 email 的人無法替對方決定密碼（AUDIT TRIAL-05 已修正）。
+申請時不收密碼。管理員密碼只能由打開驗證信連結的人設定，所以知道別人 email 的人無法替對方決定密碼。
 
 | 端點 | 做什麼 |
 | --- | --- |
 | `POST /api/v1/trial/signups`（email、siteName） | 防枚舉：一律回 202 同文案，`trial.enabled=false` 時回 403 `TRIAL_CLOSED`。請求帶 `password` 時忽略、不儲存（相容舊頁面）。每個 IP 每 10 分鐘 5 次 |
 | `POST /api/v1/trial/resend`（email） | 重寄驗證信，一律 202。每個 IP 每 10 分鐘 3 次 |
-| `GET /api/v1/trial/verify?token=` | 驗證頁確認連結：回 email、站台名稱、`pending` 或 `provisioned`。只讀，不消耗 token、不開通 |
-| `POST /api/v1/trial/verify`（token、password、siteName） | 設定密碼並開通。密碼至少 8 碼、站台名稱 1–100 字（未送沿用申請的名稱），不合規回 400 且 token 仍可用 |
+| `GET /api/v1/trial/verify?token=` | 驗證頁確認連結：回 email、站台名稱、`pending` 或 `provisioned`。只讀，不消耗 token、不開通。每個 IP 每分鐘 10 次 |
+| `POST /api/v1/trial/verify`（token、password、siteName） | 設定密碼並開通。密碼至少 8 碼、站台名稱 1–100 字（未送沿用申請的名稱），不合規回 400 且 token 仍可用。每個 IP 每分鐘 10 次 |
 
 `requestTrial()` 依 email 的狀態分流：
 
@@ -132,7 +132,7 @@
 
 延長同時把 `isActive` 設成 `true`，因此已到期停用的租戶會恢復；並清空 `trialRemindersSent`，讓新週期重新發提醒。延長也把 `purgedAt` 清成 `null`，已清除的租戶延長後不再顯示「已清除」。
 
-`convertToPaid(tenantId, planSlug)` 改 `planId`，並寫入 `TRIAL_EXIT_DATA`：把 `trialEndsAt` 與 `purgedAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是試用方案時回 400，試用方案以試用政策的 `trial.planSlug` 判斷（`assertNotTrialPlan()`）。
+`convertToPaid(tenantId, planSlug)` 不檢查租戶是不是試用租戶。平台人員對正式租戶呼叫也會成功，結果等同改方案。它改 `planId`，並寫入 `TRIAL_EXIT_DATA`：把 `trialEndsAt` 與 `purgedAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是試用方案時回 400，試用方案以試用政策的 `trial.planSlug` 判斷（`assertNotTrialPlan()`）。
 
 `restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。保留期滿時沒有任何資料被刪除，見 `../../system/AUDIT.md` 的 TRIAL-03。復原是讓平台人員接著延長或轉正式。復原後沒有這樣做，租戶仍符合標記的條件，下一輪排程會再標記，這是預期的行為。
 

@@ -1,20 +1,24 @@
 ---
 name: feature-comment-reply
 description: >
-  open333CRM「留言自動私訊」功能顧問：Facebook／Instagram 貼文留言命中關鍵字時自動私訊留言者（Private Replies）、
-  選填公開回覆留言、關鍵字規則（比對方式 any/all、NFKC 全形半形、指定貼文、每人一次、排序、啟用、方案上限
-  maxCommentReplyRules）、試算 /rules/test、觸發紀錄與手動重試、前置條件卡 readiness、開啟留言接收
-  （subscribe-comments、subscribed_apps 的 feed／comments 欄位）、留言收件（webhook 留言分支、cr:rules-ver 規則快取）、
-  背景送出（comment-reply 佇列、token bucket 限流、每月私訊數 monthlyCommentReplies、7 天期限、去重 dedupeKey）、
-  留言建立的聯絡人（comment_authors、recipient_id 接上身分、不送招呼語、補發 contact.created）、收件匣「來自留言」、
-  平台三層開關（方案功能 comment_reply、commentReply.capabilities、緊急停止）、/admin/comment-reply 健康頁、
-  補訂閱腳本 comment-reply-subscriptions.ts。
-  當需求、bug 或新功能碰到 comment-reply 模組、/dashboard/comment-replies、/admin/comment-reply、comment_reply_* 資料表、
-  「留言沒有私訊」「同一人收到兩次私訊」「私訊沒進收件匣」「粉專私訊突然收不到（訂閱欄位被蓋掉）」時使用。
-  也在改 Meta 連結、FB／IG 外掛、webhook 帳號分派、入站建立聯絡人、招呼語之前使用，確認不破壞留言自動私訊。
+  open333CRM「留言自動私訊」功能顧問：FB／IG 貼文留言命中關鍵字時自動私訊、規則、觸發紀錄、comment-reply 佇列。改到 comment-reply 模組、/dashboard/comment-replies、/admin/comment-reply，或改 Meta 連結、FB／IG 外掛、webhook 分派之前使用。
 ---
 
 # 留言自動私訊
+
+## 涵蓋範圍
+
+open333CRM「留言自動私訊」功能顧問：Facebook／Instagram 貼文留言命中關鍵字時自動私訊留言者（Private Replies）、
+選填公開回覆留言、關鍵字規則（比對方式 any/all、NFKC 全形半形、指定貼文、每人一次、排序、啟用、方案上限
+maxCommentReplyRules）、試算 /rules/test、觸發紀錄與手動重試、前置條件卡 readiness、開啟留言接收
+（subscribe-comments、subscribed_apps 的 feed／comments 欄位）、留言收件（webhook 留言分支、cr:rules-ver 規則快取）、
+背景送出（comment-reply 佇列、token bucket 限流、每月私訊數 monthlyCommentReplies、7 天期限、去重 dedupeKey）、
+留言建立的聯絡人（comment_authors、recipient_id 接上身分、不送招呼語、補發 contact.created）、收件匣「來自留言」、
+平台三層開關（方案功能 comment_reply、commentReply.capabilities、緊急停止）、/admin/comment-reply 健康頁、
+補訂閱腳本 comment-reply-subscriptions.ts。
+當需求、bug 或新功能碰到 comment-reply 模組、/dashboard/comment-replies、/admin/comment-reply、comment_reply_* 資料表、
+「留言沒有私訊」「同一人收到兩次私訊」「私訊沒進收件匣」「粉專私訊突然收不到（訂閱欄位被蓋掉）」時使用。
+也在改 Meta 連結、FB／IG 外掛、webhook 帳號分派、入站建立聯絡人、招呼語之前使用，確認不破壞留言自動私訊。
 
 ## 先讀
 - 規劃與決策：`openspec/changes/add-comment-keyword-private-reply/design.md`（D1～D28、資料流、資料模型、API）；任務與突變驗證：同目錄 `tasks.md`；QA 計畫：`openspec/changes/add-comment-keyword-private-reply/planning/05-qa.md`。change 尚未歸檔，規格在 `openspec/changes/add-comment-keyword-private-reply/specs/`（主規格 `comment-private-reply`、`comment-reply-rules`、`comment-reply-contact-linking`、`comment-reply-meta-subscription`、`comment-reply-platform-controls`）。

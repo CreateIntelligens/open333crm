@@ -1076,7 +1076,7 @@ PlatformSetting（KV，不知道型別）
 | 渠道數上限 | 無上限 | 無上限 |
 | 可建立的渠道類型 | 全部 | 全部 |
 
-兩個機制的檢查程式碼都完整，缺的是方案資料。`/admin/plans` 兩個欄位都編輯得到，補上值就會生效。
+兩個機制的檢查程式碼都完整，缺的是方案資料。`/admin/plans` 兩個欄位都編輯得到，補上值就會生效。渠道類型的選項是 `ChannelType` 列舉的全部值，包含沒有渠道外掛的 `WHATSAPP`、`TELEGRAM`；平台人員勾選這兩種類型，租戶仍然建不出這兩種渠道。
 
 補上值之後還有一個缺口：`createChannel()` 只在建立時檢查數量，`updateChannel()` 把停用的渠道改回啟用時不檢查。停用一個渠道、建立一個新的、再把舊的啟用，就能超過上限。
 
@@ -2268,6 +2268,8 @@ BullMQ 預設保留所有完成與失敗的工作。
 | `sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup` | 完成 24 小時、失敗 7 天。workers 啟動時刪除既有的重複工作再重新註冊，部署前已排定的工作也套用 | change `queue-monitoring`（`aabe714f`）。`tag-expiry-cleanup` 先前漏列在本表 |
 | `ops-alert` | 完成 24 小時、失敗 7 天 | change `queue-monitoring` 新增時就設定 |
 | `data-erasure` | 完成 24 小時、失敗 7 天 | change `migrate-data-erasure-tenant-ctx` 改經 outbox 送出時，從 100 筆、50 筆改成以時間計算 |
+| `coupon-broadcast` | 完成 24 小時、失敗 7 天 | 新增時就設定（`apps/api/src/modules/marketing/broadcast-coupon.service.ts`） |
+| `comment-reply` | 完成 24 小時、失敗 7 天 | 新增時就設定（`apps/api/src/modules/comment-reply/comment-reply.types.ts`） |
 | `api-scheduler` | 完成 100 筆、失敗 50 筆 | 原本就設定 |
 
 **未修正的部分。** Redis（`docker-compose.yml`、`docker-compose.prod.yml`）沒有設定 `maxmemory` 或淘汰策略。每筆工作以 hash 存在 Redis，含完整的 `data`；保留期限限制了工作的數量，但 Redis 的用量仍沒有上限。
@@ -2566,7 +2568,6 @@ grep -cE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update
 | `settings/settings.routes.ts` | 5 | 2026-10-30 功能健檢讀程式剩 2 處：`cli-sessions` 的 `findMany`、`identity-binding` 的 `upsert`（[SETTINGS 健檢](../features/health/SETTINGS.md)） |
 | `portal/portal-public.routes.ts` | 4 | |
 | `tag/tag.routes.ts` | 3 | |
-| `line-login/line-login.routes.ts` | 3 | 2026-10-30 功能健檢確認這個檔案已不存在（`apps/api/src/modules/` 沒有 `line-login`），下次核對時移除這一列（[LINE 健檢](../features/health/LINE.md)） |
 | `fb-login/fb-login.routes.ts` | 3 | |
 | `webhook/webhook.routes.ts` | 2 | |
 | `webchat/webchat.routes.ts`、`shortlink/shortlink-redirect.routes.ts`、`platform/platform.routes.ts`、`knowledge/knowledge.routes.ts`、`conversation/conversation.routes.ts`、`analytics/analytics.routes.ts`、`ai/ai.routes.ts`、`agent/agent.routes.ts` | 各 1 | |

@@ -115,5 +115,7 @@ P0：無。HC-ANALYTICS-02、HC-ANALYTICS-04 原列 P2，2026-10-30 使用者決
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/ANALYTICS.md`：端點表沒有 `GET /analytics/coupons` 與「優惠券成效」分頁；沒寫 `/analytics/contacts`、`/analytics/csat` 前端沒有用到；「數字怎麼算」沒寫直接關閉的工單不算已解決、總覽 CSAT 以工單建立日歸期間；「日期以 UTC 切分」沒提「我的績效」以伺服器時區切月；「不套用渠道可見範圍」沒提 SLA 違規表與匯出會帶出工單標題與聯絡人名稱。
 - 手冊 `apps/web/public/manual/ch13-analytics.html` 的定義說明與程式一致；趨勢圖沒有日期的問題（HC-ANALYTICS-01）手冊沒有提，修好後不用改手冊。

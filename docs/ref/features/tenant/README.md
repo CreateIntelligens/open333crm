@@ -75,7 +75,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 | 步驟 | 函式 | 做什麼 | 涉及的模組 |
 | --- | --- | --- | --- |
-| 1 | `resolveInboundContact()` | 依渠道身分（`ChannelIdentity`）找出聯絡人；找不到再查 `IdentityMap`；都沒有就建立。封鎖（`unfollow`）事件查不到渠道身分時，在這一步之前整筆略過，不建聯絡人（#362） | `contact` |
+| 1 | `resolveInboundContact()` | 依渠道身分（`ChannelIdentity`）找出聯絡人；找不到再查 `IdentityMap`；都沒有就建立。封鎖（`unfollow`）事件查不到渠道身分時，在這一步之前整筆略過，不建聯絡人 | `contact` |
 | 2 | `resolveInboundConversation()` | 找出該聯絡人在該渠道尚未關閉的對話，找不到就建立。新對話的初始狀態看渠道的機器人設定：`botMode` 是 `off` 時為 `AGENT_HANDLED`，其他值為 `BOT_HANDLED` | `conversation` |
 | 3 | `findDuplicateInboundMessage()`、`createInboundMessage()` | 排除渠道重送的重複訊息，然後寫入訊息 | `conversation` |
 | 4 | `updateConversationAfterInboundMessage()` | 更新對話的最後訊息時間與未讀數 | `conversation` |
@@ -109,7 +109,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 每個事件由誰發布、誰訂閱，哪些事件只有一邊，失敗時會不會重試，以及為什麼目前只能跑一個 API 行程，見[事件與背景工作](../../modules/EVENTS.md)。
 
-**socket 依渠道分房。** 訊息與對話的即時事件只送到渠道房間，成員連線時依可見渠道加入（issue #427），見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。租戶房間 `tenant:<租戶 ID>` 仍收到工單與聯絡人合併的事件，這部分不套用渠道可見範圍，見 `../../system/AUDIT.md` 的 RBAC-04。
+**socket 依渠道分房。** 訊息與對話的即時事件只送到渠道房間，成員連線時依可見渠道加入，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。租戶房間 `tenant:<租戶 ID>` 仍收到工單與聯絡人合併的事件，這部分不套用渠道可見範圍，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 側欄顯示與 API 權限
 

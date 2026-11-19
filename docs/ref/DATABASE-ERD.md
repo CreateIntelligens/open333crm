@@ -73,7 +73,7 @@ erDiagram
 | `platform_audit_logs`  | `PlatformAuditLog`  | 平台端操作稽核：誰對哪個目標做了什麼                                             | `payload` 為 `Json?`；`targetType`／`targetId` 為多型參照                                               |
 | `platform_settings`    | `PlatformSetting`   | 平台層 key-value 設定，主鍵就是 `key`                                            | `value` 為 `Json`                                                                                       |
 | `trial_signups`        | `TrialSignup`       | 試用註冊流程：驗證信 token、寄送次數、開通結果                                   | `verifyTokenHash` 為雜湊字串；`tenantId` 為鬆耦合欄位，開通後才寫入                                     |
-| `plan_change_requests` | `PlanChangeRequest` | 租戶提出的方案升降級或加購 token 申請，含審核狀態                                | `topupTokens` 為 `Int?`                                                                                 |
+| `plan_change_requests` | `PlanChangeRequest` | 租戶提出的升級方案（`upgrade`）或加購 token（`token_topup`）申請，含審核狀態     | `topupTokens` 為 `Int?`                                                                                 |
 | `model_pricings`       | `ModelPricing`      | 各 LLM 模型的計價表，支援分級計價與生效日                                        | `inputPer1M`／`outputPer1M`／`cachedPer1M` 為 `Decimal`                                                 |
 
 ---

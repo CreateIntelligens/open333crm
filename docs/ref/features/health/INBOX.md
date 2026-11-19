@@ -128,6 +128,8 @@ P0：無。HC-INBOX-01 原列 P2，2026-10-30 使用者決定升為 P1。
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/INBOX.md`「關閉對話」表：CSAT 逾時的 `closeSource` 寫 `csat`，程式不寫（HC-INBOX-18）。
 - `docs/ref/features/tenant/INBOX.md` 沒有提到列表與聊天視窗各 50 筆的限制（手冊有），也沒有提到重新開啟可能產生兩段未關閉對話。
 - `docs/ref/features/tenant/INBOX.md`「誰看得到哪些對話」沒有提到 `GET /conversations/:id` 的聯絡人身分未過濾。

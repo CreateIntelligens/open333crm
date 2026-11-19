@@ -1,18 +1,22 @@
 ---
 name: feature-line
 description: >
-  open333CRM「LINE 專屬功能」功能顧問：LINE webhook 收訊（驗簽、事件解析、follow／unfollow／unsend／postback、
-  媒體下載、群組訊息、下游轉發 downstreamWebhook）、圖文選單 Rich Menu（草稿、發布、預設選單、綁定受眾、
-  /dashboard/line/rich-menus）、LINE 快速回覆預設組（/dashboard/line/quick-replies）、LINE 訊息格式
-  （buildLineMessage、Flex、imagemap 多尺寸圖端 /line-imagemap、safe reply 與 reply token）、LIFF 與
-  LINE Login（liffConfig、ID token 驗證）、頭像補存、postback 攔截（tag:、csat:、kb_feedback:、handoff_request）、
-  渠道憑證加解密 CREDENTIAL_ENCRYPTION_KEY。當需求、bug 或新功能碰到 line、rich-menu、quick-reply-preset、
-  channel-plugins/line、webhook/line、liff、line-imagemap、downstream-forwarder 時使用。
-  也在改 LINE 素材、群發、加好友禮、關鍵字回覆、滿意度調查、短連結 LIFF 前使用。
-  口語觸發：「LINE 收不到訊息」「圖文選單發布失敗」「LINE 滿意度沒回」「客人收回訊息」「LINE 重複訊息」「LIFF 設定」。
+  open333CRM「LINE 專屬功能」功能顧問：LINE webhook 收訊、圖文選單、快速回覆預設組、LINE 訊息格式、LIFF 與 LINE Login、postback 攔截。改到 line 模組、channel-plugins/line、webhook/line，或改 LINE 素材、群發、滿意度調查之前使用。
 ---
 
 # LINE 專屬功能
+
+## 涵蓋範圍
+
+open333CRM「LINE 專屬功能」功能顧問：LINE webhook 收訊（驗簽、事件解析、follow／unfollow／unsend／postback、
+媒體下載、群組訊息、下游轉發 downstreamWebhook）、圖文選單 Rich Menu（草稿、發布、預設選單、綁定受眾、
+/dashboard/line/rich-menus）、LINE 快速回覆預設組（/dashboard/line/quick-replies）、LINE 訊息格式
+（buildLineMessage、Flex、imagemap 多尺寸圖端 /line-imagemap、safe reply 與 reply token）、LIFF 與
+LINE Login（liffConfig、ID token 驗證）、頭像補存、postback 攔截（tag:、csat:、kb_feedback:、handoff_request）、
+渠道憑證加解密 CREDENTIAL_ENCRYPTION_KEY。當需求、bug 或新功能碰到 line、rich-menu、quick-reply-preset、
+channel-plugins/line、webhook/line、liff、line-imagemap、downstream-forwarder 時使用。
+也在改 LINE 素材、群發、加好友禮、關鍵字回覆、滿意度調查、短連結 LIFF 前使用。
+口語觸發：「LINE 收不到訊息」「圖文選單發布失敗」「LINE 滿意度沒回」「客人收回訊息」「LINE 重複訊息」「LIFF 設定」。
 
 ## 先讀
 - 功能現況：`docs/ref/features/tenant/LINE.md`（只寫了圖文選單與快速回覆；webhook、LIFF、Flex、憑證寫在本 Skill 與健檢報告）
@@ -54,7 +58,7 @@ description: >
 - `message`：text／image／video／audio／file／location／sticker；LINE 代管的媒體存 `contentId`，背景下載到物件儲存，失敗寫 `content.mediaError`（25 MB 上限）。
 - `postback`：存成 `contentType: 'postback'`、`content.text = postback.data`（收件匣直接顯示原始資料，例如 `tag:<uuid>`、`menu=main`）；`postback.params`（日期選擇器選的值）**丟掉**。
 - `follow`／`unfollow`／`join`／`leave`／`memberJoined`／`memberLeft`／`unsend`／`videoPlayComplete`／`accountLink`／`beacon`：都存成一則進站訊息，收件匣顯示「[不支援的訊息類型]」並加未讀數。`unsend` **不會**隱藏原訊息。
-  系統事件的分流在 `apps/api/src/modules/webhook/inbound-system-events.ts`（依 `contentType`，#362）：不觸發非營業時間自動回覆；Canvas 以自己的事件類型比對（unfollow 不觸發）；unfollow 遇到沒見過的 uid 整筆略過、不建聯絡人；unfollow 在 `ChannelIdentity.blockedAt` 記封鎖時間、follow 清空（只供顯示，發送路徑不排除）；加好友招呼語用 follow 的 replyToken（失敗退回 push）。
+  系統事件的分流在 `apps/api/src/modules/webhook/inbound-system-events.ts`（依 `contentType`）：不觸發非營業時間自動回覆；Canvas 以自己的事件類型比對（unfollow 不觸發）；unfollow 遇到沒見過的 uid 整筆略過、不建聯絡人；unfollow 在 `ChannelIdentity.blockedAt` 記封鎖時間、follow 清空（只供顯示，發送路徑不排除）；加好友招呼語用 follow 的 replyToken（失敗退回 push）。
 - 來源 `userId ?? groupId`：群組訊息掛在發話者的一對一對話；`join` 事件以 groupId 建一個聯絡人。`roomId` 不處理。
 - 去重只看 `message.id`（`channelMsgId`）。postback、follow 等沒有訊息 id 的事件，LINE 重送（`deliveryContext.isRedelivery`）會重複處理；`webhookEventId` 只有下游轉發的迴圈防護在用。
 
@@ -68,7 +72,7 @@ description: >
 - **驗簽在回應前**：LINE 路由先 `verifyWebhookRequest` 再回 200，簽章錯回 403（規格 line-webhook-events）；事件處理在回應後背景執行。webhook 的 content-type parser 保留原始 body（`__rawBody`），改 body 解析會讓驗簽全失敗。
 - LINE 驗簽用 `channelSecret`；FB／IG 用 `appSecret`。驗簽字串比較用 `signaturesMatch`（固定時間）。
 - **租戶由 channelId 反查**，webhook 一律 `prismaAdmin`（無 RLS），每個查詢都要自帶 `tenantId` 或渠道條件。
-- `buildLineMessage` 不認得的 `contentType` 會丟 `LineMessageBuildError`，`sendMessage` 回 `{ success: false, error }`、不呼叫 LINE（#416；以前靜默變成空白文字被 LINE 拒收）。認得的有：`text`、`quick_reply`、`flex`（滿意度問卷，需 `altText` 與 `contents`，舊資料的 `flexJson`／`text` 也接受）、`image`、`video`、`file`、`audio`、`location`、`sticker` 與素材的 `line_*`。新增要送到 LINE 的訊息型別，一定要加 case 並寫測試；FB 素材（`fb_*`）送到 LINE 會失敗。
+- `buildLineMessage` 不認得的 `contentType` 會丟 `LineMessageBuildError`，`sendMessage` 回 `{ success: false, error }`、不呼叫 LINE。認得的有：`text`、`quick_reply`、`flex`（滿意度問卷，需 `altText` 與 `contents`，舊資料的 `flexJson`／`text` 也接受）、`image`、`video`、`file`、`audio`、`location`、`sticker` 與素材的 `line_*`。新增要送到 LINE 的訊息型別，一定要加 case 並寫測試；FB 素材（`fb_*`）送到 LINE 會失敗。
 - `LinePlugin.sendMessage` 失敗回 `{success:false}` 不拋錯；呼叫端要檢查回傳值，否則失敗只剩 log（記憶規則「失敗不可以只寫 log」）。
 - LINE 一次最多 5 則訊息、multicast 每批 ≤ 500（群發用 499）、快速回覆最多 13 顆、標籤 20 字。
 - reply token：`selectSafeLineStrategy` 只在收到後 30 秒內用 reply，否則 push；reply 失敗補一次 push（規格 line-safe-reply）。`message.received` 事件帶 `replyToken`，對外 webhook 也會收到（AUDIT HOOK-01）。
@@ -90,13 +94,13 @@ description: >
 3. image（LINE 代管）在假權杖下要出現 `mediaError`；`fileSize` 超過 25 MB 不下載。
 4. 圖文選單：建立 → 編輯 → 發布（假權杖會變「發布失敗」）→ 綁定受眾 → 取消發布；supervisor 可、agent 403。
 5. 快速回覆預設組：建立、重新整理讀回、刪除；agent 寫入 403。
-6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查（客人按分數後，收件匣卡片顯示「客人評 N 分」、客人訊息顯示「我的評分：N 分」，#444）、收回訊息、LIFF 開票券。
+6. 真機（UAT 正式環境，需使用者同意）：圖文選單發布與預設、綁定受眾、LINE 滿意度調查（客人按分數後，收件匣卡片顯示「客人評 N 分」、客人訊息顯示「我的評分：N 分」）、收回訊息、LIFF 開票券。
 - 自動測試：`pnpm --filter @open333crm/channel-plugins test`；`pnpm --filter @open333crm/api test -- rich-menu webhook-signature downstream-forwarder inbound-media tag-on-click line-id-token channel-credential-security line-imagemap`；`pnpm --filter @open333crm/workers test -- rich-menu-bind credentials`；`pnpm --filter @open333crm/web test -- rich-menu imagemap-url bot-config-form-line-login`。feature 測試**不要加 `--`**：`pnpm --filter @open333crm/api test:feature modules/webhook/ channel-liff-id coupon-line-login`。
 - E2E：`apps/web/tests/e2e-uat/tenant-line-materials.spec.ts`。
 
 ## 常見 bug 從哪裡查
 - 「LINE 完全收不到訊息」：先看 API log 的 `[Webhook] Signature verification failed`（Channel Secret 填錯；手冊說測試連線只驗 Access Token）、`Channel not found or inactive`、`Tenant is disabled`；渠道有沒有設 `downstreamWebhook` 的 `immediate` 模式（`[DownstreamWebhook] Blocked SSRF target`）。
-- 「LINE 滿意度調查客人沒收到」：先看收件匣的問卷卡片有沒有「這份問卷沒有送出」與原因，或工單時間軸的「滿意度問卷沒有送出」（`case_events.eventType = 'csat_send_failed'`，原因在 `payload.reason`）。常見原因：渠道停用、找不到客人的 LINE 帳號、LINE API 拒收。系統不自動重寄（`csatSentAt` 保留）。#416 以前 `flex` 沒有 case，問卷變空白文字被拒收（HC-LINE-01）。
+- 「LINE 滿意度調查客人沒收到」：先看收件匣的問卷卡片有沒有「這份問卷沒有送出」與原因，或工單時間軸的「滿意度問卷沒有送出」（`case_events.eventType = 'csat_send_failed'`，原因在 `payload.reason`）。常見原因：渠道停用、找不到客人的 LINE 帳號、LINE API 拒收。系統不自動重寄（`csatSentAt` 保留）。
 - 「同一個點擊出現兩次」：LINE 重送事件，postback 沒有訊息 id 不去重（HC-LINE-02）。
 - 「客人收回的訊息還在」：`unsend` 只存成一則「[不支援的訊息類型]」（HC-LINE-03）。
 - 「圖文選單發布失敗」：錯誤詳情在回應的 `details.upstream`（畫面只顯示「請確認版型與渠道設定」）；401 是 Access Token 錯，400 多半是圖片尺寸或區域動作。`error` 狀態的選單到編輯頁按「發布到 LINE」重試，或複製一份改。

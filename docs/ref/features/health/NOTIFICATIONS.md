@@ -113,6 +113,8 @@ P0、P1：無。
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/NOTIFICATIONS.md` 開頭與「目前的限制」寫「除了 AI 額度告警，都不寄信」：FB/IG 權杖失效也寄信給管理員（`meta-token-health.ts:162-167`）。
 - 同一份文件的「哪些事件通知誰」與「下列來源不經過上面的流程」缺三種來源：`channel_token_invalid`（API 行程 `createAndDispatch`）、`data_export_ready`／`data_export_failed`、`data_erasure_done`（workers `enqueueNotification`）。
 - 同一份文件沒提到自動化「通知主管」與「傳送通知」寫的類型是 `sla_rule`，以及新訊息通知不檢查負責人是否停用、不看渠道可見範圍。

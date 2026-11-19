@@ -1,20 +1,23 @@
 ---
 name: feature-shortlinks
 description: >
-  open333CRM「短連結」功能顧問：短連結建立/編輯/刪除、自訂代碼 slug、UTM 參數、到期時間、
-  點擊自動貼標 tagOnClick、綁 LINE 渠道走 LIFF 認人、社群預覽 OG 快照、QR Code、
-  公開轉址 /s/:slug（爬蟲 OG 預覽、一般瀏覽器零點擊轉址、LINE 內 LIFF）、點擊紀錄 POST /s/track 與 ClickLog、
-  總點擊/唯一點擊、統計分析（每日趨勢、來源分布、識別率）、GA4 與 Meta Pixel 追蹤碼。
-  當需求、bug 或新功能碰到 /dashboard/shortlinks、/s/、shortlink 模組、ShortLink、ClickLog、
-  link.clicked、link.stats.updated 時使用；「短連結點了沒反應」「連結已失效」「點擊數不對」「點了沒貼標」
-  「預覽圖不對」「QR 掃了打不開」也用它。改群發素材換短連結、LIFF 頁、追蹤設定前先看。
+  open333CRM「短連結」功能顧問：短連結的建立與編輯、公開轉址 /s/:slug、點擊紀錄與統計、點擊貼標、LIFF 認人、OG 預覽。改到 shortlink 模組、/dashboard/shortlinks、ShortLink、ClickLog，或改群發素材的短連結、追蹤設定之前使用。
 ---
 
 # 短連結
 
+## 涵蓋範圍
+
+open333CRM「短連結」功能顧問：短連結建立/編輯/刪除、自訂代碼 slug、UTM 參數、到期時間、
+點擊自動貼標 tagOnClick、綁 LINE 渠道走 LIFF 認人、社群預覽 OG 快照、QR Code、
+公開轉址 /s/:slug（爬蟲 OG 預覽、一般瀏覽器零點擊轉址、LINE 內 LIFF）、點擊紀錄 POST /s/track 與 ClickLog、
+總點擊/唯一點擊、統計分析（每日趨勢、來源分布、識別率）、GA4 與 Meta Pixel 追蹤碼。
+當需求、bug 或新功能碰到 /dashboard/shortlinks、/s/、shortlink 模組、ShortLink、ClickLog、
+link.clicked、link.stats.updated 時使用；「短連結點了沒反應」「連結已失效」「點擊數不對」「點了沒貼標」
+「預覽圖不對」「QR 掃了打不開」也用它。改群發素材換短連結、LIFF 頁、追蹤設定前先看。
+
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/SHORTLINKS.md`
-  - 注意：其中「過期或停用的連結回 410」只對 `POST /s/track` 成立；`GET /s/:slug` 回 404 的「連結已失效」頁。「自訂代碼與其他租戶重複時回伺服器錯誤」實際是 400，訊息是 Prisma 原始錯誤（健檢 HC-SHORTLINKS-03）。
 - 健檢結果與已知問題：`docs/ref/features/health/SHORTLINKS.md`
 - 規格：`openspec/specs/shortlink-routing/spec.md`、`openspec/specs/shortlink-ua-strategy/spec.md`、`openspec/specs/tracking-settings/spec.md`（後者的設定頁屬於設定領域，這裡只管中轉頁輸出）
 - 手冊：`apps/web/public/manual/ch12-shortlinks.html`

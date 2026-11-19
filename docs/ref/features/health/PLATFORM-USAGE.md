@@ -86,6 +86,8 @@ UAT 只做了：Demo admin 登入、`/auth/me`、`GET /plan-change`、`GET /noti
 - HC-PLATFORM-USAGE-07（P3）：平台看不到失敗的 AI 呼叫。
 
 ## 文件過時之處
+
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
 - `docs/ref/features/platform/USAGE.md`「哪些呼叫不算」：寫 `resolveGeminiKey()`「依序找租戶自填的金鑰、平台代設的金鑰、全域 `GEMINI_API_KEY`」。程式只有兩層（租戶自填、全域 env），原始碼註解寫「目前兩者同源」。
 - `docs/ref/features/platform/USAGE.md` 沒寫額度用完時各功能的表現：潤稿與 Agent 回 403，分類、情緒、建議回覆、摘要靜默降級回 200。
 - `docs/ref/features/platform/USAGE.md` 沒寫每日趨勢的分桶時區（UTC）；「AI 月額度」表格寫「UTC 月初起算」是對的。

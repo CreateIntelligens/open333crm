@@ -1,20 +1,23 @@
 ---
 name: feature-settings
 description: >
-  open333CRM「租戶設定」功能顧問：設定頁 /dashboard/settings/* 的存取與儲存，以及營業時間（非營業時間自動回覆、時區、假日）、
-  追蹤設定（GA4、Meta Pixel）、跨渠道綁定與 email／手機登記開關和關鍵字、WebTalk 協作、Partner API 金鑰、
-  CLI 連線與 MCP 唯讀權限、A2A 狀態頁、AI 設定（Chat、Embedding、自備 Gemini 金鑰）的儲存路由。
-  當需求、bug 或新功能碰到 settings 模組、settings.routes.ts、TenantSettings、settings.manage、office-hours、tracking、
-  identity-binding 設定、webtalk、api-keys、partner key、cli-sessions、CLI token、mcp、a2a，或使用者說
-  「營業時間存不了／頁面壞掉」、「下班自動回覆沒反應」、「設定頁看得到但打不開」、「金鑰／token 怎麼管」、「GA 沒收到」時使用。
-  也在改側欄權限、租戶稽核、短連結追蹤碼、聯絡人綁定流程、知識庫 AI 設定前使用，確認不破壞設定的讀寫。
+  open333CRM「租戶設定」功能顧問：/dashboard/settings/* 的存取與儲存、營業時間、追蹤碼、綁定設定、Partner API 金鑰、CLI 與 MCP、AI 設定的儲存。改到 settings 模組、TenantSettings、settings.manage，或改側欄權限之前使用。
 ---
 
 # 租戶設定
 
+## 涵蓋範圍
+
+open333CRM「租戶設定」功能顧問：設定頁 /dashboard/settings/* 的存取與儲存，以及營業時間（非營業時間自動回覆、時區、假日）、
+追蹤設定（GA4、Meta Pixel）、跨渠道綁定與 email／手機登記開關和關鍵字、WebTalk 協作、Partner API 金鑰、
+CLI 連線與 MCP 唯讀權限、A2A 狀態頁、AI 設定（Chat、Embedding、自備 Gemini 金鑰）的儲存路由。
+當需求、bug 或新功能碰到 settings 模組、settings.routes.ts、TenantSettings、settings.manage、office-hours、tracking、
+identity-binding 設定、webtalk、api-keys、partner key、cli-sessions、CLI token、mcp、a2a，或使用者說
+「營業時間存不了／頁面壞掉」、「下班自動回覆沒反應」、「設定頁看得到但打不開」、「金鑰／token 怎麼管」、「GA 沒收到」時使用。
+也在改側欄權限、租戶稽核、短連結追蹤碼、聯絡人綁定流程、知識庫 AI 設定前使用，確認不破壞設定的讀寫。
+
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/SETTINGS.md`
-  - 注意：其中的分頁表少了「跨渠道綁定」與「門市與核銷帳號」，「稽核」一節的 `section` 清單少了 `identity-binding` 與 `webtalk`，也沒寫營業時間在 `officeHours` 為 `{}` 時的狀況。見健檢的「文件過時之處」。
 - 健檢結果與已知問題：`docs/ref/features/health/SETTINGS.md`
 - 規格：`openspec/specs/office-hours-settings/spec.md`、`openspec/specs/tracking-settings/spec.md`、`openspec/specs/webtalk-collaboration/spec.md`、`openspec/specs/open333-cli-auth/spec.md`、`openspec/specs/a2a-agent-tenant-routing/spec.md`（側欄的權限規則在 `openspec/specs/permission-check/spec.md` 與 `openspec/specs/dashboard-tree-navigation/spec.md`）
 - 手冊：`apps/web/public/manual/ch17-settings.html`（AI 設定在 `apps/web/public/manual/ch07-ai-settings.html`）

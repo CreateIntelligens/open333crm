@@ -1,19 +1,22 @@
 ---
 name: feature-platform-users
 description: >
-  open333CRM「平台帳號管理」功能顧問：平台後台營運方帳號（platform_users）的開通（系統產生臨時密碼、寄開通信）、
-  列表與詳細頁、改姓名與 email、停用／啟用（不能停用自己、不能讓啟用帳號歸零）、重寄開通信（會換掉密碼）、
-  首次登入強制改密碼（mustChangePassword、MUST_CHANGE_PASSWORD）、帳號操作紀錄（platform_audit_logs）。
-  當需求、bug 或新功能碰到「平台帳號」「平台管理員」「開通平台帳號」「臨時密碼」「重寄開通信」「停用平台帳號」
-  「平台稽核」「操作紀錄」、/admin/platform-users、platform-user.service、platform-user-emails、PlatformUser、
-  PlatformAuditLog 時使用。也在改平台登入、平台 guard、平台稽核寫入或 email 寄信模式前使用，確認不破壞平台帳號。
+  open333CRM「平台帳號管理」功能顧問：平台後台營運方帳號的開通、停用、重寄開通信、強制改密碼、平台稽核。改到 /admin/platform-users、platform-user.service、PlatformUser、PlatformAuditLog，或改平台登入、平台 guard 之前使用。
 ---
 
 # 平台帳號管理
 
+## 涵蓋範圍
+
+open333CRM「平台帳號管理」功能顧問：平台後台營運方帳號（platform_users）的開通（系統產生臨時密碼、寄開通信）、
+列表與詳細頁、改姓名與 email、停用／啟用（不能停用自己、不能讓啟用帳號歸零）、重寄開通信（會換掉密碼）、
+首次登入強制改密碼（mustChangePassword、MUST_CHANGE_PASSWORD）、帳號操作紀錄（platform_audit_logs）。
+當需求、bug 或新功能碰到「平台帳號」「平台管理員」「開通平台帳號」「臨時密碼」「重寄開通信」「停用平台帳號」
+「平台稽核」「操作紀錄」、/admin/platform-users、platform-user.service、platform-user-emails、PlatformUser、
+PlatformAuditLog 時使用。也在改平台登入、平台 guard、平台稽核寫入或 email 寄信模式前使用，確認不破壞平台帳號。
+
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/PLATFORM-USERS.md`
-  - 注意：其中「序列化衝突只在同時停用最後兩個帳號時發生」不完整，任何兩筆同時停用都可能有一邊失敗，見健檢 HC-PLATFORM-USERS-03。
 - 平台後台共通機制（稽核分工、資料模型）：`docs/ref/features/platform/README.md`；登入、忘記密碼、改密碼：`docs/ref/features/platform/AUTH.md`
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-USERS.md`；登入相關問題在 `docs/ref/features/health/PLATFORM-AUTH.md`
 - 規格：`openspec/specs/platform-user-management/spec.md`（改密碼與忘記密碼在 `openspec/specs/platform-password-recovery/spec.md`，guard 在 `openspec/specs/platform-auth/spec.md`）

@@ -102,6 +102,8 @@ P0：無。P1：無。
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/system/AUDIT.md` APP-08 保留期限表漏列 `coupon-broadcast`（HC-…-08）。
 - `docs/ref/features/platform/QUEUE-MONITORING.md`「設定」只寫 Docker 的來源 IP，沒寫主機直接執行 API 時要設 `127.0.0.1/32,::1/128`；也沒提告警連結在本機會 404（HC-…-05、06）。
 - 同文件「可以做什麼」沒有提到：processor 吞掉的錯誤不會出現在畫面上（HC-…-01），以及 outbox 積壓不在監控範圍（HC-…-02）。

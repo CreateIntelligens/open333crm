@@ -1,18 +1,21 @@
 ---
 name: feature-contacts
 description: >
-  open333CRM「聯絡人與標籤」功能顧問：聯絡人列表/搜尋/詳情、email 編輯與 EMAIL_IN_USE、標籤貼標與標籤管理、
-  聯絡人合併與解除合併（One ID、歸戶、跨渠道綁定代碼、email/手機登記 /bind/email、/bind/phone）、
-  合併建議、收訊建立聯絡人、LINE 頭像重抓。當需求、bug 或新功能碰到 contact、tag、identity-binding、
-  merge、ChannelIdentity、IdentityMap、/dashboard/contacts、/dashboard/settings/tags 時使用。
-  也在改群發分眾、優惠券登記、自動化貼標、短連結點擊貼標前使用，確認不破壞聯絡人。
+  open333CRM「聯絡人與標籤」功能顧問：聯絡人、標籤、合併與解除合併、跨渠道綁定。改到 contact／tag／identity-binding 模組、/dashboard/contacts，或改群發分眾、自動化貼標、短連結貼標之前使用。
 ---
 
 # 聯絡人與標籤
 
+## 涵蓋範圍
+
+open333CRM「聯絡人與標籤」功能顧問：聯絡人列表/搜尋/詳情、email 編輯與 EMAIL_IN_USE、標籤貼標與標籤管理、
+聯絡人合併與解除合併（One ID、歸戶、跨渠道綁定代碼、email/手機登記 /bind/email、/bind/phone）、
+合併建議、收訊建立聯絡人、LINE 頭像重抓。當需求、bug 或新功能碰到 contact、tag、identity-binding、
+merge、ChannelIdentity、IdentityMap、/dashboard/contacts、/dashboard/settings/tags 時使用。
+也在改群發分眾、優惠券登記、自動化貼標、短連結點擊貼標前使用，確認不破壞聯絡人。
+
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/CONTACTS.md`
-  - 注意：其中「email 登記不寄驗證信」已過時，程式目前會寄 6 位數驗證碼（`apps/api/src/modules/identity-binding/ownership-code.ts`），見健檢 HC-CONTACTS-01。
 - 健檢結果與已知問題：`docs/ref/features/health/CONTACTS.md`
 - 規格：`openspec/specs/contact-management/spec.md`、`openspec/specs/email-identity-merge/spec.md`、`openspec/specs/phone-identity-merge/spec.md`、`openspec/specs/cross-channel-binding-code/spec.md`、`openspec/specs/tag-management/spec.md`（完整清單見 `docs/ref/features/feature-map.json`）
 - 影響分析：`node scripts/feature-impact.mjs --domain contacts`
@@ -30,7 +33,7 @@ description: >
 | 5 | 貼標/移除標籤 | 詳情頁「標籤」卡（TagManager，收件匣與工單共用） | `POST /contacts/:id/tags {tagId}`、`DELETE /contacts/:id/tags/:tagId` → `tag.flow.ts` → `tagging.service.ts` | 貼標寫 outbox `contact.tagged` → event-automation、event-webhook 佇列；移除不發事件。重複貼同一個標籤仍回 201 並再發一次事件（upsert）；封存的聯絡人也能貼 | `contact.update` / **不隱藏** |
 | 6 | 標籤管理 | `/dashboard/settings/tags` | `GET/POST/PATCH/DELETE /tags` | 刪除 cascade 貼標；MATERIAL 標籤改名會改 `Material.tags` 字串 | `tag.view`、`tag.manage` / **不隱藏** |
 | 7 | 手動合併 | 詳情頁「合併聯絡人」三步精靈 | `GET /contacts?q&limit=10` → `GET /contacts/merge-preview` → `POST /contacts/merge` → `contact.flow.ts` `mergeContactsFlow` → `contact-merge.service.ts` `mergeContacts` | 搬 15 種關聯資料、ContactMergeLog、稽核 `contact.merge`、socket `contact.merged`。預覽以 `channelType` 判斷「新增」身分（第二個 LINE OA 顯示「（無新增）」），不檢查同渠道衝突、不檢查主要聯絡人是否已封存，這些到執行才 409／400 | `contact.merge` / **按鈕不隱藏**，第 2 步預覽才 403 |
-| 8 | 合併紀錄、解除合併 | 詳情頁「合併紀錄」卡 | `GET /contacts/:id/merge-logs`、`POST /contacts/merge-logs/:logId/revert` → `revertMerge` | 稽核、socket `contact.merge_reverted`；合併後掛上的身分連同對話與工單搬回；標籤與屬性不搬回。被併入方或合併鏈上任何一位已完成資料刪除時回 409 `CONTACT_ERASED`（#473）。合併紀錄卡只在進頁時讀取，合併後要重新整理才看得到新紀錄 | 解除鈕依 `contact.merge` 隱藏 |
+| 8 | 合併紀錄、解除合併 | 詳情頁「合併紀錄」卡 | `GET /contacts/:id/merge-logs`、`POST /contacts/merge-logs/:logId/revert` → `revertMerge` | 稽核、socket `contact.merge_reverted`；合併後掛上的身分連同對話與工單搬回；標籤與屬性不搬回。被併入方或合併鏈上任何一位已完成資料刪除時回 409 `CONTACT_ERASED`。合併紀錄卡只在進頁時讀取，合併後要重新整理才看得到新紀錄 | 解除鈕依 `contact.merge` 隱藏 |
 | 9 | 跨渠道對話紀錄 | 詳情頁「對話紀錄」tab | `GET /contacts/:id/messages?limit=50&before=` | 無 | `contact.view` + `inbox.view` |
 | 10 | 代發綁定代碼 | 收件匣 ContactInfoPanel「傳送跨渠道綁定連結」 | `POST /contacts/:id/binding-link {conversationId}` → `identity-binding.service.ts` `issueBindingCode` | Redis 代碼 30 分鐘、每小時 5 個；推訊息給顧客；顧客回代碼後合併（BINDING_CODE） | `inbox.reply`，且設定已啟用 |
 | 11 | 代發 email/手機登記連結 | ContactInfoPanel 兩顆按鈕 | `POST /contacts/:id/{email,phone}-registration-link` → `identifier-registration.ts` `issueRegistrationLink` | 推訊息給顧客；稽核。推送失敗時作廢 token、回 `delivery_failed` | `inbox.reply`，且設定已啟用 |

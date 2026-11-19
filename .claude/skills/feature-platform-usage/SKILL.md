@@ -1,22 +1,25 @@
 ---
 name: feature-platform-usage
 description: >
-  open333CRM「用量統計與 AI 成本」功能顧問：平台後台 /admin/usage 用量統計（總覽、租戶排行、單一租戶每日趨勢）、
-  AI 用量紀錄 ai_usages（AiUsage）、模型價目 model_pricings（ModelPricing）與成本計算、BYOK 自備金鑰成本歸屬、
-  AI 月額度（monthlyTokens、Redis 計數器 aiquota:*、PLAN_LIMIT_EXCEEDED）、用量告警 80%／100%（usage.quota.threshold、
-  站內通知＋email）、月額度每月重置（UTC 月份）。當需求、bug 或新功能碰到「AI 用量」「token 用完」「額度用完 AI 不回」
-  「用量告警沒收到」「成本算錯」「用量頁數字對不起來」「加價目」「新模型」「platform-usage.service」「token-quota.service」
-  「pricing.service」「recordLlmUsage」「llm.flow」時使用。也在新增任何會呼叫 LLM 的功能、改 AI 模型清單、改方案額度前使用。
+  open333CRM「用量統計與 AI 成本」功能顧問：/admin/usage、ai_usages 用量紀錄、模型價目與成本、AI 月額度與告警。改到 platform-usage.service、token-quota.service、pricing.service、recordLlmUsage、llm.flow，或新增呼叫 LLM 的功能之前使用。
 ---
 
 # 用量統計與 AI 成本
 
+## 涵蓋範圍
+
+open333CRM「用量統計與 AI 成本」功能顧問：平台後台 /admin/usage 用量統計（總覽、租戶排行、單一租戶每日趨勢）、
+AI 用量紀錄 ai_usages（AiUsage）、模型價目 model_pricings（ModelPricing）與成本計算、BYOK 自備金鑰成本歸屬、
+AI 月額度（monthlyTokens、Redis 計數器 aiquota:*、PLAN_LIMIT_EXCEEDED）、用量告警 80%／100%（usage.quota.threshold、
+站內通知＋email）、月額度每月重置（UTC 月份）。當需求、bug 或新功能碰到「AI 用量」「token 用完」「額度用完 AI 不回」
+「用量告警沒收到」「成本算錯」「用量頁數字對不起來」「加價目」「新模型」「platform-usage.service」「token-quota.service」
+「pricing.service」「recordLlmUsage」「llm.flow」時使用。也在新增任何會呼叫 LLM 的功能、改 AI 模型清單、改方案額度前使用。
+
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/USAGE.md`
-  - 注意：其中「`resolveGeminiKey()` 依序找租戶自填的金鑰、平台代設的金鑰、全域 `GEMINI_API_KEY`」已過時，程式只有兩層（租戶自填、全域 env），見健檢「文件過時之處」。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-USAGE.md`
 - 規格：`openspec/specs/ai-usage-recording/spec.md`、`openspec/specs/model-pricing/spec.md`、`openspec/specs/platform-usage/spec.md`、`openspec/specs/token-quota/spec.md`、`openspec/specs/usage-quota-alerts/spec.md`
-- 已知問題：`docs/ref/system/AUDIT.md` 的 AI-01、USAGE-01、USAGE-02、USAGE-03、PLAN-10（PLAN-13 已於 2026-11-10 修正）
+- 已知問題：`docs/ref/system/AUDIT.md` 的 AI-01、USAGE-01、USAGE-02、USAGE-03、PLAN-10
 - 影響分析：`node scripts/feature-impact.mjs --domain platform-usage`
 
 ## 前端操作流程
@@ -44,7 +47,7 @@ description: >
 - 金額全程 `Prisma.Decimal`，欄位 `Decimal(12,8)`，API 回字串；前端只顯示、不加總。
 - 計數器只累加「成功且 `keySource=platform`」的呼叫；BYOK 不計、不擋、不告警。資料庫回填（`readMonthlyTokensFromDb`）也要用同一組條件，兩邊母體不一致會讓額度判斷錯。
 - 月份一律用 **UTC**（規格 `token-quota` 明定）：台灣時間每月 1 日 08:00 才換月，1 日 00:00–08:00 的用量算上個月。平台每日趨勢也是 UTC 日。要改成台灣時間，計數器 key、`monthStart()`、告警旗標、信件的 `monthKey`、`date_trunc` 要一起改，並改規格。
-- 告警旗標到月底才過期。「提高月額度」的操作都會清旗標：核准加購一律清；核准升級、平台改租戶方案、試用轉付費、改方案 `limits.monthlyTokens` 只在上限提高時清（`monthlyTokensRaisedByPlanChange()`，PLAN-13 已修正）。新增會提高月額度的入口要照做；清計數器（`clearTokenQuotaCache`）會讓下一次讀取從 `ai_usages` 補建。
+- 告警旗標到月底才過期。「提高月額度」的操作都會清旗標：核准加購一律清；核准升級、平台改租戶方案、試用轉付費、改方案 `limits.monthlyTokens` 只在上限提高時清（`monthlyTokensRaisedByPlanChange()`）。新增會提高月額度的入口要照做；清計數器（`clearTokenQuotaCache`）會讓下一次讀取從 `ai_usages` 補建。
 - 用量紀錄、累加與告警在回覆之前完成，每一步失敗都只寫 log，不能讓 AI 回覆失敗（`recordLlmUsage()`）。告警的 Redis 旗標寫入之後、outbox 寫入失敗時，這個月不再發送這個門檻的告警（spec `usage-quota-alerts`）。token-quota 的 Redis 由呼叫端傳入，API 行程用 `fastify.redis`。
 - `apps/api/verify-quota.mts` 會清 Demo 租戶的計數器並累加假用量，**不要在共用環境或 UAT 執行**。
 

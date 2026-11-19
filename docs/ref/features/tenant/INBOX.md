@@ -86,7 +86,7 @@
 
 轉接之後，關鍵字規則照樣回覆（workers 執行關鍵字規則時不看對話狀態），知識庫自動回覆與 agent 只回覆 `BOT_HANDLED` 的對話。
 
-**AI 回覆失敗時轉真人（issue #445）。** 客人的文字訊息沒有得到 AI agent 的回覆，知識庫回覆又因錯誤失敗時，客人原本收不到任何訊息，對話停在 `BOT_HANDLED`。現在改為轉真人，客服在收件匣看到轉接原因，也收到「轉接真人」通知：
+**AI 回覆失敗時轉真人。** 客人的文字訊息沒有得到 AI agent 的回覆，知識庫回覆又因錯誤失敗時，系統轉真人。客服在收件匣看到轉接原因，也收到「轉接真人」通知：
 
 - `handoffReason` 與系統訊息寫「AI 暫時無法回覆（去識別化服務無法使用）」「（個資保護設定無法讀取）」「（AI 月額度已用完）」或「（AI 服務發生錯誤）」，不寫錯誤內容。系統訊息的 `metadata.source` 是 `ai_reply_failed`。
 - 系統訊息是固定文字，不呼叫去識別化服務；租戶開啟遮罩時，遮罩副本就是原文（`privacy.mode` 為 `system_fixed`）。不寫對話摘要。
@@ -94,7 +94,7 @@
 - 正常的不回覆不轉接：關鍵字規則讓步、`botMode` 為 `off` 或 `keyword`、`KB_AUTO_REPLY_ENABLED` 關閉、這則訊息已有機器人回覆、對話已不是 `BOT_HANDLED`。`KB_AUTO_REPLY_ENABLED` 關閉時，agent 失敗的訊息仍然沒有回覆（KB-06）。
 - 不自動重試 AI 回覆：重試可能讓客人收到兩則回覆。
 
-**進站訊息未遮罩時轉真人（issue #466）。** 租戶開啟 AI 個資遮罩、去識別化服務重試後仍無法使用時，進站訊息照常存入收件匣（原文，`metadata.privacy.mode` 為 `inbound_unmasked`），不送模型。原本會交給 AI 時改轉真人：`handoffReason` 與系統訊息寫「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」，系統訊息的 `metadata.source` 是 `inbound_unmasked`，其餘（認領、`handoffMessage`、通知、不轉接的情況）與 AI 回覆失敗相同。自動轉真人的系統訊息在遮罩失敗時捨棄對話摘要，只寫「自動轉接人工客服：<原因>」，轉接照常完成。客人點「轉接客服」按鈕與客服接手時的預設轉接訊息是固定文字，不呼叫去識別化服務，所以服務無法使用時也能轉接。
+**進站訊息未遮罩時轉真人。** 租戶開啟 AI 個資遮罩、去識別化服務重試後仍無法使用時，進站訊息照常存入收件匣（原文，`metadata.privacy.mode` 為 `inbound_unmasked`），不送模型。原本會交給 AI 時改轉真人：`handoffReason` 與系統訊息寫「去識別化服務無法使用，這則訊息未遮罩、未交給 AI」，系統訊息的 `metadata.source` 是 `inbound_unmasked`，其餘（認領、`handoffMessage`、通知、不轉接的情況）與 AI 回覆失敗相同。自動轉真人的系統訊息在遮罩失敗時捨棄對話摘要，只寫「自動轉接人工客服：<原因>」，轉接照常完成。客人點「轉接客服」按鈕與客服接手時的預設轉接訊息是固定文字，不呼叫去識別化服務，所以服務無法使用時也能轉接。
 
 客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知看得到該渠道的 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 
@@ -127,7 +127,7 @@
 
 ## 聊天視窗的訊息
 
-`GET /api/v1/conversations/:id/messages` 依 `createdAt` 再 `id` 由新到舊回傳，查詢限定在這段對話與目前的租戶（`conversation.tenantId`）。聊天視窗先請求 `limit=50&order=desc`。回應 `meta.hasMore` 為 `true` 時，訊息區頂端顯示「載入更早的訊息」；按下以 `before=<meta.nextCursor>` 往前取 50 則（游標與 `GET /contacts/:id/messages` 相同，`apps/api/src/shared/utils/message-cursor.ts`），同一毫秒的多則訊息不重複也不遺漏。往上載入時畫面停在原本那則訊息，只有最新一則改變（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出最新一頁的訊息留在畫面上。最新一頁或更早的訊息載入失敗時，訊息區顯示原因與「重試」，更早的訊息用同一個游標重試（issue #468）。已載入的更早訊息與游標以對話為鍵，切換對話時不會帶到新對話；切換前送出的請求在切換後才回來時丟棄。不帶 `before` 時照舊可用 `page`；`before` 搭配 `page` 不是 1 或 `order=asc` 回 400。
+`GET /api/v1/conversations/:id/messages` 依 `createdAt` 再 `id` 由新到舊回傳，查詢限定在這段對話與目前的租戶（`conversation.tenantId`）。聊天視窗先請求 `limit=50&order=desc`。回應 `meta.hasMore` 為 `true` 時，訊息區頂端顯示「載入更早的訊息」；按下以 `before=<meta.nextCursor>` 往前取 50 則（游標與 `GET /contacts/:id/messages` 相同，`apps/api/src/shared/utils/message-cursor.ts`），同一毫秒的多則訊息不重複也不遺漏。往上載入時畫面停在原本那則訊息，只有最新一則改變（新訊息、自己送出）才捲到底。最新一頁因新訊息重新抓取時，被擠出最新一頁的訊息留在畫面上。最新一頁或更早的訊息載入失敗時，訊息區顯示原因與「重試」，更早的訊息用同一個游標重試。已載入的更早訊息與游標以對話為鍵，切換對話時不會帶到新對話；切換前送出的請求在切換後才回來時丟棄。不帶 `before` 時照舊可用 `page`；`before` 搭配 `page` 不是 1 或 `order=asc` 回 400。
 
 ## 客服回覆怎麼送出
 
@@ -141,11 +141,11 @@
 
 要知道的事：
 
-- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。系統寄的滿意度問卷用同樣的欄位，問卷卡片（`CsatMessage`）下方顯示「這份問卷沒有送出」與原因（#416，見 `CASES.md`）。 記錄評分後，問卷訊息的 `metadata.csatScore`／`csatRatedBy` 有值，系統再推一次 `message.new`，問卷卡片改成唯讀並顯示「客人評 N 分」或「客服代評 N 分」；客人的評分訊息顯示「我的評分：N 分」，不顯示 `csat:` 代碼（issue #444）。
+- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。系統寄的滿意度問卷用同樣的欄位，問卷卡片（`CsatMessage`）下方顯示「這份問卷沒有送出」與原因（見 `CASES.md`）。 記錄評分後，問卷訊息的 `metadata.csatScore`／`csatRatedBy` 有值，系統再推一次 `message.new`，問卷卡片改成唯讀並顯示「客人評 N 分」或「客服代評 N 分」；客人的評分訊息顯示「我的評分：N 分」，不顯示 `csat:` 代碼。
 - **客服回覆不會改變對話狀態。** 對話是 `BOT_HANDLED` 時客服直接回覆，機器人仍會繼續回應客人的下一則訊息。要讓機器人停下來，必須先接手。
 - **客服回覆不會指派對話。** 回覆的人不會自動成為負責人。
 - **客服回覆在 LINE 上用 push。** `sendMessage()` 沒有帶 reply token，LINE 外掛以 push 送出，會計入 LINE 官方帳號的訊息額度。機器人的回覆則在 reply token 有效期間內優先用 reply，由 `selectSafeLineStrategy()` 判斷。
-- **收到的媒體怎麼顯示。** 訊息泡泡顯示圖片、影片、語音播放器與檔案下載連結（檔名與大小），只採用瀏覽器打得開的網址（`apps/web/src/lib/inbox/message-media.ts`）。媒體還沒下載完成時顯示文字，例如「[語音]」「[檔案] 報價單.pdf」；下載失敗時在文字下方顯示原因（`content.mediaError`），例如「檔案超過 25 MB，未下載」。收到 `message.new` 後重新抓訊息，500 ms 內的多個事件合併，間隔結束後補抓一次，下載完成的通知不會被丟掉。2026-10-05 之前 LINE 的語音與檔案不會下載（issue #206），LINE 的圖片與影片也因為讀到 `line-content:` 佔位網址而顯示不出來。
+- **收到的媒體怎麼顯示。** 訊息泡泡顯示圖片、影片、語音播放器與檔案下載連結（檔名與大小），只採用瀏覽器打得開的網址（`apps/web/src/lib/inbox/message-media.ts`）。媒體還沒下載完成時顯示文字，例如「[語音]」「[檔案] 報價單.pdf」；下載失敗時在文字下方顯示原因（`content.mediaError`），例如「檔案超過 25 MB，未下載」。收到 `message.new` 後重新抓訊息，500 ms 內的多個事件合併，間隔結束後補抓一次，下載完成的通知不會被丟掉。
 - **媒體有類型與大小限制。** 圖片限 PNG 與 JPEG，影片限 MP4 與 QuickTime，上限寫在 `conversation.routes.ts` 的 `SEND_IMAGE_CONFIG` 與 `SEND_VIDEO_CONFIG`。只支援 LINE、Facebook 與 WebChat，其他渠道回 501。
 - **文字內容會先驗證。** `validateOutboundMessage()` 擋掉空內容與不合法的 `contentType`，避免送一則空訊息給客人。
 
@@ -167,15 +167,17 @@
 
 ## 關閉對話
 
-對話會在下列情況關閉。`closeConversation()` 把來源記在 `Conversation.metadata.closeSource`：
+對話會在下列情況關閉。客服手動與閒置關閉經過 `closeConversation()`，它把來源記在 `Conversation.metadata.closeSource`：
 
 | 來源 | `closeSource` | 觸發 |
 | --- | --- | --- |
 | 客服手動 | `manual` | `POST /conversations/:id/close` |
 | 閒置 | `inactivity` | `setupInactivityCloseWorker()` 定期掃描 |
-| CSAT 逾時 | `csat` | 工單發出滿意度調查後逾時未回，CSAT 排程關閉工單時連帶關閉 |
+| CSAT 結案 | 不寫 | 滿意度問卷逾時、客人或客服評分後工單結案時，`closeConversationsForCase()` 連帶關閉工單的所有對話。這個函式只把狀態改成 `CLOSED`，不寫 `closeSource`、`closeReason` 與結案時間 |
 
 `closeConversation()` 是冪等的：已關閉的對話再關一次，直接回傳現況，不重複發布事件。
+
+**重新開啟。** 把已關閉的對話改回進行中時，系統不檢查同一個聯絡人在同一個渠道是不是已經有未關閉的對話，也不清除 `metadata` 裡的 `closeSource`、`closeReason`。對話關閉後客人再傳訊，系統會開一段新對話。客服這時再重新開啟舊對話，列表上就有兩段未關閉的對話，之後的訊息只進其中一段。見健檢 HC-INBOX-02。
 
 **閒置自動關閉。** 排程定期找出 `lastMessageAt` 早於時限、尚未關閉的對話，逐一關閉。時限讀 `TenantSettings.inactivityCloseHours`，值小於等於 0 代表停用。這個欄位沒有維護介面，見 `../../system/AUDIT.md` 的 CONV-01。閒置關閉不分狀態，`BOT_HANDLED` 的對話也會被關閉。
 
@@ -185,7 +187,7 @@
 
 - 持有 `channel.view_all` 的成員看得到所有渠道。
 - 其他成員看得到兩種渠道：直接綁給自己的，以及綁給自己所屬團隊的。
-- 沒有綁定任何成員或團隊的渠道，只有持有 `channel.view_all` 的成員看得到（fail-closed）。新增渠道與新增成員時就要指定可見範圍，見[渠道管理](./CHANNELS.md#誰看得到這個渠道)與[人員與角色](./MEMBERS.md#新增)。2026-10-05 之前這類渠道所有人都看得到，既有的已回填給所有啟用中的成員。
+- 沒有綁定任何成員或團隊的渠道，只有持有 `channel.view_all` 的成員看得到（fail-closed）。新增渠道與新增成員時就要指定可見範圍，見[渠道管理](./CHANNELS.md#誰看得到這個渠道)與[人員與角色](./MEMBERS.md#新增)。2026-10-05 之前建立、沒有綁定的渠道，已綁給當時所有啟用中的成員。
 
 可見的渠道再分三個層級，由低到高是 `read_only`、`reply_only`、`full`。同一個渠道有多個來源時，取最高的層級。收件匣的操作要求的層級如下：
 
@@ -197,7 +199,7 @@
 
 渠道看不見時回 404，看得見但層級不足時回 403。看不見時不回 403，是為了不透露其他分店的對話是否存在。
 
-**即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間（issue #427）：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
+**即時事件依渠道送出。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。渠道相關的即時事件（`message.new`、`conversation.updated`、`conversation.created`）只送到渠道房間：連線時依可見渠道加入 `tenant:<租戶 ID>:channel:<渠道 ID>`，持有 `channel.view_all` 的成員加入 `tenant:<租戶 ID>:channels:all`。看不到某渠道的成員收不到該渠道的訊息內容與對話更新。房間名稱由 `apps/api/src/events/socket-push.ts` 決定（`@open333crm/shared` 的 `socket-rooms.ts` 與 workers 共用）。
 
 成員的可用渠道、角色、角色權限、渠道新增停用刪除、渠道團隊授權與方案異動後，系統重新計算已連線成員的渠道房間，也重新檢查已訂閱的對話房間（`modules/socket/socket-channel-rooms.ts`）。成員停用或刪除時，系統斷開他的連線。轉接真人的系統訊息也走渠道房間。租戶房間 `tenant:<租戶 ID>` 仍會收到工單（`case.*`，含新工單與刪除工單的標題）與聯絡人合併（含名稱）的事件。
 
@@ -210,7 +212,7 @@
 收件匣右側的聯絡人面板有兩個跨渠道的區塊：
 
 - **其他渠道的對話**：列出這位聯絡人在其他渠道、且成員看得到的對話（`GET /contacts/:id/conversations`），點開顯示該對話最近 20 則訊息（`GET /conversations/:id/messages`）。看不到的渠道只顯示「另有 N 段其他渠道的對話」。沒有其他對話時不顯示這個區塊。
-- **傳送 email 登記連結**：租戶開啟 email 登記、成員有 `inbox.reply` 時才顯示。按下後在目前的對話送出登記連結，結果顯示在按鈕下方。流程見[聯絡人與標籤](./CONTACTS.md#email-登記)。原本只在 LINE、Facebook 對話顯示的「請求 Email」按鈕已移除。
+- **傳送 email 登記連結**：租戶開啟 email 登記、成員有 `inbox.reply` 時才顯示。按下後在目前的對話送出登記連結，結果顯示在按鈕下方。流程見[聯絡人與標籤](./CONTACTS.md#email-登記)。
 - **傳送手機登記連結**：租戶開啟手機登記、成員有 `inbox.reply` 時才顯示，行為同上。流程見[聯絡人與標籤](./CONTACTS.md#手機登記)。
 
 ## AI 輔助

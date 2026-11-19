@@ -1,5 +1,9 @@
 # 20 — 通知系統設計（Notification System）
 
+> **本文件是設計稿，大部分沒有實作。** Web Push、通知靜音與偏好設定、工單事件的 email 都不存在。
+> 目前的通知行為以 [`ref/features/tenant/NOTIFICATIONS.md`](./ref/features/tenant/NOTIFICATIONS.md) 為準。
+> 下面保留原本的設計，只供對照，不要照它實作。
+
 ## 通知的兩個層面
 
 | 層面 | 對象 | 說明 |

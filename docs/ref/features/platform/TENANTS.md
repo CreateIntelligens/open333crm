@@ -18,6 +18,8 @@
 | 重寄成員開通信 | `POST /tenants/:id/agents/:agentId/resend-welcome` | 信裡沒有密碼 |
 | 停用或啟用 | `PATCH /tenants/:id/active` | 只改 `isActive`，沒有任何防呆。啟用已過期的試用租戶，下一輪排程又會停用，見 `../../system/AUDIT.md` 的 TRIAL-04 |
 | 手動開通 | `POST /tenants` | 建租戶、角色與管理員帳號 |
+| 改合約起訖日 | `PATCH /tenants/:id/contract` | 入口是租戶列表的「合約」與租戶詳細頁。寫平台稽核 `tenant.contract.update` |
+| 復原已清除的試用租戶 | `PATCH /tenants/:id/restore` | 入口是 `/admin/trial` 的「復原」，見[試用管理](./TRIALS.md)。寫平台稽核 `tenant.trial.restore` |
 
 **沒有刪除租戶的途徑。** 停用只是把 `isActive` 設成 `false`；試用租戶的 `purgedAt` 也只是標記，業務資料一直留在資料庫裡。
 
@@ -27,7 +29,7 @@
 
 政策存放於 `PlatformSetting` 的 `ai.privacy.<tenantId>`，值為 `{ enabled: boolean }`。每次 AI 作業起始都重新讀取，跨 API 行程不使用政策快取。設定損壞或讀取失敗時停止該次模型呼叫。專用 API 沿用平台帳號認證與強制改密碼限制；目標租戶不存在回 404，無效 UUID、非 boolean 或額外欄位回 400。成功寫入 `tenant.ai_privacy.update` 稽核，payload 只有 `enabled`。
 
-啟用後，待處理原文會先送至 `https://2md.aiurl.tw/api/deid`，使用完整類別標記遮罩後再送往 Chat、Agent 或 Embedding 模型。2md 異常時（短暫故障先重試一次）停止該次模型呼叫；進站訊息改為存原文並標記未遮罩、不送模型、轉真人，並發出維運告警（issue #466）。原始客服紀錄依既有規則保存；文字遮罩的完整範圍見[知識庫與 AI](../tenant/KNOWLEDGE.md#模型輸入的個資遮罩)。
+啟用後，待處理原文會先送至 `https://2md.aiurl.tw/api/deid`，使用完整類別標記遮罩後再送往 Chat、Agent 或 Embedding 模型。2md 異常時（短暫故障先重試一次）停止該次模型呼叫；進站訊息改為存原文並標記未遮罩、不送模型、轉真人，並發出維運告警。原始客服紀錄依既有規則保存；文字遮罩的完整範圍見[知識庫與 AI](../tenant/KNOWLEDGE.md#模型輸入的個資遮罩)。
 
 ## 開通一個租戶建立了什麼
 
@@ -62,7 +64,7 @@ email 的唯一檢查刻意放在交易外先做，讓衝突回 409 `CONFLICT`�
 
 `PATCH /tenants/:id` 帶 `planSlug` 時，服務會比對是否真的換了方案；有換才失效權限天花板快取與租戶方案快取。這是改動租戶方案的入口之一，其餘入口與各自要失效的快取見[平台後台](./README.md#方案異動的連鎖效果)。
 
-這條路徑不檢查方案是否停售，也不檢查是升級還是降級。換方案只寫 `planId`，既有的超額資源不會被回收，詳見 `../../system/AUDIT.md` 的 PLAN-03。新方案的 AI 月額度較高時，系統清除這個租戶本月的額度告警旗標（原 PLAN-13，2026-11-10 修正）。加購只計入核准當月，不寫 `limitOverrides`，見[方案異動審核](./PLAN-CHANGES.md#加購只計入核准當月)。
+這條路徑不檢查方案是否停售，也不檢查是升級還是降級。換方案只寫 `planId`，既有的超額資源不會被回收，詳見 `../../system/AUDIT.md` 的 PLAN-03。新方案的 AI 月額度較高時，系統清除這個租戶本月的額度告警旗標。加購只計入核准當月，不寫 `limitOverrides`，見[方案異動審核](./PLAN-CHANGES.md#加購只計入核准當月)。
 
 換方案也不會讓試用租戶脫離試用，`trialEndsAt` 維持不變，到期仍會被停用。頁面在方案欄位下方提示這一點。要轉為付費，使用試用管理的「轉正式」，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用)。
 
@@ -75,6 +77,7 @@ email 的唯一檢查刻意放在交易外先做，讓衝突回 409 `CONFLICT`�
 | REST | 會 | 一個 access token 的有效期 |
 | Socket.IO 既有連線 | 不會 | 連線不中斷就一直有效 |
 | CLI token | 不會 | CLI session 自己的有效期 |
+| Partner API 金鑰 | 不會 | 金鑰自己的有效期，建立時不指定就永不過期。見 `../../system/AUDIT.md` 的 AUTH-02 |
 | 進站訊息（LINE、Facebook、Instagram、網站聊天室） | 會 | 立即。webhook 提早丟棄，`processInboundMessage()` 共用入口再擋一次；網站聊天室建立工作階段、送訊息與訪客 socket 回 404 |
 | 排程群發、附券群發的佇列 job | 會 | 立即。到期時不送出，群發標為 `failed`（`TENANT_DISABLED`） |
 | 滿意度問卷排程 | 會 | 立即。不處理停用租戶的工單 |

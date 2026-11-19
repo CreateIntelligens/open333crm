@@ -110,6 +110,8 @@ P0：無。P1：無（RBAC-02 依 AUDIT 的嚴重度另列，見下表）。
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/platform/README.md:122`「沒有任何測試」已過時，見 HC-PLATFORM-AUTH-09；應改成「`platform-password-recovery.service.ts` 沒有測試」。
 - `docs/ref/features/platform/AUTH.md` 的核對日期是 2026-09-23，內容與本次實測一致（防枚舉、停用即時生效、速率限制數字、錯誤碼），只缺「改密碼舊密碼錯誤回 401 會造成前端登出」與「忘記密碼頁一律顯示成功」兩點。
 - 本機 `EMAIL_DELIVERY_MODE=log` 只印信件 metadata，不印內文：平台忘記密碼的 `resetUrl` 在 metadata 裡拿得到；平台開通信的臨時密碼不在 metadata，本機無法用臨時密碼走首次登入（本次改以 DB 設 `mustChangePassword` 測強制改密碼）。

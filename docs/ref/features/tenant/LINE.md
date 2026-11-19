@@ -1,6 +1,6 @@
 # LINE 工具
 
-側欄「渠道」底下是 LINE 官方帳號專用的工具：圖文選單（Rich Menu）、加好友禮與快速回覆，以及 LINE、Facebook、Instagram 共用的關鍵字回覆。渠道本身的新增與設定不在這裡，見[渠道管理](./CHANNELS.md)。
+側欄「渠道」底下是 LINE 官方帳號專用的工具：圖文選單（Rich Menu）、加好友禮與快速回覆，以及 LINE、Facebook、Instagram 共用的關鍵字回覆。本文件也說明 LINE 訊息怎麼進站、怎麼送出，以及 LIFF 與 LINE Login。渠道本身的新增與設定不在這裡，見[渠道管理](./CHANNELS.md)。
 
 - **資料來源**：`apps/api/src/modules/line/*`、`apps/workers/src/handlers/rich-menu-bind.handler.ts`、`apps/web/src/app/dashboard/line/*`、`apps/web/src/components/inbox/MessageInput.tsx`
 - **核對日期**：2026-09-30
@@ -10,7 +10,7 @@
 | 頁面 | 程式 | 權限 |
 | --- | --- | --- |
 | LINE Rich Menu | `line` 的 `rich-menu.routes.ts`、`rich-menu.service.ts`；分眾綁定由 workers 的 `rich-menu-bind.handler.ts` 執行 | `richmenu.manage`（整個 plugin） |
-| 關鍵字回覆（LINE、Facebook、Instagram；2026-10-27 之前名為「LINE 關鍵字回覆」） | `automation` 模組，見[自動化](./AUTOMATION.md#關鍵字回覆) | `automation.view`、`automation.manage` |
+| 關鍵字回覆（LINE、Facebook、Instagram） | `automation` 模組，見[自動化](./AUTOMATION.md#關鍵字回覆) | `automation.view`、`automation.manage` |
 | LINE 快速回覆 | `line` 的 `quick-reply-preset.routes.ts`、`quick-reply-preset.flow.ts`、`quick-reply-preset.service.ts` | 讀取只驗登入；新增、修改、刪除需要 `quickreply.manage` |
 
 側欄的「渠道」選單要求 `richmenu.manage` 才顯示。因此只有 `automation.manage` 或 `quickreply.manage`、沒有 `richmenu.manage` 的成員，在側欄找不到關鍵字回覆與快速回覆的入口。
@@ -50,7 +50,7 @@
 
 **下架**（`POST /line/rich-menus/:id/unpublish`）：預設選單先查 LINE 目前的預設，是這張才取消預設；接著從 LINE 刪除選單，狀態回到 `draft`。LINE 回 404 時視為已經不存在，照樣清掉本地狀態。`isDefault` 保留，重新發布時仍設成預設。
 
-只有 `draft` 狀態的選單可以修改。已發布的選單要改內容，先下架、修改、再發布，或用「複製」建立新的草稿。`error` 狀態的選單不能修改，但可以重新發布。
+只有 `draft` 狀態的選單可以修改與刪除。已發布的選單要改內容，先下架、修改、再發布，或用「複製」建立新的草稿。`error` 狀態的選單可以在列表卡片或編輯頁重新發布，但不能修改，也不能刪除；畫面只對 `published` 的選單顯示「取消發布」，所以 `error` 的選單也無法從畫面退回草稿。
 
 ### 分眾綁定
 
@@ -66,6 +66,47 @@ API 把分群或標籤解析成這個渠道的 LINE uid 清單，在交易內寫
 綁定工作可能晚於下架或重新發布才執行。workers 綁定前先查選單：選單已不是 `published`，或 LINE 端的 ID 已經改變時跳過。解除綁定不檢查，客人回到全體預設選單。
 
 綁定是當下的快照：只綁定操作當時符合條件的人。之後才加入分群或被貼標的人，不會自動綁定。系統也不記錄誰被綁到哪個選單，綁定的狀態只存在 LINE 端。
+
+## 收 LINE 訊息
+
+LINE 把事件送到 `POST /api/v1/webhooks/line/:channelId`。程式在 `apps/api/src/modules/webhook/`，解析在 `packages/channel-plugins/src/line/index.ts` 的 `parseWebhook()`。
+
+1. **回應前先驗簽。** 以渠道的 `channelSecret` 計算 HMAC，比對 `x-line-signature`。簽章缺少或錯誤、路由與渠道的類型不同時回 403；渠道不存在或租戶停用時回 200 並丟棄事件；憑證解不開時回 500。
+2. **回 200 之後在背景處理事件。** 每個事件存成一則進站訊息，再經過進站管線，見[租戶後台](./README.md#一則訊息進來之後)。
+
+各種事件怎麼存：
+
+| 事件 | 存法 |
+| --- | --- |
+| `message`（文字、圖片、影片、音訊、檔案、位置、貼圖） | LINE 代管的媒體存 `contentId`，背景下載到物件儲存，上限 25 MB；下載失敗寫 `content.mediaError` |
+| `postback` | 存成 `contentType: 'postback'`，`content.text` 是 `postback.data`。日期選擇器選的值（`postback.params`）不保存 |
+| `follow`、`unfollow`、`unsend` 與其他系統事件 | 存成一則進站訊息，收件匣顯示「[不支援的訊息類型]」並增加未讀數。`unsend` 不會隱藏原本的訊息。`unfollow` 在 `ChannelIdentity.blockedAt` 記下封鎖時間，`follow` 清除這個值。分流在 `inbound-system-events.ts` |
+
+- **對話的對象**是 `source.userId`，沒有時用 `groupId`。群組裡的訊息掛在發話者的一對一對話上；`roomId` 不處理。
+- **去重**只看 LINE 的 `message.id`。postback、follow 這類沒有訊息 ID 的事件，LINE 重送時會再處理一次。
+- **postback 攔截。** 進站管線依序檢查跨渠道綁定、傳訊領券、招呼語，再交給 `inbound-postback-interceptors.ts`：`tag:<標籤 ID>` 貼標、`csat:<分數>:<工單 ID>` 記錄滿意度、`kb_feedback:...` 記錄知識庫回報、`handoff_request` 轉真人。客人打出相同的文字也會命中。
+- **下游轉發**（`settings.downstreamWebhook`，`downstream-forwarder.ts`）。`immediate` 只轉發、系統不處理；`after` 系統處理後再轉發。目標網址被 SSRF 檢查擋下或 DNS 解析失敗時只寫 log。
+
+## 送 LINE 訊息
+
+- **訊息格式。** `buildLineMessage()` 依訊息的 `contentType` 組成 LINE 的訊息物件：文字、快速回覆、Flex（滿意度問卷）、圖片、影片、檔案、音訊、位置、貼圖，以及素材的 `line_*` 版型。不認得的 `contentType` 不送出，回傳失敗。imagemap 素材的圖片由 `GET /line-imagemap/...`（`apps/api/src/modules/storage/line-imagemap.routes.ts`）依 LINE 要求的寬度提供。
+- **reply 與 push。** 系統在收到訊息後 30 秒內用 reply token 回覆；超過 30 秒，或 reply 失敗時，改用 push。
+- **上限。** LINE 一次最多送 5 則訊息、快速回覆最多 13 個按鈕；multicast 每批最多 500 人。
+
+## LIFF 與 LINE Login
+
+渠道設定的 `liffConfig` 有兩個欄位，見[渠道管理](./CHANNELS.md)的「渠道設定」：
+
+| 欄位 | 用途 |
+| --- | --- |
+| `liffId` | 短連結在 LINE 裡開啟時走 LIFF 頁取得點擊者的 LINE uid，見[短連結](./SHORTLINKS.md) |
+| `loginChannelId` | 優惠券票券夾以 LINE ID token 驗證顧客（`apps/api/src/modules/coupon/line-id-token.ts`） |
+
+要讓同一個顧客在不同 LINE 官方帳號有相同的 uid，這些官方帳號與 LIFF 的 Login channel 必須在 LINE 的同一個 provider。
+
+## 渠道憑證
+
+LINE 的 `channelSecret`、`channelAccessToken` 以 AES-256-GCM 加密後存在 `Channel.credentialsEncrypted`，金鑰是 `CREDENTIAL_ENCRYPTION_KEY`。API（`channel.service.ts`）與 workers（`apps/workers/src/lib/credentials.ts`）各有一份解密程式，修改時兩邊一起改。沒有金鑰輪替機制：更換金鑰後，所有渠道要重新填寫憑證。
 
 ## 快速回覆
 

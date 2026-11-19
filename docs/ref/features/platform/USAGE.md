@@ -7,7 +7,7 @@
 
 ## 每個端點回傳什麼
 
-這些端點都查同一張 `ai_usages`，預設區間都是最近 30 天（含今天）：從台灣今天往前 29 天的 00:00 到現在（`taipeiRecentDays(30)`，2026-11-10 以前是最近 30×24 小時），每日趨勢剛好 30 筆。由 query 的 `from` 與 `to` 覆寫。
+這些端點都查同一張 `ai_usages`，預設區間都是最近 30 天（含今天）：從台灣今天往前 29 天的 00:00 到現在（`taipeiRecentDays(30)`），每日趨勢剛好 30 筆。由 query 的 `from` 與 `to` 覆寫。
 
 | 端點 | 回傳 | 限制 |
 | --- | --- | --- |
@@ -17,11 +17,11 @@
 
 ### 每日趨勢的分日
 
-- `trend` 以台灣時間（`Asia/Taipei`）的日期分日，`day` 是台灣日期。台灣 00:00–08:00 的呼叫算在台灣當天（2026-11-10 以前用 UTC 分日，算到前一天）。
+- `trend` 以台灣時間（`Asia/Taipei`）的日期分日，`day` 是台灣日期。台灣 00:00–08:00 的呼叫算在台灣當天。
 - 期間內從 `from` 的台灣日期到 `to` 的台灣日期每天一筆，依日期排序；沒有用量的日子 `tokens: 0`、`costUsd: "0"`、`calls: 0`。期間超過 400 天時只列有用量的日子（`MAX_TREND_DAYS`，與券統計相同）。
 - 期間的過濾與總覽、排行相同（同一組 `from`、`to` 時間點），只有分日方式不同，所以趨勢加總等於該租戶在排行中的數字。頭尾兩天可能不足一整天。
 - `/admin/usage` 的「近 N 天」送出的區間是台灣今天往前 N−1 天的 00:00 到現在（`apps/web/src/app/admin/lib/usage-range.ts`），三個查詢共用，趨勢剛好 N 格。公式與後端預設期間相同；web 不依賴 core，由 `apps/web/tests/unit/app/admin/usage-range.test.ts` 比對兩者。沒有用量的日子不畫長條，但仍佔一格。
-- AI 月額度也以台灣月份計算（2026-11-10 起，見下方「這裡的數字不等於額度用掉的數字」）。
+- AI 月額度也以台灣月份計算（見下方「這裡的數字不等於額度用掉的數字」）。
 
 排行只有前 50 名，所以把排行的數字加起來不會等於總覽的數字。租戶數多於 50 時，差額落在沒進榜的那些租戶身上。介面沒有標示這個上限，見 `../../system/AUDIT.md` 的 USAGE-01。
 
@@ -40,7 +40,7 @@
 | 查不到價目 | 0，並標記 `usageMissing` | `ModelPricing` 沒有這個 model 的價目，log 會留一則 warn |
 | provider 沒回傳用量 | 0，並標記 `usageMissing` | token 數也是 0，不是真實值 |
 
-BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Gemini 支援：租戶在自己的後台填入金鑰，密文存 `TenantSettings.geminiApiKeyEnc`。`resolveGeminiKey()` 依序找租戶自填的金鑰、平台代設的金鑰、全域 `GEMINI_API_KEY`，只有第一層回傳 `keySource = 'byok'`。BYOK 的呼叫由 Google 直接向租戶收費，平台不經手，所以 `costUsd` 記 0。
+BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Gemini 支援：租戶在自己的後台填入金鑰，密文存 `TenantSettings.geminiApiKeyEnc`。`resolveGeminiKey()` 先找租戶自填的金鑰，回傳 `keySource = 'byok'`；沒有或解密失敗時用全域的 `GEMINI_API_KEY`，回傳 `keySource = 'platform'`。BYOK 的呼叫由 Google 直接向租戶收費，平台不經手，所以 `costUsd` 記 0。
 
 租戶金鑰解密失敗時會靜默退回平台金鑰，連帶改變成本歸屬與額度計算，見 `../../system/AUDIT.md` 的 AI-01。
 
@@ -86,10 +86,21 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 | | 平台用量統計 | AI 月額度 |
 | --- | --- | --- |
 | 條件 | `success` | `success` 且 `keySource = 'platform'` |
-| 區間 | 呼叫端指定，預設台灣今天往前 29 天的 00:00 起 | 當月，台灣時間 1 日 00:00 起算（2026-11-10 以前是 UTC 月初） |
+| 區間 | 呼叫端指定，預設台灣今天往前 29 天的 00:00 起 | 當月，台灣時間 1 日 00:00 起算 |
 | 來源 | 每次都查資料庫 | Redis 計數器，miss 時從資料庫回填 |
 
 AI 月額度的月份一律是台灣月份（`taipeiMonthString()`）：Redis 計數器 key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，告警旗標是 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`，兩者都在台灣下個月 1 日 00:00 過期；告警站內通知與 email 的「本月（YYYY-MM）」也是台灣月份。舊的 UTC 月份計數器 `aiquota:{tenantId}:{YYYY-MM}`（沒有 `:tpe`）不再被讀取，換版後計數器從資料庫以台灣月份重建，部署當下跨月的行為見 change `fix-platform-usage-trial-display` 的 design D3。
+
+系統在每次呼叫 LLM 之前檢查月額度。額度用完時，檢查丟出 403 `PLAN_LIMIT_EXCEEDED`，系統不呼叫模型。各功能對這個錯誤的處理不同：
+
+| 功能 | 額度用完時 |
+| --- | --- |
+| AI 潤稿、AI Agent | 回 403 `PLAN_LIMIT_EXCEEDED`，畫面顯示錯誤 |
+| AI 建議回覆 | 回 200，建議清單是空的 |
+| 對話摘要 | 回 200，摘要改用不呼叫模型的備援內容 |
+| 情緒分析 | 改用關鍵字判斷 |
+| 工單分類 | 改用關鍵字分類 |
+| 知識庫自動回覆 | 轉真人，原因是「AI 月額度已用完」，見[知識庫與 AI](../tenant/KNOWLEDGE.md) |
 
 BYOK 的呼叫出現在用量統計裡，但不計入額度，也不會被額度擋下。額度的判斷見 `apps/api/src/modules/trial/token-quota.service.ts`。計數器少算用量之後，當月不會校正，見 `../../system/AUDIT.md` 的 USAGE-03。
 

@@ -113,6 +113,8 @@
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/features/tenant/AUTOMATION.md`：「哪些事件能觸發規則」表缺「加入好友」`contact.followed`（會觸發）；「哪些動作會執行」表缺 `issue_coupon`（契約有，編輯器隱藏）；權限表沒提到試跑會回傳規則全文（HC-04）。
 - `docs/ref/modules/CANVAS-FLOW-ENGINE.md`：沒有寫節點無法用 API 串接（HC-06），也沒寫 agent 預設有 `canvas.use`；「目前的限制」宜加上這兩點。
 - `apps/web/public/manual/ch05-automation.html`：

@@ -1,17 +1,21 @@
 ---
 name: feature-members
 description: >
-  open333CRM「成員、角色與權限」功能顧問：人員管理（新增成員、開帳號、初始密碼、改角色、重設密碼、
-  停用／重新啟用／永久刪除成員、已停用的人員、email 全域唯一、停用不釋放 email）、改自己的密碼、
-  角色與權限頁（自訂角色、權限矩陣、前置權限 dependsOn、隱含權限 implies、內建鎖定 adminLock、防自鎖 selfLock、
-  越權防護 ROLE_ESCALATION／PRIVILEGE_ESCALATION）、有效權限與方案天花板、權限快取（Redis perms:*、60 秒租戶方案快取）、
-  最後一位管理員保護、成員可用渠道（AgentChannelAccess 直綁）、團隊、登入與 Passkey。當需求、bug 或新功能碰到
-  /dashboard/settings/agents、/dashboard/settings/roles、/dashboard/settings/general、agent 模組、role 模組、auth 模組、
-  requirePermission、permission.service、permissions.ts 權限碼註冊表、Agent、Role、RolePermission 時使用。
-  也在新增權限碼、新增路由、改通知收件人或自動指派、改方案功能模組之前使用，確認不破壞權限。
+  open333CRM「成員、角色與權限」功能顧問：人員管理、自訂角色與權限矩陣、有效權限與方案天花板、權限快取、團隊。改到 agent／role／auth 模組、requirePermission、permissions.ts，或新增權限碼、新增路由之前使用。
 ---
 
 # 成員、角色與權限
+
+## 涵蓋範圍
+
+open333CRM「成員、角色與權限」功能顧問：人員管理（新增成員、開帳號、初始密碼、改角色、重設密碼、
+停用／重新啟用／永久刪除成員、已停用的人員、email 全域唯一、停用不釋放 email）、改自己的密碼、
+角色與權限頁（自訂角色、權限矩陣、前置權限 dependsOn、隱含權限 implies、內建鎖定 adminLock、防自鎖 selfLock、
+越權防護 ROLE_ESCALATION／PRIVILEGE_ESCALATION）、有效權限與方案天花板、權限快取（Redis perms:*、60 秒租戶方案快取）、
+最後一位管理員保護、成員可用渠道（AgentChannelAccess 直綁）、團隊、登入與 Passkey。當需求、bug 或新功能碰到
+/dashboard/settings/agents、/dashboard/settings/roles、/dashboard/settings/general、agent 模組、role 模組、auth 模組、
+requirePermission、permission.service、permissions.ts 權限碼註冊表、Agent、Role、RolePermission 時使用。
+也在新增權限碼、新增路由、改通知收件人或自動指派、改方案功能模組之前使用，確認不破壞權限。
 
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/tenant/MEMBERS.md`
@@ -34,7 +38,7 @@ description: >
 | 5 | 可使用的渠道 | 編輯對話框勾選清單（`/channels/assignable` 全量） | `GET`、`PUT /agents/:id/channels` → `channel-team-access.ts` `setAgentChannels`（整組替換） | 稽核 `agent.channels.set`。**一律寫 `full`**，原本的 `read_only`／`reply_only` 被升成 `full`（HC-MEMBERS-04） | `channel.assign_team`（預設只有 admin）/ 區塊隱藏 |
 | 6 | 停用 | 編輯對話框左下「停用」（自己看不到） | `POST /agents/:id/deactivate` → `deactivateAgentFlow`：自己 422 `SELF_ACTION_FORBIDDEN` → `assertNotLastActiveAdmin` 422 `LAST_ADMIN_PROTECTED` → 對方權限比自己高 403 `TARGET_OUTRANKS_ACTOR` | 稽核。email 仍佔用。登入回 `ACCOUNT_DISABLED`、換發被擋，但**手上的 access token 與 socket 仍有效** | `agent.deactivate` / 按鈕隱藏 |
 | 7 | 已停用的人員、重新啟用 | 列表下方「已停用的人員」區塊 | `GET /agents/inactive`、`POST /agents/:id/reactivate` → `reactivateAgent`（套 `maxAgents`） | 稽核 `agent.reactivate`；角色維持停用前 | `agent.deactivate` / 區塊隱藏 |
-| 8 | 永久刪除 | 編輯對話框「刪除」（停用的人也可從區塊的「編輯」進） | `DELETE /agents/:id` → `purgeAgent`：自己 422 → 最後一位管理員 422 → 對方權限比自己高 403 `TARGET_OUTRANKS_ACTOR` → 先刪通知、CLI session、Passkey → 寫稽核與匯出、刪除請求的操作者快照（#414）→ 再刪成員 | 釋放 email；工單、對話、訊息、稽核的成員欄位設為空值（稽核與請求留名稱、email 快照）；團隊成員與渠道綁定 cascade | `agent.purge`（預設只有 admin）/ 按鈕隱藏 |
+| 8 | 永久刪除 | 編輯對話框「刪除」（停用的人也可從區塊的「編輯」進） | `DELETE /agents/:id` → `purgeAgent`：自己 422 → 最後一位管理員 422 → 對方權限比自己高 403 `TARGET_OUTRANKS_ACTOR` → 先刪通知、CLI session、Passkey → 寫稽核與匯出、刪除請求的操作者快照→ 再刪成員 | 釋放 email；工單、對話、訊息、稽核的成員欄位設為空值（稽核與請求留名稱、email 快照）；團隊成員與渠道綁定 cascade | `agent.purge`（預設只有 admin）/ 按鈕隱藏 |
 | 9 | 改自己的密碼 | 人員頁右上「修改密碼」（無確認欄）或 `/dashboard/settings/general`（有確認欄） | `PATCH /agents/me/password` → `changeOwnPassword`（比對目前密碼） | **不寫稽核**（HC-MEMBERS-09）；不登出其他裝置（AUTH-08） | 只驗登入 |
 | 10 | 角色列表與權限矩陣 | `/dashboard/settings/roles` | `GET /roles`、`GET /roles/matrix`、`GET /roles/:id/permissions` | 無。顯示角色本身的權限碼，不套方案天花板（PLAN-08） | `role.view` / 分頁與側欄隱藏；`agent.role.assign` 隱含 `role.view`，所以主管看得到唯讀頁 |
 | 11 | 設定角色權限 | 勾選 → 底部「儲存變更」 | `PUT /roles/:id/permissions` → `role.flow.ts` `setRolePermissionsFlow` → `setRolePermissions`：未知碼 422 → `DEPENDENCY_UNMET` 422 → `PRIVILEGE_ESCALATION` 403 → `ADMIN_LOCK` 422 → `SELF_LOCK` 422 | 稽核 `role.permission.update`；commit 後清 Redis `perms:role:<id>` 與 `perms:tenant:<id>:*`，**立即生效** | `role.manage` / 勾選框停用、無「新增角色」 |

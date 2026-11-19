@@ -14,7 +14,7 @@
 | `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作。處理 `message.received` 時，一併比對關鍵字規則 |
 | `packages/automation` | 兩邊共用 | 規則契約（事件、事實、動作的定義）與規則引擎 |
 
-動作只由 workers 的 `lib/automation-actions.ts` 執行。API 端原本的 `automation/engine/action-executor.ts` 自 2026-05-12 的 `9255245` 起沒有呼叫端，已於 2026-10-02 刪除。契約定義的動作，workers 都有實作。`assign_bot`、`kb_auto_reply`、`llm_reply` 從未實作，已於 2026-10-05 從契約拿掉（issue #197）。
+動作只由 workers 的 `lib/automation-actions.ts` 執行。契約定義的動作，workers 都有實作。`assign_bot`、`kb_auto_reply`、`llm_reply` 已從契約拿掉，見下方「已拿掉的動作」。
 
 ## 一條規則由什麼組成
 
@@ -30,15 +30,15 @@
 
 `packages/automation/src/contracts/` 定義了每個事件提供哪些資料（`requires`），以及每個動作需要哪些資料。建立與更新規則時，`validateRuleContract()` 依此檢查：事件不提供聯絡人時，就不能選需要聯絡人的動作。
 
-規則列表與關鍵字回覆列表顯示全部規則：`GET /api/v1/automation/rules` 每頁最多 100 條，依 priority、createdAt、id 排序，前端依 `meta.totalPages` 逐頁取回（`apps/web/src/lib/fetch-all-pages.ts`）。2026-10-05 之前規則列表只取第一頁的 20 條、關鍵字回覆只取 100 條，之後的規則在列表上看不到。任一頁載入失敗時，列表顯示錯誤，不顯示「沒有自動化規則」。
+規則列表與關鍵字回覆列表顯示全部規則：`GET /api/v1/automation/rules` 每頁最多 100 條，依 priority、createdAt、id 排序，前端依 `meta.totalPages` 逐頁取回（`apps/web/src/lib/fetch-all-pages.ts`）。任一頁載入失敗時，列表顯示錯誤，不顯示「沒有自動化規則」。
 
 **規則頁的用語。** 列表與編輯頁用一句話描述規則，例如「當收到訊息時，如果開啟案件數等於 0，就建立工單「客戶諮詢」」（`rule-summary.ts`）。列表顯示事件的中文名稱、可依名稱搜尋與依啟用狀態篩選。編輯頁把 `priority` 稱為「執行順序」（數字越大越先檢查），`stopOnMatch` 稱為「這條規則執行後，不再檢查其他規則」，條件建構器全部中文（`condition-builder-labels.ts`），觸發事件下方顯示契約的 `description`。契約中 `dispatched: false` 的事件在選單標示「（目前不會觸發）」。「指派客服」從客服名單選人，不必填 ID。
 
-**條件值的型別。** 編輯器依欄位在契約的型別存比較值（`qb-to-engine.ts`）：數字欄位（例如開啟案件數）存數字，是／否欄位存布林，其他欄位（訊息內容、聯絡人名稱、標籤等）一律存字串，即使填的是「8888」「1」這類純數字。規則引擎（`packages/automation/src/rules/operators.ts`）在欄位值是字串、比較值是數字時，把數字當成文字比對，所以 #418 之前存成數字的舊規則與 API 存入的數字一樣會命中；數字欄位的比對不變（#418，AUTO-06 已修正）。
+**條件值的型別。** 編輯器依欄位在契約的型別存比較值（`qb-to-engine.ts`）：數字欄位（例如開啟案件數）存數字，是／否欄位存布林，其他欄位（訊息內容、聯絡人名稱、標籤等）一律存字串，即使填的是「8888」「1」這類純數字。規則引擎（`packages/automation/src/rules/operators.ts`）在欄位值是字串、比較值是數字時，把數字當成文字比對，所以資料庫裡以數字儲存的舊規則，與 API 存入的數字一樣會命中。數字欄位的比對不變。
 
 **不合契約的規則不可啟用。** 把規則改為啟用時，API 以儲存後的觸發、條件與動作做契約驗證，不通過回 400；停用永遠可以。編輯器遇到契約沒有的觸發事件時顯示「未知觸發事件（<代碼>）」。既有資料用 `scripts/disable-invalid-automation-rules.mjs` 停用（預設 dry-run）。
 
-**建立規則時的啟用狀態。** `POST /automation/rules` 依請求的 `isActive` 建立規則；沒送時預設啟用。2026-10-05 之前一律建立成啟用，新增規則頁「啟用」沒勾也會立刻開始執行。
+**建立規則時的啟用狀態。** `POST /automation/rules` 依請求的 `isActive` 建立規則；沒送時預設啟用。
 
 **workers 會整條略過的規則。** workers 執行前以 `allowUnsupportedActions` 驗證契約，失敗就整條略過、只寫 log。規則列表用同樣的驗證，在這類規則旁標示「規則不會執行」，滑過可看錯誤（`findWorkerSkipErrors`）。
 
@@ -68,6 +68,7 @@
 | `contact.created` 聯繫人建立 | 是 | `automation.worker.ts` |
 | `contact.tagged` 聯繫人加標籤 | 是 | `automation.worker.ts` |
 | `link.clicked` 短連結被點擊 | 是 | `automation.worker.ts` |
+| `contact.followed` 加入好友 | 是 | `automation.worker.ts`：處理 LINE 的 follow 事件（`message.received`、`contentType: follow`）時，另外把這個事件排入佇列，並帶上回覆權杖。動作在權杖的期限內用回覆方式送出。「加好友禮」頁建立的就是這個事件的規則 |
 | `sla.*` 的 SLA 事件 | 是 | workers 的 `sla.handler.ts` 直接查規則並執行 |
 | `case.closed` 工單關閉 | 否 | 事件有發布，但沒有送進 queue |
 | `case.assigned` 工單指派 | 否 | 同上 |
@@ -79,34 +80,35 @@
 
 ## 哪些動作會執行
 
-規則編輯器依契約提供動作，workers 都有實作：
+規則編輯器依契約提供動作（`issue_coupon` 除外），workers 都有實作：
 
 | 動作 | workers 有實作 | 做什麼 |
 | --- | --- | --- |
 | `send_message` 傳送訊息 | 是 | 送一則文字到觸發的對話。送不出時見[送出失敗的紀錄](#送出失敗的紀錄) |
-| `send_material` 傳送素材 | 是 | 送一則素材到觸發的對話。素材的渠道類型與對話不符時略過。編輯器從素材庫下拉挑選（顯示名稱與渠道）。建立或修改動作時，`materialId` 必須是同租戶、啟用中的素材，否則回 400。規則條件一定要成立的「對話渠道等於 X」（頂層或巢狀的「全部」群組）與素材的渠道類型不分大小寫比對，不同時回 400（#362 D8）；只改條件也檢查，只改名稱、停用或重新啟用不檢查。素材含 `{{coupon.url}}`（顧客專屬券連結）時也回 400：自動化規則不會發券，workers 會把沒代入的變數拿掉，顧客拿不到券；關鍵字回覆對話框與規則編輯器選到這種素材時會提醒。「關鍵字回覆」頁編輯時一律送出完整的動作，所以規則指向的素材停用或含券連結時，要改選素材才能存；只切換啟用開關不受影響 |
+| `send_material` 傳送素材 | 是 | 送一則素材到觸發的對話。素材的渠道類型與對話不符時略過。編輯器從素材庫下拉挑選（顯示名稱與渠道）。建立或修改動作時，`materialId` 必須是同租戶、啟用中的素材，否則回 400。規則條件一定要成立的「對話渠道等於 X」（頂層或巢狀的「全部」群組）與素材的渠道類型不分大小寫比對，不同時回 400；只改條件也檢查，只改名稱、停用或重新啟用不檢查。素材含 `{{coupon.url}}`（顧客專屬券連結）時也回 400：自動化規則不會發券，workers 會把沒代入的變數拿掉，顧客拿不到券；關鍵字回覆對話框與規則編輯器選到這種素材時會提醒。「關鍵字回覆」頁編輯時一律送出完整的動作，所以規則指向的素材停用或含券連結時，要改選素材才能存；只切換啟用開關不受影響 |
 | `add_tag` 加標籤 | 是 | 對觸發的聯絡人貼標，見下方說明 |
 | `assign_agent` 指派客服 | 是 | 指派工單給指定的成員 |
 | `update_case_status` 更新工單狀態 | 是 | 改工單狀態 |
 | `escalate_case`、`set_case_priority` | 是 | 改工單優先級 |
 | `notify` 傳送通知 | 是 | 選填「通知誰」（`agentId`）。依序通知：指定的客服（同租戶、啟用中）、工單負責人、對話負責客服；都沒有時通知所有 `ADMIN` 與 `SUPERVISOR` |
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
-| `create_case` 建立工單 | 是（#211） | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
-| `remove_tag` 移除標籤 | 是（2026-10-05） | 刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立標籤 |
+| `create_case` 建立工單 | 是 | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
+| `remove_tag` 移除標籤 | 是 | 刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立標籤 |
+| `issue_coupon` 發送優惠券 | 是 | 發一張優惠券給觸發的聯絡人並送到對話。編輯器不顯示這個動作（契約的 `editorHidden`），只在「關鍵字回覆」與「加好友禮」頁設定 |
 
-**已拿掉的動作。** `assign_bot`、`kb_auto_reply`、`llm_reply` 從未在 workers 實作，2026-10-05 從契約拿掉（issue #197）：機器人在負責的對話裡已會用知識庫與 AI 回覆，規則再觸發一次可能讓客人收到兩則回覆。契約以 `RETIRED_AUTOMATION_ACTIONS` 保留它們的中文名稱：新增或修改規則時，API 以「第 N 個動作「LLM 智能回覆」已停用，請刪除」拒絕，編輯頁列出「LLM 智能回覆（已停用）」。規則若還含這些動作，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。資料 migration `20261005100000_remove_retired_automation_actions` 在部署時清理既有規則：還有其他動作的規則移除這 3 種動作、繼續執行；只有這 3 種動作的規則停用，動作保留原樣。
+**已拿掉的動作。** `assign_bot`、`kb_auto_reply`、`llm_reply` 不在契約內：機器人在負責的對話裡已會用知識庫與 AI 回覆，規則再觸發一次可能讓客人收到兩則回覆。契約以 `RETIRED_AUTOMATION_ACTIONS` 保留它們的中文名稱：新增或修改規則時，API 以「第 N 個動作「LLM 智能回覆」已停用，請刪除」拒絕，編輯頁列出「LLM 智能回覆（已停用）」。規則若還含這些動作，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。資料 migration `20261005100000_remove_retired_automation_actions` 在部署時清理既有規則：還有其他動作的規則移除這 3 種動作、繼續執行；只有這 3 種動作的規則停用，動作保留原樣。
 
 **編輯頁載入時移除契約外的動作。** 編輯既有規則時，編輯器依規則的觸發事件（`trigger.type`，沒有時用 `eventType`），移除契約沒有提供的所有動作：不適用於這個事件的、已停用的（列為「LLM 智能回覆（已停用）」）、契約不認得的舊動作（例如 UAT 舊規則的 `auto_assign`，列為「未知動作（auto_assign）」），以及格式錯誤的項目。這些動作會讓整條規則不執行，編輯頁列出被移除的動作，儲存後恢復。改了觸發事件後不再顯示。實作在 `apps/web/src/lib/automation/rule-actions.ts` 的 `splitRuleActions`。
 
 **驗證錯誤訊息。** 契約驗證（`packages/automation/src/contracts/validation.ts`）的錯誤訊息一律中文，寫第幾個條件或動作，並用契約的中文名稱，例如「第 1 個動作「傳送訊息」不適用於「工單關閉」觸發」。條件依畫面順序編號，巢狀群組裡的條件連續計數。契約完全沒有的欄位或動作只有原始代碼，訊息會說明「不是系統提供的」，例如「第 2 個動作「auto_assign」不是系統提供的動作，請刪除」；編輯頁列為「未知動作（auto_assign）」。
 
-**下拉參數只收選項內的值**（#469）。「目標狀態」「優先級」「新優先級」「分類」等下拉參數有值時必須是契約的選項之一，否則存規則回 400，例如「第 1 個動作「更新工單狀態」的「目標狀態」不能是「FOO」，請從選項中選擇」；選填的下拉留空照常通過。API、CLI、MCP 都走同一個驗證。既有規則若存了選項外的值，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。負責人、通知對象（`agentId`）仍不檢查（AUTO-12）。「目標狀態」的選項是開啟、處理中、待處理、已升級、已解決、已關閉。
+**下拉參數只收選項內的值**。「目標狀態」「優先級」「新優先級」「分類」等下拉參數有值時必須是契約的選項之一，否則存規則回 400，例如「第 1 個動作「更新工單狀態」的「目標狀態」不能是「FOO」，請從選項中選擇」；選填的下拉留空照常通過。API、CLI、MCP 都走同一個驗證。既有規則若存了選項外的值，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。負責人、通知對象（`agentId`）仍不檢查（AUTO-12）。「目標狀態」的選項是開啟、處理中、待處理、已升級、已解決、已關閉。
 
 **`add_tag` 以名稱找標籤。** 規則存的是標籤名稱。workers 依名稱找標籤時不限 scope；找不到就用這個名稱建立一個新的標籤。因此標籤被改名或刪除後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。貼標時，workers 在同一個交易把 `contact.tagged` 寫進 outbox，讓以貼標為觸發的規則接著執行。事件帶著來源 `automation`，自動化訂閱者據此略過，避免無限迴圈。
 
 **工單類動作繞過工單模組。** workers 直接更新 `Case` 的欄位，不經過 `case.service.ts`。`update_case_status` 與工單模組共用 `packages/shared` 的規則，其餘動作沒有：
 
-- `update_case_status` 依工單的狀態轉換規則（`canTransition()`，#469），和客服手動改狀態一樣：例如「開啟」不能直接改成「已解決」。不合法（含不存在的狀態值）時不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫時間軸 `status_changed`（顯示「（自動化規則「<名稱>」）」），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox，內容與手動轉換相同（`caseStatusOutcomeEvent()`）；推播 `case.updated` 的 `source` 是 `automation`。`resolvedAt`、`closedAt` 用 `caseTransitionTimestamps()`（#417），由規則轉成 `RESOLVED` 的工單會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
+- `update_case_status` 依工單的狀態轉換規則（`canTransition()`），和客服手動改狀態一樣：例如「開啟」不能直接改成「已解決」。不合法（含不存在的狀態值）時不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫時間軸 `status_changed`（顯示「（自動化規則「<名稱>」）」），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox，內容與手動轉換相同（`caseStatusOutcomeEvent()`）；推播 `case.updated` 的 `source` 是 `automation`。`resolvedAt`、`closedAt` 用 `caseTransitionTimestamps()`，由規則轉成 `RESOLVED` 的工單會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
 - `escalate_case` 只提高優先級，不把狀態改成 `ESCALATED`，也不發布 `case.escalated`。
 - `assign_agent` 只改 `assigneeId`，不發布 `case.assigned`，被指派的人不會收到通知。上下文沒有工單時略過，不會指派對話。
 
@@ -114,12 +116,12 @@
 
 「關鍵字回覆」頁（側欄「渠道 → 關鍵字回覆」，網址仍是 `/dashboard/line/keyword-replies`）建立的是 `keyword.matched` 事件加上「傳送素材」（`send_material`）、「發送優惠券」（`issue_coupon`）至少一個動作的規則。關鍵字與比對模式存在 `trigger.keywords` 與 `trigger.match_mode`。
 
-每條關鍵字回覆屬於一個渠道：LINE、Facebook 或 Instagram（change add-fb-ig-keyword-coupon，2026-10-27 起；之前只有 LINE）。
+每條關鍵字回覆屬於一個渠道：LINE、Facebook 或 Instagram。
 
 - 渠道存成條件「對話渠道等於 X」（`conversation.channelType` 的 `equal`，值為 `LINE`、`FB`、`THREADS`），規則只在這個渠道的對話觸發，並對同一渠道類型的所有帳號生效（例如所有 LINE 官方帳號、所有粉專）。沒有「只對某個帳號」的設定。
 - 建立時選渠道；已有渠道條件的規則不能改渠道。在自動化規則編輯器建立、沒有渠道條件的規則，列表顯示「未限定渠道」，在這頁儲存時加上所選渠道的條件（預設為素材的渠道，沒有素材時為 LINE）。渠道條件不是上述單一寫法的規則（例如等於 `WEBCHAT`），這頁不能儲存，要到自動化規則編輯。
 - 素材選單只列所選渠道的素材。Instagram 沒有素材（素材庫只允許 `line`、`fb`），只能發券。規則原本的素材與渠道不符、已刪除或已停用且沒有改選時，這頁擋下儲存並說明原因，列表的素材欄也標示原因。
-- 列表有「渠道」欄與渠道篩選。切換啟用開關或儲存後，列表立即重新載入規則與規則明細（2026-10-27 之前只重新載入列表，要重新整理頁面才看得到新的啟用狀態）。
+- 列表有「渠道」欄與渠道篩選。切換啟用開關或儲存後，列表立即重新載入規則與規則明細。
 - Facebook 與 Instagram 的入站訊息沒有回覆權杖，規則的回覆與發券訊息以一般傳送送出；顧客剛傳訊息，一定在 Meta 的 24 小時視窗內。顧客開啟票券時以 email 驗證碼驗證身分。
 
 每則文字訊息進來時，workers 評估 `message.received` 的 job，以 `matchKeywordTrigger()`（`packages/automation/src/keyword/keyword-match.ts`）逐條檢查啟用中的關鍵字規則：
@@ -136,13 +138,13 @@ AI 是否讓步的判斷也呼叫 `matchKeywordTrigger()`，所以兩邊對同�
 
 「傳送素材」的素材渠道與對話不同時，素材不送出，對話會多一則標示「沒有送出」的紀錄，說明素材與對話的渠道不同。
 
-關鍵字回覆頁存檔時只更換第一個「傳送素材」與第一個「發送優惠券」；第二個以後的同類動作（例如在規則編輯器加的）原樣保留。原本只發券的規則加上素材時，素材排在第一個發券之前（#362 B1、B2）。
+關鍵字回覆頁存檔時只更換第一個「傳送素材」與第一個「發送優惠券」；第二個以後的同類動作（例如在規則編輯器加的）原樣保留。原本只發券的規則加上素材時，素材排在第一個發券之前。
 
 ### 送出失敗的紀錄
 
 自動化的送出（傳送訊息、傳送素材、發券）沒有送到客人時：
 
-- 對話還在（含渠道已停用、聯絡人沒有綁定渠道身分、憑證解不開、渠道拒收）：對話多一則 `metadata.deliveryFailed` 的紅色系統訊息，對話的 `lastMessageAt` 也更新，對話會浮到收件匣上方（#362 #11、#12）。發券的失敗紀錄只寫一則。
+- 對話還在（含渠道已停用、聯絡人沒有綁定渠道身分、憑證解不開、渠道拒收）：對話多一則 `metadata.deliveryFailed` 的紅色系統訊息，對話的 `lastMessageAt` 也更新，對話會浮到收件匣上方。發券的失敗紀錄只寫一則。
 - 對話已不存在：沒有地方寫訊息。`send_message`、`send_material` 的動作標成失敗，寫一筆 `AutomationLog`（`success: false`、`errorMsg`、`actionsRan`），可由 `GET /automation/logs` 查到。動作執行時發生錯誤、或找不到素材，也寫這筆紀錄。
 
 關鍵字回覆不限對話狀態，也沒有次數上限。workers 對所有對話都比對：客人每傳一則含關鍵字的訊息就觸發一次，客服接手的對話也會自動回覆。關鍵字回覆頁的說明寫的就是這個行為。
@@ -153,7 +155,7 @@ AI 是否讓步的判斷也呼叫 `matchKeywordTrigger()`，所以兩邊對同�
 
 編輯頁的「試試看這條規則」依**已儲存**的條件產生表單：條件用到的每個欄位一格，名稱與輸入方式取自契約（`apps/web/src/lib/automation/rule-test-form.ts`），沒填的欄位不送。結果以中文顯示「會觸發」與會執行的動作，或「不會觸發：條件不符合」。
 
-`GET /automation/logs` 讀 `AutomationLog`。workers 只在有動作失敗時寫入（見[送出失敗的紀錄](#送出失敗的紀錄)），成功的執行不寫。`AutomationRule.runCount` 與 `lastRunAt` 原本只由已刪除的 `action-executor.ts` 寫入，自 `9255245` 起停止更新，見 `../../system/AUDIT.md` 的 AUTO-02。規則列表因此不顯示執行次數，避免管理員看到停住的數字。
+`GET /automation/logs` 讀 `AutomationLog`。workers 只在有動作失敗時寫入（見[送出失敗的紀錄](#送出失敗的紀錄)），成功的執行不寫。`AutomationRule.runCount` 與 `lastRunAt` 不會更新，見 `../../system/AUDIT.md` 的 AUTO-02。規則列表因此不顯示執行次數，避免管理員看到停住的數字。
 
 ## 權限
 

@@ -95,6 +95,8 @@
 
 ## 文件過時之處
 
+> **2026-11-18 核對。** 本節列出的功能文件、模組文件與 `AUDIT.md` 敘述已依程式更新；健檢之後程式已改變的項目，以程式現況為準。手冊（`apps/web/public/manual/`）、主規格（`openspec/specs/`）、程式註解與測試檔沒有改。
+
 - `docs/ref/system/AUDIT.md` PLAN-01：「`/admin/plans` 也能切換它」不正確，頁面沒有停售開關，只能打 API。
 - `docs/ref/system/AUDIT.md` PLAN-07：「`/admin/plans` 兩個欄位都編輯得到，補上值就會生效」正確，但沒提到渠道類型選項含建不出的 `TELEGRAM`（HC-08）。
 - `docs/ref/features/platform/PLANS.md` 未提到：沒有新增、刪除方案的途徑；`/admin/plans` 只編輯四個欄位。（`trial`、`light` 不含 `channels` 已由 issue #411 修正）

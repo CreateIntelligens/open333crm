@@ -1,6 +1,6 @@
 # 渠道管理
 
-渠道是租戶與客人溝通的管道：一個 LINE 官方帳號、一個 Facebook 粉絲專頁、一個網站聊天室，各是一個渠道。管理員在「設定 → 渠道管理」新增渠道、填入憑證、設定 webhook，並決定哪些團隊看得到這個渠道。
+渠道是租戶與客人溝通的管道：一個 LINE 官方帳號、一個 Facebook 粉絲專頁、一個網站聊天室，各是一個渠道。管理員在「設定 → 渠道管理」新增渠道、填入憑證、設定 webhook，並決定哪些成員看得到這個渠道。
 
 - **資料來源**：`apps/api/src/modules/channel/*`、`apps/api/src/modules/webhook/*`、`apps/api/src/index.ts`、`packages/database/prisma/schema.prisma`、`apps/web/src/components/settings/ChannelManagement.tsx`
 - **核對日期**：2026-09-30
@@ -11,7 +11,10 @@
 | --- | --- |
 | `channel.routes.ts`、`channel.service.ts` | 渠道的 CRUD、驗證憑證、webhook 網址、狀態檢查、網站聊天室的嵌入碼與外觀、團隊授權 |
 | `line-webhook-setup.service.ts` | 呼叫 LINE API，把 webhook 網址設到 LINE 官方帳號上 |
-| `fb-token-monitor.service.ts` | 檢查 Facebook 粉絲專頁的 access token 是否仍有效。只在查詢渠道狀態時執行，沒有排程 |
+| `fb-token-monitor.service.ts` | 查詢渠道狀態時，檢查 Facebook 粉絲專頁的 access token 是否仍有效 |
+| `meta-token-health.ts` | 排程（id `meta-token-health`，每 6 小時）檢查所有啟用中的 FB 與 IG 渠道的權杖，結果寫進 `settings.tokenHealth`。權杖從有效變成失效時，通知該租戶所有啟用中的管理員（站內通知 `channel_token_invalid` 與 email），持續失效時每 3 天再提醒一次。網路錯誤或 Meta 限流時不改狀態、不通知 |
+| `meta-connect` 模組 | 「用 Facebook 連結粉專」：管理員以 Facebook 登入、選擇粉專，系統以平台的 Meta App 建立渠道並訂閱粉專。粉專的權杖不回傳前端 |
+| `webhook` 模組的 `webhook-account-routing.ts` | FB 與 IG 的事件依粉專或帳號 ID（`Channel.externalAccountId`）找出真正的渠道，見下方「Webhook」 |
 | `webchat-embed.service.ts` | 產生網站聊天室的嵌入碼 |
 | `webhook` 模組 | 接收渠道平台送來的事件，見[租戶後台](./README.md#一則訊息進來之後) |
 | `packages/channel-plugins` | 各渠道的收發實作。API 在 `index.ts` 以 `registerChannelPlugin()` 註冊 |
@@ -64,7 +67,15 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 | 端點 | 作用 |
 | --- | --- |
 | `POST /channels/:id/setup-webhook` | 呼叫 LINE API，自動把 webhook 網址設到 LINE 官方帳號 |
-| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`，需 `channel.update` 與 `channel.view_all`（總店；#408）。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
+| `GET`、`POST /api/v1/webhooks/meta` | 「用 Facebook 連結粉專」建立的渠道共用這個網址，事件依帳號 ID 分派 |
+
+**FB 與 IG 依帳號 ID 分派。** 一個 Meta App 只能設一個回呼網址，多個粉專共用同一個 App 時，所有粉專的事件都送到同一個網址。系統依事件的帳號 ID（`entry.id`）找出真正的渠道，不只看網址上的 `channelId`：
+
+1. 帳號 ID 等於網址渠道的 `externalAccountId`：交給網址渠道。
+2. 其他渠道以相同的渠道類型與帳號 ID 認領：交給該渠道，但兩個渠道必須是同一個 Meta App，否則丟棄。
+3. 沒有渠道認領，而且網址渠道還沒有 `externalAccountId`：照舊交給網址渠道，並在 `settings.webhookRouting` 記警示。
+4. 沒有渠道認領，而且網址渠道已有不同的 `externalAccountId`：丟棄事件，並記警示。
+| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`，需 `channel.update` 與 `channel.view_all`（總店）。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
 | `POST /channels/:id/verify` | 以目前的憑證呼叫渠道平台，確認憑證有效 |
 | `GET /channels/:id/status` | 渠道的連線狀態。Facebook 會另外檢查 token 是否過期。需要 `channel.view`，看不到的渠道回 404。只讀不寫，「最後驗證」只由 `verify` 更新；渠道管理頁只對啟用中的 FB 渠道呼叫 |
 
@@ -84,6 +95,11 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 | `botConfig` | 機器人的行為 | 見[收件匣與對話](./INBOX.md#機器人什麼時候回覆) |
 | `firstContactGreeting` | 聯絡人第一次進站時的招呼語 | 空字串代表不送 |
 | `downstreamWebhook` | 轉發給下游 | 見上方 |
+| `tokenHealth` | FB、IG 權杖的檢查結果 | 由 `meta-token-health.ts` 寫入，渠道卡片顯示 |
+| `webhookRouting` | webhook 分派警示 | 事件的帳號 ID 與網址上的渠道不符時寫入，渠道管理頁顯示給管理員 |
+| `chatboxTheme` | 網站聊天室的外觀與背景圖 | 以 `PATCH /channels/:id/chatbox-theme` 與 `POST /channels/:id/chatbox-theme/background` 修改 |
+| `bindingHandle`、`bindingHandleAuto` | 跨渠道綁定導流時顯示的帳號識別 | 驗證渠道時自動寫入 `bindingHandleAuto`；管理員以 `/channels/:id/binding-handle` 手動覆寫 `bindingHandle` |
+| `liffConfig.loginChannelId` | LINE Login 的 channel ID | 優惠券票券夾驗證顧客的 LINE ID token 時使用 |
 | `liffConfig.liffId` | LINE LIFF 的 ID | 短連結靠它辨識點擊者，見[短連結](./SHORTLINKS.md)。儲存時去頭尾空白並檢查格式（10 位數字、`-`、8 個英數字，例如 `1234567890-AbcdEfgh`），不符回 400；空字串表示清除 |
 
 ## 網站聊天室
@@ -92,7 +108,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 
 | 端點 | 作用 |
 | --- | --- |
-| `GET /channels/:id/embed-code` | 產生嵌入碼（`channel.view`，#408 起） |
+| `GET /channels/:id/embed-code` | 產生嵌入碼（`channel.view`） |
 | `POST /channels/:id/chatbox-link` | 產生給指定網域使用的聊天連結 |
 | `PATCH /channels/:id/chatbox-theme`、`POST /channels/:id/chatbox-theme/background` | 聊天視窗的外觀與背景圖 |
 
@@ -100,7 +116,9 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 
 ## 誰看得到這個渠道
 
-渠道可以授權給團隊，並指定層級（`full`、`reply_only`、`read_only`）：
+渠道主要直接授權給個別成員，並指定層級（`full`、`reply_only`、`read_only`）。新增渠道的表單與精靈列出成員，人員管理頁也能改成員可用的渠道，見[人員與角色](./MEMBERS.md)。
+
+渠道也可以授權給團隊。但系統沒有建立團隊與管理團隊成員的途徑，見 `../../system/AUDIT.md` 的 TEAM-01，所以團隊授權實際上用不到。團隊授權的端點：
 
 | 端點 | 作用 |
 | --- | --- |
@@ -108,9 +126,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 | `GET /channels/teams/:teamId/channels` | 某團隊能看的渠道 |
 | `GET /channels/assignable`、`GET /channels/teams` | 授權畫面的選項 |
 
-也可以直接授權給個別成員，這在人員管理頁設定，見[人員與角色](./MEMBERS.md)。
-
-沒有授權給任何團隊或成員的渠道，只有持有 `channel.view_all` 的成員（總店）看得到。所以新增渠道時就要決定誰看得到：表單與精靈列出所有啟用中的成員，預設全選。2026-10-05 之前，沒有授權的渠道所有成員都看得到；當時既有的這類渠道已由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。可見範圍怎麼套用在收件匣與工單，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。
+沒有授權給任何團隊或成員的渠道，只有持有 `channel.view_all` 的成員（總店）看得到。所以新增渠道時就要決定誰看得到：表單與精靈列出所有啟用中的成員，預設全選。2026-10-05 之前建立、沒有授權的渠道，已由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。可見範圍怎麼套用在收件匣與工單，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。
 
 ## 停用與刪除
 
@@ -145,10 +161,9 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 | WhatsApp 渠道可以建立但無法使用 | 詳見 `../../system/AUDIT.md` 的 APP-02 |
 | **自動化在網站聊天室送不出訊息** | workers 沒有網站聊天室外掛。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
 | 方案沒有限制渠道類型與數量 | 重新啟用也不檢查數量。詳見 `../../system/AUDIT.md` 的 PLAN-07 |
-| Facebook token 沒有定期檢查 | 只有查詢狀態時才檢查，token 過期前不會通知 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
 
-## 單筆渠道路由的可見範圍（#408）
+## 單筆渠道路由的可見範圍
 
 每條帶渠道 ID 的路由（`/:id` GET／PATCH／DELETE、`/verify`、`/liff-test`、`/setup-webhook`、`/status`、`/embed-code`、`/chatbox-link`、`/binding-handle`、`/chatbox-theme`、`/chatbox-theme/background`）都先以 `assertChannelVisible()` 檢查：看不到（含不存在、已停用）回 404。`channel.view` 的讀取要 `read_only`；`channel.update`／`channel.delete` 的管理操作要 `full`，不足回 403 `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`。總店（`channel.view_all`）不受限制。渠道與團隊的指派路由只看 `channel.assign_team`（全租戶指派權），不看操作者的可見範圍。主規格：`channel-scoped-visibility`「單筆渠道路由的可見範圍」。

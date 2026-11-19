@@ -4,6 +4,16 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-18：依功能健檢的「文件過時之處」更正敘述
+
+只改文件，不改程式。逐項讀程式核對各健檢報告（`docs/ref/features/health/`）的「文件過時之處」，沒有連 UAT。各項目的狀態都不變。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ARCH-01 | 狀態不變，移除 `line-login/line-login.routes.ts` 一列：這個檔案已不存在 | `apps/api/src/modules/` 沒有 `line-login` |
+| PLAN-07 | 狀態不變，內文補一句：渠道類型的選項包含沒有外掛的 `WHATSAPP`、`TELEGRAM` | `apps/api/src/modules/platform/platform.routes.ts` 的 `channelTypeValues` 取 `ChannelType` 全部值 |
+| APP-08 | 狀態不變，保留期限表補上 `coupon-broadcast` 與 `comment-reply` 兩個佇列 | `broadcast-coupon.service.ts` 的 `COUPON_BROADCAST_JOB_OPTIONS`、`comment-reply.types.ts` 的 `COMMENT_REPLY_JOB_OPTIONS` |
+
 ## 2026-11-14：留言自動私訊的平台設定鍵（TRIAL-02 相關）
 
 change `add-comment-keyword-private-reply`（尚未部署）。以本機獨立 feature 測試資料庫（`TEST_DATABASE_NAME=open333crm_test_crmerge`）驗證，沒有連 UAT。

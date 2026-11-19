@@ -1,21 +1,23 @@
 ---
 name: feature-sla
 description: >
-  open333CRM「SLA 與營業時間」功能顧問：SLA 政策 CRUD（首次回應、解決時限、到期前預警、設為此優先級預設）、
-  工單套用政策與 SLA 倒數、sla:poll 排程掃描（首次回應／解決期限的預警與逾時、客戶枯等、逾時自動升級優先級）、
-  SLA 通知、SLA 事件觸發的自動化規則、報表裡的 SLA 達成率與違規表，以及營業時間對 SLA 計時的效果（目前沒有效果）。
-  當有人問「SLA 怎麼算」「為什麼半夜／假日也逾時」「為什麼工單一直被升級成緊急」「逾時沒通知」「SLA 規則貼標沒反應」
-  「改了政策舊工單有沒有變」，或需求、bug 碰到 /dashboard/settings/sla、/dashboard/settings/office-hours、
-  modules/sla、sla.handler.ts、packages/shared/src/sla、SlaPolicy、slaDueAt、firstResponseAt 時使用。
-  也在改工單優先級／狀態流程、工單建立、自動化動作、報表的 SLA 數字、通知前使用。
+  open333CRM「SLA 與營業時間」功能顧問：SLA 政策、工單套用政策與倒數、sla:poll 掃描的預警、逾時與自動升級、報表的 SLA 數字。改到 sla 模組、sla.handler.ts、SlaPolicy、slaDueAt，或改工單優先級與狀態流程之前使用。
 ---
 
 # SLA 與營業時間
 
+## 涵蓋範圍
+
+open333CRM「SLA 與營業時間」功能顧問：SLA 政策 CRUD（首次回應、解決時限、到期前預警、設為此優先級預設）、
+工單套用政策與 SLA 倒數、sla:poll 排程掃描（首次回應／解決期限的預警與逾時、客戶枯等、逾時自動升級優先級）、
+SLA 通知、SLA 事件觸發的自動化規則、報表裡的 SLA 達成率與違規表，以及營業時間對 SLA 計時的效果（目前沒有效果）。
+當有人問「SLA 怎麼算」「為什麼半夜／假日也逾時」「為什麼工單一直被升級成緊急」「逾時沒通知」「SLA 規則貼標沒反應」
+「改了政策舊工單有沒有變」，或需求、bug 碰到 /dashboard/settings/sla、/dashboard/settings/office-hours、
+modules/sla、sla.handler.ts、packages/shared/src/sla、SlaPolicy、slaDueAt、firstResponseAt 時使用。
+也在改工單優先級／狀態流程、工單建立、自動化動作、報表的 SLA 數字、通知前使用。
+
 ## 先讀
 - 功能現況：`docs/ref/features/SLA.md`
-  - 注意：其中「去重：24 小時內已經發生過就直接返回」已過時。change `fix-sla-outcome-repeat`（2026-10-15）之後，同一個期限只記一次（以期限、預警時間點或上次客服回覆為起點），見 `apps/workers/src/handlers/sla.handler.ts` 的 `hasCaseEventSince`。
-  - 注意：「政策如何套用」寫「依 priority 查一條政策」，程式是「該優先級勾了預設的優先，沒有預設取最早建立的」。
   - 文件沒寫：SLA 以日曆時間連續計算，**不扣營業時間與假日**（手冊 `apps/web/public/manual/ch17-settings.html` 有寫）。
 - 健檢結果與已知問題：`docs/ref/features/health/SLA.md`
 - 規格：`openspec/specs/sla-policy-selection/spec.md`；SLA 掃描與通知在 `openspec/specs/standalone-worker-runtime/spec.md`；SLA 事件與 facts 在 `openspec/specs/automation-engine/spec.md`（SLA Event Catalog、SLA Automation Facts、Shared SLA Domain Semantics）；收件匣建單選政策在 `openspec/specs/core-inbox/spec.md`
@@ -50,7 +52,7 @@ description: >
 ## 不可破壞的規則
 - 工單以政策**名稱**記錄政策（`Case.slaPolicy` 是字串，SLA-04）。改名必須在同一個交易同步工單；名稱在租戶內不可重複；有未結案工單的政策不能刪。三者都靠 `sla.service.ts` 的 `lockTenantSlaPolicies` 依序執行，不要拿掉鎖（`apps/api/tests/feature/modules/sla/sla-policy-concurrency.test.ts`）。
 - 掃描只屬於 workers。`apps/api/src/modules/sla/sla.worker.ts` 刻意是 no-op，不要在 API 行程再啟動掃描。
-- 同一個期限的結果只記一次：去重起點是期限（逾時）、預警時間點（預警）或上次客服回覆之後（客戶枯等）。查重與寫入在同一個交易、以「工單 + 事件類型」advisory lock 保護。改掃描邏輯時保留這組（`apps/workers/tests/unit/handlers/sla-outcome-once.test.ts`）。2026-10-15 之前是 24 小時去重，逾期工單每天重升一級、重發通知，UAT 舊工單因此停在 URGENT。
+- 同一個期限的結果只記一次：去重起點是期限（逾時）、預警時間點（預警）或上次客服回覆之後（客戶枯等）。查重與寫入在同一個交易、以「工單 + 事件類型」advisory lock 保護。改掃描邏輯時保留這組（`apps/workers/tests/unit/handlers/sla-outcome-once.test.ts`）。
 - 首次回應只算客服（`senderType: AGENT`）在工單建立後的訊息；客戶枯等卻把 `SYSTEM` 也當成客服回覆。兩邊不一致是現況，不要只改一邊。
 - 事件名、facts、`bumpSlaPriority`、`getSlaState` 只能在 `packages/shared/src/sla/` 維護（automation-engine「Shared SLA Domain Semantics」）。web、API、workers 不要各自寫一份門檻。
 - 時間全部以 UTC 時間戳記做分鐘加減，沒有時區問題；**日期切分**（報表的日、今日已解決）才有時區問題（ANA-01、HC-SLA-12）。
@@ -60,7 +62,7 @@ description: >
 執行 `node scripts/feature-impact.mjs --domain sla` 看最新版本。重點：
 - **依賴**：工單（建單寫 `slaPolicy`、`slaDueAt`；`firstResponseAt`）、收件匣（客服回覆、客戶訊息）、通知（佇列與站內通知）、自動化（SLA 規則的動作）、聯絡人（VIP 標籤 facts）、設定（兩個分頁）。
 - **被依賴**：工單（倒數、篩選、統計卡、時間軸 SLA 事件）、自動化（事件與 facts 契約）、數據分析（達成率、違規表、績效）、收件匣（建單下拉）。
-- 改工單的優先級、狀態轉換、重開、刪除，或改 `resolvedAt` 的寫法，都會影響 SLA 判定與報表（HC-ANALYTICS-02）。
+- 改工單的優先級、狀態轉換、重開、刪除，或改 `resolvedAt` 的寫法，都會影響 SLA 判定與報表。
 
 ## 回歸清單
 改到本領域時，至少重走：
@@ -78,6 +80,6 @@ description: >
 - 「手動建的工單一定首次回應逾時」：沒有關聯對話，`firstResponseAt` 永遠空（SLA-05）。
 - 「某些工單完全沒有 SLA 事件」：先查 `Case.slaPolicy` 對不對得到現有政策名稱（`getPolicy` 回 null 就略過）；再查是否超過全系統每輪 100 張（SLA-02）。
 - 「SLA 規則的貼標沒反應」：workers log 出現 `Worker action "add_tag" skipped: no contact in context`（HC-AUTOMATION-02）。
-- 「通知沒收到」：預警只給負責人，工單沒有負責人時預警沒有人收到；負責人已停用時通知被略過、沒有人收到（#484，寫入前檢查收件成員；不改發主管，CONV-06）。看 `apps/workers/src/handlers/sla.handler.ts` 的 `enqueueDefaultNotifications`。
+- 「通知沒收到」：預警只給負責人，工單沒有負責人時預警沒有人收到；負責人已停用時通知被略過、沒有人收到（寫入前檢查收件成員；不改發主管，CONV-06）。看 `apps/workers/src/handlers/sla.handler.ts` 的 `enqueueDefaultNotifications`。
 - 「設定頁 SLA 列表是空的」：先看 `GET /sla-policies` 是否 403（成員沒有 `sla.manage`），畫面不會說。
-- 「報表 SLA 達成率怪」：只算期間內已解決的工單，`resolvedAt` 的規則見 feature-cases（#417：直接關閉不算已解決、重開清除，舊資料沒有補值）；日期以 UTC 切（ANA-01）。
+- 「報表 SLA 達成率怪」：只算期間內已解決的工單，`resolvedAt` 的規則見 feature-cases（直接關閉不算已解決、重開清除）；日期以 UTC 切（ANA-01）。

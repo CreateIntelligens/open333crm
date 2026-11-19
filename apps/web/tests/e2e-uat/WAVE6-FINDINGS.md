@@ -177,6 +177,8 @@ LINE validate 要求 HTTPS 絕對網址（carousel 預設圖同樣問題）。
 
 ## 🚨 P0 — 短連結公開轉址全掛（主 session 已親自實測證實）
 
+> **已修正（2026-11-18 核對）。** `shortlink-redirect.routes.ts` 現在以 `app.prismaAdmin` 查詢短連結，公開轉址與點擊紀錄都能用。下面保留當時的紀錄。
+
 **Agent 回報 → 主 session 獨立驗證，全部屬實：**
 
 UAT 上 3 筆真實有效短連結（isActive=true、未過期）實測：

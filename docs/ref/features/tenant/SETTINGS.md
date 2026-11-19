@@ -16,7 +16,8 @@
 | 人員管理、角色與權限 | `agent`、`role` | [人員與角色](./MEMBERS.md) |
 | 標籤管理 | `tag` | [聯絡人與標籤](./CONTACTS.md#標籤) |
 | SLA 政策 | `sla` | [服務水準協議](../SLA.md) |
-| 營業時間、追蹤設定、API 金鑰、CLI 連線 | `settings` | 本文件 |
+| 營業時間、追蹤設定、跨渠道綁定、API 金鑰、CLI 連線 | `settings` | 本文件 |
+| 門市與核銷帳號 | `store` | [行銷活動、素材與優惠券](./MARKETING.md)。分頁需要 `store.view` |
 | Passkey 登入 | `auth` | 本文件 |
 | A2A | `settings` | 本文件 |
 | WebTalk 協作 | `webtalk` | 本文件 |
@@ -69,9 +70,22 @@
 
 - 渠道的 `botConfig.offlineGreeting` 有值時，優先用它，而不是營業時間設定的訊息。
 - 同一個聯絡人 30 分鐘內只回一次。這個去重記錄存在 API 行程的記憶體，API 重新啟動或有多個行程時會各自計算。
-- 加好友、封鎖、群組加入離開、收回訊息等系統事件（`contentType` 是 `follow`、`unfollow`、`join`、`leave`、`memberJoined`、`memberLeft`、`unsend`、`videoPlayComplete`、`accountLink`、`beacon`）不送自動回覆（#362）。
+- 加好友、封鎖、群組加入離開、收回訊息等系統事件（`contentType` 是 `follow`、`unfollow`、`join`、`leave`、`memberJoined`、`memberLeft`、`unsend`、`videoPlayComplete`、`accountLink`、`beacon`）不送自動回覆。
 
 營業時間只影響這則自動回覆。機器人、自動化與 SLA 的計時都不看營業時間。
+
+## 跨渠道綁定
+
+「跨渠道綁定」分頁設定顧客用關鍵字把不同渠道的身分綁成同一個聯絡人，也設定 email 與手機登記。路由是 `GET`、`PUT /settings/identity-binding`（`settings.routes.ts`），需要 `settings.manage`。
+
+| 欄位 | 說明 |
+| --- | --- |
+| `enabled` | 跨渠道綁定的開關 |
+| `bindKeywords`、`unbindKeywords` | 綁定與解除綁定的關鍵字，各 1～5 個，每個 1～20 字 |
+| `emailEnabled`、`emailKeywords` | email 登記的開關與關鍵字。沒送時沿用已儲存的值 |
+| `phoneEnabled`、`phoneKeywords` | 手機登記的開關與關鍵字。沒送時沿用已儲存的值 |
+
+儲存時寫一筆 `settings.update` 稽核，`payload.section` 是 `identity-binding`，記錄三個開關。綁定與登記怎麼運作，見[聯絡人與標籤](./CONTACTS.md)。
 
 ## 追蹤設定
 
@@ -119,7 +133,7 @@ A2A 橋接讓本系統的 AI agent 接收其他 agent 從 A2A Hub 送來的任�
 
 ## 稽核
 
-設定頁的修改寫入 `settings.update` 租戶稽核，`payload.section` 記錄是哪一類：`office-hours`、`tracking`、`chat`、`embedding`、`gemini-key`。
+設定頁的修改寫入 `settings.update` 租戶稽核，`payload.section` 記錄是哪一類：`office-hours`、`tracking`、`identity-binding`、`webtalk`、`chat`、`embedding`、`gemini-key`。
 
 營業時間與追蹤設定的稽核和修改在同一個交易寫入：稽核寫入失敗時，修改也不寫入。
 

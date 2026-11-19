@@ -1,21 +1,24 @@
 ---
 name: feature-platform-plans
 description: >
-  open333CRM「方案與上限」功能顧問：平台後台方案設定 /admin/plans（功能勾選 features、細分權限 deny、
-  數值上限 maxAgents/maxChannels/maxTags/monthlyTokens、可用渠道類型 allowedChannelTypes）、
-  功能天花板（角色權限 ∩ 方案天花板、Redis perms:tenant 快取、getTenantPlanId 60 秒進程內快取）、
-  租戶覆寫 limitOverrides、各種上限硬擋 PLAN_LIMIT_EXCEEDED / CHANNEL_TYPE_NOT_ALLOWED、AI 月額度
-  （aiquota 計數器）、租戶端方案頁 /dashboard/plan。當需求或 bug 提到「方案」「升級後功能沒開」
-  「換方案後 403」「客服人數上限」「渠道數上限」「AI 額度用完」「停售方案」「試用方案能不能接 LINE」、
-  plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時使用。
-  也在新增權限碼或 feature、改 requirePermission、改建立成員/渠道/AI 呼叫流程前使用。
+  open333CRM「方案與上限」功能顧問：/admin/plans 的功能、上限與可用渠道類型，功能天花板與快取，上限硬擋。改到 plan.service、plan-limits.service、token-quota.service，或新增權限碼或 feature、改建立成員／渠道／AI 呼叫流程之前使用。
 ---
 
 # 方案與上限
 
+## 涵蓋範圍
+
+open333CRM「方案與上限」功能顧問：平台後台方案設定 /admin/plans（功能勾選 features、細分權限 deny、
+數值上限 maxAgents/maxChannels/maxTags/monthlyTokens、可用渠道類型 allowedChannelTypes）、
+功能天花板（角色權限 ∩ 方案天花板、Redis perms:tenant 快取、getTenantPlanId 60 秒進程內快取）、
+租戶覆寫 limitOverrides、各種上限硬擋 PLAN_LIMIT_EXCEEDED / CHANNEL_TYPE_NOT_ALLOWED、AI 月額度
+（aiquota 計數器）、租戶端方案頁 /dashboard/plan。當需求或 bug 提到「方案」「升級後功能沒開」
+「換方案後 403」「客服人數上限」「渠道數上限」「AI 額度用完」「停售方案」「試用方案能不能接 LINE」、
+plan.service、plan-limits.service、tenant-plan.cache、token-quota.service 時使用。
+也在新增權限碼或 feature、改 requirePermission、改建立成員/渠道/AI 呼叫流程前使用。
+
 ## 先讀
 - 功能現況（以它為準）：`docs/ref/features/platform/PLANS.md`
-  - 注意：`docs/ref/system/AUDIT.md` 的 PLAN-01 寫「`/admin/plans` 也能切換」停售，已過時：頁面從來沒有停售、名稱、價格的欄位，只能打 API（健檢 HC-PLATFORM-PLANS-03）。
 - 健檢結果與已知問題：`docs/ref/features/health/PLATFORM-PLANS.md`
 - 共通機制（天花板用語、快取連鎖、資料模型）：`docs/ref/features/platform/README.md`
 - 規格：`openspec/specs/tenant-plan/spec.md`、`openspec/specs/plan-limits-core/spec.md`、`openspec/specs/granular-plan-entitlement/spec.md`、`openspec/specs/token-quota/spec.md`
@@ -58,7 +61,7 @@ description: >
 ## 有後端沒前端
 - 新增方案、刪除方案：**沒有 API 也沒有 UI**，只能改 `packages/database/prisma/seed-data/plans.ts`（只在資料庫沒有該 slug 時建立）、寫 migration 或直接寫資料庫。
 - 改方案名稱、月費、停售（`name`、`priceMonthly`、`isActive`）：API 接受，`/admin/plans` 沒有欄位。停售本身沒有效果（PLAN-01）。
-- 租戶覆寫 `Tenant.limitOverrides`：沒有任何讀寫 UI，也沒有 API，目前沒有寫入端（2026-11-10 起核准加購不再寫，migration 已移除既有的 `monthlyTokens`）。
+- 租戶覆寫 `Tenant.limitOverrides`：沒有任何讀寫 UI，也沒有 API，目前沒有寫入端。
 - AI 月額度 = 基礎上限 + 本月（台灣時間）已核准的加購加總，只在 `plan-limits.service.ts` 的 `getEffectiveLimit()` 計算；加購只加當月（change make-token-topup-monthly）。
 - `billing.view` 權限碼：沒有任何路由或頁面使用（RBAC-01）。
 
@@ -77,7 +80,7 @@ description: >
 - 計數只算 `isActive: true` 的成員與渠道；把停用的資源改回啟用也要檢查上限（成員已做，渠道還沒做）。
 - AI 計數器 `aiquota:{tenantId}:{YYYY-MM}:tpe` 用台灣月份，只累加平台金鑰的成功呼叫；BYOK 不計不擋。
 - 新增權限碼或 feature：權限碼宣告在 `packages/shared/src/rbac/permissions.ts`，feature 在 `packages/core/src/rbac/features.ts`，平台頁自動出現。既有租戶的系統角色要跑 `scripts/grant-new-role-permissions.mjs`。
-- seed（API 容器每次啟動都跑）只建立不存在的方案，**不可以更新既有方案**，平台後台的修改要在部署後保留（issue #441，`tenant-plan` 規格「部署後保留平台修改」）。不要把 `seedPlans()` 改回 upsert 的 `update`。
+- seed（API 容器每次啟動都跑）只建立不存在的方案，**不可以更新既有方案**，平台後台的修改要在部署後保留（`tenant-plan` 規格「部署後保留平台修改」）。不要把 `seedPlans()` 改回 upsert 的 `update`。
 - 程式要改既有方案的內容時，寫一次性的資料 migration：以 `slug` 篩選、只改目標欄位、加「還沒改過」條件可重複執行、檔頭寫回滾 SQL，並同步更新 `SEED_PLANS`。範例 `20261103120000_enable_channels_on_trial_light`；細節見 `docs/ref/features/platform/PLANS.md`「seed 建立的五個方案」。
 - UI 不放 emoji 與 ✓（使用者要求）。
 
@@ -101,9 +104,9 @@ description: >
 ## 常見 bug 從哪裡查
 - 「升級／換方案後還是 403」：先看 `getTenantPlanId` 的 60 秒行程快取（`apps/api/src/services/tenant-plan.cache.ts`）；直接改資料庫或多行程時要等 60 秒。Redis `perms:tenant:{roleId}:{planId}` 是第二層，`FLUSHDB` 清不到第一層。
 - 「角色頁明明有勾，成員卻 403」：方案天花板擋掉（PLAN-08）；看 403 的 `details.requiredPermission` 屬於哪個 feature，再查租戶方案的 `features` 與 `permissionOverrides.deny`。
-- 「渠道頁顯示沒有權限」：`GET /channels` 回 403。看 `details.requiredPermission`，再查角色有沒有 `channel.view`、方案 `features` 有沒有 `channels`。seed 的五個方案都含 `channels`；`trial`、`light` 原本沒有，issue #411 以 seed 與 migration `20261103120000_enable_channels_on_trial_light` 補上。seed 不會改回平台對方案的修改（issue #441 之後只建立不存在的方案）。
+- 「渠道頁顯示沒有權限」：`GET /channels` 回 403。看 `details.requiredPermission`，再查角色有沒有 `channel.view`、方案 `features` 有沒有 `channels`。seed 的五個方案都含 `channels`。seed 只建立不存在的方案，不會改回平台對方案的修改。
 - 「平台改了上限卻沒生效」：同時編輯兩張方案卡片時，先存的那張會重載資料，另一張輸入框顯示新值、送出的卻是舊值（HC-PLATFORM-PLANS-02）；也檢查租戶有沒有 `limitOverrides`（覆寫優先）。
 - 「方案人數上限擋不住」：看是不是從停用改回啟用的渠道（成員已檢查）；`maxTags` 本來就不擋。
 - 「AI 額度用完卻還能用」：該租戶是 BYOK（不計不擋），或 `monthlyTokens` 是 null；BYOK 解密失敗會退回平台金鑰開始計數（AI-01）。
-- 「升級後 AI 額度沒變」：先查租戶是否有 `limitOverrides.monthlyTokens`（應已由 migration 移除；有的話是有人直接改資料庫）。
+- 「升級後 AI 額度沒變」：先查租戶是否有 `limitOverrides.monthlyTokens`（正常流程不寫這個欄位，有的話是有人直接改資料庫）。
 - 「加購的額度下個月不見了」：正常，加購只計入核准當月（台灣時間）。

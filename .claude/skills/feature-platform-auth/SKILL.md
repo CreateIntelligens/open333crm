@@ -1,17 +1,21 @@
 ---
 name: feature-platform-auth
 description: >
-  open333CRM「登入與身分驗證（租戶端＋平台後台）」功能顧問：租戶登入 /login（夾娃娃機 playcaptcha、記住我、
-  Passkey、帳號鎖定、停用帳號或停用租戶擋登入）、access／refresh token 與自動換發、登出、
-  平台後台登入 /admin/login（PLATFORM_JWT_SECRET）、平台忘記密碼與重設 /admin/forgot-password、/admin/reset-password、
-  強制改密碼 /admin/change-password（mustChangePassword）、CLI 登入 open333 login 與 CLI token scope、
-  /dashboard/settings/cli-sessions、速率限制與 request.ip（trust-proxy）。
-  當有人說「登不進去」「被登出」「一直跳回登入頁」「帳號被鎖」「忘記密碼」「重設連結失效」「CLI token 沒權限」
-  「平台後台打不開」，或要改 auth、platform-auth、platform-password-recovery、cli-session、agent-token、
-  rate-limit、platform-api.ts、api.ts 攔截器時使用。
+  open333CRM「登入與身分驗證」功能顧問：租戶與平台後台的登入、token 換發、忘記密碼、強制改密碼、CLI 登入與 token scope、速率限制。改到 auth、platform-auth、cli-session、rate-limit 模組，或 api.ts、platform-api.ts 攔截器之前使用。
 ---
 
 # 登入與身分驗證（租戶端＋平台後台）
+
+## 涵蓋範圍
+
+open333CRM「登入與身分驗證（租戶端＋平台後台）」功能顧問：租戶登入 /login（夾娃娃機 playcaptcha、記住我、
+Passkey、帳號鎖定、停用帳號或停用租戶擋登入）、access／refresh token 與自動換發、登出、
+平台後台登入 /admin/login（PLATFORM_JWT_SECRET）、平台忘記密碼與重設 /admin/forgot-password、/admin/reset-password、
+強制改密碼 /admin/change-password（mustChangePassword）、CLI 登入 open333 login 與 CLI token scope、
+/dashboard/settings/cli-sessions、速率限制與 request.ip（trust-proxy）。
+當有人說「登不進去」「被登出」「一直跳回登入頁」「帳號被鎖」「忘記密碼」「重設連結失效」「CLI token 沒權限」
+「平台後台打不開」，或要改 auth、platform-auth、platform-password-recovery、cli-session、agent-token、
+rate-limit、platform-api.ts、api.ts 攔截器時使用。
 
 ## 先讀
 - 平台帳號認證（以它為準）：`docs/ref/features/platform/AUTH.md`；平台後台共通機制：`docs/ref/features/platform/README.md`
