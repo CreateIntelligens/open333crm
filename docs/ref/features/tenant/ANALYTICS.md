@@ -12,7 +12,7 @@
 | `analytics.routes.ts` | 報表路由與權限 |
 | `analytics.flow.ts` | 每個報表在一個租戶交易內查詢。報表頁、CLI 與 MCP 都呼叫這裡 |
 | `analytics.service.ts` | 每個報表的查詢。全部在查詢當下從原始資料表計算 |
-| `analytics.scheduler.ts`、`analytics.aggregator.ts` | `runDailyAggregation()` 每天把前一天的彙總寫入 `DailyStat`，每個租戶一個交易。排程 id 是 `analytics-daily`，每天 02:00 執行。沒有任何報表讀這張表，見 `../../system/AUDIT.md` 的 DB-03 |
+| `analytics.scheduler.ts`、`analytics.aggregator.ts` | `runDailyAggregation()` 每天把前一天的彙總寫入 `DailyStat`，每個租戶一個交易。排程 id 是 `analytics-daily`，每天 02:00 執行。沒有任何報表讀這張表，見 `../../system/AUDIT.md` 的 DB-03。要不要讀這張表，由 #318 決定 |
 
 CLI 的 `/api/v1/cli/analytics/*` 與 MCP 的 `crm_get_analytics_overview`、`crm_get_case_statistics` 呼叫同一組 flow，但走 CLI 的 scope 授權，見 `../../system/AUDIT.md` 的 RBAC-02。
 
