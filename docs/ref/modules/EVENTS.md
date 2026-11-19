@@ -133,7 +133,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 
 | kind | sourceId | subKey | 保護的副作用 |
 | --- | --- | --- | --- |
-| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接與 AI 回覆失敗轉接（#445）的轉接訊息：每則入站訊息最多一則機器人回覆 |
+| `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接與 AI 回覆失敗轉接的轉接訊息：每則入站訊息最多一則機器人回覆 |
 | `automation_action` | 觸發事件 id | `<規則 id>#<動作序號>` | workers 的每個規則動作。SLA 排程沒有事件 id，不認領 |
 | `sentiment` | 入站訊息 id | 空字串 | 情緒分析的結果與 `sentiment.negative` |
 | `keyword_matched` | 入站訊息 id | 規則 id | 給對外 Webhook 的 `keyword.matched` |
@@ -155,7 +155,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 
 agent 沒有回覆、KB 回覆又因錯誤失敗時，系統不只記 log：
 
-1. `handOffAfterAiFailure()` 以 `bot_reply` 認領，並轉接真人。轉接的交易失敗時，錯誤往外丟，由佇列重試（#445）。
+1. `handOffAfterAiFailure()` 以 `bot_reply` 認領，並轉接真人。轉接的交易失敗時，錯誤往外丟，由佇列重試。
 2. `message.received` 的每個步驟都會執行。處理結束時，系統再丟出失敗步驟的錯誤。
 3. 重試時，已完成的步驟都已認領，所以會略過。
 
@@ -349,7 +349,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 ## 新增事件或背景工作時
 
-1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()`、`notifyChannel()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。帶渠道的訊息或對話資料的推播用 `notifyChannel()`，只送給看得到該渠道的成員；`notifyTenant()` 不可帶這類內容（issue #427）。還沒搬到 `inTenant()` 的舊入口用 `emitToChannel()`。
+1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()`、`notifyChannel()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。帶渠道的訊息或對話資料的推播用 `notifyChannel()`，只送給看得到該渠道的成員；`notifyTenant()` 不可帶這類內容。還沒搬到 `inTenant()` 的舊入口用 `emitToChannel()`。
 2. **其他模組要跟著做事**：flow 在交易內用 `publishEvent()`。先在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES` 加上名稱，再在 `queues.ts` 的 `EVENT_SUBSCRIBERS` 決定哪些訂閱者收到。訂閱者要承受同一個事件處理兩次。
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：flow 在交易內用 `enqueueJob()`，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。job 可能送兩次，handler 要承受重複。
 4. **workers 要推送即時事件**：帶渠道資料的用 `publishChannelSocketEvent()`（送到對話、渠道與總店房間，`socket:emit` 訊息帶 `rooms`）；其他用 `publishSocketEvent()`。
