@@ -4,6 +4,7 @@
  *   不按：刪除、儲存、套用、測試連線、用 Facebook 連結粉專、建立並驗證、指派團隊的新增/撤銷、產生連結。
  * ⚠️ Webhook 網址、粉專 ID、Verify Token、嵌入碼、WebChat 連結、成員姓名一律在畫面上遮掉。
  * 寫入保險會擋下所有非 GET 的 API 請求，本章沒有放行任何 POST。
+ * ch15-fb-connect 會按「用 Facebook 連結粉專」，但開始授權、選粉專、連結三支 API 都在本頁攔截回假資料。
  *
  * 新版 UI：渠道從卡片改成列表的一列；圖示按鈕有 aria-label（Bot 設定、下游 Webhook 轉發、編輯渠道、刪除渠道）；
  * 新增／編輯／Bot 設定改成佔滿內容區的 PageDialog（role=dialog）。
@@ -12,7 +13,7 @@ import { test, Page, Locator } from '@playwright/test';
 import {
   startRecording, stopRecording, poster, caption, point, tap, typeIn, go, newShotPage,
 } from './manual-video-helpers';
-import { shot, sanitize, SHOTS_DIR } from './manual-helpers';
+import { shot, sanitize, SHOTS_DIR, BASE_URL } from './manual-helpers';
 import * as path from 'path';
 
 /** 遮蔽渠道相關機密：網址、帳號 ID、Verify Token、嵌入碼、成員姓名 */
@@ -370,11 +371,9 @@ test('ch15 截圖', async ({ browser }) => {
   await dialog.locator('select').first().selectOption('FB');
   await page.waitForTimeout(600);
   await dialog.locator('input').nth(0).fill('範例：品牌粉絲專頁');
-  await shot(page, body(dialog), 'ch15-add-fb');
   await dialog.locator('select').first().selectOption('THREADS');
   await page.waitForTimeout(600);
   await dialog.locator('input').nth(0).fill('範例：品牌 Instagram');
-  await shot(page, body(dialog), 'ch15-add-ig');
   await dialog.locator('select').first().selectOption('WEBCHAT');
   await page.waitForTimeout(600);
   await dialog.locator('input').nth(0).fill('範例：官網即時客服');
@@ -439,4 +438,68 @@ test('ch15-liff LIFF 欄位與測試 QR（不儲存、不送測試）', async ({
   await shot(page, liffPanel(bot), 'ch15-liff-test-qr');
   await normal(page);
   await bot.getByRole('button', { name: '取消', exact: true }).click();
+});
+
+/**
+ * ch15-fb-connect：用 Facebook 連結粉專的完整流程。
+ * Facebook 授權畫面無法在自動化瀏覽器登入，改用 2026-11-19 在使用者 Chrome 截的三張圖（個資已模糊，
+ * tests/manual-assets/fb-connect/），由本機路由當成「Facebook 頁面」播放；最後一步實際沒有按「儲存」。
+ * 「開始授權」「選擇粉專」「連結」三支 API 都用假資料回應，UAT 不會建立或更新任何渠道。
+ */
+test('ch15-fb-connect 用 Facebook 連結粉專', async ({ browser }) => {
+  const rec = await startRecording(browser, 'ch15-fb-connect');
+  const { page } = rec;
+  await mask(page);
+  const fs = await import('fs');
+  const asset = (n: number) => fs.readFileSync(path.join(__dirname, 'manual-assets/fb-connect', `fb${n}.png`));
+  const SESSION = 'demo-session';
+  const k = 1440 / 1470;
+  const btn = (label: string, x0: number, y0: number, x1: number, y1: number, next: string) =>
+    `<a aria-label="${label}" href="${next}" style="position:absolute;left:${x0 * k}px;top:${y0 * k}px;width:${(x1 - x0) * k}px;height:${(y1 - y0) * k}px"></a>`;
+  const fbPage = (n: number, hotspot: string, extra = '') =>
+    `<!doctype html><meta charset="utf-8"><title>商家專用 Facebook 登入</title>
+     <body style="margin:0;background:#999;position:relative">
+     <img src="/__fbdemo/img/${n}.png" style="display:block;width:1440px;filter:none!important">${hotspot}${extra}</body>`;
+  await page.route('**/__fbdemo/img/*.png', (r) => r.fulfill({ contentType: 'image/png', body: asset(Number(r.request().url().match(/(\d)\.png$/)![1])) }));
+  await page.route('**/__fbdemo/1', (r) => r.fulfill({ contentType: 'text/html', body: fbPage(1, btn('編輯設定', 497, 189, 723, 225, '/__fbdemo/2')) }));
+  await page.route('**/__fbdemo/2', (r) => r.fulfill({ contentType: 'text/html', body: fbPage(2, btn('繼續', 817, 649, 958, 685, '/__fbdemo/3'),
+    `<div aria-label="粉專清單" style="position:absolute;left:${490 * k}px;top:${230 * k}px;width:${480 * k}px;height:${280 * k}px"></div>`) }));
+  await page.route('**/__fbdemo/3', (r) => r.fulfill({ contentType: 'text/html', body: fbPage(3, btn('儲存', 817, 649, 958, 685, `${PATH}?metaConnect=${SESSION}`),
+    `<div aria-label="權限清單" style="position:absolute;left:${497 * k}px;top:${160 * k}px;width:${455 * k}px;height:${210 * k}px"></div>`) }));
+  await page.route('**/meta-connect/start', (r) => r.fulfill({ json: { success: true, data: { url: `${BASE_URL}/__fbdemo/1` } } }));
+  const PAGES = [
+    { id: '100000000000001', name: '範例：品牌粉絲專頁', pictureUrl: null, linkedInThisTenant: false, linkedMode: null },
+    { id: '100000000000002', name: '範例：門市粉絲專頁', pictureUrl: null, linkedInThisTenant: false, linkedMode: null },
+  ];
+  await page.route(`**/meta-connect/sessions/${SESSION}/pages`, (r) => r.fulfill({ json: { success: true, data: PAGES } }));
+  await page.route(`**/meta-connect/sessions/${SESSION}/connect`, (r) =>
+    r.fulfill({ json: { success: true, data: [{ pageId: PAGES[0].id, status: 'connected', channelId: '00000000-0000-4000-8000-0000000000fb' }] } }));
+
+  await go(page, PATH);
+  await page.getByRole('heading', { name: '渠道管理' }).scrollIntoViewIfNeeded();
+  await caption(page, '設定 > 渠道管理，按「用 Facebook 連結粉專」');
+  await tap(page, page.getByRole('button', { name: '用 Facebook 連結粉專' }), 1800);
+  await caption(page, '畫面會跳到 Facebook，請用「粉專管理員」的帳號登入', 2600);
+  await caption(page, '以前授權過會問要不要沿用，按「編輯設定」重新選粉專', 1800);
+  await tap(page, page.getByLabel('編輯設定'), 1500);
+  await caption(page, '選「只能使用目前的粉絲專頁」，勾選要接進系統的粉專', 1600);
+  await point(page, page.getByLabel('粉專清單'), 2400);
+  await caption(page, '按「繼續」', 900);
+  await tap(page, page.getByLabel('繼續'), 1500);
+  await caption(page, '這是系統需要的權限：收發 Messenger 訊息、管理粉專設定', 1600);
+  await point(page, page.getByLabel('權限清單'), 2400);
+  await caption(page, '確認後按「儲存」', 900);
+  await tap(page, page.getByLabel('儲存'), 2200);
+  const dialog = page.getByRole('dialog').filter({ hasText: '選擇要連結的粉專' });
+  await dialog.waitFor();
+  await caption(page, '回到渠道管理，自動跳出「選擇要連結的粉專」', 2000);
+  await tap(page, dialog.getByRole('checkbox').first(), 800);
+  await caption(page, '勾選粉專，按「連結所選粉專」', 1000);
+  await tap(page, dialog.getByRole('button', { name: '連結所選粉專' }), 1500);
+  await caption(page, '顯示「已連結」就完成了，不用另外設定 Webhook', 1600);
+  await point(page, dialog.getByText('已連結').first(), 1800);
+  await caption(page, '按「完成」關閉視窗', 900);
+  await tap(page, dialog.getByRole('button', { name: '完成' }), 1200);
+  await stopRecording(rec);
+  poster('ch15-fb-connect', 2);
 });
