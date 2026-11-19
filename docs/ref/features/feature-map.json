@@ -434,7 +434,7 @@
         },
         {
           "domain": "channels",
-          "why": "新訊息通知的收件人不看渠道可見範圍；權杖失效通知由 meta-token-health 排程發出"
+          "why": "新訊息通知只送給看得到該渠道的成員；權杖失效通知由 meta-token-health 排程發出"
         }
       ],
       "usedBy": [
@@ -1099,7 +1099,7 @@
         },
         {
           "domain": "cases",
-          "why": "滿意度調查在 LINE 渠道以 Flex postback 收分數（LINE 外掛的 flex 分支，#416 修正）"
+          "why": "滿意度調查在 LINE 渠道以 Flex postback 收分數（LINE 外掛的 flex 分支）"
         },
         {
           "domain": "shortlinks",
@@ -1264,7 +1264,7 @@
         },
         {
           "domain": "notifications",
-          "why": "新訊息通知負責人或主管；轉真人通知（#419）與指派的通知缺口（CONV-02）"
+          "why": "新訊息通知負責人或主管；轉真人通知與指派的通知缺口（CONV-02）"
         },
         {
           "domain": "settings",
@@ -1575,7 +1575,7 @@
         },
         {
           "domain": "channels",
-          "why": "報表依 channelType 分組；目前不套用成員的渠道可見範圍"
+          "why": "報表依 channelType 分組，並套用成員的渠道可見範圍"
         },
         {
           "domain": "automation",
@@ -1877,7 +1877,7 @@
         },
         {
           "domain": "governance",
-          "why": "營業時間、追蹤、跨渠道綁定、Chat、Embedding、自備金鑰、WebTalk 的修改都寫 settings.update 租戶稽核；API 金鑰與 CLI token 沒有稽核（AUD-01）"
+          "why": "營業時間、追蹤、跨渠道綁定、Chat、Embedding、自備金鑰、WebTalk 的修改，以及 API 金鑰與 CLI token 的建立與撤銷，都寫 settings.update 租戶稽核"
         },
         {
           "domain": "channels",
@@ -2186,7 +2186,7 @@
         },
         {
           "domain": "settings",
-          "why": "CLI 連線與 Passkey 管理頁在設定；cli-session.service、CLI token 的建立與撤銷路由在 settings.routes.ts"
+          "why": "CLI 連線與 Passkey 管理頁在設定；cli-session.service、CLI token 的建立與撤銷路由在 cli-session.routes.ts（由 settings.routes.ts 註冊，沿用 settings.manage）"
         },
         {
           "domain": "notifications",
@@ -2313,7 +2313,7 @@
       "dependsOn": [
         {
           "domain": "contacts",
-          "why": "資料刪除以聯絡人為單位，處理 Contact、ChannelIdentity、IdentityMap，並沿 mergedIntoId 一併處理併入的封存聯絡人；刪除完成後解除合併回 409 CONTACT_ERASED（#473）"
+          "why": "資料刪除以聯絡人為單位，處理 Contact、ChannelIdentity、IdentityMap，並沿 mergedIntoId 一併處理併入的封存聯絡人；刪除完成後解除合併回 409 CONTACT_ERASED"
         },
         {
           "domain": "inbox",
@@ -2333,11 +2333,11 @@
         },
         {
           "domain": "members",
-          "why": "稽核與匯出、刪除請求的操作者外鍵 SetNull：永久刪除成員前 purgeAgent 寫入名稱與 email 快照（actorName、requestedByName 等，#414）"
+          "why": "稽核與匯出、刪除請求的操作者外鍵 SetNull：永久刪除成員前 purgeAgent 寫入名稱與 email 快照（actorName、requestedByName 等）"
         },
         {
           "domain": "settings",
-          "why": "API 金鑰、CLI token、MCP 在設定頁；這些憑證的建立撤銷沒有稽核（AUD-01）；MCP 的 LINE 操作寫 mcp.line.* 稽核"
+          "why": "API 金鑰、CLI token、MCP 在設定頁；這些憑證的建立與撤銷寫 settings.update 租戶稽核；MCP 的 LINE 操作寫 mcp.line.* 稽核"
         },
         {
           "domain": "automation",
@@ -2460,7 +2460,7 @@
         },
         {
           "domain": "channels",
-          "why": "停用租戶時 webhook 依 tenant.isActive 提早丟棄進站事件，processInboundMessage 共用入口再擋一次；網站聊天室建立工作階段、送訊息與訪客 socket 回 404（#410）"
+          "why": "停用租戶時 webhook 依 tenant.isActive 提早丟棄進站事件，processInboundMessage 共用入口再擋一次；網站聊天室建立工作階段、送訊息與訪客 socket 回 404"
         },
         {
           "domain": "inbox",
@@ -2480,7 +2480,7 @@
         },
         {
           "domain": "marketing",
-          "why": "停用租戶的到期群發與 coupon-broadcast job 不送出，標 failed（TENANT_DISABLED，broadcast-tenant-active.ts，#410）"
+          "why": "停用租戶的到期群發與 coupon-broadcast job 不送出，標 failed（TENANT_DISABLED，broadcast-tenant-active.ts）"
         }
       ]
     },
@@ -2763,7 +2763,7 @@
       "usedBy": [
         {
           "domain": "channels",
-          "why": "createChannel 檢查 allowedChannelTypes（CHANNEL_TYPE_NOT_ALLOWED）與 maxChannels（PLAN_LIMIT_EXCEEDED）；channels feature 不在方案內時渠道頁顯示「沒有渠道」"
+          "why": "createChannel 檢查 allowedChannelTypes（CHANNEL_TYPE_NOT_ALLOWED）與 maxChannels（PLAN_LIMIT_EXCEEDED）；channels feature 不在方案內時渠道頁顯示沒有權限"
         },
         {
           "domain": "members",
@@ -2783,7 +2783,7 @@
         },
         {
           "domain": "platform-trials",
-          "why": "試用開通綁定 trial 方案；試用方案的 features 天花板決定試用租戶能用哪些功能（含 channels，issue #411）"
+          "why": "試用開通綁定 trial 方案；試用方案的 features 天花板決定試用租戶能用哪些功能（含 channels）"
         },
         {
           "domain": "notifications",
@@ -2850,7 +2850,7 @@
         },
         {
           "domain": "platform-tenants",
-          "why": "平台稽核可依操作者查（GET /platform-users/:id/audit-logs）；租戶開通、停用、改方案的紀錄另可從租戶詳細頁的操作紀錄查（GET /tenants/:id/audit-logs，#496）。動作中文名稱與對象顯示規則共用 admin/lib/audit-log.ts"
+          "why": "平台稽核可依操作者查（GET /platform-users/:id/audit-logs）；租戶開通、停用、改方案的紀錄另可從租戶詳細頁的操作紀錄查（GET /tenants/:id/audit-logs）。動作中文名稱與對象顯示規則共用 admin/lib/audit-log.ts"
         },
         {
           "domain": "platform-plan-changes",
