@@ -14,6 +14,9 @@ import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import settingsRoutes from '#src/modules/settings/settings.routes.js';
 import knowledgeRoutes from '#src/modules/knowledge/knowledge.routes.js';
 import { fakeOllama, markedVector } from '#tests/support/fake-ollama.js';
+import { fakeGemini } from '#tests/support/fake-gemini.js';
+import { getConfig } from '#src/config/env.js';
+import { encryptApiKey } from '#src/modules/ai/ai-key.service.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -24,7 +27,10 @@ const DEFAULTS = { provider: 'ollama', baseUrl: 'http://localhost:11434', model:
 
 const tenantIds: string[] = [];
 const apps: Array<{ close(): Promise<unknown> }> = [];
+const gemini = fakeGemini();
 const ollama = fakeOllama();
+const config = getConfig() as { GEMINI_API_KEY?: string };
+const originalPlatformKey = config.GEMINI_API_KEY;
 
 async function makeTenant(label: string) {
   const id = (await owner.tenant.create({ data: { name: `${MARK}-${label}` } })).id;
@@ -85,10 +91,17 @@ function saveRow(
 
 const S = '/api/v1/settings/embedding';
 
-beforeEach(() => ollama.reset());
+beforeEach(() => {
+  ollama.reset();
+  gemini.reset();
+  config.GEMINI_API_KEY = originalPlatformKey;
+});
 
 afterAll(async () => {
+  config.GEMINI_API_KEY = originalPlatformKey;
+  // 兩個假 fetch 疊在一起：後建立的先還原
   ollama.restore();
+  gemini.restore();
   await Promise.all(apps.map((app) => app.close()));
   for (const tenantId of tenantIds) {
     await owner.kmArticle.deleteMany({ where: { tenantId } });
@@ -234,6 +247,33 @@ describe('向量化服務的健康檢查', () => {
       assert.equal(res.body.data.ok, false);
       assert.match(res.body.data.error, /nomic-embed-text:latest/);
     }
+  });
+
+  test('Gemini 沒有金鑰', async () => {
+    const t = await makeTenant('health-gemini-nokey');
+    await saveRow(t, { embeddingProvider: 'gemini', embeddingModel: 'gemini-embedding-001' });
+    config.GEMINI_API_KEY = undefined;
+    const app = await buildApp(t);
+    for (const res of [await call(app, 'POST', `${S}/health`), await call(app, 'GET', STATUS)]) {
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.equal(res.body.data.ok, false);
+      assert.match(res.body.data.error, /Gemini 金鑰/);
+    }
+    assert.equal(gemini.state.modelCalls, 0, '沒有呼叫 Gemini');
+  });
+
+  test('Gemini 正常', async () => {
+    const t = await makeTenant('health-gemini-ok');
+    await saveRow(t, { embeddingProvider: 'gemini', embeddingModel: 'gemini-embedding-001' });
+    await owner.tenantSettings.update({ where: { tenantId: t }, data: { geminiApiKeyEnc: encryptApiKey('tenant-key') } });
+    const app = await buildApp(t);
+    const status = await call(app, 'GET', STATUS);
+    assert.equal(status.status, 200, JSON.stringify(status.body));
+    assert.deepEqual(status.body.data, { ok: true, model: 'gemini-embedding-001' });
+    const health = await call(app, 'POST', `${S}/health`);
+    assert.equal(health.body.data.ok, true);
+    assert.equal(health.body.data.modelInstalled, true);
+    assert.equal(ollama.state.embedCalls.length, 0);
   });
 
   test('服務連不到', async () => {

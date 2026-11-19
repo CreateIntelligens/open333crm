@@ -15,6 +15,7 @@ import {
   searchSimilarArticles,
   writeArticleEmbedding,
   type ArticleSearchResult,
+  readEmbeddingProbeTarget,
   type EmbeddingInputs,
 } from './embedding.service.js';
 import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
@@ -150,8 +151,8 @@ export async function embeddingStatusFlow(
   deps: { prisma: PrismaClient },
   tenantId: string,
 ): Promise<{ ok: boolean; model?: string; error?: string }> {
-  const settings = await inTenant(deps.prisma, tenantId, (scope) => getEmbeddingSettings(scope));
-  const probe = await probeEmbeddingService(settings.baseUrl, settings.model);
+  const settings = await inTenant(deps.prisma, tenantId, (scope) => readEmbeddingProbeTarget(scope));
+  const probe = await probeEmbeddingService(settings);
   if (!probe.reachable) return { ok: false, error: probe.error };
   if (!probe.installed) return { ok: false, error: modelNotInstalledError(settings.model, probe.models) };
   return { ok: true, model: probe.installed.name };

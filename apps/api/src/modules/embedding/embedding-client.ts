@@ -207,11 +207,36 @@ export type EmbeddingServiceProbe =
   | { reachable: false; error: string }
   | { reachable: true; models: EmbeddingServiceModel[]; installed: EmbeddingServiceModel | undefined };
 
+/** 健康檢查的目標：服務、網址、模型，Gemini 另外要金鑰 */
+export type EmbeddingProbeTarget = Pick<EmbeddingTarget, 'provider' | 'baseUrl' | 'model' | 'apiKey'>;
+
 /**
- * 呼叫 `/api/tags`：服務連得到，而且模型清單中有名稱等於 `model`、或以 `model:` 開頭的模型，才算正常
- * （spec embedding-settings「向量化服務的健康檢查」）。
+ * 檢查向量化服務（spec embedding-settings「向量化服務的健康檢查」）。
+ * - Ollama：呼叫 `/api/tags`，模型清單中有名稱等於 `model`、或以 `model:` 開頭的模型，才算正常。
+ * - Gemini：沒有金鑰時不送請求。有金鑰時查詢模型，回 200 才算正常。
  */
-export async function probeEmbeddingService(baseUrl: string, model: string): Promise<EmbeddingServiceProbe> {
+export async function probeEmbeddingService(target: EmbeddingProbeTarget): Promise<EmbeddingServiceProbe> {
+  if (target.provider === 'gemini') return probeGemini(target);
+  return probeOllama(target.baseUrl, target.model);
+}
+
+async function probeGemini(target: EmbeddingProbeTarget): Promise<EmbeddingServiceProbe> {
+  if (!target.apiKey) {
+    return { reachable: false, error: '沒有設定 Gemini 金鑰：請在「Chat & Prompt」填入自備的 Gemini 金鑰，或請平台方設定' };
+  }
+  try {
+    const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(target.model)}`, {
+      headers: { 'x-goog-api-key': target.apiKey },
+    });
+    if (!response.ok) return { reachable: false, error: `Gemini 回應 ${response.status}，請檢查金鑰是否有效` };
+    const model = { name: target.model };
+    return { reachable: true, models: [model], installed: model };
+  } catch (err) {
+    return { reachable: false, error: `連不到 Gemini：${(err as Error).message}` };
+  }
+}
+
+async function probeOllama(baseUrl: string, model: string): Promise<EmbeddingServiceProbe> {
   try {
     const response = await fetch(`${baseUrl}/api/tags`);
     if (!response.ok) return { reachable: false, error: `Ollama responded ${response.status}` };

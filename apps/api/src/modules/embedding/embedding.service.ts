@@ -8,6 +8,7 @@ import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { getEmbeddingSettings, type EmbeddingSettings } from '../settings/embedding-settings.service.js';
 import { readAiPrivacyPolicy, type AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 import { readModelKeyInputs, type ModelKeyInputs } from '../ai/llm.service.js';
+import type { EmbeddingProbeTarget } from './embedding-client.js';
 
 export interface ArticleSearchResult {
   id: string;
@@ -28,6 +29,13 @@ export interface ArticleSearchResult {
 export interface EmbeddingInputs extends ModelKeyInputs {
   settings: EmbeddingSettings;
   policy: AiPrivacyPolicy;
+}
+
+/** 健康檢查的目標。Gemini 時一併讀金鑰（自備金鑰優先，否則平台金鑰）。沒傳 `settings` 時自己讀 */
+export async function readEmbeddingProbeTarget(ctx: TenantCtx, settings?: EmbeddingSettings): Promise<EmbeddingProbeTarget> {
+  const s = settings ?? (await getEmbeddingSettings(ctx));
+  const apiKey = s.provider === 'gemini' ? (await readModelKeyInputs(ctx, 'gemini')).apiKey : undefined;
+  return { provider: s.provider, baseUrl: s.baseUrl, model: s.model, apiKey };
 }
 
 export async function readEmbeddingInputs(ctx: TenantCtx): Promise<EmbeddingInputs> {
