@@ -2,8 +2,8 @@
 
 自動化規則讓租戶設定「某件事發生時，符合條件就自動做某些事」。例如：收到含「退貨」的訊息就貼標並通知主管；工單升級時指派給資深客服。側欄的「自動化」頁與「渠道 → 關鍵字回覆」頁，底層都是同一張 `AutomationRule` 表。
 
-- **資料來源**：`apps/api/src/modules/automation/*`、`apps/workers/src/handlers/automation.handler.ts`、`apps/workers/src/lib/automation-actions.ts`、`apps/workers/src/lib/automation-facts.ts`、`packages/automation/src/*`、`apps/web/src/app/dashboard/automation/*`、`apps/web/src/app/dashboard/line/keyword-replies/page.tsx`
-- **核對日期**：2026-10-21
+- **資料來源**：`apps/api/src/modules/automation/*`、`apps/workers/src/handlers/automation.handler.ts`、`apps/workers/src/lib/automation-actions.ts`、`packages/automation/src/*`、`apps/web/src/app/dashboard/automation/*`、`apps/web/src/app/dashboard/line/keyword-replies/page.tsx`
+- **核對日期**：2026-11-19
 
 ## 負責的模組
 
@@ -14,7 +14,40 @@
 | `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作。處理 `message.received` 時，一併比對關鍵字規則 |
 | `packages/automation` | 兩邊共用 | 規則契約（事件、事實、動作的定義）與規則引擎 |
 
-動作只由 workers 的 `lib/automation-actions.ts` 執行。契約定義的動作，workers 都有實作。`assign_bot`、`kb_auto_reply`、`llm_reply` 已從契約拿掉，見下方「已拿掉的動作」。
+動作只由 workers 的 `lib/automation-actions.ts` 執行。API 沒有動作執行器。契約定義的動作，workers 都有實作。workers 遇到沒有分支的動作類型時，只寫一筆 warn log 並略過。`assign_bot`、`kb_auto_reply`、`llm_reply` 已從契約拿掉，見下方「已拿掉的動作」。
+
+## 程式的入口
+
+規則的路由在 `automation.routes.ts`，前綴是 `/api/v1/automation`。每條路由呼叫 `automation.flow.ts` 的 flow，每個 flow 是 `flowOf()` 包住一個 service 函式。Canvas 的路由前綴是 `/api/v1/canvas`，見[互動流程引擎](../../modules/CANVAS-FLOW-ENGINE.md)。`/api/v1/identity`（合併建議）屬於聯絡人領域，路由在 `contact/merge-suggestion.routes.ts`。
+
+| 路由 | flow → service 函式 |
+| --- | --- |
+| `GET /automation/rules` | `listRulesFlow()` → `listRules()`。只列出 `enabled` 為 `true` 的規則 |
+| `GET /automation/rules/:id` | `getRuleFlow()` → `getRule()` |
+| `POST /automation/rules` | `createRuleFlow()` → `createRule()` |
+| `PATCH /automation/rules/:id` | `updateRuleFlow()` → `updateRule()` |
+| `DELETE /automation/rules/:id` | `deleteRuleFlow()` → `deleteRule()` |
+| `POST /automation/rules/:id/test` | `testRuleFlow()` → `testRule()` |
+| `GET /automation/logs` | `listLogsFlow()` → `listLogs()` |
+
+`createRule()` 與 `updateRule()` 依序檢查：
+
+1. 路由的 Zod schema。
+2. `validateRuleContract()`：契約驗證。
+3. `assertSendMaterialReferences()`、`assertSendMaterialChannels()`：素材存在、啟用中、渠道與條件相符。
+4. `assertIssueCouponReferences()`：優惠券。
+5. `assertSingleFollowGift()`：每個租戶只能有一條加好友禮，第二條回 409。
+
+建立、修改與刪除規則不發布事件，也不寫租戶稽核紀錄。
+
+規則的執行在下列檔案：
+
+| 步驟 | 程式 |
+| --- | --- |
+| 把事件送進 `automation` queue | `apps/api/src/modules/automation/automation.worker.ts` |
+| 取出規則、過濾、組事實、評估 | `apps/workers/src/handlers/automation.handler.ts` 的 `handleAutomationJob()`；事實由 `packages/automation/src/automation-facts.ts` 的 `buildAutomationFacts()` 組出；評估由 `packages/automation/src/rules/evaluator.ts` 的 `evaluateRules()` 執行 |
+| 執行動作 | `apps/workers/src/lib/automation-actions.ts` 的 `executeWorkerAutomationActions()` |
+| SLA 事件的規則 | `apps/workers/src/handlers/sla.handler.ts` 的 `evaluateSlaAutomationRules()` |
 
 ## 一條規則由什麼組成
 
@@ -44,13 +77,20 @@
 
 ## 規則怎麼被執行
 
-1. 業務模組發布事件，例如 `case.created`。事件送進自動化訂閱者的佇列 `event-automation`，見[事件與背景工作](../../modules/EVENTS.md)。
+1. 業務模組發布事件，例如 `case.created`。`contact.created` 只由真實進站的 `apps/api/src/modules/webhook/inbound-contact-resolver.ts` 發布。本機模擬器 `simulator.service.ts` 不發布這個事件，所以用模擬器測不到以「聯繫人建立」觸發的規則（HC-AUTOMATION-14）。事件送進自動化訂閱者的佇列 `event-automation`，見[事件與背景工作](../../modules/EVENTS.md)。
 2. `automation.worker.ts` 的訂閱者把事件 id、事件與上下文送進 `automation` queue。job id 是事件 id，所以同一個事件送兩次時只評估一次。這個去重只在完成的 job 保留期間（24 小時）有效。
 3. workers 的 `handleAutomationJob()` 取出同租戶、同事件、`isActive` 為 `true` 的規則，再用 `validateAutomationRuleContract()` 過濾掉不合契約的規則。
 4. `buildAutomationFacts()` 依上下文查出聯絡人、對話、工單等資料，組成事實。
 5. `evaluateRules()` 依 `priority` 由大到小逐條評估。命中的規則若設了 `stopOnMatch`，就停止評估其餘規則。
 6. 對每條命中的規則，`executeWorkerAutomationActions()` 依序執行動作。單一動作失敗只記 log，不影響後續動作。
 7. 推送 `automation.executed` socket 事件給租戶。
+
+**SLA 事件的規則走另一條路徑。** `sla.handler.ts` 的 `evaluateSlaAutomationRules()` 自己查規則、自己組事實，再呼叫 `executeWorkerAutomationActions()`。這條路徑與一般路徑有兩個差異（HC-AUTOMATION-02）：
+
+- 不做契約驗證，所以含已停用動作的 SLA 規則不會被略過。
+- 只把 `caseId`、`assigneeId`、`title` 傳給動作，不傳 `contactId` 與 `conversationId`。需要聯絡人的「新增標籤」「移除標籤」在 SLA 規則永遠略過，log 寫「no contact in context」。
+
+**命中即停止的範圍。** `message.received` 等一般事件的規則，命中一條勾了 `stopOnMatch` 的規則後，同一個事件、`priority` 較低的所有規則都不評估。關鍵字規則逐條各自評估，`stopOnMatch` 不會擋下其他關鍵字規則。
 
 **同一個事件的動作最多執行一次。** 事件可能送兩次，`automation` job 也可能重試。每個動作執行前，workers 以「`automation_action` + 事件 id + `<規則 id>#<動作序號>`」寫一筆認領紀錄，已經有紀錄就跳過。認領紀錄保存 30 天，所以 30 天內重送時，客人不會收到第二則訊息，沒有指定優先度的升級也不會再升一級。認領之後動作失敗不重做。SLA 排程觸發的規則沒有事件 id，不認領，由 SLA 自己的紀錄避免重複。規則在事件重送之間改了動作順序時，序號會對不上，可能重複執行一次。
 
@@ -76,6 +116,8 @@
 
 以「否」的事件為觸發的規則可以儲存，但永遠不會執行，見 `../../system/AUDIT.md` 的 AUTO-05。
 
+`contact.tagged` 的規則沒有「剛貼上的標籤」條件，只能用「聯絡人標籤 包含 X」。這個條件看的是聯絡人身上的全部標籤，所以聯絡人之後每被貼上任何一個標籤，規則都再執行一次（HC-AUTOMATION-03）。自動化自己貼的標籤不觸發，見下方 `add_tag` 的說明。
+
 反過來，`portal.activity.submitted` 有送進 queue，但它不在契約裡，規則編輯器選不到，因此也無法使用。
 
 ## 哪些動作會執行
@@ -94,7 +136,7 @@
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
 | `create_case` 建立工單 | 是 | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
 | `remove_tag` 移除標籤 | 是 | 刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立標籤 |
-| `issue_coupon` 發送優惠券 | 是 | 發一張優惠券給觸發的聯絡人並送到對話。編輯器不顯示這個動作（契約的 `editorHidden`），只在「關鍵字回覆」與「加好友禮」頁設定 |
+| `issue_coupon` 發送優惠券 | 是 | 發一張優惠券給觸發的聯絡人並送到對話（`apps/workers/src/lib/rule-coupon-issue.ts`，屬於行銷領域）。編輯器不顯示這個動作（契約的 `editorHidden`），只在「關鍵字回覆」與「加好友禮」頁設定 |
 
 **已拿掉的動作。** `assign_bot`、`kb_auto_reply`、`llm_reply` 不在契約內：機器人在負責的對話裡已會用知識庫與 AI 回覆，規則再觸發一次可能讓客人收到兩則回覆。契約以 `RETIRED_AUTOMATION_ACTIONS` 保留它們的中文名稱：新增或修改規則時，API 以「第 N 個動作「LLM 智能回覆」已停用，請刪除」拒絕，編輯頁列出「LLM 智能回覆（已停用）」。規則若還含這些動作，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。資料 migration `20261005100000_remove_retired_automation_actions` 在部署時清理既有規則：還有其他動作的規則移除這 3 種動作、繼續執行；只有這 3 種動作的規則停用，動作保留原樣。
 
@@ -111,6 +153,19 @@
 - `update_case_status` 依工單的狀態轉換規則（`canTransition()`），和客服手動改狀態一樣：例如「開啟」不能直接改成「已解決」。不合法（含不存在的狀態值）時不改工單，工單時間軸寫一筆「自動化規則「<名稱>」沒有改狀態：不能從「開啟」直接改成「已解決」」（`automation_status_skipped`）；目標狀態等於目前狀態時不改也不寫。合法時同一個交易寫時間軸 `status_changed`（顯示「（自動化規則「<名稱>」）」），轉成已解決、已關閉時把 `case.resolved`、`case.closed` 寫進 outbox，內容與手動轉換相同（`caseStatusOutcomeEvent()`）；推播 `case.updated` 的 `source` 是 `automation`。`resolvedAt`、`closedAt` 用 `caseTransitionTimestamps()`，由規則轉成 `RESOLVED` 的工單會寄滿意度調查。動作先以 `tenantId` 讀目前狀態，再以讀到的狀態條件更新；讀取之後狀態被改掉時不覆寫。
 - `escalate_case` 只提高優先級，不把狀態改成 `ESCALATED`，也不發布 `case.escalated`。
 - `assign_agent` 只改 `assigneeId`，不發布 `case.assigned`，被指派的人不會收到通知。上下文沒有工單時略過，不會指派對話。
+- workers 以 BYPASSRLS 的連線查詢。`escalate_case`、`set_case_priority`、`assign_agent` 以 `where: { id: caseId }` 讀寫工單，沒有帶 `tenantId`。`caseId` 來自 workers 內部組出的上下文，外部無法指定。`update_case_status` 已帶 `tenantId`。
+
+**動作的參數格式。** 後端存 `{type, params}`。規則編輯器內部用 `{type, payload}`：載入時由 `splitRuleActions()` 轉換，儲存時轉回 `params`。workers 與契約驗證都接受 `params ?? payload`，但 API 的 Zod 只保留 `params`，只送 `payload` 的動作會變成空參數，存檔回 400。
+
+**存檔的欄位限制。** `automation.routes.ts` 的 Zod schema 限制下列欄位，不合格時回 400，`details.issues` 列出每個欄位的錯誤：
+
+- `name`：去掉前後空白後 1 到 200 字。
+- `description`：最多 1000 字。
+- `priority`：0 到 10000 的整數。
+- `trigger.keywords`（關鍵字規則）：1 到 50 個，每個 1 到 100 字，不可只有空白。
+- `trigger.match_mode`：`any` 或 `all`。
+- `actions`：至少 1 個。
+- `conditions`：只檢查是物件，不檢查條件值的型別。
 
 ## 關鍵字回覆
 
@@ -157,6 +212,30 @@ AI 是否讓步的判斷也呼叫 `matchKeywordTrigger()`，所以兩邊對同�
 
 `GET /automation/logs` 讀 `AutomationLog`。workers 只在有動作失敗時寫入（見[送出失敗的紀錄](#送出失敗的紀錄)），成功的執行不寫。`AutomationRule.runCount` 與 `lastRunAt` 不會更新，見 `../../system/AUDIT.md` 的 AUTO-02。規則列表因此不顯示執行次數，避免管理員看到停住的數字。
 
+## 畫面怎麼呼叫 API
+
+| 畫面與操作 | API | 畫面上要知道的事 |
+| --- | --- | --- |
+| 規則列表 `/dashboard/automation`：搜尋、依啟用狀態篩選 | `GET /automation/rules?page&limit=100`，依 `meta.totalPages` 逐頁取完 | 列表以 `findWorkerSkipErrors()` 標示「規則不會執行」 |
+| 列表的「啟用」開關 | `PATCH /automation/rules/:id`，只送 `isActive` | 改為啟用時做契約驗證，不通過回 400 |
+| 「新增規則」→ `/dashboard/automation/new`；點列表的一列 → `/dashboard/automation/[ruleId]` | 新增 `POST /automation/rules`；修改 `PATCH /automation/rules/:id` | 送出 `{name, description, trigger:{type, keywords?, match_mode?}, priority, isActive, stopOnMatch, conditions, actions:[{type, params}]}`。失敗時以 `alert` 顯示 `getApiErrorMessage()` 的訊息，不顯示 `details.issues` 的逐欄位錯誤。「執行順序」輸入框允許負數（HC-AUTOMATION-10） |
+| 「什麼時候檢查這條規則」下拉（`triggerEventOptions()`） | 不呼叫 API | 換觸發事件時，條件與動作直接清空，不詢問。契約中 `dispatched: false` 的事件標示「（目前不會觸發）」 |
+| 條件（`ConditionBuilder`，使用 react-querybuilder） | 不呼叫 API | 可選的欄位依觸發事件由契約產生。`qbToEngine()` 轉成 `{all或any:[{fact, operator, value}]}` |
+| 「新增動作」（`ActionList`、`ActionEditor`） | 素材下拉 `GET /marketing/materials?isActive=true`；客服下拉 `GET /agents` | 素材下拉需要 `marketing.view`，客服下拉需要 `agent.view`。沒有權限或載入失敗時，下拉退回文字框並說明原因。`issue_coupon` 不在動作下拉裡 |
+| 編輯頁下方的「試試看這條規則」 | `POST /automation/rules/:id/test`，送 `facts` | 只試跑已儲存的版本，只評估條件，不執行動作 |
+| 編輯頁的「刪除規則」 | `DELETE /automation/rules/:id` | 先以 `confirm` 確認。刪除把 `enabled`、`isActive` 都設成 `false`，畫面上沒有復原的方法 |
+| 關鍵字回覆 `/dashboard/line/keyword-replies` 的「建立關鍵字回覆」：渠道、名稱、關鍵字（按 Enter 加入）、比對方式、素材或優惠券 | `POST /automation/rules`、`PATCH /automation/rules/:id`，內容由 `apps/web/src/hooks/useKeywordReplies.ts` 的 `buildRulePayload()` 組出 | 不送 `isActive`，所以建立後立即啟用 |
+| 加好友禮 `/dashboard/line/follow-gift` | 同一組路由，規則是 `contact.followed` 加 `issue_coupon` | 每個租戶只能有一條，第二條回 409。沒有權限時頁面顯示「無法載入加好友禮設定」 |
+
+規則列表與編輯頁不依權限隱藏「新增規則」、啟用開關、「儲存規則」與「刪除規則」。只有 `automation.view` 的成員按下後才收到 403（HC-AUTOMATION-09）。沒有 `automation.view` 的成員直接開規則網址時，看到空白的表單與可以按的「刪除規則」，沒有權限說明（HC-AUTOMATION-11）。
+
+下列 API 或資料沒有畫面入口：
+
+- `GET /automation/logs`。
+- Canvas 的全部路由。
+- 已刪除規則的復原。
+- `AutomationExecution` 資料表。沒有任何程式讀寫這張表。
+
 ## 權限
 
 | 路由 | 權限 |
@@ -164,7 +243,7 @@ AI 是否讓步的判斷也呼叫 `matchKeywordTrigger()`，所以兩邊對同�
 | `GET /automation/rules`、`GET /rules/:id`、`POST /rules/:id/test`、`GET /automation/logs` | `automation.view` |
 | `POST`、`PATCH`、`DELETE /automation/rules` | `automation.manage` |
 
-關鍵字回覆頁呼叫的是同一組路由，因此管理關鍵字回覆也需要 `automation.manage`。側欄的「渠道」選單另外要求 `richmenu.manage` 才顯示。
+關鍵字回覆頁呼叫的是同一組路由，因此管理關鍵字回覆也需要 `automation.manage`。Canvas 的路由要求 `canvas.use`，系統的 agent 角色預設就有這個權限碼。側欄的「渠道」選單另外要求 `richmenu.manage` 才顯示。
 
 ## 目前的限制
 
