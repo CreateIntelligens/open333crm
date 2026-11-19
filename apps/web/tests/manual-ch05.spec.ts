@@ -25,7 +25,7 @@ test('ch05-automation-new', async ({ browser }) => {
   await point(page, statusFilter(page), 700);
   await statusFilter(page).selectOption('active');
   await page.waitForTimeout(1500);
-  await point(page, page.locator('table'), 1800);
+  await point(page, page.getByRole('table', { name: '自動化規則' }), 1800);
   await caption(page, '按「新增規則」建立一條', 1000);
   await tap(page, page.getByRole('button', { name: '新增規則' }), 2500);
   await caption(page, '先取一個看得懂的名稱', 800);
@@ -140,7 +140,7 @@ test('ch05 截圖', async ({ browser }) => {
   await go(page, '/dashboard/automation');
   await page.getByPlaceholder('搜尋規則名稱').fill('louis');
   await page.waitForTimeout(800);
-  await page.locator('table tbody tr').first().click();
+  await page.getByRole('table', { name: '自動化規則' }).getByRole('row').nth(1).click();
   await page.waitForURL(new RegExp(TEST_RULE));
   await page.waitForTimeout(1500);
   const testCard = card(page, '試試看這條規則');

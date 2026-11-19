@@ -86,6 +86,58 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 - 轉發的是原始內容與原始簽章，下游可以自己驗簽。
 - 每個事件的 ID 記在 Redis 一段時間。下游若把同一個事件送回來，系統不會再轉發一次，避免無限迴圈。
 
+## 自備應用程式串接（內部作業）
+
+客戶串 Facebook 一律用「用 Facebook 連結粉專」（平台 App，客戶手冊第 15 章第 5 節）。下面兩種手動填憑證的方式只給內部人員使用，2026-11-19 從客戶手冊移到這裡：
+
+- Facebook 自備 Meta App：開發、測試，或客戶堅持用自己的 App 時用。
+- Instagram 手動填權杖：Instagram 還沒有自助連結（`add-instagram-login-connect` 未開工），客戶手冊寫「聯繫客服」，由內部人員照這裡操作。
+
+**先確認平台 App 的權限。** 2026-11-19 以 Meta 開發者工具查詢平台 App（創造智能，671495162407854）：已上線（Live），`pages_messaging`、`pages_manage_metadata`、`pages_show_list` 有進階存取，所以任何粉專管理員都能用「用 Facebook 連結粉專」；Instagram 的權限（`instagram_business_basic`、`instagram_business_manage_messages` 等）都沒有核准。沒有進階存取時，App 只有標準存取：只有在 App 上有角色的帳號能授權，而且只確定收得到這些有角色的帳號的資料。所以用平台 App 串客戶的 IG，只能當測試，不能保證一般客人的私訊會進收件匣。正式替客戶串 IG，要用 Instagram 權限已取得進階存取的 App；平台 App 的 IG 權限過審（或 `add-instagram-login-connect` 上線）之前，不要對客戶承諾平台 App 的 IG 串接可以正式使用。
+
+### Facebook：自備 Meta App
+
+三個欄位都在 Meta for Developers（`developers.facebook.com/apps`）該 App 裡：
+
+| 欄位 | 位置 |
+| --- | --- |
+| App ID | 左側「應用程式設定」→「基本資料」→「應用程式編號」。建議填，權杖到期前系統才能提醒 |
+| App Secret | 同一頁「應用程式密鑰」，按「顯示」、輸入密碼後複製。用來驗證 webhook 簽章 |
+| Page Access Token | 左側「使用案例」→「透過 Messenger from Meta 與顧客互動」→「自訂」→「Messenger API 設定」→「2. 產生存取權杖」，在粉專那列按「產生」，複製 `EAA` 開頭的字串 |
+| 粉專 ID | 不用填，按「測試連線」時寫入 `externalAccountId` |
+
+1. 渠道管理 →「新增渠道」→ 類型選 Facebook，填上面三個欄位，選可見成員，儲存。
+2. 按該列「測試連線」，成功後列上出現粉專 ID。
+3. 打開「編輯渠道」，下方「Facebook Webhook 設定提示」有 webhook 網址與驗證權杖（Verify Token）。
+4. 到該 App 的 Messenger Webhooks 設定：回呼網址貼 webhook 網址、驗證權杖貼 Verify Token，訂閱 `messages`、`messaging_postbacks`。
+
+多個粉專共用同一個 App 沒關係，事件依粉專 ID 分派（見上方「Webhook」），所以每個渠道建好都要按一次「測試連線」。用這種方式連的粉專，在「用 Facebook 連結粉專」的清單裡會顯示「已用自備應用程式連結」並鎖住；權杖失效時要到 Meta 重新產生權杖，在「編輯渠道」只貼權杖欄（其他欄留空）、儲存、再按「測試連線」。
+
+### Instagram：手動填權杖
+
+接的是 Instagram 專業帳號的私訊。渠道類型選「Instagram (私訊)」（內部代號 `THREADS`），三個欄位都在 App →「使用案例」→「Instagram API」→「含有 Instagram 登入的 API 設定」：
+
+| 欄位 | 位置 |
+| --- | --- |
+| Instagram 應用程式編號 | 這一頁上方的數字 |
+| Instagram 應用程式密鑰 | 同一頁上方，按「顯示」後複製 |
+| Instagram 存取權杖 | 同一頁「產生存取權杖」：按「新增帳號」登入 IG 專業帳號，再按該帳號的「產生權杖」，複製 `IG` 開頭的字串 |
+
+1. 填好三個欄位，選可見成員，儲存。
+2. 按「測試連線」，取得 IG 帳號 ID（寫入 `externalAccountId`，用的是 `user_id`）。
+3. 「編輯渠道」下方「Instagram Webhook 設定提示」有 webhook 網址與驗證權杖。
+4. 到 App 的 Instagram Webhooks 設定：回呼網址貼 webhook 網址、驗證權杖貼 Verify Token，訂閱 `messages`。
+5. 請客戶在 Instagram「設定 → 訊息和限時動態回覆 → 訊息控制」打開「允許存取訊息」。
+
+注意：
+
+- 「Instagram 應用程式密鑰」不是「應用程式設定 → 基本資料」的 App Secret。填錯時驗簽失敗，一則訊息都收不到，畫面也沒有錯誤提示。
+- 權杖要從「含有 Instagram 登入的 API 設定」產生；其他頁面給的是 Facebook 登入權杖，`graph.instagram.com` 會回 190。
+- 帳號管理中心同時連著個人 IG 時，授權畫面可能預設個人帳號，要確認授權的是客戶的官方帳號。
+- App 要是上線（Live）模式才收得到一般客人的私訊，開發模式只收得到在 App 上有角色的帳號。
+- 編輯 IG 渠道時 webhook 網址下方寫「此為系統內部使用的 Webhook URL」，這句說明有誤，這個網址就是要貼到 Meta 的回呼網址。
+- IG 權杖約 60 天到期，系統目前不會自動續期，`meta-token-health` 判定失效後要重新產生並貼上。
+
 ## 渠道設定
 
 `Channel.settings` 是 JSON，放各種依渠道而不同的設定：

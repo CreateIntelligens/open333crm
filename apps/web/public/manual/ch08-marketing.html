@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>行銷活動、廣播與分群 · open333CRM 操作手冊</title>
 <script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-<link rel="stylesheet" href="design-system.css?v=5">
+<link rel="stylesheet" href="design-system.css?v=6">
 </head>
 <body>
 
@@ -34,7 +34,7 @@
   <main class="manual-main">
     <section class="hero">
       <div class="inner">
-        <div class="eyebrow">CHAPTER 08 · 行銷與渠道</div>
+        <div class="eyebrow">CHAPTER 08 · 行銷</div>
         <h1>行銷活動、廣播與分群</h1>
         <p>把要發的訊息做成素材、用條件圈出受眾，再透過廣播一次發給一群聯絡人；行銷活動把相關的廣播收在一起，方便看合計成效。</p>
       </div>
@@ -42,7 +42,7 @@
 
     <section class="doc" id="p1">
       <h2><span class="idx">1</span> 這頁能做什麼</h2>
-      <p>想一次通知很多客戶時（新品上市、週年慶、活動提醒），就用這一章的功能。從側欄「行銷與渠道 › 行銷」進來，底下有「行銷活動」「廣播」「受眾分群」「素材庫」四個項目。它們的關係像這樣：</p>
+      <p>想一次通知很多客戶時（新品上市、週年慶、活動提醒），就用這一章的功能。從側欄「行銷」進來，左邊子選單有「行銷活動」「廣播」「受眾分群」「素材庫」「優惠券」。它們的關係像這樣：</p>
       <div class="flow">
         <div class="flow-step"><div class="fn">行銷活動（選用）</div><div class="ft">替這波行銷取個名字</div><div class="fd">例如「週年慶」，之後把相關廣播都掛在底下看合計成效</div></div>
         <div class="flow-step"><div class="fn">受眾分群</div><div class="ft">決定要發給誰</div><div class="fd">用渠道、標籤、加入日期圈出一群人</div></div>
@@ -87,15 +87,15 @@
 
       <h3>活動列表與活動詳情</h3>
       <figure class="shot">
-        <img src="uploads/shots/ch08-campaigns.png" alt="行銷活動列表，每張卡片顯示名稱、狀態、描述、廣播次數與建立日期" loading="lazy">
-        <figcaption>行銷活動列表：每張卡片是一個活動，顯示狀態與「N 次廣播」。</figcaption>
+        <img src="uploads/shots/ch08-campaigns.png" alt="行銷活動列表，每一列顯示名稱、描述、狀態、廣播次數與建立日期" loading="lazy">
+        <figcaption>行銷活動列表：每一列是一個活動，顯示狀態與「N 次」廣播次數。</figcaption>
       </figure>
-      <p>點一張卡片會進到活動詳情，上方是 6 個成效數字：總發送、成功送達、失敗、送達率、回覆（含回覆率）、引發開案；下方「廣播記錄」列出掛在這個活動底下的每一次廣播。</p>
+      <p>點一列會進到活動詳情，上方是 6 個成效數字：總發送、成功送達、失敗、送達率、回覆（含回覆率）、引發開案；下方「廣播記錄」列出掛在這個活動底下的每一次廣播。</p>
       <figure class="shot">
         <img src="uploads/shots/ch08-campaign-detail.png" alt="行銷活動詳情頁，上方 6 個成效數字，下方廣播記錄" loading="lazy">
         <figcaption>活動詳情：6 個成效數字與廣播記錄。</figcaption>
       </figure>
-      <p>活動右上角的按鈕可以改狀態：草稿可以「啟動」，進行中可以「完成」或「取消」。草稿狀態的活動，可以在列表卡片右下角的垃圾桶刪除。</p>
+      <p>活動右上角的按鈕可以改狀態：草稿可以「啟動」，進行中可以「完成」或「取消」。草稿狀態的活動，可以按列表該列右邊的「刪除」。</p>
       <div class="info"><span>ℹ️</span><div>活動的狀態和起訖日期都只是標記，<b>不會</b>自動發送或停止任何廣播。活動按了「完成」或「取消」，底下已排程的廣播時間到還是會發送；要停止廣播，請到「廣播」頁把那則廣播取消（見第 5 節）。</div></div>
       <!-- KNOWN-ISSUE: 活動詳情頁不能編輯名稱、描述、日期，也沒有「在此活動建立廣播」入口；要回廣播頁建立時選「關聯活動」 -->
       <p>要把廣播掛進活動，是在建立廣播時的「關聯活動」欄位選擇（見第 4 節）。</p>
@@ -211,10 +211,10 @@
 
     <section class="doc" id="p5">
       <h2><span class="idx">5</span> 發送與查看結果</h2>
-      <p>「廣播」頁的「廣播歷史」列出所有廣播，以及每一則發給幾個人、成功幾個、失敗幾個。</p>
+      <p>「廣播」頁的列表列出所有廣播，以及每一則發給幾個人、成功幾個、失敗幾個。</p>
       <figure class="shot">
-        <img src="uploads/shots/ch08-broadcasts.png" alt="廣播歷史表格：名稱、來源素材、狀態、受眾、發送、成功、失敗、時間、操作" loading="lazy">
-        <figcaption>廣播歷史：狀態、發送、成功、失敗一目了然。</figcaption>
+        <img src="uploads/shots/ch08-broadcasts.png" alt="廣播列表：名稱、來源素材、狀態、受眾、發送、成功、失敗、時間、操作" loading="lazy">
+        <figcaption>廣播列表：狀態、發送、成功、失敗一目了然。</figcaption>
       </figure>
       <table>
         <thead><tr><th>狀態</th><th>意思</th></tr></thead>

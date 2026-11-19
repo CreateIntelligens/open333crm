@@ -14,9 +14,9 @@ async function scrub(page: Page) {
       const leaves = [...document.querySelectorAll('main *, [role="dialog"] *')].filter((e) => e.children.length === 0);
       for (const el of leaves) {
         const t = (el.textContent || '').trim();
-        if (/^Daniel$|david|tatung|大同/i.test(t)) (el as HTMLElement).style.filter = 'blur(6px)';
+        if (/^Daniel$|david|eric|tatung|大同/i.test(t)) (el as HTMLElement).style.filter = 'blur(6px)';
         if (t.startsWith('[E2E]')) {
-          const box = (el.closest('tr, li, .grid > div') || el.closest('div.rounded-lg.border')) as HTMLElement | null;
+          const box = (el.closest('tr, li, [role="row"], .grid > div, div.border-b') || el.closest('div.rounded-lg.border')) as HTMLElement | null;
           if (box) box.style.display = 'none';
         }
       }
@@ -29,16 +29,37 @@ async function scrub(page: Page) {
   });
 }
 
+
+/** 內容比視窗高時（內層捲動容器），暫時把視窗拉高到放得下全部內容，避免截圖切掉最下面的按鈕 */
+async function fitTall(page: Page) {
+  const extra = await page.evaluate(() => {
+    const els = [document.documentElement, ...Array.from(document.querySelectorAll('main, main *'))] as HTMLElement[];
+    let max = 0;
+    for (const el of els) {
+      const oy = getComputedStyle(el).overflowY;
+      if (el !== document.documentElement && oy !== 'auto' && oy !== 'scroll') continue;
+      max = Math.max(max, el.scrollHeight - el.clientHeight);
+    }
+    return max;
+  });
+  const vp = page.viewportSize() ?? { width: 1440, height: 900 };
+  if (extra > 0) {
+    await page.setViewportSize({ width: vp.width, height: vp.height + extra + 32 });
+    await page.waitForTimeout(500);
+  }
+  return vp;
+}
+
 test('ch16-agent-add 新增人員', async ({ browser }) => {
   const rec = await startRecording(browser, 'ch16-agent-add');
   const { page } = rec;
   await go(page, '/dashboard/settings/agents');
   await scrub(page);
   await caption(page, '這是人員管理，列出所有成員');
-  await point(page, page.getByRole('columnheader', { name: '角色' }).or(page.getByText('開啟案件')).first());
-  await caption(page, '上方按鈕可依角色篩選', 1200);
-  await tap(page, page.getByRole('button', { name: /^SUPERVISOR\s*\d+$/ }));
-  await tap(page, page.getByRole('button', { name: /^全部\s*\d+$/ }));
+  await point(page, page.getByRole('table', { name: '人員列表' }));
+  await caption(page, '上方分頁可依角色篩選', 1200);
+  await tap(page, page.getByRole('tab', { name: /^Agent\s*\d+$/ }));
+  await tap(page, page.getByRole('tab', { name: /^全部\s*\d+$/ }));
   await caption(page, '按右上「新增人員」', 1200);
   await tap(page, page.getByRole('button', { name: '新增人員' }));
   // 對話框很高，字幕移到左下側欄區，避免被對話框蓋住
@@ -68,7 +89,7 @@ test('ch16-agent-edit 編輯人員', async ({ browser }) => {
   await go(page, '/dashboard/settings/agents');
   await scrub(page);
   await caption(page, '要調整某位成員，按他那列的「編輯」', 1200);
-  await tap(page, page.locator('div.border-b', { hasText: 'agent@open333crm.dev' }).getByRole('button', { name: '編輯' }), 2000);
+  await tap(page, page.getByRole('button', { name: '編輯「Agent」' }), 2000);
   const dlg = page.getByRole('dialog');
   await caption(page, '可以換角色', 800);
   await point(page, dlg.locator('select'), 1600);
@@ -157,20 +178,26 @@ test('ch16 截圖', async ({ browser }) => {
   await page.waitForTimeout(2500);
   await shot(page, page.getByRole('dialog'), 'ch16-agent-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('button', { name: '編輯' }).nth(1).click();
+  await page.waitForTimeout(1000);
+  await page.getByRole('button', { name: '編輯「Agent」' }).click();
   await page.waitForTimeout(3000);
   await shot(page, page.getByRole('dialog'), 'ch16-agent-edit');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(1500);
 
   await go(page, '/dashboard/settings/roles');
   await page.getByText('Supervisor', { exact: true }).first().click();
   await page.waitForTimeout(1500);
   await shot(page, page.locator('main'), 'ch16-roles');
 
-  await go(page, '/dashboard/settings/general');
-  await shot(page, page.locator('main'), 'ch16-general');
-
   await go(page, '/dashboard/settings/passkeys');
   await scrub(page);
   await shot(page, page.locator('main'), 'ch16-passkeys');
+});
+
+test('ch16-general 截圖（拍到「更新密碼」按鈕）', async ({ browser }) => {
+  const page = await newShotPage(browser);
+  await go(page, '/dashboard/settings/general');
+  await fitTall(page);
+  await shot(page, page.locator('main'), 'ch16-general');
 });

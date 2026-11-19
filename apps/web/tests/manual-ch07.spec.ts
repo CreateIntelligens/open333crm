@@ -75,7 +75,7 @@ test('ch07 截圖', async ({ browser }) => {
   await shot(page, sec(page, '生成參數'), 'ch07-chat-params');
   await shot(page, sec(page, '客服回覆 System Prompt'), 'ch07-chat-prompt');
   await shot(page, sec(page, '多輪追問（Clarify）'), 'ch07-chat-clarify');
-  // 一般客服視角：看得到選單，但打開是假的預設值（說明「這頁不是你的」）
+  // 一般客服視角：左側沒有「AI 設定」，直接開網址會顯示「沒有權限」
   const agent = await newShotPage(browser, { storageState: 'auth-state-agent.json' });
   await go(agent, '/dashboard/knowledge/embedding');
   await agent.waitForTimeout(1500);

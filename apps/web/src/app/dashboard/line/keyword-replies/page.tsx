@@ -220,7 +220,8 @@ export default function KeywordRepliesPage() {
                         {!r.couponId ? (
                           <span className="text-muted-foreground">—</span>
                         ) : coupon?.status === 'ACTIVE' ? (
-                          <span className="truncate text-foreground">{couponOptionLabel(coupon)}</span>
+                          // 行內元素不會截斷，長券名會溢出壓到「編輯」按鈕；改成區塊並把完整名稱放在 title
+                          <span className="block truncate text-foreground" title={couponOptionLabel(coupon)}>{couponOptionLabel(coupon)}</span>
                         ) : (
                           <span className="text-xs text-warning">
                             {coupon ? `${coupon.name}：` : ''}{UNAVAILABLE_COUPON_LABEL}

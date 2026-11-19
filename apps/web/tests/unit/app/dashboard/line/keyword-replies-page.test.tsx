@@ -12,7 +12,7 @@ import { afterEach, beforeEach, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { KeywordReply } from '#src/hooks/useKeywordReplies.js';
 
-const state = vi.hoisted(() => ({ replies: [] as KeywordReply[] }));
+const state = vi.hoisted(() => ({ replies: [] as KeywordReply[], coupons: [] as Array<{ id: string; name: string; status: string }> }));
 const toggleKeywordReply = vi.hoisted(() => vi.fn());
 
 vi.mock('#src/components/layout/Topbar.js', () => ({ Topbar: () => null }));
@@ -20,7 +20,7 @@ vi.mock('#src/hooks/useMaterials.js', () => ({ useMaterials: () => ({ materials:
 vi.mock('#src/components/coupons/CouponSelectField.js', () => ({
   UNAVAILABLE_COUPON_LABEL: '已暫停、已結束或找不到的券',
   couponOptionLabel: (c: { name: string }) => c.name,
-  useCouponOptions: () => ({ coupons: [] }),
+  useCouponOptions: () => ({ coupons: state.coupons }),
 }));
 vi.mock('#src/components/line/keyword-reply/KeywordReplyEditDialog.js', () => ({ KeywordReplyEditDialog: () => null }));
 vi.mock('#src/hooks/useKeywordReplies.js', async (importOriginal) => {
@@ -53,6 +53,7 @@ function reply(overrides: Partial<KeywordReply>): KeywordReply {
 }
 
 beforeEach(() => {
+  state.coupons = [];
   state.replies = [
     reply({ id: 'r-line', name: 'LINE 領券', channel: 'LINE', defaultChannel: 'LINE' }),
     reply({ id: 'r-fb', name: '粉專領券', channel: 'FB', defaultChannel: 'FB' }),
@@ -99,4 +100,13 @@ test('停用後列表顯示停用：按下開關後重新載入，顯示後端�
   assert.deepEqual(toggleKeywordReply.mock.calls[0], ['r-line', false]);
   assert.equal(within(rowOf('LINE 領券')).getByRole('switch').getAttribute('aria-checked'), 'false');
   assert.ok(within(rowOf('LINE 領券')).getByText('停用'));
+});
+
+test('券名稱太長時在優惠券欄內截斷，滑鼠移上去看完整名稱（不壓到編輯按鈕）', () => {
+  const longName = '秋季回饋 NT$50 折價券（CP-TUF4EP）· 行銷';
+  state.coupons = [{ id: 'k-1', name: longName, status: 'ACTIVE' }];
+  render(<KeywordRepliesPage />);
+  const label = within(rowOf('LINE 領券')).getByText(longName);
+  assert.equal(label.getAttribute('title'), longName, '完整名稱放在 title');
+  assert.ok(label.classList.contains('block') && label.classList.contains('truncate'), '區塊元素才會截斷，行內元素會溢出到下一欄');
 });

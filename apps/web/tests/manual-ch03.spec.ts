@@ -11,29 +11,77 @@ const PRIMARY = '816d5ff1-b5de-495d-bfcd-417028c4f4fc'; // LINE User f598f5
 // 有多個渠道身份與合併紀錄的聯絡人（名稱是真人名，畫面上會模糊）
 const RICH = '67b877db-2a96-4e5e-b1c0-ea4c438ceabb';
 
-/** 模糊真人姓名、渠道帳號名稱與 uid、訊息內容 */
-async function blurPII(page: Page) {
-  await page.addStyleTag({
-    content: `
-      table tbody td:first-child span.text-sm,
-      div.min-w-0.flex-1 > h3.text-lg,
-      div.rounded-md.border.p-3 p.truncate.text-sm.font-medium,
-      div.rounded-md.border.p-3 p.truncate.text-xs.text-muted-foreground:not(.font-medium),
-      [data-testid="history-message"] > div:last-child { filter: blur(6px) !important; }
-    `,
+/**
+ * 個資遮蔽（新版 UI：聯繫人列表是 role=table 的 div 格線，不是 <table>／<td>）：
+ * 真人姓名（系統產生的「LINE User xxxx」「Chatbox Visitor xxxx」保留）、電話／email 欄、頭像縮寫、
+ * 渠道帳號名稱與 uid、對話紀錄內容。用 init script 每 250ms 重跑，換頁、載入新資料也遮得到。
+ */
+const PII_SCRIPT = `(() => {
+  const css = \`
+    div.inline-flex.rounded-full.overflow-hidden{filter:blur(7px)!important}
+    [role="table"] [role="row"] > [role="cell"]:nth-child(2),
+    [role="table"] [role="row"] > [role="cell"]:nth-child(3),
+    [data-testid="channel-identity"] p.text-sm.font-semibold,
+    [data-testid="channel-identity"] p.font-mono,
+    [data-testid="history-message"] > div:last-child{filter:blur(6px)!important}
+  \`;
+  const SYSTEM = /^(LINE User|Chatbox Visitor)\\s/;
+  const blurName = e => { if (e && !SYSTEM.test((e.textContent || '').trim())) e.style.filter = 'blur(6px)'; };
+  function run(){
+    if (!document.getElementById('pii-style') && document.head) {
+      const s = document.createElement('style'); s.id = 'pii-style'; s.textContent = css; document.head.appendChild(s);
+    }
+    // 列表姓名欄
+    document.querySelectorAll('[role="table"] [role="row"] > [role="cell"]:first-child span.truncate').forEach(blurName);
+    // 詳情頁頂部姓名、電話
+    document.querySelectorAll('h2.text-xl').forEach(e => { if (!e.closest('[role="dialog"], dialog')) blurName(e); });
+    document.querySelectorAll('svg.lucide-phone').forEach(i => { if (i.parentElement) i.parentElement.style.filter = 'blur(6px)'; });
+    // 合併對話框的聯絡人名稱
+    document.querySelectorAll('[role="dialog"] p.truncate.text-sm, [role="dialog"] p.truncate.text-sm.font-semibold').forEach(blurName);
+    document.querySelectorAll('[title="聊天室"],[title="網頁摘要與對話"],[title="切換主題"]').forEach(b => {
+      let e = b; for (let i = 0; i < 8 && e && e.parentElement && e.parentElement !== document.body; i++) e = e.parentElement;
+      if (e && e !== document.body) e.style.display = 'none';
+    });
+  }
+  // DOM 一變就遮，不等下一輪計時器，避免新載入的姓名在模糊前被錄進影片
+  run();
+  const start = () => new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start);
+  setInterval(run, 250);
+})();`;
+
+async function protect(page: Page) {
+  // 記下聯繫人列表回應的 id 順序（列表列沒有連結，用位置找示範聯絡人）
+  page.on('response', async (r) => {
+    if (!/\/api\/v1\/contacts(\?|$)/.test(r.url()) || r.request().method() !== 'GET') return;
+    try {
+      const j = await r.json();
+      const ids = (j?.data || []).map((c: any) => c.id);
+      await page.evaluate((x) => { (window as any).__contactIds = x; }, ids);
+    } catch {}
   });
+  await page.context().addInitScript(PII_SCRIPT);
+  await page.addScriptTag({ content: PII_SCRIPT }).catch(() => {});
 }
+/** 相容舊呼叫：init script 已持續遮蔽，這裡只等一下讓它跑過一輪 */
+async function blurPII(page: Page) {
+  await page.addScriptTag({ content: PII_SCRIPT }).catch(() => {});
+  await page.waitForTimeout(300);
+}
+
+const ROWS = (page: Page) => page.locator('[role="table"] [role="row"][tabindex="0"]');
 
 test('ch03-contacts-find', async ({ browser }) => {
   test.setTimeout(150_000);
   const rec = await startRecording(browser, 'ch03-contacts-find');
   const { page } = rec;
+  await protect(page);
   await go(page, '/dashboard/contacts');
   await blurPII(page);
-  await caption(page, '側欄點「聯絡人」，這裡是客人名冊');
+  await caption(page, '側欄點「聯繫人」，這裡是客人名冊');
   await point(page, page.getByRole('columnheader', { name: '渠道' }), 1600);
-  await caption(page, '渠道欄看得出客人從哪個帳號進來', 2000);
-  const search = page.getByPlaceholder('搜尋聯絡人...');
+  await caption(page, '渠道欄看得出客人從哪個渠道進來', 2000);
+  const search = page.getByPlaceholder('搜尋聯繫人');
   await caption(page, '用右上角搜尋框找人', 1200);
   await typeIn(page, search, 'LINE User');
   await page.waitForTimeout(1500);
@@ -42,16 +90,20 @@ test('ch03-contacts-find', async ({ browser }) => {
   await page.waitForTimeout(1500);
   await blurPII(page);
   await caption(page, '點任一列，打開聯絡人詳情', 1400);
-  await tap(page, page.locator('table tbody tr').filter({ hasText: 'Open333test' }), 2500);
+  // 點有渠道身份、對話紀錄與合併紀錄的示範聯絡人（RICH）那一列；列表依最近活躍排序，從 API 回應找它的位置
+  const idx = await page.evaluate(async (id) => {
+    const w = window as any; return (w.__contactIds || []).indexOf(id);
+  }, RICH);
+  await tap(page, idx >= 0 ? ROWS(page).nth(idx) : ROWS(page).first(), 2500);
   await blurPII(page);
-  await caption(page, '左邊是基本資料與渠道身份', 1200);
+  await caption(page, '上方是基本資料，右邊是渠道身份', 1200);
   await point(page, page.getByText('渠道身份', { exact: true }), 1600);
   await caption(page, '合併紀錄：看他跟誰合併過', 1200);
   await point(page, page.getByText('合併紀錄', { exact: true }), 1600);
-  await caption(page, '右邊「活動時間軸」列出對話與工單', 1200);
-  await point(page, page.getByRole('button', { name: '活動時間軸', exact: true }), 1600);
+  await caption(page, '左邊「活動時間軸」列出對話與工單', 1200);
+  await point(page, page.getByRole('tab', { name: '活動時間軸' }), 1600);
   await caption(page, '切到「對話紀錄」看跨渠道訊息', 1000);
-  await tap(page, page.getByRole('button', { name: '對話紀錄', exact: true }), 2500);
+  await tap(page, page.getByRole('tab', { name: '對話紀錄' }), 2500);
   await blurPII(page);
   await caption(page, '各渠道的訊息依時間排成一條', 2400);
   await stopRecording(rec);
@@ -62,9 +114,10 @@ test('ch03-contacts-merge', async ({ browser }) => {
   test.setTimeout(150_000);
   const rec = await startRecording(browser, 'ch03-contacts-merge');
   const { page } = rec;
+  await protect(page);
   await go(page, `/dashboard/contacts/${PRIMARY}`);
-  await caption(page, '同一位客人被分成兩筆時，可以合併');
-  await tap(page, page.getByRole('button', { name: '合併聯絡人' }), 1500);
+  await caption(page, '同一位客人被分成兩筆時，按右上角「合併聯繫人」');
+  await tap(page, page.getByRole('button', { name: '合併聯繫人' }), 1500);
   const dialog = page.getByRole('dialog');
   await caption(page, '左邊是目前這位，會被保留', 1200);
   await point(page, dialog.getByText('主要聯絡人（保留）'), 1600);
@@ -88,6 +141,7 @@ test('ch03-contacts-merge', async ({ browser }) => {
 test('ch03 截圖', async ({ browser }) => {
   test.setTimeout(150_000);
   const page = await newShotPage(browser);
+  await protect(page);
   await go(page, '/dashboard/contacts');
   await blurPII(page);
   await shotPage(page, 'ch03-list');
@@ -103,14 +157,14 @@ test('ch03 截圖', async ({ browser }) => {
   if (await revert.count()) await revert.first().click();
   await page.waitForTimeout(500);
   await shot(page, card('合併紀錄'), 'ch03-merge-history');
-  await page.getByRole('button', { name: '對話紀錄', exact: true }).click();
+  await page.getByRole('tab', { name: '對話紀錄' }).click();
   await page.getByTestId('history-message').first().waitFor({ timeout: 15000 }).catch(() => {});
   await blurPII(page);
   await shotPage(page, 'ch03-history');
 
   // 合併對話框各步驟（示範用的系統產生名稱，不是真人名）
   await go(page, `/dashboard/contacts/${PRIMARY}`);
-  await page.getByRole('button', { name: '合併聯絡人' }).click();
+  await page.getByRole('button', { name: '合併聯繫人' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByPlaceholder('搜尋聯絡人...').fill('LINE User');
   await page.waitForTimeout(1500);

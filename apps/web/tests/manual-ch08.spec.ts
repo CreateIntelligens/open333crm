@@ -11,7 +11,7 @@ import { test, Page, Locator, Browser } from '@playwright/test';
 import {
   startRecording, stopRecording, poster, caption, point, tap, typeIn, go, newShotPage, Recorder,
 } from './manual-video-helpers';
-import { shot, SHOTS_DIR } from './manual-helpers';
+import { shot, sanitize, SHOTS_DIR } from './manual-helpers';
 import * as path from 'path';
 
 const SEGMENT_PREVIEW = [/\/api\/v1\/marketing\/segments\/preview$/];
@@ -38,9 +38,51 @@ const DIALOG_LAYER_FIX = `(() => {
 /** 示範素材圖不是個資，取消 helper 的全域模糊 */
 const UNBLUR_SAMPLES = `img[src*="material-samples"]{filter:none!important}`;
 
+/** 渠道下拉選項：新 UI 顯示「名稱（LINE）」全形括號 */
+const LINE_OPT = /（LINE）|\(LINE\)/;
+
+/**
+ * 新 UI 的建立／編輯表單是 PageDialog（role=dialog、蓋滿內容區、自己捲動），表單本體寬 620px。
+ * 只拍表單欄位那一欄目前看得到的範圍；where 決定先捲到頂或底。
+ */
+async function shotForm(p: Page, d: Locator, name: string, where: 'top' | 'bottom' = 'top') {
+  await d.evaluate((el, w) => { el.scrollTop = w === 'top' ? 0 : el.scrollHeight; }, where);
+  await p.waitForTimeout(500);
+  await sanitize(p);
+  const form = d.locator('div.max-w-\\[620px\\]').first();
+  const box = await form.boundingBox();
+  const dbox = await d.boundingBox();
+  if (!box || !dbox) { console.log(`✗ ${name}：找不到表單`); return; }
+  const y = Math.max(box.y, dbox.y) - 8;
+  const bottom = Math.min(box.y + box.height, dbox.y + dbox.height) + 8;
+  await p.screenshot({
+    path: path.join(SHOTS_DIR, `${name}.png`),
+    clip: { x: Math.max(0, box.x - 16), y, width: box.width + 32, height: bottom - y },
+  });
+  console.log(`✓ ${name}.png`);
+}
+
+/** 廣播示範素材：用示範用的「新LINE …」素材，不要挑到測試資料（個資測試、[驗證] 等） */
+const BROADCAST_MATERIAL = /^新LINE .*（line_(carousel|text|flex)/;
+/** 示範分群：UAT 目前只有一個分群，選項文字是「名稱 (N 人)」 */
+const BROADCAST_SEGMENT = /人\)$/;
+
+/**
+ * 建立廣播表單會用 POST /marketing/broadcasts/audience-preview 預估人數，guardWrites 擋下後表單顯示
+ * 「網路連線異常…重試」。這是錄製環境造成的假錯誤，畫面上把那一行藏起來（不放行該 POST）。
+ */
+const HIDE_GUARD_ERROR = `(() => {
+  const hide = () => document.querySelectorAll('[role=dialog] p[role=alert]').forEach((el) => {
+    if (/網路連線異常/.test(el.textContent || '') && el.parentElement) el.parentElement.style.display = 'none';
+  });
+  const start = () => new MutationObserver(hide).observe(document.body, { childList: true, subtree: true, characterData: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();`;
+
 async function rec(browser: Browser, name: string, allowPost: RegExp[] = []): Promise<Recorder> {
   const r = await startRecording(browser, name, { allowPost });
   await r.context.addInitScript(DIALOG_LAYER_FIX);
+  await r.context.addInitScript(HIDE_GUARD_ERROR);
   return r;
 }
 
@@ -52,12 +94,12 @@ async function finish(r: Recorder) {
 /** 把測試資料（[E2E]、亂打的名稱）列藏起來，畫面比較乾淨 */
 async function hideTestData(page: Page) {
   await page.evaluate(() => {
-    const junk = /^(\[E2E|123|aaa|ＱＱＱ|測試)/;
-    document.querySelectorAll('tbody tr, .grid > div').forEach((el) => {
+    const junk = /^(\[E2E|123|aaa|ＱＱＱ|測試|個資測試)/;
+    document.querySelectorAll('tbody tr, [role=table] [role=row], .grid > div').forEach((el) => {
       const t = (el.textContent || '').trim();
-      if (el.tagName !== 'TR' && t.length > 600) return; // 卡片只處理單張，不碰整塊版面
+      if (el.tagName !== 'TR' && el.getAttribute('role') !== 'row' && t.length > 600) return; // 卡片只處理單張，不碰整塊版面
       const cells = [...el.querySelectorAll('td, h3, h4, p, span')].map((c) => (c.textContent || '').trim()).filter(Boolean);
-      if (/\[E2E/.test(t) || cells.slice(0, 3).some((c) => junk.test(c))) {
+      if (/\[E2E/.test(t) || cells.slice(0, 4).some((c) => junk.test(c))) {
         (el as HTMLElement).style.display = 'none';
       }
     });
@@ -91,7 +133,7 @@ test('ch08-campaign-create', async ({ browser }) => {
   await hideTestData(p);
   await caption(p, '行銷活動：把多次廣播收成一組');
   await tap(p, p.getByRole('button', { name: '新增活動' }));
-  const d = p.locator('dialog[open]');
+  const d = p.getByRole('dialog');
   await caption(p, '填活動名稱與說明');
   await typeIn(p, d.getByPlaceholder('活動名稱'), '範例：週年慶活動');
   await typeIn(p, d.getByPlaceholder('活動描述'), '範例：全館 85 折');
@@ -113,16 +155,16 @@ test('ch08-broadcast-create', async ({ browser }) => {
   await hideTestData(p);
   await caption(p, '廣播：把一則素材發給一群聯絡人');
   await tap(p, p.getByRole('button', { name: '建立廣播' }));
-  const d = p.locator('dialog[open]');
+  const d = p.getByRole('dialog');
   await typeIn(p, d.getByPlaceholder('廣播名稱'), '範例：週年慶 LINE 推播');
   await caption(p, '先選要從哪個渠道發送');
-  await pick(p, d.locator('select').nth(0), /\(LINE\)/);
+  await pick(p, d.locator('select').nth(0), LINE_OPT);
   await caption(p, '再選素材，要選同平台的素材');
-  await pick(p, d.locator('select').nth(1), /line_carousel|line_text|line_flex/);
+  await pick(p, d.locator('select').nth(1), BROADCAST_MATERIAL);
   await caption(p, '下方會出現素材預覽', 2600);
   await caption(p, '受眾請選「全部聯絡人」或「受眾分群」');
   await pick(p, d.locator('select').nth(3), /^受眾分群$/);
-  await pick(p, d.locator('select').nth(4), /人\)$/);
+  await pick(p, d.locator('select').nth(4), BROADCAST_SEGMENT);
   await caption(p, '排程留空，就只存成草稿');
   await point(p, d.locator('input[type=datetime-local]'));
   await caption(p, '這裡示範先取消，不建立');
@@ -136,7 +178,7 @@ test('ch08-segment-create', async ({ browser }) => {
   await go(p, '/dashboard/marketing/segments');
   await caption(p, '受眾分群：用條件圈出一群聯絡人');
   await tap(p, p.getByRole('button', { name: '新增分群' }));
-  const d = p.locator('dialog[open]');
+  const d = p.getByRole('dialog');
   await typeIn(p, d.getByPlaceholder('分群名稱'), '範例：LINE 好友');
   await caption(p, '設定條件：渠道類型是 LINE');
   await pick(p, d.locator('select').filter({ has: p.locator('option', { hasText: '選擇渠道' }) }), /^LINE$/);
@@ -159,15 +201,15 @@ test('ch09-material-browse', async ({ browser }) => {
   await caption(p, '素材庫：所有可發送的訊息都在這');
   await caption(p, '左邊用分類篩選，「管理」可新增分類');
   await point(p, p.getByRole('button', { name: '管理', exact: true }));
-  await caption(p, '上方可搜尋名稱、切換 LINE 或 FB');
-  await point(p, p.getByPlaceholder('搜尋素材名稱'));
+  await caption(p, '上方可搜尋名稱、切換 LINE 或 Facebook');
+  await point(p, p.getByPlaceholder('依素材名稱搜尋'));
   await tap(p, p.getByRole('button', { name: 'LINE', exact: true }));
   await hideTestData(p);
   await caption(p, '也能依使用次數排序');
-  await pick(p, p.locator('main select').first(), /使用次數/);
+  await pick(p, p.getByRole('combobox', { name: '排序方式' }), /使用次數/);
   await hideTestData(p);
   await caption(p, '點「編輯」就能修改素材內容');
-  await point(p, p.getByRole('button', { name: '編輯' }).first());
+  await point(p, p.getByRole('button', { name: /^編輯「/ }).first());
   await finish(r);
 });
 
@@ -176,8 +218,8 @@ test('ch09-line-card', async ({ browser }) => {
   const p = r.page;
   await go(p, '/dashboard/marketing/materials');
   await hideTestData(p);
-  await caption(p, '建立素材：按「從版型建立」');
-  await tap(p, p.getByRole('button', { name: '從版型建立' }), 1800);
+  await caption(p, '建立素材：按「從版型建立新素材」');
+  await tap(p, p.getByRole('button', { name: '從版型建立新素材' }), 1800);
   await caption(p, '先選平台，這裡選 LINE');
   await point(p, p.getByRole('button', { name: /LINE 官方帳號訊息/ }));
   await caption(p, '再選訊息類型：卡片訊息');
@@ -242,6 +284,8 @@ test('ch10-keyword-create', async ({ browser }) => {
   await hideTestData(p);
   await caption(p, '關鍵字回覆：客戶打到字就自動回素材');
   await tap(p, p.getByRole('button', { name: '建立關鍵字回覆' }));
+  await caption(p, '先選渠道：LINE、Facebook 或 Instagram，這裡用 LINE');
+  await point(p, p.getByRole('dialog').locator('select').first(), 1600);
   await typeIn(p, p.getByPlaceholder('例：詢問營業時間、預約諮詢、產品 DM'), '範例：詢問營業時間');
   await caption(p, '輸入關鍵字後按 Enter，可加好幾個');
   const kw = p.getByPlaceholder('輸入關鍵字後按 Enter 或點「加入」');
@@ -289,6 +333,7 @@ test('shots', async ({ browser }) => {
   test.setTimeout(300_000);
   const p = await newShotPage(browser, { allowPost: SEGMENT_PREVIEW });
   await p.addInitScript(DIALOG_LAYER_FIX);
+  await p.addInitScript(HIDE_GUARD_ERROR);
   const main = () => p.locator('main').last();
 
   // ch08
@@ -304,37 +349,36 @@ test('shots', async ({ browser }) => {
   await hideTestData(p);
   await shot(p, main(), 'ch08-broadcasts');
   await p.getByRole('button', { name: '建立廣播' }).click();
-  let d = p.locator('dialog[open]');
+  let d = p.getByRole('dialog');
   await d.getByPlaceholder('廣播名稱').fill('範例：週年慶 LINE 推播');
-  await pick(p, d.locator('select').nth(0), /\(LINE\)/);
-  await pick(p, d.locator('select').nth(1), /line_carousel|line_text|line_flex/);
+  await pick(p, d.locator('select').nth(0), LINE_OPT);
+  await pick(p, d.locator('select').nth(1), BROADCAST_MATERIAL);
   await pick(p, d.locator('select').nth(3), /^受眾分群$/);
-  await pick(p, d.locator('select').nth(4), /人\)$/);
+  await pick(p, d.locator('select').nth(4), BROADCAST_SEGMENT);
   await p.waitForTimeout(1200);
-  await d.evaluate((el) => { el.scrollTop = 0; });
-  await shot(p, d, 'ch08-broadcast-dialog');
-  await d.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  await p.waitForTimeout(400);
-  await shot(p, d, 'ch08-broadcast-audience');
+  await shotForm(p, d, 'ch08-broadcast-dialog', 'top');
+  await shotForm(p, d, 'ch08-broadcast-audience', 'bottom');
   await d.getByRole('button', { name: '取消' }).click();
+  await p.waitForTimeout(1200); // PageDialog 關閉時會延後 history.back()，等它退完再換頁
 
   await go(p, '/dashboard/marketing/segments');
   await p.getByRole('button', { name: '新增分群' }).click();
-  d = p.locator('dialog[open]');
+  d = p.getByRole('dialog');
   await d.getByPlaceholder('分群名稱').fill('範例：LINE 好友');
   await pick(p, d.locator('select').filter({ has: p.locator('option', { hasText: '選擇渠道' }) }), /^LINE$/);
   await d.getByRole('button', { name: '預覽人數' }).click();
   await p.waitForTimeout(2500);
-  await shot(p, d, 'ch08-segment-dialog');
+  await shotForm(p, d, 'ch08-segment-dialog', 'top');
   await d.getByRole('button', { name: '取消' }).click();
+  await p.waitForTimeout(1200); // PageDialog 關閉時會延後 history.back()，等它退完再換頁
 
   // ch09
   await go(p, '/dashboard/marketing/materials');
   await hideTestData(p);
-  await shot(p, main(), 'ch09-list');
+  await shot(p, p.locator('main').first(), 'ch09-list'); // 素材庫有兩層 main，外層才含標題列
   await p.getByRole('button', { name: '管理', exact: true }).click();
   await p.waitForTimeout(1000);
-  await shot(p, p.locator('dialog[open]'), 'ch09-category-manager');
+  await shot(p, p.getByRole('dialog'), 'ch09-category-manager');
   await p.keyboard.press('Escape');
 
   await go(p, '/dashboard/marketing/materials/new');
@@ -372,7 +416,7 @@ test('shots', async ({ browser }) => {
       await hist.evaluate((el) => {
         const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
         let t: Node | null;
-        while ((t = w.nextNode())) if (/\[E2E\]/.test(t.textContent || '')) t.textContent = (t.textContent || '').replace(/\[E2E\][^·]*/, '範例：週年慶推播 ');
+        while ((t = w.nextNode())) if (/\[E2E\]|個資測試/.test(t.textContent || '')) t.textContent = (t.textContent || '').replace(/(\[E2E\]|個資測試)[^·]*/, '範例：週年慶推播 ');
       });
       await shot(p, hist, 'ch09-history');
       break;
@@ -389,10 +433,25 @@ test('shots', async ({ browser }) => {
   await p.waitForTimeout(1500);
   await p.getByPlaceholder('如：主選單 v1').fill('範例：會員主選單');
   await p.screenshot({ path: path.join(SHOTS_DIR, 'ch10-richmenu-editor.png') });
-  await p.addStyleTag({ content: '.sticky.bottom-0{display:none!important}' });
-  await shot(p, p.getByText(/^區域設定（共/).locator('xpath=..'), 'ch10-area-action');
+  await shot(p, p.locator('section', { has: p.getByRole('heading', { name: /區域設定/ }) }), 'ch10-area-action');
 
   await go(p, '/dashboard/line/keyword-replies');
+  await p.waitForTimeout(3000); // 規則明細逐筆載入
+  await hideTestData(p);
+  // 表格比內容區寬（右側「編輯／刪除」會被橫向捲軸切掉），暫時把視窗拉寬
+  await p.setViewportSize({ width: 1600, height: 900 });
+  await p.waitForTimeout(600);
+  // 藏掉沒有名稱的測試規則（UAT 既有測試資料，不是示範用）
+  await p.evaluate(() => {
+    document.querySelectorAll('[role=table][aria-label="關鍵字回覆規則"] [role=row]').forEach((r) => {
+      const cells = r.querySelectorAll('[role=cell]');
+      if (cells.length > 1 && !(cells[1].textContent || '').trim()) (r as HTMLElement).style.display = 'none';
+    });
+  });
+  // 套用 #546 的修正（券名稱在欄內截斷）；部署後這段樣式不影響畫面，可以移除
+  await p.addStyleTag({ content: '[aria-label="關鍵字回覆規則"] [role=row] > [role=cell]:nth-child(6) > span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' });
+  await shot(p, p.getByRole('table', { name: '關鍵字回覆規則' }), 'ch10-keyword-list');
+  await p.setViewportSize({ width: 1440, height: 900 });
   await p.getByRole('button', { name: '建立關鍵字回覆' }).click();
   await p.getByPlaceholder('例：詢問營業時間、預約諮詢、產品 DM').fill('範例：詢問營業時間');
   const kw = p.getByPlaceholder('輸入關鍵字後按 Enter 或點「加入」');
@@ -400,10 +459,10 @@ test('shots', async ({ browser }) => {
   await kw.fill('幾點開'); await kw.press('Enter');
   await pick(p, p.locator('select').filter({ has: p.locator('option', { hasText: '請選擇' }) }).first(), /新LINE|LINE/);
   await p.waitForTimeout(1200);
-  await shot(p, p.locator('div.fixed.inset-0 > div').first(), 'ch10-keyword-dialog');
+  await shotForm(p, p.getByRole('dialog'), 'ch10-keyword-dialog', 'top');
 
   await go(p, '/dashboard/line/quick-replies');
-  await shot(p, main(), 'ch10-quickreply-list');
+  await shot(p, p.locator('main').first(), 'ch10-quickreply-list');
   await p.getByRole('button', { name: '建立預設組' }).click();
   await p.getByPlaceholder('例：滿意度調查、預約時段、是否同意條款').fill('範例：滿意度調查');
   for (const [a, b] of [['非常滿意', '我給 5 分'], ['還可以', ''], ['不滿意', '']]) {
@@ -423,7 +482,7 @@ test('shots', async ({ browser }) => {
  * 2. 建一則名為「會員日優惠通知」的廣播：LINE 渠道、targetType 'tags' 指向該標籤、
  *    scheduledAt 設在一兩分鐘後（POST /marketing/broadcasts）。
  * 3. 等排程執行，狀態變成 failed、原因為「所選標籤下沒有可在此渠道發送的對象。」（受眾為空，不會發出訊息）。
- * 拍完到後台取消這則廣播、刪除該標籤。
+ * UAT 示範租戶已建好（2026-11-19，標籤「示範：會員日（無成員）」），保留不刪，之後重拍可直接用。
  * 找不到符合的失敗廣播時，這個測試直接失敗並說明缺什麼，不會拍出錯的畫面。
  */
 test('ch08-broadcast-failed', async ({ browser }) => {

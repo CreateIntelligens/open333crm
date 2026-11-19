@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>人員、角色與權限 · open333CRM 操作手冊</title>
 <script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-<link rel="stylesheet" href="design-system.css?v=5">
+<link rel="stylesheet" href="design-system.css?v=6">
 </head>
 <body>
 
@@ -37,7 +37,7 @@
   <main class="manual-main">
     <section class="hero">
       <div class="inner">
-        <div class="eyebrow">CHAPTER 16 · 分析與管理</div>
+        <div class="eyebrow">CHAPTER 16 · 報表與設定</div>
         <h1>人員、角色與權限</h1>
         <p>幫同事開帳號、決定每個人能做哪些事、看得到哪些渠道；也教你修改自己的密碼，以及設定用指紋或臉部辨識登入。</p>
       </div>
@@ -45,7 +45,7 @@
 
     <section class="doc" id="p1">
       <h2><span class="idx">1</span> 這頁能做什麼</h2>
-      <p>這一章的功能都在左側選單「分析與管理 → 設定」底下。「人員管理」和「角色與權限」通常是管理員在用；「一般設定」和「Passkey 登入」則是每個人管理自己帳號的地方，所有人都用得到。</p>
+      <p>這一章的功能都在左側選單「設定」底下。「人員管理」和「角色權限」通常是管理員在用；「一般設定」和「Passkey 登入」則是每個人管理自己帳號的地方，所有人都用得到。</p>
       <div class="quick">
         <a href="#p2"><b>三個預設角色</b>管理員、主管、客服各能做什麼</a>
         <a href="#p4"><b>新增人員</b>幫新同事開帳號、選角色、選渠道</a>
@@ -59,7 +59,7 @@
 
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> 三個預設角色能做什麼</h2>
-      <p>每位成員都會被指派一個「角色」，角色決定他能做哪些事。系統內建三個角色，畫面上顯示英文名稱：<b>Admin（管理員）</b>、<b>Supervisor（主管）</b>、<b>Agent（客服）</b>。下表是系統預設的分工，你的公司可能已經調整過，實際以「角色與權限」頁的勾選為準（見<a href="#p7">第 7 節</a>）。</p>
+      <p>每位成員都會被指派一個「角色」，角色決定他能做哪些事。系統內建三個角色，畫面上顯示英文名稱：<b>Admin（管理員）</b>、<b>Supervisor（主管）</b>、<b>Agent（客服）</b>。下表是系統預設的分工，你的公司可能已經調整過，實際以「角色權限」頁的勾選為準（見<a href="#p7">第 7 節</a>）。</p>
       <table>
         <thead><tr><th>常見工作</th><th>管理員</th><th>主管</th><th>客服</th></tr></thead>
         <tbody>
@@ -85,8 +85,8 @@
           <tr><td>看得到哪些渠道的對話與工單</td><td>全部渠道</td><td colspan="2">只看得到被勾選的渠道（見<a href="#p4">第 4 節</a>）</td></tr>
         </tbody>
       </table>
-      <div class="info"><span>ℹ️</span><div>預設的客服權限其實不小：<b>可以刪除工單、合併聯絡人、刪除全公司共用的標籤</b>。如果你希望客服只做回覆與處理工單，請管理員到「角色與權限」把 Agent 的這幾項取消勾選。</div></div>
-      <div class="info"><span>ℹ️</span><div>人員管理頁下方的角色說明（例如「Agent：只能看自己負責的對話/案件」）是舊的寫法，和目前的實際分工不同，請以這張表和「角色與權限」頁為準。</div></div>
+      <div class="info"><span>ℹ️</span><div>預設的客服權限其實不小：<b>可以刪除工單、合併聯絡人、刪除全公司共用的標籤</b>。如果你希望客服只做回覆與處理工單，請管理員到「角色權限」把 Agent 的這幾項取消勾選。</div></div>
+      <div class="info"><span>ℹ️</span><div>人員管理頁下方的角色說明（例如「Agent：只能看自己負責的對話/案件」）是舊的寫法，和目前的實際分工不同，請以這張表和「角色權限」頁為準。</div></div>
       <!-- KNOWN-ISSUE: 人員管理頁下方角色說明寫死舊文案，與細粒度權限及渠道可見範圍不符 -->
     </section>
 
@@ -100,7 +100,7 @@
       <table>
         <thead><tr><th>畫面上的欄位</th><th>說明</th></tr></thead>
         <tbody>
-          <tr><td>全部／ADMIN／SUPERVISOR／AGENT</td><td>依角色篩選，數字是人數。被指派自訂角色的人，會被算進他原本的內建角色那一類</td></tr>
+          <tr><td>全部／Admin／Supervisor／Agent</td><td>依角色篩選，數字是人數。被指派自訂角色的人，會被算進他原本的內建角色那一類</td></tr>
           <tr><td>姓名</td><td>姓名與登入用的電子信箱</td></tr>
           <tr><td>角色</td><td>目前的角色；自訂角色會顯示自訂的名稱</td></tr>
           <tr><td>開啟案件</td><td>指派給他的工單數。<b>目前已結案的工單也算在內</b>，所以數字可能比實際處理中的多</td></tr>
@@ -215,7 +215,7 @@
       </figure>
       <h3>查看或調整角色權限</h3>
       <ol class="steps">
-        <li>到「設定 → 角色與權限」，在左邊點一個角色。</li>
+        <li>到「設定 → 角色權限」，在左邊點一個角色。</li>
         <li>右邊依「客服作業」「案件」「聯絡人」等功能分組列出權限。打勾代表有這項權限。</li>
         <li>權限很多時，可以在「搜尋權限…」輸入關鍵字，或按「只看已開」「只看未開」篩選。</li>
         <li>勾選或取消後，頁面底部會出現「未儲存 N 項變更」。按「儲存變更」生效；改錯了按「放棄」。</li>
@@ -253,7 +253,7 @@
         <li>按「更新密碼」，按鈕變成「密碼已更新」就完成了。</li>
       </ol>
       <figure class="shot shot-narrow">
-        <img src="uploads/shots/ch16-general.png" alt="一般設定頁：個人資料（唯讀）與修改密碼" loading="lazy">
+        <img src="uploads/shots/ch16-general.png" alt="一般設定頁：個人資料（唯讀）與修改密碼，最下方是「更新密碼」按鈕" loading="lazy">
         <figcaption>一般設定：上方個人資料唯讀，下方修改密碼。</figcaption>
       </figure>
       <div class="info"><span>ℹ️</span><div>新密碼欄位的提示文字寫「至少 6 個字元」，實際上要 <b>8 個字</b>以上。角色欄目前會顯示英文（例如 ADMIN），不會顯示自訂角色名稱。</div></div>
