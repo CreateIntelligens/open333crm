@@ -14,7 +14,8 @@ import { shot } from './manual-helpers';
 
 const AUDIENCE_PREVIEW = [/\/api\/v1\/marketing\/broadcasts\/audience-preview$/];
 // UAT 示範資料（錄製手冊專用）；資料改名或刪除後要換成新的名稱
-const LINE_CHANNEL = /LINE/;
+// 新 UI 渠道選項是「名稱（LINE）」，第一個 LINE 渠道是「第二個line串接」；附券示範素材在「LINE OA」
+const LINE_CHANNEL = /^LINE OA（LINE）/;
 const COUPON_MATERIAL = /驗收廣播A（含券連結）/;
 const BROADCAST_COUPON = /\[驗收\] 廣播券A/;
 
@@ -120,7 +121,8 @@ test('ch08 截圖：附上優惠券、發券結果', async ({ browser }) => {
   await pick(page, selectWith(page, '不附券'), BROADCAST_COUPON);
   await page.waitForTimeout(1500);
   await shot(page, page.locator('#broadcast-coupon').locator('xpath=ancestor::div[1]'), 'ch08-broadcast-coupon');
-  await page.keyboard.press('Escape');
+  // 新 UI 的建立廣播是 PageDialog（蓋住列表，Esc 關不掉），按「取消」回到列表
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await page.waitForTimeout(800);
 
   // 正式環境不建立廣播，發券結果要靠 UAT 上已發送過的附券廣播；找不到就讓測試失敗，免得手冊留著舊圖

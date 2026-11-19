@@ -8,6 +8,7 @@ import { startRecording, stopRecording, poster, caption, point, tap, typeIn, go,
 import { shot, shotPage } from './manual-helpers';
 
 const SAMPLE_CSV = path.resolve(__dirname, 'fixtures/manual-kb-sample.csv');
+const VECTORIZED = '已向量化，AI 可以搜尋到這篇';
 const SEARCH_ONLY = [/\/api\/v1\/knowledge\/search$/];
 
 test('ch06-articles 文章列表與狀態', async ({ browser }) => {
@@ -15,15 +16,15 @@ test('ch06-articles 文章列表與狀態', async ({ browser }) => {
   const { page } = rec;
   await go(page, '/dashboard/knowledge/articles');
   await caption(page, '這裡是知識庫的「文章管理」');
-  await point(page, page.getByPlaceholder('搜尋文章...'));
+  await point(page, page.getByPlaceholder('搜尋文章'));
   await caption(page, '可以用關鍵字、分類、來源找文章');
   await tap(page, page.getByRole('button', { name: '草稿', exact: true }));
   await caption(page, '「草稿」：還在寫，AI 客服不會用');
   await tap(page, page.getByRole('button', { name: '已發布', exact: true }));
   await caption(page, '「已發布」：AI 客服會拿來回答');
-  await point(page, page.locator('[title="已向量化"]').first(), 1600);
-  await caption(page, '標題前的綠色小圖示＝AI 已讀進這篇');
-  await point(page, page.getByTitle('封存').first(), 1200);
+  await point(page, page.getByTitle(VECTORIZED).first(), 1600);
+  await caption(page, '標題下方綠色「已向量化」＝AI 已讀進這篇');
+  await point(page, page.getByRole('button', { name: '封存' }).first(), 1200);
   await caption(page, '右邊是編輯、封存、刪除按鈕');
   await tap(page, page.getByRole('button', { name: '全部', exact: true }));
   await caption(page, '點「全部」回到完整列表', 1800);
@@ -116,7 +117,7 @@ test('ch06 截圖', async ({ browser }) => {
   const page = await newShotPage(browser, { allowPost: SEARCH_ONLY });
   await go(page, '/dashboard/knowledge/articles');
   await shotPage(page, 'ch06-articles');
-  await shot(page, page.locator('[title="已向量化"]').first().locator('xpath=ancestor::tr[1]'), 'ch06-article-row');
+  await shot(page, page.getByTitle(VECTORIZED).first().locator('xpath=ancestor::*[@role="row"][1]'), 'ch06-article-row');
   await page.getByRole('button', { name: '新增文章' }).click();
   await page.waitForTimeout(800);
   await page.getByPlaceholder('文章標題').fill('範例：門市營業時間是幾點？');

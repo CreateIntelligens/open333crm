@@ -17,7 +17,7 @@ async function scrub(page: Page) {
         const t = (el.textContent || '').trim();
         if (/^Daniel$|david|tatung|大同/i.test(t)) (el as HTMLElement).style.filter = 'blur(6px)';
         if (t.startsWith('[E2E]')) {
-          const box = (el.closest('tr, li, .grid > div') || el.closest('div.rounded-lg.border')) as HTMLElement | null;
+          const box = (el.closest('tr, li, [role="row"], .grid > div, div.border-b') || el.closest('div.rounded-lg.border')) as HTMLElement | null;
           if (box) box.style.display = 'none';
         }
       }
@@ -41,9 +41,9 @@ test('ch17-tags 新增標籤', async ({ browser }) => {
   await go(page, '/dashboard/settings/tags');
   await scrub(page);
   await caption(page, '標籤管理列出所有分類標籤');
-  await caption(page, '上方可依適用範圍篩選', 800);
-  await tap(page, page.getByRole('button', { name: /^案件 \d+$/ }));
-  await tap(page, page.getByRole('button', { name: /^全部 \d+$/ }));
+  await caption(page, '上方分頁可依適用範圍篩選', 800);
+  await tap(page, page.getByRole('tab', { name: /^案件\s*\d+$/ }));
+  await tap(page, page.getByRole('tab', { name: /^全部\s*\d+$/ }));
   await caption(page, '按「新增標籤」建立新的', 800);
   await tap(page, page.getByRole('button', { name: '新增標籤' }));
   await captionLeft(page);
@@ -150,6 +150,7 @@ test('ch17 截圖', async ({ browser }) => {
   await page.waitForTimeout(1000);
   await shot(page, page.getByRole('dialog'), 'ch17-tag-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(1500);
 
   await go(page, '/dashboard/settings/sla');
   await shot(page, page.locator('main'), 'ch17-sla');
@@ -157,6 +158,7 @@ test('ch17 截圖', async ({ browser }) => {
   await page.waitForTimeout(1000);
   await shot(page, page.getByRole('dialog'), 'ch17-sla-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(1500);
 
   // 只在畫面上打開開關讓區塊顯示，不按儲存
   await go(page, '/dashboard/settings/office-hours');
@@ -175,6 +177,7 @@ test('ch17 截圖', async ({ browser }) => {
   await page.waitForTimeout(1000);
   await shot(page, page.getByRole('dialog'), 'ch17-apikey-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+  await page.waitForTimeout(1500);
 
   await go(page, '/dashboard/settings/cli-sessions');
   await page.getByRole('button', { name: '產生 Token' }).first().click();
