@@ -8,7 +8,18 @@ import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { SettingsLoadError, describeSettingsLoadError } from './SettingsLoadError';
 
+type EmbeddingProvider = 'ollama' | 'gemini';
+
+/** Gemini 向量化只支援這個模型（後端也會檢查） */
+const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';
+
+const PROVIDER_OPTIONS: { value: EmbeddingProvider; label: string }[] = [
+  { value: 'ollama', label: 'Ollama（本機）' },
+  { value: 'gemini', label: 'Google Gemini（雲端）' },
+];
+
 interface EmbeddingSettingsData {
+  provider: EmbeddingProvider;
   baseUrl: string;
   model: string;
   topK: number;
@@ -43,6 +54,7 @@ interface SettingsResponse {
 }
 
 const DEFAULT_SETTINGS: EmbeddingSettingsData = {
+  provider: 'ollama',
   baseUrl: 'http://localhost:11434',
   model: 'bge-m3',
   topK: 5,
@@ -52,6 +64,9 @@ const DEFAULT_SETTINGS: EmbeddingSettingsData = {
 export function EmbeddingSettings() {
   const [settings, setSettings] = useState<EmbeddingSettingsData>(DEFAULT_SETTINGS);
   const [originalModel, setOriginalModel] = useState(DEFAULT_SETTINGS.model);
+  const [originalProvider, setOriginalProvider] = useState<EmbeddingProvider>(DEFAULT_SETTINGS.provider);
+  // 切到 Gemini 再切回 Ollama 時，還原原本的 Ollama 模型
+  const [lastOllamaModel, setLastOllamaModel] = useState(DEFAULT_SETTINGS.model);
   const [health, setHealth] = useState<OllamaHealth | null>(null);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [stats, setStats] = useState<EmbeddingStats | null>(null);
@@ -72,6 +87,8 @@ export function EmbeddingSettings() {
       setLoadError(null);
       setSettings(data.settings);
       setOriginalModel(data.settings.model);
+      setOriginalProvider(data.settings.provider);
+      if (data.settings.provider === 'ollama') setLastOllamaModel(data.settings.model);
       setHealth(data.health);
       setModels(data.models);
       setStats(data.stats);
@@ -102,6 +119,7 @@ export function EmbeddingSettings() {
     try {
       await api.put('/settings/embedding', next);
       setOriginalModel(next.model);
+      setOriginalProvider(next.provider);
       // refresh derived data (health, stats) since model/baseUrl may have changed
       await fetchAll();
     } catch (err) {
@@ -113,7 +131,7 @@ export function EmbeddingSettings() {
   };
 
   const handleSaveModelOrUrl = async () => {
-    if (settings.model !== originalModel) {
+    if (settings.model !== originalModel || settings.provider !== originalProvider) {
       setConfirmModelChange({ from: originalModel, to: settings.model });
       return;
     }
@@ -150,6 +168,18 @@ export function EmbeddingSettings() {
     }
   };
 
+  const changeProvider = (provider: EmbeddingProvider) => {
+    if (provider === settings.provider) return;
+    if (provider === 'gemini') {
+      setLastOllamaModel(settings.model);
+      setSettings({ ...settings, provider, model: GEMINI_EMBEDDING_MODEL });
+    } else {
+      setSettings({ ...settings, provider, model: lastOllamaModel });
+    }
+  };
+
+  const isGemini = settings.provider === 'gemini';
+
   if (loading) {
     return <div className="text-sm text-muted-foreground">載入中…</div>;
   }
@@ -184,9 +214,11 @@ export function EmbeddingSettings() {
       <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-semibold leading-6 text-foreground">Ollama 服務狀態</h3>
+            <h3 className="text-lg font-semibold leading-6 text-foreground">向量化服務狀態</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              檢查 Ollama 是否可達，以及目前選擇的 embedding 模型是否已安裝。
+              {originalProvider === 'gemini'
+                ? '檢查 Gemini 金鑰是否可用，以及 embedding 模型是否可以使用。'
+                : '檢查 Ollama 是否可達，以及目前選擇的 embedding 模型是否已安裝。'}
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={recheckHealth}>
@@ -225,54 +257,77 @@ export function EmbeddingSettings() {
 
         <div className="mt-4 grid grid-cols-1 gap-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium">Ollama Base URL</label>
-            <Input
-              value={settings.baseUrl}
-              onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
-              placeholder="http://localhost:11434"
+            <label htmlFor="embedding-provider" className="mb-1.5 block text-xs font-medium">
+              向量化服務
+            </label>
+            <Select
+              id="embedding-provider"
+              value={settings.provider}
+              onChange={(e) => changeProvider(e.target.value as EmbeddingProvider)}
+              options={PROVIDER_OPTIONS}
             />
           </div>
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-xs font-medium">Embedding 模型</label>
-              <button
-                type="button"
-                onClick={() => setCustomModel((v) => !v)}
-                className="text-xs text-primary hover:underline"
-              >
-                {customModel ? '從清單選擇' : '自訂輸入'}
-              </button>
+          {isGemini ? (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium">Embedding 模型</label>
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{GEMINI_EMBEDDING_MODEL}</code>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Gemini 向量化會計入 AI 用量。有自備的 Gemini 金鑰（Chat &amp; Prompt 頁設定）時使用自備金鑰，沒有時使用平台金鑰。
+              </p>
             </div>
-
-            {customModel || models.length === 0 ? (
+          ) : (
+            <>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium">Ollama Base URL</label>
               <Input
-                value={settings.model}
-                onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                placeholder="bge-m3"
+                value={settings.baseUrl}
+                onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
+                placeholder="http://localhost:11434"
               />
-            ) : (
-              <Select
-                value={settings.model}
-                onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                options={[
-                  // 把目前設定值放最上面（即使本機沒安裝也保留）
-                  ...(models.some((m) => m.name === settings.model || m.name.startsWith(`${settings.model}:`))
-                    ? []
-                    : [{ value: settings.model, label: `${settings.model}（未安裝）` }]),
-                  ...models.map((m) => ({
-                    value: m.name.replace(/:latest$/, ''),
-                    label: m.name,
-                  })),
-                ]}
-              />
-            )}
+            </div>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-medium">Embedding 模型</label>
+                <button
+                  type="button"
+                  onClick={() => setCustomModel((v) => !v)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  {customModel ? '從清單選擇' : '自訂輸入'}
+                </button>
+              </div>
 
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {models.length > 0
-                ? `已偵測到 ${models.length} 個本地模型`
-                : '尚未偵測到本地模型，請確認 Ollama 已啟動或切換 Base URL'}
-            </p>
-          </div>
+              {customModel || models.length === 0 ? (
+                <Input
+                  value={settings.model}
+                  onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                  placeholder="bge-m3"
+                />
+              ) : (
+                <Select
+                  value={settings.model}
+                  onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                  options={[
+                    // 把目前設定值放最上面（即使本機沒安裝也保留）
+                    ...(models.some((m) => m.name === settings.model || m.name.startsWith(`${settings.model}:`))
+                      ? []
+                      : [{ value: settings.model, label: `${settings.model}（未安裝）` }]),
+                    ...models.map((m) => ({
+                      value: m.name.replace(/:latest$/, ''),
+                      label: m.name,
+                    })),
+                  ]}
+                />
+              )}
+
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {models.length > 0
+                  ? `已偵測到 ${models.length} 個本地模型`
+                  : '尚未偵測到本地模型，請確認 Ollama 已啟動或切換 Base URL'}
+              </p>
+            </div>
+            </>
+          )}
         </div>
 
         <div className="mt-4 flex justify-end">
@@ -370,7 +425,9 @@ export function EmbeddingSettings() {
       {confirmModelChange && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="mx-4 max-w-md rounded-lg bg-background p-6 shadow-lg">
-            <h3 className="text-base font-semibold">確認切換模型？</h3>
+            <h3 className="text-base font-semibold">
+              {settings.provider !== originalProvider ? '確認切換向量化服務？' : '確認切換模型？'}
+            </h3>
             <p className="mt-2 text-sm text-muted-foreground">
               將從 <code className="rounded bg-muted px-1 py-0.5 text-xs">{confirmModelChange.from}</code>
               {' '}切換為{' '}
