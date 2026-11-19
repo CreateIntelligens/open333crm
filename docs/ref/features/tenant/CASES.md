@@ -34,7 +34,7 @@
 | 來源 | 端點或位置 | 連結對話 |
 | --- | --- | --- |
 | 在收件匣從對話開工單 | `POST /conversations/:id/case`（`POST /cases/from-conversation/:conversationId` 行為相同） | 自動連結該對話 |
-| 在工單頁直接建立 | `POST /cases` | 不連結，之後可用 `POST /cases/:id/conversations/:conversationId/link` 連結。這個端點只檢查工單的渠道層級是 `full`，不檢查對話的聯絡人，也不檢查成員看不看得到對話的渠道 |
+| 在工單頁直接建立 | `POST /cases` | 不連結，之後可用 `POST /cases/:id/conversations/:conversationId/link` 連結。這個端點只檢查工單的渠道層級是 `full`，不檢查對話的聯絡人，也不檢查成員看不看得到對話的渠道（HC-CASES-03） |
 
 從對話開工單時，`createCaseFromConversation()` 在同一個交易內建立工單並連結對話。一個對話只能連結一個工單，已經連結的對話不能再開工單，也不能再連結到別的工單。一個工單可以連結多個對話。
 
@@ -99,7 +99,7 @@
 
 ## 指派
 
-**手動指派**走 `POST /cases/:id/assign`，會寫 `assigned` 事件並發布 `case.assigned`，被指派的人收到通知。`/assign` 與升級檢查被指派的成員屬於同一個租戶，但不檢查成員是否已停用，也不檢查成員看不看得到工單的渠道。建立工單與 `PATCH /cases/:id` 帶 `assigneeId` 時，不檢查成員屬於哪個租戶。
+**手動指派**走 `POST /cases/:id/assign`，會寫 `assigned` 事件並發布 `case.assigned`，被指派的人收到通知。`/assign` 與升級檢查被指派的成員屬於同一個租戶，但不檢查成員是否已停用，也不檢查成員看不看得到工單的渠道（HC-CASES-04）。建立工單與 `PATCH /cases/:id` 帶 `assigneeId` 時，不檢查成員屬於哪個租戶（HC-CASES-05）。
 
 **自動指派**由 `assignment.service.ts` 的 `autoAssignCase()` 執行，寫 `auto_assigned` 事件並發布 `case.assigned`。觸發條件是：建立工單時沒有指定負責人，但有指定團隊。
 
@@ -157,7 +157,7 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 `csat.scheduler.ts` 的 `setupCsatScheduler()` 在 API 行程定期執行下列工作：
 
-1. **寄送滿意度問卷**（排程 id `csat-send`）。工單轉成 `RESOLVED` 30 分鐘後（`CSAT_SURVEY_DELAY_MINUTES`），對工單連結、而且渠道外掛實作 `buildCsatSurvey()` 的對話寄出滿意度問卷（目前只有 LINE）。工單有多個對話時，問卷寄到 `conversations[0]`，這個順序沒有排序。沒有這種對話的工單不寄，停在已解決，也不會被逾時結案，由客服手動結案。這是刻意的設計。已有評分的工單不寄。租戶停用（含試用到期）時不處理該租戶的工單；重新啟用後，解決時間已過的工單仍會寄出。
+1. **寄送滿意度問卷**（排程 id `csat-send`）。工單轉成 `RESOLVED` 30 分鐘後（`CSAT_SURVEY_DELAY_MINUTES`），對工單連結、而且渠道外掛實作 `buildCsatSurvey()` 的對話寄出滿意度問卷（目前只有 LINE）。工單有多個對話時，問卷寄到 `conversations[0]`，這個順序沒有排序（HC-CASES-03）。沒有這種對話的工單不寄，停在已解決，也不會被逾時結案，由客服手動結案。這是刻意的設計。已有評分的工單不寄。租戶停用（含試用到期）時不處理該租戶的工單；重新啟用後，解決時間已過的工單仍會寄出。
 2. **問卷逾時結案**（排程 id `csat-auto-close`）。問卷寄出後超過時限仍沒有回覆，把工單轉成 `CLOSED`、發布 `case.closed`，並關閉該工單所有尚未關閉的對話。這個結案不寫時間軸事件。
 
 延遲與時限是 `csat.scheduler.ts` 開頭的常數，租戶不能調整。
@@ -231,16 +231,16 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 | 畫面與操作 | API | 畫面上要知道的事 |
 | --- | --- | --- |
-| 工單列表 `/dashboard/cases`：狀態分頁、負責人、優先級、分類與 SLA 篩選 | `GET /cases`（每頁 20 筆）；統計卡與分頁計數 `GET /cases/stats` | 搜尋框只在前端過濾目前這一頁。`slaStatus=normal` 不加任何條件 |
-| 列表的「新增工單」（`CaseCreateModal`，不帶對話） | `POST /cases` | 先搜尋聯絡人（`GET /contacts?q&limit=10`）。渠道只列出聯絡人有身分、成員看得到的渠道。標題與分類必填。聯絡人在該渠道沒有身分時回 400 `CONTACT_NOT_ON_CHANNEL`。沒有權限的成員也看得到這個按鈕 |
-| 收件匣聯絡人面板（`ContactInfoPanel`）的「建立工單」（`CaseCreateModal`，帶對話） | `POST /cases/from-conversation/:conversationId` | 對話已有工單時，按鈕仍然顯示，送出後回 409「這則對話已建立過案件」 |
+| 工單列表 `/dashboard/cases`：狀態分頁、負責人、優先級、分類與 SLA 篩選 | `GET /cases`（每頁 20 筆）；統計卡與分頁計數 `GET /cases/stats` | 搜尋框只在前端過濾目前這一頁。`slaStatus=normal` 不加任何條件（HC-CASES-23） |
+| 列表的「新增工單」（`CaseCreateModal`，不帶對話） | `POST /cases` | 先搜尋聯絡人（`GET /contacts?q&limit=10`）。渠道只列出聯絡人有身分、成員看得到的渠道。標題與分類必填。聯絡人在該渠道沒有身分時回 400 `CONTACT_NOT_ON_CHANNEL`。沒有權限的成員也看得到這個按鈕（HC-CASES-10） |
+| 收件匣聯絡人面板（`ContactInfoPanel`）的「建立工單」（`CaseCreateModal`，帶對話） | `POST /cases/from-conversation/:conversationId` | 對話已有工單時，按鈕仍然顯示，送出後回 409「這則對話已建立過案件」（HC-CASES-13） |
 | 詳情頁 `/dashboard/cases/[caseId]`：點標題、優先級、分類、團隊下拉 | `PATCH /cases/:id` | 只改欄位時推播 `case.updated`。改負責人或取消指派（`assigneeId: null`）不通知。團隊下拉永遠是空的：畫面讀 `agent.team`，API 回的是 `teams[]`（HC-CASES-06）。所以只有 API、CLI 與自動化觸發得到自動指派 |
 | 詳情頁的頂部按鈕與狀態下拉 | `POST /cases/:id/{resolve,close,reopen,escalate}`；下拉走 `PATCH /cases/:id` 帶 `status` | 見[改狀態的路徑](#改狀態的路徑) |
-| 詳情頁的「負責人」下拉 | `POST /cases/:id/assign` | 下拉列出全部成員（`GET /agents`），不排除停用的成員，也不排除看不到渠道的成員。指派失敗時畫面沒有提示 |
-| 升級視窗 `EscalationModal` | `POST /cases/:id/escalate` | 原因必填。通知對象只送 `supervisor`、`original_assignee` |
-| 詳情頁右側的「時間軸與備註」、「案件標籤」（`TagManager`） | `POST /cases/:id/notes`；`POST`、`DELETE /cases/:id/tags` | 時間軸由 `GET /cases/:id` 的 `events` 與 `notes` 合成。標籤的 scope 必須是 `CASE`。新增備註失敗時畫面沒有提示。備註的作者一律顯示「客服」 |
+| 詳情頁的「負責人」下拉 | `POST /cases/:id/assign` | 下拉列出全部成員（`GET /agents`），不排除停用的成員，也不排除看不到渠道的成員（HC-CASES-04）。指派失敗時畫面沒有提示（HC-CASES-09） |
+| 升級視窗 `EscalationModal` | `POST /cases/:id/escalate` | 原因必填。通知對象只送 `supervisor`、`original_assignee`。失敗時只顯示「升級失敗」（HC-CASES-16） |
+| 詳情頁右側的「時間軸與備註」、「案件標籤」（`TagManager`） | `POST /cases/:id/notes`；`POST`、`DELETE /cases/:id/tags` | 時間軸由 `GET /cases/:id` 的 `events` 與 `notes` 合成。標籤的 scope 必須是 `CASE`。新增備註失敗時畫面沒有提示（HC-CASES-09）。備註的作者一律顯示「客服」（HC-CASES-21） |
 | 收件匣 `ChatWindow` 裡的問卷卡片（`CsatMessage`） | 客服代評走 `POST /cases/:id/csat` | 客服也能點卡片的分數 |
-| 列表最右的垃圾桶 | `DELETE /cases/:id` | 先以 `window.confirm` 確認。列表不監聽 `case.deleted`，靠 30 秒輪詢更新。失敗時只顯示「刪除工單失敗」 |
+| 列表最右的垃圾桶 | `DELETE /cases/:id` | 先以 `window.confirm` 確認。列表不監聽 `case.deleted`，靠 30 秒輪詢更新。失敗時只顯示「刪除工單失敗」（HC-CASES-16） |
 
 下列 API 沒有畫面入口：
 

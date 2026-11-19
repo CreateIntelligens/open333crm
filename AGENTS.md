@@ -441,10 +441,15 @@ request:
 
       Also update each feature or module document under `docs/ref/` that describes the changed
       behavior.
-- [ ] If your change fixes an AUDIT item or a health-check item (`HC-<DOMAIN>-NN` in
-      `docs/ref/features/health/`), remove the bug from each `.claude/skills/feature-<id>/SKILL.md`
-      (`grep -rn "<ID>" .claude/skills`). A skill describes only the current behavior. Do not
-      write the old behavior, the fix date or the fixing commit in a skill:
+- [ ] If your change fixes a health-check item (`HC-<DOMAIN>-NN` in `docs/ref/features/health/`)
+      that has no AUDIT item, add an entry to `docs/ref/system/AUDIT-REVIEWS.md`. In the health
+      report, add the item to the `已修正` line at the top. Do not change the rest of the report:
+      it describes the code at the commit that the check ran on.
+- [ ] If your change fixes an AUDIT item or a health-check item, remove the bug from each
+      `.claude/skills/feature-<id>/SKILL.md` and from each document under `docs/ref/features/` and
+      `docs/ref/modules/` that describes it (`grep -rn "<ID>" .claude/skills docs/ref`). Do not
+      remove it from the health reports or `AUDIT-REVIEWS.md`. A skill describes only the current
+      behavior. Do not write the old behavior, the fix date or the fixing commit in a skill:
       `docs/ref/system/AUDIT-REVIEWS.md` and the health report keep that history. An agent that
       reads a stale skill copies the bug or reports it again.
 
@@ -708,6 +713,9 @@ lock for this. But the job can run more than one time, and two periods can overl
   not set, `/api/v1/platform/auth/login` returns 503 `PLATFORM_DISABLED`.
 - **Web dev needs a sync first**: the `dev` script of `pnpm --filter @open333crm/web dev` runs
   `sync:widget` and `sync:playcaptcha` automatically.
+- **A new git worktree has no `node_modules` and no built packages.** Run `pnpm install`, then
+  `pnpm --filter @open333crm/shared build` and `pnpm --filter @open333crm/automation build`.
+  Without the builds, `apps/web` tests fail at import, not at an assertion.
 - **Docker on macOS**: `export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"`
 
 ## Monorepo Layout

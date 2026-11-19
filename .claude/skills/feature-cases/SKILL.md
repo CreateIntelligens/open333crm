@@ -32,6 +32,10 @@ CSAT 滿意度問卷（排程、逾時結案、評分 postback、收件匣問卷
 | 權限碼、渠道可見範圍 | 權限、誰看得到哪些工單 |
 | 前端頁面與元件 | 畫面怎麼呼叫 API |
 
+寫測試之前，先讀 `docs/ref/system/TESTING.md`。現有的工單測試在 `apps/web/tests/unit/components/case/`、`apps/web/tests/unit/app/cases/`、`apps/api/tests/unit/modules/case/`，寫法可以照著參考。
+
+`CASES.md` 裡標 `HC-CASES-NN` 的句子是還沒修的 bug，不是刻意的設計。修好之後依 `AGENTS.md` Step 4 更新。
+
 其他來源：
 
 - 健檢結果與已知問題：`docs/ref/features/health/CASES.md`
