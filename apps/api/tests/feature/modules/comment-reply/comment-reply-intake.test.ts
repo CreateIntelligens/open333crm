@@ -35,6 +35,7 @@ import { createCommentReplyFixtures } from '#tests/support/comment-reply-fixture
 import { useFakeMetaGraph } from '#tests/support/fake-meta-graph.js';
 import { fbCommentPayload, fbMessagePayload, igCommentPayload, signed } from '#tests/support/meta-webhook.js';
 import { withTenant } from '#src/lib/tenant-db.js';
+import { signatureFailureKey } from '#src/modules/webhook/webhook-signature-failures.js';
 import { bumpCommentReplyRulesVersion } from '#src/modules/comment-reply/comment-reply-rule-cache.js';
 import jsonPayloadGuardPlugin from '#src/plugins/json-payload-guard.plugin.js';
 import { DEFAULT_JSON_PAYLOAD_LIMITS } from '#src/shared/utils/json-payload-limits.js';
@@ -212,6 +213,22 @@ describe('不處理的留言不留紀錄', () => {
       /Invalid webhook signature/,
     );
     assert.equal((await logsOf(fb.id)).length, 0);
+  });
+
+  // #547 第 2 項：渠道網址（/webhooks/fb、/webhooks/threads）的驗簽失敗也計入 meta-webhook-signature 告警的次數
+  test('渠道網址簽章錯誤：FB 與 IG 都計入 Meta 驗簽失敗次數', async () => {
+    const secret = uid('own-secret-');
+    const { fb, tenant } = await setup({ channelMode: 'own_app', appSecret: secret });
+    const ig = await fx.igChannel(tenant.id, { mode: 'own_app', appSecret: secret });
+    const failures = async () => Number((await redis.get(signatureFailureKey())) ?? 0);
+    for (const [channel, payload] of [
+      [fb, fbComments([{ pageId: fb.externalAccountId, commentId: uid('c') }])],
+      [ig, igCommentPayload([{ accountId: ig.externalAccountId, commentId: uid('igc'), from: { id: uid('IGSID'), username: 'amy' }, text: '+1' }])],
+    ] as const) {
+      const before = await failures();
+      await assert.rejects(postToChannel(channel, payload, secret, { badSignature: true }), /Invalid webhook signature/);
+      assert.ok((await failures()) > before, `${channel.channelType} 的驗簽失敗沒有計數`);
+    }
   });
 
   test('渠道停用', async () => {

@@ -15,11 +15,11 @@ import { patchChannelSettings } from '../channel/channel.service.js';
 import { BASE_SUBSCRIBED_FIELDS, getMetaAppConfig, subscribedFieldsFor } from '../meta-connect/meta-connect.service.js';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 import {
-  appModeOf,
   channelAccountId,
   channelCredentials,
   channelIdFilter,
   channelLevel,
+  commentAppModeOf,
   commentExtensionOf,
   resolveViewerChannels,
   tokenStatusOf,
@@ -76,8 +76,7 @@ function handleOf(channel: {
   settings: unknown;
 }, ext: ChannelCommentExtension): CommentChannelHandle {
   const credentials = channelCredentials(channel.credentialsEncrypted);
-  // 平台 Meta App 只連結 FB 粉專；IG（Instagram Login 手動權杖）一律依自己的 App（design D22 測試階段只對平台模式有意義）
-  const appMode = ext.capabilities.platform === 'fb' ? appModeOf(credentials) : 'own_app';
+  const appMode = commentAppModeOf(ext, credentials);
   const cr = commentReplySettingsOf(channel.settings);
   const platformApp = appMode === 'platform' ? getMetaAppConfig() : null;
   return {

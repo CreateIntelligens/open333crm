@@ -6,7 +6,7 @@
  * service 在交易內以 resolveViewerChannels() 取得可見渠道與層級，不讀 request。
  */
 import type { ChannelPlugin, ChannelCommentExtension } from '@open333crm/channel-plugins';
-import { getChannelPlugin } from '@open333crm/channel-plugins';
+import { getAllChannelPlugins, getChannelPlugin } from '@open333crm/channel-plugins';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import {
   ALL_CHANNELS,
@@ -57,6 +57,13 @@ export function commentExtensionOf(channelType: string): ChannelCommentExtension
   return plugin?.extensions?.comments ?? null;
 }
 
+/** 有留言擴充的渠道類型（依已註冊的外掛，不寫死 FB、THREADS） */
+export function commentChannelTypes(): string[] {
+  return getAllChannelPlugins()
+    .filter((plugin) => plugin.extensions?.comments)
+    .map((plugin) => plugin.channelType);
+}
+
 /** 解密渠道憑證；壞掉的憑證回空物件（呼叫 Meta 時會得到權杖錯誤） */
 export function channelCredentials(credentialsEncrypted: string | null | undefined): Record<string, unknown> {
   if (!credentialsEncrypted) return {};
@@ -77,6 +84,14 @@ export function channelAccountId(channel: { externalAccountId: string | null; cr
 /** 平台模式（平台 Meta App 連結的 FB 粉專）或自備 App／IG 手動權杖 */
 export function appModeOf(credentials: Record<string, unknown>): 'platform' | 'own_app' {
   return credentials.connectMode === 'platform' ? 'platform' : 'own_app';
+}
+
+/**
+ * 支援留言的渠道走平台 Meta App 還是自己的 App。平台 Meta App 只連結 FB 粉專（外掛的 capabilities.platform 為 'fb'）；
+ * IG（Instagram Login 手動權杖）一律是自己的 App（design D22）。
+ */
+export function commentAppModeOf(ext: ChannelCommentExtension, credentials: Record<string, unknown>): 'platform' | 'own_app' {
+  return ext.capabilities.platform === 'fb' ? appModeOf(credentials) : 'own_app';
 }
 
 function obj(v: unknown): Record<string, any> {

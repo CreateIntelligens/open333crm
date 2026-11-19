@@ -6,9 +6,14 @@
  * 只讀資料庫與佇列數量，不呼叫 Meta：訂閱狀態、權杖狀態、最後收到留言時間都讀渠道 settings
  * （由 meta-token-health 與 comment-reply-health 排程寫入）。
  */
-import type { PrismaClient } from '@prisma/client';
-import { decryptCredentials } from '../channel/channel.service.js';
-import { appModeOf, tokenStatusOf } from '../comment-reply/comment-reply-access.js';
+import type { ChannelType, PrismaClient } from '@prisma/client';
+import {
+  channelCredentials,
+  commentAppModeOf,
+  commentChannelTypes,
+  commentExtensionOf,
+  tokenStatusOf,
+} from '../comment-reply/comment-reply-access.js';
 import { commentReplySettingsOf } from '../comment-reply/comment-reply-settings.js';
 
 export type QueueCounts = Record<string, number>;
@@ -45,16 +50,6 @@ export interface CommentReplyHealth {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** 平台模式（平台 Meta App 連結）或自備 App／IG 手動權杖 */
-export function channelAppMode(credentialsEncrypted: string | null): 'platform' | 'own_app' {
-  if (!credentialsEncrypted) return 'own_app';
-  try {
-    return appModeOf(decryptCredentials(credentialsEncrypted));
-  } catch {
-    return 'own_app';
-  }
-}
-
 /**
  * @description 平台健康頁：開啟留言接收的渠道與全平台 24 小時統計
  * @param admin prismaAdmin
@@ -83,7 +78,7 @@ export async function getCommentReplyHealth(
 
   const channels = await admin.channel.findMany({
     where: {
-      channelType: { in: ['FB', 'THREADS'] },
+      channelType: { in: commentChannelTypes() as ChannelType[] },
       settings: { path: ['commentReply', 'receiving'], equals: true },
     },
     select: {
@@ -137,13 +132,14 @@ export async function getCommentReplyHealth(
     },
     channels: channels.map((c) => {
       const cr = commentReplySettingsOf(c.settings);
+      const ext = commentExtensionOf(c.channelType);
       return {
         tenantId: c.tenantId,
         tenantName: c.tenant?.name ?? null,
         channelId: c.id,
         channelType: c.channelType,
         displayName: c.displayName,
-        appMode: c.channelType === 'FB' ? channelAppMode(c.credentialsEncrypted) : 'own_app',
+        appMode: ext ? commentAppModeOf(ext, channelCredentials(c.credentialsEncrypted)) : 'own_app',
         subscription: { status: cr.subscription?.status ?? null, checkedAt: cr.subscription?.checkedAt ?? null },
         tokenStatus: tokenStatusOf(c.settings),
         lastCommentEventAt: cr.lastCommentEventAt,

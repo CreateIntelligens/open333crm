@@ -178,7 +178,8 @@ export async function processWebhookEvent(
         case 'no_plugin':
           throw new Error(`No plugin for channel type: ${channelType}`);
         case 'invalid_signature':
-          if (channelType === CHANNEL_TYPE.FB || channelType === CHANNEL_TYPE.THREADS) await recordMetaSignatureFailure(deps.redis);
+          // 有留言擴充的外掛（Meta 渠道）才計入 meta-webhook-signature 告警
+          if (getChannelPlugin(channelType)?.extensions?.comments) await recordMetaSignatureFailure(deps.redis);
           throw new Error('Invalid webhook signature');
         // 租戶停用與類型不符是預期內情況（非錯誤）：route 早已回 200，安靜丟棄即可
         case 'tenant_disabled':
