@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { CASE_CATEGORIES } from '@open333crm/shared';
 
 const PAGE_SIZE = 20;
@@ -97,8 +98,7 @@ export default function CasesPage() {
       await api.delete(`/cases/${caseId}`);
       await Promise.all([mutateCases(), mutateStats()]);
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      setDeleteError(axiosError.response?.data?.message || '刪除工單失敗');
+      setDeleteError(getApiErrorMessage(err, '刪除工單失敗'));
     } finally {
       setDeletingCaseId(null);
     }

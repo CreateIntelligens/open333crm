@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-19]
+
+### Fixed
+
+- 工單列表刪除失敗、升級視窗送出失敗時，畫面一律顯示「刪除工單失敗」「升級失敗」，看不出原因（例如沒有權限）。原因是畫面讀 `response.data.message`，後端的訊息在 `error.message`。現在兩處改用 `getApiErrorMessage`，顯示後端的錯誤訊息（HC-CASES-16）。
+
 ## [2026-11-18]
 
 ### Changed

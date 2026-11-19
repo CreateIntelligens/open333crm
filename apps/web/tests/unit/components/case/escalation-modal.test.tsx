@@ -43,3 +43,25 @@ test('Escalation dialog offers no team option：只能勾主管與原負責客�
   assert.equal(path, '/cases/c0000000-0000-0000-0000-000000000001/escalate');
   assert.deepEqual(body.notifyTargets, ['supervisor', 'original_assignee']);
 });
+
+test('升級被後端拒絕時，對話框顯示後端的錯誤訊息（HC-CASES-16）', async () => {
+  api.post.mockRejectedValue({
+    response: { status: 403, data: { success: false, error: { code: 'FORBIDDEN', message: '權限不足：需要 case.escalate' } } },
+  });
+  render(
+    <EscalationModal
+      open
+      onOpenChange={vi.fn()}
+      onSuccess={vi.fn()}
+      caseData={{ id: 'c0000000-0000-0000-0000-000000000001', title: '測試案件', priority: 'MEDIUM', status: 'IN_PROGRESS' }}
+    />,
+  );
+
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.click(within(dialog).getByText('客戶多次催促', { selector: 'button' }));
+  fireEvent.click(within(dialog).getByText('確認升級'));
+
+  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
+  await waitFor(() => assert.ok(within(dialog).queryByText('權限不足：需要 case.escalate'), '顯示後端的訊息'));
+  assert.equal(within(dialog).queryByText('升級失敗'), null);
+});
