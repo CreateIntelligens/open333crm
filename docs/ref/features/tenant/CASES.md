@@ -237,10 +237,10 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 | 詳情頁 `/dashboard/cases/[caseId]`：點標題、優先級、分類、團隊下拉 | `PATCH /cases/:id` | 只改欄位時推播 `case.updated`。改負責人或取消指派（`assigneeId: null`）不通知。團隊下拉永遠是空的：畫面讀 `agent.team`，API 回的是 `teams[]`（HC-CASES-06）。所以只有 API、CLI 與自動化觸發得到自動指派 |
 | 詳情頁的頂部按鈕與狀態下拉 | `POST /cases/:id/{resolve,close,reopen,escalate}`；下拉走 `PATCH /cases/:id` 帶 `status` | 見[改狀態的路徑](#改狀態的路徑) |
 | 詳情頁的「負責人」下拉 | `POST /cases/:id/assign` | 下拉列出全部成員（`GET /agents`），不排除停用的成員，也不排除看不到渠道的成員（HC-CASES-04）。指派失敗時畫面沒有提示（HC-CASES-09） |
-| 升級視窗 `EscalationModal` | `POST /cases/:id/escalate` | 原因必填。通知對象只送 `supervisor`、`original_assignee`。失敗時只顯示「升級失敗」（HC-CASES-16） |
+| 升級視窗 `EscalationModal` | `POST /cases/:id/escalate` | 原因必填。通知對象只送 `supervisor`、`original_assignee`。失敗時，視窗以 `getApiErrorMessage` 顯示後端的錯誤訊息；後端沒有回訊息時，顯示「升級失敗」 |
 | 詳情頁右側的「時間軸與備註」、「案件標籤」（`TagManager`） | `POST /cases/:id/notes`；`POST`、`DELETE /cases/:id/tags` | 時間軸由 `GET /cases/:id` 的 `events` 與 `notes` 合成。標籤的 scope 必須是 `CASE`。新增備註失敗時畫面沒有提示（HC-CASES-09）。備註的作者一律顯示「客服」（HC-CASES-21） |
 | 收件匣 `ChatWindow` 裡的問卷卡片（`CsatMessage`） | 客服代評走 `POST /cases/:id/csat` | 客服也能點卡片的分數 |
-| 列表最右的垃圾桶 | `DELETE /cases/:id` | 先以 `window.confirm` 確認。列表不監聽 `case.deleted`，靠 30 秒輪詢更新。失敗時只顯示「刪除工單失敗」（HC-CASES-16） |
+| 列表最右的垃圾桶 | `DELETE /cases/:id` | 先以 `window.confirm` 確認。列表不監聽 `case.deleted`，靠 30 秒輪詢更新。失敗時，列表以 `getApiErrorMessage` 顯示後端的錯誤訊息，例如沒有 `case.delete` 時顯示權限不足；後端沒有回訊息時，顯示「刪除工單失敗」。垃圾桶按鈕不依權限隱藏 |
 
 下列 API 沒有畫面入口：
 

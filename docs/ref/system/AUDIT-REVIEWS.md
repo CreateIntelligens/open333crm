@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-19：工單刪除與升級的錯誤訊息（HC-CASES-16）
+
+只改 `apps/web`。以 jsdom 元件測試驗證，沒有連 UAT。這個健檢項目沒有對應的 `AUDIT.md` 項目。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| HC-CASES-16 | 已修正。`apps/web/src/app/dashboard/cases/page.tsx` 的刪除與 `apps/web/src/components/case/EscalationModal.tsx` 的升級改用 `getApiErrorMessage`，讀後端的 `error.message` | `apps/web/tests/unit/app/cases/case-list-delete-error.test.tsx`「刪除被後端拒絕時，列表顯示後端的錯誤訊息」、`apps/web/tests/unit/components/case/escalation-modal.test.tsx`「升級被後端拒絕時，對話框顯示後端的錯誤訊息」。兩個測試在修正前都失敗在斷言上（畫面顯示「刪除工單失敗」、找不到後端的訊息） |
+
 ## 2026-11-19：健檢項目的修正補記
 
 這筆紀錄補記程式裡已有、但健檢報告沒有記下的修正，本身不改程式。逐項讀目前的程式（`db94f20b`）核對健檢報告的問題列，沒有執行測試，也沒有連 UAT。修正與部分修正的項目已加到各健檢報告開頭的「已修正」行。

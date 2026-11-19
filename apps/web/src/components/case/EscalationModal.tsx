@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -120,8 +121,7 @@ export function EscalationModal({
       onOpenChange(false);
       onSuccess();
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      setError(axiosError.response?.data?.message || '升級失敗');
+      setError(getApiErrorMessage(err, '升級失敗'));
     } finally {
       setIsSubmitting(false);
     }

@@ -3,6 +3,7 @@
 - 核對日期：2026-10-30
 - 程式版本：5c81102e
 - 狀態：本報告只記錄問題，沒有修正程式；問題清單的 AUDIT 欄是對應的追蹤編號
+- 已修正：HC-CASES-16。工單列表的刪除與升級視窗失敗時，畫面以 `getApiErrorMessage` 顯示後端的錯誤訊息（例如 403 的權限不足），不再一律顯示「刪除工單失敗」「升級失敗」。`tenant/CASES.md` 已同步。本報告其餘段落仍描述健檢當時的程式
 - 注意：健檢在 `5c81102e` 上執行，之後 main 的修正見各列的 AUDIT 編號與 docs/ref/system/AUDIT-REVIEWS.md
 - 環境：本機（獨立資料庫 `open333crm_advisor`，web 為 production build）／ UAT Demo 租戶（`a0000000-0000-0000-0000-000000000001`，登入後以 `/auth/me` 確認），UAT 只讀
 - 規格：`docs/ref/features/feature-map.json` 的 `cases`；功能文件 `docs/ref/features/tenant/CASES.md`
