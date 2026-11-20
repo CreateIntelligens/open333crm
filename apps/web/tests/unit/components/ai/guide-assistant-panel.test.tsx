@@ -9,13 +9,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const { api, auth, router, runner } = vi.hoisted(() => ({
   api: { post: vi.fn() },
-  auth: { canUse: true },
+  auth: { canUse: true, canViewKnowledge: true },
   router: { push: vi.fn() },
   runner: { runGuide: vi.fn() },
 }));
 vi.mock('#src/lib/api.js', () => ({ default: api }));
 vi.mock('#src/providers/AuthProvider.js', () => ({
-  usePermission: (code: string) => (code === 'assistant.use' ? auth.canUse : false),
+  usePermission: (code: string) =>
+    code === 'assistant.use' ? auth.canUse : code === 'knowledge.view' ? auth.canViewKnowledge : false,
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/dashboard/inbox' }));
 vi.mock('#src/lib/guide/guide-runner.js', () => runner);
@@ -45,6 +46,7 @@ async function askQuestion() {
 
 beforeEach(() => {
   auth.canUse = true;
+  auth.canViewKnowledge = true;
   api.post.mockReset();
   router.push.mockReset();
   runner.runGuide.mockReset();
@@ -98,9 +100,49 @@ describe('員工按下「帶我去」後才執行導覽', () => {
   });
 });
 
+describe('面板的對話', () => {
+  test('關閉面板後不顯示舊請求的回覆', async () => {
+    let resolve!: (value: unknown) => void;
+    api.post.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    render(<GuideAssistantPanel />);
+    fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
+    fireEvent.change(screen.getByLabelText('輸入問題'), { target: { value: '怎麼設定關鍵字自動回覆？' } });
+    fireEvent.click(screen.getByRole('button', { name: '送出問題' }));
+    fireEvent.click(screen.getByRole('button', { name: '關閉助理' }));
+    await act(async () => {
+      resolve({ data: { data: { answer: '舊的答案', guide: null, sources: [] } } });
+    });
+    fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
+    assert.ok(screen.queryByText('舊的答案') === null);
+    assert.ok(screen.queryByText('怎麼設定關鍵字自動回覆？') === null);
+  });
+
+  test('歷史訊息每則最多 2000 字', async () => {
+    api.post.mockResolvedValueOnce({ data: { data: { answer: '長'.repeat(3000), guide: null, sources: [] } } });
+    render(<GuideAssistantPanel />);
+    fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
+    fireEvent.change(screen.getByLabelText('輸入問題'), { target: { value: '第一題' } });
+    fireEvent.click(screen.getByRole('button', { name: '送出問題' }));
+    await screen.findByText('長'.repeat(3000));
+    answer(null);
+    fireEvent.change(screen.getByLabelText('輸入問題'), { target: { value: '第二題' } });
+    fireEvent.click(screen.getByRole('button', { name: '送出問題' }));
+    await screen.findByText('到關鍵字回覆頁按新增。');
+    const [, body] = api.post.mock.calls[1];
+    assert.ok(body.history.every((h: { content: string }) => h.content.length <= 2000));
+    assert.equal(body.history.length, 2);
+  });
+});
+
 describe('沒有 assistant.use 時不顯示助理', () => {
   test('沒有權限的員工', () => {
     auth.canUse = false;
+    render(<GuideAssistantPanel />);
+    assert.ok(screen.queryByRole('button', { name: '開啟助理' }) === null);
+  });
+
+  test('沒有 knowledge.view 的員工', () => {
+    auth.canViewKnowledge = false;
     render(<GuideAssistantPanel />);
     assert.ok(screen.queryByRole('button', { name: '開啟助理' }) === null);
   });

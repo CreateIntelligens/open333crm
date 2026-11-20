@@ -6,7 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
-- **後台助理**（change `add-dashboard-guide-assistant`）：後台每一頁的右下角新增助理。員工問「怎麼設定關鍵字自動回覆」，助理依本租戶的知識庫回答，並提供「帶我去」：按下後畫面切到功能頁、打開建立表單、用聚光框標示要填的欄位。助理不替員工送出或儲存資料。導覽只從員工有權限的 12 條導覽中選。新增權限碼 `assistant.use`（feature `knowledge`，三個系統角色預設都有），用量記為 `feature: guide-assistant`，受月額度限制。部署後要執行 `scripts/grant-new-role-permissions.mjs assistant.use` 並清除 `perms:*` 快取。
+- **後台助理**（change `add-dashboard-guide-assistant`）：後台每一頁的右下角新增助理。員工問「怎麼設定關鍵字自動回覆」，助理依本租戶的知識庫回答，並提供「帶我去」：按下後畫面切到功能頁、打開建立表單、用聚光框標示要填的欄位。助理不替員工送出或儲存資料。導覽只從員工有權限的 12 條導覽中選。新增權限碼 `assistant.use`（feature `knowledge`，依賴 `knowledge.view`，三個系統角色預設都有；API 同時要求兩者），用量記為 `feature: guide-assistant`，受月額度限制。部署後要執行 `scripts/grant-new-role-permissions.mjs assistant.use` 並清除 `perms:*` 快取。
 
 ### Changed
 

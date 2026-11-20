@@ -27,7 +27,11 @@ export default async function guideAssistantRoutes(fastify: FastifyInstance, opt
   fastify.addHook('preHandler', fastify.authenticate);
 
   // POST /api/v1/ai/guide-assistant/ask
-  fastify.post('/ask', { preHandler: requirePermission('assistant.use') }, async (request, reply) => {
+  // 答案與來源來自知識庫文章，所以也要 knowledge.view：沒有知識庫檢視權限的角色不能透過助理讀文章
+  fastify.post(
+    '/ask',
+    { preHandler: [requirePermission('assistant.use'), requirePermission('knowledge.view')] },
+    async (request, reply) => {
     const input = askSchema.parse(request.body);
     const permissions = await getRequestPermissions(request);
     const deps = {
@@ -35,7 +39,8 @@ export default async function guideAssistantRoutes(fastify: FastifyInstance, opt
       redis: fastify.redis,
       events: opts.events ?? createOutboxPublisher(fastify.prisma),
     };
-    const result = await askGuideAssistantFlow(deps, actorOf(request).tenantId, input, permissions);
-    return reply.send(success(result));
-  });
+      const result = await askGuideAssistantFlow(deps, actorOf(request).tenantId, input, permissions);
+      return reply.send(success(result));
+    },
+  );
 }

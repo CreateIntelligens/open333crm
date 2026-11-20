@@ -23,23 +23,28 @@
 - [x] 3.4 實作 `GuideAssistantPanel.tsx`、`GuideSpotlight.tsx`，掛在 `app/dashboard/layout.tsx`。開發環境的按鈕位置避開 `SimulatorPanel`。沒有 emoji。
 - [x] 3.5 導覽用到的元素加 `data-guide` 屬性；優惠券的 `TextField` 新增 `guide` prop。測試（`apps/web/tests/unit/lib/guide/guide-targets.test.ts`）檢查每個 `target` 在 `apps/web/src` 都找得到。突變驗證：拿掉 `tag.open` 的屬性時測試失敗。
 
-## 4. 平台層
+## 4. PR 審查修正
 
-- [x] 4.1 `assistant.use` 掛在 feature `knowledge`，路由以 `requirePermission()` 保護（1.3、2.2）。
-- [x] 4.2 LLM 呼叫經 `generateReply()`：月額度、AI 隱私政策與 `recordLlmUsage()`（2.1 的「記錄助理的用量」「月額度已滿」）。
-- [ ] 4.3 部署後在 UAT 執行 `scripts/grant-new-role-permissions.mjs assistant.use`，再清除 Redis 的 `perms:*` 快取。
+- [x] 4.1 測試先寫：`guide-assistant.test.ts`「沒有 knowledge.view」；`guide-assistant-panel.test.tsx`「沒有 knowledge.view 的員工」「關閉面板後不顯示舊請求的回覆」「歷史訊息每則最多 2000 字」。修改前 4 個測試都失敗在斷言上。
+- [x] 4.2 實作：路由另外要求 `knowledge.view`，`assistant.use` 的 `dependsOn` 是 `knowledge.view`；面板同時檢查兩個權限；關閉面板時以編號丟掉舊請求的回覆；`history` 每則截到 2000 字。
 
-## 5. 文件
+## 5. 平台層
 
-- [x] 5.1 `docs/ref/features/tenant/KNOWLEDGE.md` 新增「後台助理」一節、模組表、入口表與權限表；`.claude/skills/feature-knowledge/SKILL.md` 的涵蓋範圍與回歸清單。
-- [x] 5.2 `CHANGELOG.md` 的 `## [2026-11-20]` 新增條目。
+- [x] 5.1 `assistant.use` 掛在 feature `knowledge`，路由以 `requirePermission()` 保護（1.3、2.2）。
+- [x] 5.2 LLM 呼叫經 `generateReply()`：月額度、AI 隱私政策與 `recordLlmUsage()`（2.1 的「記錄助理的用量」「月額度已滿」）。
+- [ ] 5.3 部署後在 UAT 執行 `scripts/grant-new-role-permissions.mjs assistant.use`，再清除 Redis 的 `perms:*` 快取。
 
-## 6. 完成定義
+## 6. 文件
 
-- [x] 6.1 `pnpm test`：這個 change 的測試全部通過。`apps/api` 另有 4 個失敗在 main 上就存在，與這個 change 無關：`case-ui-source.test.ts`、`portal/datetime-timezone.test.ts`、`url-scheme-validation.test.ts`（讀的前端檔案已被改版刪除）與 `storage-presign-purpose.test.ts`（整批執行時 `beforeAll` 逾時）。
-- [x] 6.2 `pnpm test:feature`：1912 個通過。1 個失敗在 main 上就存在：`scripts/dedupe-sla-events.test.ts`。`fake-chat.ts` 改成也記錄訊息後，`chat-settings.test.ts`「呼叫 LLM 不建立設定列」改成只比對模型。
-- [x] 6.3 `pnpm build` 通過。
-- [x] 6.4 `check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 沒有新增違規。
-- [x] 6.5 `node scripts/feature-impact.mjs --check` 通過；`node scripts/validate-openspec.mjs add-dashboard-guide-assistant` 與 `--specs` 通過；`node scripts/check-doc-history.mjs --strict` 通過。
-- [ ] 6.6 部署後在 UAT 的 Demo 租戶，用 admin 試 12 條導覽，用一般 agent 試沒有權限的導覽。
-- [ ] 6.7 6.6 完成後，以 `pnpm exec openspec archive` 歸檔。
+- [x] 6.1 `docs/ref/features/tenant/KNOWLEDGE.md` 新增「後台助理」一節、模組表、入口表與權限表；`.claude/skills/feature-knowledge/SKILL.md` 的涵蓋範圍與回歸清單。
+- [x] 6.2 `CHANGELOG.md` 的 `## [2026-11-20]` 新增條目。
+
+## 7. 完成定義
+
+- [x] 7.1 `pnpm test`：這個 change 的測試全部通過。`apps/api` 另有 4 個失敗在 main 上就存在，與這個 change 無關：`case-ui-source.test.ts`、`portal/datetime-timezone.test.ts`、`url-scheme-validation.test.ts`（讀的前端檔案已被改版刪除）與 `storage-presign-purpose.test.ts`（整批執行時 `beforeAll` 逾時）。
+- [x] 7.2 `pnpm test:feature`：1912 個通過。1 個失敗在 main 上就存在：`scripts/dedupe-sla-events.test.ts`。`fake-chat.ts` 改成也記錄訊息後，`chat-settings.test.ts`「呼叫 LLM 不建立設定列」改成只比對模型。
+- [x] 7.3 `pnpm build` 通過。
+- [x] 7.4 `check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`、`check-tenant-ctx --strict` 沒有新增違規。
+- [x] 7.5 `node scripts/feature-impact.mjs --check` 通過；`node scripts/validate-openspec.mjs add-dashboard-guide-assistant` 與 `--specs` 通過；`node scripts/check-doc-history.mjs --strict` 通過。
+- [ ] 7.6 部署後在 UAT 的 Demo 租戶，用 admin 試 12 條導覽，用一般 agent 試沒有權限的導覽。
+- [ ] 7.7 7.6 完成後，以 `pnpm exec openspec archive` 歸檔。

@@ -167,7 +167,7 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 
 ## 後台助理
 
-後台每一頁的右下角有助理按鈕（`apps/web/src/components/ai/GuideAssistantPanel.tsx`）。員工有 `assistant.use` 時，按鈕才顯示。
+後台每一頁的右下角有助理按鈕（`apps/web/src/components/ai/GuideAssistantPanel.tsx`）。員工有 `assistant.use` 與 `knowledge.view` 時，按鈕才顯示。
 
 員工送出問題後，`askGuideAssistantFlow()` 依序執行：
 
@@ -202,7 +202,7 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 | 建立、修改、刪除、發布、封存、上傳、批次匯入、產生向量 | `knowledge.manage` |
 | 夥伴系統推送、重建型號白名單、標記回報已處理 | `knowledge.admin` |
 | Chat、Embedding、自備金鑰的設定 | `settings.manage` |
-| 後台助理（`POST /ai/guide-assistant/ask`） | `assistant.use`。三個系統角色預設都有 |
+| 後台助理（`POST /ai/guide-assistant/ask`） | `assistant.use` 與 `knowledge.view`。答案來自文章，所以兩個都要。三個系統角色預設都有 `assistant.use` |
 
 側欄的「知識庫」依 `knowledge.view` 隱藏。「AI 設定」兩頁沒有 `settings.manage` 時，側欄隱藏；直接開網址時，頁面顯示「沒有權限」（`SettingsLoadError.tsx`）。文章的寫入按鈕不依 `knowledge.manage` 隱藏，按下才收到「權限不足」（HC-KNOWLEDGE-05）；只有「標為已處理」依 `knowledge.admin` 隱藏。
 

@@ -88,7 +88,7 @@ function lastSystemPrompt(): string {
   return call.messages.find((m) => m.role === 'system')?.content ?? '';
 }
 
-const STAFF = ['assistant.use', 'automation.manage', 'automation.view'];
+const STAFF = ['assistant.use', 'knowledge.view', 'automation.manage', 'automation.view'];
 const KEYWORD_QUESTION = { message: '怎麼設定關鍵字自動回覆？' };
 
 beforeEach(() => {
@@ -158,6 +158,16 @@ describe('助理需要 assistant.use 權限', () => {
     assert.equal(res.status, 403, JSON.stringify(res.body));
     assert.equal(res.body.error?.details?.requiredPermission, 'assistant.use');
   });
+
+  test('沒有 knowledge.view', async () => {
+    const t = await makeTenant('no-knowledge-view');
+    const { app, agentId } = await buildApp(t, ['assistant.use', 'automation.manage']);
+    await makeArticle(t, agentId, '關鍵字自動回覆', '按「新增」。');
+    const res = await ask(app, KEYWORD_QUESTION);
+    assert.equal(res.status, 403, JSON.stringify(res.body));
+    assert.equal(res.body.error?.details?.requiredPermission, 'knowledge.view');
+    assert.equal(chat.state.chatCalls.length, 0, '沒有知識庫檢視權限時不讀文章、不呼叫 LLM');
+  });
 });
 
 describe('導覽只從操作者有權限的導覽中選', () => {
@@ -176,7 +186,7 @@ describe('導覽只從操作者有權限的導覽中選', () => {
 
   test('沒有權限時不回傳導覽', async () => {
     const t = await makeTenant('guide-no-permission');
-    const { app, agentId } = await buildApp(t, ['assistant.use']);
+    const { app, agentId } = await buildApp(t, ['assistant.use', 'knowledge.view']);
     await makeArticle(t, agentId, '關鍵字自動回覆', '按「新增」。');
     chat.state.reply = JSON.stringify({ answer: '按新增。', guideId: 'keyword-reply.create' });
 

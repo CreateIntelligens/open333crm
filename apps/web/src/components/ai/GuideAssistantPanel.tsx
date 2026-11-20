@@ -33,6 +33,8 @@ type ChatItem =
   | { role: 'notice'; content: string };
 
 const HISTORY_LIMIT = 6;
+/** 與 API 的 history 每則上限相同（guide-assistant.routes.ts） */
+const HISTORY_CONTENT_MAX = 2000;
 const NOT_FOUND_NOTICE = '找不到這個欄位，請依上面的步驟操作。';
 
 /** 答案裡的網址顯示成連結。只認 http(s)，其他文字維持純文字 */
@@ -53,7 +55,8 @@ function AnswerText({ text }: { text: string }) {
 }
 
 export function GuideAssistantPanel() {
-  const canUse = usePermission('assistant.use');
+  // 答案來自知識庫文章，API 同時要求兩個權限
+  const canUse = usePermission('assistant.use') && usePermission('knowledge.view');
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -62,6 +65,8 @@ export function GuideAssistantPanel() {
   const [sending, setSending] = useState(false);
   const [spotlight, setSpotlight] = useState<{ el: HTMLElement; note: string } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  /** 每次關閉面板加一。請求回來時編號不同，代表對話已清空，丟掉這個回覆 */
+  const sessionRef = useRef(0);
 
   useEffect(() => {
     listRef.current?.scrollTo?.({ top: listRef.current.scrollHeight });
@@ -72,6 +77,8 @@ export function GuideAssistantPanel() {
   if (!canUse) return null;
 
   const close = () => {
+    sessionRef.current += 1;
+    setSending(false);
     setOpen(false);
     setItems([]);
     setInput('');
@@ -83,18 +90,21 @@ export function GuideAssistantPanel() {
     const history = items
       .filter((i): i is Extract<ChatItem, { role: 'user' | 'assistant' }> => i.role !== 'notice')
       .slice(-HISTORY_LIMIT)
-      .map((i) => ({ role: i.role, content: i.content }));
+      .map((i) => ({ role: i.role, content: i.content.slice(0, HISTORY_CONTENT_MAX) }));
+    const session = sessionRef.current;
     setItems((prev) => [...prev, { role: 'user', content: message }]);
     setInput('');
     setSending(true);
     try {
       const res = await api.post('/ai/guide-assistant/ask', { message, history, currentPath: pathname });
+      if (session !== sessionRef.current) return;
       const reply = res.data.data as AssistantReply;
       setItems((prev) => [...prev, { role: 'assistant', content: reply.answer, guide: reply.guide, sources: reply.sources }]);
     } catch (err) {
+      if (session !== sessionRef.current) return;
       setItems((prev) => [...prev, { role: 'notice', content: getApiErrorMessage(err, '助理暫時無法回答，請稍後再試') }]);
     } finally {
-      setSending(false);
+      if (session === sessionRef.current) setSending(false);
     }
   };
 

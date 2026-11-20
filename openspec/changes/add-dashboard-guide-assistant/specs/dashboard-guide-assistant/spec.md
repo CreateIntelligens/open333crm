@@ -18,13 +18,17 @@
 - **WHEN** 員工送出 `message` 是空字串
 - **THEN** 回應是 400，系統不呼叫 LLM
 
-### Requirement: 助理需要 assistant.use 權限
+### Requirement: 助理需要 assistant.use 與 knowledge.view 權限
 
-路由 SHALL 以 `requirePermission('assistant.use')` 保護。`assistant.use` 的 feature 是 `knowledge`。`admin`、`supervisor`、`agent` 三個系統角色預設都有 `assistant.use`。
+路由 SHALL 以 `requirePermission('assistant.use')` 與 `requirePermission('knowledge.view')` 保護。答案與來源來自知識庫文章，所以沒有 `knowledge.view` 的角色 MUST NOT 透過助理讀到文章。`assistant.use` 的 feature 是 `knowledge`，`dependsOn` 是 `knowledge.view`。`admin`、`supervisor`、`agent` 三個系統角色預設都有 `assistant.use`。
 
 #### Scenario: 沒有 assistant.use
 - **WHEN** 員工的角色沒有 `assistant.use`，員工送出問題
 - **THEN** 回應是 403，`error.details.requiredPermission` 是 `assistant.use`
+
+#### Scenario: 沒有 knowledge.view
+- **WHEN** 員工的角色有 `assistant.use`、沒有 `knowledge.view`，員工送出問題
+- **THEN** 回應是 403，`error.details.requiredPermission` 是 `knowledge.view`，系統不讀文章、不呼叫 LLM
 
 ### Requirement: 導覽只從操作者有權限的導覽中選
 
@@ -119,10 +123,26 @@
 - **WHEN** 某個步驟的元素 5 秒內沒有出現
 - **THEN** 前端停止導覽，面板顯示「找不到這個欄位，請依上面的步驟操作。」
 
-### Requirement: 沒有 assistant.use 時不顯示助理
+### Requirement: 沒有權限時不顯示助理
 
-後台 SHALL 只在員工的有效權限有 `assistant.use` 時顯示右下角的助理按鈕。
+後台 SHALL 只在員工的有效權限同時有 `assistant.use` 與 `knowledge.view` 時顯示右下角的助理按鈕。
 
 #### Scenario: 沒有權限的員工
 - **WHEN** 員工的有效權限沒有 `assistant.use`
 - **THEN** 後台沒有助理按鈕
+
+#### Scenario: 沒有 knowledge.view 的員工
+- **WHEN** 員工的有效權限有 `assistant.use`、沒有 `knowledge.view`
+- **THEN** 後台沒有助理按鈕
+
+### Requirement: 面板的對話
+
+面板的對話只存在前端。員工關閉面板時，面板 SHALL 清空對話，並 MUST NOT 顯示關閉前送出、關閉後才回來的回覆。面板送出的 `history` 每則 SHALL 最多 2000 字，與 API 的上限相同：較長的答案只送前 2000 字。
+
+#### Scenario: 關閉面板後不顯示舊請求的回覆
+- **WHEN** 員工送出問題，回覆回來之前關閉面板，再打開面板
+- **THEN** 面板沒有這次的問題，也沒有這次的回覆
+
+#### Scenario: 歷史訊息每則最多 2000 字
+- **WHEN** 上一則答案有 3000 字，員工再送出一個問題
+- **THEN** 這次請求的 `history` 每則最多 2000 字，API 不回 400
