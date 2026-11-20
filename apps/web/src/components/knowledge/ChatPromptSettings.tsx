@@ -486,6 +486,7 @@ export function ChatPromptSettings() {
           </Button>
         </div>
         <textarea
+          data-guide="chat-prompt.system"
           className="mt-3 min-h-[180px] w-full rounded-md border bg-background p-3 font-mono text-xs"
           value={settings.chatSystemPrompt}
           onChange={(e) => setSettings({ ...settings, chatSystemPrompt: e.target.value })}

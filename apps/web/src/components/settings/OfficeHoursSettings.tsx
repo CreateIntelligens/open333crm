@@ -154,6 +154,7 @@ export function OfficeHoursSettings() {
       {/* Enable toggle */}
       <div className="flex items-center gap-3">
         <button
+          data-guide="office-hours.enabled"
           type="button"
           role="switch"
           aria-checked={config.enabled}

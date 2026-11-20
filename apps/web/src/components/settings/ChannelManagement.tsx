@@ -382,7 +382,7 @@ export function ChannelManagement() {
               <Button variant="outline" size="lg" className="w-[140px]" onClick={() => setShowWizard(true)}>
                 設定精靈
               </Button>
-              <Button size="lg" className="w-[140px]" onClick={() => setShowAddDialog(true)}>
+              <Button data-guide="channel.open" size="lg" className="w-[140px]" onClick={() => setShowAddDialog(true)}>
                 <AddIcon />
                 新增渠道
               </Button>

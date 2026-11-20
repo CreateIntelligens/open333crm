@@ -39,7 +39,7 @@ const SUPERVISOR_CODES = [
   'case.view', 'case.create', 'case.update', 'case.assign', 'case.escalate', 'case.delete',
   'contact.view', 'contact.update', 'contact.merge',
   'tag.view', 'tag.manage',
-  'knowledge.view', 'knowledge.manage', 'knowledge.admin',
+  'knowledge.view', 'knowledge.manage', 'knowledge.admin', 'assistant.use',
   'shortlink.view', 'shortlink.manage',
   'canvas.use', 'identity.review',
   // SUPERVISOR 級
@@ -62,7 +62,7 @@ const AGENT_CODES = [
   'case.view', 'case.create', 'case.update', 'case.assign', 'case.escalate', 'case.delete',
   'contact.view', 'contact.update', 'contact.merge',
   'tag.view', 'tag.manage',
-  'knowledge.view', 'knowledge.manage',
+  'knowledge.view', 'knowledge.manage', 'assistant.use',
   'shortlink.view', 'shortlink.manage',
   'canvas.use', 'identity.review',
   'analytics.view.self',

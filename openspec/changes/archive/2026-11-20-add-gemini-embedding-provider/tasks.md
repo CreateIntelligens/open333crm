@@ -59,8 +59,8 @@
 - [x] 9.3 `pnpm build` 通過（13/13）。
 - [x] 9.4 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 都沒有新增違規。
 - [x] 9.5 結構規則（`structure-reviewer` 在這個工作環境無法使用，改為逐條自查）：新的 service 函式都收 `TenantCtx`；Gemini 呼叫在交易外（`embedWithUsage()`），用量紀錄在自己的交易內寫入（`recordLlmUsage()`）；service 沒有新增 Redis 或 LLM client 的 import（`check-tenant-ctx` 的計數不變）；route 只組依賴與呼叫 flow。
-- [ ] 9.6 `node scripts/feature-impact.mjs` 的知識庫區回歸清單：自動化測試已涵蓋文章向量化、語意搜尋、自動回覆與設定頁。需要真實 Gemini 與 UI 的手動項目，部署後在 UAT 的 Demo 租戶檢查（切換 Gemini、重新嵌入、語意搜尋、WebChat 自動回覆）。
+- [x] 9.6 `node scripts/feature-impact.mjs` 的知識庫區回歸清單：自動化測試已涵蓋文章向量化、語意搜尋、自動回覆與設定頁。2026-11-20 在 UAT 的 Demo 租戶手動檢查：設定頁切換成 Gemini、重新嵌入全部後 206 篇都是 `gemini-embedding-001` 的向量，`ai_usages` 以 `feature: embedding`、`keySource: byok` 記錄；WebChat 15 題中 12 題由知識庫回答並附上文章連結（AI agent 關閉後，change `disable-agent-by-default`）。第一次重新嵌入有 146 篇因去識別化服務拒絕請求而失敗，暫時關閉 Demo 的去識別化後重新嵌入成功；去識別化服務的拒絕不重試，另外處理。
 - [x] 9.7 `CHANGELOG.md` 在 `## [2026-11-19]` 新增條目。
 - [x] 9.8 `node scripts/validate-openspec.mjs add-gemini-embedding-provider` 與 `node scripts/validate-openspec.mjs --specs` 通過。
 - [x] 9.9 `node scripts/check-doc-history.mjs --strict` 通過。
-- [ ] 9.10 9.6 完成後，以 `pnpm exec openspec archive` 歸檔。
+- [x] 9.10 9.6 完成後，以 `pnpm exec openspec archive` 歸檔。

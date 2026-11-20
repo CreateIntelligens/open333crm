@@ -10,6 +10,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { SimulatorPanel } from '@/components/shared/SimulatorPanel';
 import { WebTalkGlobal } from '@/components/webtalk/WebTalkGlobal';
 import { WebMcpProvider } from '@/components/ai/WebMcpProvider';
+import { GuideAssistantPanel } from '@/components/ai/GuideAssistantPanel';
 import { Loader2 } from 'lucide-react';
 import { PAGE_DIALOG_ROOT_ID } from '@/components/ui/page-dialog';
 
@@ -54,6 +55,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       <SimulatorPanel />
       <WebTalkGlobal />
       <WebMcpProvider />
+      <GuideAssistantPanel />
     </SocketProvider>
   );
 }

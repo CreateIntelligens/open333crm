@@ -88,3 +88,15 @@ Agent 執行時，系統 MUST NOT 在資料庫交易內呼叫 LLM、外部工具
 #### Scenario: 呼叫外部服務之前交易已經結束
 - **WHEN** Agent 呼叫 LLM 或工具
 - **THEN** 這次呼叫開始之前，Agent 開過的交易都已經 commit
+
+### Requirement: Agent 預設關閉
+
+環境變數 `AGENTIC_LLM_ENABLED` 沒有設定時，系統 SHALL 視為 `false`：客人的文字訊息 SHALL NOT 交給 Agent，SHALL 走知識庫回覆。只有 `AGENTIC_LLM_ENABLED` 的值是 `true` 時，系統才先交給 Agent。
+
+#### Scenario: 沒有設定 AGENTIC_LLM_ENABLED 時 Agent 關閉
+- **WHEN** API 啟動時沒有設定 `AGENTIC_LLM_ENABLED`
+- **THEN** 設定值 `AGENTIC_LLM_ENABLED` 是 `false`
+
+#### Scenario: AGENTIC_LLM_ENABLED=true 時 Agent 開啟
+- **WHEN** API 啟動時 `AGENTIC_LLM_ENABLED` 的值是 `true`
+- **THEN** 設定值 `AGENTIC_LLM_ENABLED` 是 `true`

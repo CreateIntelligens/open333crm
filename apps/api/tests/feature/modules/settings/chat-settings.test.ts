@@ -131,7 +131,7 @@ describe('讀取 Chat 設定不寫入資料庫', () => {
     const t = await makeTenant('llm-no-row');
     const res = await call(await buildApp(t), 'POST', '/api/v1/ai/rewrite', { text: '你好', action: 'polish' });
     assert.equal(res.status, 200, JSON.stringify(res.body));
-    assert.deepEqual(chat.state.chatCalls, [{ model: DEFAULTS.model }], '以預設的模型呼叫 LLM');
+    assert.deepEqual(chat.state.chatCalls.map((c) => c.model), [DEFAULTS.model], '以預設的模型呼叫 LLM');
     assert.equal(await storedRow(t), null, '呼叫 LLM 不建立設定列');
   });
 

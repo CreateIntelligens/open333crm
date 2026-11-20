@@ -145,6 +145,7 @@ export default function PlanPage() {
             <div role="tablist" className="flex border-b border-border bg-muted">
               {(['upgrade', 'token_topup'] as const).map((m) => (
                 <button
+                  data-guide={m === 'token_topup' ? 'plan-topup.open' : undefined}
                   key={m}
                   type="button"
                   role="tab"
@@ -180,7 +181,7 @@ export default function PlanPage() {
               ) : (
                 <div className="flex flex-col gap-2">
                   <span className="text-[13px] font-medium leading-[18px]">加購額度</span>
-                  <div role="radiogroup" aria-label="加購額度" className="flex flex-wrap items-center gap-2.5">
+                  <div data-guide="plan-topup.amount" role="radiogroup" aria-label="加購額度" className="flex flex-wrap items-center gap-2.5">
                     {TOPUPS.map((t) => {
                       const on = topup === t.tokens;
                       return (

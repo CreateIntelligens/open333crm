@@ -148,7 +148,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
           </p>
 
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            <Button data-guide="knowledge-import.file" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
               <Upload className="mr-2 h-4 w-4" />
               選擇檔案
             </Button>

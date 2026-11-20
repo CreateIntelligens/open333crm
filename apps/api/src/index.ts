@@ -53,6 +53,7 @@ import knowledgeRoutes from './modules/knowledge/knowledge.routes.js';
 import marketingRoutes from './modules/marketing/marketing.routes.js';
 import materialRoutes from './modules/marketing/material.routes.js';
 import aiRoutes from './modules/ai/ai.routes.js';
+import guideAssistantRoutes from './modules/ai/guide-assistant.routes.js';
 import slaRoutes from './modules/sla/sla.routes.js';
 import lineProfileRoutes from './modules/line/line-profile.routes.js';
 import richMenuRoutes from './modules/line/rich-menu.routes.js';
@@ -242,6 +243,7 @@ export async function bootstrap() {
   await app.register(marketingRoutes, { prefix: '/api/v1/marketing' });
   await app.register(materialRoutes, { prefix: '/api/v1/marketing' });
   await app.register(aiRoutes, { prefix: '/api/v1/ai' });
+  await app.register(guideAssistantRoutes, { prefix: '/api/v1/ai/guide-assistant' });
   await app.register(slaRoutes, { prefix: '/api/v1/sla-policies' });
   await app.register(lineProfileRoutes, { prefix: '/api/v1' });
   await app.register(richMenuRoutes, { prefix: '/api/v1/line/rich-menus' });

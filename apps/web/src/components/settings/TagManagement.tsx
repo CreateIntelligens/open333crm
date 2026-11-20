@@ -161,7 +161,7 @@ export function TagManagement() {
     // 版面依 Claude Design「標籤管理」：標題區＋新增、範圍篩選（附數量）、標籤列表、總數；依 Figma 微調
     <div className="flex flex-col gap-5">
       <SettingsHeader title="標籤管理" description="管理聯繫人、對話和案件的分類標籤">
-        <Button size="lg" className="w-[140px]" onClick={openCreate}>
+        <Button data-guide="tag.open" size="lg" className="w-[140px]" onClick={openCreate}>
           <AddIcon />
           新增標籤
         </Button>
@@ -232,6 +232,7 @@ export function TagManagement() {
             <div>
               <label className="mb-1.5 block text-sm font-medium">標籤名稱</label>
               <Input
+                data-guide="tag.name"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="例：VIP"

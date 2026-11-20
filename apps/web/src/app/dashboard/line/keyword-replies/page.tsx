@@ -111,7 +111,7 @@ export default function KeywordRepliesPage() {
         title="關鍵字回覆"
         description="顧客在 LINE、Facebook 或 Instagram 傳送的訊息出現指定關鍵字時，系統自動回覆對應素材，也可以同時發送優惠券"
       >
-        <Button size="lg" onClick={handleOpenCreate}>
+        <Button data-guide="keyword-reply.open" size="lg" onClick={handleOpenCreate}>
           <AddIcon />
           建立關鍵字回覆
         </Button>

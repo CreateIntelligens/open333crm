@@ -626,6 +626,7 @@ function BroadcastTab({ dialogOpen, setDialogOpen }: TabProps) {
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
               <Input
+                data-guide="broadcast.name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="廣播名稱"
@@ -1025,6 +1026,7 @@ function SegmentTab({ dialogOpen, setDialogOpen }: TabProps) {
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
               <Input
+                data-guide="segment.name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="分群名稱"
@@ -1166,7 +1168,7 @@ export default function MarketingPage() {
     <div className="flex h-full flex-col">
       {/* 依 Figma 7.1.1：說明文字與右上角主要按鈕。Figma 的說明是從人員管理頁複製來的佔位文字，這裡改成各分頁自己的說明（依 Figma 微調） */}
       <Topbar title="行銷" description={meta.description}>
-        <Button size="lg" className="w-[140px]" onClick={() => setDialogOpen(true)}>
+        <Button data-guide="marketing.open" size="lg" className="w-[140px]" onClick={() => setDialogOpen(true)}>
           <AddIcon />
           {meta.action}
         </Button>

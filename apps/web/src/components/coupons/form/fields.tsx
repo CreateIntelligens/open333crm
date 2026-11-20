@@ -117,12 +117,14 @@ interface InputProps extends FieldMessages {
   desc?: string;
   counter?: string;
   className?: string;
+  /** 後台助理導覽用的 `data-guide` 值，加在 input 上 */
+  guide?: string;
 }
 
 /** 單行輸入；鎖定時改為唯讀灰框＋鎖頭圖示。 */
 export function TextField({
   id, label, value, onChange, onBlur, required, locked, placeholder, prefix, suffix, mono, type = 'text',
-  inputMode, maxLength, min, width = 'full', tag, desc, counter, help, info, warn, error, className,
+  inputMode, maxLength, min, width = 'full', tag, desc, counter, help, info, warn, error, className, guide,
 }: InputProps) {
   const invalid = !locked && !!error;
   return (
@@ -153,6 +155,7 @@ export function TextField({
           {prefix && <span className="pl-3 text-muted-foreground">{prefix}</span>}
           <input
             {...a11y}
+            data-guide={guide}
             type={type}
             value={value}
             readOnly={locked}

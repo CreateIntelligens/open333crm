@@ -222,7 +222,7 @@ export default function KnowledgePage() {
       >
         {pageTab === 'articles' && (
           <>
-            <Button variant="outline" size="lg" className="w-[140px]" onClick={() => setImportOpen(true)}>
+            <Button data-guide="knowledge-import.open" variant="outline" size="lg" className="w-[140px]" onClick={() => setImportOpen(true)}>
               <Upload />
               匯入文章
             </Button>

@@ -182,6 +182,7 @@ function CreateAgentDialog({ open, onOpenChange, roles, onCreated, canAssignChan
           <div className="space-y-1.5">
             <label className="text-sm font-medium">姓名</label>
             <Input
+              data-guide="agent.name"
               required
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
@@ -742,7 +743,7 @@ export function AgentManagement() {
           修改密碼
         </Button>
         {canCreate && (
-          <Button size="lg" className="w-[140px]" onClick={() => setCreateOpen(true)}>
+          <Button data-guide="agent.open" size="lg" className="w-[140px]" onClick={() => setCreateOpen(true)}>
             <AddIcon />
             新增人員
           </Button>

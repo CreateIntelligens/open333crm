@@ -696,6 +696,7 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
           <>
             <TextField
               {...fp('name')}
+              guide="coupon.name"
               placeholder="例如：秋季家電 85 折券"
               maxLength={MAX_NAME}
               counter={`剩 ${Math.max(0, MAX_NAME - values.name.length)} 字`}

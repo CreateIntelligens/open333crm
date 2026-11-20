@@ -167,7 +167,7 @@ export function SlaManagement() {
     // 版面依 Claude Design「SLA 政策」：標題區＋建立、政策列表（名稱＋預設、優先級、首回、解決、預警、操作）；依 Figma 微調
     <div className="flex flex-col gap-5">
       <SettingsHeader title="SLA 政策" description="設定不同優先級的服務等級承諾">
-        <Button size="lg" onClick={openCreate}>
+        <Button data-guide="sla.open" size="lg" onClick={openCreate}>
           <AddIcon />
           建立 SLA 政策
         </Button>
@@ -218,6 +218,7 @@ export function SlaManagement() {
             <div>
               <label className="mb-1.5 block text-sm font-medium">政策名稱</label>
               <Input
+                data-guide="sla.name"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="例：VIP 快速服務"
