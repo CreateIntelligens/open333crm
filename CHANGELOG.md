@@ -16,6 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **網站聊天室的訊息沒有換行**：嵌入式 widget 的訊息泡泡（`apps/widget/src/ui.ts` 的 `.o333-msg`）少了 `white-space: pre-wrap`，瀏覽器把換行當成空白，AI 回覆的分段與步驟擠成一行。補上這個樣式後，客服、機器人與訪客的訊息都保留換行。
+- Telegram 外掛驗證 Bot API 回應，分開保存私人訊息的發送者、聊天室與更新 ID，並區分送出成功、拒絕與結果不明。
 
 ## [2026-11-19]
 

@@ -1,5 +1,4 @@
-// TelegramPlugin — implements ChannelPlugin for Telegram Bot API
-// v0.2.0 multi-channel-billing
+import { timingSafeEqual } from 'node:crypto';
 
 import type {
   ChannelPlugin,
@@ -8,14 +7,58 @@ import type {
 } from './index.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
-interface TelegramCredentials {
-  botToken: string;
-  webhookSecret: string;
-  [key: string]: unknown;
-}
-
 // Telegram Bot API base URL
 const BASE_URL = 'https://api.telegram.org/bot';
+
+export type TelegramApiOutcome = 'rejected' | 'unknown';
+export type TelegramApiOperation = 'getMe' | 'getWebhookInfo' | 'setWebhook' | 'sendMessage';
+
+export class TelegramApiError extends Error {
+  constructor(
+    readonly operation: TelegramApiOperation,
+    readonly outcome: TelegramApiOutcome,
+  ) {
+    super(`Telegram ${operation} ${outcome === 'rejected' ? 'was rejected' : 'has an unknown result'}`);
+    this.name = 'TelegramApiError';
+  }
+}
+
+export interface TelegramBotInfo {
+  id: number;
+  is_bot: boolean;
+  first_name: string;
+  username?: string;
+}
+
+export interface TelegramWebhookInfo {
+  url: string;
+  has_custom_certificate: boolean;
+  pending_update_count: number;
+  ip_address?: string;
+  last_error_date?: number;
+  last_error_message?: string;
+  last_synchronization_error_date?: number;
+  max_connections?: number;
+  allowed_updates?: string[];
+}
+
+
+function isBotInfo(value: unknown): value is TelegramBotInfo {
+  if (typeof value !== 'object' || value === null || !('id' in value) || !('is_bot' in value) || !('first_name' in value)) return false;
+  return typeof value.id === 'number'
+    && Number.isSafeInteger(value.id)
+    && typeof value.is_bot === 'boolean'
+    && typeof value.first_name === 'string'
+    && (!('username' in value) || typeof value.username === 'string');
+}
+
+function isWebhookInfo(value: unknown): value is TelegramWebhookInfo {
+  if (typeof value !== 'object' || value === null || !('url' in value) || !('has_custom_certificate' in value) || !('pending_update_count' in value)) return false;
+  return typeof value.url === 'string'
+    && typeof value.has_custom_certificate === 'boolean'
+    && typeof value.pending_update_count === 'number'
+    && Number.isInteger(value.pending_update_count);
+}
 
 export class TelegramPlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.TELEGRAM;
@@ -27,48 +70,40 @@ export class TelegramPlugin implements ChannelPlugin {
     secret: string,
   ): boolean {
     const token = headers['x-telegram-bot-api-secret-token'];
-    return token === secret;
+    if (typeof token !== 'string' || !secret) return false;
+    const actual = Buffer.from(token);
+    const expected = Buffer.from(secret);
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
   }
 
   async parseWebhook(
     rawBody: Buffer,
     _headers: Record<string, string>,
   ): Promise<ParsedWebhookMessage[]> {
-    const update = JSON.parse(rawBody.toString()) as TelegramUpdate;
-    const msg = update.message ?? update.callback_query?.message;
-    if (!msg) return [];
+    const update = JSON.parse(rawBody.toString()) as TelegramUpdate | null;
+    const message = update?.message;
+    if (!update || !message || message.chat?.type !== 'private') return [];
+    if (typeof message.text !== 'string' || message.text.length === 0) return [];
 
-    const contactUid = String(update.message?.from?.id ?? update.callback_query?.from?.id ?? '');
-    const timestamp = new Date((msg.date ?? Date.now() / 1000) * 1000);
+    const senderId = message.from?.id;
+    if (!Number.isSafeInteger(senderId) || !Number.isSafeInteger(message.chat.id)
+      || !Number.isSafeInteger(update.update_id) || !Number.isSafeInteger(message.message_id)
+      || !Number.isSafeInteger(message.date)) return [];
 
-    // Callback query (button postback)
-    if (update.callback_query) {
-      return [{
-        contactUid: String(update.callback_query.from.id),
-        timestamp,
-        contentType: 'postback',
-        content: { text: update.callback_query.data ?? '' },
-        rawPayload: update,
-      }];
-    }
-
-    const message = update.message!;
-
-    if (message.text) {
-      return [{ contactUid, timestamp, contentType: 'text', content: { text: message.text }, rawPayload: update }];
-    }
-    if (message.photo) {
-      const largest = message.photo[message.photo.length - 1];
-      return [{ contactUid, timestamp, contentType: 'image', content: { mediaUrl: `file_id:${largest.file_id}` }, rawPayload: update }];
-    }
-    if (message.sticker) {
-      return [{ contactUid, timestamp, contentType: 'sticker', content: { text: message.sticker.emoji ?? '[sticker]' }, rawPayload: update }];
-    }
-    if (message.location) {
-      return [{ contactUid, timestamp, contentType: 'location', content: { text: `${message.location.latitude},${message.location.longitude}` }, rawPayload: update }];
-    }
-
-    return [{ contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: update }];
+    const timestamp = new Date(message.date * 1000);
+    if (Number.isNaN(timestamp.getTime())) return [];
+    const externalId = String(senderId);
+    const parsed = {
+      providerEventId: String(update.update_id),
+      channelMsgId: String(message.message_id),
+      externalId,
+      contactUid: externalId,
+      replyDestination: String(message.chat.id),
+      timestamp,
+      contentType: 'text',
+      content: { text: message.text },
+    };
+    return [parsed];
   }
 
   async getProfile(uid: string, credentials: Record<string, unknown>): Promise<{ uid: string; displayName: string; avatarUrl?: string }> {
@@ -80,49 +115,91 @@ export class TelegramPlugin implements ChannelPlugin {
     to: string,
     message: OutboundPayload,
     credentials: Record<string, unknown>,
-  ): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
-    const creds = credentials as TelegramCredentials;
-    const apiUrl = `${BASE_URL}${creds.botToken}`;
-    const { contentType, content } = message;
-    const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string }> | undefined;
+  ): Promise<{ success: boolean; outcome: 'accepted' | TelegramApiOutcome; channelMsgId?: string; error?: string }> {
+    const text = message.content.text;
+    if (!to || message.contentType !== 'text' || typeof text !== 'string' || !text.trim()) {
+      return { success: false, outcome: 'rejected', error: 'Telegram requires a destination and non-empty text' };
+    }
 
     try {
-      let response: Response;
-
-      if (contentType === 'text' && quickReplies?.length) {
-        const inline_keyboard = [quickReplies.map((r) => ({
-          text: r.label,
-          callback_data: r.postbackData ?? r.text ?? r.label,
-        }))];
-        response = await fetch(`${apiUrl}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: to, text: content.text ?? '請選擇：', reply_markup: { inline_keyboard } }),
-        });
-      } else {
-        response = await fetch(`${apiUrl}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: to, text: content.text ?? '' }),
-        });
+      const result = await this.callTelegram(
+        'sendMessage',
+        credentials,
+        (value): value is { message_id: number } => typeof value === 'object' && value !== null
+          && 'message_id' in value && Number.isSafeInteger(value.message_id),
+        { chat_id: to, text },
+      );
+      return { success: true, outcome: 'accepted', channelMsgId: String(result.message_id) };
+    } catch (error) {
+      if (error instanceof TelegramApiError) {
+        return { success: false, outcome: error.outcome, error: error.message };
       }
-
-      const result = await response.json() as { ok: boolean; result?: { message_id: number }; description?: string };
-      if (!result.ok) return { success: false, error: result.description };
-      return { success: true, channelMsgId: String(result.result?.message_id) };
-    } catch (err) {
-      return { success: false, error: String(err) };
+      return { success: false, outcome: 'unknown', error: 'Telegram sendMessage has an unknown result' };
     }
   }
 
+  async getMe(credentials: Record<string, unknown>): Promise<TelegramBotInfo> {
+    return this.callTelegram('getMe', credentials, isBotInfo);
+  }
+
+  async getWebhookInfo(credentials: Record<string, unknown>): Promise<TelegramWebhookInfo> {
+    return this.callTelegram('getWebhookInfo', credentials, isWebhookInfo);
+  }
+
   async setWebhook(webhookUrl: string, credentials: Record<string, unknown>): Promise<void> {
-    const creds = credentials as TelegramCredentials;
-    const apiUrl = `${BASE_URL}${creds.botToken}`;
-    await fetch(`${apiUrl}/setWebhook`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: webhookUrl, secret_token: creds.webhookSecret, allowed_updates: ['message', 'callback_query'] }),
-    });
+    const webhookSecret = credentials.webhookSecret;
+    if (typeof webhookSecret !== 'string' || webhookSecret.length === 0) {
+      throw new TelegramApiError('setWebhook', 'rejected');
+    }
+
+    await this.callTelegram(
+      'setWebhook',
+      credentials,
+      (result): result is true => result === true,
+      { url: webhookUrl, secret_token: webhookSecret, allowed_updates: ['message'] },
+    );
+  }
+
+  private async callTelegram<T>(
+    operation: TelegramApiOperation,
+    credentials: Record<string, unknown>,
+    isResult: (value: unknown) => value is T,
+    body: Record<string, unknown> = {},
+  ): Promise<T> {
+    const botToken = credentials.botToken;
+    if (typeof botToken !== 'string' || botToken.length === 0) {
+      throw new TelegramApiError(operation, 'rejected');
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}${botToken}/${operation}`, {
+        method: 'POST',
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new TelegramApiError(operation, 'unknown');
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new TelegramApiError(operation, 'unknown');
+    }
+
+    if (typeof payload !== 'object' || payload === null || !('ok' in payload)) {
+      throw new TelegramApiError(operation, 'unknown');
+    }
+    if (payload.ok === false && response.status < 500) throw new TelegramApiError(operation, 'rejected');
+    if (!response.ok || payload.ok !== true || !('result' in payload) || !isResult(payload.result)) {
+      throw new TelegramApiError(operation, 'unknown');
+    }
+
+    return payload.result;
   }
 }
 
@@ -131,28 +208,12 @@ export class TelegramPlugin implements ChannelPlugin {
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
-  callback_query?: {
-    id: string;
-    from: TelegramUser;
-    message?: TelegramMessage;
-    data?: string;
-  };
 }
 
 interface TelegramMessage {
   message_id: number;
-  from?: TelegramUser;
-  chat: { id: number };
+  from?: { id: number };
+  chat: { id: number; type: string };
   date: number;
   text?: string;
-  photo?: Array<{ file_id: string; width: number; height: number }>;
-  sticker?: { file_id: string; emoji?: string };
-  location?: { latitude: number; longitude: number };
-}
-
-interface TelegramUser {
-  id: number;
-  first_name: string;
-  last_name?: string;
-  username?: string;
 }
