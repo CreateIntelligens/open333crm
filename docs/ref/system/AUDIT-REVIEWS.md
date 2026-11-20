@@ -4,6 +4,12 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-20：AI agent 預設關閉（KB-07）
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| KB-07 | 部分修正：`AGENTIC_LLM_ENABLED` 預設 `false`，`deploy.yml` 把 UAT 設成 `false`，客人訊息回到知識庫回覆。agent 仍沒有知識庫搜尋工具 | change `disable-agent-by-default`；`apps/api/tests/unit/config/env-agentic-llm.test.ts`「沒有設定 AGENTIC_LLM_ENABLED 時 Agent 關閉」，修正前失敗在斷言上 |
+
 ## 2026-11-19：Gemini 向量化（LLM-04、DB-01）
 
 change `add-gemini-embedding-provider`。以 feature 測試（`app_tenant` 連線、Redis、假的 Gemini fetch）與 jsdom 元件測試驗證，沒有連 UAT。

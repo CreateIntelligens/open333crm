@@ -62,11 +62,13 @@ jobs:
             exit 1
           fi
           echo "✓ MCP_ALLOWED_ORIGINS configured"
-          sed -i 's/^AGENTIC_LLM_ENABLED=false/AGENTIC_LLM_ENABLED=true/' .env.api || true
+          # The Agent has no knowledge base search tool. When it is on, it replies first and the
+          # knowledge base auto-reply does not run (change disable-agent-by-default).
+          sed -i 's/^AGENTIC_LLM_ENABLED=.*/AGENTIC_LLM_ENABLED=false/' .env.api || true
           if ! grep -q '^AGENTIC_LLM_ENABLED=' .env.api; then
-            echo "AGENTIC_LLM_ENABLED=true" >> .env.api
+            echo "AGENTIC_LLM_ENABLED=false" >> .env.api
           fi
-          echo "✓ AGENTIC_LLM_ENABLED configured"
+          echo "✓ AGENTIC_LLM_ENABLED=false configured"
           sudo sed -i 's/^A2A_BRIDGE_ENABLED=.*/A2A_BRIDGE_ENABLED=true/' .env.api || true
           if ! grep -q '^A2A_BRIDGE_ENABLED=' .env.api; then
             echo "A2A_BRIDGE_ENABLED=true" | sudo tee -a .env.api

@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-11-20]
+
+### Changed
+
+- **AI agent 預設關閉（KB-07）**：`AGENTIC_LLM_ENABLED` 沒有設定時是 `false`，`deploy.yml` 每次部署把 UAT 設成 `false`。agent 沒有知識庫搜尋工具；開啟時 agent 先回覆每則客人訊息，知識庫回覆不執行，2026-10 起全平台的知識庫回覆幾乎沒有執行。部署後所有租戶的機器人回到知識庫回覆。
+
 ## [2026-11-19]
 
 ### Added

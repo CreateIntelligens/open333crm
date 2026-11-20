@@ -64,6 +64,7 @@ AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影
 - Gemini 向量化一定經過 `embedWithUsage()`：先檢查月額度，呼叫後寫 `AiUsage`（`feature: 'embedding'`）。不要直接呼叫 `embedText()` 繞過它。（AI 設定、AI 月額度）
 - 只有 `keySource === 'platform'` 計入與檢查月額度，BYOK 不計不擋。（額度）
 - LLM 呼叫是「交易 1 → 交易外呼叫 LLM → 交易 2」（`llm.flow.ts`）。不要在交易內呼叫 `llm-client.ts` 或 `generateReply()`。一次請求呼叫多次 LLM 時，`prepareLlmCall()` 一次、`runLlmCall()` 多次。（額度）
+- 不要在 Agent 加上知識庫搜尋工具之前打開 `AGENTIC_LLM_ENABLED`：Agent 會先回覆每則客人訊息，知識庫回覆不執行（KB-07）。預設是 `false`，`deploy.yml` 也把 UAT 設成 `false`。（機器人怎麼用知識庫回答）
 - 不要把 Agent（`runAgentReplyFlow()`）包進 `withTenant()` 或 `inTenant()`：交易 5 秒逾時，Agent 最長 120 秒。每次工具呼叫後先 commit 工具紀錄。（機器人怎麼用知識庫回答）
 - 讀 Chat 設定不建立設定列。`DEFAULT_CHAT_SETTINGS` 要與 schema 的欄位預設值相同（`chat-settings-defaults.test.ts`）。（AI 設定）
 - 個資遮罩啟用時，所有模型輸入與 `embedText()` 都先經 2md 去識別化。失敗就停止，不可用原文當 fallback。（模型輸入的個資遮罩）
