@@ -4,10 +4,11 @@
  * 後台助理面板（規格 dashboard-guide-assistant）。後台每一頁的右下角有助理按鈕，打開後可以提問。
  *
  * - 只在員工有 assistant.use 時顯示。
- * - 回答有導覽時顯示「帶我去」。員工按下按鈕後才執行導覽：面板收起，畫面切到功能頁並標示欄位。
+ * - 回答有導覽時顯示「帶我去」。員工按下按鈕後才執行導覽：面板收起，畫面切到功能頁，
+ *   每一步標示元素並顯示說明卡，員工操作完再進行下一步。
  * - 對話只存在這個元件的 state，關閉面板後清空。每次提問送出最近 6 則訊息當作上下文。
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2, MessageCircleQuestion, Send, X } from 'lucide-react';
 import type { GuideDefinition, GuideStep } from '@open333crm/shared';
@@ -15,7 +16,7 @@ import { splitTextLinks } from '@open333crm/shared';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { usePermission } from '@/providers/AuthProvider';
-import { runGuide } from '@/lib/guide/guide-runner';
+import { runGuide, type GuideStepProgress } from '@/lib/guide/guide-runner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -77,7 +78,13 @@ export function GuideAssistantPanel() {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [spotlight, setSpotlight] = useState<{ el: HTMLElement; note: string } | null>(null);
+  const [spotlight, setSpotlight] = useState<{
+    el: HTMLElement;
+    step: GuideStep;
+    progress: GuideStepProgress;
+    next: () => void;
+    cancel: () => void;
+  } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   /** 每次關閉面板加一。請求回來時編號不同，代表對話已清空，丟掉這個回覆 */
   const sessionRef = useRef(0);
@@ -85,8 +92,6 @@ export function GuideAssistantPanel() {
   useEffect(() => {
     listRef.current?.scrollTo?.({ top: listRef.current.scrollHeight });
   }, [items, open]);
-
-  const closeSpotlight = useCallback(() => setSpotlight(null), []);
 
   if (!canUse) return null;
 
@@ -130,10 +135,21 @@ export function GuideAssistantPanel() {
       currentPath: pathname,
       getPath: () => window.location.pathname,
       navigate: (route) => router.push(route),
-      highlight: (el: HTMLElement, step: GuideStep) => setSpotlight({ el, note: step.note }),
+      showStep: (el, step, progress) =>
+        new Promise((resolve) => {
+          // 同一步只回一次：元素點擊與元素移除可能先後觸發
+          let done = false;
+          const finish = (outcome: 'next' | 'cancel') => {
+            if (done) return;
+            done = true;
+            setSpotlight(null);
+            resolve(outcome);
+          };
+          setSpotlight({ el, step, progress, next: () => finish('next'), cancel: () => finish('cancel') });
+        }),
     });
-    // 導覽期間員工關閉了面板（對話已清空）時，不再打開面板
-    if (!result.ok && session === sessionRef.current) {
+    // 員工自己結束導覽時不顯示訊息；導覽期間員工關閉了面板（對話已清空）時，不再打開面板
+    if (!result.ok && result.reason === 'missing' && session === sessionRef.current) {
       setItems((prev) => [...prev, { role: 'notice', content: NOT_FOUND_NOTICE }]);
       setOpen(true);
     }
@@ -243,7 +259,15 @@ export function GuideAssistantPanel() {
         </section>
       )}
 
-      {spotlight && <GuideSpotlight target={spotlight.el} note={spotlight.note} onClose={closeSpotlight} />}
+      {spotlight && (
+        <GuideSpotlight
+          target={spotlight.el}
+          step={spotlight.step}
+          progress={spotlight.progress}
+          onNext={spotlight.next}
+          onClose={spotlight.cancel}
+        />
+      )}
     </>
   );
 }

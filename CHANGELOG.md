@@ -10,6 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **後台助理的導覽逐步顯示說明卡**（change `add-dashboard-guide-assistant`）：原本只在最後一步標示欄位，前面的「建立」按鈕由助理直接點擊，員工看不出發生什麼事。現在每一步都標示元素並顯示「第 n / N 步」與說明。點擊步驟改成由員工自己點，或按「下一步」代為點擊；最後一步按「完成」。員工可以隨時按 Esc 或「結束導覽」離開。欄位在原生 modal 對話框裡時（匯入知識庫文章），聚光框與說明卡改放進該對話框；原本會被對話框蓋住，員工看不到也按不到。
 - **AI agent 預設關閉（KB-07）**：`AGENTIC_LLM_ENABLED` 沒有設定時是 `false`，`deploy.yml` 每次部署把 UAT 設成 `false`。agent 沒有知識庫搜尋工具；開啟時 agent 先回覆每則客人訊息，知識庫回覆不執行，2026-10 起全平台的知識庫回覆幾乎沒有執行。部署後所有租戶的機器人回到知識庫回覆。
 
 ### Fixed
