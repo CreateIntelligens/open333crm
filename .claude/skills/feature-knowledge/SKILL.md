@@ -95,7 +95,7 @@ AI agent、後台助理（依知識庫回答員工並帶到功能頁）、夥伴
    - 命中關鍵字、`botMode: off` 的訊息不轉接。
 5. 「👎 沒幫到我」→ 回報調教出現 → 編輯文章 → 標為已處理。
 6. 用 agent 與只有 `knowledge.view` 的自訂角色重走 1、2、5，確認 403 與按鈕顯示。直開 `/dashboard/knowledge/chat-prompt` 顯示「沒有權限」。
-7. 後台助理：用 admin 問「怎麼設定關鍵字自動回覆」，按「帶我去」，確認畫面切到關鍵字回覆頁、打開建立表單、標示關鍵字欄位。改了導覽用到的頁面時，確認 `data-guide` 仍在（`apps/web/tests/unit/lib/guide/guide-targets.test.ts`）。用沒有 `automation.manage` 的角色問同一題，回答沒有「帶我去」。
+7. 後台助理：用 admin 問「怎麼設定關鍵字自動回覆」，按「帶我去」，確認畫面切到關鍵字回覆頁、說明卡顯示「第 1 / 2 步」並標示建立按鈕；點按鈕後打開建立表單、標示關鍵字欄位；按「完成」後表單仍開著。改了導覽用到的頁面時，確認 `data-guide` 仍在（`apps/web/tests/unit/lib/guide/guide-targets.test.ts`）。用沒有 `automation.manage` 的角色問同一題，回答沒有「帶我去」。
 
 自動測試：
 

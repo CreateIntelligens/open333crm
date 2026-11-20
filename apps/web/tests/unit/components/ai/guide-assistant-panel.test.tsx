@@ -90,13 +90,92 @@ describe('員工按下「帶我去」後才執行導覽', () => {
 
   test('找不到欄位', async () => {
     answer(GUIDE);
-    runner.runGuide.mockResolvedValueOnce({ ok: false, missingTarget: 'keyword-reply.keyword' });
+    runner.runGuide.mockResolvedValueOnce({ ok: false, reason: 'missing', missingTarget: 'keyword-reply.keyword' });
     render(<GuideAssistantPanel />);
     await askQuestion();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '帶我去' }));
     });
     await waitFor(() => assert.ok(screen.getByText('找不到這個欄位，請依上面的步驟操作。')));
+  });
+});
+
+describe('導覽逐步顯示說明卡', () => {
+  test('每一步顯示說明卡，完成後關閉', async () => {
+    answer(GUIDE);
+    let deps!: { showStep: (el: HTMLElement, step: unknown, progress: unknown) => Promise<string> };
+    runner.runGuide.mockImplementationOnce(async (_guide, d) => {
+      deps = d;
+      return new Promise(() => {});
+    });
+    render(<GuideAssistantPanel />);
+    await askQuestion();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '帶我去' }));
+    });
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    let outcome!: Promise<string>;
+    await act(async () => {
+      outcome = deps.showStep(field, GUIDE.steps[0], { index: 1, total: 1 });
+    });
+    assert.ok(await screen.findByText('第 1 / 1 步'));
+    assert.ok(screen.getByText('輸入關鍵字'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    });
+    assert.equal(await outcome, 'next');
+    assert.ok(screen.queryByText('第 1 / 1 步') === null, '說明卡關閉');
+    field.remove();
+  });
+
+  test('啟動另一個導覽時結束前一個', async () => {
+    answer(GUIDE);
+    const outcomes: Array<Promise<string>> = [];
+    let firstDeps!: { showStep: (el: HTMLElement, step: unknown, progress: unknown) => Promise<string> };
+    runner.runGuide.mockImplementationOnce(async (_guide, d) => {
+      firstDeps = d;
+      return new Promise(() => {});
+    });
+    runner.runGuide.mockImplementationOnce(async () => new Promise(() => {}));
+    render(<GuideAssistantPanel />);
+    await askQuestion();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '帶我去' }));
+    });
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    await act(async () => {
+      outcomes.push(firstDeps.showStep(field, GUIDE.steps[0], { index: 1, total: 1 }));
+    });
+    await screen.findByText('第 1 / 1 步');
+    // 導覽期間重新打開面板，按第二次「帶我去」
+    fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '帶我去' }));
+    });
+    assert.equal(await outcomes[0], 'cancel', '前一個導覽正在等的步驟結束');
+    // 前一個導覽之後才找到元素時，不再顯示說明卡
+    let late!: Promise<string>;
+    await act(async () => {
+      late = firstDeps.showStep(field, GUIDE.steps[0], { index: 1, total: 1 });
+    });
+    assert.equal(await late, 'cancel');
+    assert.ok(screen.queryByText('第 1 / 1 步') === null);
+    field.remove();
+  });
+
+  test('員工中途結束導覽', async () => {
+    answer(GUIDE);
+    runner.runGuide.mockResolvedValueOnce({ ok: false, reason: 'cancelled' });
+    render(<GuideAssistantPanel />);
+    await askQuestion();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '帶我去' }));
+    });
+    assert.ok(screen.queryByRole('region', { name: '後台助理' }) === null, '面板不重新打開');
+    fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
+    assert.ok(screen.queryByText('找不到這個欄位，請依上面的步驟操作。') === null);
   });
 });
 
@@ -127,7 +206,7 @@ describe('面板的對話', () => {
     fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
     fireEvent.click(screen.getByRole('button', { name: '關閉助理' }));
     await act(async () => {
-      finish({ ok: false, missingTarget: 'keyword-reply.keyword' });
+      finish({ ok: false, reason: 'missing', missingTarget: 'keyword-reply.keyword' });
     });
     assert.ok(screen.queryByRole('region', { name: '後台助理' }) === null, '面板維持關閉');
     fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));

@@ -31,11 +31,18 @@
 - [x] 4.3 第二輪審查的測試先寫：`guide-assistant.test.ts`「路徑含換行時回 400」；`guide-assistant-panel.test.tsx`「導覽期間關閉面板後，導覽失敗不重新打開面板」。修改前兩個測試都失敗在斷言上。
 - [x] 4.4 實作：`currentPath` 只接受網址路徑的字元；`go()` 比對面板編號，面板關閉過時不重新打開；兩個 `usePermission()` 都無條件呼叫（hook 規則，jsdom 測試的假 hook 不是真的 hook，所以沒有測試）；答案裡的連結以 `new URL()` 檢查協定（CodeQL）；`guide-targets.test.ts` 改用 `readdirSync({ withFileTypes: true })`，不先 `stat`（CodeQL）。
 
+## 4b. 導覽逐步顯示說明卡（UAT 實測回饋，2026-11-20）
+
+- [x] 4.5 測試先寫：`guide-runner.test.ts`「點擊步驟等員工操作」「員工點擊元素後進行下一步」「員工中途結束導覽」；新增 `guide-spotlight.test.tsx` 的 7 個情境；`guide-assistant-panel.test.tsx`「每一步顯示說明卡，完成後關閉」「員工中途結束導覽」。修改前全部失敗。「元素在 modal 對話框裡」修改前失敗在斷言上；突變驗證：說明卡改回放在 `document.body` 時失敗。
+- [x] 4.6 實作：`runGuide()` 不再點擊元素，改成每一步呼叫 `showStep()` 並等員工操作；結果新增 `reason: 'missing' | 'cancelled'`，面板只在 `missing` 時顯示「找不到這個欄位」。`GuideSpotlight` 顯示「第 n / N 步」、「下一步」或「完成」與「結束導覽」；click 步驟監聽元素的點擊；元素在 `<dialog>` 裡時，聚光框以 portal 放進該對話框（`components/ui/dialog.tsx` 用 `showModal()`，對話框外的元素在 top layer 底下而且無法點擊）。
+- [x] 4.7 PR #560 審查的測試先寫：`guide-spotlight.test.tsx`「員工中途結束導覽」檢查 Esc 的預設行為被取消；`guide-assistant-panel.test.tsx`「啟動另一個導覽時結束前一個」。修改前前者失敗在斷言上，後者因為前一個導覽的步驟永遠不結束而逾時。
+- [x] 4.8 實作：說明卡處理 Esc 時呼叫 `preventDefault()`，原生 `<dialog>` 不會跟著關閉；面板以導覽編號只保留最新的導覽，按「帶我去」時先結束前一個導覽正在等的步驟，舊導覽之後的步驟與「找不到」訊息都不顯示。
+
 ## 5. 平台層
 
 - [x] 5.1 `assistant.use` 掛在 feature `knowledge`，路由以 `requirePermission()` 保護（1.3、2.2）。
 - [x] 5.2 LLM 呼叫經 `generateReply()`：月額度、AI 隱私政策與 `recordLlmUsage()`（2.1 的「記錄助理的用量」「月額度已滿」）。
-- [ ] 5.3 部署後在 UAT 執行 `scripts/grant-new-role-permissions.mjs assistant.use`，再清除 Redis 的 `perms:*` 快取。
+- [x] 5.3 部署後在 UAT 執行 `scripts/grant-new-role-permissions.mjs assistant.use`，再清除 Redis 的 `perms:*` 快取。2026-11-20 以等效的 SQL 補上 6 個租戶共 18 筆，並清除快取（api 容器裡沒有這支腳本）。
 
 ## 6. 文件
 

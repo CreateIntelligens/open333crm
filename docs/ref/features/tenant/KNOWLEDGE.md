@@ -176,7 +176,15 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 3. 以 `generateReply()` 呼叫 LLM，`feature` 是 `guide-assistant`。系統提示詞列出過濾後的導覽 `id` 與 `title`，要求 LLM 回傳 `{ "answer", "guideId" }`。
 4. `guideId` 不在過濾後的導覽中時，`guide` 是 `null`。LLM 的回覆不是這個格式的 JSON 時，整段回覆是答案，`guide` 是 `null`。
 
-回答有導覽時，面板顯示「帶我去」。員工按下按鈕後，`apps/web/src/lib/guide/guide-runner.ts` 的 `runGuide()` 切換到導覽的頁面，依步驟點擊入口，再以 `GuideSpotlight.tsx` 標示要填的欄位。每個步驟等待 `[data-guide="<target>"]` 最多 5 秒，找不到時面板顯示「找不到這個欄位，請依上面的步驟操作。」。
+回答有導覽時，面板顯示「帶我去」。員工按下按鈕後，`apps/web/src/lib/guide/guide-runner.ts` 的 `runGuide()` 切換到導覽的頁面，再逐步標示每個步驟的元素。每個步驟等待 `[data-guide="<target>"]` 最多 5 秒，找不到時面板顯示「找不到這個欄位，請依上面的步驟操作。」。
+
+每一步由 `GuideSpotlight.tsx` 以聚光框標示元素，說明卡顯示「第 n / N 步」與說明：
+
+- 點擊步驟（例如「建立」按鈕）不自動點擊。員工自己點元素，或按「下一步」由說明卡代為點擊，才進行下一步。
+- 標示步驟讓欄位取得焦點；最後一步的按鈕是「完成」。
+- 員工按 Esc、按「結束導覽」，或點擊說明卡與元素以外的地方時，導覽結束，面板不顯示訊息。Esc 會取消預設行為，底下的對話框不會跟著關閉。
+- 一次只執行一個導覽：導覽期間按另一個「帶我去」時，前一個導覽結束。
+- 元素在原生 modal 對話框（`components/ui/dialog.tsx` 以 `showModal()` 打開的 `<dialog>`，例如匯入文章）裡時，聚光框與說明卡放進該對話框。modal 對話框蓋在所有 z-index 之上，對話框外的元素也無法點擊。`PageDialog` 是一般的 `fixed` 圖層，說明卡疊在它上面即可。
 
 導覽目錄的規則：
 

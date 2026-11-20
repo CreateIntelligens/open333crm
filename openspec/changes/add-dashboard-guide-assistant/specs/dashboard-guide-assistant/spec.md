@@ -102,8 +102,7 @@
 
 1. 目前的路徑不是導覽的 `route` 時，切換到 `route`。
 2. 對每個步驟，等待 `[data-guide="<target>"]` 出現，最多 5 秒。
-3. `click` 步驟：點擊該元素。
-4. `highlight` 步驟：把該元素捲到畫面內，對它呼叫 `focus()`，並以聚光框標示它，旁邊顯示步驟的 `note`。
+3. 依下一個需求「導覽逐步顯示說明卡」標示每個步驟。
 
 5 秒內找不到元素時，前端 SHALL 停止這次導覽，並在面板顯示「找不到這個欄位，請依上面的步驟操作。」。
 
@@ -119,13 +118,47 @@
 - **WHEN** 員工在 `/dashboard/inbox` 按下 `keyword-reply.create` 的「帶我去」
 - **THEN** 前端切換到 `/dashboard/line/keyword-replies`
 
-#### Scenario: 點開入口並標示欄位
-- **WHEN** 導覽的步驟是先 `click` `keyword-reply.open`，再 `highlight` `keyword-reply.keyword`
-- **THEN** 前端點擊 `keyword-reply.open` 的元素，等待 `keyword-reply.keyword` 的元素出現，再標示它並讓它取得焦點
-
 #### Scenario: 找不到欄位
 - **WHEN** 某個步驟的元素 5 秒內沒有出現
 - **THEN** 前端停止導覽，面板顯示「找不到這個欄位，請依上面的步驟操作。」
+
+### Requirement: 導覽逐步顯示說明卡
+
+前端 SHALL 對導覽的每個步驟：
+
+1. 以聚光框標示該元素，旁邊的說明卡顯示「第 n / N 步」與步驟的 `note`。
+2. `click` 步驟：前端 MUST NOT 自動點擊。員工點擊該元素，或按說明卡的「下一步」時，才進行下一步。按「下一步」時，前端代員工點擊該元素一次。
+3. `highlight` 步驟：把該元素捲到畫面內，並對它呼叫 `focus()`。不是最後一步時，說明卡顯示「下一步」；最後一步顯示「完成」。員工按下後，進行下一步或結束導覽。
+
+員工按 Esc，或點擊說明卡與被標示元素以外的地方時，前端 SHALL 結束導覽，面板不顯示訊息。結束導覽的 Esc MUST NOT 關閉底下的對話框。
+
+前端一次只執行一個導覽。員工在導覽期間按另一個「帶我去」時，前一個導覽 SHALL 結束，之後不再顯示它的說明卡。
+
+元素在原生的 modal 對話框（以 `showModal()` 打開的 `<dialog>`）裡時，聚光框與說明卡 SHALL 放在該對話框內。modal 對話框蓋在所有圖層之上，對話框外的元素也無法點擊，放在外面時員工看不到也按不到說明卡。
+
+#### Scenario: 點擊步驟等員工操作
+- **WHEN** 導覽的第 1 步是 `click` `keyword-reply.open`，共 2 步
+- **THEN** 前端標示 `keyword-reply.open` 的元素，說明卡顯示「第 1 / 2 步」；員工操作之前，前端不點擊它，也不標示第 2 步
+
+#### Scenario: 員工點擊元素後進行下一步
+- **WHEN** 員工點擊被標示的 `keyword-reply.open` 元素
+- **THEN** 前端等待 `keyword-reply.keyword` 的元素出現，標示它並讓它取得焦點，說明卡顯示「第 2 / 2 步」與「完成」
+
+#### Scenario: 按下一步時代員工點擊
+- **WHEN** 員工在第 1 步按說明卡的「下一步」
+- **THEN** 前端點擊 `keyword-reply.open` 的元素一次，再進行第 2 步
+
+#### Scenario: 員工中途結束導覽
+- **WHEN** 員工在任一步按 Esc
+- **THEN** 聚光框關閉，導覽結束，面板不顯示「找不到這個欄位」；Esc 的預設行為被取消，底下的 `<dialog>` 不會關閉
+
+#### Scenario: 啟動另一個導覽時結束前一個
+- **WHEN** 第一個導覽正在顯示說明卡，員工重新打開面板並按另一個「帶我去」
+- **THEN** 第一個導覽正在等的步驟結束；它之後才找到的元素不顯示說明卡
+
+#### Scenario: 元素在 modal 對話框裡
+- **WHEN** 被標示的元素在 `<dialog>` 裡（例如匯入知識庫文章的檔案欄位）
+- **THEN** 說明卡在該 `<dialog>` 裡
 
 ### Requirement: 沒有權限時不顯示助理
 
