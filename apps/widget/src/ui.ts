@@ -37,6 +37,7 @@ const STYLES = `
   .o333-msg {
     max-width: 80%; padding: 8px 12px; border-radius: 12px;
     font-size: 14px; line-height: 1.4; word-break: break-word;
+    white-space: pre-wrap;
   }
   .o333-msg-in {
     background: #f1f5f9; color: #1e293b;

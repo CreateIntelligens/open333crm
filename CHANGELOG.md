@@ -8,6 +8,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **AI agent 預設關閉（KB-07）**：`AGENTIC_LLM_ENABLED` 沒有設定時是 `false`，`deploy.yml` 每次部署把 UAT 設成 `false`。agent 沒有知識庫搜尋工具；開啟時 agent 先回覆每則客人訊息，知識庫回覆不執行，2026-10 起全平台的知識庫回覆幾乎沒有執行。部署後所有租戶的機器人回到知識庫回覆。
 
+### Fixed
+
+- **網站聊天室的訊息沒有換行**：嵌入式 widget 的訊息泡泡（`apps/widget/src/ui.ts` 的 `.o333-msg`）少了 `white-space: pre-wrap`，瀏覽器把換行當成空白，AI 回覆的分段與步驟擠成一行。補上這個樣式後，客服、機器人與訪客的訊息都保留換行。
+
 ## [2026-11-19]
 
 ### Added
