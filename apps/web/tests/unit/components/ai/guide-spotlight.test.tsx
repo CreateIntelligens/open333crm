@@ -71,7 +71,8 @@ describe('導覽逐步顯示說明卡', () => {
   test('員工中途結束導覽', async () => {
     const { onClose, onNext } = renderStep(CLICK_STEP, 1, 2);
     await screen.findByText('第 1 / 2 步');
-    fireEvent.keyDown(document, { key: 'Escape' });
+    // 回傳 false 代表預設行為被取消：原生 <dialog> 不會跟著關閉
+    assert.equal(fireEvent.keyDown(document, { key: 'Escape' }), false, 'Esc 不關閉底下的對話框');
     assert.equal(onClose.mock.calls.length, 1);
     assert.equal(onNext.mock.calls.length, 0);
   });

@@ -35,6 +35,8 @@
 
 - [x] 4.5 測試先寫：`guide-runner.test.ts`「點擊步驟等員工操作」「員工點擊元素後進行下一步」「員工中途結束導覽」；新增 `guide-spotlight.test.tsx` 的 7 個情境；`guide-assistant-panel.test.tsx`「每一步顯示說明卡，完成後關閉」「員工中途結束導覽」。修改前全部失敗。「元素在 modal 對話框裡」修改前失敗在斷言上；突變驗證：說明卡改回放在 `document.body` 時失敗。
 - [x] 4.6 實作：`runGuide()` 不再點擊元素，改成每一步呼叫 `showStep()` 並等員工操作；結果新增 `reason: 'missing' | 'cancelled'`，面板只在 `missing` 時顯示「找不到這個欄位」。`GuideSpotlight` 顯示「第 n / N 步」、「下一步」或「完成」與「結束導覽」；click 步驟監聽元素的點擊；元素在 `<dialog>` 裡時，聚光框以 portal 放進該對話框（`components/ui/dialog.tsx` 用 `showModal()`，對話框外的元素在 top layer 底下而且無法點擊）。
+- [x] 4.7 PR #560 審查的測試先寫：`guide-spotlight.test.tsx`「員工中途結束導覽」檢查 Esc 的預設行為被取消；`guide-assistant-panel.test.tsx`「啟動另一個導覽時結束前一個」。修改前前者失敗在斷言上，後者因為前一個導覽的步驟永遠不結束而逾時。
+- [x] 4.8 實作：說明卡處理 Esc 時呼叫 `preventDefault()`，原生 `<dialog>` 不會跟著關閉；面板以導覽編號只保留最新的導覽，按「帶我去」時先結束前一個導覽正在等的步驟，舊導覽之後的步驟與「找不到」訊息都不顯示。
 
 ## 5. 平台層
 

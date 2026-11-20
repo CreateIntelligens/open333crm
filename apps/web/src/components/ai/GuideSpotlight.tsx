@@ -59,7 +59,10 @@ export function GuideSpotlight({ target, step, progress, onNext, onClose }: Guid
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      // 取消預設行為：原生 <dialog> 的 Esc 會關閉對話框，員工填到一半的資料會不見
+      e.preventDefault();
+      onClose();
     };
     const onPointer = (e: PointerEvent) => {
       const el = e.target;

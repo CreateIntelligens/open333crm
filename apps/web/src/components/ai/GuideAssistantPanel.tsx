@@ -88,6 +88,10 @@ export function GuideAssistantPanel() {
   const listRef = useRef<HTMLDivElement>(null);
   /** 每次關閉面板加一。請求回來時編號不同，代表對話已清空，丟掉這個回覆 */
   const sessionRef = useRef(0);
+  /** 每次按「帶我去」加一。舊的導覽之後才找到元素時，編號不同，不再顯示說明卡 */
+  const guideRunRef = useRef(0);
+  /** 結束目前顯示中的步驟（回 'cancel'） */
+  const cancelStepRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     listRef.current?.scrollTo?.({ top: listRef.current.scrollHeight });
@@ -130,6 +134,9 @@ export function GuideAssistantPanel() {
   const go = async (guide: GuideDefinition) => {
     // 面板收起，避免蓋住要標示的欄位；對話保留，導覽失敗時再打開
     const session = sessionRef.current;
+    // 一次只執行一個導覽：結束前一個導覽正在等的步驟
+    const run = ++guideRunRef.current;
+    cancelStepRef.current?.();
     setOpen(false);
     const result = await runGuide(guide, {
       currentPath: pathname,
@@ -137,19 +144,24 @@ export function GuideAssistantPanel() {
       navigate: (route) => router.push(route),
       showStep: (el, step, progress) =>
         new Promise((resolve) => {
+          if (run !== guideRunRef.current) return resolve('cancel');
           // 同一步只回一次：元素點擊與元素移除可能先後觸發
           let done = false;
           const finish = (outcome: 'next' | 'cancel') => {
             if (done) return;
             done = true;
+            if (cancelStepRef.current === cancel) cancelStepRef.current = null;
             setSpotlight(null);
             resolve(outcome);
           };
-          setSpotlight({ el, step, progress, next: () => finish('next'), cancel: () => finish('cancel') });
+          const cancel = () => finish('cancel');
+          cancelStepRef.current = cancel;
+          setSpotlight({ el, step, progress, next: () => finish('next'), cancel });
         }),
     });
     // 員工自己結束導覽時不顯示訊息；導覽期間員工關閉了面板（對話已清空）時，不再打開面板
-    if (!result.ok && result.reason === 'missing' && session === sessionRef.current) {
+    // 已經有新的導覽時，舊導覽的結果不顯示
+    if (!result.ok && result.reason === 'missing' && session === sessionRef.current && run === guideRunRef.current) {
       setItems((prev) => [...prev, { role: 'notice', content: NOT_FOUND_NOTICE }]);
       setOpen(true);
     }
