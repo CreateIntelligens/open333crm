@@ -11,7 +11,7 @@
 
 ## 3. 完成定義
 
-- [ ] 3.1 `pnpm test`、`pnpm --filter @open333crm/api test:feature` 中與 Agent、知識庫回覆有關的測試通過。
-- [ ] 3.2 `node scripts/validate-openspec.mjs disable-agent-by-default`、`node scripts/check-doc-history.mjs --strict` 通過。
-- [ ] 3.3 部署後在 UAT 確認 `open333crm-api` 容器的 `AGENTIC_LLM_ENABLED=false`，Demo WebChat 重跑 15 題。
-- [ ] 3.4 3.3 完成後，以 `pnpm exec openspec archive` 歸檔。
+- [x] 3.1 `pnpm test`、`pnpm --filter @open333crm/api test:feature` 中與 Agent、知識庫回覆有關的測試通過。
+- [x] 3.2 `node scripts/validate-openspec.mjs disable-agent-by-default`、`node scripts/check-doc-history.mjs --strict` 通過。
+- [x] 3.3 部署後在 UAT 確認 `open333crm-api` 容器的 `AGENTIC_LLM_ENABLED=false`，Demo WebChat 重跑 15 題（2026-11-20）：12 題由知識庫回答並附上文章連結，部署前只有 3 題。另外 2 題命中渠道預設的轉接關鍵字（「客服」「真人」），1 題知識庫查不到，正確回答查不到。
+- [x] 3.4 3.3 完成後，以 `pnpm exec openspec archive` 歸檔。
