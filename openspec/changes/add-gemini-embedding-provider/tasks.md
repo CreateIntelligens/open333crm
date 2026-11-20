@@ -30,6 +30,8 @@
 - [x] 5.2 實作：`searchSimilarArticles()` 與 `getEmbeddingStats()` 加上 `"embeddingModel" = 目前模型`；語意搜尋與 `kb-autoreply` 的 `searchKbArticles()` 帶入目前模型。原本把模型名稱寫成 `'seed'` 的測試資料（`knowledge-embedding-routes.test.ts`、`ai-routes.test.ts`）依新規格改成租戶目前的模型 `bge-m3`。
 - [x] 5.3 migration 補值測試（`apps/api/tests/feature/migrations/backfill-embedding-model.test.ts`）：讀出 migration 的 `-- @backfill` 區段，在會回滾的交易內執行並檢查。
 
+- [x] 5.4 PR 審查修正：測試先寫（`embed-article.test.ts`「舊模型的向量不覆蓋目前模型的向量」），修改前失敗在斷言上（文章的向量被 `bge-m3` 的結果覆蓋）。實作：`writeArticleEmbedding()` 鎖住文章後比對目前模型，舊模型的結果不覆蓋目前模型的向量。
+
 突變驗證（測試寫好時已經通過的情境）：
 
 - 「不比對其他租戶的文章」：既有行為。拿掉 `searchSimilarArticles()` 的 `"tenantId"` 條件時測試仍然通過，因為 `app_tenant` 連線的 RLS 也擋住其他租戶的列。兩層隔離給同一個結果，這是 AGENTS.md 要求的兩層設計，不是測試的缺陷。

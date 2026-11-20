@@ -124,6 +124,8 @@
 
 語意搜尋與 AI 自動回覆的知識庫檢索 SHALL 只比對 `embeddingModel` 等於租戶目前模型的文章。向量化統計（`GET /api/v1/settings/embedding` 的 `stats.embedded`）SHALL 只計 `embeddingModel` 等於租戶目前模型的已發布文章。
 
+文章已有租戶目前模型的向量時，系統 SHALL NOT 用其他模型產生的向量覆蓋它。向量化開始後租戶換了模型，而且新模型的向量化先完成時，較晚完成的舊模型請求不寫入。
+
 #### Scenario: 換服務後舊向量不進搜尋結果
 - **WHEN** 文章 A 的 `embeddingModel` 是 `bge-m3`，租戶的模型已改成 `gemini-embedding-001`，成員搜尋與文章 A 相同的文字
 - **THEN** 搜尋結果沒有文章 A
@@ -131,6 +133,10 @@
 #### Scenario: 換服務後統計顯示要重新嵌入
 - **WHEN** 租戶有 10 篇已發布文章，`embeddingModel` 都是 `bge-m3`，租戶的模型已改成 `gemini-embedding-001`
 - **THEN** `stats.embedded` 是 0，`stats.missing` 是 10
+
+#### Scenario: 舊模型的向量不覆蓋目前模型的向量
+- **WHEN** 文章 A 以 `bge-m3` 向量化期間，租戶的模型改成 `bge-m3-custom`，而且文章 A 已經寫入 `bge-m3-custom` 的向量，之後 `bge-m3` 的請求才完成
+- **THEN** 文章 A 的向量與 `embeddingModel` 仍然是 `bge-m3-custom` 的結果
 
 #### Scenario: 不比對其他租戶的文章
 - **WHEN** 租戶 B 的文章與租戶 A 的模型相同，租戶 A 的成員搜尋

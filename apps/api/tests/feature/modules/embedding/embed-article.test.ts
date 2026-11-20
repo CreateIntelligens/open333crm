@@ -86,6 +86,24 @@ describe('Automated Vectorization and Indexing', () => {
   });
 });
 
+describe('搜尋只比對目前模型的向量', () => {
+  test('舊模型的向量不覆蓋目前模型的向量', async () => {
+    await setModel(fx.A, 'bge-m3');
+    const a = await fx.articleOf(fx.A, 'stale-model', { status: 'PUBLISHED' });
+    ollama.state.vector = markedVector(3);
+    // bge-m3 的請求完成前：租戶換成 bge-m3-custom，新模型的向量化已經寫入
+    ollama.state.beforeEmbedReturns = async () => {
+      ollama.state.beforeEmbedReturns = null;
+      await setModel(fx.A, 'bge-m3-custom');
+      await setVector(a.id, 8, 'bge-m3-custom');
+    };
+
+    await embed(fx.A, a.id);
+
+    assert.deepEqual(await stored(a.id), { marker: 8, model: 'bge-m3-custom' });
+  });
+});
+
 describe('向量化期間文章被修改時不寫入向量', () => {
   test('向量化期間文章被修改', async () => {
     const a = await fx.articleOf(fx.A, 'changed', { status: 'PUBLISHED' });

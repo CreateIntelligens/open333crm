@@ -96,6 +96,7 @@ export async function readArticleForEmbedding(ctx: TenantCtx, articleId: string)
 
 /**
  * 只在文章的向量化文字仍和 `sourceText` 相同時寫入向量與模型名稱（design D2）。回傳是否寫入。
+ * 文章已有租戶目前模型的向量時，不以其他模型的向量覆蓋（design D4）。
  *
  * 先以 `FOR UPDATE` 鎖住文章再重組文字：比對與寫入之間，其他交易改不了這篇文章。
  * 只比對文字：向量只取決於文字。`updatedAt` 會被瀏覽次數改變；狀態（發布、封存）由查詢過濾，
@@ -106,12 +107,17 @@ export async function writeArticleEmbedding(
   articleId: string,
   input: { vector: number[]; model: string; sourceText: string },
 ): Promise<boolean> {
-  const locked = await ctx.tx.$queryRawUnsafe<Array<{ id: string }>>(
-    `SELECT id FROM km_articles WHERE id = $1::uuid AND "tenantId" = $2::uuid FOR UPDATE`,
+  const locked = await ctx.tx.$queryRawUnsafe<Array<{ id: string; embeddingModel: string | null }>>(
+    `SELECT id, "embeddingModel" FROM km_articles WHERE id = $1::uuid AND "tenantId" = $2::uuid FOR UPDATE`,
     articleId,
     ctx.tenantId,
   );
   if (locked.length === 0) return false;
+
+  // 向量化期間租戶換了模型，而且新模型的向量已經寫入：舊模型的結果不覆蓋它
+  // （spec embedding-settings「舊模型的向量不覆蓋目前模型的向量」）
+  const currentModel = (await getEmbeddingSettings(ctx)).model;
+  if (input.model !== currentModel && locked[0].embeddingModel === currentModel) return false;
 
   if ((await readArticleForEmbedding(ctx, articleId)) !== input.sourceText) return false;
 
