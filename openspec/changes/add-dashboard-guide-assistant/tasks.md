@@ -28,6 +28,9 @@
 - [x] 4.1 測試先寫：`guide-assistant.test.ts`「沒有 knowledge.view」；`guide-assistant-panel.test.tsx`「沒有 knowledge.view 的員工」「關閉面板後不顯示舊請求的回覆」「歷史訊息每則最多 2000 字」。修改前 4 個測試都失敗在斷言上。
 - [x] 4.2 實作：路由另外要求 `knowledge.view`，`assistant.use` 的 `dependsOn` 是 `knowledge.view`；面板同時檢查兩個權限；關閉面板時以編號丟掉舊請求的回覆；`history` 每則截到 2000 字。
 
+- [x] 4.3 第二輪審查的測試先寫：`guide-assistant.test.ts`「路徑含換行時回 400」；`guide-assistant-panel.test.tsx`「導覽期間關閉面板後，導覽失敗不重新打開面板」。修改前兩個測試都失敗在斷言上。
+- [x] 4.4 實作：`currentPath` 只接受網址路徑的字元；`go()` 比對面板編號，面板關閉過時不重新打開；兩個 `usePermission()` 都無條件呼叫（hook 規則，jsdom 測試的假 hook 不是真的 hook，所以沒有測試）；答案裡的連結以 `new URL()` 檢查協定（CodeQL）；`guide-targets.test.ts` 改用 `readdirSync({ withFileTypes: true })`，不先 `stat`（CodeQL）。
+
 ## 5. 平台層
 
 - [x] 5.1 `assistant.use` 掛在 feature `knowledge`，路由以 `requirePermission()` 保護（1.3、2.2）。

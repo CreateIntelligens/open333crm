@@ -20,7 +20,8 @@ const askSchema = z.object({
     .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(2000) }))
     .max(6)
     .default([]),
-  currentPath: z.string().max(300).regex(/^\//).optional(),
+  // 路徑會寫進系統提示詞：只接受網址路徑的字元，不接受空白與換行
+  currentPath: z.string().max(300).regex(/^\/[A-Za-z0-9\-._~/%]*$/).optional(),
 });
 
 export default async function guideAssistantRoutes(fastify: FastifyInstance, opts: GuideAssistantRoutesOptions = {}) {

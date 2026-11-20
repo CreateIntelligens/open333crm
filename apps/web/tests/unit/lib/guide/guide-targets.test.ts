@@ -5,7 +5,7 @@
  * 頁面改版時刪掉或改名 `data-guide`，導覽就會「找不到這個欄位」，這個測試先擋下來。
  */
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'vitest';
@@ -14,9 +14,12 @@ import { GUIDE_CATALOG } from '@open333crm/shared';
 const SRC = fileURLToPath(new URL('../../../../src', import.meta.url));
 
 function readSources(dir: string): string {
-  return readdirSync(dir)
-    .map((name) => join(dir, name))
-    .map((path) => (statSync(path).isDirectory() ? readSources(path) : /\.tsx?$/.test(path) ? readFileSync(path, 'utf8') : ''))
+  return readdirSync(dir, { withFileTypes: true })
+    .map((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return readSources(path);
+      return /\.tsx?$/.test(entry.name) ? readFileSync(path, 'utf8') : '';
+    })
     .join('\n');
 }
 

@@ -117,6 +117,23 @@ describe('面板的對話', () => {
     assert.ok(screen.queryByText('怎麼設定關鍵字自動回覆？') === null);
   });
 
+  test('導覽期間關閉面板後，導覽失敗不重新打開面板', async () => {
+    answer(GUIDE);
+    let finish!: (value: unknown) => void;
+    runner.runGuide.mockReturnValueOnce(new Promise((r) => (finish = r)));
+    render(<GuideAssistantPanel />);
+    await askQuestion();
+    fireEvent.click(screen.getByRole('button', { name: '帶我去' }));
+    fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
+    fireEvent.click(screen.getByRole('button', { name: '關閉助理' }));
+    await act(async () => {
+      finish({ ok: false, missingTarget: 'keyword-reply.keyword' });
+    });
+    assert.ok(screen.queryByRole('region', { name: '後台助理' }) === null, '面板維持關閉');
+    fireEvent.click(screen.getByRole('button', { name: '開啟助理' }));
+    assert.ok(screen.queryByText('找不到這個欄位，請依上面的步驟操作。') === null);
+  });
+
   test('歷史訊息每則最多 2000 字', async () => {
     api.post.mockResolvedValueOnce({ data: { data: { answer: '長'.repeat(3000), guide: null, sources: [] } } });
     render(<GuideAssistantPanel />);

@@ -37,26 +37,40 @@ const HISTORY_LIMIT = 6;
 const HISTORY_CONTENT_MAX = 2000;
 const NOT_FOUND_NOTICE = '找不到這個欄位，請依上面的步驟操作。';
 
+/** 只接受 http(s) 網址，回傳 URL 解析後的網址；其他協定（javascript: 等）回 null */
+function safeHttpUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 答案裡的網址顯示成連結。只認 http(s)，其他文字維持純文字 */
 function AnswerText({ text }: { text: string }) {
   return (
     <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-      {splitTextLinks(text).map((part, i) =>
-        part.type === 'link' ? (
-          <a key={i} href={part.value} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+      {splitTextLinks(text).map((part, i) => {
+        const href = part.type === 'link' ? safeHttpUrl(part.value) : null;
+        return href ? (
+          <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
             {part.value}
           </a>
         ) : (
           <React.Fragment key={i}>{part.value}</React.Fragment>
-        ),
-      )}
+        );
+      })}
     </p>
   );
 }
 
 export function GuideAssistantPanel() {
   // 答案來自知識庫文章，API 同時要求兩個權限
-  const canUse = usePermission('assistant.use') && usePermission('knowledge.view');
+  // 兩個 hook 都無條件呼叫：用 && 串接時，第一個是 false 就不呼叫第二個，違反 hook 規則
+  const canUseAssistant = usePermission('assistant.use');
+  const canViewKnowledge = usePermission('knowledge.view');
+  const canUse = canUseAssistant && canViewKnowledge;
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -110,6 +124,7 @@ export function GuideAssistantPanel() {
 
   const go = async (guide: GuideDefinition) => {
     // 面板收起，避免蓋住要標示的欄位；對話保留，導覽失敗時再打開
+    const session = sessionRef.current;
     setOpen(false);
     const result = await runGuide(guide, {
       currentPath: pathname,
@@ -117,7 +132,8 @@ export function GuideAssistantPanel() {
       navigate: (route) => router.push(route),
       highlight: (el: HTMLElement, step: GuideStep) => setSpotlight({ el, note: step.note }),
     });
-    if (!result.ok) {
+    // 導覽期間員工關閉了面板（對話已清空）時，不再打開面板
+    if (!result.ok && session === sessionRef.current) {
       setItems((prev) => [...prev, { role: 'notice', content: NOT_FOUND_NOTICE }]);
       setOpen(true);
     }

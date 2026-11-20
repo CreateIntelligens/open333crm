@@ -2,7 +2,7 @@
 
 ### Requirement: 助理依本租戶的知識庫回答
 
-`POST /api/v1/ai/guide-assistant/ask` SHALL 接收 `message`（1 到 1000 字）、`history`（最多 6 則，每則 `role` 是 `user` 或 `assistant`，`content` 最多 2000 字）與 `currentPath`（選填）。系統 SHALL 以 `searchArticlesByTextFlow()` 檢索本租戶的已發布文章，取相似度最高的 3 篇。系統 SHALL 把這 3 篇文章的內容交給 LLM。回應 SHALL 是 `{ answer, guide, sources }`。`sources` 的每一項是 `{ id, title }`。
+`POST /api/v1/ai/guide-assistant/ask` SHALL 接收 `message`（1 到 1000 字）、`history`（最多 6 則，每則 `role` 是 `user` 或 `assistant`，`content` 最多 2000 字）與 `currentPath`（選填，最多 300 字，以 `/` 開頭，只能有英數字與 `-._~/%`，不能有空白或換行）。系統 SHALL 以 `searchArticlesByTextFlow()` 檢索本租戶的已發布文章，取相似度最高的 3 篇。系統 SHALL 把這 3 篇文章的內容交給 LLM。回應 SHALL 是 `{ answer, guide, sources }`。`sources` 的每一項是 `{ id, title }`。
 
 沒有檢索到文章時，系統 MUST NOT 呼叫 LLM。這時 `answer` 是固定的「知識庫裡找不到這個問題的說明。」，`guide` 是 `null`，`sources` 是空陣列。
 
@@ -13,6 +13,10 @@
 #### Scenario: 只檢索本租戶的文章
 - **WHEN** 另一個租戶有一篇與問題相同的文章，本租戶沒有
 - **THEN** 系統不呼叫 LLM，`answer` 是固定的「知識庫裡找不到這個問題的說明。」，`sources` 是空陣列
+
+#### Scenario: 路徑含換行時回 400
+- **WHEN** 員工送出的 `currentPath` 含換行
+- **THEN** 回應是 400，系統不呼叫 LLM
 
 #### Scenario: 問題是空字串
 - **WHEN** 員工送出 `message` 是空字串
@@ -137,11 +141,15 @@
 
 ### Requirement: 面板的對話
 
-面板的對話只存在前端。員工關閉面板時，面板 SHALL 清空對話，並 MUST NOT 顯示關閉前送出、關閉後才回來的回覆。面板送出的 `history` 每則 SHALL 最多 2000 字，與 API 的上限相同：較長的答案只送前 2000 字。
+面板的對話只存在前端。員工關閉面板時，面板 SHALL 清空對話，並 MUST NOT 顯示關閉前送出、關閉後才回來的回覆。導覽執行期間員工關閉了面板時，導覽失敗後面板 MUST NOT 重新打開，也 MUST NOT 顯示「找不到這個欄位」。面板送出的 `history` 每則 SHALL 最多 2000 字，與 API 的上限相同：較長的答案只送前 2000 字。
 
 #### Scenario: 關閉面板後不顯示舊請求的回覆
 - **WHEN** 員工送出問題，回覆回來之前關閉面板，再打開面板
 - **THEN** 面板沒有這次的問題，也沒有這次的回覆
+
+#### Scenario: 導覽期間關閉面板後，導覽失敗不重新打開面板
+- **WHEN** 員工按下「帶我去」，導覽還在等待欄位時，員工打開再關閉面板，之後導覽失敗
+- **THEN** 面板維持關閉；員工再打開面板時，沒有「找不到這個欄位」的提示
 
 #### Scenario: 歷史訊息每則最多 2000 字
 - **WHEN** 上一則答案有 3000 字，員工再送出一個問題
