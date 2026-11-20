@@ -34,6 +34,7 @@ export type AiFeature =
   | 'flex-generate'
   | 'ai-rewrite'
   | 'embedding'
+  | 'guide-assistant'
   | 'unknown';
 
 export interface AiUsageMeta {

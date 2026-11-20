@@ -19,7 +19,7 @@ export function fakeChat() {
     chatStatus: 200,
     /** 回覆之前執行，例如讓回覆變慢 */
     beforeReply: null as null | (() => Promise<void>),
-    chatCalls: [] as Array<{ model: string }>,
+    chatCalls: [] as Array<{ model: string; messages: Array<{ role: string; content: string }> }>,
     /** Gemini 收到的 x-goog-api-key */
     geminiKeys: [] as string[],
   };
@@ -28,8 +28,8 @@ export function fakeChat() {
   vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.endsWith('/api/chat')) {
-      const body = JSON.parse(String(init?.body)) as { model: string };
-      state.chatCalls.push({ model: body.model });
+      const body = JSON.parse(String(init?.body)) as { model: string; messages?: Array<{ role: string; content: string }> };
+      state.chatCalls.push({ model: body.model, messages: body.messages ?? [] });
       if (state.beforeReply) await state.beforeReply();
       if (state.chatStatus !== 200) return new Response('model crashed', { status: state.chatStatus });
       return Response.json({

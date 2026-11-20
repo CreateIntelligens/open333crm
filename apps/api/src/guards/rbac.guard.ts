@@ -59,11 +59,16 @@ async function isPermitted(request: FastifyRequest, code: string): Promise<boole
   if (request.agent?.isPartnerKey) return PARTNER_KEY_ALLOWED.has(code);
   // CLI session 走自身 scope 機制（cli.routes），不經 requirePermission 路由；防禦性放行
   if (request.agent?.isCliSession) return true;
-  const roleId = request.agent?.roleId;
-  // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
+  return (await getRequestPermissions(request)).has(code);
+}
+
+/**
+ * 當前成員的有效權限集合（角色權限 ∩ 方案功能天花板；無方案則不設天花板）。
+ * 要依權限過濾回應內容時用，例如後台助理只選操作者有權限的導覽。與 requirePermission 用同一套計算。
+ */
+export async function getRequestPermissions(request: FastifyRequest): Promise<Set<string>> {
   const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
-  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, roleId, planId);
-  return eff.has(code);
+  return getEffectiveTenantPermissions(request.server.prismaAdmin, request.server.redis, request.agent?.roleId, planId);
 }
 
 /**
