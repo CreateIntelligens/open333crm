@@ -19,7 +19,7 @@ import { logger } from '@open333crm/core';
 import type { OpsAlert } from '../ops-alert/ops-alert.service.js';
 import { inTenant } from '../../lib/tenant-ctx.js';
 import { createAndDispatch } from '../notification/notification-effects.js';
-import { commentReplySettingsOf } from './comment-reply-access.js';
+import { commentReplySettingsOf } from './comment-reply-settings.js';
 import { lastCommentEventKey } from './comment-reply-intake.flow.js';
 import { signatureFailureKey, SIGNATURE_FAILURE_BUCKET_MS } from '../webhook/webhook-signature-failures.js';
 

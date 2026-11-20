@@ -11,6 +11,7 @@ import { afterAll, test } from 'vitest';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { Redis } from 'ioredis';
 import { PrismaClient } from '@prisma/client';
+import { fbPlugin, registerChannelPlugin, threadsPlugin } from '@open333crm/channel-plugins';
 import { loadEnvConfig } from '#src/config/env.js';
 import authPlugin from '#src/plugins/auth.plugin.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
@@ -22,6 +23,9 @@ import { useFakeMetaGraph } from '#tests/support/fake-meta-graph.js';
 // 「非平台身分」走真實的 auth.plugin：平台 JWT 要有 secret 才會驗證（沒設時回 503）
 process.env.PLATFORM_JWT_SECRET ||= 'test-cr-health-platform-secret';
 loadEnvConfig();
+// 健康頁依已註冊外掛的留言擴充找渠道（與 apps/api/src/index.ts 相同的註冊）
+registerChannelPlugin(fbPlugin);
+registerChannelPlugin(threadsPlugin);
 
 const prisma = new PrismaClient();
 const redis = new Redis(process.env.REDIS_URL!);

@@ -12,7 +12,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { escapeLikeKeyword } from '../../shared/utils/like-pattern.js';
 import { canEditChannel, channelIdFilter, channelLevel, resolveViewerChannels, type CommentReplyViewer } from './comment-reply-access.js';
 import { isCommentReplyWindowExpired } from './comment-reply-expiry.js';
-import type { LogsQuery } from './comment-reply.schemas.js';
+import { parseStoredPostSnapshots, type LogsQuery } from './comment-reply.schemas.js';
 
 const LOG_NOT_FOUND = () => new AppError('找不到這筆觸發紀錄', 'LOG_NOT_FOUND', 404);
 const TERMINAL = new Set(['SENT', 'FAILED', 'EXPIRED', 'SKIPPED', 'SKIPPED_DUPLICATE']);
@@ -65,10 +65,8 @@ export function logRetryable(log: Pick<CommentReplyLog, 'status' | 'reasonCode' 
 }
 
 function postOf(log: LogRow): LogItem['post'] {
-  const snaps = Array.isArray(log.rule.postSnapshots) ? (log.rule.postSnapshots as Array<Record<string, unknown>>) : [];
-  const snap = snaps.find((s) => s && s.postId === log.postId);
-  const str = (v: unknown) => (typeof v === 'string' ? v : null);
-  return { postId: log.postId, permalink: str(snap?.permalink), thumbnailUrl: str(snap?.thumbnailUrl), excerpt: str(snap?.excerpt) };
+  const snap = parseStoredPostSnapshots(log.rule.postSnapshots).find((s) => s.postId === log.postId);
+  return { postId: log.postId, permalink: snap?.permalink ?? null, thumbnailUrl: snap?.thumbnailUrl ?? null, excerpt: snap?.excerpt ?? null };
 }
 
 function toItem(log: LogRow, now: Date): LogItem {

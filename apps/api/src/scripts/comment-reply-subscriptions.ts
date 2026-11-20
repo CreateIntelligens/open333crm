@@ -18,17 +18,24 @@
  * --mode disable：拿掉留言欄位，receiving = false
  * --mode resubscribe：依渠道目前的 receiving 重送完整欄位（Meta 取消了 feed 訂閱時）
  *
- * 欄位清單只有一份：FB 用 meta-connect.service 的 subscribedFieldsFor()（4 個私訊欄位＋feed），
- * IG 用 comment-reply-channel.service 的 IG 欄位常數（與後台「開啟留言接收」相同）。
+ * 欄位清單只有一份：comment-reply-channel.service 的 commentSubscriptionFields()（與後台「開啟留言接收」相同）。
+ * 渠道的差異經外掛的留言擴充（extensions.comments）取得，不依 channelType 分支（結構規則 5）。
  */
 import { prisma } from '@open333crm/database';
-import { fbPlugin, threadsPlugin, type ChannelPlugin } from '@open333crm/channel-plugins';
-import { decryptCredentials } from '../modules/channel/channel.service.js';
-import { getMetaAppConfig, subscribedFieldsFor } from '../modules/meta-connect/meta-connect.service.js';
-import { IG_BASE_SUBSCRIBED_FIELDS, IG_COMMENT_FIELD } from '../modules/comment-reply/comment-reply-channel.service.js';
+import type { ChannelType } from '@prisma/client';
+import { fbPlugin, registerChannelPlugin, threadsPlugin, type ChannelCommentExtension } from '@open333crm/channel-plugins';
+import { decryptCredentials, patchChannelSettings } from '../modules/channel/channel.service.js';
+import { getMetaAppConfig } from '../modules/meta-connect/meta-connect.service.js';
+import { commentChannelTypes, commentExtensionOf } from '../modules/comment-reply/comment-reply-access.js';
+import { commentSubscriptionFields } from '../modules/comment-reply/comment-reply-channel.service.js';
+import { commentReplySettingsOf, nextCommentReplySettings } from '../modules/comment-reply/comment-reply-settings.js';
 
 // 跨租戶掃描（平台維運腳本）：DATABASE_URL 需指向 owner／app_admin（BYPASSRLS）
 const prismaAdmin = prisma;
+
+// 腳本在 API 行程外執行，要自己註冊有留言擴充的外掛（與 apps/api/src/index.ts 相同的外掛）
+registerChannelPlugin(fbPlugin);
+registerChannelPlugin(threadsPlugin);
 
 type Mode = 'enable' | 'disable' | 'resubscribe';
 
@@ -43,20 +50,12 @@ const tenantId = arg('--tenant');
 const channelId = arg('--channel');
 
 /**
- * 渠道應訂的完整欄位：私訊欄位一律保留，接收留言時加上留言欄位。
- * FB 以「寫入後的渠道設定」交給 subscribedFieldsFor() 算出完整清單（整份取代，少一個私訊欄位就是私訊中斷）。
+ * 目前的訂閱欄位（查不到回 null），只用來印出寫入前後的對照。外掛的 getSubscriptionStatus() 只回傳是否訂閱、
+ * 不回傳欄位清單，所以這裡直接查：FB（platform 'fb'）用 /{page-id}/subscribed_apps，IG 用 /me/subscribed_apps。
  */
-export function commentReplySubscriptionFields(channelType: string, settings: Record<string, any>, receiving: boolean): string[] {
-  if (channelType === 'FB') {
-    return subscribedFieldsFor({ ...settings, commentReply: { ...(settings.commentReply ?? {}), receiving } });
-  }
-  return receiving ? [...IG_BASE_SUBSCRIBED_FIELDS, IG_COMMENT_FIELD] : [...IG_BASE_SUBSCRIBED_FIELDS];
-}
-
-/** 目前的訂閱欄位（查不到回 null）；FB 用 /{page-id}/subscribed_apps，IG 用 /me/subscribed_apps */
-async function currentFields(channelType: string, accountId: string, token: string): Promise<string[] | null> {
+async function currentFields(ext: ChannelCommentExtension, accountId: string, token: string): Promise<string[] | null> {
   const url =
-    channelType === 'FB'
+    ext.capabilities.platform === 'fb'
       ? `https://graph.facebook.com/v21.0/${encodeURIComponent(accountId)}/subscribed_apps`
       : 'https://graph.instagram.com/v21.0/me/subscribed_apps';
   try {
@@ -72,11 +71,10 @@ async function currentFields(channelType: string, accountId: string, token: stri
 async function main() {
   if (!['enable', 'disable', 'resubscribe'].includes(mode)) throw new Error('--mode 只能是 enable、disable、resubscribe');
   if (!tenantId && !channelId) throw new Error('請指定 --tenant 或 --channel（不支援一次處理全部渠道）');
-  const plugins: Record<string, ChannelPlugin> = { FB: fbPlugin, THREADS: threadsPlugin };
   const channels = await prismaAdmin.channel.findMany({
     where: {
       isActive: true,
-      channelType: { in: ['FB', 'THREADS'] as never },
+      channelType: { in: commentChannelTypes() as ChannelType[] },
       externalAccountId: { not: null },
       ...(tenantId ? { tenantId } : {}),
       ...(channelId ? { id: channelId } : {}),
@@ -89,29 +87,25 @@ async function main() {
   for (const ch of channels) {
     const label = `[${ch.channelType}] ${ch.displayName} (${ch.id}) tenant=${ch.tenantId}`;
     try {
+      const ext = commentExtensionOf(ch.channelType);
+      if (!ext) throw new Error('外掛沒有留言擴充');
       const credentials = decryptCredentials(ch.credentialsEncrypted);
       const token = String(credentials.pageAccessToken ?? '');
       const settings = (ch.settings ?? {}) as Record<string, any>;
-      const receiving = mode === 'enable' ? true : mode === 'disable' ? false : settings.commentReply?.receiving === true;
-      const fields = commentReplySubscriptionFields(ch.channelType, settings, receiving);
-      const before = await currentFields(ch.channelType, ch.externalAccountId!, token);
+      const receiving = mode === 'enable' ? true : mode === 'disable' ? false : commentReplySettingsOf(settings).receiving;
+      const fields = commentSubscriptionFields({ ext }, receiving);
+      const before = await currentFields(ext, ch.externalAccountId!, token);
       console.log(`${label}\n  目前：${before ? before.join(',') : '（查不到）'}\n  送出：${fields.join(',')}`);
       if (!apply) continue;
-      const ext = plugins[ch.channelType]?.extensions?.comments;
-      if (!ext) throw new Error('外掛沒有留言擴充');
       const platformApp = credentials.connectMode === 'platform' ? getMetaAppConfig() : null;
       await ext.subscribeFields(credentials, {
         accountId: ch.externalAccountId!,
         fields,
         ...(platformApp ? { appSecret: platformApp.appSecret } : {}),
       });
-      const now = new Date().toISOString();
-      const commentReply = { ...(settings.commentReply ?? {}), receiving, ...(receiving ? { subscribedAt: now } : {}) };
-      await prismaAdmin.channel.updateMany({
-        where: { id: ch.id, tenantId: ch.tenantId },
-        data: { settings: { ...settings, commentReply } },
-      });
-      const after = await currentFields(ch.channelType, ch.externalAccountId!, token);
+      // 只取代 settings.commentReply（jsonb 合併），不覆寫這段期間其他程式寫入的子鍵
+      await patchChannelSettings(prismaAdmin, ch.id, ch.tenantId, { commentReply: nextCommentReplySettings(settings, receiving, fields) });
+      const after = await currentFields(ext, ch.externalAccountId!, token);
       console.log(`  寫入後：${after ? after.join(',') : '（查不到）'}`);
       ok += 1;
     } catch (err) {

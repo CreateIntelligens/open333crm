@@ -21,6 +21,7 @@ import { sendEmail } from '../email/email.service.js';
 import { decryptCredentials } from './channel.service.js';
 import { getChannelPlugin, type ChannelPlugin, type CommentSubscriptionStatus } from '@open333crm/channel-plugins';
 import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
+import { commentReplySettingsOf } from '../comment-reply/comment-reply-settings.js';
 
 const HOUR_MS = 3600_000;
 const CHECK_INTERVAL_MS = 6 * HOUR_MS;
@@ -197,7 +198,8 @@ export interface CommentSubscriptionHealth {
  * 沒有前一次紀錄時記 unknown，有紀錄時回傳 undefined（不寫入）。
  */
 export function nextCommentSubscription(
-  prev: CommentSubscriptionHealth | undefined,
+  /** 前一次的紀錄（settings.commentReply.subscription）；只看有沒有 */
+  prev: object | null | undefined,
   status: Pick<CommentSubscriptionStatus, 'subscribed'>,
   now: Date,
 ): CommentSubscriptionHealth | undefined {
@@ -214,8 +216,8 @@ export async function checkCommentSubscription(
   now: Date,
   plugins: (type: string) => ChannelPlugin | undefined = getChannelPlugin,
 ): Promise<CommentSubscriptionHealth | undefined> {
-  const cr = ((ch.settings ?? {}) as Record<string, any>).commentReply as { receiving?: boolean; subscription?: CommentSubscriptionHealth } | undefined;
-  if (cr?.receiving !== true || !ch.externalAccountId) return undefined;
+  const cr = commentReplySettingsOf(ch.settings);
+  if (!cr.receiving || !ch.externalAccountId) return undefined;
   const ext = plugins(ch.channelType)?.extensions?.comments;
   if (!ext) return undefined;
   let status: Pick<CommentSubscriptionStatus, 'subscribed'>;

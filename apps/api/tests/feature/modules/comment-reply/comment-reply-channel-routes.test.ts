@@ -257,6 +257,19 @@ describe('開啟與關閉留言接收', () => {
     assert.equal(settings.commentReply.receiving, false);
     assert.equal(settings.commentReply.lastCommentEventAt, '2026-11-01T00:00:00.000Z', '其他子鍵保留');
   });
+
+  // #547 第 1 項：subscribedAt 是第一次訂閱的時間，各入口一致（最後一次檢查的時間在 subscription.checkedAt）
+  test('重新開啟留言接收：subscribedAt 保留第一次訂閱的時間', async () => {
+    const first = '2026-10-01T00:00:00.000Z';
+    const ch = await fx.fbChannel(T, { externalAccountId: id(14), settings: { commentReply: { receiving: false, subscribedAt: first } } });
+    graph.on('POST', 'graph.facebook.com', `/v21.0/${ch.externalAccountId}/subscribed_apps`, { body: { success: true } });
+    const res = await subscribe(adminApp, ch.id);
+    assert.equal(res.statusCode, 200, res.body);
+    const settings = (await owner.channel.findUniqueOrThrow({ where: { id: ch.id } })).settings as Record<string, any>;
+    assert.equal(settings.commentReply.receiving, true);
+    assert.equal(settings.commentReply.subscribedAt, first);
+    assert.notEqual(settings.commentReply.subscription.checkedAt, first);
+  });
 });
 
 describe('最近貼文與網址解析', () => {

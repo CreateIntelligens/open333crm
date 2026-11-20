@@ -29,6 +29,7 @@ import {
 } from '../channel/channel.service.js';
 import { isCommentReplyPlanEnabled } from '../comment-reply/comment-reply-plan.js';
 import { readCommentReplyPlatformSettings } from '../comment-reply/comment-reply-platform-settings.js';
+import { commentReplySettingsOf, nextCommentReplySettings } from '../comment-reply/comment-reply-settings.js';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const SESSION_TTL_MS = 10 * 60 * 1000;
@@ -43,8 +44,7 @@ export const COMMENT_FEED_FIELD = 'feed';
  * 少帶一個私訊欄位就是整個粉專的私訊中斷（design D19、風險 R1）。
  */
 export function subscribedFieldsFor(channelSettings: unknown): string[] {
-  const s = channelSettings && typeof channelSettings === 'object' ? (channelSettings as Record<string, any>) : {};
-  return s.commentReply?.receiving === true ? [...BASE_SUBSCRIBED_FIELDS, COMMENT_FEED_FIELD] : [...BASE_SUBSCRIBED_FIELDS];
+  return commentReplySettingsOf(channelSettings).receiving ? [...BASE_SUBSCRIBED_FIELDS, COMMENT_FEED_FIELD] : [...BASE_SUBSCRIBED_FIELDS];
 }
 /** 傳統授權（未設定 Facebook Login for Business 設定 ID 時）要求的權限 */
 const LEGACY_SCOPES = ['pages_show_list', 'pages_manage_metadata', 'pages_messaging', 'pages_read_engagement'];
@@ -314,23 +314,6 @@ async function receiveCommentsOnNewPage(db: Pick<Prisma.TransactionClient, 'tena
   return planEnabled && settings.capabilities.fbPrivateReply;
 }
 
-/** 訂閱成功後寫進渠道的 settings.commentReply（保留既有子鍵） */
-function commentReplySettingsPatch(existing: unknown, receiving: boolean, fields: string[]): Record<string, unknown> {
-  const prev =
-    existing && typeof existing === 'object' && (existing as Record<string, any>).commentReply && typeof (existing as Record<string, any>).commentReply === 'object'
-      ? ((existing as Record<string, any>).commentReply as Record<string, unknown>)
-      : {};
-  const at = new Date().toISOString();
-  return {
-    commentReply: {
-      ...prev,
-      receiving,
-      ...(receiving && !prev.subscribedAt ? { subscribedAt: at } : {}),
-      subscription: { status: receiving ? 'ok' : 'disabled', fields, checkedAt: at },
-    },
-  };
-}
-
 /**
  * 訂閱失敗時移除剛建立的渠道。建立到訂閱失敗之間若恰好有事件寫入（對話對渠道是 Restrict 外鍵），
  * 刪除會失敗：改為停用並清空帳號 ID，不讓整個請求出錯、也不留下仍佔著粉專的渠道。
@@ -422,7 +405,7 @@ export async function connectPages(
         actor.tenantId,
         {
           metaConnect: { mode: 'platform', connectedAt: new Date().toISOString(), connectedBy: actor.agentId, reconnected: true },
-          ...(fields.includes(COMMENT_FEED_FIELD) ? commentReplySettingsPatch(existing.settings, true, fields) : {}),
+          ...(fields.includes(COMMENT_FEED_FIELD) ? { commentReply: nextCommentReplySettings(existing.settings, true, fields) } : {}),
         },
         ['tokenHealth', 'tokenExpiresAt'],
       );
@@ -471,7 +454,7 @@ export async function connectPages(
     // 3. 平台模式渠道收事件走 /webhooks/meta，不需要渠道自己的回呼網址
     await db.channel.updateMany({ where: { id: channelId, tenantId: actor.tenantId }, data: { webhookUrl: null } });
     // 訂閱含 feed 才標記開啟留言接收（訂閱失敗的渠道上面已移除）
-    if (receiving) await patchChannelSettings(db, channelId, actor.tenantId, commentReplySettingsPatch(null, true, fields));
+    if (receiving) await patchChannelSettings(db, channelId, actor.tenantId, { commentReply: nextCommentReplySettings(null, true, fields) });
     // 4. 補做一次驗證：寫入導流識別、「開始使用」按鈕檢查等；失敗不影響連結（渠道已可收發）
     await verifyChannel(db, channelId, actor.tenantId).catch((err: unknown) =>
       logger.warn('[MetaConnect] 連結後驗證失敗（不影響收發）', { channelId, error: err instanceof Error ? err.message : String(err) }),

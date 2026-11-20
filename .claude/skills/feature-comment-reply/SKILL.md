@@ -55,12 +55,13 @@ Facebook／Instagram 貼文留言命中關鍵字時自動私訊留言者（Priva
 - 試算與收件用同一份 `listActiveRulesForChannel()` 與 `matchCommentRule()`。（規則）
 - 規則的每一種異動都在 commit 之後呼叫 `bumpCommentReplyRulesVersion()`。（規則）
 - 送出工作只有一個排入點 `enqueueCommentReplyDelivery()`。job 與日誌不放留言內容與名稱。（一則留言怎麼處理）
-- Meta 呼叫不在交易內：讀紀錄與認領各一個短交易，外掛在交易外呼叫，再開交易寫結果。（一則留言怎麼處理）
+- `settings.commentReply` 只經 `comment-reply-settings.ts` 讀寫。`subscribedAt` 是第一次訂閱成功的時間，不覆寫。（一則留言怎麼處理）
+- Meta 呼叫不在交易內：讀紀錄與認領各一個短交易，外掛在交易外呼叫，再開交易寫結果。後台 API 呼叫 Meta 或使用 Redis 的函式放在 `comment-reply-meta.ts`，不放在 `.service.ts`。（程式的入口；一則留言怎麼處理）
 - 冪等有三層：收件的 `(channelId, commentId)` 唯一加 `ON CONFLICT DO NOTHING`；認領以 `status='PENDING'` 條件更新；`dedupeKey` 部分唯一索引只在 `SENDING`、`SENT` 生效。改這三處要跑 `comment-reply-dedupe.test.ts` 與 `comment-reply-intake.test.ts` 的並行案例。（一則留言怎麼處理）
 - 業務失敗不讓 job 失敗。限流延後用 `DelayedError`，不消耗 attempts。（一則留言怎麼處理）
 - 背景工作自己查方案與開關（`comment-reply-entitlement.ts`、`isCommentReplyPlanEnabled()`）。（一則留言怎麼處理；三層開關）
 - 兩處建立聯絡人要同步：留言收件（`resolveCommentAuthor()`、`linkRecipientIdentity()`）與私訊進站（`findCommentAuthorContact()`）。留言收件不建 `ChannelIdentity`、不發 `contact.created`、不送招呼語。（一則留言怎麼處理；`CHANNEL-PLUGINS.md`）
-- 外掛差異只經 `extensions.comments`（結構規則 5），`comment-reply` 模組不比對 `channelType`。（一則留言怎麼處理）
+- 外掛差異只經 `extensions.comments`（結構規則 5），`comment-reply` 模組不比對 `channelType`。用 `commentExtensionOf()`、`commentChannelTypes()`、`commentAppModeOf()`。（一則留言怎麼處理）
 - 留言內容、留言者名稱、PSID 是個資。新增欄位時，資料匯出、資料刪除與聯絡人合併一起改。（一則留言怎麼處理）
 
 ## 回歸清單
