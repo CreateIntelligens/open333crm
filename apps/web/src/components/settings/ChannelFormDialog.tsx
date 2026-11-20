@@ -246,6 +246,7 @@ export function ChannelFormDialog({
                 渠道類型<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
               </label>
               <Select
+                data-guide="channel.type"
                 value={effectiveType}
                 onChange={(e) => setChannelType(e.target.value)}
                 options={channelTypeOptions}

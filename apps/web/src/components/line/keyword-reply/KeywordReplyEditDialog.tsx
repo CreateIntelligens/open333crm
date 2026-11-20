@@ -200,6 +200,7 @@ export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, o
             </label>
             <div className="flex items-center gap-2">
               <Input
+                data-guide="keyword-reply.keyword"
                 id="kr-keyword"
                 value={draftKeyword}
                 onChange={(e) => setDraftKeyword(e.target.value)}

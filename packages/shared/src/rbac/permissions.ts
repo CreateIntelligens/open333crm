@@ -65,6 +65,7 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   { code: 'knowledge.view', group: '知識庫', feature: 'knowledge', label: '檢視知識庫', description: '列表、來源、分類、搜尋、feedback' },
   { code: 'knowledge.manage', group: '知識庫', feature: 'knowledge', label: '管理知識庫', description: '建/改/刪文章、publish/archive、import/upload/embed', dependsOn: ['knowledge.view'] },
   { code: 'knowledge.admin', group: '知識庫', feature: 'knowledge', label: '知識庫進階', description: 'partner-ingest、models/refresh、feedback resolve', dependsOn: ['knowledge.view'] },
+  { code: 'assistant.use', group: '知識庫', feature: 'knowledge', label: '使用後台助理', description: '在後台向助理提問，助理依知識庫回答並帶到功能頁' },
 
   // ── 自動化（feature: automation）──
   { code: 'automation.view', group: '自動化', feature: 'automation', label: '檢視自動化', description: '規則列表、詳情、logs、test' },

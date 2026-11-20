@@ -128,7 +128,7 @@ function PageHeader({ action }: { action: React.ReactNode }) {
 function CreateButton({ canManage, onClick }: { canManage: boolean; onClick: () => void }) {
   if (canManage) {
     return (
-      <Button size="lg" onClick={onClick}>
+      <Button data-guide="coupon.open" size="lg" onClick={onClick}>
         <AddIcon />
         建立優惠券
       </Button>
