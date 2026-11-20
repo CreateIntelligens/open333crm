@@ -33,6 +33,7 @@ export type AiFeature =
   | 'automation'
   | 'flex-generate'
   | 'ai-rewrite'
+  | 'embedding'
   | 'unknown';
 
 export interface AiUsageMeta {
@@ -63,17 +64,26 @@ export interface LlmInputs {
   monthlyTokens: number | null;
 }
 
-export async function readLlmInputs(ctx: TenantCtx): Promise<LlmInputs> {
-  const settings = await getChatSettings(ctx);
-  // BYOK：gemini 才需 key；取租戶自備 key（無則退回平台 env）
+/** 一次模型呼叫要用的金鑰與月額度上限。AI 對話與 Gemini 向量化共用這個規則 */
+export type ModelKeyInputs = Pick<LlmInputs, 'apiKey' | 'keySource' | 'monthlyTokens'>;
+
+/**
+ * 讀金鑰與月額度上限。gemini 才需 key：取租戶自備 key（無則退回平台 env）。
+ * 月額度上限只在平台金鑰時讀取（主規格 token-quota）。
+ */
+export async function readModelKeyInputs(ctx: TenantCtx, provider: string): Promise<ModelKeyInputs> {
   const { key: apiKey, source: keySource } =
-    settings.provider === 'gemini'
-      ? await resolveGeminiKey(ctx)
-      : { key: undefined, source: 'platform' as const };
+    provider === 'gemini' ? await resolveGeminiKey(ctx) : { key: undefined, source: 'platform' as const };
   const monthlyTokens =
     keySource === 'platform' ? await getEffectiveLimit(ctx.tx, ctx.tenantId, 'monthlyTokens') : null;
+  return { apiKey, keySource, monthlyTokens };
+}
+
+export async function readLlmInputs(ctx: TenantCtx): Promise<LlmInputs> {
+  const settings = await getChatSettings(ctx);
+  const keyInputs = await readModelKeyInputs(ctx, settings.provider);
   const privacy = await readAiPrivacyPolicy(ctx.tx, ctx.tenantId);
-  return { settings, apiKey, keySource, privacy, monthlyTokens };
+  return { settings, ...keyInputs, privacy };
 }
 
 export interface AiUsageInput {

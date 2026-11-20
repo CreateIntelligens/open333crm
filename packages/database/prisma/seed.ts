@@ -31,6 +31,8 @@ async function seedModelPricing() {
   const pricings = [
     { model: 'gemini-2.5-flash', inputPer1M: 0.3, outputPer1M: 2.5, cachedPer1M: 0.03 },
     { model: 'gemini-2.5-flash-lite', inputPer1M: 0.1, outputPer1M: 0.4, cachedPer1M: 0.01 },
+    // 向量化模型只有輸入價
+    { model: 'gemini-embedding-001', inputPer1M: 0.15, outputPer1M: 0, cachedPer1M: 0 },
     {
       model: 'gemini-2.5-pro',
       inputPer1M: 1.25,

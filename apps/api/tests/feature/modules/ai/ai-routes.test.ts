@@ -87,8 +87,9 @@ async function makeArticle(tenantId: string, createdById: string, content: strin
   const article = await owner.kmArticle.create({
     data: { tenantId, title: '營業時間', content, summary: '', category: 'faq', status: 'PUBLISHED', createdById },
   });
+  // 模型是租戶沒有設定列時的預設模型：搜尋只比對目前模型的向量
   await owner.$executeRawUnsafe(
-    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = 'seed' WHERE id = $2::uuid`,
+    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = 'bge-m3' WHERE id = $2::uuid`,
     `[${markedVector(1).join(',')}]`,
     article.id,
   );

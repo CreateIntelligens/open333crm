@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-11-19：Gemini 向量化（LLM-04、DB-01）
+
+change `add-gemini-embedding-provider`。以 feature 測試（`app_tenant` 連線、Redis、假的 Gemini fetch）與 jsdom 元件測試驗證，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| LLM-04 | 部分修正：Embedding 設定可以選 Gemini，向量化、語意搜尋、知識庫自動回覆與健康檢查都依服務分流。預設仍是 Ollama，每個租戶要自己切換；文字雜湊的評估未做 | `apps/api/tests/feature/modules/embedding/embedding-gemini.test.ts`、`apps/api/tests/unit/modules/embedding/embedding-gemini.test.ts`、`apps/api/tests/feature/modules/settings/embedding-settings.test.ts`「改成 Gemini」「Gemini 沒有金鑰」「Gemini 正常」 |
+| DB-01 | 部分修正：migration 把 `km_articles.embedding` 對齊 1024 維，已是 1024 維時不變。`long_term_memories.embedding` 未處理 | migration `20261119120000_add_embedding_provider` 步驟 0；套用後 feature 測試資料庫的欄位是 `vector(1024)`（`format_type` 查詢），embedding 相關 feature 測試以 1024 維假向量通過 |
+
 ## 2026-11-19：工單刪除與升級的錯誤訊息（HC-CASES-16）
 
 只改 `apps/web`。以 jsdom 元件測試驗證，沒有連 UAT。這個健檢項目沒有對應的 `AUDIT.md` 項目。

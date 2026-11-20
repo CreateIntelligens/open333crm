@@ -6,13 +6,25 @@
  */
 import { logger } from '@open333crm/core';
 import { deidentifyTenantText } from '../ai/deidentification.service.js';
+import { GEMINI_BASE } from '../ai/providers/gemini.provider.js';
 import type { AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import { EMBEDDING_VECTOR_DIM, type EmbeddingProvider } from '../settings/embedding-settings.service.js';
 
-/** 向量化的目標：租戶設定的服務網址與模型 */
+/**
+ * 向量化的目標：租戶設定的服務、網址與模型。
+ * - `apiKey`：Gemini 的金鑰（自備金鑰或平台金鑰），Ollama 不用。
+ * - `purpose`：`document` 是文章，`query` 是搜尋文字或客人訊息。Gemini 依此選 taskType。
+ */
 export interface EmbeddingTarget {
+  provider: EmbeddingProvider;
   baseUrl: string;
   model: string;
+  apiKey?: string;
+  purpose: 'document' | 'query';
 }
+
+/** gemini-embedding-001 的輸入上限是 2048 token。中文約 1 字 1 token，所以送前 2000 字 */
+export const GEMINI_EMBED_MAX_CHARS = 2000;
 
 // ─── 向量化 ─────────────────────────────────────────────────────────────────
 
@@ -47,8 +59,8 @@ const EMBED_COLD_START_RETRIES = 1;
  * 冷啟動的 503 會直接把錯誤丟給使用者。改成型別帶 status，判斷不依賴文字。
  */
 class EmbedHttpError extends Error {
-  constructor(readonly status: number, body: string) {
-    super(`Ollama embed failed (${status}): ${body}`);
+  constructor(readonly status: number, body: string, service: 'Ollama' | 'Gemini' = 'Ollama') {
+    super(`${service} embed failed (${status}): ${body}`);
     this.name = 'EmbedHttpError';
   }
 }
@@ -80,10 +92,74 @@ async function embedOnce(url: string, model: string, text: string, timeoutMs: nu
   }
 }
 
-/** 依租戶的遮罩政策遮罩文字，再呼叫向量化服務。冷啟動時重試一次 */
+/** 呼叫 Gemini embedContent 一次，帶逾時。輸出維度固定是資料庫向量欄位的維度 */
+async function geminiEmbedOnce(target: EmbeddingTarget, text: string, timeoutMs: number): Promise<number[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(target.model)}:embedContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': target.apiKey ?? '' },
+      body: JSON.stringify({
+        content: { parts: [{ text }] },
+        taskType: target.purpose === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT',
+        outputDimensionality: EMBEDDING_VECTOR_DIM,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new EmbedHttpError(response.status, await response.text(), 'Gemini');
+    }
+    const data = (await response.json()) as { embedding?: { values?: number[] } };
+    const values = data.embedding?.values;
+    if (!values || values.length !== EMBEDDING_VECTOR_DIM) {
+      throw new Error(`Gemini 回傳的向量長度是 ${values?.length ?? 0}，資料庫需要 ${EMBEDDING_VECTOR_DIM} 維`);
+    }
+    return values;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Gemini 向量化。沒有模型載入的冷啟動，但會回 429（每分鐘請求數）或 5xx：重試 1 次，
+ * 逾時與重試次數和 Ollama 相同，所以最壞耗時一樣是 51 秒。
+ */
+async function embedWithGemini(target: EmbeddingTarget, text: string): Promise<number[]> {
+  if (!target.apiKey) {
+    throw new Error('沒有設定 Gemini 金鑰：請在「Chat & Prompt」填入自備的 Gemini 金鑰，或請平台方設定');
+  }
+  const input = text.slice(0, GEMINI_EMBED_MAX_CHARS);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= EMBED_COLD_START_RETRIES; attempt++) {
+    try {
+      return await geminiEmbedOnce(target, input, EMBED_TIMEOUT_MS);
+    } catch (err) {
+      lastErr = err;
+      const aborted = err instanceof Error && err.name === 'AbortError';
+      const retryable =
+        aborted || (err instanceof EmbedHttpError && (err.status === 429 || err.status >= 500));
+      if (!retryable || attempt === EMBED_COLD_START_RETRIES) break;
+      logger.warn(`[Embedding] Gemini ${aborted ? '逾時' : `回 ${(err as EmbedHttpError).status}`}，重試中`);
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+  }
+  if (lastErr instanceof Error && lastErr.name === 'AbortError') {
+    throw new Error(`Gemini 向量化逾時（${EMBED_TIMEOUT_MS / 1000} 秒 × ${EMBED_COLD_START_RETRIES + 1} 次）`);
+  }
+  throw lastErr;
+}
+
+/** 依租戶的遮罩政策遮罩文字，再呼叫向量化服務（依 `target.provider` 選 Ollama 或 Gemini） */
 export async function embedText(target: EmbeddingTarget, policy: AiPrivacyPolicy, text: string): Promise<number[]> {
-  const url = `${target.baseUrl}/api/embed`;
   const protectedText = await deidentifyTenantText(policy, text);
+  if (target.provider === 'gemini') return embedWithGemini(target, protectedText);
+  return embedWithOllama(target, protectedText);
+}
+
+/** Ollama 向量化。冷啟動時重試一次 */
+async function embedWithOllama(target: EmbeddingTarget, protectedText: string): Promise<number[]> {
+  const url = `${target.baseUrl}/api/embed`;
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= EMBED_COLD_START_RETRIES; attempt++) {
@@ -131,11 +207,36 @@ export type EmbeddingServiceProbe =
   | { reachable: false; error: string }
   | { reachable: true; models: EmbeddingServiceModel[]; installed: EmbeddingServiceModel | undefined };
 
+/** 健康檢查的目標：服務、網址、模型，Gemini 另外要金鑰 */
+export type EmbeddingProbeTarget = Pick<EmbeddingTarget, 'provider' | 'baseUrl' | 'model' | 'apiKey'>;
+
 /**
- * 呼叫 `/api/tags`：服務連得到，而且模型清單中有名稱等於 `model`、或以 `model:` 開頭的模型，才算正常
- * （spec embedding-settings「向量化服務的健康檢查」）。
+ * 檢查向量化服務（spec embedding-settings「向量化服務的健康檢查」）。
+ * - Ollama：呼叫 `/api/tags`，模型清單中有名稱等於 `model`、或以 `model:` 開頭的模型，才算正常。
+ * - Gemini：沒有金鑰時不送請求。有金鑰時查詢模型，回 200 才算正常。
  */
-export async function probeEmbeddingService(baseUrl: string, model: string): Promise<EmbeddingServiceProbe> {
+export async function probeEmbeddingService(target: EmbeddingProbeTarget): Promise<EmbeddingServiceProbe> {
+  if (target.provider === 'gemini') return probeGemini(target);
+  return probeOllama(target.baseUrl, target.model);
+}
+
+async function probeGemini(target: EmbeddingProbeTarget): Promise<EmbeddingServiceProbe> {
+  if (!target.apiKey) {
+    return { reachable: false, error: '沒有設定 Gemini 金鑰：請在「Chat & Prompt」填入自備的 Gemini 金鑰，或請平台方設定' };
+  }
+  try {
+    const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(target.model)}`, {
+      headers: { 'x-goog-api-key': target.apiKey },
+    });
+    if (!response.ok) return { reachable: false, error: `Gemini 回應 ${response.status}，請檢查金鑰是否有效` };
+    const model = { name: target.model };
+    return { reachable: true, models: [model], installed: model };
+  } catch (err) {
+    return { reachable: false, error: `連不到 Gemini：${(err as Error).message}` };
+  }
+}
+
+async function probeOllama(baseUrl: string, model: string): Promise<EmbeddingServiceProbe> {
   try {
     const response = await fetch(`${baseUrl}/api/tags`);
     if (!response.ok) return { reachable: false, error: `Ollama responded ${response.status}` };

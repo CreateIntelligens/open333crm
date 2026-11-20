@@ -28,11 +28,13 @@ async function storedVector(articleId: string) {
   return { marker: vectorMarker(rows[0].embedding), model: rows[0].embeddingModel };
 }
 
-async function setVector(articleId: string, marker: number) {
+/** 寫入向量。`model` 預設是租戶沒有設定列時的模型 bge-m3：搜尋只比對目前模型的向量 */
+async function setVector(articleId: string, marker: number, model = 'bge-m3') {
   await fx.owner.$executeRawUnsafe(
-    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = 'seed' WHERE id = $2::uuid`,
+    `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $3 WHERE id = $2::uuid`,
     `[${markedVector(marker).join(',')}]`,
     articleId,
+    model,
   );
 }
 
@@ -58,6 +60,45 @@ describe('語意搜尋', () => {
     assert.deepEqual(res.body.data.map((r: { id: string }) => r.id), [hit.id]);
     assert.ok(res.body.data[0].similarity > 0.99);
     assert.deepEqual(ollama.state.embedCalls.map((c) => c.input), ['退貨流程']);
+  });
+});
+
+describe('搜尋只比對目前模型的向量', () => {
+  test('換服務後舊向量不進搜尋結果', async () => {
+    const t = fx.B;
+    const { app } = await fx.buildApp(t, 'model-filter', undefined, { realEffects: true });
+    const oldModel = await fx.articleOf(t, 'model-old', { status: 'PUBLISHED' });
+    const newModel = await fx.articleOf(t, 'model-new', { status: 'PUBLISHED' });
+    await setVector(oldModel.id, 9, 'bge-m3');
+    await setVector(newModel.id, 9, 'bge-m3-v2');
+    await fx.owner.tenantSettings.upsert({
+      where: { tenantId: t },
+      create: { tenantId: t, embeddingModel: 'bge-m3-v2' },
+      update: { embeddingModel: 'bge-m3-v2' },
+    });
+    ollama.state.vector = markedVector(9);
+    try {
+      const res = await call(app, 'POST', `${base}/search`, { query: '換模型之後' });
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      const ids = res.body.data.map((r: { id: string }) => r.id);
+      assert.ok(ids.includes(newModel.id), '目前模型的向量照常比對');
+      assert.equal(ids.includes(oldModel.id), false, '舊模型的向量不進結果');
+    } finally {
+      await fx.owner.tenantSettings.deleteMany({ where: { tenantId: t } });
+    }
+  });
+
+  test('不比對其他租戶的文章', async () => {
+    const mine = await fx.articleOf(fx.A, 'scope-mine', { status: 'PUBLISHED' });
+    const other = await fx.articleOf(fx.B, 'scope-other', { status: 'PUBLISHED' });
+    await setVector(mine.id, 11);
+    await setVector(other.id, 11);
+    ollama.state.vector = markedVector(11);
+    const res = await call(appA, 'POST', `${base}/search`, { query: '同一個模型' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const ids = res.body.data.map((r: { id: string }) => r.id);
+    assert.ok(ids.includes(mine.id));
+    assert.equal(ids.includes(other.id), false);
   });
 });
 

@@ -13,18 +13,24 @@ import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import settingsRoutes from '#src/modules/settings/settings.routes.js';
 import knowledgeRoutes from '#src/modules/knowledge/knowledge.routes.js';
-import { fakeOllama } from '#tests/support/fake-ollama.js';
+import { fakeOllama, markedVector } from '#tests/support/fake-ollama.js';
+import { fakeGemini } from '#tests/support/fake-gemini.js';
+import { getConfig } from '#src/config/env.js';
+import { encryptApiKey } from '#src/modules/ai/ai-key.service.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
 const tenantDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
 const MARK = `ci-embedding-settings-${Date.now()}`;
 const MISSING = '00000000-0000-4000-8000-000000000000';
-const DEFAULTS = { baseUrl: 'http://localhost:11434', model: 'bge-m3', topK: 5, threshold: 0.3 };
+const DEFAULTS = { provider: 'ollama', baseUrl: 'http://localhost:11434', model: 'bge-m3', topK: 5, threshold: 0.3 };
 
 const tenantIds: string[] = [];
 const apps: Array<{ close(): Promise<unknown> }> = [];
+const gemini = fakeGemini();
 const ollama = fakeOllama();
+const config = getConfig() as { GEMINI_API_KEY?: string };
+const originalPlatformKey = config.GEMINI_API_KEY;
 
 async function makeTenant(label: string) {
   const id = (await owner.tenant.create({ data: { name: `${MARK}-${label}` } })).id;
@@ -76,18 +82,29 @@ function storedRow(tenantId: string) {
   });
 }
 
-function saveRow(tenantId: string, data: { embeddingModel?: string; embeddingTopK?: number }) {
+function saveRow(
+  tenantId: string,
+  data: { embeddingModel?: string; embeddingTopK?: number; embeddingBaseUrl?: string; embeddingProvider?: string },
+) {
   return owner.tenantSettings.create({ data: { tenantId, ...data } });
 }
 
 const S = '/api/v1/settings/embedding';
 
-beforeEach(() => ollama.reset());
+beforeEach(() => {
+  ollama.reset();
+  gemini.reset();
+  config.GEMINI_API_KEY = originalPlatformKey;
+});
 
 afterAll(async () => {
+  config.GEMINI_API_KEY = originalPlatformKey;
+  // 兩個假 fetch 疊在一起：後建立的先還原
   ollama.restore();
+  gemini.restore();
   await Promise.all(apps.map((app) => app.close()));
   for (const tenantId of tenantIds) {
+    await owner.kmArticle.deleteMany({ where: { tenantId } });
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
     await owner.tenantSettings.deleteMany({ where: { tenantId } });
     await owner.agent.deleteMany({ where: { tenantId } });
@@ -153,6 +170,29 @@ describe('修改向量化設定', () => {
     assert.equal(res.body.data.settings.model, 'bge-m3-custom');
   });
 
+  test('改成 Gemini', async () => {
+    const t = await makeTenant('put-gemini');
+    await saveRow(t, { embeddingModel: 'bge-m3', embeddingBaseUrl: 'http://ollama:11434' });
+    const res = await call(await buildApp(t), 'PUT', S, { provider: 'gemini', model: 'gemini-embedding-001' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.settings.provider, 'gemini');
+    assert.equal(res.body.data.settings.model, 'gemini-embedding-001');
+    assert.equal(res.body.data.modelChanged, true);
+    assert.equal(res.body.data.previousModel, 'bge-m3');
+    assert.equal(res.body.data.settings.baseUrl, 'http://ollama:11434', '服務網址保留原值');
+  });
+
+  test('Gemini 搭配不支援的模型', async () => {
+    const t = await makeTenant('put-gemini-bad-model');
+    await saveRow(t, { embeddingModel: 'bge-m3' });
+    const res = await call(await buildApp(t), 'PUT', S, { provider: 'gemini', model: 'bge-m3' });
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.equal(res.body.error?.code, 'VALIDATION_ERROR');
+    const row = await owner.tenantSettings.findUnique({ where: { tenantId: t }, select: { embeddingProvider: true } });
+    assert.equal(row?.embeddingProvider, 'ollama', '設定不變');
+    assert.equal(await owner.tenantAuditLog.count({ where: { tenantId: t } }), 0, '沒有稽核紀錄');
+  });
+
   test('稽核寫入失敗時設定不變', async () => {
     const t = await makeTenant('put-audit-fails');
     await saveRow(t, { embeddingTopK: 3 });
@@ -161,6 +201,26 @@ describe('修改向量化設定', () => {
     assert.equal(res.status, 400, JSON.stringify(res.body));
     assert.equal(res.body.error?.code, 'DATABASE_ERROR');
     assert.equal((await storedRow(t))?.embeddingTopK, 3, '設定沒有寫入');
+  });
+});
+
+describe('搜尋只比對目前模型的向量', () => {
+  test('換服務後統計顯示要重新嵌入', async () => {
+    const t = await makeTenant('stats-model');
+    await saveRow(t, { embeddingProvider: 'gemini', embeddingModel: 'gemini-embedding-001' });
+    for (const label of ['a', 'b']) {
+      const a = await owner.kmArticle.create({
+        data: { tenantId: t, title: `${MARK}-${label}`, content: 'x', summary: '', category: '一般', tags: [], status: 'PUBLISHED', createdById: MISSING },
+      });
+      await owner.$executeRawUnsafe(
+        `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = 'bge-m3' WHERE id = $2::uuid`,
+        `[${markedVector(1).join(',')}]`,
+        a.id,
+      );
+    }
+    const res = await call(await buildApp(t), 'GET', S);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.deepEqual(res.body.data.stats, { total: 2, embedded: 0, missing: 2 });
   });
 });
 
@@ -187,6 +247,33 @@ describe('向量化服務的健康檢查', () => {
       assert.equal(res.body.data.ok, false);
       assert.match(res.body.data.error, /nomic-embed-text:latest/);
     }
+  });
+
+  test('Gemini 沒有金鑰', async () => {
+    const t = await makeTenant('health-gemini-nokey');
+    await saveRow(t, { embeddingProvider: 'gemini', embeddingModel: 'gemini-embedding-001' });
+    config.GEMINI_API_KEY = undefined;
+    const app = await buildApp(t);
+    for (const res of [await call(app, 'POST', `${S}/health`), await call(app, 'GET', STATUS)]) {
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.equal(res.body.data.ok, false);
+      assert.match(res.body.data.error, /Gemini 金鑰/);
+    }
+    assert.equal(gemini.state.modelCalls, 0, '沒有呼叫 Gemini');
+  });
+
+  test('Gemini 正常', async () => {
+    const t = await makeTenant('health-gemini-ok');
+    await saveRow(t, { embeddingProvider: 'gemini', embeddingModel: 'gemini-embedding-001' });
+    await owner.tenantSettings.update({ where: { tenantId: t }, data: { geminiApiKeyEnc: encryptApiKey('tenant-key') } });
+    const app = await buildApp(t);
+    const status = await call(app, 'GET', STATUS);
+    assert.equal(status.status, 200, JSON.stringify(status.body));
+    assert.deepEqual(status.body.data, { ok: true, model: 'gemini-embedding-001' });
+    const health = await call(app, 'POST', `${S}/health`);
+    assert.equal(health.body.data.ok, true);
+    assert.equal(health.body.data.modelInstalled, true);
+    assert.equal(ollama.state.embedCalls.length, 0);
   });
 
   test('服務連不到', async () => {

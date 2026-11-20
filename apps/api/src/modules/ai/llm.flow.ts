@@ -55,13 +55,23 @@ function dbTotalReader(deps: LlmDeps, tenantId: string): ReadDbTotal {
   return () => inTenant(deps.prisma, tenantId, (scope) => readMonthlyTokensFromDb(scope));
 }
 
-/** 月額度已滿時丟出 403 PLAN_LIMIT_EXCEEDED，不呼叫 LLM（真人回覆不受影響） */
-export async function prepareLlmCall(deps: LlmDeps, tenantId: string): Promise<PreparedLlmCall> {
-  const inputs = await inTenant(deps.prisma, tenantId, (scope) => readLlmInputs(scope));
-  // monthlyTokens 只在平台金鑰時讀取；自備金鑰時是 null，不檢查（readLlmInputs）
-  if (await isMonthlyTokenExceeded(deps.redis, tenantId, inputs.monthlyTokens, dbTotalReader(deps, tenantId))) {
+/** 記用量與檢查月額度需要的欄位。LLM 呼叫與 Gemini 向量化都提供這些欄位 */
+export type UsageAccount = Pick<PreparedLlmCall, 'tenantId' | 'keySource' | 'monthlyTokens'>;
+
+/**
+ * 月額度已滿時丟出 403 PLAN_LIMIT_EXCEEDED，不呼叫模型（真人回覆不受影響）。
+ * monthlyTokens 只在平台金鑰時有值；自備金鑰時是 null，不檢查（readModelKeyInputs）。
+ */
+export async function assertMonthlyQuota(deps: LlmDeps, account: UsageAccount): Promise<void> {
+  const { tenantId, monthlyTokens } = account;
+  if (await isMonthlyTokenExceeded(deps.redis, tenantId, monthlyTokens, dbTotalReader(deps, tenantId))) {
     throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
   }
+}
+
+export async function prepareLlmCall(deps: LlmDeps, tenantId: string): Promise<PreparedLlmCall> {
+  const inputs = await inTenant(deps.prisma, tenantId, (scope) => readLlmInputs(scope));
+  await assertMonthlyQuota(deps, { tenantId, ...inputs });
   return { tenantId, ...inputs };
 }
 
@@ -71,7 +81,7 @@ export async function prepareLlmCall(deps: LlmDeps, tenantId: string): Promise<P
  */
 export async function recordLlmUsage(
   deps: LlmDeps,
-  prepared: PreparedLlmCall,
+  prepared: UsageAccount,
   input: Omit<AiUsageInput, 'keySource'>,
 ): Promise<void> {
   const { tenantId } = prepared;

@@ -3,10 +3,9 @@
  *
  * 向量化與儲存服務以參數注入 flow：路由傳入實際的實作，測試傳入記錄呼叫的假函式。
  */
-import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import type { TenantScope } from '../../lib/tenant-ctx.js';
-import { embedArticleFlow, type EmbedArticleResult } from '../embedding/embedding.flow.js';
+import { embedArticleFlow, type EmbedArticleResult, type EmbeddingDeps } from '../embedding/embedding.flow.js';
 import { deleteFile, uploadFile } from '../storage/storage.service.js';
 
 export type EmbedArticle = (tenantId: string, articleId: string) => Promise<EmbedArticleResult>;
@@ -19,9 +18,9 @@ export interface KnowledgeEffects {
 }
 
 /** 實際的實作。向量化是「交易 → 交易外呼叫向量化服務 → 交易」（change migrate-embedding-tenant-ctx，design D2） */
-export function createKnowledgeEffects(prisma: PrismaClient): KnowledgeEffects {
+export function createKnowledgeEffects(deps: EmbeddingDeps): KnowledgeEffects {
   return {
-    embed: (tenantId, articleId) => embedArticleFlow({ prisma }, tenantId, articleId),
+    embed: (tenantId, articleId) => embedArticleFlow(deps, tenantId, articleId),
     storage: { upload: uploadFile, remove: deleteFile },
   };
 }

@@ -7,6 +7,8 @@
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { getEmbeddingSettings, type EmbeddingSettings } from '../settings/embedding-settings.service.js';
 import { readAiPrivacyPolicy, type AiPrivacyPolicy } from '../platform/ai-privacy.service.js';
+import { readModelKeyInputs, type ModelKeyInputs } from '../ai/llm.service.js';
+import type { EmbeddingProbeTarget } from './embedding-client.js';
 
 export interface ArticleSearchResult {
   id: string;
@@ -20,13 +22,30 @@ export interface ArticleSearchResult {
 
 // ─── 向量化的輸入 ───────────────────────────────────────────────────────────
 
-/** 向量化前要讀的設定與遮罩政策。一次處理只讀一次 */
-export async function readEmbeddingInputs(
-  ctx: TenantCtx,
-): Promise<{ settings: EmbeddingSettings; policy: AiPrivacyPolicy }> {
+/**
+ * 向量化前要讀的設定、遮罩政策、金鑰與月額度上限。一次處理只讀一次。
+ * Ollama 不需要金鑰，也不計月額度：`keySource` 是 platform，`monthlyTokens` 是 null。
+ */
+export interface EmbeddingInputs extends ModelKeyInputs {
+  settings: EmbeddingSettings;
+  policy: AiPrivacyPolicy;
+}
+
+/** 健康檢查的目標。Gemini 時一併讀金鑰（自備金鑰優先，否則平台金鑰）。沒傳 `settings` 時自己讀 */
+export async function readEmbeddingProbeTarget(ctx: TenantCtx, settings?: EmbeddingSettings): Promise<EmbeddingProbeTarget> {
+  const s = settings ?? (await getEmbeddingSettings(ctx));
+  const apiKey = s.provider === 'gemini' ? (await readModelKeyInputs(ctx, 'gemini')).apiKey : undefined;
+  return { provider: s.provider, baseUrl: s.baseUrl, model: s.model, apiKey };
+}
+
+export async function readEmbeddingInputs(ctx: TenantCtx): Promise<EmbeddingInputs> {
   const settings = await getEmbeddingSettings(ctx);
   const policy = await readAiPrivacyPolicy(ctx.tx, ctx.tenantId);
-  return { settings, policy };
+  const keyInputs: ModelKeyInputs =
+    settings.provider === 'gemini'
+      ? await readModelKeyInputs(ctx, 'gemini')
+      : { apiKey: undefined, keySource: 'platform', monthlyTokens: null };
+  return { settings, policy, ...keyInputs };
 }
 
 export function prepareArticleText(article: {
@@ -77,6 +96,7 @@ export async function readArticleForEmbedding(ctx: TenantCtx, articleId: string)
 
 /**
  * 只在文章的向量化文字仍和 `sourceText` 相同時寫入向量與模型名稱（design D2）。回傳是否寫入。
+ * 文章已有租戶目前模型的向量時，不以其他模型的向量覆蓋（design D4）。
  *
  * 先以 `FOR UPDATE` 鎖住文章再重組文字：比對與寫入之間，其他交易改不了這篇文章。
  * 只比對文字：向量只取決於文字。`updatedAt` 會被瀏覽次數改變；狀態（發布、封存）由查詢過濾，
@@ -87,12 +107,17 @@ export async function writeArticleEmbedding(
   articleId: string,
   input: { vector: number[]; model: string; sourceText: string },
 ): Promise<boolean> {
-  const locked = await ctx.tx.$queryRawUnsafe<Array<{ id: string }>>(
-    `SELECT id FROM km_articles WHERE id = $1::uuid AND "tenantId" = $2::uuid FOR UPDATE`,
+  const locked = await ctx.tx.$queryRawUnsafe<Array<{ id: string; embeddingModel: string | null }>>(
+    `SELECT id, "embeddingModel" FROM km_articles WHERE id = $1::uuid AND "tenantId" = $2::uuid FOR UPDATE`,
     articleId,
     ctx.tenantId,
   );
   if (locked.length === 0) return false;
+
+  // 向量化期間租戶換了模型，而且新模型的向量已經寫入：舊模型的結果不覆蓋它
+  // （spec embedding-settings「舊模型的向量不覆蓋目前模型的向量」）
+  const currentModel = (await getEmbeddingSettings(ctx)).model;
+  if (input.model !== currentModel && locked[0].embeddingModel === currentModel) return false;
 
   if ((await readArticleForEmbedding(ctx, articleId)) !== input.sourceText) return false;
 
@@ -117,11 +142,15 @@ export async function listPublishedArticleIds(ctx: TenantCtx): Promise<string[]>
 
 // ─── 相似度搜尋 ─────────────────────────────────────────────────────────────
 
-/** 依向量找本租戶已發布、相似度達門檻的文章。`topK`、`threshold` 由呼叫端從設定帶入（design D5） */
+/**
+ * 依向量找本租戶已發布、相似度達門檻的文章。`model`、`topK`、`threshold` 由呼叫端從設定帶入。
+ * 只比對 `model` 產生的向量：不同模型的向量維度相同，但相似度沒有意義
+ * （spec embedding-settings「搜尋只比對目前模型的向量」）。
+ */
 export async function searchSimilarArticles(
   ctx: TenantCtx,
   queryEmbedding: number[],
-  options: { topK: number; threshold: number },
+  options: { model: string; topK: number; threshold: number },
 ): Promise<ArticleSearchResult[]> {
   return ctx.tx.$queryRawUnsafe<ArticleSearchResult[]>(
     `SELECT id, title, summary, content, category, tags,
@@ -130,6 +159,7 @@ export async function searchSimilarArticles(
      WHERE "tenantId" = $2::uuid
        AND status = 'PUBLISHED'
        AND embedding IS NOT NULL
+       AND "embeddingModel" = $5
        AND 1 - (embedding <=> $1::vector) >= $3
      ORDER BY similarity DESC
      LIMIT $4`,
@@ -137,5 +167,6 @@ export async function searchSimilarArticles(
     ctx.tenantId,
     options.threshold,
     options.topK,
+    options.model,
   );
 }

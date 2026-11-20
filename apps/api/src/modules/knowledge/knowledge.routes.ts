@@ -4,6 +4,7 @@ import { z } from 'zod/v3';
 import { normalizeCsvUpload, parseFileToMarkdown, parseSpreadsheetToQaRows } from './file-parser.service.js';
 import { parseCmd, type PartnerAttachmentInput } from './partner-ingest.service.js';
 import { createKnowledgeEffects, type KnowledgeEffects } from './knowledge-effects.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import {
   archiveArticleFlow,
   bulkEmbedFlow,
@@ -94,7 +95,8 @@ export interface KnowledgeRouteOptions {
 
 export default async function knowledgeRoutes(fastify: FastifyInstance, opts: KnowledgeRouteOptions = {}) {
   await fastify.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute' });
-  const deps: KnowledgeDeps = { prisma: fastify.prisma, effects: opts.effects ?? createKnowledgeEffects(fastify.prisma) };
+  const embeddingDeps = { prisma: fastify.prisma, redis: fastify.redis, events: createOutboxPublisher(fastify.prisma) };
+  const deps: KnowledgeDeps = { ...embeddingDeps, effects: opts.effects ?? createKnowledgeEffects(embeddingDeps) };
   const view = { preHandler: [requirePermission('knowledge.view')] };
 
   // Auth: most routes require agent JWT; partner-ingest additionally accepts

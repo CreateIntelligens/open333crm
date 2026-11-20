@@ -8,7 +8,8 @@ import type { PrismaClient } from '@prisma/client';
 import { inTenant } from '../../lib/tenant-ctx.js';
 import type { RequestActor } from '../../lib/request-actor.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
-import { modelNotInstalledError, probeEmbeddingService } from '../embedding/embedding-client.js';
+import { modelNotInstalledError, probeEmbeddingService, type EmbeddingProbeTarget } from '../embedding/embedding-client.js';
+import { readEmbeddingProbeTarget } from '../embedding/embedding.service.js';
 import {
   EMBEDDING_VECTOR_DIM,
   getEmbeddingSettings,
@@ -19,14 +20,14 @@ import {
   type OllamaModel,
 } from './embedding-settings.service.js';
 
-/** 一次 `/api/tags` 同時得到健康狀態與模型清單。服務連不到時模型清單是空的 */
+/** 一次檢查同時得到健康狀態與模型清單。服務連不到時模型清單是空的 */
 async function checkEmbeddingService(
-  settings: Pick<EmbeddingSettings, 'baseUrl' | 'model'>,
+  target: EmbeddingProbeTarget,
 ): Promise<{ health: OllamaHealth; models: OllamaModel[] }> {
-  const probe = await probeEmbeddingService(settings.baseUrl, settings.model);
+  const probe = await probeEmbeddingService(target);
   if (!probe.reachable) {
     return {
-      health: { ok: false, reachable: false, modelInstalled: false, currentModel: settings.model, error: probe.error },
+      health: { ok: false, reachable: false, modelInstalled: false, currentModel: target.model, error: probe.error },
       models: [],
     };
   }
@@ -36,8 +37,8 @@ async function checkEmbeddingService(
       ok: installed,
       reachable: true,
       modelInstalled: installed,
-      currentModel: settings.model,
-      error: installed ? undefined : modelNotInstalledError(settings.model, probe.models),
+      currentModel: target.model,
+      error: installed ? undefined : modelNotInstalledError(target.model, probe.models),
     },
     models: probe.models,
   };
@@ -45,18 +46,18 @@ async function checkEmbeddingService(
 
 /** `GET /settings/embedding`：設定、文章統計、健康狀態與模型清單 */
 export async function getEmbeddingSettingsPageFlow(deps: { prisma: PrismaClient }, tenantId: string) {
-  const { settings, stats } = await inTenant(deps.prisma, tenantId, async (scope) => ({
-    settings: await getEmbeddingSettings(scope),
-    stats: await getEmbeddingStats(scope),
-  }));
-  const { health, models } = await checkEmbeddingService(settings);
+  const { settings, stats, target } = await inTenant(deps.prisma, tenantId, async (scope) => {
+    const settings = await getEmbeddingSettings(scope);
+    return { settings, stats: await getEmbeddingStats(scope), target: await readEmbeddingProbeTarget(scope, settings) };
+  });
+  const { health, models } = await checkEmbeddingService(target);
   return { settings, health, models, stats, vectorDim: EMBEDDING_VECTOR_DIM };
 }
 
 /** `POST /settings/embedding/health` */
 export async function checkEmbeddingHealthFlow(deps: { prisma: PrismaClient }, tenantId: string): Promise<OllamaHealth> {
-  const settings = await inTenant(deps.prisma, tenantId, (scope) => getEmbeddingSettings(scope));
-  return (await checkEmbeddingService(settings)).health;
+  const target = await inTenant(deps.prisma, tenantId, (scope) => readEmbeddingProbeTarget(scope));
+  return (await checkEmbeddingService(target)).health;
 }
 
 /** `PUT /settings/embedding`：稽核寫入失敗時，設定一起 rollback */

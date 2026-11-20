@@ -192,12 +192,12 @@
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 租戶的 Chat 與 Embedding 設定預設使用 Ollama，但組織不部署 Ollama | 靜態確認 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P4 | 未處理 | 兩個 Compose 檔仍有 `ollama` 服務 | 靜態確認 |
 | [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `OLLAMA_*` 環境變數與 Chat 的位址補救已無作用 | 靜態確認 |
-| [LLM-04](#llm-04) | Storage、LLM 與資料庫 | P2 | 未處理 | Embedding 只能呼叫 Ollama；UAT 目前靠 Compose 內的 Ollama 運作，依部署決定拿掉 Ollama 後，知識庫自動回覆、AI 建議回覆與語意搜尋都會失效 | 執行時確認 |
+| [LLM-04](#llm-04) | Storage、LLM 與資料庫 | P2 | 部分修正 | Embedding 可以改用 Gemini，但預設仍是 Ollama；租戶沒有改成 Gemini 之前，拿掉 Ollama 會讓知識庫自動回覆、AI 建議回覆與語意搜尋失效 | 執行時確認 |
 | [LLM-05](#llm-05) | Storage、LLM 與資料庫 | P2 | 未處理 | AI 摘要在 LLM 失敗或額度用完時回傳一段固定範本，轉接真人時以「Bot 對話摘要」寫進對話 | 執行時確認 |
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
 | [KB-05](#kb-05) | Storage、LLM 與資料庫 | P2 | 未處理 | 型號守門命中後寫進對話的 `modelGuard` 永遠不清除，之後的回覆都沿用舊值 | 執行時確認 |
 | [KB-06](#kb-06) | Storage、LLM 與資料庫 | P3 | 部分修正 | AI 與知識庫回覆都失敗時客人收不到回覆；知識庫失敗時已改為轉真人（#445），`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆、不轉接 | 執行時確認 |
-| [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 向量維度不一致：migration 建立 1536 維，schema 與 UAT 是 1024 維 | 執行時重現 |
+| [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 部分修正 | 向量維度不一致：`km_articles.embedding` 已對齊 1024 維；`long_term_memories.embedding` 由 migration 建立時仍是 1536 維 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
 | [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
 | [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
@@ -2426,7 +2426,7 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 
 即使部署了 Ollama 容器，這個預設位址仍然錯誤：在 API 容器內，`localhost` 指向 API 自己。執行時連線曾重現 `Connection refused`。
 
-Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。Embedding 沒有供應商可選，無法繞過，見 LLM-04。
+Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。Embedding 也可以在 Embedding 設定改成 Gemini，見 LLM-04。
 
 <a id="llm-02"></a>
 ### LLM-02：Compose 仍部署 Ollama
@@ -2445,6 +2445,13 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 
 <a id="llm-04"></a>
 ### LLM-04：Embedding 只能呼叫 Ollama
+
+**部分修正（change `add-gemini-embedding-provider`）。** Embedding 設定新增向量化服務（`embeddingProvider`），租戶可以改成 Gemini（`gemini-embedding-001`，1024 維）。`embedText()` 與 `probeEmbeddingService()` 依服務分流。未修的部分：
+
+- 所有租戶的預設值仍是 Ollama。每個租戶要自己在 Embedding 頁改成 Gemini，再重新嵌入全部文章。改之前，下表的失敗情況仍然適用。
+- 下方「文字雜湊」的評估還沒做。
+
+以下是修正前的描述，未修的部分仍然適用。
 
 `tenant_settings` 的 Chat 設定有 `chatProvider`，可以選 Ollama 或 Gemini。Embedding 設定沒有對應的供應商欄位。`embedding/embedding-client.ts` 的 `embedText()` 一律以 Ollama 的 embed API 格式呼叫 `embeddingBaseUrl`；同一個檔案的 `probeEmbeddingService()`（健康檢查與模型清單）也只查 Ollama 的 `/api/tags`。
 
@@ -2510,6 +2517,10 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 
 <a id="db-01"></a>
 ### DB-01：向量維度不一致
+
+**部分修正（change `add-gemini-embedding-provider`）。** migration `20261119120000_add_embedding_provider` 檢查 `km_articles.embedding` 的維度：不是 1024 維時，清空這個欄位再改成 `vector(1024)`；已經是 1024 維（UAT）時不做任何事。feature 測試的假向量改成 1024 維。未修的部分：`long_term_memories.embedding` 由 migration 建立時仍是 1536 維，目前沒有程式寫入這個欄位。
+
+以下是修正前的描述，`long_term_memories` 的部分仍然適用。
 
 Prisma schema 與程式常數使用 1024 維。唯一建立這兩個欄位的 migration（`20260323021754_init`）用的是 `vector(1536)`，之後沒有任何 ALTER。由 migration 建立的資料庫（本機開發資料庫、feature 測試資料庫），`km_articles.embedding` 與 `long_term_memories.embedding` 都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，寫入這些資料庫會被拒絕。
 

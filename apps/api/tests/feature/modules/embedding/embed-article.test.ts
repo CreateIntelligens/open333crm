@@ -9,13 +9,14 @@ import assert from 'node:assert/strict';
 import { afterAll, beforeEach, describe, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createKnowledgeEffects } from '#src/modules/knowledge/knowledge-effects.js';
+import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { createKnowledgeFixture } from '../knowledge/knowledge-test-app.js';
 import { fakeOllama, markedVector, vectorMarker } from '#tests/support/fake-ollama.js';
 
 const fx = await createKnowledgeFixture('embed-article');
 const tenantDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
 const ollama = fakeOllama();
-const { embed } = createKnowledgeEffects(tenantDb);
+const { embed } = createKnowledgeEffects({ prisma: tenantDb, redis: fx.redis, events: createOutboxPublisher(tenantDb) });
 
 afterAll(async () => {
   ollama.restore();
@@ -82,6 +83,24 @@ describe('Automated Vectorization and Indexing', () => {
 
     assert.equal(ollama.state.embedCalls[0].model, 'bge-m3');
     assert.equal((await stored(a.id)).model, 'bge-m3');
+  });
+});
+
+describe('搜尋只比對目前模型的向量', () => {
+  test('舊模型的向量不覆蓋目前模型的向量', async () => {
+    await setModel(fx.A, 'bge-m3');
+    const a = await fx.articleOf(fx.A, 'stale-model', { status: 'PUBLISHED' });
+    ollama.state.vector = markedVector(3);
+    // bge-m3 的請求完成前：租戶換成 bge-m3-custom，新模型的向量化已經寫入
+    ollama.state.beforeEmbedReturns = async () => {
+      ollama.state.beforeEmbedReturns = null;
+      await setModel(fx.A, 'bge-m3-custom');
+      await setVector(a.id, 8, 'bge-m3-custom');
+    };
+
+    await embed(fx.A, a.id);
+
+    assert.deepEqual(await stored(a.id), { marker: 8, model: 'bge-m3-custom' });
   });
 });
 
