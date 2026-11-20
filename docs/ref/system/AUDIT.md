@@ -196,6 +196,7 @@
 | [LLM-05](#llm-05) | Storage、LLM 與資料庫 | P2 | 未處理 | AI 摘要在 LLM 失敗或額度用完時回傳一段固定範本，轉接真人時以「Bot 對話摘要」寫進對話 | 執行時確認 |
 | [KB-04](#kb-04) | Storage、LLM 與資料庫 | P2 | 未處理 | LLM 失敗或額度用完時，知識庫回答把整篇文章原文直接送給客人 | 執行時確認 |
 | [KB-05](#kb-05) | Storage、LLM 與資料庫 | P2 | 未處理 | 型號守門命中後寫進對話的 `modelGuard` 永遠不清除，之後的回覆都沿用舊值 | 執行時確認 |
+| [KB-07](#kb-07) | Storage、LLM 與資料庫 | P1 | 部分修正 | AI agent 沒有知識庫搜尋工具；`AGENTIC_LLM_ENABLED` 開啟時，agent 先回覆每則客人訊息，知識庫回覆不執行。已改成預設關閉 | 執行時確認 |
 | [KB-06](#kb-06) | Storage、LLM 與資料庫 | P3 | 部分修正 | AI 與知識庫回覆都失敗時客人收不到回覆；知識庫失敗時已改為轉真人（#445），`KB_AUTO_REPLY_ENABLED` 關閉時 agent 失敗仍不回覆、不轉接 | 執行時確認 |
 | [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 部分修正 | 向量維度不一致：`km_articles.embedding` 已對齊 1024 維；`long_term_memories.embedding` 由 migration 建立時仍是 1536 維 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
@@ -2514,6 +2515,19 @@ Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。E
 - 收件匣只在轉接系統訊息與原因看得到失敗，客人那則訊息本身沒有「AI 回覆失敗」標示。
 
 **規格依據**：`bot-handoff-config`「AI 與知識庫回覆都因錯誤失敗時轉接真人」「正常不回覆時不轉接」。
+
+<a id="kb-07"></a>
+### KB-07：AI agent 開啟時知識庫回覆不執行
+
+`automation.worker.ts` 在 `AGENTIC_LLM_ENABLED` 為 `true` 時，先以 `runAgentReplyFlow()` 回覆客人的文字訊息。`agent.flow.ts` 只要 agent 產生文字（`status: 'completed'`）就回傳 `handled: true`，worker 不再呼叫 `attemptKbAutoReplyFlow()`。agent 的工具（`agent/tool-registry.ts`：網路搜尋、讀網頁、天氣、OCR、文件解析、Wiki）沒有知識庫搜尋，所以 agent 不讀租戶的知識庫：它回「查不到」、轉接，或自己編造操作步驟。只有 agent 呼叫失敗（例如 `provider_error`）時，知識庫回覆才會執行。
+
+**證據**（2026-11-20 UAT 唯讀查詢與實測）：全平台 `ai_usages` 的 `kb-autoreply` 筆數 2026-09 是 70 筆，2026-10 是 1 筆，2026-11 是 4 筆；創造智能最近 30 天 `agent` 68 筆、`kb-autoreply` 0 筆。Demo 租戶 WebChat 15 題實測只有 3 題走到知識庫，都是 agent `provider_error` 後退回；其餘 12 題中 4 題編造了不存在的選單。
+
+**已修正**：`AGENTIC_LLM_ENABLED` 沒有設定時是 `false`（`apps/api/src/config/env.ts`），`.github/workflows/deploy.yml` 每次部署把 UAT 設成 `false`。客人訊息回到知識庫回覆。
+
+**未修正**：agent 沒有知識庫搜尋工具。要再打開 agent，先加上只搜本租戶已發布文章的工具，並讓 agent 回答產品與操作問題前先查知識庫。
+
+**規格依據**：`agentic-llm-orchestration`「Agent 預設關閉」。
 
 <a id="db-01"></a>
 ### DB-01：向量維度不一致

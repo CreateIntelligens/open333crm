@@ -142,7 +142,7 @@
 
 **交易與外部呼叫。** 知識庫回覆的讀寫都在綁定租戶的短交易內，受 RLS 約束；embedding 服務、LLM 與去識別化服務在交易外呼叫。寫入回覆時，系統在同一個交易內以條件更新確認對話仍是 `BOT_HANDLED`：產生回覆期間客服接手時，不寫入、也不送出這則回覆，結果是 `skipped`（`already_handled`）。寫入回覆包在 `BotReplyGuard.persist()` 的交易裡，與 `bot_reply` 認領一起 commit。追問次數在寫入的交易內讀最新的值再合併。回覆寫入之後，`botRepliesCount` 加一，推播 `message.new`，再以 `deliverToChannel()` 送到渠道。
 
-**AI agent 優先。** 環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，機器人先交給 AI agent 回覆；AI agent 沒有處理時，才走上面的知識庫流程。AI agent 可以呼叫外部工具，執行紀錄存在 `AgentRun`，可以用 `GET /ai/agent/runs/:id` 查看；紀錄關聯的對話所在渠道看不到時回 404。Agent 的資料庫寫入各自在短交易內，LLM 與工具在交易外呼叫：每次工具呼叫之後，系統先寫入工具紀錄，再進行下一次呼叫。執行到一半失敗時，執行紀錄標成 `FAILED`，之前的工具紀錄保留。Agent 最長可以執行 120 秒（`agent/runner.ts` 的 `AGENT_DEFAULT_TIMEOUT_MS`），交易的逾時是 5 秒，所以 Agent 不包在 `withTenant()` 或 `inTenant()` 裡。送到渠道的 `deliverToChannel()` 屬於還沒搬到 `TenantCtx` 的 conversation 模組，仍用舊的連線型別。
+**AI agent 優先。** 環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，機器人先交給 AI agent 回覆；AI agent 沒有處理時，才走上面的知識庫流程。`AGENTIC_LLM_ENABLED` 沒有設定時是 `false`，UAT 的部署流程（`deploy.yml`）也把它設成 `false`。AI agent 沒有知識庫搜尋工具：開啟時，AI agent 產生任何文字就算處理完成，知識庫流程不會執行（[KB-07](../../system/AUDIT.md#kb-07)）。AI agent 可以呼叫外部工具，執行紀錄存在 `AgentRun`，可以用 `GET /ai/agent/runs/:id` 查看；紀錄關聯的對話所在渠道看不到時回 404。Agent 的資料庫寫入各自在短交易內，LLM 與工具在交易外呼叫：每次工具呼叫之後，系統先寫入工具紀錄，再進行下一次呼叫。執行到一半失敗時，執行紀錄標成 `FAILED`，之前的工具紀錄保留。Agent 最長可以執行 120 秒（`agent/runner.ts` 的 `AGENT_DEFAULT_TIMEOUT_MS`），交易的逾時是 5 秒，所以 Agent 不包在 `withTenant()` 或 `inTenant()` 裡。送到渠道的 `deliverToChannel()` 屬於還沒搬到 `TenantCtx` 的 conversation 模組，仍用舊的連線型別。
 
 ## AI 設定
 
