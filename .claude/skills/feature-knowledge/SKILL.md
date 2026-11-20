@@ -13,7 +13,7 @@ description: >
 知識庫文章的 CRUD、發布與封存、匯入（PDF、Word、Excel、CSV、Markdown、JSON）、向量化 embedding 與語義搜尋、
 機器人依知識庫自動回覆（kb-autoreply、追問 clarify、轉真人）、型號守門 model guard 與型號白名單、「沒幫到我」回報調教、
 AI 設定頁（Embedding、Chat & Prompt、系統提示詞、自備 Gemini 金鑰 BYOK）、AI 月額度 `monthlyTokens` 與用量 `AiUsage`、
-AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影響。
+AI agent、後台助理（依知識庫回答員工並帶到功能頁）、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影響。
 相關的程式：`/dashboard/knowledge`、knowledge、embedding、ai 模組、`llm.service`、`llm.flow`、`kb-autoreply.flow`、`model-matcher`、chat-settings、embedding-settings、token-quota。
 問題像「AI 亂回、不回」「AI 說轉接了但沒人接」「匯入變亂碼」「搜不到文章」「型號查不到」時使用。
 改渠道 `botConfig`、自動轉接、收件匣 AI 建議回覆、方案 token 額度之前也使用，確認不破壞 AI 回覆。
@@ -95,6 +95,7 @@ AI agent、夥伴系統推送 partner-ingest、個資遮罩對模型輸入的影
    - 命中關鍵字、`botMode: off` 的訊息不轉接。
 5. 「👎 沒幫到我」→ 回報調教出現 → 編輯文章 → 標為已處理。
 6. 用 agent 與只有 `knowledge.view` 的自訂角色重走 1、2、5，確認 403 與按鈕顯示。直開 `/dashboard/knowledge/chat-prompt` 顯示「沒有權限」。
+7. 後台助理：用 admin 問「怎麼設定關鍵字自動回覆」，按「帶我去」，確認畫面切到關鍵字回覆頁、打開建立表單、標示關鍵字欄位。改了導覽用到的頁面時，確認 `data-guide` 仍在（`apps/web/tests/unit/lib/guide/guide-targets.test.ts`）。用沒有 `automation.manage` 的角色問同一題，回答沒有「帶我去」。
 
 自動測試：
 

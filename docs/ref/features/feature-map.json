@@ -646,13 +646,18 @@
         "apps/api/src/modules/settings/embedding-settings.service.ts",
         "apps/api/src/modules/settings/embedding-settings.flow.ts",
         "apps/api/src/modules/trial/token-quota.service.ts",
-        "apps/api/src/modules/trial/usage-alert-emails.ts"
+        "apps/api/src/modules/trial/usage-alert-emails.ts",
+        "apps/api/src/modules/ai/guide-assistant.*",
+        "packages/shared/src/guide/*"
       ],
       "pages": [
         "apps/web/src/app/dashboard/knowledge/**",
         "apps/web/src/components/knowledge/*",
         "apps/web/src/hooks/useKnowledge.ts",
-        "apps/web/src/hooks/useKbFeedback.ts"
+        "apps/web/src/hooks/useKbFeedback.ts",
+        "apps/web/src/components/ai/GuideAssistantPanel.tsx",
+        "apps/web/src/components/ai/GuideSpotlight.tsx",
+        "apps/web/src/lib/guide/*"
       ],
       "tables": [
         "KmArticle",
@@ -671,7 +676,8 @@
         "knowledge.view",
         "knowledge.manage",
         "knowledge.admin",
-        "settings.manage"
+        "settings.manage",
+        "assistant.use"
       ],
       "specs": [
         "km-ingestion",
@@ -731,7 +737,11 @@
         "apps/api/tests/feature/modules/ai/agent-flow.test.ts",
         "apps/api/tests/unit/modules/settings/chat-settings-defaults.test.ts",
         "apps/web/tests/unit/app/knowledge-feedback-page.test.tsx",
-        "apps/web/tests/unit/components/knowledge/**"
+        "apps/web/tests/unit/components/knowledge/**",
+        "apps/api/tests/feature/modules/ai/guide-assistant.test.ts",
+        "apps/web/tests/unit/lib/guide/**",
+        "apps/web/tests/unit/components/ai/guide-assistant-panel.test.tsx",
+        "packages/shared/tests/unit/guide/**"
       ],
       "dependsOn": [
         {

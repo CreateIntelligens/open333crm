@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-11-20]
 
+### Added
+
+- **後台助理**（change `add-dashboard-guide-assistant`）：後台每一頁的右下角新增助理。員工問「怎麼設定關鍵字自動回覆」，助理依本租戶的知識庫回答，並提供「帶我去」：按下後畫面切到功能頁、打開建立表單、用聚光框標示要填的欄位。助理不替員工送出或儲存資料。導覽只從員工有權限的 12 條導覽中選。新增權限碼 `assistant.use`（feature `knowledge`，三個系統角色預設都有），用量記為 `feature: guide-assistant`，受月額度限制。部署後要執行 `scripts/grant-new-role-permissions.mjs assistant.use` 並清除 `perms:*` 快取。
+
 ### Changed
 
 - **AI agent 預設關閉（KB-07）**：`AGENTIC_LLM_ENABLED` 沒有設定時是 `false`，`deploy.yml` 每次部署把 UAT 設成 `false`。agent 沒有知識庫搜尋工具；開啟時 agent 先回覆每則客人訊息，知識庫回覆不執行，2026-10 起全平台的知識庫回覆幾乎沒有執行。部署後所有租戶的機器人回到知識庫回覆。

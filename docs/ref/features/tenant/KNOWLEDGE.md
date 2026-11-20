@@ -34,6 +34,7 @@
 | `knowledge` | 文章的 CRUD、發布與封存、檔案匯入、批次產生向量、語意搜尋、型號白名單、客人回報、夥伴系統匯入 |
 | `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由。`embedding-client.ts` 依租戶的向量化服務呼叫 Ollama 或 Gemini，不碰資料庫；`embedding.flow.ts` 把向量化拆成「交易 → 交易外呼叫向量化服務 → 交易」，Gemini 時另外檢查月額度並寫用量紀錄（`embedWithUsage()`） |
 | `ai` 的 `kb-autoreply.flow.ts`、`kb-autoreply.service.ts` | 機器人依知識庫回覆 |
+| `ai` 的 `guide-assistant.*` | 後台助理：依知識庫回答員工的操作問題，並從員工有權限的導覽中選一條，見[後台助理](#後台助理) |
 | `ai` 的 `agent/` | AI agent：可以呼叫工具（搜尋網頁、讀網頁、OCR、解析文件、查天氣、發布 Wiki）的多輪回覆 |
 | `ai` 的 `llm.flow.ts`、`llm.service.ts`、`llm-client.ts`、`providers/` | 呼叫 LLM。`llm.flow.ts` 把一次呼叫拆成「交易 1 讀設定、金鑰、遮罩政策與月額度上限 → 交易外檢查月額度並呼叫 LLM → 交易 2 寫用量紀錄」；`llm.service.ts` 是兩個交易內的查詢與提示詞的組裝；`llm-client.ts` 呼叫 provider，不碰資料庫。支援 Ollama 與 Gemini；組織不部署 Ollama，因此只能用 Gemini |
 | `ai` 的 `ai-key.service.ts` | 決定用平台的 Gemini 金鑰還是租戶自備的金鑰 |
@@ -61,6 +62,7 @@
 | Embedding 設定 | `GET`、`PUT /settings/embedding`、`POST /settings/embedding/health` | `embedding-settings.service.ts` |
 | 自備金鑰 | `GET`、`PUT /settings/gemini-key` | `ai-key.service.ts` |
 | 機器人依知識庫回覆 | `automation.worker.ts` 呼叫 | `kb-autoreply.flow.ts` 的 `attemptKbAutoReplyFlow()`：`decideReply()` 決定回覆方式，`persistAndDeliver()` 寫入並送出 |
+| 後台助理 | `POST /ai/guide-assistant/ask` | `guide-assistant.flow.ts` 的 `askGuideAssistantFlow()` |
 | AI agent | `automation.worker.ts`、`POST /ai/agent/run`、A2A（`settings/a2a-bridge.worker.ts` 的 `handleA2ATask()`） | `ai/agent/agent.flow.ts` 的 `runAgentReplyFlow()` |
 | 一般 LLM 呼叫 | 各功能 | `llm.flow.ts` 的 `generateReply()`、`prepareLlmCall()`、`runLlmCall()` |
 
@@ -163,6 +165,25 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 
 **兩個部署層級的開關。** `KB_AUTO_REPLY_ENABLED` 與 `AGENTIC_LLM_ENABLED` 是環境變數，所有租戶共用，租戶不能各自開關。租戶要關掉機器人，只能把各渠道的 `botMode` 設成 `off` 或 `keyword`。
 
+## 後台助理
+
+後台每一頁的右下角有助理按鈕（`apps/web/src/components/ai/GuideAssistantPanel.tsx`）。員工有 `assistant.use` 時，按鈕才顯示。
+
+員工送出問題後，`askGuideAssistantFlow()` 依序執行：
+
+1. 以 `searchArticlesByTextFlow()` 檢索本租戶的已發布文章，取相似度最高的 3 篇。沒有文章時，回固定的「知識庫裡找不到這個問題的說明。」，不呼叫 LLM。
+2. 以員工的有效權限過濾導覽目錄（`packages/shared/src/guide/guide-catalog.ts` 的 `guidesForPermissions()`）。
+3. 以 `generateReply()` 呼叫 LLM，`feature` 是 `guide-assistant`。系統提示詞列出過濾後的導覽 `id` 與 `title`，要求 LLM 回傳 `{ "answer", "guideId" }`。
+4. `guideId` 不在過濾後的導覽中時，`guide` 是 `null`。LLM 的回覆不是這個格式的 JSON 時，整段回覆是答案，`guide` 是 `null`。
+
+回答有導覽時，面板顯示「帶我去」。員工按下按鈕後，`apps/web/src/lib/guide/guide-runner.ts` 的 `runGuide()` 切換到導覽的頁面，依步驟點擊入口，再以 `GuideSpotlight.tsx` 標示要填的欄位。每個步驟等待 `[data-guide="<target>"]` 最多 5 秒，找不到時面板顯示「找不到這個欄位，請依上面的步驟操作。」。
+
+導覽目錄的規則：
+
+- 步驟的動作只有 `click` 與 `highlight`。`click` 的 `target` 以 `.open` 結尾，只用在打開對話框、打開新頁或切換分頁的元素上。最後一步是 `highlight`。助理不替員工送出或儲存資料。
+- 新增導覽時，在目標元素加 `data-guide` 屬性。`apps/web/tests/unit/lib/guide/guide-targets.test.ts` 檢查每個 `target` 在 `apps/web/src` 都找得到。
+- 行銷各分頁共用一個建立按鈕（`marketing.open`）。`runGuide()` 等路徑變成導覽的頁面之後才找元素，所以不會點到舊分頁的按鈕。
+
 ## 額度
 
 只有使用平台金鑰（`keySource === 'platform'`）時，系統才累加並檢查月額度（`monthlyTokens`）。每次成功的 AI 呼叫把 token 數累加到該租戶當月的計數器：Redis key 是 `aiquota:{tenantId}:{YYYY-MM}:tpe`，月份依台灣時間；Redis 失敗時改用資料庫加總（`token-quota.service.ts`）。Ollama 的成本記 0，但同樣會累加。一般 AI 呼叫與 AI agent 都經由 `llm.flow.ts` 的 `prepareLlmCall()`，在呼叫前檢查月額度，超過就丟 403 `PLAN_LIMIT_EXCEEDED`，不呼叫 LLM。Gemini 向量化經由 `embedWithUsage()`，以同一個 `assertMonthlyQuota()` 檢查。Ollama 向量化不檢查月額度，也不寫用量紀錄。
@@ -181,6 +202,7 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。該�
 | 建立、修改、刪除、發布、封存、上傳、批次匯入、產生向量 | `knowledge.manage` |
 | 夥伴系統推送、重建型號白名單、標記回報已處理 | `knowledge.admin` |
 | Chat、Embedding、自備金鑰的設定 | `settings.manage` |
+| 後台助理（`POST /ai/guide-assistant/ask`） | `assistant.use`。三個系統角色預設都有 |
 
 側欄的「知識庫」依 `knowledge.view` 隱藏。「AI 設定」兩頁沒有 `settings.manage` 時，側欄隱藏；直接開網址時，頁面顯示「沒有權限」（`SettingsLoadError.tsx`）。文章的寫入按鈕不依 `knowledge.manage` 隱藏，按下才收到「權限不足」（HC-KNOWLEDGE-05）；只有「標為已處理」依 `knowledge.admin` 隱藏。
 
